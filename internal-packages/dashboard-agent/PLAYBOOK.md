@@ -47,10 +47,10 @@ The fixtures behind the gallery live in
 | Rendered by | Cases |
 | --- | --- |
 | Production components | messages, text/markdown, reasoning, tool rows, `diagnosis`, `chart` and report view blocks, context banner, suggested prompts, composer, history list |
-| Gallery-only stand-ins | investigation card (no block type until M5), prompt row with promoted/dismissed states, navigate bubble, chart card with canned rows |
+| Gallery-only stand-ins | investigation card (no block type until M5), watch chips, prompt row with promoted/dismissed states, navigate bubble, chart card with canned rows |
 
 The stored conversations only carry what the production renderer handles, so the
-beats that have no block type yet (investigations, intents) are
+beats that have no block type yet (investigations, watches, intents) are
 assistant text there, and the cards themselves are reviewed in the gallery.
 
 The stand-in cards are the ones to review hardest: **this review freezes
@@ -92,6 +92,13 @@ Fixture data for M4's registry lives in `demo/fixtures/page-context.ts`: one
 should return for it. The chat shows only the failed-run page — the other page
 kinds and the post-dismissal row are in the state gallery, because a chat is one
 story and stacked variants of one row read as a bug.
+
+## Watch
+
+| Open | You should see | Feedback wanted |
+| --- | --- | --- |
+| `Tell me when the backlog drains` | A watch intent, the chip row under the banner (`send-order-receipt`, `backlog-drain`), then an unprompted wake narration minutes later. | Does an unprompted message need more framing than the note above it? Is the chip row the right home for watches? |
+| `Watch for that error recurring` | Chips in all four states (watching / fired / expired / cancelled), an expiry narration, the **couldn't verify at expiry** variant, and a cancel confirmation. The cancel control on an active chip is a labelled icon button (“Cancel the backlog-drain watch”, tooltip on hover) and is intercepted. | Is the "couldn't verify" wording clearly different from "it didn't happen"? Should an expired watch offer to renew itself? |
 
 ## Reports
 

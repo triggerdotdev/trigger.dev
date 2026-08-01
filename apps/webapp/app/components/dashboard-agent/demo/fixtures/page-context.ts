@@ -176,9 +176,9 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
       "contextual"
     ),
     prompt(
-      "retry-status",
-      "Did the retry work?",
-      `How did the retry of ${DEMO_WORLD.failedRunId} go?`,
+      "watch-retry",
+      "Tell me when it retries",
+      `Watch ${DEMO_WORLD.failedRunId} and tell me when it finishes.`,
       "contextual"
     ),
     DEFAULT_PROMPTS[1]!,
@@ -236,9 +236,9 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
       "promoted"
     ),
     prompt(
-      "recent-occurrences",
-      "How often is this happening?",
-      "How often has this error happened recently, and is it still happening?",
+      "watch-recurrence",
+      "Tell me if it comes back",
+      "Watch this error and tell me if it happens again.",
       "contextual"
     ),
     DEFAULT_PROMPTS[1]!,
@@ -271,7 +271,7 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
 };
 
 /** Chips the user has dismissed — the row must not offer them again. */
-export const demoDismissedPromptIds: string[] = [demoId("prompt-retry-status")];
+export const demoDismissedPromptIds: string[] = [demoId("prompt-watch-retry")];
 
 /** What the row shows after the dismissal above, still capped. */
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun

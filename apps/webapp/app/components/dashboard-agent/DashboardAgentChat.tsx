@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import type { AgentIntent, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,6 +16,29 @@ import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
+import { WatchChips, type WatchChip } from "./WatchChips";
+
+/**
+ * The message a card's watch button sends on the user's behalf. Written the way
+ * the user would ask, so the transcript reads as a request the agent then
+ * confirms (via schedule_watch), not as UI state that changed silently.
+ */
+function watchRequestText(spec: WatchSpec): string {
+  const note = "note" in spec && spec.note ? spec.note.trim() : "";
+  if (note) return `Watch this for me — tell me when ${note}.`;
+  switch (spec.kind) {
+    case "backlog_drain":
+      return `Watch this for me — tell me when the ${spec.queue} backlog drains.`;
+    case "run_start":
+      return `Watch this for me — tell me when run ${spec.runId} starts.`;
+    case "run_finished":
+      return `Watch this for me — tell me when run ${spec.runId} finishes.`;
+    case "error_recurrence":
+      return `Watch this for me — ping me if error ${spec.fingerprint} comes back.`;
+    case "health_recovery":
+      return "Watch this for me — tell me when health is back to normal.";
+  }
+}
 
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
@@ -59,7 +82,9 @@ export function DashboardAgentChat({
   streaming,
   prefill,
   promotedPrompt,
+  watches,
   pagePaths,
+  onCancelWatch,
   onTurnSettled,
   onActivityChange,
 }: {
@@ -87,9 +112,12 @@ export function DashboardAgentChat({
   // The product-controlled promoted chip, from the feature flag. Only used for
   // the suggested prompts on an empty chat.
   promotedPrompt?: SuggestedPrompt;
+  // This chat's active watches, from the panel's history load.
+  watches: WatchChip[];
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
-  /** A turn settled — tell the panel to refresh its history list. */
+  onCancelWatch: (watchId: string) => void;
+  /** A watch was created — tell the panel to re-read the chips. */
   onTurnSettled: () => void;
   /**
    * Whether a turn is in flight, for the History list's row marker. Only this
@@ -263,8 +291,11 @@ export function DashboardAgentChat({
   );
 
   // What a card's action does. An `ask` goes back into the conversation as the
-  // user's own question, so the click is visible in the transcript rather than
-  // happening silently.
+  // user's own question — and so does a `watch`: the click becomes a visible
+  // request ("Watch this for me…") and the agent answers it with schedule_watch,
+  // confirming in its own words and offering an email alert when none is set up.
+  // A silent POST would be cheaper, but a watch the transcript never mentions
+  // reads as nothing having happened.
   //
   // `propose_fix` is reserved and must never be executed.
   const handleIntent = useCallback(
@@ -272,6 +303,9 @@ export function DashboardAgentChat({
       switch (intent.kind) {
         case "ask":
           submit(intent.prompt);
+          return;
+        case "watch":
+          submit(watchRequestText(intent.spec));
           return;
         case "navigate":
           void goTo(intent);
@@ -324,6 +358,15 @@ export function DashboardAgentChat({
 
   return (
     <>
+      {/* What this chat is watching, at the top of the panel: a watch outcome
+          arrives in the transcript unprompted, so the chips are what explain
+          where those messages will come from. */}
+      {/* Chips are an offer to cancel, so only live watches get one; the full
+          list still flows to the messages for the wake banner's tone. */}
+      <WatchChips
+        watches={watches.filter((watch) => watch.status === "active")}
+        onCancel={onCancelWatch}
+      />
       {/* A cold-start chat mounts with no messages and a first message about to
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}
@@ -342,6 +385,7 @@ export function DashboardAgentChat({
           onDismissError={clearError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
+          watches={watches}
           resolveUri={resolveUri}
         />
       )}

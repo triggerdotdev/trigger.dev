@@ -244,7 +244,7 @@ async function generateAndSaveTitle(
   }
 }
 
-import { agentPageContextSchema } from "@internal/dashboard-agent-contracts";
+import { agentPageContextSchema, type WatchSpec } from "@internal/dashboard-agent-contracts";
 
 export type {
   AgentPage,
@@ -286,13 +286,73 @@ export const clientDataSchema = z.object({
     .optional(),
 });
 
+/* ------------------------------------------------------------------ *
+ * Watch wakes
+ * ------------------------------------------------------------------ */
+
+/**
+ * The wake, as the agent receives it.
+ *
+ * A watch fires (or expires) long after the turn that scheduled it, so there is
+ * no turn to answer on. The watcher task (`watch-tick.ts`) appends ONE record to
+ * this chat's `in` stream with `trigger: "action"`, which is the SDK's
+ * non-message input: it wakes (or re-triggers) the agent run and fires `onAction`
+ * only — no `onTurnStart`, no `run()`, no `onTurnComplete`, and the turn counter
+ * doesn't move. That's why the narration below does its own model call and its
+ * own persistence: the turn machinery isn't running.
+ *
+ * `id` is stable per (watch, outcome) — `watch:{watchId}:{fired|expired}` — and it
+ * becomes the narration message's id. That is the dedup: a redelivered wake (the
+ * watcher retried after appending but before marking the delivery) finds its
+ * message already in the history and narrates nothing.
+ */
+export type WatchWakeAction = {
+  type: "watch.fired" | "watch.expired";
+  /** `watch:{watchId}:{status}` — stable, so a redelivery is a no-op. */
+  id: string;
+  watchId: string;
+  /** The watched thing, as the contracts' dedup string. */
+  identity: string;
+  spec: WatchSpec & { since?: string };
+  /** What the final check observed. The numbers the narration must use. */
+  facts: Record<string, unknown>;
+  /** Why the watch exists, in the user's words. */
+  note?: string;
+};
+
+// Deliberately lenient on `spec`: a wake must never be lost to a validation
+// error because the host persisted a spec field this version doesn't know about.
+// The narration reads `kind`, `note` and the cadence; the rest passes through.
+export const watchWakeActionSchema = z.object({
+  type: z.enum(["watch.fired", "watch.expired"]),
+  id: z.string(),
+  watchId: z.string(),
+  identity: z.string().default(""),
+  spec: z
+    .object({
+      kind: z.string(),
+      note: z.string().optional(),
+      checkEveryMinutes: z.number().optional(),
+    })
+    .passthrough(),
+  facts: z.record(z.unknown()).default({}),
+  note: z.string().optional(),
+});
+
+// The wake's own line. How a wake is narrated (once, briefly, outcome + facts +
+// one suggestion) lives in the managed system prompt's "Watches" section, which
+// is the cached block — this is only the per-wake framing.
+const WAKE_INSTRUCTION =
+  "This is a watch wake, not a question: nobody is waiting on a reply. Write ONE short message — the outcome, the numbers from the facts below, and one suggested next step. No tools, no new investigation, no recap.";
+
 /**
  * Coerce replayed tool-call inputs the Anthropic API would reject back to `{}`.
  *
  * The model occasionally emits a no-arg tool call with a non-object input (empty
  * string, or `null` — which `typeof` also calls "object"), the SDK replays it
  * into history verbatim, and the API then fails the whole turn with
- * "tool_use.input: Input should be an object". Used by `prepareMessages`.
+ * "tool_use.input: Input should be an object". Used by `prepareMessages` on
+ * normal turns and by the wake narration, which builds its model call directly.
  */
 export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessage[] {
   const isBadInput = (part: unknown) =>
@@ -312,9 +372,173 @@ export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessa
   }) as ModelMessage[];
 }
 
+// Same Anthropic breakpoint `prepareMessages` rolls onto a turn's last message.
+function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
+  if (messages.length === 0) return messages;
+  const last = messages[messages.length - 1]!;
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...last,
+      providerOptions: {
+        ...last.providerOptions,
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
+  ];
+}
+
+function wakeOutcome(action: WatchWakeAction): string {
+  if (action.type === "watch.fired") return "the condition happened";
+  // An expiry can be a real answer: the condition became impossible (e.g. the
+  // watched run was cancelled), which is not the same as running out of time.
+  if ((action.facts as { reason?: string } | undefined)?.reason === "terminal_unsatisfied") {
+    return "the condition can no longer happen — that is the answer, not a timeout";
+  }
+  return "the watch ended without firing";
+}
+
+function wakePrompt(action: WatchWakeAction): string {
+  return [
+    WAKE_INSTRUCTION,
+    `Outcome: ${wakeOutcome(action)}.`,
+    `Watching: ${action.spec.kind}${action.identity ? ` (${action.identity})` : ""}.`,
+    action.note ? `Why the user asked for it: ${action.note}` : undefined,
+    `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Did the turn that CREATED this watch already tell the user its outcome?
+ *
+ * A watch whose condition was already true is resolved inline by the host and
+ * answered in the same turn, so its wake is delivered later only as a backstop —
+ * and it must not repeat an answer the user already has. The proof has to be
+ * specific to this watch and durable, so it is read out of the persisted
+ * transcript: a completed `schedule_watch` call that returned an immediate outcome
+ * FOR THIS WATCH, and assistant prose that follows it IN THE SAME assistant
+ * message. That is exactly how a completed turn persists — one assistant message
+ * whose parts are the tool call and then the answer written from its result.
+ *
+ * Both halves of "follows it in the same message" are load-bearing:
+ *
+ * - A LATER message proves nothing about this watch. The user can ask anything at
+ *   all afterwards, and the answer to that question would otherwise pass as the
+ *   telling of an outcome that was never told. Same class of mistake as reading the
+ *   chat's "last message" watermark, which a question, an error turn, or another
+ *   watch's wake all move.
+ * - Text BEFORE the tool part in the message was written without the outcome in
+ *   hand (it is what the model said on its way to calling the tool), so it can't be
+ *   the answer either.
+ *
+ * Anything short of that pair means no narration exists (the turn died before it,
+ * or wrote nothing), and the wake narrates normally.
+ */
+export function hasInlineWatchNarration(uiMessages: UIMessage[], watchId: string): boolean {
+  return uiMessages.some((message) => {
+    if (message.role !== "assistant") return false;
+
+    const resolvedAt = message.parts.findIndex((part) => {
+      if (part.type !== "tool-schedule_watch") return false;
+      const output = (part as { output?: { watchId?: unknown; immediate?: unknown } }).output;
+      return output?.watchId === watchId && output.immediate !== undefined;
+    });
+    if (resolvedAt === -1) return false;
+
+    return message.parts
+      .slice(resolvedAt + 1)
+      .some((part) => part.type === "text" && (part as { text?: string }).text?.trim());
+  });
+}
+
+/**
+ * Narrate one wake, exactly once.
+ *
+ * Streams so the panel shows it arriving live, then writes it into both places a
+ * turn normally would: `chat.history` (the runtime transcript the model sees next
+ * turn) and the display read-model. Both happen before `onAction` returns —
+ * `chat.history` mutations are only picked up immediately after the hook.
+ */
+async function narrateWatchWake(args: {
+  action: WatchWakeAction;
+  chatId: string;
+  clientData: z.infer<typeof clientDataSchema> | undefined;
+  uiMessages: UIMessage[];
+  /** The same history in model form, as the action event supplies it. */
+  messages: ModelMessage[];
+}): Promise<void> {
+  const { action, chatId, uiMessages } = args;
+  const messageId = `wake:${action.id}`;
+
+  // Dedup on the action id. Durable, because the history it checks is the
+  // snapshot the SDK reseeds on every boot — not per-process state.
+  if (uiMessages.some((message) => message.id === messageId)) {
+    logger.info("dashboard-agent watch wake already narrated; skipping", {
+      chatId,
+      watchId: action.watchId,
+      actionId: action.id,
+    });
+    return;
+  }
+
+  // The other way this outcome can already have been told: the turn that created
+  // the watch answered it inline. One telling per outcome, so the wake is silent
+  // here — the delivery is still marked, which closes the row out.
+  if (hasInlineWatchNarration(uiMessages, action.watchId)) {
+    logger.info("dashboard-agent watch outcome was narrated inline; skipping the wake", {
+      chatId,
+      watchId: action.watchId,
+    });
+    return;
+  }
+
+  const resolved = await getSystemPrompt(modeFor(args.clientData));
+  const result = streamText({
+    model:
+      locals.get(dashboardAgentModelKey) ??
+      registry.languageModel(
+        (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
+      ),
+    system: resolved.text,
+    // The conversation so far plus the wake. No tools: a wake reports what the
+    // check already established, and it carries no delegated token to read with.
+    // The breakpoint goes on the last message of the EXISTING prefix (not on the
+    // wake, which is unique and would only ever be a cache write), so the wake
+    // reads back the same cached prefix a normal turn would.
+    messages: [
+      ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
+      { role: "user" as const, content: wakePrompt(action) },
+    ],
+    ...resolved.toAISDKTelemetry(),
+  });
+
+  // Pipe explicitly (rather than returning the result) so the final text is in
+  // hand for the history + read-model writes below. The streamed message must
+  // carry the SAME id the copy below is persisted under — the panel merges the
+  // live stream with the loaded history by message id, and two ids for one
+  // narration render it twice.
+  await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
+  const text = (await result.text).trim();
+  if (!text) return;
+
+  const message: UIMessage = {
+    id: messageId,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+  };
+  const messages = [...uiMessages, message];
+  chat.history.set(messages);
+  await getStore().persistMessages({ chatId, messages });
+}
+
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
+  // The only action the agent accepts: a watch wake, appended by the watcher
+  // task. Actions are not turns — see `narrateWatchWake`.
+  actionSchema: watchWakeActionSchema,
   // Latency levers come next (Head Start, prompt caching, AI Prompts). Scaffold
   // keeps a short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
@@ -353,6 +577,19 @@ export const dashboardAgent = chat.agent({
           currentPage: clientData.currentPage,
         },
       },
+    });
+  },
+
+  // A watch fired or expired. The narration is one message, deduped on the
+  // action id, and it returns void: the stream is piped inside so the final
+  // text can be written to the history and the read-model.
+  onAction: async ({ action, chatId, clientData, uiMessages, messages }) => {
+    await narrateWatchWake({
+      action: action as WatchWakeAction,
+      chatId,
+      clientData,
+      uiMessages,
+      messages,
     });
   },
 

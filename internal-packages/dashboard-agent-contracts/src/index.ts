@@ -14,3 +14,4 @@ export * from "./page-context.js";
 export * from "./run-filters.js";
 export * from "./suggested-prompts.js";
 export * from "./trigger-uri.js";
+export * from "./watch.js";

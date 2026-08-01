@@ -25,6 +25,8 @@
  *   - `ChatPendingTool` — a tool call still in flight, as a compact pill
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
+ *   - `ChatWakeSlot`    — an unprompted turn: its banner and the narration under
+ *                         it, kept together as one unit
  *   - `ChatStatusLine`  — an icon and one line of status
  *   - `ChatActionsRow`  — a row of buttons
  *
@@ -64,8 +66,10 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 /** Gap inside a single-line row (icon to text, button to button). */
 const ROW_GAP = "gap-2";
-/** Gap inside a chip (icon to label). Tighter than a row. */
+/** Gap inside a chip (icon to label). Tighter than a row — same as a watch chip. */
 const CHIP_GAP = "gap-1.5";
+/** Rhythm inside one unit — a banner and the text it introduces. */
+const UNIT_GAP = "space-y-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
@@ -226,9 +230,9 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
  *
  * It replaces the tool row for the whole in-flight phase, so the transcript never
  * shows a half-streamed blob of input JSON that then flips to a card. The pill is
- * deliberately the smallest thing that fits the transcript's chip language — when
- * the call lands, whatever the result renders as takes its place, and the jump is
- * one line high.
+ * deliberately the smallest thing that fits the transcript's chip language (the
+ * watch chips are its sibling) — when the call lands, whatever the result renders
+ * as takes its place, and the jump is one line high.
  */
 export function ChatPendingTool({ label }: { label: string }) {
   const insetClass = useInsetClass();
@@ -293,6 +297,26 @@ export function ChatStatusLine({
     <div className={cn("flex items-start", ROW_GAP)}>
       {icon}
       <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * An unprompted turn: the banner that says what woke the chat, then the body it
+ * introduces — tighter than the gap between two independent micro-layouts,
+ * because the two read as one thing.
+ */
+export function ChatWakeSlot({
+  banner,
+  children,
+}: {
+  banner: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0", UNIT_GAP)}>
+      {banner}
+      {children}
     </div>
   );
 }

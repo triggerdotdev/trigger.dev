@@ -2419,6 +2419,7 @@ enum ProjectAlertType {
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS
   ERROR_GROUP
+  DASHBOARD_AGENT_WATCH
 }
 
 enum ProjectAlertStatus {

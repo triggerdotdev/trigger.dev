@@ -18,6 +18,7 @@ import {
   DemoIntentBubble,
   DemoInvestigationCard,
   DemoReportCard,
+  DemoWatchChips,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
@@ -28,6 +29,8 @@ import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
+import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
+import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
@@ -378,7 +381,7 @@ function Missing({ what }: { what: string }) {
 // The state map. Keyed by `sectionId`, so the manifest drives what renders.
 // ---------------------------------------------------------------------------
 
-const { demoInvestigations, demoIntents, demoPageContexts } = demoFixtures;
+const { demoInvestigations, demoIntents, demoWatches, demoPageContexts } = demoFixtures;
 
 // A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
 // production — the point of the state is the styling of the top slot.
@@ -471,6 +474,63 @@ function investigationBlock(
     version: VIEW_BLOCK_VERSION,
     investigation,
   };
+}
+
+/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
+function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
+  return {
+    id: watch.id,
+    identity: watch.identity,
+    status: watch.status,
+    kind: watch.spec.kind,
+    note: watch.spec.note,
+    checkEveryMinutes: watch.spec.checkEveryMinutes,
+    expiresAt: watch.expiresAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wake fixtures, written here rather than pulled from the demo conversations: a
+// wake is a message *id* plus the watch it names, and no demo chat carries one.
+// ---------------------------------------------------------------------------
+
+/** A wake narration, in the shape the panel merges live stream and history into. */
+function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
+  return {
+    id: `wake:watch:${watchId}:${outcome}`,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+  };
+}
+
+const wakeWatches: WakeWatch[] = [
+  {
+    id: "watch_health",
+    kind: "health_recovery",
+    note: "prod health back to normal",
+    identity: "health_recovery:",
+  },
+  {
+    id: "watch_error",
+    kind: "error_recurrence",
+    note: "tell me if that TypeError comes back",
+    identity: "error_recurrence:a1b2c3d4e5f6",
+  },
+  {
+    id: "watch_run",
+    kind: "run_finished",
+    note: "ping me when the nightly backfill finishes",
+    identity: "run_finished:run_a1b2c3d4e5",
+  },
+];
+
+/** One wake through the production renderer, with the watches the panel would have. */
+function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
+  return (
+    <div className={PANEL_FRAME}>
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
+    </div>
+  );
 }
 
 function fixtureResolveUri(uri: string): { label: string; url: string } | null {
@@ -610,6 +670,60 @@ const STATES: Record<string, React.ReactNode> = {
   ),
   "chart-empty": <EmptyChartCard />,
 
+  // --- Watch chips --------------------------------------------------------
+  "watches-active": <DemoWatchChips watches={[demoWatches.runFinished]} onCancel={noop} />,
+  "watches-fired": <DemoWatchChips watches={[demoWatches.errorRecurrence]} />,
+  "watches-expired": <DemoWatchChips watches={[demoWatches.healthRecovery]} />,
+  "watches-cancelled": <DemoWatchChips watches={[demoWatches.cancelled]} />,
+  "watches-all-states": <DemoWatchChips watches={demoWatches.row} onCancel={noop} />,
+  // The real panel component, fed the same fixtures through the shape its loader
+  // hands over — so its labels (derived from the watch identity) and the demo
+  // chips above can be compared side by side.
+  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
+
+  // --- Wake banners -------------------------------------------------------
+  "wake-fired-good-news": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_health",
+        "fired",
+        "Production is back to normal: the failure rate has been under 1% for the last 15 minutes and the queue has drained. Nothing left for me to watch here."
+      )}
+    />
+  ),
+  "wake-fired-attention": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_error",
+        "fired",
+        "That TypeError is back — 6 runs of process-order failed with it in the last 10 minutes, all on version 20260620.2. Same empty-items payload as before."
+      )}
+    />
+  ),
+  "wake-expired": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_run",
+        "expired",
+        "I stopped watching the nightly backfill: it still hasn't finished, and the watch has run out. Ask me again if you want me to keep an eye on it."
+      )}
+    />
+  ),
+  // No watches in hand (an older chat, or a watch already swept away): the
+  // banner still fires, without claiming an outcome it can't know.
+  "wake-unknown-watch": (
+    <WakeHarness
+      message={wakeMessage(
+        "watch_gone",
+        "fired",
+        "The condition you asked me to watch for just happened. Here's what the check found."
+      )}
+    />
+  ),
+
   // --- Suggested prompts --------------------------------------------------
   // The real component, resolving the registry against each fixture context.
   "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
@@ -632,6 +746,7 @@ const STATES: Record<string, React.ReactNode> = {
     <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
   ),
   "intent-navigate-run": <DemoIntentBubble intent={demoIntents.navigateToRun} onIntercept={noop} />,
+  "intent-watch": <DemoIntentBubble intent={demoIntents.watch} onIntercept={noop} />,
   "intent-ask": <DemoIntentBubble intent={demoIntents.ask} onIntercept={noop} />,
   "intent-rejected-propose-fix": (
     <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />

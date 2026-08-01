@@ -33,6 +33,7 @@ export function AgentListRow({
   meta,
   status,
   variant = "default",
+  unread = false,
   onSelect,
   action,
 }: {
@@ -46,6 +47,11 @@ export function AgentListRow({
    */
   status?: ReactNode;
   variant?: AgentListRowVariant;
+  /**
+   * Something happened here the user hasn't seen. Brightens the label and adds
+   * the same indigo dot the launcher uses, so the two read as one signal.
+   */
+  unread?: boolean;
   onSelect: () => void;
   /** Hover-revealed control, e.g. dismiss or delete. Use {@link AgentListRowAction}. */
   action?: ReactNode;
@@ -57,11 +63,18 @@ export function AgentListRow({
         onClick={onSelect}
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm outline-hidden transition focus-custom",
-          ROW_VARIANTS[variant]
+          ROW_VARIANTS[variant],
+          unread && "text-text-bright"
         )}
       >
         {status ? (
           <span className="flex w-4 shrink-0 items-center justify-center">{status}</span>
+        ) : null}
+        {unread ? (
+          <>
+            <span aria-hidden className="size-2 shrink-0 rounded-full bg-indigo-500" />
+            <span className="sr-only">Unread.</span>
+          </>
         ) : null}
         <span className="line-clamp-1 min-w-0 flex-1">{label}</span>
         {meta ? <span className="shrink-0 text-xs text-text-faint">{meta}</span> : null}

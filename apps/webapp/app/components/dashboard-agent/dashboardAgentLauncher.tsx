@@ -26,6 +26,11 @@ type DashboardAgentContextValue = {
    * that's already open (so an in-progress conversation is never hijacked).
    */
   openWith: (text: string) => void;
+  /**
+   * Watch wakes the user hasn't seen. Polled only while the panel is closed —
+   * with it open the chat itself is the notification, so this stays at 0.
+   */
+  unreadWakes: number;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -44,12 +49,14 @@ export function DashboardAgentLauncher() {
     return null;
   }
 
-  const { open, setOpen } = agent;
+  const { open, setOpen, unreadWakes } = agent;
   // The open panel has its own Close button and Esc — a second toggle in the
   // page header would just be noise.
   if (open) {
     return null;
   }
+
+  const hasUnread = unreadWakes > 0;
 
   return (
     <SimpleTooltip
@@ -65,7 +72,7 @@ export function DashboardAgentLauncher() {
       button={
         <button
           type="button"
-          aria-label="Ask Trigger"
+          aria-label={hasUnread ? "Ask Trigger, unread updates" : "Ask Trigger"}
           onClick={() => setOpen(true)}
           className={cn(
             "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
@@ -74,6 +81,12 @@ export function DashboardAgentLauncher() {
         >
           <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
           Ask Trigger
+          {hasUnread && (
+            <span
+              // Ringed so the dot reads on the header background as well as the button.
+              className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed"
+            />
+          )}
         </button>
       }
     />
