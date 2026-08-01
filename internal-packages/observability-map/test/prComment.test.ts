@@ -184,6 +184,109 @@ describe("renderPrComment", () => {
     });
   });
 
+  // I4. A suppression added to a check that was PASSING drops the score by round A's cap and
+  // produces a row with an empty "now failing" column, sorted among the real regressions. On the
+  // real tree `_app.@.orgs.$organizationSlug.$.tsx` renders 67 to 50 exactly that way.
+  describe("a row a suppression caused", () => {
+    // Two of three applicable scored checks pass, so suppressing one of the passes takes the
+    // visible ratio from 2/3 to 1/2, which is the 67 to 50 the real tree renders on
+    // `_app.@.orgs.$organizationSlug.$.tsx`. The catch has to decide something for
+    // error-classification to apply at all, and nothing may name a tenant, or the ratio is 3/3.
+    const twoOfThree = `import { requireUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         try { return await prisma.token.create({ data: { userId } }); }
+         catch (error) {
+           if (error instanceof BadRequest) return json({ error: "bad" }, { status: 400 });
+           throw error;
+         }
+       }`;
+    const silence = (id: string, source: string) =>
+      `// obs-map-disable ${id} -- silenced\n${source}`;
+
+    it("says so on the route, so it is not read as a regression", () => {
+      const base = buildReport([scanFile("api.v1.auth.tokens.ts", twoOfThree)!], []);
+      const head = buildReport(
+        [scanFile("api.v1.auth.tokens.ts", silence("error-classification", twoOfThree))!],
+        []
+      );
+      expect(base.entries[0]!.score).toBe(67);
+      expect(head.entries[0]!.score).toBe(50);
+
+      const row = renderPrComment(head, base)
+        .split("\n")
+        .find((l) => l.startsWith("| /api/v1/auth/tokens"))!;
+      expect(row).toBeDefined();
+      expect(row).toContain("(suppressed: error-classification)");
+      // The column that would otherwise explain the drop is empty, which is the whole problem.
+      expect(row.split("|")[4]!.trim()).toBe("");
+    });
+
+    // I3. This one moves no score at all, so before the suppression set was compared it produced
+    // no row and no comment: a pull request whose whole purpose is to silence findings was silent.
+    it("appears even when suppressing an already-failing check moved no score", () => {
+      const base = buildReport([scanFile("api.v1.t.ts", brokenSource)!], []);
+      const head = buildReport(
+        [scanFile("api.v1.t.ts", silence("error-classification", brokenSource))!],
+        []
+      );
+      expect(head.entries[0]!.score).toBe(base.entries[0]!.score);
+      expect(head.global).toBe(base.global);
+
+      const out = renderPrComment(head, base);
+      expect(out).not.toContain("No entry point this PR touches changed its score.");
+      const row = out.split("\n").find((l) => l.startsWith("| /api/v1/t "))!;
+      expect(row).toBeDefined();
+      expect(row).toContain("(suppressed: error-classification)");
+    });
+
+    it("says nothing about suppression on a row that has none", () => {
+      const head = buildReport([scanFile("api.v1.auth.tokens.ts", brokenSource)!], []);
+      const base = buildReport([scanFile("api.v1.auth.tokens.ts", cleanSource)!], []);
+      const row = renderPrComment(head, base)
+        .split("\n")
+        .find((l) => l.startsWith("| /api/v1/auth/tokens"))!;
+      expect(row).not.toContain("suppressed:");
+    });
+
+    it("gives a new entry that lands at 100 only because of a suppression a row", () => {
+      const base = buildReport([scanFile("api.v1.a.ts", cleanSource)!], []);
+      const head = buildReport(
+        [
+          scanFile("api.v1.a.ts", cleanSource)!,
+          scanFile("api.v1.new.ts", silence("request-context", cleanSource))!,
+        ],
+        []
+      );
+      const row = renderPrComment(head, base)
+        .split("\n")
+        .find((l) => l.startsWith("| /api/v1/new"))!;
+      expect(row).toBeDefined();
+      expect(row).toContain("(suppressed: request-context)");
+    });
+  });
+
+  // M5. Every other section is bounded by construction; this one rendered one line per file, and a
+  // tree-wide typo took the comment past GitHub's 65,536 character limit for a 422 nobody sees.
+  it("caps the unknown-suppression lines instead of running past the comment size limit", () => {
+    const entries = [];
+    for (let i = 0; i < 40; i++) {
+      entries.push(
+        scanFile(
+          `api.v1.route${i}.ts`,
+          `// obs-map-disable eror-classification -- typo\n${brokenSource}`
+        )!
+      );
+    }
+    const head = buildReport(entries, []);
+    const out = renderPrComment(head, null);
+
+    expect(out.split("\n").filter((l) => l.startsWith("UNKNOWN SUPPRESSION"))).toHaveLength(10);
+    expect(out).toContain("and 30 more files with unknown ids");
+    expect(out.length).toBeLessThan(65536);
+  });
+
   it("sorts a sensitive entry with a small drop above a non-sensitive entry with a large drop", () => {
     const sensitiveSmallDropBase = scanFile("api.v1.auth.tokens.ts", cleanSource)!;
     const sensitiveSmallDropHead = scanFile(
@@ -344,6 +447,86 @@ describe("hasDelta", () => {
   it("is true when a parse failure appeared, since the comment warns about it", () => {
     const head = buildReport([scanFile("api.v1.a.ts", cleanSource)!], ["broken.ts"]);
     expect(hasDelta(head, one("api.v1.a.ts", cleanSource))).toBe(true);
+  });
+
+  // I3. These three are the half that was missing, and it ran the dangerous way: a pull request
+  // that only silences findings posted nothing, while a mistyped directive did post.
+  it("is true when a suppression was added to a check that was already failing", () => {
+    const base = one("api.v1.t.ts", brokenSource);
+    const head = one(
+      "api.v1.t.ts",
+      `// obs-map-disable error-classification -- silenced\n${brokenSource}`
+    );
+    expect(head.global).toBe(base.global);
+    expect(head.entries[0]!.score).toBe(base.entries[0]!.score);
+    expect(head.measured).toBe(base.measured);
+    expect(hasDelta(head, base)).toBe(true);
+  });
+
+  it("is true when the audit gap closed, which no score reports", () => {
+    const audited = `import { auditLog } from "~/services/audit.server";
+       import { prisma } from "~/db.server";
+       export async function action() {
+         const token = await prisma.token.create({ data: {} });
+         await auditLog("token.created", { tokenId: token.id });
+         return json(token);
+       }`;
+    const unaudited = `import { prisma } from "~/db.server";
+       export async function action() {
+         const token = await prisma.token.create({ data: {} });
+         return json(token);
+       }`;
+    const head = one("api.v1.auth.tokens.ts", audited);
+    const base = one("api.v1.auth.tokens.ts", unaudited);
+    expect(head.auditGap).not.toEqual(base.auditGap);
+    expect(hasDelta(head, base)).toBe(true);
+  });
+
+  // The CONTEXT line reads pre-suppression data, so with request-context suppressed its figure can
+  // move while the post-suppression checks, the score and the global all stay put. The comment
+  // says "0 of 1" and then "1 of 1"; nothing else in the report moves at all.
+  it("is true when the context figure moved behind a suppression", () => {
+    const silence = "// obs-map-disable request-context -- reported as a figure\n";
+    const namesNobody = `${silence}import { prisma } from "~/db.server";
+       export async function action() {
+         try { return await prisma.envVar.update({ where: {}, data: {} }); } catch (e) { return null; }
+       }`;
+    const namesTenant = `${silence}import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function action({ params }) {
+         try { return await prisma.envVar.update({ where: {}, data: {} }); }
+         catch (error) { logger.error("failed", { environmentId: params.envId, error }); return null; }
+       }`;
+    const head = one("api.v1.envvars.ts", namesTenant);
+    const base = one("api.v1.envvars.ts", namesNobody);
+
+    expect(head.global).toBe(base.global);
+    expect(head.entries[0]!.score).toBe(base.entries[0]!.score);
+    expect(head.entries[0]!.suppressed).toEqual(base.entries[0]!.suppressed);
+    expect(head.contextGap).not.toEqual(base.contextGap);
+    expect(hasDelta(head, base)).toBe(true);
+  });
+
+  // Suppressing a check that was not applicable anyway changes no status and no score, and moving
+  // that suppression between two entries leaves the report-level totals identical too. The
+  // per-entry suppression comparison is the only thing left that can see it.
+  it("is true when a suppression of an inapplicable check moved between entries", () => {
+    const silenced = `// obs-map-disable auth-boundary -- not a user-facing route\n${brokenSource}`;
+    const head = buildReport(
+      [scanFile("api.v1.a.ts", silenced)!, scanFile("api.v1.b.ts", brokenSource)!],
+      []
+    );
+    const base = buildReport(
+      [scanFile("api.v1.a.ts", brokenSource)!, scanFile("api.v1.b.ts", silenced)!],
+      []
+    );
+    expect(head.suppressions).toEqual(base.suppressions);
+    expect(head.global).toBe(base.global);
+    expect(head.entries.map((e) => e.score)).toEqual(base.entries.map((e) => e.score));
+    const statuses = (r: typeof head) =>
+      r.entries.map((e) => e.checks.map((c) => `${c.id}=${c.status}`).join(" "));
+    expect(statuses(head)).toEqual(statuses(base));
+    expect(hasDelta(head, base)).toBe(true);
   });
 
   it("is true when a suppression names a check that does not exist", () => {

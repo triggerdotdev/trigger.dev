@@ -13,6 +13,14 @@ export const MARKER = "<!-- observability-map-report -->";
 
 const MAX_CHANGED_ROWS = 15;
 
+/**
+ * Every other section of this comment is bounded by construction. This one was not, and a single
+ * mistyped directive applied tree wide renders one line per file: 87,938 characters against
+ * GitHub's 65,536 limit, a 422, and the workflow's error tolerance swallowing it. The cap is what
+ * stops the whole comment being lost to the section warning about a typo.
+ */
+const MAX_UNKNOWN_SUPPRESSION_LINES = 10;
+
 // Scored checks only, same exclusion terminal.ts's scoredFailures makes: audit-trail fails almost
 // every sensitive mutation today, so listing it per route would nag with something unfixable
 // instead of surfacing the route-specific gaps this column exists for.
@@ -49,12 +57,25 @@ const NOT_MEASURED = "not measured";
  */
 const scoreCell = (e: ScoredEntry): number | string => (e.measured ? e.score : NOT_MEASURED);
 
+/** Ids suppressed at head that were not suppressed at base. `[]` covers both "no change" and a
+ * suppression being removed, which shows up as the score going back up. */
+const newlySuppressed = (head: ScoredEntry, base: ScoredEntry | undefined): string[] =>
+  head.suppressed.filter((id) => !(base?.suppressed ?? []).includes(id));
+
 type ChangedRow = {
   routePath: string;
   sensitive: boolean;
   baseScore: number | string;
   headScore: number | string;
   nowFailing: string[];
+  /**
+   * Ids this pull request newly suppressed on the entry. Rendered on the route cell, because a
+   * suppression added to a check that was passing drops the score by round A's cap and produces a
+   * row with an empty "now failing" column, which is indistinguishable from a real regression:
+   * `_app.@.orgs.$organizationSlug.$.tsx` renders 67 to 50 that way. The score movement is honest,
+   * the row without this note was not.
+   */
+  suppressed: string[];
   /**
    * How much the entry got worse, used to sort the table. A new entry has no base score to
    * subtract from, so it is scored against a perfect 100: a new entry landing at 60 sorts the
@@ -77,20 +98,25 @@ function changedRows(head: MapReport, base: MapReport): { rows: ChangedRow[]; re
       // A new entry that passes every check it was measured against has nothing to fix, which is
       // what `drop: 0` means everywhere else in this table. A new entry nothing applied to is a
       // different statement and still gets a row, since its 100 is a placeholder rather than a pass.
-      if (h.measured && h.score === 100) continue;
+      if (h.measured && h.score === 100 && h.suppressed.length === 0) continue;
       rows.push({
         routePath: h.routePath,
         sensitive: h.sensitive,
         baseScore: "new",
         headScore: scoreCell(h),
         nowFailing: failingIds(h),
+        suppressed: newlySuppressed(h, b),
         drop: h.measured ? 100 - h.score : 0,
       });
       continue;
     }
-    // Measured state is part of what changed: a measured-to-unmeasured transition can leave the
-    // score untouched at its placeholder value, and skipping on the number alone hid it.
-    if (b.measured === h.measured && b.score === h.score) continue;
+    // Measured state and the suppression set are both part of what changed. A measured-to-
+    // unmeasured transition can leave the score at its placeholder value, and suppressing a check
+    // that was already failing moves no score at all, so skipping on the number alone hid both. A
+    // pull request whose whole purpose is to silence findings has to produce a row.
+    const suppressed = newlySuppressed(h, b);
+    const suppressionChanged = suppressed.length > 0 || h.suppressed.length !== b.suppressed.length;
+    if (b.measured === h.measured && b.score === h.score && !suppressionChanged) continue;
     const baseFailing = new Set(failingIds(b));
     rows.push({
       routePath: h.routePath,
@@ -98,6 +124,7 @@ function changedRows(head: MapReport, base: MapReport): { rows: ChangedRow[]; re
       baseScore: scoreCell(b),
       headScore: scoreCell(h),
       nowFailing: failingIds(h).filter((id) => !baseFailing.has(id)),
+      suppressed,
       drop: b.measured && h.measured ? b.score - h.score : 0,
     });
   }
@@ -133,8 +160,9 @@ function whatChangedSection(head: MapReport, base: MapReport | null): string[] {
     lines.push("| route | base | head | now failing |");
     lines.push("| --- | --- | --- | --- |");
     for (const row of rows.slice(0, MAX_CHANGED_ROWS)) {
+      const note = row.suppressed.length > 0 ? ` (suppressed: ${row.suppressed.join(", ")})` : "";
       lines.push(
-        `| ${row.routePath} | ${row.baseScore} | ${row.headScore} | ${row.nowFailing.join(", ")} |`
+        `| ${row.routePath}${note} | ${row.baseScore} | ${row.headScore} | ${row.nowFailing.join(", ")} |`
       );
     }
     if (rows.length > MAX_CHANGED_ROWS) {
@@ -173,26 +201,43 @@ function fixFirstSection(head: MapReport): string[] {
   return lines;
 }
 
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 /**
  * Whether this pull request moves the report at all, so the job can stay quiet when it does not.
  *
- * True on: no base to compare against, a global score change, an entry added or removed, an
- * entry's score or measured state changed, a check that fails at head and did not at base, a
- * change in the parse failure count, or a change in the unknown suppression warnings. The last two
- * are here because both render a line in the comment, so a run that gains one has moved the report
- * even though no score did.
+ * The rule this has to satisfy is that it must be true whenever `renderPrComment` would say
+ * something different, because anything it misses is a change the pull request silently does not
+ * report. So it covers every figure the comment renders, not only the score: the global, the
+ * per-entry score, measured state and suppression set, an entry added or removed, a check failing
+ * at head that did not at base, the parse failure count, the unknown suppression warnings, and the
+ * audit and context gaps.
  *
- * The residual: adding a suppression whose check was already failing moves nothing this asks
- * about. The score is capped at the pre-suppression ratio so it cannot move, and the finding
- * leaves the fix list quietly. `SUPPRESSED` in the terminal report is where that shows up.
+ * The per-entry suppression set and the two gaps are the half that was missing, and it ran the
+ * dangerous way. Suppressing an already-failing check moves no score, no measured flag and no new
+ * failure, so a pull request whose entire purpose was to silence findings posted nothing, while a
+ * mistyped directive did post because the unknown warnings were compared. `audit-trail` going from
+ * fail to pass, the first audit record in the webapp, was in the same hole, and so was the CONTEXT
+ * figure moving behind a suppression, since that figure reads pre-suppression data.
+ *
+ * The terms overlap on purpose, and what is defended is that their union is complete rather than
+ * that each one is load bearing. Four are individually reachable, each with a test that fails when
+ * only that term is removed: the parse failure count, the unknown suppression warnings, the audit
+ * gap and the context gap. The global, the removed-entry check and the per-entry score are each
+ * shadowed by another term today, and are kept because which term shadows which depends on the
+ * shape of the change rather than on anything stable.
+ *
+ * `MapReport.suppressions` is the one term deliberately left out. Its two totals are summed from
+ * the very per-entry `suppressed` arrays the loop below compares one by one, so it cannot move
+ * without the loop moving. That is arithmetic rather than a happy overlap.
  */
 export function hasDelta(head: MapReport, base: MapReport | null): boolean {
   if (!base) return true;
   if (head.global !== base.global) return true;
   if (head.parseFailures.length !== base.parseFailures.length) return true;
-  if (JSON.stringify(head.unknownSuppressions) !== JSON.stringify(base.unknownSuppressions)) {
-    return true;
-  }
+  if (!same(head.unknownSuppressions, base.unknownSuppressions)) return true;
+  if (!same(head.auditGap, base.auditGap)) return true;
+  if (!same(head.contextGap, base.contextGap)) return true;
 
   const baseByFile = new Map(base.entries.map((e) => [e.fileName, e]));
   const headFiles = new Set(head.entries.map((e) => e.fileName));
@@ -202,6 +247,7 @@ export function hasDelta(head: MapReport, base: MapReport | null): boolean {
     const b = baseByFile.get(h.fileName);
     if (!b) return true;
     if (b.measured !== h.measured || b.score !== h.score) return true;
+    if (!same(h.suppressed, b.suppressed)) return true;
     const baseFailing = new Set(b.checks.filter((c) => c.status === "fail").map((c) => c.id));
     if (h.checks.some((c) => c.status === "fail" && !baseFailing.has(c.id))) return true;
   }
@@ -260,7 +306,10 @@ export function renderPrComment(head: MapReport, base: MapReport | null): string
   const context = contextLine(head);
   if (context) lines.push(context);
   const unknown = unknownSuppressionLines(head);
-  lines.push(...unknown);
+  lines.push(...unknown.slice(0, MAX_UNKNOWN_SUPPRESSION_LINES));
+  if (unknown.length > MAX_UNKNOWN_SUPPRESSION_LINES) {
+    lines.push(`and ${unknown.length - MAX_UNKNOWN_SUPPRESSION_LINES} more files with unknown ids`);
+  }
   if (audit || context || unknown.length > 0) lines.push("");
 
   lines.push(
