@@ -234,9 +234,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         tasks: true,
         queues: true,
       },
-      orderBy: {
-        id: "desc",
-      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
     if (!worker) {
@@ -255,9 +253,6 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         deployment: true,
         tasks: true,
         queues: true,
-      },
-      orderBy: {
-        id: "desc",
       },
     });
 
@@ -315,9 +310,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         environmentId,
         type: "MANAGED",
       },
-      orderBy: {
-        id: "desc",
-      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
         worker: {
           include: {
