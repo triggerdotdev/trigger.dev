@@ -12,14 +12,20 @@ export type CheckResult = {
  * legible instead of collapsing into one boolean.
  */
 export type CatchEvidence = {
-  /** The clause contains a `throw`. */
+  /**
+   * The clause throws on its own straight-line path: a `throw` among its statements, or among a
+   * bare nested block's, reached before anything that definitely exits. A throw guarded by an `if`,
+   * a loop, a `switch`, a nested `try` or a callback does not count, however the guard is spelled.
+   */
   rethrows: boolean;
   /**
-   * The clause picks what to do from what it caught: an `if` or `switch` whose condition references
-   * the caught error binding, or a conditional that is the whole `return`/`throw`. `if (retries > 0)`
-   * does not count, and a bindingless `catch { ... }` cannot count at all. An `instanceof` used only
-   * to word a message, `json({ error: e instanceof Error ? e.message : String(e) })`, does not
-   * count either: every error still leaves by the same path.
+   * The clause picks what to do from what it caught, on that same straight-line path: an `if` or
+   * `switch` whose condition references the caught error binding AND at least one of whose arms
+   * returns or throws, or a conditional that is the whole value of a `return`/`throw`.
+   * `if (retries > 0)` does not count, `if (e instanceof Error) { }` does not count, and a
+   * bindingless `catch { ... }` cannot count at all. An `instanceof` used only to word a message,
+   * `json({ error: e instanceof Error ? e.message : String(e) })`, does not count either: every
+   * error still leaves by the same path.
    */
   branches: boolean;
   /**
@@ -30,6 +36,15 @@ export type CatchEvidence = {
    * its catch.
    */
   guardsParse: boolean;
+  /**
+   * Everything the guarded region waits for is one of those parses. What separates
+   * `try { const body = await request.json(); } catch { 400 }` from
+   * `try { const body = await request.json(); return await handleEverything(body); } catch { 500 }`,
+   * which the statement count reads as the same size. Synchronous work is not counted here: the
+   * calls that prepare a parse's input are synchronous, and the swallows this has to catch wait on
+   * a service.
+   */
+  awaitsOnlyParse: boolean;
   /** Statements in the guarded try block, counted as `statementCount` counts them. */
   tryStatementCount: number;
 };
@@ -64,12 +79,20 @@ export type EntryPoint = {
   hasTryCatch: boolean;
   /** One entry per catch clause in those bodies, in source order. */
   catches: CatchEvidence[];
+  /**
+   * Catch clauses the scan found but refused to attribute to the route, because they sit inside a
+   * per-item iteration callback. Kept rather than dropped so `error-classification` can tell "this
+   * route catches nothing" from "this route's only error handling was refused", which are 50 points
+   * apart and used to read the same.
+   */
+  callbackCatches: number;
   /** Calls to a `logger.*` or `log.*` callee in those bodies, in source order. */
   logCalls: LogCall[];
   /**
-   * Statement count across loader/action bodies, used by the triviality rule. A body that
-   * delegates to a same-file helper counts that helper's statements too, one hop only: work in a
-   * helper's own helpers, or in an imported module, is not counted.
+   * Statement count across loader/action bodies, used by the triviality rule. Includes the
+   * statements of functions written inline in those bodies, so wrapping a body in a callback does
+   * not shrink it. A body that delegates to a same-file helper counts that helper's statements too,
+   * one hop only: work in a helper's own helpers, or in an imported module, is not counted.
    */
   statementCount: number;
 };

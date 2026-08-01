@@ -179,6 +179,75 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
+  // C5. The count is not the only condition any more, and this is the shape that showed why: two
+  // statements, one of them a parse, and the whole handler inside the try. Before `awaitsOnlyParse`
+  // the count read it as a narrow guard and passed it, which is the `otel.v1.logs.ts` swallow
+  // written compactly. Three spellings of the same thing, all of which the count reads as narrow.
+  const COMPACT_SWALLOWS: Array<[string, string]> = [
+    [
+      "two statements",
+      `try { const body = await request.json(); return await handleEverything(body); }
+       catch (error) { return new Response("Internal Server Error", { status: 500 }); }`,
+    ],
+    [
+      "one statement, the parse nested inside the call",
+      `try { return await handleEverything(await request.json()); }
+       catch (error) { return new Response("Internal Server Error", { status: 500 }); }`,
+    ],
+    [
+      "one statement, merged into a declaration list",
+      `try { const body = await request.json(), out = await handleEverything(body); return out; }
+       catch (error) { return new Response("Internal Server Error", { status: 500 }); }`,
+    ],
+  ];
+
+  for (const [label, body] of COMPACT_SWALLOWS) {
+    it(`fails a whole handler wrapped in a parse-guard-shaped try (${label})`, () => {
+      const r = run(
+        "error-classification",
+        "otel.v1.logs.ts",
+        `export async function action({ request }) {\n${body}\n}`
+      );
+      expect(r.status).toBe("fail");
+    });
+  }
+
+  // The counterpart: the same route with the handler moved out of the try is a real guard and
+  // still passes, so the rule above is not just "any try containing an await fails".
+  it("passes the same route once the handler moves out of the try", () => {
+    const r = run(
+      "error-classification",
+      "otel.v1.logs.ts",
+      `export async function action({ request }) {
+         let body;
+         try { body = await request.json(); }
+         catch { return json({ error: "bad json" }, { status: 400 }); }
+         return await handleEverything(body);
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // Synchronous string work preparing a parse's input is not what `awaitsOnlyParse` refuses. Four
+  // real routes are this shape, `admin.llm-models.new.tsx` among them.
+  it("passes a guard that prepares its input synchronously before parsing", () => {
+    const r = run(
+      "error-classification",
+      "admin.llm-models.new.tsx",
+      `export async function action({ request }) {
+         const matchPattern = String(await request.text());
+         try {
+           const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
+           new RegExp(testPattern);
+         } catch {
+           return json({ error: "Invalid regex" }, { status: 400 });
+         }
+         return await save(matchPattern);
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
   it("fails a parse guard that takes a third statement beyond binding the result", () => {
     const r = run(
       "error-classification",
@@ -432,14 +501,13 @@ describe("error-classification", () => {
     expect(r.status).toBe("not-applicable");
   });
 
-  // A7. A per-item error boundary inside a `.map()` callback used to be judged as the route's own
-  // catch. The route's own visible body catches nothing, so it is not-applicable, not a pass or a
-  // fail on the strength of a swallow one level of nesting away.
-  it("is not applicable to a route whose only catch is inside a Promise.all(items.map(...)) callback", () => {
-    const r = run(
-      "error-classification",
-      "batch.process.ts",
-      `import { prisma } from "~/db.server";
+  // A7 as revised. A per-item error boundary inside a `.map()` callback is still not judged as the
+  // route's own catch, so it never sets `catches` and never speaks for the route's `tryStatementCount`.
+  // It is no longer excused either. Reading "no catch of its own" as not-applicable was worth 50
+  // points to anything that could get the boundary rule to refuse the route's real catch, which
+  // `[0].map(...)` did, so a refused catch now fails instead of sitting out.
+  it("fails a route whose only catch is inside a Promise.all(items.map(...)) callback", () => {
+    const source = `import { prisma } from "~/db.server";
        export async function action({ request }) {
          const items = await prisma.item.findMany();
          await Promise.all(
@@ -452,9 +520,103 @@ describe("error-classification", () => {
            })
          );
          return json({ ok: true });
+       }`;
+    const ep = scanFile("batch.process.ts", source)!;
+    expect(ep.catches).toEqual([]);
+    expect(ep.callbackCatches).toBe(1);
+    const r = run("error-classification", "batch.process.ts", source);
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("callback the route does not own");
+  });
+
+  // The same route with nothing caught anywhere stays not-applicable, so the fail above is
+  // attributable to the refused catch and not to the check having stopped excusing anything.
+  it("is not applicable to a route that catches nothing at all", () => {
+    const r = run(
+      "error-classification",
+      "batch.process.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         await Promise.all(items.map(async (item) => processItem(item)));
+         return json({ ok: true });
        }`
     );
     expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("catches nothing");
+  });
+
+  // C2. A single-element array cannot iterate, so `[0].map(async () => { whole body })` is not a
+  // per-item boundary and the route's own catch is found where it always was. Before this, the
+  // wrapper deleted the route's catches and took a swallow from fail to not-applicable.
+  it("still fails a swallow wrapped in Promise.all([0].map(...))", () => {
+    const r = run(
+      "error-classification",
+      "wrapped.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const [result] = await Promise.all([0].map(async () => {
+           try {
+             const body = await request.json();
+             const a = await stepOne(body);
+             const b = await stepTwo(a);
+             return json({ b });
+           } catch (e) {
+             return new Response("nope", { status: 500 });
+           }
+         }));
+         return result;
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // A second receiver exercising the same mechanism: an empty array literal, which no name list
+  // would treat differently from a populated one.
+  it("still fails a swallow wrapped in [].flatMap(...)", () => {
+    const r = run(
+      "error-classification",
+      "wrapped-empty.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         return [].flatMap(async () => {
+           try {
+             const body = await request.json();
+             const a = await stepOne(body);
+             const b = await stepTwo(a);
+             return json({ b });
+           } catch (e) {
+             return new Response("nope", { status: 500 });
+           }
+         });
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // A third, where the name list cannot help at all: a non-array receiver whose method is called
+  // `map`. The boundary rule still refuses the callback, so the route has no catch of its own, and
+  // the refusal now fails rather than excusing. This is the shape the name list cannot tell from
+  // `users.map(...)`, and it is why the refusal had to stop paying.
+  it("still fails a swallow wrapped in a non-array receiver's .map(...)", () => {
+    const r = run(
+      "error-classification",
+      "wrapped-result.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         return await Result.map(async () => {
+           try {
+             const body = await request.json();
+             const a = await stepOne(body);
+             const b = await stepTwo(a);
+             return json({ b });
+           } catch (e) {
+             return new Response("nope", { status: 500 });
+           }
+         });
+       }`
+    );
+    expect(r.status).toBe("fail");
   });
 });
 

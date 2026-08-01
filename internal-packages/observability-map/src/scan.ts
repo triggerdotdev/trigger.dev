@@ -121,29 +121,64 @@ const PARSE_CALLEE = /(^|\.)(parse|safeParse|parseAsync|safeParseAsync|decode)$|
  */
 const PARSE_CONSTRUCTORS = new Set(["URL", "URLSearchParams", "RegExp"]);
 
+function isParseCall(node: ts.Node): boolean {
+  if (ts.isNewExpression(node)) {
+    return ts.isIdentifier(node.expression) && PARSE_CONSTRUCTORS.has(node.expression.text);
+  }
+  if (!ts.isCallExpression(node)) return false;
+  const text = calleeText(node.expression) ?? calleeName(node.expression);
+  return text !== null && PARSE_CALLEE.test(text);
+}
+
 /**
- * Whether the guarded region parses something. A `new URL(x)` counts, and has to be read here as a
- * `ts.isNewExpression`, because the call-callee scan that builds `calleeNames` never sees it.
+ * Body reads: the thing a parse guard waits for before it parses. `request.json()` is in
+ * `PARSE_CALLEE` already because it reads and parses in one call, and these are the same operation
+ * with the parse written separately, `const raw = await request.text(); new RegExp(raw);`.
+ *
+ * Only consulted for `awaitsOnlyParse`, never for `guardsParse`, which is what bounds it: a body
+ * read on its own still does not make a try block a parse guard, so the widest this list can do is
+ * let a block that already parses also read the thing it parses.
  */
-function guardsParse(tryBlock: ts.Block): boolean {
-  let found = false;
+const BODY_READ_METHODS = new Set(["text", "formData", "arrayBuffer", "blob", "bytes"]);
+
+function isBodyRead(node: ts.Node): boolean {
+  if (!ts.isCallExpression(node)) return false;
+  const callee = unwrap(node.expression);
+  return ts.isPropertyAccessExpression(callee) && BODY_READ_METHODS.has(callee.name.text);
+}
+
+/**
+ * What the guarded region does, in the two terms `error-classification` needs to tell a parse guard
+ * from a handler wrapped around a parse.
+ *
+ * `guardsParse` is whether anything in it parses at all. A `new URL(x)` counts and has to be read
+ * as a `ts.isNewExpression` here, because the call-callee scan that builds `calleeNames` never sees
+ * it.
+ *
+ * `awaitsOnlyParse` is whether everything the block waits for is a parse or a read of the body it
+ * parses. Awaiting is the signal, not calling: the calls that prepare a parse's input are ordinary
+ * synchronous string work (`matchPattern.startsWith("(?i)")`, `.slice(4)` before a `new RegExp`),
+ * and refusing those refuses four of the tree's clearest guards, while the swallow this has to
+ * catch reaches a service: `try { const body = await request.json(); return await
+ * handleEverything(body); }`.
+ *
+ * Nested function bodies are skipped: a callback written inside the try is not work the try is
+ * guarding on this pass through.
+ */
+function guardedWork(tryBlock: ts.Block): { guardsParse: boolean; awaitsOnlyParse: boolean } {
+  let guardsParse = false;
+  let awaitsOnlyParse = true;
   const visit = (node: ts.Node) => {
-    if (found) return;
-    if (
-      ts.isNewExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      PARSE_CONSTRUCTORS.has(node.expression.text)
-    ) {
-      found = true;
-    }
-    if (ts.isCallExpression(node)) {
-      const text = calleeText(node.expression) ?? calleeName(node.expression);
-      if (text !== null && PARSE_CALLEE.test(text)) found = true;
+    if (ts.isFunctionLike(node)) return;
+    if (isParseCall(node)) guardsParse = true;
+    if (ts.isAwaitExpression(node)) {
+      const awaited = unwrap(node.expression);
+      if (!isParseCall(awaited) && !isBodyRead(awaited)) awaitsOnlyParse = false;
     }
     ts.forEachChild(node, visit);
   };
   visit(tryBlock);
-  return found;
+  return { guardsParse, awaitsOnlyParse };
 }
 
 /** Whether some node in the tree rooted at `node` matches `predicate`. */
@@ -191,20 +226,6 @@ function declaresInScope(statements: readonly ts.Statement[], name: string): boo
   return false;
 }
 
-/** Whether a `for`/`for...of`/`for...in` loop's own declared variable is `name`, so its body
- * shadows the rest of the enclosing scope for that name. */
-function declaresLoopVariable(
-  node: ts.ForStatement | ts.ForOfStatement | ts.ForInStatement,
-  name: string
-): boolean {
-  const initializer = node.initializer;
-  return (
-    initializer !== undefined &&
-    ts.isVariableDeclarationList(initializer) &&
-    initializer.declarations.some((d) => bindingDeclares(d.name, name))
-  );
-}
-
 /**
  * Whether `node` contains a genuine read of the given catch binding, e.g. `e` in `e instanceof X`
  * or `error.code`. An identifier only counts when it is a real reference. Two shapes share the
@@ -248,8 +269,8 @@ function catchBindingName(clause: ts.CatchClause): string | null {
 
 /**
  * Whether a conditional expression tests the error to pick what the clause does, rather than to
- * word what it says. It counts only when the whole `return`/`throw` is the conditional, so
- * `return e instanceof Response ? e : json({}, { status: 500 })` counts and
+ * word what it says. The caller only offers it the whole value of a `return`/`throw`, so
+ * `return e instanceof Response ? e : json({}, { status: 500 })` reaches here and
  * `return json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })` does not.
  * The second is message formatting: every error leaves by the same path.
  *
@@ -260,9 +281,7 @@ function catchBindingName(clause: ts.CatchClause): string | null {
 function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string | null): boolean {
   if (bindingName === null) return false;
   if (!containsInstanceOf(node.condition)) return false;
-  if (!referencesBinding(node.condition, bindingName)) return false;
-  const parent = node.parent;
-  return parent !== undefined && (ts.isReturnStatement(parent) || ts.isThrowStatement(parent));
+  return referencesBinding(node.condition, bindingName);
 }
 
 /** A statement that unconditionally leaves the statement list it sits in, so anything after it in
@@ -288,110 +307,119 @@ function reachableStatements(statements: readonly ts.Statement[]): readonly ts.S
   return index === -1 ? statements : statements.slice(0, index + 1);
 }
 
+/** Whether the tree rooted at `node` contains a `return` or a `throw` of its own, not counting one
+ * inside a nested function. What separates an arm that takes the error somewhere from an arm that
+ * runs and falls back into the clause's single common exit. */
+function containsExit(node: ts.Node): boolean {
+  if (ts.isFunctionLike(node)) return false;
+  if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
+  return ts.forEachChild(node, containsExit) === true;
+}
+
 /**
- * A literal that is always falsy: `false`, `null`, `undefined`, `0`. Not general constant folding,
- * on purpose: `!true`, `1 === 2` and a reference to a `const` declared elsewhere are not covered, so
- * `if (false) { throw e; }` and `while (false) { throw e; }` are recognised as dead and nothing more
- * elaborate is claimed to be.
+ * Whether an `if`/`switch` sends at least one arm somewhere the others do not go, by returning or
+ * throwing from inside it. `if (e instanceof Error) { }` and `if (e instanceof Error) { log(e); }`
+ * both fail this: every error still leaves the clause by the same path afterwards, so the test
+ * changed the wording and not the outcome. The empty-body form was the cheapest no-op in the tool,
+ * worth 50 points a route; `empty-instanceof-if` in the mutation corpus is the tree-scale version.
+ *
+ * Two arms that return the SAME value pass this and should not. That residual is written down in
+ * the round A fix 2 report rather than defended: telling two returns apart needs the values
+ * compared, which is a different kind of analysis from anything else here.
  */
-function isFalsyLiteral(expr: ts.Expression): boolean {
-  if (expr.kind === ts.SyntaxKind.FalseKeyword || expr.kind === ts.SyntaxKind.NullKeyword) {
-    return true;
+function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): boolean {
+  if (ts.isIfStatement(statement)) {
+    return (
+      containsExit(statement.thenStatement) ||
+      (statement.elseStatement !== undefined && containsExit(statement.elseStatement))
+    );
   }
-  if (ts.isIdentifier(expr) && expr.text === "undefined") return true;
-  return ts.isNumericLiteral(expr) && expr.text === "0";
+  return statement.caseBlock.clauses.some((clause) => clause.statements.some(containsExit));
 }
 
 /**
  * What a catch clause does with the error, beyond the fact that it caught one.
  *
- * Stops at every function-like node, not only an iteration callback (contrast `walkBody`'s
- * boundary, which lets a route's own single-shot wrapper, `trace(async () => {...})`,
- * `mutateWithFallback({ pgMutation })`, `new ReadableStream({ start })`, through so the route's own
- * catch is found at all). Here the walk is already inside a catch clause that `walkBody` decided
- * belongs to the route; anything the clause does by constructing a further callback,
- * `queue.push(() => { throw e; })`, a `.then`, a `setTimeout`, is deferred work the clause merely
- * registers, not a decision it makes on its own execution. Both walks refuse a per-item iteration
- * callback; this one refuses every other kind of callback too, for that reason.
+ * Both answers are read off the clause's own straight-line path: the statements of its block, cut
+ * at the first one that definitely exits, recursing into a bare nested block and nothing else. A
+ * `throw` or a test that sits inside an `if`, a loop, a `switch`, a nested `try` or a callback is
+ * not on that path, so it does not count.
+ *
+ * That is the whole dead-code defence, and it replaces the list of statically-false shapes the
+ * previous round kept extending. The list was losing: `if (false)` and `while (false)` were
+ * recognised, and `for (;false;)`, `if (true) {} else`, `switch (1) { case 2: }`, `try {} catch`,
+ * `for (const x of [])`, `for (const k in {})`, `if ("")`, `if (!true)` and `if (1 === 2)` were not,
+ * each worth 50 points a route. Asking for the throw to be unconditional refuses all eleven without
+ * naming any of them, and refuses the twelfth nobody has written yet. `dead-*` in the mutation
+ * corpus is the tree-scale proof, one entry per shape.
+ *
+ * The cost is real: `catch (e) { if (transient) throw e; return null; }` no longer reads as a
+ * rethrow, so it reads as a swallow and fails rather than sitting out. That is the direction to be
+ * wrong in, since the reverse hands out points.
  */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
   let branches = false;
   const bindingName = catchBindingName(clause);
 
-  // `shadowed` is true once the walk has passed a scope that re-declares `bindingName`: a nested
-  // catch clause with the same name, a `for`/`for...of`/`for...in` loop declaring it, or a block
-  // that does (reusing the same `declaresInScope` a bare block already checks). From there on, an
-  // `if`/`switch` that references the name textually is referencing the SHADOWING declaration, not
-  // this clause's own binding, so it must not count as this clause deciding anything. Never reset
-  // back to false, the same rule `inCallback` follows: once shadowed, everything nested inside is
-  // still shadowed.
-  const visit = (node: ts.Node, shadowed: boolean) => {
-    if (ts.isFunctionLike(node)) return;
+  const walk = (statements: readonly ts.Statement[]) => {
+    // A block that re-declares the binding name means an `if` below it referencing that name is
+    // referencing the shadowing declaration, not this clause's error. Nothing in such a block can
+    // speak for the clause, so the whole list is skipped for branch purposes.
+    const shadowed = bindingName !== null && declaresInScope(statements, bindingName);
 
-    if (bindingName !== null && ts.isCatchClause(node)) {
-      const decl = node.variableDeclaration;
-      const shadowsHere = decl !== undefined && bindingDeclares(decl.name, bindingName);
-      ts.forEachChild(node, (child) => visit(child, shadowed || shadowsHere));
-      return;
-    }
+    for (const statement of reachableStatements(statements)) {
+      if (ts.isThrowStatement(statement)) {
+        rethrows = true;
+        continue;
+      }
+      if (ts.isBlock(statement)) {
+        walk(statement.statements);
+        continue;
+      }
+      // A `do` body runs before its condition is ever read, so it is on the straight-line path
+      // whatever the condition says. The only loop form that is.
+      if (ts.isDoStatement(statement)) {
+        const body = statement.statement;
+        walk(ts.isBlock(body) ? body.statements : [body]);
+        continue;
+      }
+      if (bindingName === null || shadowed) continue;
 
-    if (
-      bindingName !== null &&
-      (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
-      declaresLoopVariable(node, bindingName)
-    ) {
-      visit(node.statement, true);
-      return;
+      if (
+        (ts.isIfStatement(statement) || ts.isSwitchStatement(statement)) &&
+        referencesBinding(statement.expression, bindingName) &&
+        selectsADistinctPath(statement)
+      ) {
+        branches = true;
+        continue;
+      }
+      if (
+        (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) &&
+        statement.expression !== undefined
+      ) {
+        const value = unwrap(statement.expression);
+        if (ts.isConditionalExpression(value) && selectsAnErrorPath(value, bindingName)) {
+          branches = true;
+        }
+      }
     }
-
-    if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
-      const shadowedHere =
-        shadowed || (bindingName !== null && declaresInScope(node.statements, bindingName));
-      for (const statement of reachableStatements(node.statements)) visit(statement, shadowedHere);
-      return;
-    }
-
-    if (ts.isThrowStatement(node)) rethrows = true;
-    if (
-      !shadowed &&
-      bindingName !== null &&
-      ((ts.isIfStatement(node) && referencesBinding(node.expression, bindingName)) ||
-        (ts.isSwitchStatement(node) && referencesBinding(node.expression, bindingName)))
-    ) {
-      branches = true;
-    }
-    if (!shadowed && ts.isConditionalExpression(node) && selectsAnErrorPath(node, bindingName)) {
-      branches = true;
-    }
-
-    // A statically-false condition makes the guarded statement dead code: it can set `branches`
-    // above (the clause still decided to test the error, even if the arm never runs), but nothing
-    // inside it can set `rethrows` or a nested `branches`, so it is not visited at all.
-    if (ts.isIfStatement(node)) {
-      if (!isFalsyLiteral(node.expression)) visit(node.thenStatement, shadowed);
-      if (node.elseStatement) visit(node.elseStatement, shadowed);
-      return;
-    }
-    if (ts.isWhileStatement(node)) {
-      if (!isFalsyLiteral(node.expression)) visit(node.statement, shadowed);
-      return;
-    }
-
-    ts.forEachChild(node, (child) => visit(child, shadowed));
   };
-  visit(clause.block, false);
+  walk(clause.block.statements);
 
   return { rethrows, branches };
 }
 
 /**
- * Array methods that invoke their callback once per element, never once as a whole. The one
- * structural signal that separates a per-item boundary (`items.map((item) => { try {...} })`, a
- * fresh catch for every element) from a route's own body expressed through one more layer of
- * function nesting (`trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) =>
- * {...} })`, `new ReadableStream({ start: async (c) => {...} })`), all of which invoke their
- * callback exactly once, as the route's own continuation.
+ * Method names that invoke their callback once per element, never once as a whole. The structural
+ * signal that separates a per-item boundary (`items.map((item) => { try {...} })`, a fresh catch
+ * for every element) from a route's own body expressed through one more layer of function nesting
+ * (`trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`,
+ * `new ReadableStream({ start: async (c) => {...} })`), all of which invoke their callback exactly
+ * once.
+ *
+ * A name list, because nothing in a syntactic scan can tell `users.map` from `Result.map`. The
+ * consequence is written down where it matters, on `isIterationCallback`.
  */
 const ITERATION_METHODS = new Set([
   "map",
@@ -404,14 +432,39 @@ const ITERATION_METHODS = new Set([
   "every",
 ]);
 
-/** Whether the function-like `node` is the callback argument of a call to one of
- * `ITERATION_METHODS`, e.g. the arrow function in `items.map((item) => ...)`. */
+/** Whether an expression is an array literal of fewer than two elements, the one receiver shape
+ * that cannot be a per-item iteration however the method is named. */
+function isAtMostSingletonArray(expr: ts.Expression): boolean {
+  const target = unwrap(expr);
+  return ts.isArrayLiteralExpression(target) && target.elements.length < 2;
+}
+
+/**
+ * Whether the function-like `node` is the callback argument of a per-item iteration, e.g. the arrow
+ * function in `items.map((item) => ...)`.
+ *
+ * Being wrong here is asymmetric. Calling a per-item callback the route's own continuation
+ * mis-attributes a per-element catch to the route, which was the bug the boundary was added for.
+ * Calling the route's own continuation a per-item callback hides the route's catch, and
+ * `error-classification` used to read a route with no catch as not-applicable, which is 50 points
+ * more than the swallow it was hiding. So the second direction paid, and `[0].map(async () => {
+ * whole body })` collected it.
+ *
+ * Two things changed. A receiver that is an array literal of one element or none is refused here,
+ * because it cannot iterate. And the direction that pays no longer pays: `walkBody` counts the
+ * catches it refuses, and `error-classification` fails a route whose only catches were refused
+ * rather than excusing it. So a wrong answer here costs precision, not points. That is what makes
+ * the name list survivable, and it is why `Result.map(...)`, which no name list can tell from
+ * `users.map(...)`, is a corpus entry that passes rather than a hole.
+ */
 function isIterationCallback(node: ts.Node): boolean {
   const parent = node.parent;
   if (!parent || !ts.isCallExpression(parent)) return false;
   if (!parent.arguments.includes(node as ts.Expression)) return false;
   const callee = unwrap(parent.expression);
-  return ts.isPropertyAccessExpression(callee) && ITERATION_METHODS.has(callee.name.text);
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  if (!ITERATION_METHODS.has(callee.name.text)) return false;
+  return !isAtMostSingletonArray(callee.expression);
 }
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -530,12 +583,39 @@ function resolveLocal(name: string, locals: LocalDeclarations, seen: Set<string>
 }
 
 /**
+ * How many operands a comma expression has, so `a(), b(), c()` is three and not one. Anything else
+ * is one.
+ */
+function commaOperands(expr: ts.Expression): number {
+  const target = unwrap(expr);
+  if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+    return commaOperands(target.left) + commaOperands(target.right);
+  }
+  return 1;
+}
+
+/**
  * Statements in a statement, counting through block-bearing statements so a body wrapped in a
  * single `try` reports its real size. Does not descend into nested function bodies.
+ *
+ * Counts bindings and comma operands rather than semicolons, which is what makes the number mean
+ * something. `const a = f(), b = g(), c = h();` is three initializers however it is punctuated, and
+ * `a(), b(), c()` is three calls: scoring either as one let a seven-statement try be rewritten into
+ * a two-statement one with no change to what it runs, which took `error-classification` from fail
+ * to pass. `merge-declarations` and `merge-comma-expressions` in the mutation corpus are
+ * the tree-scale versions.
  */
 function countStatement(statement: ts.Statement): number {
   if (ts.isBlock(statement)) {
     return countStatements(statement.statements);
+  }
+
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.length;
+  }
+
+  if (ts.isExpressionStatement(statement)) {
+    return commaOperands(statement.expression);
   }
 
   let count = 1;
@@ -742,6 +822,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
   let statementCount = 0;
   let hasTryCatch = false;
+  let callbackCatches = 0;
   const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
   const logCalls: LogCall[] = [];
@@ -759,31 +840,40 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     if (!fn.body) return;
     // `inCallback` is true once the walk has entered a per-item iteration callback
     // (`items.map((item) => { ... })`), never reset back to false: nesting deeper inside one is
-    // still inside it. `calleeNames` and `logCalls` keep descending regardless, which is what lets
-    // `isTrivial` see work a short statement count hides. A try/catch does not: a per-item catch is
-    // not part of this body's own statement list, and `countStatement` already stops at a nested
-    // function boundary, so counting it here let `tryStatementCount` exceed the entry point's whole
-    // `statementCount` and judged a per-item error boundary as though it were the route's own.
+    // still inside it. `calleeNames` and `logCalls` keep descending regardless. A try/catch does
+    // not: a per-item catch is not part of this body's own statement list, and `countStatement`
+    // already stops at a nested function boundary, so counting it here let `tryStatementCount`
+    // exceed the entry point's whole `statementCount` and judged a per-item error boundary as
+    // though it were the route's own. What is refused is counted in `callbackCatches` instead of
+    // dropped, so a route whose only error handling was refused is failed rather than excused.
     //
     // Only an iteration callback is a boundary, not every function-like node: a route's own body
     // wrapped in `trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`
     // or `new ReadableStream({ start: async (c) => {...} })` still runs exactly once, as the route's
     // own continuation one layer of nesting away, and its catch is the route's own error handling.
+    //
+    // A nested function's statements count towards `statementCount` too, whichever kind it is.
+    // They are work the route does, and leaving them out let `trace("x", async () => { whole body
+    // })` collapse a route to one statement, which is inside the triviality rule's limit: the route
+    // then read as trivial and every check reported not-applicable for it. `wrap-body-in-trace` in
+    // the mutation corpus is that shape.
     const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
       if (ts.isFunctionLike(node)) {
+        if (isEntryFunction(node)) statementCount += countFunctionStatements(node);
         const entersIterationCallback = inCallback || isIterationCallback(node);
         ts.forEachChild(node, (child) => visit(child, inCatch, entersIterationCallback));
         return;
       }
       if (ts.isTryStatement(node)) {
         hasTryCatch = true;
+        if (node.catchClause && inCallback) callbackCatches++;
         if (node.catchClause && !inCallback) {
           const tryStatementCount = countStatements(node.tryBlock.statements);
           const clause = catchClauseEvidence(node.catchClause);
           catches.push({
             rethrows: clause.rethrows,
             branches: clause.branches,
-            guardsParse: guardsParse(node.tryBlock),
+            ...guardedWork(node.tryBlock),
             tryStatementCount,
           });
         }
@@ -839,6 +929,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     calleeNames,
     hasTryCatch,
     catches,
+    callbackCatches,
     logCalls,
     statementCount,
   };

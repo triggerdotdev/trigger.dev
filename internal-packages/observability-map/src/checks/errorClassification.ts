@@ -34,21 +34,49 @@ const BUILDERS = new Set([
  *
  * An absolute count, not a ratio against the enclosing body. A ratio is diluted by anything else in
  * the same body: padding the action with unrelated statements after the try relabelled the same
- * broad swallow as a narrow guard, moving the denominator without touching the clause at all. An
- * absolute count over the try block alone cannot be diluted by anything outside it.
+ * broad swallow as a narrow guard, moving the denominator without touching the clause at all.
+ * `inert-statements-after-try` in the mutation corpus is that shape, and it holds.
+ *
+ * What the count is NOT is unpaddable, which an earlier docstring and commit subject both claimed.
+ * `countStatement` now counts declarators and comma operands rather than semicolons, so the two
+ * known ways to pack a try into fewer statements move the number the same as writing it out; that
+ * is what `merge-declarations` and `merge-comma-expressions` in the corpus check. A third
+ * way nobody has written down would work, which is why the count is no longer the only condition
+ * and no longer the load-bearing one.
  */
 const NARROW_TRY_STATEMENTS = 2;
 
 /**
- * Whether a catch clause is a guard rather than the route's error handling: it wraps a parse and
- * holds at most `NARROW_TRY_STATEMENTS`. Both halves matter. `guardsParse` alone lets
- * `otel.v1.logs.ts` off, whose catch covers 7 statements and merely happens to contain a
- * `request.json()`, and that is a real swallow; a validating zod `.safeParse` followed by an issue
- * check and a bespoke error response is real handling too, not a bind-and-return guard, and stays
- * excluded at three statements or more for the same reason.
+ * Whether a catch clause is a guard rather than the route's error handling: the try block parses,
+ * waits for nothing except that parse, and is short.
+ *
+ * `awaitsOnlyParse` is the condition the previous wave was missing, and it is the one a statement
+ * count cannot express. `try { const body = await request.json(); return await handleEverything(body); }
+ * catch { return 500; }` is two statements, one of them a parse, and the whole handler inside it:
+ * the count reads it as narrow and it is the `otel.v1.logs.ts` swallow written compactly. Asking
+ * what the block waits for separates them, and unlike the count it does not care how the statements
+ * are punctuated or how deeply the work is nested inside one of them.
+ *
+ * The design's own suggestion, requiring the clause to answer with a 4xx, was measured first and is
+ * not used. On its own it credits 11 clauses guarding four to thirty statements, the widest swallows
+ * in the tree, including `admin.api.v1.workers.ts`, whose 28-statement try answers every failure
+ * with a 400 carrying the internal error message. Added on top it costs three routes their pass,
+ * all three narrow parse guards that compute a fallback value rather than answering a request
+ * (`try { return new URL(referer).origin; } catch { return undefined; }`), and it buys only the case
+ * of a narrow parse guard answering 500. Requiring every CALL to be a parse, rather than every
+ * await, was measured too and is worse still: it refuses the four `matchPattern.slice(4); new
+ * RegExp(...)` guards, because preparing a parse's input is ordinary synchronous string work.
+ *
+ * The residual, since awaiting is the signal: a try block that does its non-parse work
+ * synchronously still reads as a guard. Nothing in the tree does, and it is written down in the
+ * round A fix 2 report rather than defended.
  */
 function isParseGuard(clause: CatchEvidence): boolean {
-  return clause.guardsParse && clause.tryStatementCount <= NARROW_TRY_STATEMENTS;
+  return (
+    clause.guardsParse &&
+    clause.awaitsOnlyParse &&
+    clause.tryStatementCount <= NARROW_TRY_STATEMENTS
+  );
 }
 
 /**
@@ -113,6 +141,13 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * catch leaves `hasTryCatch` true and `catches` empty: nothing is swallowed there, the error
  * propagates once the cleanup has run, and reading the old flag as a catch put
  * `admin.api.v1.runs-replication.status.ts` at the top of the first rendered fix list.
+ *
+ * `callbackCatches` is the third case, and it is what stops "no catch is not-applicable" from being
+ * a payout. A route whose catches all sat inside a callback the scanner refused to attribute has
+ * error handling, the scanner just could not read it as the route's; excusing that is worth 50
+ * points to anyone who wraps a body in something the boundary rule refuses, which
+ * `Promise.all([0].map(async () => { ... }))` did. It fails instead. The precision cost is a route
+ * that genuinely only handles errors per item, which now fails rather than sitting out.
  */
 export const errorClassification = {
   id: ID,
@@ -128,6 +163,13 @@ export const errorClassification = {
         id: ID,
         status: "fail",
         detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
+      };
+    }
+    if (ep.catches.length === 0 && ep.callbackCatches > 0) {
+      return {
+        id: ID,
+        status: "fail",
+        detail: "its only error handling sits in a callback the route does not own",
       };
     }
     if (!ep.catches.some(decides)) {

@@ -658,15 +658,31 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
     });
 
-    it("does not set rethrows for a throw inside a statically-false if", () => {
-      const ep = scanFile("x.ts", swallow("if (false) { throw e; }"));
-      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
-    });
+    // Every shape anyone has found that puts a `throw` somewhere it can never run. The previous
+    // round recognised the first two by folding the literal `false`, and lost to the other nine.
+    // None of them is named in the rule now: a throw counts when it is unconditional, and every
+    // one of these is guarded by something. `dead-*` in the mutation corpus runs the same list over
+    // the whole route tree.
+    const DEAD_SHAPES: Array<[string, string]> = [
+      ["if (false)", "if (false) { throw e; }"],
+      ["while (false)", "while (false) { throw e; }"],
+      ["for (;false;)", "for (;false;) { throw e; }"],
+      ["if (true) else", "if (true) { doThing(); } else { throw e; }"],
+      ["switch with no matching case", "switch (1) { case 2: throw e; }"],
+      ["inner try/catch", "try { doThing(); } catch { throw e; }"],
+      ["for...of an empty array", "for (const item of []) { throw e; }"],
+      ["for...in an empty object", "for (const key in {}) { throw e; }"],
+      ["if on an empty string", 'if ("") { throw e; }'],
+      ["if on a negated literal", "if (!true) { throw e; }"],
+      ["if on a constant comparison", "if (1 === 2) { throw e; }"],
+    ];
 
-    it("does not set rethrows for a throw inside a statically-false while", () => {
-      const ep = scanFile("x.ts", swallow("while (false) { throw e; }"));
-      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
-    });
+    for (const [label, shape] of DEAD_SHAPES) {
+      it(`does not set rethrows for a throw inside ${label}`, () => {
+        const ep = scanFile("x.ts", swallow(shape));
+        expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+      });
+    }
 
     it("does not set rethrows for a throw merely registered in a constructed callback", () => {
       const ep = scanFile("x.ts", swallow("queue.push(() => { throw e; });"));
@@ -811,7 +827,10 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catches[0]!.rethrows).toBe(true);
+    // The `throw e` here is guarded by an `if`, so it is not on the clause's straight-line path and
+    // does not read as a rethrow. The `if` itself does: it reads the binding and one arm throws, so
+    // the clause decides. The verdict the checks care about is unchanged.
+    expect(ep!.catches[0]!.rethrows).toBe(false);
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 
@@ -1077,6 +1096,7 @@ describe("scanFile: per-catch evidence", () => {
       rethrows: false,
       branches: false,
       guardsParse: true,
+      awaitsOnlyParse: true,
       tryStatementCount: 1,
     });
     expect(ep!.catches[1]).toMatchObject({
@@ -1178,6 +1198,7 @@ describe("scanFile: per-catch evidence", () => {
       rethrows: false,
       branches: false,
       guardsParse: false,
+      awaitsOnlyParse: false,
       tryStatementCount: 4,
     });
   });
@@ -1204,7 +1225,10 @@ describe("scanFile: per-catch evidence", () => {
       `
     );
     expect(ep!.catches).toHaveLength(2);
-    expect(ep!.catches.filter((c) => c.rethrows && c.branches)).toHaveLength(1);
+    // `if (e instanceof Response) throw e;` branches (it reads the binding and one arm throws) and
+    // does not rethrow (the throw is guarded, so it is not on the clause's own path). The action's
+    // catch does neither. What this test is for is that the two clauses stay separate.
+    expect(ep!.catches.filter((c) => !c.rethrows && c.branches)).toHaveLength(1);
     expect(ep!.catches.filter((c) => !c.rethrows && !c.branches)).toHaveLength(1);
   });
 
@@ -1657,18 +1681,26 @@ describe("scanFile: a binding shadowed by an enclosing scope, not just a nested 
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 
-  // Positive controls: a genuine reference to the real binding must still be credited, including
-  // through an enclosing loop whose OWN variable has a different name.
+  // Positive control: a genuine reference to the real binding, on the clause's own path, with an
+  // arm that takes the error somewhere the other arm does not go.
   it("still credits an if that genuinely reads the outer binding directly", () => {
-    const ep = scanFile("x.ts", swallow("if (error instanceof Error) { doThing(); }"));
+    const ep = scanFile("x.ts", swallow("if (error instanceof Error) { return badRequest(); }"));
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 
-  it("still credits an if inside a for...of loop with a different loop variable", () => {
+  // Two shapes that read the real binding and are still not credited, for reasons that are not
+  // shadowing. Both are precision the straight-line rule gives up on purpose, and both are
+  // recorded here so a later reader can tell a deliberate limit from a bug.
+  it("does not credit an if whose arm does not take the error anywhere", () => {
+    const ep = scanFile("x.ts", swallow("if (error instanceof Error) { doThing(); }"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if nested inside a loop, even with a different loop variable", () => {
     const ep = scanFile(
       "x.ts",
-      swallow("for (const item of items) { if (error.code === item) { doThing(); } }")
+      swallow("for (const item of items) { if (error.code === item) { return item; } }")
     );
-    expect(ep!.catches[0]!.branches).toBe(true);
+    expect(ep!.catches[0]!.branches).toBe(false);
   });
 });
