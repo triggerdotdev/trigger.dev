@@ -35,9 +35,16 @@ function leafTokens(node: ts.Node): ts.Node[] {
  * BEGINS with `//` or `/*` is the shape that reached the real tree, in
  * `resources.branches.create.tsx`'s `<InlineCode>//</InlineCode>`.
  *
- * `content-is-not-a-comment` in `test/suppression.test.ts` covers each kind, and
- * `jsx-text-line-directive`, `jsx-text-after-expression` and `jsx-text-block-directive` in the
- * mutation corpus cover the JSX shapes over the whole route tree.
+ * The four cases in `jsx text is content, not a comment` (`test/suppression.test.ts`) are the ones
+ * that fail without `ts.isJsxText` here; the positive control beside them, `still reads a directive
+ * from a comment in a JSX expression container`, is what stops the filter being widened until it
+ * eats real comments. `does not suppress from a directive inside a template literal` and the two
+ * substitution cases cover the template kinds, and `ignores the directive inside a string literal`
+ * covers the string kind.
+ *
+ * The mutation corpus does NOT cover any of this, and cannot: a suppression can only lower an
+ * entry's score, because `scoreEntry` caps it at the pre-suppression ratio. Suppression bugs are
+ * invisible to a harness that watches for the score rising, so they need ordinary unit tests.
  */
 function isClaimedContent(node: ts.Node): boolean {
   return (

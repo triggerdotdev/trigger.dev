@@ -142,6 +142,64 @@ describe("suppressedChecks", () => {
     expect(m.size).toBe(0);
   });
 
+  // S4. The case above passes without any JSX handling at all, because the comment-range lexers
+  // only find a comment at the exact offset they are asked about and the `//` there is mid-text.
+  // These are the shapes that actually needed the fix: JSX text that BEGINS with a comment marker,
+  // which is what the lexers see when they are pointed at the start of a JsxText node. Removing
+  // `ts.isJsxText` from `isClaimedContent` makes all four fail and nothing else in the suite.
+  describe("jsx text is content, not a comment", () => {
+    const page = (body: string) => `const name = "x";
+       export default function Page() {
+         return ${body};
+       }`;
+
+    it("does not suppress from JSX text beginning with a line comment marker", () => {
+      const m = suppressedChecks(
+        page(`<p>// obs-map-disable error-classification -- jsx line</p>`),
+        "route.tsx"
+      );
+      expect(m.size).toBe(0);
+    });
+
+    it("does not suppress from JSX text beginning with a block comment marker", () => {
+      const m = suppressedChecks(
+        page(`<p>/* obs-map-disable audit-trail -- jsx block */</p>`),
+        "route.tsx"
+      );
+      expect(m.size).toBe(0);
+    });
+
+    it("does not suppress from JSX text starting right after an expression container", () => {
+      const m = suppressedChecks(
+        page(`<p>{name}// obs-map-disable request-context -- after expression</p>`),
+        "route.tsx"
+      );
+      expect(m.size).toBe(0);
+    });
+
+    // A fourth input, exercising the same mechanism at a different tree position: the text is not
+    // the first child of the outermost element, so the token boundary the lexer is pointed at is a
+    // different one again.
+    it("does not suppress from JSX text nested several elements deep", () => {
+      const m = suppressedChecks(
+        page(`<div><span><b>// obs-map-disable auth-boundary -- nested jsx</b></span></div>`),
+        "route.tsx"
+      );
+      expect(m.size).toBe(0);
+    });
+
+    // Positive control for the same code path: a real comment inside a JSX expression container is
+    // not JSX text and must survive. A filter that dropped it would pass every test above for the
+    // wrong reason.
+    it("still reads a directive from a comment in a JSX expression container", () => {
+      const m = suppressedChecks(
+        page(`<p>{/* obs-map-disable audit-trail -- real comment */}</p>`),
+        "route.tsx"
+      );
+      expect(m.get("audit-trail")).toBe("real comment");
+    });
+  });
+
   // Extra inputs beyond the brief's two, exercising the same "not a real parse position" mechanism
   // differently: a second substitution, and a string literal nested inside a JSX expression
   // container, which is a different node kind again from either hole above.
