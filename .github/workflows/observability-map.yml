@@ -13,7 +13,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
@@ -53,6 +52,10 @@ jobs:
 
   report:
     runs-on: warp-ubuntu-latest-x64-4x
+    # Only this job comments, so only this job gets the write.
+    permissions:
+      contents: read
+      pull-requests: write
     # Fork PRs get a read-only token, so the comment cannot post. Skipping the job beats a red x.
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
@@ -76,9 +79,18 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
+      # Guarded rather than allowed to fail: this job must never block a pull request. The failure
+      # is not swallowed either, the render step below turns a missing head report into a comment
+      # saying so, because a swallowed failure with no comment is the outcome nobody wants.
       - name: 🔎 Scan head
         run: |
-          pnpm --filter @internal/observability-map exec tsx src/cli.ts --json --no-write > /tmp/head.json
+          if pnpm --filter @internal/observability-map exec tsx src/cli.ts --json --no-write \
+            > /tmp/head.json.partial; then
+            mv /tmp/head.json.partial /tmp/head.json
+          else
+            rm -f /tmp/head.json /tmp/head.json.partial
+            echo "head scan failed; the comment will say the report is stale for this run" >&2
+          fi
 
       - name: 🔎 Scan base with the head's scanner
         run: |
@@ -91,16 +103,58 @@ jobs:
             echo "base scan failed or the worktree could not be added; falling back to no base" >&2
           fi
 
-      # continue-on-error: this job must never block a PR. A malformed head.json or a rendering
-      # bug would otherwise turn the job red the same way a base-scan failure would not, since that
-      # step already falls back to "-" instead of failing.
+      # Looked up before the render step because the render step needs it: with no delta to report,
+      # a pull request that already has a comment gets a resolved state rather than being left with
+      # findings that no longer exist, and one that does not gets nothing at all. The upsert step
+      # reuses the id rather than asking again.
+      - name: 🔍 Look for a comment from an earlier push
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          rm -f /tmp/existing-comment-id
+          if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty' \
+            > /tmp/existing-comment-id.partial; then
+            mv /tmp/existing-comment-id.partial /tmp/existing-comment-id
+          else
+            rm -f /tmp/existing-comment-id.partial
+            echo "comment lookup failed; assuming a comment exists so a stale one still gets replaced" >&2
+          fi
+
+      # continue-on-error for the same reason as the scan: a rendering bug must not turn the job
+      # red. An empty /tmp/comment.md means there is nothing to post, which is a decision
+      # prCommentCli makes, not this shell.
       - name: 📝 Render comment
         continue-on-error: true
         run: |
-          if [ "$(cat /tmp/base.json)" = "-" ]; then
-            pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts /tmp/head.json - > /tmp/comment.md
+          rm -f /tmp/comment.md
+          render() { pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts "$@"; }
+
+          if [ ! -s /tmp/head.json ]; then
+            render --scan-failed > /tmp/comment.md
+            exit 0
+          fi
+
+          base=/tmp/base.json
+          if [ ! -s /tmp/base.json ] || [ "$(cat /tmp/base.json)" = "-" ]; then
+            base="-"
+          fi
+
+          # An absent file means the lookup itself failed, and assuming there is a comment is the
+          # safer half of that guess: it can post a redundant resolved state, not leave a stale one.
+          flags=()
+          if [ ! -f /tmp/existing-comment-id ] || [ -s /tmp/existing-comment-id ]; then
+            flags=(--existing-comment)
+          fi
+
+          if render /tmp/head.json "$base" "${flags[@]}" > /tmp/comment.md.partial; then
+            mv /tmp/comment.md.partial /tmp/comment.md
           else
-            pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts /tmp/head.json /tmp/base.json > /tmp/comment.md
+            rm -f /tmp/comment.md.partial
+            echo "render failed; falling back to the stale-report comment" >&2
+            render --scan-failed > /tmp/comment.md
           fi
 
       # continue-on-error for the same reason: a transient gh api failure (rate limit, network)
@@ -111,8 +165,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty')
+          if [ ! -s /tmp/comment.md ]; then
+            echo "nothing to post: this pull request does not move the report"
+            exit 0
+          fi
+          existing=""
+          if [ -f /tmp/existing-comment-id ]; then
+            existing=$(cat /tmp/existing-comment-id)
+          fi
           if [ -n "$existing" ]; then
             gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -F body=@/tmp/comment.md
           else
