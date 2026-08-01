@@ -28,31 +28,62 @@ function leafTokens(node: ts.Node): ts.Node[] {
 }
 
 /**
- * Every genuine comment range in the source, read off a real parsed `ts.SourceFile` rather than a
- * standalone `ts.createScanner`. A bare scanner has no parser state behind it, and that is exactly
- * what let two shapes through:
+ * Node kinds whose text the parser has already claimed as content, so nothing inside their span can
+ * be trivia however it is spelled. `getLeadingCommentRanges` and `getTrailingCommentRanges` are raw
+ * lexers over source text from an offset and consult no parse tree at all, so at a leaf-token
+ * boundary they will happily lex the inside of one of these as a comment: a JSX text node that
+ * BEGINS with `//` or `/*` is the shape that reached the real tree, in
+ * `resources.branches.create.tsx`'s `<InlineCode>//</InlineCode>`.
  *
- * - a template literal WITH a substitution never gets rescanned as a template continuation by a
- *   scanner running on its own, so the text after `${x}` reads as ordinary code and a `//` in it is
- *   a real comment to the scanner, though it never leaves the template literal to the parser.
- * - JSX text has no comment syntax at all, but a scanner created in `LanguageVariant.Standard`
- *   does not know it is looking at JSX text, so a `//` inside `<p>see https://x</p>` reads as a
- *   line comment starting mid-URL.
+ * `content-is-not-a-comment` in `test/suppression.test.ts` covers each kind, and
+ * `jsx-text-line-directive`, `jsx-text-after-expression` and `jsx-text-block-directive` in the
+ * mutation corpus cover the JSX shapes over the whole route tree.
+ */
+function isClaimedContent(node: ts.Node): boolean {
+  return (
+    ts.isJsxText(node) ||
+    ts.isStringLiteral(node) ||
+    ts.isNoSubstitutionTemplateLiteral(node) ||
+    ts.isTemplateHead(node) ||
+    ts.isTemplateMiddle(node) ||
+    ts.isTemplateTail(node) ||
+    ts.isRegularExpressionLiteral(node)
+  );
+}
+
+/**
+ * Every comment range in the source, read off a real parsed `ts.SourceFile` rather than a
+ * standalone `ts.createScanner`, and then filtered against the spans above.
  *
- * The actual parser closes both: a template's literal segments and a JSX text node are real nodes
- * with their own span here, never trivia, so a directive inside either is content the parser
- * already claimed, not a comment. `getLeadingCommentRanges` and `getTrailingCommentRanges` are both
- * needed at every token boundary, because which one returns a given comment depends on whether it
- * shares a line with the token before it (trailing) or comes after a line break (leading), not on
- * which directive it happens to be.
+ * Both halves are needed. Parsing rather than scanning is what stops a template literal WITH a
+ * substitution being rescanned as ordinary code after `${x}`, and what makes JSX text a node at all.
+ * Filtering by span is what stops the two comment-range lexers reading the start of such a node as
+ * a comment anyway, which they do because they never see the tree the parser built.
+ *
+ * The filter is on the range's start offset falling inside a claimed span, not on the gap between a
+ * token's full start and its start. A gap filter was tried and rejected: it loses a same-line
+ * trailing comment and a comment inside a JSX expression container, both of which are real.
+ *
+ * Both lexers are called at every token boundary, because which one returns a given comment depends
+ * on whether it shares a line with the token before it (trailing) or comes after a line break
+ * (leading), not on which directive it happens to be.
  */
 function commentRanges(source: string, sf: ts.SourceFile): ts.CommentRange[] {
+  const claimed: ts.TextRange[] = [];
+  const collectClaimed = (node: ts.Node) => {
+    if (isClaimedContent(node)) claimed.push({ pos: node.getStart(sf), end: node.end });
+    ts.forEachChild(node, collectClaimed);
+  };
+  collectClaimed(sf);
+  const inClaimedSpan = (pos: number) => claimed.some((s) => pos >= s.pos && pos < s.end);
+
   const seen = new Set<number>();
   const ranges: ts.CommentRange[] = [];
   const add = (found: ts.CommentRange[] | undefined) => {
     for (const range of found ?? []) {
       if (seen.has(range.pos)) continue;
       seen.add(range.pos);
+      if (inClaimedSpan(range.pos)) continue;
       ranges.push(range);
     }
   };
