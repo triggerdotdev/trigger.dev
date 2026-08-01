@@ -16,6 +16,41 @@ permissions:
   pull-requests: write
 
 jobs:
+  # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
+  # asserting the score does not rise. Roughly three minutes, which is why it is gated out of the
+  # package's default `pnpm test` and run here instead. Unlike the report job below it has no token
+  # to lose, so it runs for fork PRs too, and unlike the report job it is allowed to fail the build.
+  mutation-corpus:
+    name: 🧬 Mutation corpus
+    runs-on: warp-ubuntu-latest-x64-4x
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧬 Run the corpus
+        env:
+          OBS_MAP_MUTATION_CORPUS: "1"
+        run: |
+          pnpm --filter @internal/observability-map exec vitest run \
+            test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
+
   report:
     runs-on: warp-ubuntu-latest-x64-4x
     # Fork PRs get a read-only token, so the comment cannot post. Skipping the job beats a red x.

@@ -4,7 +4,7 @@ Scores every webapp entry point on whether it could explain itself during an inc
 the ones worth fixing. An entry point is a Remix `loader` or `action` under
 `apps/webapp/app/routes`, 427 of them at the time of writing.
 
-The number it prints today is 17 out of 100. That is not a bug, and the rest of this file is mostly
+The number it prints today is 15 out of 100. That is not a bug, and the rest of this file is mostly
 about why you should believe it.
 
 ## Running it
@@ -27,28 +27,38 @@ against the PR's merge base, with the score, what changed, and the current fix l
 report-only: nothing here fails the build or blocks a merge, and the gate stays deferred until a
 later phase decides to add one. See `.github/workflows/observability-map.yml`.
 
-## What 17 means
+## What 15 means
 
 It is the mean score of the 412 entry points that had at least one applicable check, where an
 entry's score is the share of its applicable checks that passed. It is low because the webapp does
-not attach tenant identity to its failures: **21 of 412 entry points name an environment, project,
-organization, run or user on a failure path.** Everything else, when it breaks at 3am, tells you the
+not attach tenant identity to its failures: **11 of 412 entry points name an environment, project,
+organization or user on a failure path.** Everything else, when it breaks at 3am, tells you the
 route and the request id and nothing about whose request it was.
 
 The score was 76 until we stopped crediting routes for the error handling they do not do. Emptying
 every catch clause in the tree used to score it 100, which meant the metric paid you for deleting
 error handling.
 
-Two invariants hold now, and both are asserted in `test/score.test.ts` rather than measured once:
+The property behind that is now a test corpus rather than a claim. `test/mutationCorpus.test.ts`
+applies 30 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
+and asserts three things for each: the published global does not rise, the mean over the routes
+measured in both runs does not rise, and for a semantics-preserving rewrite no individual route's
+score rises or drops out of the measured set. Every laundering shape a reviewer has found on this
+branch is an entry in it, `test/mutations.ts` holds them, and each entry says which it is.
 
-- **Removing error handling must not raise the score.** Deleting every catch clause drops it to 8,
-  and deleting the logs as well drops it to 2.
-- **Adding error handling that does nothing must not raise the score.** Wrapping every body in
-  `try { ... } catch (e) { throw e }` leaves the score unchanged. That mutation used to be worth 27
-  points across the tree, because a rethrow-only clause counted as a pass while no catch at all was
-  not-applicable, and the two are observationally identical.
+Two of them are worth naming because they are the ones the design turns on. Deleting every catch
+clause in the tree drops the score from 15 to 2, so the metric does not pay you for removing error
+handling. Wrapping every body in `try { ... } catch (e) { throw e }` leaves it unchanged, so it does
+not pay you for adding error handling that does nothing either.
 
-If you change this package, check both directions still hold.
+The honest statement is "these 30 rewrites are defended, and here they are", not "unpaddable". The
+corpus takes about three minutes, so it is gated behind `OBS_MAP_MUTATION_CORPUS=1` and run as its
+own CI job rather than in `pnpm test`. If you change this package, run it:
+
+```bash
+OBS_MAP_MUTATION_CORPUS=1 pnpm --filter @internal/observability-map exec vitest run \
+  test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
+```
 
 So the number is deliberately unflattering, and one platform change would move most of it. Nothing
 central attaches a tenant: `logger` pushes `{ requestId, path, host, method }` onto every line
@@ -72,7 +82,7 @@ rather than celebrating.
 
 ## Two findings are headlines, not list entries
 
-`audit-trail` fails 19 of 19, and `request-context` fails 391 of 412. Printing either one per route
+`audit-trail` fails 19 of 19, and `request-context` fails 401 of 412. Printing either one per route
 would bury the route-specific findings under the same sentence repeated hundreds of times, so both
 are reported as a figure: the `AUDIT` and `CONTEXT` lines. 329 entry points fail nothing except
 `request-context` and appear only in that figure, which leaves 71 in the fix list. An entry that
@@ -152,7 +162,7 @@ stays visible.
 value is real. A codemod that added `environmentId` to every in-catch `logger.error` call, wiring it
 up to the wrong variable or a constant, would move the score exactly as far as one that wired it up
 correctly. Measured on the real tree: adding a synthetic `environmentId` field to every in-catch log
-call, with no other change, takes the global score from 17 to 27.
+call, with no other change, takes the global score from 15 to 26.
 
 That is the tool verifying presence, not meaning, and it is not a bug to fix. Every check here reads
 syntax: a field name, a call, a binding reference. None of them can tell a genuine tenant id from a
@@ -180,8 +190,11 @@ Read these before trusting a specific verdict.
 - **Only the first object-literal argument is read** for identifier fields, and only its property
   names. `logger.error("failed", ctx)` where `ctx` is a variable contributes nothing, and neither
   does a second object.
-- **Inline callbacks are not descended into** when counting statements, so a two-statement body can
-  hold a pile of work inside a `.map()`. The call count is what catches those cases, imperfectly.
+- **A catch inside a per-item callback is not the route's.** `items.map((item) => { try {...} })`
+  is a fresh boundary per element, so its clause is not read as the route's own error handling. The
+  test is the method name, which cannot tell `users.map` from `Result.map`. Being wrong there costs
+  precision rather than points: a refused catch fails the route rather than excusing it, so no
+  wrapper can turn a swallow into a not-applicable by getting the boundary rule to refuse it.
 - **Sensitivity is a heuristic**: a symbol list plus path segments. It was circular until recently,
   counting `requireAdminApiRequest` as a hazard when it is a mitigation, which made 34 of 67
   sensitive routes sensitive purely for being guarded. Expect it to need pruning again as routes
