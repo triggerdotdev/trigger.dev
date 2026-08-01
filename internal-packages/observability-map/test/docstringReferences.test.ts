@@ -45,6 +45,9 @@ const NOT_A_TEST_NAME = new Set([
   "not-applicable",
   // The directive spelling that was retired, named in `suppression.ts` to say it is not honoured.
   "obs-map-disable-next-line",
+  // The worked example of a mistyped check id in `suppression.ts`. A misspelling of a check id is
+  // the thing being described, so it names no test by construction.
+  "eror-classification",
 ]);
 
 /** A backticked phrase this long or longer, with no code punctuation, is read as a test title. */

@@ -1,4 +1,4 @@
-import { suppressedChecks } from "../src/suppression.js";
+import { parseSuppressions, suppressedChecks } from "../src/suppression.js";
 
 describe("suppressedChecks", () => {
   it("reads a suppression with its reason", () => {
@@ -241,5 +241,62 @@ describe("suppressedChecks", () => {
         "export async function loader() { return identity(1); }"
     );
     expect(m.get("auth-boundary")).toBe("generic helper");
+  });
+});
+
+// B6. `// obs-map-disable eror-classification -- typo` used to parse, land in the map, match no
+// check and appear nowhere, so the author read the finding as acknowledged.
+describe("a suppression naming a check that does not exist", () => {
+  it("suppresses nothing and is reported as unknown", () => {
+    const r = parseSuppressions(
+      `// obs-map-disable eror-classification -- typo
+       export async function loader() { return 1; }`
+    );
+    expect(r.byId.size).toBe(0);
+    expect(r.unknown).toEqual(["eror-classification"]);
+  });
+
+  it("does not swallow the real suppressions beside it", () => {
+    const r = parseSuppressions(
+      `// obs-map-disable auth-boundry -- typo
+       // obs-map-disable auth-boundary -- public by design
+       export async function loader() { return 1; }`
+    );
+    expect(r.byId.get("auth-boundary")).toBe("public by design");
+    expect(r.unknown).toEqual(["auth-boundry"]);
+  });
+
+  it("reports each unknown id once however many times it appears", () => {
+    const r = parseSuppressions(
+      `// obs-map-disable request-contex -- typo
+       /* obs-map-disable request-contex -- typo again */
+       // obs-map-disable audit-trial -- another typo
+       export async function loader() { return 1; }`
+    );
+    expect(r.unknown).toEqual(["request-contex", "audit-trial"]);
+  });
+
+  it("is not reported when the directive had no reason, since it was never a suppression", () => {
+    const r = parseSuppressions(
+      `// obs-map-disable eror-classification
+       export async function loader() { return 1; }`
+    );
+    expect(r.unknown).toEqual([]);
+  });
+
+  it("is not read out of a string literal any more than a real one is", () => {
+    const r = parseSuppressions(
+      `const help = "// obs-map-disable eror-classification -- typo";
+       export async function loader() { return help; }`
+    );
+    expect(r.unknown).toEqual([]);
+  });
+
+  it("keeps suppressedChecks returning only the ids that name a check", () => {
+    const m = suppressedChecks(
+      `// obs-map-disable eror-classification -- typo
+       export async function loader() { return 1; }`
+    );
+    expect(m.size).toBe(0);
   });
 });

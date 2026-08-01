@@ -1,6 +1,6 @@
 import type { CheckResult, EntryPoint } from "./types.js";
 import { CHECKS, SCORED_CHECK_IDS } from "./checks/index.js";
-import { suppressedChecks } from "./suppression.js";
+import { parseSuppressions } from "./suppression.js";
 import { familyOf, routePathOf, type Family } from "./adapters/remix.js";
 import { classifySensitivity } from "./sensitivity.js";
 
@@ -30,6 +30,10 @@ export type ScoredEntry = {
   /** Every check a comment in the source suppressed, scored or not, in `CHECKS` order. Includes
    * `audit-trail`: a suppression is real regardless of whether its check feeds the score. */
   suppressed: string[];
+  /** Ids in a suppression directive that name no check, so they suppress nothing. Carried here so
+   * the renderers can say so: dropping them silently is what made a typo look like an
+   * acknowledgement. */
+  unknownSuppressions: string[];
   /** Passed over applicable, across scored checks only. 100 when nothing applies. */
   score: number;
 };
@@ -43,6 +47,8 @@ export type MapReport = {
   unmeasured: number;
   /** Suppressions in force: how many entry points carry one, and how many scored checks in total. */
   suppressions: { entries: number; checks: number };
+  /** Suppression directives naming no check, per file, so a typo is reported rather than dropped. */
+  unknownSuppressions: { fileName: string; ids: string[] }[];
   byFamily: Record<string, { n: number; measured: number; mean: number | null }>;
   sensitiveCohort: { n: number; measured: number; mean: number | null };
   auditGap: { sensitiveMutations: number; withAudit: number };
@@ -57,7 +63,7 @@ export type MapReport = {
 };
 
 export function scoreEntry(ep: EntryPoint): ScoredEntry {
-  const suppressed = suppressedChecks(ep.source, ep.fileName);
+  const { byId: suppressed, unknown } = parseSuppressions(ep.source, ep.fileName);
   const raw = CHECKS.map((c) => c.run(ep));
   const checks = raw.map((result) => {
     const reason = suppressed.get(result.id);
@@ -86,6 +92,7 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
     checks,
     rawChecks: raw,
     suppressed: raw.filter((c) => suppressed.has(c.id)).map((c) => c.id),
+    unknownSuppressions: unknown,
     measured: scoredApplicable.length > 0,
     // Capped by the pre-suppression ratio: removing a failing check from both the numerator and
     // the denominator otherwise raises the ratio, which is how 33 became 50 became 100 before this
@@ -157,6 +164,9 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
       entries: suppressing.length,
       checks: suppressing.reduce((n, e) => n + e.suppressed.length, 0),
     },
+    unknownSuppressions: entries
+      .filter((e) => e.unknownSuppressions.length > 0)
+      .map((e) => ({ fileName: e.fileName, ids: e.unknownSuppressions })),
     byFamily,
     sensitiveCohort: groupStats(sensitive),
     auditGap: {

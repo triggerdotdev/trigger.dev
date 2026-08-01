@@ -1,5 +1,5 @@
 import type { MapReport, ScoredEntry } from "../score.js";
-import { SCORED_CHECK_IDS } from "../checks/index.js";
+import { CHECKS, SCORED_CHECK_IDS } from "../checks/index.js";
 
 const NOT_MEASURED = "not measured".padEnd(15);
 
@@ -31,6 +31,24 @@ export const contextOnly = (e: ScoredEntry) => {
   const failures = scoredFailures(e);
   return failures.length === 1 && failures[0]!.id === "request-context";
 };
+
+/**
+ * The UNKNOWN SUPPRESSION lines, one per file, shared with `prComment.ts`. Empty when every
+ * directive named a real check. A typo suppresses nothing, so without this the author reads the
+ * finding as acknowledged and the tool goes on reporting it with no hint why.
+ */
+export function unknownSuppressionLine(fileName: string, ids: string[]): string {
+  return (
+    `UNKNOWN SUPPRESSION   ${fileName}: ${ids.join(", ")} ` +
+    `(no such check, nothing suppressed). Known: ${CHECKS.map((c) => c.id).join(", ")}.`
+  );
+}
+
+export function unknownSuppressionLines(report: MapReport): string[] {
+  return report.unknownSuppressions.map(({ fileName, ids }) =>
+    unknownSuppressionLine(fileName, ids)
+  );
+}
 
 /** The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when
  * there is nothing to report, i.e. no sensitive mutation exists. */
@@ -91,6 +109,12 @@ export function renderTerminal(report: MapReport): string {
   if (context) {
     lines.push("");
     lines.push(context);
+  }
+
+  const unknown = unknownSuppressionLines(report);
+  if (unknown.length > 0) {
+    lines.push("");
+    lines.push(...unknown);
   }
 
   if (report.suppressions.checks > 0) {

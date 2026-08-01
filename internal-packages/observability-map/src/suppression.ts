@@ -1,4 +1,7 @@
 import ts from "typescript";
+import { CHECKS } from "./checks/index.js";
+
+const KNOWN_CHECK_IDS = new Set(CHECKS.map((c) => c.id));
 
 /**
  * The directive, and the reason that must follow it. The reason runs to the end of the line: `.`
@@ -120,14 +123,26 @@ function commentLines(source: string, sf: ts.SourceFile): string[] {
   return lines;
 }
 
+export type Suppressions = {
+  /** Check id to reason, for ids that name a check in `CHECKS`. */
+  byId: Map<string, string>;
+  /**
+   * Ids that parsed as a directive but name no check, in source order and deduplicated. A typo
+   * (`eror-classification`) used to land in the map, match nothing and appear nowhere, so the
+   * author read the finding as acknowledged while the tool kept reporting it.
+   */
+  unknown: string[];
+};
+
 /**
- * Check id to reason. A suppression without a reason, or outside a comment, is ignored.
+ * Every suppression directive in the source, split by whether its id names a real check. A
+ * directive without a reason, or outside a comment, is ignored either way.
  *
  * `fileName` picks the parser's script kind: JSX syntax is only legal, and only correctly
  * distinguished from a generic type argument list (`<T>(x) => x`), when the file is really a
  * `.tsx`. Defaults to a plain `.ts` for callers that only have source text.
  */
-export function suppressedChecks(source: string, fileName = "check.ts"): Map<string, string> {
+export function parseSuppressions(source: string, fileName = "check.ts"): Suppressions {
   const scriptKind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const sf = ts.createSourceFile(
     fileName,
@@ -137,13 +152,21 @@ export function suppressedChecks(source: string, fileName = "check.ts"): Map<str
     scriptKind
   );
 
-  const out = new Map<string, string>();
+  const byId = new Map<string, string>();
+  const unknown = new Set<string>();
   for (const line of commentLines(source, sf)) {
     const match = PATTERN.exec(line);
     if (!match) continue;
     const [, id, reason] = match;
     const trimmedReason = reason?.trim();
-    if (id && trimmedReason && trimmedReason.length > 0) out.set(id, trimmedReason);
+    if (!id || !trimmedReason || trimmedReason.length === 0) continue;
+    if (KNOWN_CHECK_IDS.has(id)) byId.set(id, trimmedReason);
+    else unknown.add(id);
   }
-  return out;
+  return { byId, unknown: [...unknown] };
+}
+
+/** The known half of `parseSuppressions`, for callers that only apply suppressions. */
+export function suppressedChecks(source: string, fileName = "check.ts"): Map<string, string> {
+  return parseSuppressions(source, fileName).byId;
 }
