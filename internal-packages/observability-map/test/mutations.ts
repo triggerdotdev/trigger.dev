@@ -522,6 +522,21 @@ export const MUTATIONS: Mutation[] = [
     "return obsMapResult.map(async () => {",
     "});"
   ),
+  // C1a. `auth-boundary` matched `/^(require|authenticate)/`, so any callee at all beginning
+  // `require` cleared a sensitive route. These two prepend the shapes that paid: an invented guard
+  // and a real helper whose name merely contains "Authenticated" while it does a lookup by id.
+  wrapEveryBody(
+    "fake-require-guard",
+    "prepend an invented requireObsMapValidRequest() call to every route body",
+    "requireObsMapValidRequest();",
+    ""
+  ),
+  wrapEveryBody(
+    "fake-authenticated-lookup",
+    "prepend a resolveAuthenticatedEnv() call to every route body",
+    "resolveAuthenticatedEnv();",
+    ""
+  ),
   wrapEveryBody(
     "wrap-body-in-non-array-filter",
     "wrap every route body in a non-array receiver's .filter(...)",
@@ -833,6 +848,8 @@ export const ADDITIVE_IDS = [
   "wrap-body-in-rethrow",
   "empty-instanceof-if",
   "registered-throw",
+  "fake-require-guard",
+  "fake-authenticated-lookup",
 ];
 
 function isSingleConst(statement: ts.Statement): statement is ts.VariableStatement {
