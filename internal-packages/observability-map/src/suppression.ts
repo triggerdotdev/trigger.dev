@@ -1,7 +1,8 @@
+import ts from "typescript";
+
 /**
  * The directive, and the reason that must follow it. The reason runs to the end of the line: `.`
  * does not match a newline, so a suppression on one line cannot pick up a reason from the next.
- * A trailing block-comment terminator is trimmed off so it does not end up inside the reason.
  *
  * It was `obs-map-disable-next-line`, which was a lie: a check applies to a whole entry point, so
  * the directive did too, and one on the last line of a file switched a check off for everything
@@ -14,37 +15,51 @@
 const PATTERN = /obs-map-disable\s+([a-z-]+)\s+--\s+(.+)/;
 
 /**
- * The comment part of a line, or null if there is none.
+ * Every physical line of genuine comment content in the source, line comments and block comments
+ * alike, one entry per line, with the `//`, `/*`, `*​/` and a jsdoc `*` prefix stripped.
  *
- * Line-scoped and comment-only, because the directive is a comment directive. Matching the raw
- * source meant a string literal that merely quotes the directive, in a test fixture or an error
- * message, silently switched a real check off. Handles line comments, block comments and the
- * leading star of a jsdoc block; a line-comment marker inside a string on the same line can still
- * be misread, which costs a suppression that was never written rather than hiding one that was.
+ * Read from the TypeScript scanner's own token stream rather than `indexOf("//")` against the raw
+ * text. The old text-matching read the directive out of a string or template literal that merely
+ * quoted it, so `"see // obs-map-disable auth-boundary -- nope"` granted a suppression nobody
+ * wrote, silencing a real check. The scanner already knows the difference: a string or template
+ * literal is one token, consumed in a single step, and never yields comment trivia for what is
+ * inside it, so there is no substring rule left to fool.
  */
-function commentPart(line: string): string | null {
-  const slashes = line.indexOf("//");
-  if (slashes !== -1) return line.slice(slashes + 2);
+function commentLines(source: string): string[] {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    /* skipTrivia */ false,
+    ts.LanguageVariant.Standard,
+    source
+  );
+  const lines: string[] = [];
 
-  const block = line.indexOf("/*");
-  if (block !== -1) return line.slice(block + 2).replace(/\*\/\s*$/, "");
+  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (kind === ts.SyntaxKind.SingleLineCommentTrivia) {
+      lines.push(scanner.getTokenText().slice(2));
+      continue;
+    }
+    if (kind !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
 
-  const trimmed = line.trimStart();
-  if (trimmed.startsWith("*")) return trimmed.slice(1);
+    const text = scanner.getTokenText();
+    const body = text.slice(2, text.length - 2); // drop the leading /* and the closing */
+    for (const rawLine of body.split("\n")) {
+      const trimmed = rawLine.trimStart();
+      lines.push(trimmed.startsWith("*") ? trimmed.slice(1) : rawLine);
+    }
+  }
 
-  return null;
+  return lines;
 }
 
 /** Check id to reason. A suppression without a reason, or outside a comment, is ignored. */
 export function suppressedChecks(source: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const line of source.split("\n")) {
-    const comment = commentPart(line);
-    if (comment === null) continue;
-    const match = PATTERN.exec(comment);
+  for (const line of commentLines(source)) {
+    const match = PATTERN.exec(line);
     if (!match) continue;
     const [, id, reason] = match;
-    const trimmedReason = reason?.replace(/\*\/\s*$/, "").trim();
+    const trimmedReason = reason?.trim();
     if (id && trimmedReason && trimmedReason.length > 0) out.set(id, trimmedReason);
   }
   return out;

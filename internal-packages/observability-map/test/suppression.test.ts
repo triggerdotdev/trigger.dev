@@ -89,4 +89,33 @@ describe("suppressedChecks", () => {
     );
     expect(m.size).toBe(0);
   });
+
+  // A2. `indexOf("//")` against the raw text found the marker inside a string literal too, so a
+  // string that merely quotes the directive granted a suppression nobody wrote and silenced a real
+  // check. Reading genuine comment ranges from the TypeScript scanner closes both shapes: the
+  // scanner consumes a string or template literal as one token and never emits comment trivia for
+  // what is inside it.
+  it("does not suppress from a directive quoted inside a string literal", () => {
+    const m = suppressedChecks(
+      `const msg = "see // obs-map-disable error-classification -- because reasons";
+       export async function loader() { return 1; }`
+    );
+    expect(m.size).toBe(0);
+  });
+
+  it("does not suppress from a directive quoted inside a string with no real comment marker", () => {
+    const m = suppressedChecks(
+      `const u = "https://example.com obs-map-disable auth-boundary -- nope";
+       export async function loader() { return 1; }`
+    );
+    expect(m.size).toBe(0);
+  });
+
+  it("does not suppress from a directive inside a template literal", () => {
+    const m = suppressedChecks(
+      "const msg = `see // obs-map-disable error-classification -- template literal`;\n" +
+        "export async function loader() { return 1; }"
+    );
+    expect(m.size).toBe(0);
+  });
 });
