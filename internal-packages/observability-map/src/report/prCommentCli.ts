@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MapReport } from "../score.js";
-import { renderPrComment } from "./prComment.js";
+import {
+  hasDelta,
+  renderPrComment,
+  renderResolvedComment,
+  renderScanFailedComment,
+} from "./prComment.js";
 
 /** Where output goes. Injectable so tests can read it without spawning a process. */
 export type Io = { out: (s: string) => void; err: (s: string) => void };
@@ -28,15 +33,33 @@ function readReport(path: string, label: string): MapReport {
   }
 }
 
-/** `-` or a missing second arg means no base: the CI job falls back to this when the base scan
- * itself failed, so the comment still renders rather than the job going red. */
+/**
+ * `-` or a missing second arg means no base: the CI job falls back to this when the base scan
+ * itself failed, so the comment still renders rather than the job going red.
+ *
+ * Empty output means "post nothing". The job only comments when the pull request moves the report,
+ * and `--existing-comment` is how the workflow says a comment from an earlier push is already on
+ * the pull request: with the delta gone, that comment is replaced with a resolved state rather
+ * than left standing with findings that no longer exist.
+ *
+ * `--scan-failed` takes no report and prints the stale-report comment, for the case where the head
+ * scan produced nothing to read.
+ */
 export function main(argv: string[], io: Io = processIo): number {
   const args = argv.slice(2);
-  const headPath = args[0];
-  const basePath = args[1];
+  const scanFailed = args.includes("--scan-failed");
+  const existingComment = args.includes("--existing-comment");
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const headPath = positional[0];
+  const basePath = positional[1];
+
+  if (scanFailed) {
+    io.out(`${renderScanFailedComment()}\n`);
+    return 0;
+  }
 
   if (!headPath) {
-    io.err("usage: prCommentCli.ts <head.json> [base.json|-]\n");
+    io.err("usage: prCommentCli.ts <head.json> [base.json|-] [--existing-comment]\n");
     return 1;
   }
 
@@ -50,8 +73,13 @@ export function main(argv: string[], io: Io = processIo): number {
     return 1;
   }
 
-  io.out(renderPrComment(head, base));
-  io.out("\n");
+  if (hasDelta(head, base)) {
+    io.out(`${renderPrComment(head, base)}\n`);
+    return 0;
+  }
+  if (existingComment) {
+    io.out(`${renderResolvedComment()}\n`);
+  }
   return 0;
 }
 

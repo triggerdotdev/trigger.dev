@@ -1,6 +1,12 @@
 import type { MapReport, ScoredEntry } from "../score.js";
 import { SCORED_CHECK_IDS } from "../checks/index.js";
-import { auditLine, contextLine, contextOnly, scoredFailures } from "./terminal.js";
+import {
+  auditLine,
+  contextLine,
+  contextOnly,
+  scoredFailures,
+  unknownSuppressionLines,
+} from "./terminal.js";
 
 /** First line of every comment this job posts, so the upsert step can find its own comment again. */
 export const MARKER = "<!-- observability-map-report -->";
@@ -32,17 +38,30 @@ function scoreLine(head: MapReport, base: MapReport | null): string {
   return `${headline} ${comparison}`;
 }
 
+/** What goes in a score column: a figure, an absence, or no prior entry to compare against. */
+const NOT_MEASURED = "not measured";
+
+/**
+ * `score` is 100 for an entry no scored check applied to, a placeholder the score itself excludes
+ * from every mean. Rendering that 100 as a figure turned a route refactored down to a trivial body
+ * into a 67-point improvement, and a trivial route gaining real work into the PR's worst
+ * regression. So the cell says what the terminal gauge says for a null mean instead.
+ */
+const scoreCell = (e: ScoredEntry): number | string => (e.measured ? e.score : NOT_MEASURED);
+
 type ChangedRow = {
   routePath: string;
   sensitive: boolean;
-  baseScore: number | "new";
-  headScore: number;
+  baseScore: number | string;
+  headScore: number | string;
   nowFailing: string[];
   /**
    * How much the entry got worse, used to sort the table. A new entry has no base score to
    * subtract from, so it is scored against a perfect 100: a new entry landing at 60 sorts the
    * same as an existing one that dropped 40 points, which is the ordering "what needs fixing
-   * first" implies.
+   * first" implies. Zero whenever either side is unmeasured, because there is no arithmetic to do
+   * between a figure and an absence; such a row is in the table to disclose the transition, not to
+   * claim a size for it.
    */
   drop: number;
 };
@@ -55,25 +74,31 @@ function changedRows(head: MapReport, base: MapReport): { rows: ChangedRow[]; re
   for (const h of head.entries) {
     const b = baseByFile.get(h.fileName);
     if (!b) {
+      // A new entry that passes every check it was measured against has nothing to fix, which is
+      // what `drop: 0` means everywhere else in this table. A new entry nothing applied to is a
+      // different statement and still gets a row, since its 100 is a placeholder rather than a pass.
+      if (h.measured && h.score === 100) continue;
       rows.push({
         routePath: h.routePath,
         sensitive: h.sensitive,
         baseScore: "new",
-        headScore: h.score,
+        headScore: scoreCell(h),
         nowFailing: failingIds(h),
-        drop: 100 - h.score,
+        drop: h.measured ? 100 - h.score : 0,
       });
       continue;
     }
-    if (b.score === h.score) continue;
+    // Measured state is part of what changed: a measured-to-unmeasured transition can leave the
+    // score untouched at its placeholder value, and skipping on the number alone hid it.
+    if (b.measured === h.measured && b.score === h.score) continue;
     const baseFailing = new Set(failingIds(b));
     rows.push({
       routePath: h.routePath,
       sensitive: h.sensitive,
-      baseScore: b.score,
-      headScore: h.score,
+      baseScore: scoreCell(b),
+      headScore: scoreCell(h),
       nowFailing: failingIds(h).filter((id) => !baseFailing.has(id)),
-      drop: b.score - h.score,
+      drop: b.measured && h.measured ? b.score - h.score : 0,
     });
   }
 
@@ -149,6 +174,78 @@ function fixFirstSection(head: MapReport): string[] {
 }
 
 /**
+ * Whether this pull request moves the report at all, so the job can stay quiet when it does not.
+ *
+ * True on: no base to compare against, a global score change, an entry added or removed, an
+ * entry's score or measured state changed, a check that fails at head and did not at base, a
+ * change in the parse failure count, or a change in the unknown suppression warnings. The last two
+ * are here because both render a line in the comment, so a run that gains one has moved the report
+ * even though no score did.
+ *
+ * The residual: adding a suppression whose check was already failing moves nothing this asks
+ * about. The score is capped at the pre-suppression ratio so it cannot move, and the finding
+ * leaves the fix list quietly. `SUPPRESSED` in the terminal report is where that shows up.
+ */
+export function hasDelta(head: MapReport, base: MapReport | null): boolean {
+  if (!base) return true;
+  if (head.global !== base.global) return true;
+  if (head.parseFailures.length !== base.parseFailures.length) return true;
+  if (JSON.stringify(head.unknownSuppressions) !== JSON.stringify(base.unknownSuppressions)) {
+    return true;
+  }
+
+  const baseByFile = new Map(base.entries.map((e) => [e.fileName, e]));
+  const headFiles = new Set(head.entries.map((e) => e.fileName));
+  if (base.entries.some((e) => !headFiles.has(e.fileName))) return true;
+
+  for (const h of head.entries) {
+    const b = baseByFile.get(h.fileName);
+    if (!b) return true;
+    if (b.measured !== h.measured || b.score !== h.score) return true;
+    const baseFailing = new Set(b.checks.filter((c) => c.status === "fail").map((c) => c.id));
+    if (h.checks.some((c) => c.status === "fail" && !baseFailing.has(c.id))) return true;
+  }
+  return false;
+}
+
+/**
+ * What replaces a comment whose findings a later push fixed. Going silent would leave the earlier
+ * comment standing with findings that no longer exist, which is worse than a redundant comment.
+ */
+export function renderResolvedComment(): string {
+  return [
+    MARKER,
+    "",
+    "## Observability map",
+    "",
+    "Nothing in this pull request moves the report any more. The findings an earlier push " +
+      "reported are gone.",
+    "",
+    "Report only, nothing here gates the merge. The rules and their reasons: " +
+      "internal-packages/observability-map/README.md.",
+  ].join("\n");
+}
+
+/**
+ * What the job posts when the head scan did not produce a report. The alternative was a red x on
+ * a job that must never block a pull request, and the alternative to that was swallowing the
+ * failure so the only signal was a comment that never appeared.
+ */
+export function renderScanFailedComment(): string {
+  return [
+    MARKER,
+    "",
+    "## Observability map",
+    "",
+    "The scan failed for this run, so there is no report. Anything above is from an earlier push " +
+      "and is stale. The workflow log has the error.",
+    "",
+    "Report only, nothing here gates the merge. The rules and their reasons: " +
+      "internal-packages/observability-map/README.md.",
+  ].join("\n");
+}
+
+/**
  * Pure function, no I/O: `head` and `base` are already-built reports. Matches entries across the
  * two by `fileName`, the same identifier `renderJson` carries.
  */
@@ -162,7 +259,9 @@ export function renderPrComment(head: MapReport, base: MapReport | null): string
   if (audit) lines.push(audit);
   const context = contextLine(head);
   if (context) lines.push(context);
-  if (audit || context) lines.push("");
+  const unknown = unknownSuppressionLines(head);
+  lines.push(...unknown);
+  if (audit || context || unknown.length > 0) lines.push("");
 
   lines.push(
     "Report only, nothing here gates the merge. The rules and their reasons: " +
