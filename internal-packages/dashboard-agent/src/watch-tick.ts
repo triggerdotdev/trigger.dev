@@ -331,6 +331,13 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
  * Both of those writes carry the claim's `claimId`, so they only ever touch the
  * claim this call owns: a deliverer that hung long enough to be taken over comes
  * back to a row holding a different token, and its release and its mark do nothing.
+ *
+ * Known residual race: the token fences the DB writes, not the session append
+ * itself — an owner that hung PAST the stale window can still fire its append
+ * late, concurrently with the takeover's. Accepted because every layer has to
+ * fail at once for a duplicate to surface: the claim goes stale only after
+ * WATCH_DELIVERY_CLAIM_STALE_MS (minutes, vs a delivery that takes seconds),
+ * the action id is stable across deliverers, and the transcript dedups on it.
  */
 async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boolean> {
   const now = deps.now?.() ?? new Date();
