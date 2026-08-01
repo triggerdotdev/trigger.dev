@@ -5,7 +5,11 @@ import type { EntryPoint } from "./types.js";
 import { scanDirectory } from "./scan.js";
 import { buildReport, scoreEntry } from "./score.js";
 import { routePathOf } from "./adapters/remix.js";
-import { renderTerminal } from "./report/terminal.js";
+import {
+  renderTerminal,
+  unknownSuppressionLine,
+  unknownSuppressionLines,
+} from "./report/terminal.js";
 import { renderJson } from "./report/json.js";
 
 const DEFAULT_ROUTES = "apps/webapp/app/routes";
@@ -56,6 +60,13 @@ function findMatches(entryPoints: EntryPoint[], target: string): EntryPoint[] {
   );
 }
 
+/** Value of a `--flag=value` argument, or null when the flag is absent. */
+function flagValue(args: string[], flag: string): string | null {
+  const prefix = `${flag}=`;
+  const found = args.find((a) => a.startsWith(prefix));
+  return found === undefined ? null : found.slice(prefix.length);
+}
+
 export function main(argv: string[], io: Io = processIo): number {
   const args = argv.slice(2);
   const asJson = args.includes("--json");
@@ -63,11 +74,11 @@ export function main(argv: string[], io: Io = processIo): number {
   const target = args.find((a) => !a.startsWith("--"));
 
   const repoRoot = findRepoRoot(dirname(fileURLToPath(import.meta.url)));
-  const routesFlag = args.find((a) => a.startsWith("--routes="));
+  const routesFlag = flagValue(args, "--routes");
 
   let routesDir: string;
-  if (routesFlag) {
-    routesDir = resolve(process.cwd(), routesFlag.slice("--routes=".length));
+  if (routesFlag !== null) {
+    routesDir = resolve(process.cwd(), routesFlag);
     let isDir = false;
     try {
       isDir = statSync(routesDir).isDirectory();
@@ -99,6 +110,14 @@ export function main(argv: string[], io: Io = processIo): number {
       );
     }
     const scored = scoreEntry(matches[0]!);
+    // On stderr in both formats: a warning on stdout would be inside the JSON a caller parses.
+    if (scored.unknownSuppressions.length > 0) {
+      io.err(`${unknownSuppressionLine(scored.fileName, scored.unknownSuppressions)}\n`);
+    }
+    if (asJson) {
+      io.out(`${JSON.stringify(scored, null, 2)}\n`);
+      return 0;
+    }
     const measuredNote = scored.measured ? "" : "  (not measured: no applicable checks)";
     io.out(
       `${scored.routePath}  ${scored.score}/100${measuredNote}\n${scored.fileName}\n\nCHECKS\n`
@@ -111,10 +130,18 @@ export function main(argv: string[], io: Io = processIo): number {
   }
 
   const report = buildReport(entryPoints, parseFailures);
+  for (const line of unknownSuppressionLines(report)) io.err(`${line}\n`);
   io.out(asJson ? renderJson(report) : renderTerminal(report));
   io.out("\n");
   if (!noWrite) {
-    writeFileSync(resolve(repoRoot, "observability-map.json"), renderJson(report));
+    // `--out` exists so a test can point the write somewhere disposable. Without it the only way
+    // to exercise the write path was to let the tests create and delete a file in the repo root.
+    const outFlag = flagValue(args, "--out");
+    const outPath =
+      outFlag === null
+        ? resolve(repoRoot, "observability-map.json")
+        : resolve(process.cwd(), outFlag);
+    writeFileSync(outPath, renderJson(report));
   }
   return 0;
 }
