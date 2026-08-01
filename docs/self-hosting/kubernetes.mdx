@@ -334,7 +334,10 @@ redis:
   (`data-<release>-clickhouse-shard0-0`) to keep your data — auto-detection can't run there, and
   skipping this starts ClickHouse on a fresh empty volume. If that happened, your old data is
   still on the old PVC: delete the ClickHouse StatefulSet with `--cascade=orphan` (its volume
-  configuration is immutable), set `existingClaim`, and sync again.
+  configuration is immutable), set `existingClaim`, and sync again. If you render without cluster
+  access, pin `clickhouse.persistence.existingClaim` for good once the volume is adopted: a later
+  render where the lookup can't see the PVC would otherwise try to re-add `volumeClaimTemplates`,
+  which the API server rejects on an existing StatefulSet.
 </Note>
 
 <Note>
@@ -363,6 +366,13 @@ clickhouse:
     username: "my-username"
     password: "my-password"
 ```
+
+<Note>
+  An inline external `username`/`password` is percent-encoded into the connection URL for you, so
+  store the **raw** value - special characters like `@ : / %` are handled automatically. If you
+  previously percent-encoded the password by hand to work around this, switch back to the raw value.
+  (Credentials from `existingSecret` are injected at runtime and are unaffected.)
+</Note>
 
 **Using existing secrets (recommended):**
 
