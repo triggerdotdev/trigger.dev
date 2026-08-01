@@ -253,6 +253,25 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
+  // A3. `referencesBinding` used to match any identifier with the binding's text, including a
+  // property name in a member expression. A catch whose only `if` tests `fallback.error`, never the
+  // caught binding itself, was credited with classifying an error it never inspected.
+  it("fails a catch whose only if tests a same-named property, not the caught error", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.y.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           if (fallback.error) return json({}, { status: 500 });
+           return json({}, { status: 500 });
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
   // False positive fixture: the only try/catch in the file belongs to the component.
   it("does not judge a route whose try/catch is in the React component", () => {
     const r = run(

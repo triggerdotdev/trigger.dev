@@ -1261,3 +1261,102 @@ describe("scanFile: branches requires the if/switch condition to examine the err
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 });
+
+// A3. `referencesBinding` matched any identifier with the binding's text, including a property
+// name, an object literal key and a name re-declared in a nested scope. So a clause that never
+// really inspects the error still counted as deciding on it.
+describe("scanFile: branches requires a genuine read of the binding, not a lookalike", () => {
+  it("does not set branches for an `if` that only reads a same-named property", () => {
+    const ep = scanFile(
+      "branch-property-name.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          if (fallback.error) return json({}, { status: 500 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not set branches for an `if` that only reads a same-named object literal key", () => {
+    const ep = scanFile(
+      "branch-object-key.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          if (buildOptions({ error: false }).ok) return json({}, { status: 500 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not set branches for an `if` whose only reference is inside a callback that re-declares the name", () => {
+    const ep = scanFile(
+      "branch-shadowed-param.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          if (items.some(function (error) { return error.code === 1; })) {
+            return json({}, { status: 500 });
+          }
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not set branches for an `if` whose only reference is inside a block that re-declares the name", () => {
+    const ep = scanFile(
+      "branch-shadowed-block.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          if (
+            (() => {
+              const error = 1;
+              return error > 0;
+            })()
+          ) {
+            return json({}, { status: 500 });
+          }
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("still sets branches for an `if` that genuinely reads the binding beside a lookalike", () => {
+    const ep = scanFile(
+      "branch-genuine-and-lookalike.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          if (fallback.error || error instanceof NotFound) return json({}, { status: 404 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+});

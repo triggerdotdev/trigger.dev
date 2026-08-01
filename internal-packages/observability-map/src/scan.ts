@@ -159,9 +159,57 @@ function containsInstanceOf(node: ts.Node): boolean {
   );
 }
 
-/** Whether `node` reads the given catch binding anywhere, e.g. `e` in `e instanceof X` or `error.code`. */
+/** Whether `name` is declared by a var/let/const, function or class statement directly in this
+ * statement list. Not recursive: a nested block's own declarations are handled when the walk
+ * reaches that block. */
+function declaresInScope(statements: readonly ts.Statement[], name: string): boolean {
+  for (const statement of statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) return true;
+    if (ts.isClassDeclaration(statement) && statement.name?.text === name) return true;
+    if (
+      ts.isVariableStatement(statement) &&
+      statement.declarationList.declarations.some(
+        (d) => ts.isIdentifier(d.name) && d.name.text === name
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether `node` contains a genuine read of the given catch binding, e.g. `e` in `e instanceof X`
+ * or `error.code`. An identifier only counts when it is a real reference. Two shapes share the
+ * binding's text without reading it: the property side of a member expression (`fallback.error`)
+ * and an object literal key (`{ error: true }`), both excluded by checking which side of the
+ * parent node the identifier sits on. A name re-declared in a nested scope, as a function or catch
+ * parameter or as a var/let/const/function/class in a block, refers to that declaration instead,
+ * so the walk stops at the boundary that re-declares it rather than crediting the outer binding.
+ */
 function referencesBinding(node: ts.Node, bindingName: string): boolean {
-  return someNode(node, (n) => ts.isIdentifier(n) && n.text === bindingName);
+  if (ts.isIdentifier(node) && node.text === bindingName) {
+    const parent = node.parent;
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    return true;
+  }
+
+  if (
+    ts.isFunctionLike(node) &&
+    node.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === bindingName)
+  ) {
+    return false;
+  }
+
+  if (ts.isCatchClause(node)) {
+    const decl = node.variableDeclaration;
+    if (decl && ts.isIdentifier(decl.name) && decl.name.text === bindingName) return false;
+  }
+
+  if (ts.isBlock(node) && declaresInScope(node.statements, bindingName)) return false;
+
+  return ts.forEachChild(node, (child) => referencesBinding(child, bindingName)) === true;
 }
 
 /** The catch binding's name, or null for a bindingless `catch { ... }` or a destructured one. */
@@ -176,9 +224,15 @@ function catchBindingName(clause: ts.CatchClause): string | null {
  * `return e instanceof Response ? e : json({}, { status: 500 })` counts and
  * `return json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })` does not.
  * The second is message formatting: every error leaves by the same path.
+ *
+ * Goes through `referencesBinding`, the same predicate the `if`/`switch` check uses, rather than
+ * accepting any `instanceof` in the condition: an `instanceof` that never reads the caught binding
+ * is not a decision made on the error, and a bindingless catch has nothing here to reference.
  */
-function selectsAnErrorPath(node: ts.ConditionalExpression): boolean {
+function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string | null): boolean {
+  if (bindingName === null) return false;
   if (!containsInstanceOf(node.condition)) return false;
+  if (!referencesBinding(node.condition, bindingName)) return false;
   const parent = node.parent;
   return parent !== undefined && (ts.isReturnStatement(parent) || ts.isThrowStatement(parent));
 }
@@ -198,7 +252,7 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
     ) {
       branches = true;
     }
-    if (ts.isConditionalExpression(node) && selectsAnErrorPath(node)) branches = true;
+    if (ts.isConditionalExpression(node) && selectsAnErrorPath(node, bindingName)) branches = true;
     ts.forEachChild(node, visit);
   };
   visit(clause.block);
