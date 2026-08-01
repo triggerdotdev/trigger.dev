@@ -9,7 +9,15 @@ export type ScoredEntry = {
   routePath: string;
   family: Family;
   sensitive: boolean;
+  /** Post-suppression: a suppressed check reads `not-applicable` here, with the reason in
+   * `detail`. This is the display view; every denominator below reads `rawChecks` instead, so a
+   * suppression is never invisible to a published figure just because its check is not scored. */
   checks: CheckResult[];
+  /** Every check exactly as it ran, before a suppression comment can turn a result into
+   * `not-applicable`. The one true source for any figure that counts applicability: `measured`
+   * below, and `contextGap`/`auditGap` in `MapReport`, which read this rather than `checks` for
+   * exactly that reason. */
+  rawChecks: CheckResult[];
   /**
    * Whether at least one scored check (`SCORED_CHECK_IDS`, so never `audit-trail`) was applicable
    * before suppression. A fully-suppressed entry stays measured, at its capped score, so a
@@ -19,7 +27,8 @@ export type ScoredEntry = {
    * default cannot inflate a figure nobody checked.
    */
   measured: boolean;
-  /** Scored checks a comment in the source suppressed, in `SCORED_CHECK_IDS` order. */
+  /** Every check a comment in the source suppressed, scored or not, in `CHECKS` order. Includes
+   * `audit-trail`: a suppression is real regardless of whether its check feeds the score. */
   suppressed: string[];
   /** Passed over applicable, across scored checks only. 100 when nothing applies. */
   score: number;
@@ -67,10 +76,6 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
   };
 
   const visible = scored.filter((c) => !suppressed.has(c.id));
-  // Pre-suppression: an entry whose only applicable check gets suppressed still had something to
-  // measure, and must stay in the denominator at its capped score rather than vanish as if nothing
-  // ever applied. `unmeasured` is reserved for entries with no applicable check at all, suppression
-  // or no suppression.
   const scoredApplicable = scored.filter((c) => c.status !== "not-applicable");
 
   return {
@@ -79,13 +84,12 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
     family: familyOf(ep.fileName),
     sensitive: classifySensitivity(ep).sensitive,
     checks,
-    suppressed: scored.filter((c) => suppressed.has(c.id)).map((c) => c.id),
-    // Suppressing a check takes it out of the numerator and the denominator, and the result is
-    // capped by what the entry would have scored unsuppressed. Otherwise removing a failing check
-    // shrinks the denominator and the ratio climbs, which is how 33 became 50 became 100: the
-    // suppression comment laundered the finding into a point. What a suppression buys is removal
-    // from the worklist, with a reason on the record. It cannot buy a better number.
+    rawChecks: raw,
+    suppressed: raw.filter((c) => suppressed.has(c.id)).map((c) => c.id),
     measured: scoredApplicable.length > 0,
+    // Capped by the pre-suppression ratio: removing a failing check from both the numerator and
+    // the denominator otherwise raises the ratio, which is how 33 became 50 became 100 before this
+    // cap existed. See ScoredEntry.measured for why the denominator itself is pre-suppression too.
     score: Math.min(ratio(visible), ratio(scored)),
   };
 }
@@ -131,12 +135,16 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
   // reported here as its own architectural figure instead: how many sensitive mutations have an
   // audit record, out of how many. Folding it into the score would tank every sensitive route on a
   // gap that is the same everywhere, and bury the routes that have their own, fixable problems.
+  //
+  // Both gaps read `rawChecks`, pre-suppression, the same reason `measured` does: suppressing the
+  // one request-context or audit-trail finding on an entry must not shrink these denominators and
+  // raise the printed percentage, on the same screen as a claim that suppression cannot do that.
   const contextChecks = entries
-    .map((e) => e.checks.find((c) => c.id === "request-context"))
+    .map((e) => e.rawChecks.find((c) => c.id === "request-context"))
     .filter((c): c is CheckResult => c !== undefined && c.status !== "not-applicable");
 
   const auditApplicable = entries.filter((e) =>
-    e.checks.some((c) => c.id === "audit-trail" && c.status !== "not-applicable")
+    e.rawChecks.some((c) => c.id === "audit-trail" && c.status !== "not-applicable")
   );
 
   const suppressing = entries.filter((e) => e.suppressed.length > 0);
@@ -154,7 +162,7 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
     auditGap: {
       sensitiveMutations: auditApplicable.length,
       withAudit: auditApplicable.filter((e) =>
-        e.checks.some((c) => c.id === "audit-trail" && c.status === "pass")
+        e.rawChecks.some((c) => c.id === "audit-trail" && c.status === "pass")
       ).length,
     },
     contextGap: {

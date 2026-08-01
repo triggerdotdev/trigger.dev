@@ -186,6 +186,77 @@ ${BUSY_AND_FAILING}`
     expect(report.suppressions).toEqual({ entries: 1, checks: 1 });
   });
 
+  // I4. contextGap and auditGap read `checks` (post-suppression), so suppressing the one failing
+  // request-context on an entry removed it from the denominator too, moving CONTEXT from 1 of 2
+  // (50%) to 1 of 1 (100%) printed on the same screen as "a suppression does not raise a score".
+  // Both gaps now read `rawChecks`, pre-suppression, exactly like `measured`.
+  it("does not let a suppressed request-context finding shrink the context gap's denominator", () => {
+    const failing = `import { prisma } from "~/db.server";
+export async function loader() {
+  try { return await prisma.thing.findMany(); } catch (e) { return null; }
+}`;
+    const passing = `import { logger } from "~/services/logger.server";
+import { prisma } from "~/db.server";
+export async function loader({ params }) {
+  try { return await prisma.thing.findMany(); }
+  catch (error) { logger.error("failed", { environmentId: params.envId, error }); throw error; }
+}`;
+
+    const before = buildReport([scanFile("a.ts", failing)!, scanFile("b.ts", passing)!], []);
+    expect(before.contextGap).toEqual({ applicable: 2, naming: 1 });
+
+    const after = buildReport(
+      [
+        scanFile(
+          "a.ts",
+          `// obs-map-disable request-context -- silence
+${failing}`
+        )!,
+        scanFile("b.ts", passing)!,
+      ],
+      []
+    );
+    expect(after.contextGap).toEqual({ applicable: 2, naming: 1 });
+  });
+
+  // I4, second half. A suppressed audit-trail directive never showed up in `suppressed` because
+  // audit-trail is not in SCORED_CHECK_IDS, so the SUPPRESSED line undercounted while the audit
+  // denominator silently shrank underneath it. Every suppression is now counted, scored or not.
+  it("counts an audit-trail suppression and does not let it shrink the audit gap's denominator", () => {
+    const missingAudit = `import { prisma } from "~/db.server";
+export async function action() { return prisma.token.create({ data: {} }); }`;
+    const withAudit = `import { auditLog } from "~/services/audit.server";
+import { prisma } from "~/db.server";
+export async function action({ request }) {
+  const token = await prisma.token.create({ data: {} });
+  await auditLog("token.created", { tokenId: token.id });
+  return json(token);
+}`;
+
+    const before = buildReport(
+      [
+        scanFile("api.v1.auth.tokens.ts", missingAudit)!,
+        scanFile("api.v1.auth.jwt.ts", withAudit)!,
+      ],
+      []
+    );
+    expect(before.auditGap).toEqual({ sensitiveMutations: 2, withAudit: 1 });
+
+    const after = buildReport(
+      [
+        scanFile(
+          "api.v1.auth.tokens.ts",
+          `// obs-map-disable audit-trail -- accepted risk
+${missingAudit}`
+        )!,
+        scanFile("api.v1.auth.jwt.ts", withAudit)!,
+      ],
+      []
+    );
+    expect(after.auditGap).toEqual({ sensitiveMutations: 2, withAudit: 1 });
+    expect(after.suppressions).toEqual({ entries: 1, checks: 1 });
+  });
+
   it("reports the audit gap separately from the score", () => {
     // A sensitive mutation with no audit record, but nothing else wrong: the audit gap is reported
     // as its own figure and must not pull the score down with it.
