@@ -30,11 +30,13 @@ type FeedbackProps = {
   button?: ReactNode;
   defaultValue?: FeedbackType;
   onOpenChange?: (open: boolean) => void;
-  // Controlled mode — pass both to host the dialog outside a popover so the popover closing can't
-  // unmount the form mid-submit (that teardown was intermittently canceling the feedback POST).
-  open?: boolean;
-  setOpen?: (open: boolean) => void;
-};
+} & (
+  // Controlled mode is all-or-none: pass both open + setOpen to host the dialog outside a popover
+  // (so the popover closing can't unmount the form mid-submit and cancel the feedback POST), or
+  // neither for the self-managed, button-triggered dialog. Passing only one is a broken half-state.
+  | { open?: never; setOpen?: never }
+  | { open: boolean; setOpen: (open: boolean) => void }
+);
 
 export function Feedback({
   button,
