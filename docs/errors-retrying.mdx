@@ -28,6 +28,19 @@ This task will retry 10 times with exponential backoff.
 
 <OpenaiRetry />
 
+<Warning>
+  Retrying re-runs the entire `run()` function from the start — it does not resume from
+  where the error was thrown. In the example above, if `openaiTask` fails for any reason
+  *after* a successful call to `openai.chat.completions.create()`, the next attempt calls
+  OpenAI again, and you're billed for both calls.
+
+  This applies to any side effect inside `run()` that isn't idempotent, such as sending an
+  email, charging a card, or calling a paid API. To avoid repeating it on retry, move it
+  into its own [task](/triggering) and trigger it with an [idempotency key](/idempotency),
+  so a retry reuses the cached result instead of re-running it. See [Durable
+  execution](/how-it-works#durable-execution) for a worked example.
+</Warning>
+
 ## Combining tasks
 
 One way to gain reliability is to break your work into smaller tasks and [trigger](/triggering) them from each other. Each task can have its own retrying behavior:
@@ -60,6 +73,8 @@ export const otherTask = task({
 ```
 
 Another benefit of this approach is that you can view the logs and retry each task independently from the dashboard.
+
+If `otherTask` has a side effect you don't want repeated, give it an [idempotency key](/idempotency) — otherwise, each retry of `myTask` triggers a new run of `otherTask`.
 
 ## Retrying smaller parts of a task
 
