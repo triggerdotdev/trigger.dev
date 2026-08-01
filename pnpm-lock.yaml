@@ -444,8 +444,8 @@ importers:
         specifier: 2.17.5
         version: 2.17.5(typescript@6.0.3)
       '@s2-dev/streamstore':
-        specifier: ^0.22.10
-        version: 0.22.10(supports-color@10.0.0)
+        specifier: ^0.25.0
+        version: 0.25.0(supports-color@10.0.0)
       '@sentry/remix':
         specifier: 9.46.0
         version: 9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@6.0.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(encoding@0.1.13)(react@18.3.1)
@@ -792,6 +792,9 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../../internal-packages/testcontainers
+      '@playwright/test':
+        specifier: ^1.36.2
+        version: 1.37.0
       '@remix-run/dev':
         specifier: 2.17.5
         version: 2.17.5(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/serve@2.17.5(typescript@6.0.3))(@types/node@24.13.3)(bufferutil@4.0.9)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(typescript@6.0.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))(yaml@2.9.0)
@@ -1529,8 +1532,8 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@s2-dev/streamstore':
-        specifier: ^0.22.10
-        version: 0.22.10(supports-color@10.0.0)
+        specifier: ^0.25.0
+        version: 0.25.0(supports-color@10.0.0)
       '@trigger.dev/build':
         specifier: workspace:4.5.9
         version: link:../build
@@ -1800,8 +1803,8 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@s2-dev/streamstore':
-        specifier: 0.22.10
-        version: 0.22.10(supports-color@10.0.0)
+        specifier: 0.25.0
+        version: 0.25.0(supports-color@10.0.0)
       dequal:
         specifier: ^2.0.3
         version: 2.0.3
@@ -6794,8 +6797,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@s2-dev/streamstore@0.22.10':
-    resolution: {integrity: sha512-dtm+oFHVE8szINwOUoNQdx9xpGSJOrcAEvsxspPFvomjYKGnmhIRmU4OX8o6kxcPoiK76S1tPeU0smjZdmOngA==}
+  '@s2-dev/streamstore@0.25.0':
+    resolution: {integrity: sha512-oB8OJObT/s2Q68Tr01NLfDnQPFJp/Kn2pP3seWybgP7VrjQ+j1efXReOsyVCDsUBVMxkyPlzt75o/+GuL5Q3vg==}
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -21175,7 +21178,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@s2-dev/streamstore@0.22.10(supports-color@10.0.0)':
+  '@s2-dev/streamstore@0.25.0(supports-color@10.0.0)':
     dependencies:
       '@protobuf-ts/runtime': 2.11.1
       debug: 4.4.3(supports-color@10.0.0)

@@ -432,7 +432,7 @@ export class ControlPlaneResolver {
     // MANAGED deployment.
     const latestV2Deployment = await client.workerDeployment.findFirst({
       where: { environmentId, type: "MANAGED" },
-      orderBy: { id: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: { worker: { include: { tasks: true, queues: true } } },
     });
 
@@ -455,7 +455,6 @@ export class ControlPlaneResolver {
     const worker = await client.backgroundWorker.findFirst({
       where: { id: workerId },
       include: { deployment: true, tasks: true, queues: true },
-      orderBy: { id: "desc" },
     });
 
     if (!worker) {
@@ -472,7 +471,7 @@ export class ControlPlaneResolver {
     const worker = await client.backgroundWorker.findFirst({
       where: { runtimeEnvironmentId: environmentId },
       include: { tasks: true, queues: true },
-      orderBy: { id: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
     if (!worker) {

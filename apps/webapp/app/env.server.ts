@@ -2122,6 +2122,8 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
     REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCOUNT_URL: z.string().default("https://a.s2.dev/v1"),
+    REALTIME_STREAMS_S2_BASIN_URL: z.string().default("https://{basin}.b.s2.dev/v1"),
     REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()

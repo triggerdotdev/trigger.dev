@@ -1725,6 +1725,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               );
             }) as typeof fetch)
           : undefined;
+        let sawFirstChunk = false;
+
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -1750,7 +1752,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               reader.releaseLock();
               return null;
             }
-            return { reader, primed: first.value };
+            return { reader, primed: first.value, subscription };
           } catch (readErr) {
             reader.releaseLock();
             throw readErr;
@@ -1798,7 +1800,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             lastEventId: state.lastEventId,
             messageId: this.lastTurnSends.get(chatId)?.messageId,
           });
-          let sawFirstChunk = false;
 
           while (true) {
             let value: {
