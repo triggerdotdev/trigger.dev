@@ -658,11 +658,13 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
     });
 
-    // Every shape anyone has found that puts a `throw` somewhere it can never run. The previous
-    // round recognised the first two by folding the literal `false`, and lost to the other nine.
-    // None of them is named in the rule now: a throw counts when it is unconditional, and every
-    // one of these is guarded by something. `dead-*` in the mutation corpus runs the same list over
-    // the whole route tree.
+    // Eleven shapes that put a `throw` somewhere it can never run, all of them found by review
+    // rather than by this suite. An earlier round recognised the first two by folding the literal
+    // `false` and lost to the other nine. None of them is named in the rule now: a throw counts
+    // when it is unconditional, and every one of these is guarded by something. There is no claim
+    // that the list is complete, and a twelfth family arrived the round after it was written, see
+    // `dead throw written after something that already exited`. `dead-*` in the mutation corpus
+    // runs the same list over the whole route tree.
     const DEAD_SHAPES: Array<[string, string]> = [
       ["if (false)", "if (false) { throw e; }"],
       ["while (false)", "while (false) { throw e; }"],
@@ -711,6 +713,159 @@ describe("scanFile: catch clause evidence", () => {
       const ep = scanFile("x.ts", swallow("do { throw e; } while (false);"));
       expect(ep!.catches[0]!.rethrows).toBe(true);
     });
+  });
+
+  // S1. The other end of the same problem. `reachableStatements` used to cut the statement list
+  // only on a BARE `return`/`throw`, while the walk descended into blocks and `do` bodies, so a
+  // `throw e;` written after a nested construct that had already returned was still read as the
+  // clause rethrowing. Every one of these takes a swallow from `fail` to `not-applicable`, worth 50
+  // points a route, and they are semantics-preserving because the throw cannot run.
+  //
+  // Two rules answer them together. `definitelyExits` sees through the block, the `do` and the
+  // `if`/`else`, the `switch` and the `try`/`finally`; the `if (true)` form needs constant folding
+  // that this file deliberately does not do, and is answered instead by `rethrows` requiring the
+  // clause to contain no reachable `return` at all. `dead-throw-after-*` in the mutation corpus
+  // runs all six over the whole route tree.
+  describe("dead throw written after something that already exited", () => {
+    const exiting = (wrapped: string) => `
+      export async function loader() {
+        try {
+          return await prisma.thing.findMany();
+        } catch (e) {
+          ${wrapped}
+          throw e;
+        }
+      }
+    `;
+
+    const EXITED: Array<[string, string]> = [
+      ["a bare block", "{ logger.error(e); return null; }"],
+      ["a do body", "do { return null; } while (false);"],
+      ["an if (true)", "if (true) { return null; }"],
+      ["an if/else where both arms return", "if (pick()) { return null; } else { return 0; }"],
+      ["a switch with a returning default", "switch (1) { default: return null; }"],
+      ["a try/finally that returns", "try { return null; } finally { }"],
+    ];
+
+    for (const [label, wrapped] of EXITED) {
+      it(`does not set rethrows for a throw after ${label}`, () => {
+        const ep = scanFile("x.ts", exiting(wrapped));
+        expect(ep!.catches[0]!.rethrows).toBe(false);
+      });
+    }
+
+    // The same six wrappers on the branches side, which is what pins `definitelyExits` itself: the
+    // no-return rule above says nothing about branch credit, so only the cut sees these. An error
+    // test written after a construct that already returned is dead code and must not read as the
+    // clause deciding anything.
+    //
+    // `an if (true)` is absent from this list on purpose. Nothing here evaluates a condition, so
+    // the cut cannot see that the wrapper always exits, and the error test after it is still
+    // credited. That residual is `dead-branch-after-if-true` in the mutation corpus, which runs as
+    // an expected failure with the two rejected alternatives written out beside it.
+    const BRANCH_EXITED = EXITED.filter(([label]) => label !== "an if (true)");
+
+    for (const [label, wrapped] of BRANCH_EXITED) {
+      it(`does not credit an error test written after ${label}`, () => {
+        const ep = scanFile(
+          "x.ts",
+          `export async function loader() {
+             try { return await prisma.thing.findMany(); }
+             catch (e) {
+               ${wrapped}
+               if (e instanceof Error) { return json({ a: 1 }); }
+             }
+           }`
+        );
+        expect(ep!.catches[0]!.branches).toBe(false);
+      });
+    }
+
+    it("still credits an error test with nothing exiting before it", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             logger.error(e);
+             if (e instanceof Error) { return json({ a: 1 }); }
+           }
+         }`
+      );
+      expect(ep!.catches[0]!.branches).toBe(true);
+    });
+
+    // Positive control: nothing before the throw exits, so the throw is real and the clause has no
+    // other way out.
+    it("still sets rethrows when nothing before the throw returns", () => {
+      const ep = scanFile("x.ts", exiting("logger.error(e);"));
+      expect(ep!.catches[0]!.rethrows).toBe(true);
+    });
+
+    // Second positive control, for the no-return half specifically: a `return` the walk has already
+    // cut as dead must not count against the rethrow.
+    it("still sets rethrows when the only return is dead code after the throw", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) { throw e; return null; }
+         }`
+      );
+      expect(ep!.catches[0]!.rethrows).toBe(true);
+    });
+  });
+
+  // S2. A clause whose try block cannot throw is unreachable, so it is not error handling and
+  // nothing should be read off it. Crediting one was the largest hole ever found here: prepending
+  // this to a body took the real tree from 15 to 42 and raised 224 routes, because the 261 routes
+  // that catch nothing sat at `not-applicable` and a dead clause moved every one of them to `pass`.
+  // `dead-classifying-try` in the mutation corpus is the tree-scale version.
+  describe("a catch over a try block that cannot throw", () => {
+    const guarding = (guarded: string) => `
+      export async function loader({ request }) {
+        try { ${guarded} } catch (e) {
+          if (e instanceof Error) { return new Response(null, { status: 400 }); }
+          throw e;
+        }
+        return await prisma.thing.findMany();
+      }
+    `;
+
+    const INERT: Array<[string, string]> = [
+      ["an empty block", ""],
+      ["a literal expression statement", "0;"],
+      ["a literal declaration", "const x = 1;"],
+      ["arithmetic on literals", "const x = 1 + 2 * 3;"],
+      ["a bare identifier read", "const x = someLocal;"],
+    ];
+
+    for (const [label, guarded] of INERT) {
+      it(`is not read as error handling when the try holds only ${label}`, () => {
+        const ep = scanFile("x.ts", guarding(guarded));
+        expect(ep!.catches[0]!.guardCanRaise).toBe(false);
+      });
+    }
+
+    // Positive controls, one per reason `canRaise` recognises, so the predicate is not passing the
+    // cases above by being false for everything.
+    const LIVE: Array<[string, string]> = [
+      ["a call", "doThing();"],
+      ["a construction", "new Thing();"],
+      ["an await", "await later;"],
+      ["a member access", "const x = thing.value;"],
+      ["an element access", "const x = thing[0];"],
+      ["a throw", "throw new Error('x');"],
+      ["an iteration", "for (const item of items) { }"],
+      ["an instanceof", "const x = thing instanceof Error;"],
+    ];
+
+    for (const [label, guarded] of LIVE) {
+      it(`is read as error handling when the try holds ${label}`, () => {
+        const ep = scanFile("x.ts", guarding(guarded));
+        expect(ep!.catches[0]!.guardCanRaise).toBe(true);
+      });
+    }
   });
 
   it("leaves both flags false when the catch only returns", () => {
@@ -1097,6 +1252,7 @@ describe("scanFile: per-catch evidence", () => {
       branches: false,
       guardsParse: true,
       awaitsOnlyParse: true,
+      guardCanRaise: true,
       tryStatementCount: 1,
     });
     expect(ep!.catches[1]).toMatchObject({
@@ -1199,6 +1355,7 @@ describe("scanFile: per-catch evidence", () => {
       branches: false,
       guardsParse: false,
       awaitsOnlyParse: false,
+      guardCanRaise: true,
       tryStatementCount: 4,
     });
   });
@@ -1700,6 +1857,60 @@ describe("scanFile: a binding shadowed by an enclosing scope, not just a nested 
     const ep = scanFile(
       "x.ts",
       swallow("for (const item of items) { if (error.code === item) { return item; } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+});
+
+// S3. The ternary path checked only that the condition tested the error, never that the two arms
+// went anywhere different, while the `if`/`switch` path had checked exactly that since the round
+// before. Rewriting `return X;` as `return e instanceof Error ? (X) : (X)` was therefore worth 50
+// points a route for a change that decides nothing, and it is semantics-preserving.
+// `same-arms-ternary` in the mutation corpus is the tree-scale version.
+describe("a ternary on the error has to send its arms somewhere different", () => {
+  const returning = (value: string) => `
+    export async function loader() {
+      try {
+        return await prisma.thing.findMany();
+      } catch (error) {
+        return ${value};
+      }
+    }
+  `;
+
+  it("does not credit a ternary whose arms are identical", () => {
+    const ep = scanFile("x.ts", returning("error instanceof Error ? (json({})) : (json({}))"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit a ternary whose arms differ only in whitespace", () => {
+    const ep = scanFile("x.ts", returning("error instanceof Error ? (json( {} )) : (json({}))"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit a ternary whose arms differ only in parentheses", () => {
+    const ep = scanFile("x.ts", returning("error instanceof Error ? ((json({}))) : (json({}))"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("still credits a ternary whose arms go somewhere different", () => {
+    const ep = scanFile(
+      "x.ts",
+      returning("error instanceof Response ? error : json({}, { status: 500 })")
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+
+  // The same comparison on the `if` path, which had the exit test but not the arm test.
+  it("does not credit an if/else whose two arms are identical", () => {
+    const ep = scanFile(
+      "x.ts",
+      `export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           if (error instanceof Error) { return json({}); } else { return json({}); }
+         }
+       }`
     );
     expect(ep!.catches[0]!.branches).toBe(false);
   });

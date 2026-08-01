@@ -13,9 +13,12 @@ export type CheckResult = {
  */
 export type CatchEvidence = {
   /**
-   * The clause throws on its own straight-line path: a `throw` among its statements, or among a
-   * bare nested block's, reached before anything that definitely exits. A throw guarded by an `if`,
-   * a loop, a `switch`, a nested `try` or a callback does not count, however the guard is spelled.
+   * Throwing is the clause's only way out. Two conditions: a `throw` is reached on its
+   * straight-line path (its own statements and a bare nested block's or a `do` body's, cut at the
+   * first statement that definitely exits, see `definitelyExits`), and the clause contains no
+   * `return` anywhere. A throw guarded by an `if`, a loop, a `switch`, a nested `try` or a callback
+   * does not count, however the guard is spelled, and neither does one written after something that
+   * has already returned.
    */
   rethrows: boolean;
   /**
@@ -36,6 +39,13 @@ export type CatchEvidence = {
    * its catch.
    */
   guardsParse: boolean;
+  /**
+   * The guarded region does something that could raise at all: a call, a construction, an `await`,
+   * a member access, a `throw`, an iteration, an `instanceof`. A clause whose try block cannot
+   * raise is unreachable, so it is not error handling and `error-classification` reads no evidence
+   * off it. See `canRaise` in `scan.ts` for what is not on that list.
+   */
+  guardCanRaise: boolean;
   /**
    * Everything the guarded region waits for is one of those parses. What separates
    * `try { const body = await request.json(); } catch { 400 }` from

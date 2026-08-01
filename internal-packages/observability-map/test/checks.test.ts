@@ -546,6 +546,63 @@ describe("error-classification", () => {
     expect(r.detail).toContain("catches nothing");
   });
 
+  // S2 at the check level. The evidence tests in `scan.test.ts` pin `guardCanRaise` itself; these
+  // pin the check reading it, which is where the 50 points were. Prepending this to a route that
+  // catches nothing took it from not-applicable to pass, and 224 routes were in exactly that state.
+  it("is not applicable to a route whose only catch guards a try that cannot throw", () => {
+    const r = run(
+      "error-classification",
+      "prepended.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         try { 0; } catch (e) {
+           if (e instanceof Error) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         const rows = await prisma.thing.findMany();
+         return json({ rows });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("guards nothing that can throw");
+  });
+
+  it("still fails a swallow that a dead classifying catch was prepended to", () => {
+    const r = run(
+      "error-classification",
+      "prepended-swallow.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         try { 0; } catch (e) {
+           if (e instanceof Error) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         try {
+           return json(await prisma.thing.findMany());
+         } catch (error) {
+           return new Response(null, { status: 500 });
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("still passes the same classifying catch once its try does real work", () => {
+    const r = run(
+      "error-classification",
+      "live.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         try { await prisma.thing.findMany(); } catch (e) {
+           if (e instanceof Error) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
   // C2. A single-element array cannot iterate, so `[0].map(async () => { whole body })` is not a
   // per-item boundary and the route's own catch is found where it always was. Before this, the
   // wrapper deleted the route's catches and took a swallow from fail to not-applicable.

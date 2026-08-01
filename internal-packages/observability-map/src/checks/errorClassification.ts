@@ -67,9 +67,12 @@ const NARROW_TRY_STATEMENTS = 2;
  * await, was measured too and is worse still: it refuses the four `matchPattern.slice(4); new
  * RegExp(...)` guards, because preparing a parse's input is ordinary synchronous string work.
  *
- * The residual, since awaiting is the signal: a try block that does its non-parse work
- * synchronously still reads as a guard. Nothing in the tree does, and it is written down in the
- * round A fix 2 report rather than defended.
+ * Two residuals, since awaiting is the signal. A try block that does its non-parse work
+ * synchronously still reads as a guard. And `guardedWork` looks for a `ts.AwaitExpression`, which
+ * `for await (const chunk of work(await request.json()))` and `await using` are not, so a block
+ * whose only non-parse work is one of those reads as a guard too. Neither occurs in the tree and
+ * neither is reachable by rewriting a real route, since both need work that is not there to begin
+ * with. Both are in the round A fix 3 report.
  */
 function isParseGuard(clause: CatchEvidence): boolean {
   return (
@@ -148,6 +151,14 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * points to anyone who wraps a body in something the boundary rule refuses, which
  * `Promise.all([0].map(async () => { ... }))` did. It fails instead. The precision cost is a route
  * that genuinely only handles errors per item, which now fails rather than sitting out.
+ *
+ * A clause whose try block cannot raise is read as no clause at all, `guardCanRaise` on the
+ * evidence. It is not error handling, and crediting one was the largest hole ever found here:
+ * prepending `try { 0; } catch (e) { if (e instanceof Error) { return json(x, { status: 400 }); }
+ * throw e; }` to every body took the tree from 15 to 42 and raised 224 routes, because the 261
+ * routes that catch nothing were sitting at not-applicable and a dead clause moved each of them to
+ * pass. Dropping it here rather than in the scan keeps the evidence honest about what is written
+ * and puts the judgement where the other judgements are.
  */
 export const errorClassification = {
   id: ID,
@@ -155,30 +166,33 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    const swallowed = ep.catches.filter(swallows);
+    const reachable = ep.catches.filter((c) => c.guardCanRaise);
+    const swallowed = reachable.filter(swallows);
     if (swallowed.length > 0) {
       const which =
-        ep.catches.length > 1 ? ` (${swallowed.length} of ${ep.catches.length} catches)` : "";
+        reachable.length > 1 ? ` (${swallowed.length} of ${reachable.length} catches)` : "";
       return {
         id: ID,
         status: "fail",
         detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
       };
     }
-    if (ep.catches.length === 0 && ep.callbackCatches > 0) {
+    if (reachable.length === 0 && ep.callbackCatches > 0) {
       return {
         id: ID,
         status: "fail",
         detail: "its only error handling sits in a callback the route does not own",
       };
     }
-    if (!ep.catches.some(decides)) {
+    if (!reachable.some(decides)) {
       return {
         id: ID,
         status: "not-applicable",
         detail:
-          ep.catches.length === 0
-            ? "catches nothing, so it classifies nothing"
+          reachable.length === 0
+            ? ep.catches.length === 0
+              ? "catches nothing, so it classifies nothing"
+              : "guards nothing that can throw, so it classifies nothing"
             : "every catch rethrows and nothing else, so it classifies nothing",
       };
     }

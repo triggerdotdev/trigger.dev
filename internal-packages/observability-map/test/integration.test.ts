@@ -64,5 +64,6 @@ describe("scanning the real webapp routes", () => {
     expect(after.measured).toBe(before.measured);
     expect(after.unmeasured).toBe(before.unmeasured);
     expect(after.global).not.toBeGreaterThan(before.global!);
-  });
+    // Two full tree scans plus a re-scan of every source, which does not fit the suite default.
+  }, 60_000);
 });

@@ -148,8 +148,35 @@ function isBodyRead(node: ts.Node): boolean {
 }
 
 /**
- * What the guarded region does, in the two terms `error-classification` needs to tell a parse guard
- * from a handler wrapped around a parse.
+ * Syntax that can raise. Everything a try block might do that produces something for a catch clause
+ * to catch: a call, a construction, a tagged template, an `await` or `yield` (the awaited promise
+ * rejects), a member access (the base may be null or undefined), a `throw`, an iteration (the
+ * iterator protocol raises on a non-iterable), and `instanceof`/`in` (a TypeError on a non-object
+ * right side).
+ *
+ * See `guardedWork` for what is NOT on this list and why that is a disclosed residual rather than
+ * an oversight.
+ */
+function canRaise(node: ts.Node): boolean {
+  return (
+    ts.isCallExpression(node) ||
+    ts.isNewExpression(node) ||
+    ts.isTaggedTemplateExpression(node) ||
+    ts.isAwaitExpression(node) ||
+    ts.isYieldExpression(node) ||
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node) ||
+    ts.isThrowStatement(node) ||
+    ts.isForOfStatement(node) ||
+    ts.isForInStatement(node) ||
+    (ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword ||
+        node.operatorToken.kind === ts.SyntaxKind.InKeyword))
+  );
+}
+
+/**
+ * What the guarded region does, in the three terms `error-classification` needs.
  *
  * `guardsParse` is whether anything in it parses at all. A `new URL(x)` counts and has to be read
  * as a `ts.isNewExpression` here, because the call-callee scan that builds `calleeNames` never sees
@@ -162,15 +189,36 @@ function isBodyRead(node: ts.Node): boolean {
  * catch reaches a service: `try { const body = await request.json(); return await
  * handleEverything(body); }`.
  *
- * Nested function bodies are skipped: a callback written inside the try is not work the try is
- * guarding on this pass through.
+ * `canRaise` is whether the block does anything at all that could reach the clause. A clause whose
+ * try block cannot raise is not error handling, and reading one as classification paid 50 points a
+ * route to anyone willing to prepend `try { 0; } catch (e) { if (e instanceof Error) { return
+ * json(x, { status: 400 }); } throw e; }` to a body: on the real tree that took the global from 15
+ * to 42 and raised 224 routes, which is more than every other shape found on this branch put
+ * together. `dead-classifying-try` in the mutation corpus is the tree-scale version.
+ *
+ * The alternative considered was proving unreachability the other way round, by ruling out every
+ * expression that could throw. It is the same predicate read backwards and it fails the same way,
+ * so the cheaper direction won: ask what the block DOES, and require it to do something. The
+ * residual is what `canRaise` does not list. A temporal-dead-zone read (`try { const x = later; }`),
+ * a coercion that raises (`try { const x = 1 + someSymbol; }`) and a `delete` on a frozen object are
+ * all treated as unable to raise. None is expressible as a preserving rewrite of a real route, and
+ * all of them would need types the scanner does not have.
+ *
+ * Nested function bodies are skipped throughout: a callback written inside the try is not work the
+ * try is guarding on this pass through. A `throw` inside one is not either, which is deliberate.
  */
-function guardedWork(tryBlock: ts.Block): { guardsParse: boolean; awaitsOnlyParse: boolean } {
+function guardedWork(tryBlock: ts.Block): {
+  guardsParse: boolean;
+  awaitsOnlyParse: boolean;
+  guardCanRaise: boolean;
+} {
   let guardsParse = false;
   let awaitsOnlyParse = true;
+  let guardCanRaise = false;
   const visit = (node: ts.Node) => {
     if (ts.isFunctionLike(node)) return;
     if (isParseCall(node)) guardsParse = true;
+    if (canRaise(node)) guardCanRaise = true;
     if (ts.isAwaitExpression(node)) {
       const awaited = unwrap(node.expression);
       if (!isParseCall(awaited) && !isBodyRead(awaited)) awaitsOnlyParse = false;
@@ -178,7 +226,7 @@ function guardedWork(tryBlock: ts.Block): { guardsParse: boolean; awaitsOnlyPars
     ts.forEachChild(node, visit);
   };
   visit(tryBlock);
-  return { guardsParse, awaitsOnlyParse };
+  return { guardsParse, awaitsOnlyParse, guardCanRaise };
 }
 
 /** Whether some node in the tree rooted at `node` matches `predicate`. */
@@ -267,6 +315,11 @@ function catchBindingName(clause: ts.CatchClause): string | null {
   return decl && ts.isIdentifier(decl.name) ? decl.name.text : null;
 }
 
+/** A node's source text with all whitespace removed, for comparing two branch arms. */
+function normalizedText(node: ts.Node): string {
+  return node.getText().replace(/\s+/g, "");
+}
+
 /**
  * Whether a conditional expression tests the error to pick what the clause does, rather than to
  * word what it says. The caller only offers it the whole value of a `return`/`throw`, so
@@ -277,34 +330,86 @@ function catchBindingName(clause: ts.CatchClause): string | null {
  * Goes through `referencesBinding`, the same predicate the `if`/`switch` check uses, rather than
  * accepting any `instanceof` in the condition: an `instanceof` that never reads the caught binding
  * is not a decision made on the error, and a bindingless catch has nothing here to reference.
+ *
+ * The two arms also have to differ, which is the same requirement `selectsADistinctPath` makes of
+ * an `if`. `return e instanceof Error ? (X) : (X)` is a test whose outcome is the same either way,
+ * and it was worth 50 points a route; `same-arms-ternary` in the mutation corpus is the tree-scale
+ * version, and `test/scan.test.ts` has the unit case. Parentheses and whitespace are stripped
+ * before the comparison, so the shape has to differ in something a reader would call a difference.
+ * The residual both branch tests share is stated once, on `selectsADistinctPath`.
  */
 function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string | null): boolean {
   if (bindingName === null) return false;
   if (!containsInstanceOf(node.condition)) return false;
-  return referencesBinding(node.condition, bindingName);
+  if (!referencesBinding(node.condition, bindingName)) return false;
+  return normalizedText(unwrap(node.whenTrue)) !== normalizedText(unwrap(node.whenFalse));
 }
 
-/** A statement that unconditionally leaves the statement list it sits in, so anything after it in
- * the same list never runs. */
-function isDefiniteExit(statement: ts.Statement): boolean {
-  return (
+/**
+ * A statement that leaves the statement list it sits in on every path through itself, so anything
+ * after it in the same list never runs.
+ *
+ * Recognises a nested construct, not only a bare `return`/`throw`/`break`/`continue`. Recognising
+ * only the bare form is what let a dead `throw error;` count as a rethrow when the statement before
+ * it was a block, a `do` body or an `if`/`else` that returned; `dead-throw-after-*` in the mutation
+ * corpus is that family, and `test/scan.test.ts` has one case per construct.
+ *
+ * A sound under-approximation. `if` without an `else`, a labelled statement (a `break` to the label
+ * escapes it) and every other loop form answer false, because none of them is guaranteed to run its
+ * body. Saying false when the truth is true only leaves a later statement in the list, which is the
+ * direction that withholds evidence rather than inventing it.
+ */
+function definitelyExits(statement: ts.Statement): boolean {
+  if (
     ts.isReturnStatement(statement) ||
     ts.isThrowStatement(statement) ||
     ts.isContinueStatement(statement) ||
     ts.isBreakStatement(statement)
-  );
+  ) {
+    return true;
+  }
+  if (ts.isBlock(statement)) return statement.statements.some(definitelyExits);
+  // A `do` body runs before its condition is ever read.
+  if (ts.isDoStatement(statement)) return definitelyExits(statement.statement);
+  if (ts.isIfStatement(statement)) {
+    return (
+      statement.elseStatement !== undefined &&
+      definitelyExits(statement.thenStatement) &&
+      definitelyExits(statement.elseStatement)
+    );
+  }
+  if (ts.isTryStatement(statement)) {
+    if (statement.finallyBlock && definitelyExits(statement.finallyBlock)) return true;
+    if (!definitelyExits(statement.tryBlock)) return false;
+    return statement.catchClause === undefined || definitelyExits(statement.catchClause.block);
+  }
+  if (ts.isSwitchStatement(statement)) {
+    const clauses = statement.caseBlock.clauses;
+    const last = clauses[clauses.length - 1];
+    if (!clauses.some(ts.isDefaultClause) || last === undefined) return false;
+    // An empty clause falls through to the next one, so it does not have to exit itself; the last
+    // clause has nothing to fall through to and does.
+    return (
+      clauses.every((c) => c.statements.length === 0 || c.statements.some(definitelyExits)) &&
+      last.statements.some(definitelyExits)
+    );
+  }
+  return false;
 }
 
-/**
- * `statements` up to and including the first one that definitely exits. Not full flow analysis:
- * an `if`/`else` where both branches return is not itself recognised as an exit, only a bare
- * `return`, `throw`, `continue` or `break` is. That is enough to make a `throw e;` appended after
- * a `return` dead code rather than evidence the clause rethrows, which is the one shape a mutation
- * testing this check actually produced.
- */
+/** `statements` up to and including the first one that definitely exits. */
 function reachableStatements(statements: readonly ts.Statement[]): readonly ts.Statement[] {
-  const index = statements.findIndex(isDefiniteExit);
+  const index = statements.findIndex(definitelyExits);
   return index === -1 ? statements : statements.slice(0, index + 1);
+}
+
+/** Whether the clause returns anywhere at all, nested functions excluded. A clause with a `return`
+ * on any path has an exit that is not the throw, so the error does not leave it the way it arrived.
+ */
+function containsReturn(node: ts.Node): boolean {
+  if (ts.isFunctionLike(node)) return false;
+  if (ts.isReturnStatement(node)) return true;
+  return ts.forEachChild(node, containsReturn) === true;
 }
 
 /** Whether the tree rooted at `node` contains a `return` or a `throw` of its own, not counting one
@@ -323,16 +428,25 @@ function containsExit(node: ts.Node): boolean {
  * changed the wording and not the outcome. The empty-body form was the cheapest no-op in the tool,
  * worth 50 points a route; `empty-instanceof-if` in the mutation corpus is the tree-scale version.
  *
- * Two arms that return the SAME value pass this and should not. That residual is written down in
- * the round A fix 2 report rather than defended: telling two returns apart needs the values
- * compared, which is a different kind of analysis from anything else here.
+ * An `if`/`else` whose two arms are textually identical does not count, the same comparison
+ * `selectsAnErrorPath` makes of a ternary's arms.
+ *
+ * The residual both branch tests share, stated here once for both: two arms that produce the same
+ * outcome by different spellings still read as a real decision.
+ * `if (e instanceof Error) { return json(x); } return Response.json(x);` counts and decides
+ * nothing, and so does the `if` with no `else` whose arm returns what the statement after it
+ * returns. Telling those apart needs the produced values compared for meaning rather than for text,
+ * which is a different kind of analysis from anything else in this file. The textual comparison is
+ * the cheapest thing that catches the copy-paste form, which is the one a mutation produces.
  */
 function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): boolean {
   if (ts.isIfStatement(statement)) {
-    return (
-      containsExit(statement.thenStatement) ||
-      (statement.elseStatement !== undefined && containsExit(statement.elseStatement))
-    );
+    const otherwise = statement.elseStatement;
+    if (otherwise !== undefined) {
+      if (normalizedText(statement.thenStatement) === normalizedText(otherwise)) return false;
+      return containsExit(statement.thenStatement) || containsExit(otherwise);
+    }
+    return containsExit(statement.thenStatement);
   }
   return statement.caseBlock.clauses.some((clause) => clause.statements.some(containsExit));
 }
@@ -345,20 +459,29 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
  * `throw` or a test that sits inside an `if`, a loop, a `switch`, a nested `try` or a callback is
  * not on that path, so it does not count.
  *
- * That is the whole dead-code defence, and it replaces the list of statically-false shapes the
- * previous round kept extending. The list was losing: `if (false)` and `while (false)` were
+ * That is the whole dead-code defence, and it replaces the list of statically-false shapes an
+ * earlier round kept extending. The list was losing: `if (false)` and `while (false)` were
  * recognised, and `for (;false;)`, `if (true) {} else`, `switch (1) { case 2: }`, `try {} catch`,
  * `for (const x of [])`, `for (const k in {})`, `if ("")`, `if (!true)` and `if (1 === 2)` were not,
  * each worth 50 points a route. Asking for the throw to be unconditional refuses all eleven without
- * naming any of them, and refuses the twelfth nobody has written yet. `dead-*` in the mutation
- * corpus is the tree-scale proof, one entry per shape.
+ * naming any of them. `dead-*` in the mutation corpus is the tree-scale proof, one entry per shape.
  *
- * The cost is real: `catch (e) { if (transient) throw e; return null; }` no longer reads as a
- * rethrow, so it reads as a swallow and fails rather than sitting out. That is the direction to be
- * wrong in, since the reverse hands out points.
+ * `rethrows` asks for one thing more: that the clause contains no `return` at all. The claim it
+ * feeds is that the clause passes the error through unchanged, which is only true when throwing is
+ * the ONLY way out. Without it a `throw error;` written after a statement that already exited read
+ * as a rethrow, in seven spellings: after a bare block, a `do` body, an `if (true)`, an `if`/`else`
+ * where both arms return, a `switch` with a returning default, and a `try`/`finally` that returns.
+ * `definitelyExits` handles most of those on its own, and the no-return rule handles the rest
+ * without any constant folding. `dead-throw-after-*` in the mutation corpus covers them.
+ *
+ * The cost is real, in both rules. `catch (e) { if (transient) throw e; return null; }` no longer
+ * reads as a rethrow, so it reads as a swallow and fails rather than sitting out, and neither does
+ * `catch (e) { if (e instanceof Response) return e; throw e; }`, which passes on its branch instead.
+ * That is the direction to be wrong in, since the reverse hands out points.
  */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
+  let returns = false;
   let branches = false;
   const bindingName = catchBindingName(clause);
 
@@ -378,12 +501,16 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
         continue;
       }
       // A `do` body runs before its condition is ever read, so it is on the straight-line path
-      // whatever the condition says. The only loop form that is.
+      // whatever the condition says. The only loop form that is; `definitelyExits` agrees.
       if (ts.isDoStatement(statement)) {
         const body = statement.statement;
         walk(ts.isBlock(body) ? body.statements : [body]);
         continue;
       }
+      // Any other reachable statement that could return means throwing is not the only way out.
+      // Read here rather than over the whole clause so a `return` the walk has already cut as dead
+      // does not count, which is what a `do { throw e; } while (false); return null;` produces.
+      if (containsReturn(statement)) returns = true;
       if (bindingName === null || shadowed) continue;
 
       if (
@@ -407,7 +534,7 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
   };
   walk(clause.block.statements);
 
-  return { rethrows, branches };
+  return { rethrows: rethrows && !returns, branches };
 }
 
 /**
@@ -451,11 +578,20 @@ function isAtMostSingletonArray(expr: ts.Expression): boolean {
  * whole body })` collected it.
  *
  * Two things changed. A receiver that is an array literal of one element or none is refused here,
- * because it cannot iterate. And the direction that pays no longer pays: `walkBody` counts the
- * catches it refuses, and `error-classification` fails a route whose only catches were refused
- * rather than excusing it. So a wrong answer here costs precision, not points. That is what makes
- * the name list survivable, and it is why `Result.map(...)`, which no name list can tell from
- * `users.map(...)`, is a corpus entry that passes rather than a hole.
+ * because it cannot iterate. And the direction that used to pay no longer pays: `walkBody` counts
+ * the catches it refuses, and `error-classification` fails a route whose only catches were refused
+ * rather than excusing it. That is what makes the name list survivable, and it is why
+ * `Result.map(...)`, which no name list can tell from `users.map(...)`, is a corpus entry that
+ * passes rather than a hole.
+ *
+ * The other direction still costs points and the earlier version of this comment said otherwise.
+ * A per-item callback under a callee the name list does not know, `pMap(items, cb)` or
+ * `Array.prototype.map.call(items, cb)`, is attributed to the route, so a per-element catch that
+ * decides can carry the route to `pass`. No mutation of a real route produces it: the reviewer
+ * tried `Array.prototype.map.call` over the tree and it moved nothing, because a route has to
+ * already be iterating for the shape to exist. It is a wrong verdict waiting for a route to be
+ * written that way, not a laundering path, and it is why this list is worth extending when a new
+ * iteration helper shows up in the tree.
  */
 function isIterationCallback(node: ts.Node): boolean {
   const parent = node.parent;
