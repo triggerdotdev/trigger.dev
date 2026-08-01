@@ -74,11 +74,6 @@ jobs:
             internal:
               - 'internal-packages/**'
               - 'packages/**'
-              # @internal/observability-map has one deliberate test against the live route tree
-              # (internal-packages/observability-map/test/integration.test.ts). Without this the
-              # internal suite never ran for a webapp-only PR, so a renamed route merged green and
-              # broke main, or the next unrelated internal-packages PR.
-              - 'apps/webapp/app/routes/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-internal.yml'
               - '.configs/**'

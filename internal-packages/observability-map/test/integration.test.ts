@@ -20,9 +20,13 @@ import { SCORED_CHECK_IDS } from "../src/checks/index.js";
  * The coupling is acceptable because nothing here names a route or a count: the scan must not
  * crash, the entry point count must sit inside a wide band, and parse failures must be zero. Those
  * survive routes being added, renamed and deleted, and they are the only things a fixture tree
- * cannot tell us, since a fixture only contains shapes somebody thought to write down. `pr_checks.
- * yml`'s `internal` filter watches `apps/webapp/app/routes/**` so a webapp pull request runs this
- * rather than leaving the break for whoever pushes next.
+ * cannot tell us, since a fixture only contains shapes somebody thought to write down.
+ *
+ * What runs this for a webapp pull request is the `unit-tests` job in
+ * `.github/workflows/observability-map.yml`, which already triggers on `apps/webapp/app/routes/**`
+ * and runs this package alone. Widening `pr_checks.yml`'s `internal` filter to those paths was
+ * tried and reverted: it ran all eighteen internal packages, twelve shards with postgres,
+ * clickhouse, redis and electric, to protect this one test.
  */
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 
@@ -68,6 +72,40 @@ describe("the package it advertises", () => {
     expect(manifest.main).toBe("./dist/src/index.js");
     expect(manifest.types).toBe("./dist/src/index.d.ts");
     expect(manifest.type).toBe("module");
+  });
+});
+
+/**
+ * The one thing the docstring checker cannot reach. It walks `src/` only, so workflow prose is
+ * unpoliced, and the C1 defect was exactly that: two steps disagreeing about what a missing
+ * `/tmp/existing-comment-id` meant, under a comment claiming they agreed. The render step read it
+ * as "a comment exists" and emitted the resolved state, the upsert step read it as "no id" and
+ * POSTed, so a transient lookup failure either added a second marker comment beside the stale one
+ * or announced that findings were gone on a pull request that never had any.
+ *
+ * This is a text check over the workflow, not a parse of its semantics, so it catches one shape of
+ * that class and no other. Named as such rather than sold as coverage of the file.
+ */
+describe("the report workflow's two readers of the comment lookup", () => {
+  const WORKFLOW = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
+
+  /** Step bodies, split on the `- name:` lines, which is all the structure this needs. */
+  function steps(): string[] {
+    if (!existsSync(WORKFLOW)) throw new Error(`the report workflow is missing: ${WORKFLOW}`);
+    const text = readFileSync(WORKFLOW, "utf8");
+    return text.split(/^ {6}- name: /m).slice(1);
+  }
+
+  it("both honour the same sentinel, so a failed lookup cannot mean two things", () => {
+    const readers = steps().filter((step) => step.includes("/tmp/existing-comment-id"));
+    expect(readers.length).toBeGreaterThanOrEqual(2);
+    expect(readers.filter((step) => !step.includes("/tmp/comment-lookup-failed"))).toEqual([]);
+  });
+
+  it("takes one id from a lookup that paginates rather than passing every line on", () => {
+    const lookup = steps().find((step) => step.includes('startswith("<!-- observability-map'))!;
+    expect(lookup).toBeDefined();
+    expect(lookup).toContain("exit }'");
   });
 });
 
