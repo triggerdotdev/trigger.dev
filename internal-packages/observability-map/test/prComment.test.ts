@@ -70,6 +70,74 @@ describe("renderPrComment", () => {
     expect(out).toMatch(/\| \/api\/v1\/new \| new \| \d+ \|/);
   });
 
+  // Mirrors the guard report.test.ts has for the terminal renderer: audit-trail fails almost
+  // every sensitive mutation today (no audit helper exists), so it is a headline figure, not a
+  // per-route nag. A regression here previously let it leak into the "now failing" column.
+  it("does not list audit-trail among a new sensitive entry's failing checks", () => {
+    const sensitiveMutation = scanFile(
+      "api.v1.envvars.ts",
+      `import { prisma } from "~/db.server";
+       export async function action() {
+         try {
+           return await prisma.envVar.update({ where: {}, data: {} });
+         } catch (e) {
+           return null;
+         }
+       }`
+    )!;
+    const head = buildReport([sensitiveMutation], []);
+    const base = buildReport([], []);
+    const out = renderPrComment(head, base);
+
+    const row = out.split("\n").find((l) => l.startsWith("| /api/v1/envvars |"))!;
+    expect(row).toBeDefined();
+    expect(row).toContain("new");
+    expect(row).not.toContain("audit-trail");
+    expect(row).toMatch(/error-classification|auth-boundary|request-context/);
+  });
+
+  it("sorts a sensitive entry with a small drop above a non-sensitive entry with a large drop", () => {
+    const sensitiveSmallDropBase = scanFile("api.v1.auth.tokens.ts", cleanSource)!;
+    const sensitiveSmallDropHead = scanFile(
+      "api.v1.auth.tokens.ts",
+      `import { requireUserId } from "~/services/session.server";
+       import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         try { return await prisma.token.create({ data: { userId } }); }
+         catch (error) { logger.error("token create failed", { error }); throw error; }
+       }`
+    )!;
+
+    const notSensitiveLargeDropBase = scanFile(
+      "resources.busy.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { logger.error("failed", { environmentId: params.envId, error }); throw error; }
+       }`
+    )!;
+    const notSensitiveLargeDropHead = scanFile(
+      "resources.busy.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); } catch (e) { return null; }
+       }`
+    )!;
+
+    const head = buildReport([sensitiveSmallDropHead, notSensitiveLargeDropHead], []);
+    const base = buildReport([sensitiveSmallDropBase, notSensitiveLargeDropBase], []);
+    const out = renderPrComment(head, base);
+
+    const sensitiveIndex = out.indexOf("/api/v1/auth/tokens");
+    const notSensitiveIndex = out.indexOf("/resources/busy");
+    expect(sensitiveIndex).toBeGreaterThan(-1);
+    expect(notSensitiveIndex).toBeGreaterThan(-1);
+    expect(sensitiveIndex).toBeLessThan(notSensitiveIndex);
+  });
+
   it("reports a removed entry as a count line, not a row", () => {
     const head = buildReport([scanFile("api.v1.auth.tokens.ts", cleanSource)!], []);
     const base = buildReport(

@@ -12,6 +12,22 @@ const processIo: Io = {
   err: (s) => process.stderr.write(s),
 };
 
+/** Reads and parses one report file, raising a message naming the file rather than letting an
+ * unreadable path or malformed JSON surface as a stack trace. */
+function readReport(path: string, label: string): MapReport {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    throw new Error(`cannot read ${label}: ${path}`);
+  }
+  try {
+    return JSON.parse(raw) as MapReport;
+  } catch {
+    throw new Error(`${label} is not valid JSON: ${path}`);
+  }
+}
+
 /** `-` or a missing second arg means no base: the CI job falls back to this when the base scan
  * itself failed, so the comment still renders rather than the job going red. */
 export function main(argv: string[], io: Io = processIo): number {
@@ -24,9 +40,15 @@ export function main(argv: string[], io: Io = processIo): number {
     return 1;
   }
 
-  const head = JSON.parse(readFileSync(headPath, "utf8")) as MapReport;
-  const base: MapReport | null =
-    !basePath || basePath === "-" ? null : JSON.parse(readFileSync(basePath, "utf8"));
+  let head: MapReport;
+  let base: MapReport | null;
+  try {
+    head = readReport(headPath, "head report");
+    base = !basePath || basePath === "-" ? null : readReport(basePath, "base report");
+  } catch (error) {
+    io.err(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
 
   io.out(renderPrComment(head, base));
   io.out("\n");

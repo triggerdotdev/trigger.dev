@@ -56,7 +56,11 @@ jobs:
             echo "base scan failed or the worktree could not be added; falling back to no base" >&2
           fi
 
+      # continue-on-error: this job must never block a PR. A malformed head.json or a rendering
+      # bug would otherwise turn the job red the same way a base-scan failure would not, since that
+      # step already falls back to "-" instead of failing.
       - name: 📝 Render comment
+        continue-on-error: true
         run: |
           if [ "$(cat /tmp/base.json)" = "-" ]; then
             pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts /tmp/head.json - > /tmp/comment.md
@@ -64,7 +68,10 @@ jobs:
             pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts /tmp/head.json /tmp/base.json > /tmp/comment.md
           fi
 
+      # continue-on-error for the same reason: a transient gh api failure (rate limit, network)
+      # must not fail the job either. Worst case, the PR gets no comment this run.
       - name: 💬 Upsert PR comment
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

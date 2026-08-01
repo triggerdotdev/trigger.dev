@@ -54,4 +54,30 @@ describe("prCommentCli", () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain("usage:");
   });
+
+  it("exits 1 with a one-line message, not a stack trace, when head.json does not exist", () => {
+    const r = run(join(dir, "does-not-exist.json"));
+    expect(r.code).toBe(1);
+    expect(r.err.split("\n").filter(Boolean)).toHaveLength(1);
+    expect(r.err).toContain("cannot read head report");
+    expect(r.err).not.toContain(" at ");
+  });
+
+  it("exits 1 with a one-line message, not a stack trace, when head.json is malformed", () => {
+    const malformedPath = join(dir, "malformed.json");
+    writeFileSync(malformedPath, "{ not json");
+    const r = run(malformedPath);
+    expect(r.code).toBe(1);
+    expect(r.err.split("\n").filter(Boolean)).toHaveLength(1);
+    expect(r.err).toContain("head report is not valid JSON");
+    expect(r.err).not.toContain(" at ");
+  });
+
+  it("exits 1 with a one-line message when base.json is malformed", () => {
+    const malformedBasePath = join(dir, "malformed-base.json");
+    writeFileSync(malformedBasePath, "not json at all");
+    const r = run(headPath, malformedBasePath);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("base report is not valid JSON");
+  });
 });

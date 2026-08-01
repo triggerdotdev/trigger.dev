@@ -1,4 +1,5 @@
 import type { MapReport, ScoredEntry } from "../score.js";
+import { SCORED_CHECK_IDS } from "../checks/index.js";
 import { auditLine, contextLine, contextOnly, scoredFailures } from "./terminal.js";
 
 /** First line of every comment this job posts, so the upsert step can find its own comment again. */
@@ -6,7 +7,11 @@ export const MARKER = "<!-- observability-map-report -->";
 
 const MAX_CHANGED_ROWS = 15;
 
-const failingIds = (e: ScoredEntry) => e.checks.filter((c) => c.status === "fail").map((c) => c.id);
+// Scored checks only, same exclusion terminal.ts's scoredFailures makes: audit-trail fails almost
+// every sensitive mutation today, so listing it per route would nag with something unfixable
+// instead of surfacing the route-specific gaps this column exists for.
+const failingIds = (e: ScoredEntry) =>
+  e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail").map((c) => c.id);
 
 function scoreLine(head: MapReport, base: MapReport | null): string {
   const headline =
