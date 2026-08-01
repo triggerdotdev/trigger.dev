@@ -253,6 +253,60 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
+  // A6. isParseGuard compared the clause against ep.statementCount, the loader and the action and
+  // every one-hop helper summed together, rather than the statements of the body the clause is
+  // actually in. So an unrelated sibling handler or a fat helper in the same file diluted the
+  // denominator and relabelled the same broad swallow as a narrow parse guard. Byte-identical
+  // action, verdict must not move.
+  it("gives the same verdict to a byte-identical swallow whether or not an unrelated sibling and helper share the file", () => {
+    const action = `import { otlpExporter } from "~/v3/otlpExporter.server";
+       export async function action({ request }) {
+         try {
+           const exporter = await otlpExporter;
+           const contentType = request.headers.get("content-type");
+           const body = await request.json();
+           const result = await exporter.exportLogs(body);
+           const encoded = encodeResponse(result);
+           const headers = buildHeaders(contentType);
+           return new Response(encoded, { status: 200, headers });
+         } catch (error) {
+           console.error(error);
+           return new Response("Internal Server Error", { status: 500 });
+         }
+       }`;
+
+    const withUnrelatedSiblingAndHelper = `${action}
+       function unrelatedHelper() {
+         let total = 0;
+         total += 1;
+         total += 2;
+         total += 3;
+         total += 4;
+         total += 5;
+         total += 6;
+         total += 7;
+         total += 8;
+         total += 9;
+         total += 10;
+         total += 11;
+         return total;
+       }
+       export async function loader() {
+         const helperTotal = unrelatedHelper();
+         return new Response(String(helperTotal));
+       }`;
+
+    const alone = run("error-classification", "otel.v1.logs.ts", action);
+    const withSiblingAndHelper = run(
+      "error-classification",
+      "otel.v1.logs.ts",
+      withUnrelatedSiblingAndHelper
+    );
+
+    expect(alone.status).toBe("fail");
+    expect(withSiblingAndHelper.status).toBe("fail");
+  });
+
   // A3. `referencesBinding` used to match any identifier with the binding's text, including a
   // property name in a member expression. A catch whose only `if` tests `fallback.error`, never the
   // caught binding itself, was credited with classifying an error it never inspected.

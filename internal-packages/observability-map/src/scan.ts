@@ -627,7 +627,8 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   const helpers: EntryFunction[] = [];
 
   const walkBody = (fn: EntryFunction, followHelpers: boolean) => {
-    statementCount += countFunctionStatements(fn);
+    const enclosingStatementCount = countFunctionStatements(fn);
+    statementCount += enclosingStatementCount;
 
     if (!fn.body) return;
     const visit = (node: ts.Node, inCatch: boolean) => {
@@ -641,6 +642,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
             branches: clause.branches,
             guardsParse: guardsParse(node.tryBlock),
             tryStatementCount,
+            enclosingStatementCount,
           });
         }
       }

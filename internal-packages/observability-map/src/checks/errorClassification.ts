@@ -27,14 +27,19 @@ const BUILDERS = new Set([
 
 /**
  * Whether a catch clause is a guard rather than the route's error handling: it wraps a parse and
- * covers less than half the entry point's statements. Both halves matter. `guardsParse` alone lets
- * `otel.v1.logs.ts` off, whose catch covers 15 of its 18 statements and merely happens to contain a
- * `request.json()`, and that is a real swallow. The coverage test is relative to the body rather
- * than a second absolute threshold, so it holds for a three-statement route and a fifty-statement
- * one alike.
+ * covers less than half the statements of the body it is actually in. Both halves matter.
+ * `guardsParse` alone lets `otel.v1.logs.ts` off, whose catch covers 15 of its 18 statements and
+ * merely happens to contain a `request.json()`, and that is a real swallow. The coverage test is
+ * relative to the enclosing body rather than a second absolute threshold, so it holds for a
+ * three-statement route and a fifty-statement one alike.
+ *
+ * Compared against `clause.enclosingStatementCount`, never `ep.statementCount`: the entry point's
+ * total sums the loader, the action and every one-hop helper together, so an unrelated sibling
+ * handler or a fat helper in the same file diluted the denominator and relabelled a broad swallow
+ * as a narrow parse guard, with no change to the clause itself.
  */
-function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
-  return clause.guardsParse && clause.tryStatementCount * 2 < ep.statementCount;
+function isParseGuard(clause: CatchEvidence): boolean {
+  return clause.guardsParse && clause.tryStatementCount * 2 < clause.enclosingStatementCount;
 }
 
 /**
@@ -59,18 +64,18 @@ function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
  * would clear said six were real, including a silent run cancellation and two credential paths
  * that report a database failure to the browser as a 400 with an internal message in it.
  */
-function decides(clause: CatchEvidence, ep: EntryPoint): boolean {
-  return clause.branches || isParseGuard(clause, ep);
+function decides(clause: CatchEvidence): boolean {
+  return clause.branches || isParseGuard(clause);
 }
 
 /** Passes the error through unchanged, which is the same outcome as not catching it. */
-function inert(clause: CatchEvidence, ep: EntryPoint): boolean {
-  return clause.rethrows && !decides(clause, ep);
+function inert(clause: CatchEvidence): boolean {
+  return clause.rethrows && !decides(clause);
 }
 
 /** The error stops here and nothing chose what it meant. */
-function swallows(clause: CatchEvidence, ep: EntryPoint): boolean {
-  return !decides(clause, ep) && !inert(clause, ep);
+function swallows(clause: CatchEvidence): boolean {
+  return !decides(clause) && !inert(clause);
 }
 
 export function usesBuilder(ep: EntryPoint): boolean {
@@ -106,7 +111,7 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    const swallowed = ep.catches.filter((c) => swallows(c, ep));
+    const swallowed = ep.catches.filter(swallows);
     if (swallowed.length > 0) {
       const which =
         ep.catches.length > 1 ? ` (${swallowed.length} of ${ep.catches.length} catches)` : "";
@@ -116,7 +121,7 @@ export const errorClassification = {
         detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
       };
     }
-    if (!ep.catches.some((c) => decides(c, ep))) {
+    if (!ep.catches.some(decides)) {
       return {
         id: ID,
         status: "not-applicable",
