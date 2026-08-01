@@ -211,6 +211,7 @@ export function installSessionWaitpointBackend(apiClient: ApiClient): {
   restore: () => void;
 } {
   const backend = new SessionWaitpointBackend(apiClient);
+  const previousBackend = activeBackend;
   activeBackend = backend;
 
   if (patchDepth === 0) {
@@ -252,7 +253,7 @@ export function installSessionWaitpointBackend(apiClient: ApiClient): {
       restored = true;
       backend.disable();
       if (activeBackend === backend) {
-        activeBackend = undefined;
+        activeBackend = previousBackend;
       }
       patchDepth -= 1;
       if (patchDepth === 0 && originalCreate && originalWait) {
