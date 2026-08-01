@@ -21,7 +21,7 @@ export const scoredFailures = (e: ScoredEntry) =>
   e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail");
 
 /**
- * An entry whose only finding is `request-context`. 391 of 412 entry points fail that check, so
+ * An entry whose only finding is `request-context`. 401 of 412 entry points fail that check, so
  * listing each one turns the fix list into a single house-style finding repeated, which is the
  * reason `audit-trail` is kept out of the list too. Collapsed into the `CONTEXT` figure instead.
  * An entry that fails something else as well stays in the list with all of its findings, so a

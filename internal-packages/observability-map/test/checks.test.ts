@@ -709,6 +709,116 @@ describe("request-context", () => {
     );
     expect(r.status).toBe("not-applicable");
   });
+
+  // A5. IDENTIFIER_FIELD matched any suffix, so a resource id (a run, a batch, a notification, a
+  // chat, a span) that shares the same `Id`/`Param` shape as a tenant field passed, and a bare `id`
+  // passed too. TENANT_FIELD requires the root word itself to be environment, organization, project
+  // or user.
+  it("does not pass a failure log that only names a resource, not a tenant", () => {
+    const r = run(
+      "request-context",
+      "api.v3.batches.$batchId.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("batch lookup failed", { batchId: params.batchId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("does not pass a failure log that only names a bare id", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.debug("cache miss", { id: 1 });
+           logger.error("lookup failed", { id: 1, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("passes on the abbreviated envId/orgId forms the webapp also writes", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("lookup failed", { envId: params.envId, orgId: params.orgId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // A5. request-context filtered failure-path logs on inCatch only, not on level, so a debug log
+  // naming a tenant field passed the check even though debug lines are routinely dropped or
+  // sampled out before an incident is read.
+  it("does not pass a debug-level failure log, even one that names a tenant", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.debug("lookup failed", { environmentId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("does not pass an info-level failure log either", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.info("lookup failed", { environmentId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("still passes a warn-level failure log that names a tenant", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.warn("lookup failed", { environmentId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
 });
 
 describe("audit-trail", () => {

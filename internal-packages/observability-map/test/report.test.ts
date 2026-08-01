@@ -228,7 +228,7 @@ describe("collapsing the house-style finding", () => {
        }`
     )!;
 
-  // request-context fails 391 of 412 entry points, so listing each one turns the fix list into a
+  // request-context fails 401 of 412 entry points, so listing each one turns the fix list into a
   // single finding repeated. Same reasoning that keeps audit-trail out of the list.
   it("keeps an entry whose only finding is request-context out of the fix list", () => {
     const out = renderTerminal(buildReport([namesNobody()], []));
