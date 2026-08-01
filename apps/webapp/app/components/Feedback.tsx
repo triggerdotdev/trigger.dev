@@ -27,13 +27,26 @@ import { TextLink } from "./primitives/TextLink";
 import { DialogClose } from "@radix-ui/react-dialog";
 
 type FeedbackProps = {
-  button: ReactNode;
+  button?: ReactNode;
   defaultValue?: FeedbackType;
   onOpenChange?: (open: boolean) => void;
+  // Controlled mode — pass both to host the dialog outside a popover so the popover closing can't
+  // unmount the form mid-submit (that teardown was intermittently canceling the feedback POST).
+  open?: boolean;
+  setOpen?: (open: boolean) => void;
 };
 
-export function Feedback({ button, defaultValue = "bug", onOpenChange }: FeedbackProps) {
-  const [open, setOpen] = useState(false);
+export function Feedback({
+  button,
+  defaultValue = "bug",
+  onOpenChange,
+  open: openProp,
+  setOpen: setOpenProp,
+}: FeedbackProps) {
+  const [openState, setOpenState] = useState(false);
+  // Controlled when the caller passes open/setOpen (hosted outside a popover); otherwise self-managed.
+  const open = openProp ?? openState;
+  const setOpen = setOpenProp ?? setOpenState;
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const lastSubmission = useActionData();
@@ -79,7 +92,7 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{button}</DialogTrigger>
+      {button ? <DialogTrigger asChild>{button}</DialogTrigger> : null}
       <DialogContent>
         <DialogHeader>Contact us</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
