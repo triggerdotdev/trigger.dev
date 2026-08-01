@@ -6,23 +6,30 @@ const ID = "request-context";
 /**
  * A field name that plausibly names a TENANT: environment, organization, project or user, the four
  * things every entry point ultimately belongs to. Anchored on the root word, not just the suffix,
- * in the full and abbreviated camelCase the webapp actually writes for each:
- * `environmentId`/`envId`, `organizationId`/`organizationSlug`/`orgId`, `projectId`/`projectParam`,
- * `userId`. A bare `id`, and a resource id that happens to share the same `Id`/`Param` suffix,
- * `batchId`, `notificationId`, `chatId`, `spanParam`, `runFriendlyId`, `taskIdentifier`, does not
- * qualify: those name a resource the failure touched, not who it happened to.
+ * in the full and abbreviated camelCase the webapp actually writes for each: `environmentId`/
+ * `envId`, `organizationId`/`organizationSlug`/`orgId`, `projectId`/`projectParam`, `userId`. A bare
+ * `id`, and a resource id that happens to share the same `Id`/`Param` suffix, `batchId`,
+ * `notificationId`, `chatId`, `spanParam`, `runFriendlyId`, `taskIdentifier`, does not qualify:
+ * those name a resource the failure touched, not who it happened to.
+ *
+ * The abbreviated roots, `env` and `org`, require a suffix; the full words do not. A bare `env` is
+ * ambiguous with a deployment environment name (`{ env: process.env.NODE_ENV }`), which is not a
+ * tenant, and nothing in the tree relies on it being bare, so the field alone cannot qualify.
  */
 const TENANT_FIELD =
-  /^(environment|env|organization|org|project|user)(Id|Ids|Slug|Ref|Param|Identifier)?$/;
+  /^(environment|organization|project|user)(Id|Ids|Slug|Ref|Param|Identifier)?$|^(env|org)(Id|Ids|Slug|Ref|Param|Identifier)$/;
 
 /**
- * error, warn and fatal are levels an incident is actually read at; debug and trace are routinely
- * dropped or sampled out before anyone looks, so a tenant field logged only at that level is not
- * really recorded on the failure path. info is deliberately excluded too: it is not reserved for
+ * Levels against the real logger (`packages/core/src/logger.ts`): `log`, `error`, `warn`, `info`,
+ * `debug`, `verbose`, in that order, no `fatal` and no `trace` (the `trace` in
+ * `apps/webapp/app/services/logger.server.ts` is the AsyncLocalStorage field helper, unrelated to
+ * log level). `log` is level 0, the level `TRIGGER_LOG_LEVEL` never filters out, so it qualifies
+ * alongside `error` and `warn`. `info`, `debug` and `verbose` do not: `info` is not reserved for
  * failure reporting, so a route can log an info line inside a catch that says nothing about the
- * catch actually handling anything, and crediting it would launder the same gap `debug` closes.
+ * catch actually handling anything, and `debug`/`verbose` are routinely dropped or sampled out
+ * before anyone reads an incident.
  */
-const QUALIFYING_LEVELS = new Set(["error", "warn", "fatal"]);
+const QUALIFYING_LEVELS = new Set(["log", "error", "warn"]);
 
 /** The level a `LogCall`'s callee was made at, e.g. `"error"` from `logger.error`. */
 function logLevel(callee: string): string {

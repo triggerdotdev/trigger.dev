@@ -321,26 +321,13 @@ ${BUSY_AND_FAILING}`
     expect(after.measured).toBe(2);
   });
 
-  it("suppressing a passing check does not raise the score either", () => {
-    // error-classification branches on the error (pass); request-context never names a tenant
-    // (fail). Not sensitive, so auth-boundary sits out.
-    const source = `import { prisma } from "~/db.server";
-export async function loader() {
-  try { return await prisma.thing.findMany(); }
-  catch (e) { if (e instanceof Error) return null; throw e; }
-}`;
-    const plain = scoreEntry(scanFile("api.v1.mixed.ts", source)!);
-    expect(plain.checks.find((c) => c.id === "error-classification")!.status).toBe("pass");
-
-    const suppressed = scoreEntry(
-      scanFile(
-        "api.v1.mixed.ts",
-        `// obs-map-disable error-classification -- silence a pass
-${source}`
-      )!
-    );
-    expect(suppressed.score).toBeLessThanOrEqual(plain.score);
-  });
+  // M9. A prior version of this test asserted suppressed.score <= plain.score for a check that was
+  // passing, which the pre-existing per-entry Math.min cap already guarantees on its own: removing
+  // a passing (maximal) result from a ratio can only lower or hold it, at every level, with or
+  // without A1's fix, so the assertion passed unchanged against the pre-fix code and proved
+  // nothing about the aggregate mechanism A1 actually changed. Deleted rather than kept as
+  // decoration; "does not raise the score" for a failing suppression is exercised, with real
+  // discriminating power, by the two tests above.
 });
 
 /**

@@ -989,6 +989,80 @@ describe("request-context", () => {
     );
     expect(r.status).toBe("pass");
   });
+
+  // M7. The real logger (packages/core/src/logger.ts) has log/error/warn/info/debug/verbose, no
+  // fatal and no trace, and log is level 0, never filtered by TRIGGER_LOG_LEVEL, so it must
+  // qualify. verbose is the actual noisiest level this codebase has, not trace.
+  it("passes a log-level failure log, which the real logger never filters", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.log("lookup failed", { environmentId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("does not pass a verbose-level failure log", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.verbose("lookup failed", { environmentId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // M8. A bare `env` field is ambiguous with a deployment environment name
+  // (`{ env: process.env.NODE_ENV }`), not a tenant, so it must not qualify on its own; the
+  // abbreviated root still works with a real suffix.
+  it("does not pass a failure log that only names a bare env field", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("lookup failed", { env: process.env.NODE_ENV, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("still passes envId, the abbreviated root with a real suffix", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("lookup failed", { envId: params.envId, error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
 });
 
 describe("audit-trail", () => {

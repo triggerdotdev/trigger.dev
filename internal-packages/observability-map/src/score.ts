@@ -47,7 +47,7 @@ export type MapReport = {
   sensitiveCohort: { n: number; measured: number; mean: number | null };
   auditGap: { sensitiveMutations: number; withAudit: number };
   /**
-   * `request-context` fails 391 of the 412 entry points it applies to, so it is reported as a
+   * `request-context` fails 401 of the 412 entry points it applies to, so it is reported as a
    * figure rather than as hundreds of identical list entries, the same treatment `audit-trail`
    * gets. It stays fully in the score: the gap is real and the score is meant to show it.
    */
