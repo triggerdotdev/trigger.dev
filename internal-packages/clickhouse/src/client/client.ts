@@ -747,7 +747,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           recordClickhouseError(span, clickhouseError);
 
-          return [new InsertError(clickhouseError.message), null];
+          return [toInsertError(clickhouseError), null];
         }
 
         this.logger.debug("Inserted into clickhouse", {
@@ -838,7 +838,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
-          return [new InsertError(clickhouseError.message), null];
+          return [toInsertError(clickhouseError), null];
         }
 
         return [null, result];
@@ -900,7 +900,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           recordClickhouseError(span, clickhouseError);
 
-          return [new InsertError(clickhouseError.message), null];
+          return [toInsertError(clickhouseError), null];
         }
 
         this.logger.debug("Inserted into clickhouse", {
@@ -999,7 +999,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
-          return [new InsertError(clickhouseError.message), null];
+          return [toInsertError(clickhouseError), null];
         }
 
         this.logger.debug("Inserted into clickhouse", {
@@ -1086,6 +1086,11 @@ function classifyClickhouseError(
     return "invalid-sql";
   }
   return "fault";
+}
+
+function toInsertError(error: Error): InsertError {
+  const rawMessage = error instanceof ClickHouseError ? error.rawMessage : undefined;
+  return new InsertError(error.message, { rawMessage });
 }
 
 function recordClickhouseError(span: Span, error: Error): void {
