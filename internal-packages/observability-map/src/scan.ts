@@ -237,6 +237,29 @@ function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string 
   return parent !== undefined && (ts.isReturnStatement(parent) || ts.isThrowStatement(parent));
 }
 
+/** A statement that unconditionally leaves the statement list it sits in, so anything after it in
+ * the same list never runs. */
+function isDefiniteExit(statement: ts.Statement): boolean {
+  return (
+    ts.isReturnStatement(statement) ||
+    ts.isThrowStatement(statement) ||
+    ts.isContinueStatement(statement) ||
+    ts.isBreakStatement(statement)
+  );
+}
+
+/**
+ * `statements` up to and including the first one that definitely exits. Not full flow analysis:
+ * an `if`/`else` where both branches return is not itself recognised as an exit, only a bare
+ * `return`, `throw`, `continue` or `break` is. That is enough to make a `throw e;` appended after
+ * a `return` dead code rather than evidence the clause rethrows, which is the one shape a mutation
+ * testing this check actually produced.
+ */
+function reachableStatements(statements: readonly ts.Statement[]): readonly ts.Statement[] {
+  const index = statements.findIndex(isDefiniteExit);
+  return index === -1 ? statements : statements.slice(0, index + 1);
+}
+
 /** What a catch clause does with the error, beyond the fact that it caught one. */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
@@ -244,6 +267,10 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
   const bindingName = catchBindingName(clause);
 
   const visit = (node: ts.Node) => {
+    if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
+      for (const statement of reachableStatements(node.statements)) visit(statement);
+      return;
+    }
     if (ts.isThrowStatement(node)) rethrows = true;
     if (
       bindingName !== null &&

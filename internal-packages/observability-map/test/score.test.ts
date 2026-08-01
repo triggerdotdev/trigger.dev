@@ -314,6 +314,36 @@ export async function loader({ params }) {
     expect(after.score).toBeLessThanOrEqual(before.score);
   });
 
+  // A4. rethrows used to be set by any ThrowStatement anywhere in the clause, dead code included,
+  // so appending `throw e;` after a `return` in a swallowing catch flipped error-classification
+  // from fail to not-applicable: a mutation with no behavioural effect that hid the swallow.
+  it("does not improve the verdict when a dead throw follows a return in a swallowing catch", () => {
+    const swallows = `import { prisma } from "~/db.server";
+export async function loader() {
+  try {
+    ${BODY}
+  } catch (e) {
+    return null;
+  }
+}`;
+    const swallowsWithDeadThrow = `import { prisma } from "~/db.server";
+export async function loader() {
+  try {
+    ${BODY}
+  } catch (e) {
+    return null;
+    throw e;
+  }
+}`;
+
+    const before = scoreEntry(scanFile("api.v1.x.ts", swallows)!);
+    const after = scoreEntry(scanFile("api.v1.x.ts", swallowsWithDeadThrow)!);
+
+    expect(before.checks.find((c) => c.id === "error-classification")!.status).toBe("fail");
+    expect(after.checks.find((c) => c.id === "error-classification")!.status).toBe("fail");
+    expect(after.score).toBeLessThanOrEqual(before.score);
+  });
+
   it("does not pay for wrapping a whole tree in catches that only rethrow", () => {
     const before = buildReport(
       [scanFile("api.v1.x.ts", plain)!, scanFile("api.v1.y.ts", plain)!],

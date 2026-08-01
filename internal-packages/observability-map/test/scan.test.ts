@@ -615,6 +615,27 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 
+  // A4. `rethrows` used to be set by any `ThrowStatement` in the clause, reachable or not, so a
+  // `throw e;` appended after a `return` flipped a swallowing catch from rethrows: false to true
+  // with no behavioural change, which read as inert instead of a swallow.
+  it("does not set rethrows for a throw that is dead code after a return", () => {
+    const ep = scanFile(
+      "dead-throw.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          return null;
+          throw e;
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.rethrows).toBe(false);
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
   it("leaves both flags false when the catch only returns", () => {
     const ep = scanFile(
       "swallow.ts",
