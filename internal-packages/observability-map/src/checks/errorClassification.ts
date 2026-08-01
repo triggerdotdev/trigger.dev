@@ -26,20 +26,29 @@ const BUILDERS = new Set([
 ]);
 
 /**
- * Whether a catch clause is a guard rather than the route's error handling: it wraps a parse and
- * covers less than half the statements of the body it is actually in. Both halves matter.
- * `guardsParse` alone lets `otel.v1.logs.ts` off, whose catch covers 15 of its 18 statements and
- * merely happens to contain a `request.json()`, and that is a real swallow. The coverage test is
- * relative to the enclosing body rather than a second absolute threshold, so it holds for a
- * three-statement route and a fifty-statement one alike.
+ * How much a try block may guard and still count as narrow. Two, so the guarded operation can bind
+ * its result (`const stripped = ...; new RegExp(stripped);`), but a third statement means the try
+ * has started to cover the handler rather than one operation. The idiom this was chosen for and
+ * hand-read against originally: 55 of 427 entry points, 11 of the failures at the time, all eleven
+ * the deliberate `try { body = await request.json() } catch { 400 }` shape.
  *
- * Compared against `clause.enclosingStatementCount`, never `ep.statementCount`: the entry point's
- * total sums the loader, the action and every one-hop helper together, so an unrelated sibling
- * handler or a fat helper in the same file diluted the denominator and relabelled a broad swallow
- * as a narrow parse guard, with no change to the clause itself.
+ * An absolute count, not a ratio against the enclosing body. A ratio is diluted by anything else in
+ * the same body: padding the action with unrelated statements after the try relabelled the same
+ * broad swallow as a narrow guard, moving the denominator without touching the clause at all. An
+ * absolute count over the try block alone cannot be diluted by anything outside it.
+ */
+const NARROW_TRY_STATEMENTS = 2;
+
+/**
+ * Whether a catch clause is a guard rather than the route's error handling: it wraps a parse and
+ * holds at most `NARROW_TRY_STATEMENTS`. Both halves matter. `guardsParse` alone lets
+ * `otel.v1.logs.ts` off, whose catch covers 7 statements and merely happens to contain a
+ * `request.json()`, and that is a real swallow; a validating zod `.safeParse` followed by an issue
+ * check and a bespoke error response is real handling too, not a bind-and-return guard, and stays
+ * excluded at three statements or more for the same reason.
  */
 function isParseGuard(clause: CatchEvidence): boolean {
-  return clause.guardsParse && clause.tryStatementCount * 2 < clause.enclosingStatementCount;
+  return clause.guardsParse && clause.tryStatementCount <= NARROW_TRY_STATEMENTS;
 }
 
 /**

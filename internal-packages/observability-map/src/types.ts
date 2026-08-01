@@ -32,14 +32,6 @@ export type CatchEvidence = {
   guardsParse: boolean;
   /** Statements in the guarded try block, counted as `statementCount` counts them. */
   tryStatementCount: number;
-  /**
-   * Statements in the body the clause actually sits in: the loader, the action, or the one-hop
-   * helper it delegates to, whichever function this `try` is directly inside. Never the entry
-   * point's combined total, which sums the loader, the action and every helper together: comparing
-   * a clause against that whole-entry-point figure let an unrelated sibling handler or a fat helper
-   * in the same file relabel a broad swallow as a narrow parse guard.
-   */
-  enclosingStatementCount: number;
 };
 
 /** A logging call made from a loader/action body, or from a same-file helper the body calls. */

@@ -156,6 +156,48 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
+  // I6. NARROW_TRY_STATEMENTS is an absolute count over the try block alone (guardsParse still
+  // required), not a ratio against the enclosing body, so it holds the exact boundary regardless of
+  // how big or small the rest of the function is: two statements binds the parsed result and still
+  // passes, a third means the try has started to cover the handler and fails, even though both
+  // guard the same parse.
+  it("passes a parse guard that binds its result in exactly two statements", () => {
+    const r = run(
+      "error-classification",
+      "resources.pattern.ts",
+      `export async function action({ request }) {
+         let parsed;
+         try {
+           const raw = await request.text();
+           parsed = new RegExp(raw);
+         } catch {
+           return json({ error: "Invalid pattern" }, { status: 400 });
+         }
+         return json({ parsed: parsed.source });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("fails a parse guard that takes a third statement beyond binding the result", () => {
+    const r = run(
+      "error-classification",
+      "resources.pattern.ts",
+      `export async function action({ request }) {
+         let parsed;
+         try {
+           const raw = await request.text();
+           const trimmed = raw.trim();
+           parsed = new RegExp(trimmed);
+         } catch {
+           return json({ error: "Invalid pattern" }, { status: 400 });
+         }
+         return json({ parsed: parsed.source });
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
   // False positive fixture for the narrow rule: a narrow parse guard must not launder the broad
   // handler catch sitting next to it. Clauses are judged one at a time, so the broad one still
   // counts against the entry point.
@@ -305,6 +347,55 @@ describe("error-classification", () => {
 
     expect(alone.status).toBe("fail");
     expect(withSiblingAndHelper.status).toBe("fail");
+  });
+
+  // I6. Moving the denominator from the entry point to the enclosing body (A6) closed
+  // cross-body dilution but not same-body dilution: the rule was still a ratio, "unrelated
+  // statements dilute", wherever the unrelated statements live. Padding the SAME action with 11
+  // inert statements after the try relabelled the identical broad swallow from fail to pass.
+  // isParseGuard is now an absolute count over the try block alone (NARROW_TRY_STATEMENTS),
+  // which nothing outside the try can dilute, in the same body or another.
+  it("gives the same verdict to a byte-identical swallow whether or not it is padded with inert statements in the same body", () => {
+    const action = `import { otlpExporter } from "~/v3/otlpExporter.server";
+       export async function action({ request }) {
+         try {
+           const exporter = await otlpExporter;
+           const contentType = request.headers.get("content-type");
+           const body = await request.json();
+           const result = await exporter.exportLogs(body);
+           const encoded = encodeResponse(result);
+           const headers = buildHeaders(contentType);
+           return new Response(encoded, { status: 200, headers });
+         } catch (error) {
+           console.error(error);
+           return new Response("Internal Server Error", { status: 500 });
+         }
+       }`;
+
+    const padding = Array.from({ length: 11 }, (_, i) => `const pad${i} = ${i};`).join("\n");
+    const paddedInSameBody = `import { otlpExporter } from "~/v3/otlpExporter.server";
+       export async function action({ request }) {
+         try {
+           const exporter = await otlpExporter;
+           const contentType = request.headers.get("content-type");
+           const body = await request.json();
+           const result = await exporter.exportLogs(body);
+           const encoded = encodeResponse(result);
+           const headers = buildHeaders(contentType);
+           return new Response(encoded, { status: 200, headers });
+         } catch (error) {
+           console.error(error);
+           return new Response("Internal Server Error", { status: 500 });
+         }
+         ${padding}
+         return new Response("unreachable", { status: 200 });
+       }`;
+
+    const alone = run("error-classification", "otel.v1.logs.ts", action);
+    const padded = run("error-classification", "otel.v1.logs.ts", paddedInSameBody);
+
+    expect(alone.status).toBe("fail");
+    expect(padded.status).toBe("fail");
   });
 
   // A3. `referencesBinding` used to match any identifier with the binding's text, including a

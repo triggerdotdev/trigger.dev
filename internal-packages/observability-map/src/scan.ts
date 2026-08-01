@@ -754,8 +754,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   const helpers: EntryFunction[] = [];
 
   const walkBody = (fn: EntryFunction, followHelpers: boolean) => {
-    const enclosingStatementCount = countFunctionStatements(fn);
-    statementCount += enclosingStatementCount;
+    statementCount += countFunctionStatements(fn);
 
     if (!fn.body) return;
     // `inCallback` is true once the walk has entered a per-item iteration callback
@@ -786,7 +785,6 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
             branches: clause.branches,
             guardsParse: guardsParse(node.tryBlock),
             tryStatementCount,
-            enclosingStatementCount,
           });
         }
       }
