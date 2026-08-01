@@ -50,6 +50,39 @@ jobs:
           pnpm --filter @internal/observability-map exec vitest run \
             test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
 
+  # The package has one deliberate test against the live route tree
+  # (internal-packages/observability-map/test/integration.test.ts), and this workflow already
+  # triggers on exactly the paths that can break it. Running just this package here is what keeps
+  # a webapp-only pull request from merging a renamed route green and leaving the failure for main
+  # or for the next unrelated internal-packages pull request. Unlike the report job below, this one
+  # is meant to be able to fail, and it runs for fork pull requests because it needs no token.
+  unit-tests:
+    name: 🧪 Package tests
+    runs-on: warp-ubuntu-latest-x64-4x
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧪 Run the package tests
+        run: pnpm --filter @internal/observability-map run test
+
   report:
     runs-on: warp-ubuntu-latest-x64-4x
     # Only this job comments, so only this job gets the write.
@@ -103,25 +136,50 @@ jobs:
             echo "base scan failed or the worktree could not be added; falling back to no base" >&2
           fi
 
-      # Looked up before the render step because the render step needs it: with no delta to report,
-      # a pull request that already has a comment gets a resolved state rather than being left with
-      # findings that no longer exist, and one that does not gets nothing at all. The upsert step
-      # reuses the id rather than asking again.
+      # Looked up before the render step because the render decision needs it: with no delta to
+      # report, a pull request that already has a comment gets a resolved state rather than being
+      # left with findings that no longer exist, and one that does not gets nothing at all. The
+      # upsert step reuses the id rather than asking twice.
+      #
+      # On a failure that outlasts the retries, both steps below do nothing. Guessing is worse than
+      # silence here: this step is the only thing that knows which comment to PATCH, so a guess of
+      # "a comment exists" still reaches an upsert with no id to patch, which POSTs. That either
+      # adds a second marker comment beside the stale one, or says "the findings an earlier push
+      # reported are gone" on a pull request that never had findings. Worst case now is no comment
+      # this run, which the next push fixes.
       - name: 🔍 Look for a comment from an earlier push
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          rm -f /tmp/existing-comment-id
-          if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty' \
-            > /tmp/existing-comment-id.partial; then
-            mv /tmp/existing-comment-id.partial /tmp/existing-comment-id
-          else
-            rm -f /tmp/existing-comment-id.partial
-            echo "comment lookup failed; assuming a comment exists so a stale one still gets replaced" >&2
+          rm -f /tmp/existing-comment-id /tmp/comment-lookup-failed
+          found=""
+          ok=""
+          for attempt in 1 2 3; do
+            if found=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+              --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
+              ok=1
+              break
+            fi
+            echo "comment lookup attempt ${attempt} failed" >&2
+            sleep $((attempt * 5))
+          done
+
+          if [ -z "$ok" ]; then
+            touch /tmp/comment-lookup-failed
+            echo "comment lookup failed after 3 attempts; this run posts nothing" >&2
+            exit 0
           fi
+
+          # --paginate runs the jq once per page, so a marker comment on more than one page yields
+          # one id per page. Unhandled, that puts a newline in the PATCH url and the step dies under
+          # continue-on-error. The oldest wins: it is the one the upsert has been updating.
+          count=$(printf '%s\n' "$found" | grep -c '[0-9]' || true)
+          if [ "$count" -gt 1 ]; then
+            echo "warning: ${count} marker comments on this pull request; updating the oldest" >&2
+          fi
+          printf '%s\n' "$found" | awk 'NF { print $1; exit }' > /tmp/existing-comment-id
 
       # continue-on-error for the same reason as the scan: a rendering bug must not turn the job
       # red. An empty /tmp/comment.md means there is nothing to post, which is a decision
@@ -132,8 +190,24 @@ jobs:
           rm -f /tmp/comment.md
           render() { pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts "$@"; }
 
+          # Every write goes through this, so a renderer that exits non-zero never leaves a 0-byte
+          # comment.md for the upsert to skip in silence.
+          emit() {
+            if render "$@" > /tmp/comment.md.partial; then
+              mv /tmp/comment.md.partial /tmp/comment.md
+              return 0
+            fi
+            rm -f /tmp/comment.md.partial
+            return 1
+          }
+
+          if [ -f /tmp/comment-lookup-failed ]; then
+            echo "the comment lookup failed, so this run posts nothing" >&2
+            exit 0
+          fi
+
           if [ ! -s /tmp/head.json ]; then
-            render --scan-failed > /tmp/comment.md
+            emit --scan-failed || echo "could not render the stale-report comment either" >&2
             exit 0
           fi
 
@@ -142,19 +216,14 @@ jobs:
             base="-"
           fi
 
-          # An absent file means the lookup itself failed, and assuming there is a comment is the
-          # safer half of that guess: it can post a redundant resolved state, not leave a stale one.
           flags=()
-          if [ ! -f /tmp/existing-comment-id ] || [ -s /tmp/existing-comment-id ]; then
+          if [ -s /tmp/existing-comment-id ]; then
             flags=(--existing-comment)
           fi
 
-          if render /tmp/head.json "$base" "${flags[@]}" > /tmp/comment.md.partial; then
-            mv /tmp/comment.md.partial /tmp/comment.md
-          else
-            rm -f /tmp/comment.md.partial
+          if ! emit /tmp/head.json "$base" "${flags[@]}"; then
             echo "render failed; falling back to the stale-report comment" >&2
-            render --scan-failed > /tmp/comment.md
+            emit --scan-failed || echo "could not render the stale-report comment either" >&2
           fi
 
       # continue-on-error for the same reason: a transient gh api failure (rate limit, network)
@@ -165,6 +234,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          # The same sentinel the render step reads, so the two cannot disagree about what a failed
+          # lookup means. Without it this step reads a missing id as "no comment exists" and POSTs.
+          if [ -f /tmp/comment-lookup-failed ]; then
+            echo "the comment lookup failed, so this run posts nothing"
+            exit 0
+          fi
           if [ ! -s /tmp/comment.md ]; then
             echo "nothing to post: this pull request does not move the report"
             exit 0
