@@ -7,7 +7,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { getExecutionSnapshotsSince } from "../systems/executionSnapshotSystem.js";
 import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
-import { setupTestScenario } from "./helpers/snapshotTestHelpers.js";
+import { createTestSnapshot, setupTestScenario } from "./helpers/snapshotTestHelpers.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -1152,6 +1152,15 @@ describe("RunEngine getSnapshotsSince", () => {
         await engine.dequeueFromWorkerQueue({
           consumerId: "test_replica_stale_tail",
           workerQueue: "main",
+        });
+
+        await createTestSnapshot(prisma, {
+          runId: run.id,
+          status: "EXECUTING",
+          environmentId: authenticatedEnvironment.id,
+          environmentType: authenticatedEnvironment.type,
+          projectId: authenticatedEnvironment.project.id,
+          organizationId: authenticatedEnvironment.organization.id,
         });
 
         const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({

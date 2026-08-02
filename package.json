@@ -91,7 +91,8 @@
       "@window-splitter/state@1.1.3": "patches/@window-splitter__state@1.1.3.patch",
       "streamdown@2.5.0": "patches/streamdown@2.5.0.patch",
       "tsup@8.4.0": "patches/tsup@8.4.0.patch",
-      "@remix-run/router@1.23.3": "patches/@remix-run__router@1.23.3.patch"
+      "@remix-run/router@1.23.3": "patches/@remix-run__router@1.23.3.patch",
+      "@clickhouse/client-common@1.12.1": "patches/@clickhouse__client-common@1.12.1.patch"
     },
     "overrides": {
       "typescript": "catalog:",

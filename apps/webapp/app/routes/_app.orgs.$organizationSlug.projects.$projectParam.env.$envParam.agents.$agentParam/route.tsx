@@ -223,27 +223,9 @@ export default function Page() {
         />
       </NavBar>
       <MetricsLayout.Root>
-        {/* Filters — the pinned bar under the NavBar: the TimeFilter and pagination that used to
-            be fused with the tabs now live here, above the charts (Queues list pattern). Left and
-            right clusters are child divs; the slot's baked justify-between spreads them. */}
         <MetricsLayout.Filters>
           <div className="flex items-center gap-2">
             <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-          </div>
-          <div className="flex items-center gap-2">
-            {tab === "sessions" ? (
-              <Suspense fallback={null}>
-                <TypedAwait resolve={sessionList} errorElement={null}>
-                  {(list) => (list ? <ListPagination list={list} /> : null)}
-                </TypedAwait>
-              </Suspense>
-            ) : (
-              <Suspense fallback={null}>
-                <TypedAwait resolve={runList} errorElement={null}>
-                  {(list) => (list ? <ListPagination list={list} /> : null)}
-                </TypedAwait>
-              </Suspense>
-            )}
           </div>
         </MetricsLayout.Filters>
 
@@ -304,23 +286,45 @@ export default function Page() {
 
         {/* Tabs alone on their row (Queue detail pattern), then the table below them. */}
         <MetricsLayout.Content>
-          <TabContainer className="px-3">
-            <TabButton
-              isActive={tab === "sessions"}
-              layoutId="agent-page-tabs"
-              onClick={() => setTab("sessions")}
-            >
-              Sessions
-            </TabButton>
-            <TabButton
-              isActive={tab === "runs"}
-              layoutId="agent-page-tabs"
-              onClick={() => setTab("runs")}
-            >
-              Runs
-            </TabButton>
-          </TabContainer>
-          <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
+          {/* Single child so Content's gap-2.5 can't separate the bar from the table. */}
+          <div className="flex flex-col">
+            <TabContainer variant="title" className="justify-between border-y px-2">
+              <div className="flex items-stretch gap-x-6">
+                <TabButton
+                  isActive={tab === "sessions"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("sessions")}
+                >
+                  Sessions
+                </TabButton>
+                <TabButton
+                  isActive={tab === "runs"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("runs")}
+                >
+                  Runs
+                </TabButton>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {tab === "sessions" ? (
+                  <Suspense fallback={null}>
+                    <TypedAwait resolve={sessionList} errorElement={null}>
+                      {(list) => (list ? <ListPagination list={list} /> : null)}
+                    </TypedAwait>
+                  </Suspense>
+                ) : (
+                  <Suspense fallback={null}>
+                    <TypedAwait resolve={runList} errorElement={null}>
+                      {(list) => (list ? <ListPagination list={list} /> : null)}
+                    </TypedAwait>
+                  </Suspense>
+                )}
+              </div>
+            </TabContainer>
+            <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
+          </div>
         </MetricsLayout.Content>
 
         <MetricsLayout.Sidebar
@@ -345,8 +349,7 @@ function AgentContentArea({
   sessionList,
   runList,
 }: { tab: AgentTab } & Pick<LoaderData, "sessionList" | "runList">) {
-  // The table flows in the page-level scroll (MetricsLayout.Root scroll="page"); a sticky header
-  // keeps the column labels pinned as the whole column scrolls.
+  // No `stickyHeader` — it drops the table's own overflow-x-auto and the charts scroll with it.
   return tab === "sessions" ? (
     <Suspense fallback={<TableLoading />}>
       <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
@@ -356,7 +359,7 @@ function AgentContentArea({
               sessions={list.sessions}
               filters={list.filters}
               hasFilters={list.hasFilters}
-              stickyHeader
+              showTopBorder={false}
             />
           ) : (
             <TableLoading />
@@ -375,7 +378,7 @@ function AgentContentArea({
               filters={list.filters}
               runs={list.runs}
               variant="dimmed"
-              stickyHeader
+              showTopBorder={false}
             />
           ) : (
             <TableLoading />

@@ -50,7 +50,11 @@ function deprovision(organizationId: string): DirectorySyncEffect {
 describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ensureOrgMember.mockResolvedValue(undefined);
+    ensureOrgMember.mockResolvedValue({
+      created: true,
+      orgMemberId: "member_1",
+      devEnvironmentsQueued: true,
+    });
     removeOrgMemberForDirectory.mockResolvedValue({ removed: true });
     setUserRole.mockResolvedValue({ ok: true });
   });
@@ -126,5 +130,56 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
     expect(ensureOrgMember).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ENTITLED_ORG })
     );
+  });
+
+  it("applies every effect in the batch and reports the unqueued members", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    ensureOrgMember
+      .mockResolvedValueOnce({
+        created: true,
+        orgMemberId: "member_1",
+        devEnvironmentsQueued: false,
+      })
+      .mockResolvedValueOnce({
+        created: true,
+        orgMemberId: "member_2",
+        devEnvironmentsQueued: true,
+      });
+
+    const { unqueuedUserIds } = await applyDirectorySyncEffects([
+      provision(ENTITLED_ORG, "a@acme.com"),
+      provision(ENTITLED_ORG, "b@acme.com"),
+      deprovision(ENTITLED_ORG),
+    ]);
+
+    expect(unqueuedUserIds).toEqual(["user_1"]);
+    expect(ensureOrgMember).toHaveBeenCalledTimes(2);
+    expect(removeOrgMemberForDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies the directory role even when provisioning could not be queued", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    ensureOrgMember.mockResolvedValue({
+      created: false,
+      orgMemberId: "member_1",
+      devEnvironmentsQueued: false,
+    });
+
+    const effect = { ...provision(ENTITLED_ORG), roleId: "role_restricted" };
+
+    const { unqueuedUserIds } = await applyDirectorySyncEffects([effect]);
+
+    expect(unqueuedUserIds).toEqual(["user_1"]);
+    expect(setUserRole).toHaveBeenCalledWith(
+      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG })
+    );
+  });
+
+  it("reports nothing to retry when every provision was queued", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+
+    const { unqueuedUserIds } = await applyDirectorySyncEffects([provision(ENTITLED_ORG)]);
+
+    expect(unqueuedUserIds).toEqual([]);
   });
 });

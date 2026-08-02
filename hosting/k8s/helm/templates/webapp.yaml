@@ -419,11 +419,13 @@ spec:
                   name: {{ include "trigger-v4.clickhouse.external.secretName" . }}
                   key: {{ include "trigger-v4.clickhouse.external.passwordKey" . }}
             {{- else if .Values.clickhouse.deploy }}
+            {{- /* Same secret reference the bundled ClickHouse server uses, so a
+                   custom auth.existingSecret keeps the app and server in sync. */}}
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "trigger-v4.datastore.secretName" . }}
-                  key: clickhouse-admin-password
+                  name: {{ .Values.clickhouse.auth.existingSecret | default (include "trigger-v4.datastore.secretName" .) }}
+                  key: {{ .Values.clickhouse.auth.existingSecretKey | default "clickhouse-admin-password" }}
             {{- end }}
             - name: CLICKHOUSE_URL
               value: {{ include "trigger-v4.clickhouse.url" . | quote }}

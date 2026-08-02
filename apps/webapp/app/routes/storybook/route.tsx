@@ -8,6 +8,10 @@ import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
   {
+    name: "AI agent",
+    slug: "ai-agent",
+  },
+  {
     name: "Animated panel",
     slug: "animated-panel",
   },

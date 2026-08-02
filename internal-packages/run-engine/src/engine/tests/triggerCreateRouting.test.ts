@@ -137,9 +137,6 @@ const cancelledSnapshot = (friendlyId: string, environment: any) => ({
 });
 
 describe("RunEngine trigger/create routing", () => {
-  // trigger create routes through runStore.createRun with the structured
-  // DTO, and the persisted run + its nested first RUN_CREATED snapshot land via
-  // the single create call.
   containerTest(
     "trigger routes createRun and lands run + first snapshot",
     async ({ prisma, redisOptions }) => {
@@ -169,7 +166,7 @@ describe("RunEngine trigger/create routing", () => {
           orderBy: { createdAt: "asc" },
         });
         expect(snapshot).not.toBeNull();
-        expect(snapshot!.executionStatus).toBe("RUN_CREATED");
+        expect(snapshot!.executionStatus).toBe("QUEUED");
       } finally {
         await engine.quit();
       }

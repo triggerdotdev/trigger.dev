@@ -24,9 +24,21 @@ export abstract class BaseError<TContext extends ErrorContext = ErrorContext> ex
 export class InsertError extends BaseError {
   public readonly retry = true;
   public readonly name = InsertError.name;
-  constructor(message: string) {
+  /**
+   * Untruncated ClickHouse error text, kept only so the JSON-parse recovery path
+   * can read the `(at row N)` hint that `message` drops. Defined non-enumerable
+   * on purpose: ClickHouse embeds a snippet of the offending row in its parse
+   * errors, so this must not reach structured logs or error reporting, both of
+   * which serialize own enumerable properties. Direct reads still work.
+   */
+  declare readonly rawMessage?: string;
+  constructor(message: string, options?: { rawMessage?: string }) {
     super({
       message,
+    });
+    Object.defineProperty(this, "rawMessage", {
+      value: options?.rawMessage,
+      enumerable: false,
     });
   }
 }

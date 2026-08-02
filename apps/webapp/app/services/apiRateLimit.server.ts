@@ -1,7 +1,11 @@
+import { tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
 import type { Duration } from "./rateLimiter.server";
+
+const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
@@ -75,6 +79,32 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v2\/packets\//,
     /^\/api\/v1\/sessions\/[^/]+\/snapshot-url$/,
   ],
+  bypass: async (req) => {
+    const match = BATCH_STREAM_ITEMS_PATH.exec(req.path);
+
+    if (!match) {
+      return false;
+    }
+
+    const batchFriendlyId = match[1];
+    const authorizationValue = req.headers.authorization;
+
+    if (!batchFriendlyId || !authorizationValue) {
+      return false;
+    }
+
+    const [authError, authenticated] = await tryCatch(
+      authenticateAuthorizationHeader(authorizationValue, {
+        allowPublicKey: true,
+      })
+    );
+
+    if (authError || !authenticated || !authenticated.ok) {
+      return false;
+    }
+
+    return batchStreamGrants.spend(authenticated.environment.id, batchFriendlyId);
+  },
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",

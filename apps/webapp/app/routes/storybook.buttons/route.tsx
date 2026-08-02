@@ -399,6 +399,26 @@ export default function Story() {
           </Button>
         </div>
       </div>
+      <Header1 className="mb-2 mt-8">Ask AI button</Header1>
+      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Sizes</Header3>
+          <Button variant="ask-ai/small">Ask AI</Button>
+          <Button variant="ask-ai/medium">Ask AI</Button>
+          <Button variant="ask-ai/large">Ask AI</Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Disabled</Header3>
+          <Button variant="ask-ai/small" disabled>
+            Ask AI
+          </Button>
+        </div>
+        <div className="col-span-2 self-end text-sm text-text-dimmed">
+          Reserved for the AI agent. The variant supplies the agent logo automatically, so no
+          LeadingIcon is needed. Pass one to animate it. See the "AI agent" story for the live
+          pairing.
+        </div>
+      </div>
     </div>
   );
 }

@@ -43,6 +43,10 @@ export function HelpAndFeedback({
   projectId?: string;
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
+  // Hosted outside the popover (below) and opened from the menu item, so the popover closing never
+  // unmounts the feedback form mid-submit — that teardown was intermittently canceling the POST to
+  // /resources/feedback, so messages sent from the sidebar were silently lost.
+  const [isFeedbackOpen, setFeedbackOpen] = useState(false);
   const _currentPlan = useCurrentPlan();
   const agentAvailable = useDashboardAgentAvailable();
   const { changelogs } = useRecentChangelogs(organizationId, projectId);
@@ -174,14 +178,14 @@ export function HelpAndFeedback({
                 target="_blank"
               />
               <Shortcuts />
-              <Feedback
-                button={
-                  <SideMenuItemButton
-                    icon={EnvelopeIcon}
-                    name="Contact us…"
-                    data-action="contact-us"
-                  />
-                }
+              <SideMenuItemButton
+                icon={EnvelopeIcon}
+                name="Contact us…"
+                data-action="contact-us"
+                onClick={() => {
+                  setHelpMenuOpen(false);
+                  setFeedbackOpen(true);
+                }}
               />
             </div>
             <div className="flex flex-col gap-1 p-1">
@@ -214,6 +218,8 @@ export function HelpAndFeedback({
           </Fragment>
         </PopoverContent>
       </Popover>
+      {/* Hosted outside the popover so closing the menu can't unmount the form mid-submit. */}
+      <Feedback open={isFeedbackOpen} setOpen={setFeedbackOpen} />
     </motion.div>
   );
 }

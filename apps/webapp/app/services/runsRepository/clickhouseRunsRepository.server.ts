@@ -271,9 +271,6 @@ export class ClickHouseRunsRepository implements IRunsRepository {
               in: ids,
             },
           },
-          orderBy: {
-            id: "desc",
-          },
           select: {
             id: true,
             friendlyId: true,

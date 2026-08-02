@@ -30,6 +30,7 @@ export default defineConfig({
     },
   },
   server: {
+    cors: false,
     warmup: {
       clientFiles: ["./app/entry.client.tsx", "./app/root.tsx", "./app/components/**/*.tsx"],
       ssrFiles: ["./app/entry.server.tsx", "./app/root.tsx"],

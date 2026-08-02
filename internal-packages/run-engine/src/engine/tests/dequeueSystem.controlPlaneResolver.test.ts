@@ -538,3 +538,142 @@ describe("DequeueSystem controlPlaneResolver (single-DB passthrough)", () => {
     }
   );
 });
+
+heteroPostgresTest(
+  "resolveWorkerVersion (DEVELOPMENT) resolves the newest worker by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const cp = await seedControlPlane(
+      prisma14 as unknown as PrismaClient,
+      "cpord",
+      "ordering-task"
+    );
+
+    await prisma14.backgroundWorker.update({
+      where: { id: cp.worker.id },
+      data: { createdAt: new Date("2026-07-01T12:00:00.000Z") },
+    });
+
+    const newest = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_newest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260731.1",
+        metadata: {},
+        engine: "V2",
+        createdAt: new Date("2026-07-31T12:00:00.000Z"),
+      },
+    });
+    const oldest = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_oldest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260730.1",
+        metadata: {},
+        engine: "V2",
+        createdAt: new Date("2026-07-30T12:00:00.000Z"),
+      },
+    });
+
+    expect(oldest.id > newest.id).toBe(true);
+    expect(oldest.createdAt < newest.createdAt).toBe(true);
+
+    const resolver = new PassthroughControlPlaneResolver({
+      prisma: prisma14 as unknown as PrismaClient,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: cp.environment.id,
+      type: "DEVELOPMENT",
+    });
+
+    assertNonNullable(resolved);
+    expect(resolved.worker.id).toBe(newest.id);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion latest-MANAGED fallback resolves by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const cp = await seedControlPlane(
+      prisma14 as unknown as PrismaClient,
+      "cpfall",
+      "fallback-task"
+    );
+
+    await prisma14.workerDeployment.update({
+      where: { id: cp.deployment.id },
+      data: { type: "V1" },
+    });
+
+    const newestWorker = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_newest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260731.1",
+        metadata: {},
+        engine: "V2",
+      },
+    });
+    const oldestWorker = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_oldest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260730.1",
+        metadata: {},
+        engine: "V2",
+      },
+    });
+
+    const newestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: generateFriendlyId("deployment"),
+        contentHash: "hash_newest",
+        version: "20260731.1",
+        shortCode: "short_code_newest",
+        status: "DEPLOYED",
+        projectId: cp.project.id,
+        environmentId: cp.environment.id,
+        workerId: newestWorker.id,
+        type: "MANAGED",
+        createdAt: new Date("2026-07-31T12:00:00.000Z"),
+      },
+    });
+    const oldestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: generateFriendlyId("deployment"),
+        contentHash: "hash_oldest",
+        version: "20260730.1",
+        shortCode: "short_code_oldest",
+        status: "DEPLOYED",
+        projectId: cp.project.id,
+        environmentId: cp.environment.id,
+        workerId: oldestWorker.id,
+        type: "MANAGED",
+        createdAt: new Date("2026-07-30T12:00:00.000Z"),
+      },
+    });
+
+    expect(oldestDeployment.id > newestDeployment.id).toBe(true);
+    expect(oldestDeployment.createdAt < newestDeployment.createdAt).toBe(true);
+
+    const resolver = new PassthroughControlPlaneResolver({
+      prisma: prisma14 as unknown as PrismaClient,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: cp.environment.id,
+      type: "PRODUCTION",
+    });
+
+    assertNonNullable(resolved);
+    expect(resolved.deployment?.id).toBe(newestDeployment.id);
+  }
+);
