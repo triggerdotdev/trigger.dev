@@ -809,7 +809,7 @@ describe("scanFile: catch clause evidence", () => {
     // The ordering is the whole trick and it is easy to get backwards. The flag is raised at the
     // END of each statement, after that statement's own branch check. Raising it first makes every
     // deciding statement refuse itself, because `if (e instanceof X) return y` contains an exit by
-    // definition; that variant was measured and it takes the tree from 15 to 6 and accuses 78
+    // definition; that variant was measured against the pre-round-C tree and it takes it from 15 to 6, accusing 78
     // routes. This one leaves the real-tree report and all 240 clauses' evidence byte-identical.
     const BRANCH_EXITED: Array<[string, string]> = [
       ...EXITED,
@@ -889,7 +889,7 @@ describe("scanFile: catch clause evidence", () => {
 
   // S2. A clause whose try block cannot throw is unreachable, so it is not error handling and
   // nothing should be read off it. Crediting one was the largest hole ever found here: prepending
-  // this to a body took the real tree from 15 to 42 and raised 224 routes, because the 261 routes
+  // this to a body takes the real tree from 19 to 44 and raises 224 routes, because the routes
   // that catch nothing sat at `not-applicable` and a dead clause moved every one of them to `pass`.
   // `dead-classifying-try` in the mutation corpus is the tree-scale version.
   describe("a catch over a try block that cannot throw", () => {
@@ -2179,6 +2179,44 @@ describe("scanFile: the signals auth-scope reads", () => {
     );
     expect(ep!.loaderScopesByCaller).toBe(true);
     expect(ep!.actionScopesByCaller).toBe(false);
+  });
+
+  // Round D item 3. The predicate fired on any property at all whose value was a caller id, so one
+  // dead statement cleared the check. Both halves are now required: an identity property name, and
+  // an object that is handed to a call.
+  it("does not read a dead object holding the caller id as a scope", () => {
+    const arbitraryKey = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         const unused = { anything: user.id };
+         return json(await prisma.org.findMany({ where: { slug: "x" } }));
+       });`
+    );
+    expect(arbitraryKey!.loaderScopesByCaller).toBe(false);
+
+    const identityKey = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         const unused = { userId: user.id };
+         return json(await prisma.org.findMany({ where: { slug: "x" } }));
+       });`
+    );
+    expect(identityKey!.loaderScopesByCaller).toBe(false);
+  });
+
+  it("reads the caller id through any depth of nesting inside a call argument", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         return json(await prisma.org.findMany({
+           where: { OR: [{ members: { some: { userId: user.id } } }] },
+         }));
+       });`
+    );
+    expect(ep!.loaderScopesByCaller).toBe(true);
   });
 
   it("does not read a non-identity field off the caller as a scope", () => {

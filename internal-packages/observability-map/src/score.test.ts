@@ -225,11 +225,11 @@ ${failing}`
   it("counts an audit-trail suppression and does not let it shrink the audit gap's denominator", () => {
     const missingAudit = `import { prisma } from "~/db.server";
 export async function action() { return prisma.token.create({ data: {} }); }`;
-    const withAudit = `import { auditLog } from "~/services/audit.server";
+    const withAudit = `import { clearImpersonation } from "~/models/admin.server";
 import { prisma } from "~/db.server";
 export async function action({ request }) {
   const token = await prisma.token.create({ data: {} });
-  await auditLog("token.created", { tokenId: token.id });
+  await clearImpersonation(request, "/admin");
   return json(token);
 }`;
 

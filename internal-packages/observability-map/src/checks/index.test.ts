@@ -1387,17 +1387,60 @@ describe("audit-trail", () => {
     expect(r.status).toBe("not-applicable");
   });
 
-  it("passes a sensitive mutation that records an audit event", () => {
+  // The pass branch had never been exercised against a real name: the fixture imported `auditLog`
+  // from `~/services/audit.server`, a helper and a module that both exist nowhere. All three names
+  // on the list now reach `prisma.impersonationAuditLog.create` in `models/admin.server.ts`.
+  it.each(["redirectWithImpersonation", "clearImpersonation", "startImpersonation"])(
+    "passes a sensitive mutation that records an audit event through %s",
+    (writer) => {
+      const r = run(
+        "audit-trail",
+        "admin.impersonate.tsx",
+        `import { ${writer} } from "~/models/admin.server";
+         import { prisma } from "~/db.server";
+         export async function action({ request }) {
+           const target = await prisma.user.findFirst({ where: { admin: false } });
+           const session = await ${writer}(request, target.id, "/");
+           return session;
+         }`
+      );
+      expect(r.status).toBe("pass");
+      expect(r.detail).toBe("records an audit event");
+    }
+  );
+
+  it("still fails a sensitive mutation that writes no record", () => {
     const r = run(
       "audit-trail",
       "api.v1.auth.jwt.ts",
-      `import { auditLog } from "~/services/audit.server";
-       import { prisma } from "~/db.server";
+      `import { prisma } from "~/db.server";
        export async function action({ request }) {
-         const token = await prisma.token.create({ data: {} });
-         await auditLog("token.created", { tokenId: token.id });
+         const token = await prisma.token.create({ data: { name: request.url } });
          return json(token);
        }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // The coherence fix. `auth-boundary` declines to judge a trivial body because a guard would be
+  // behind the import; this check accused the same body over an audit write behind the same
+  // import. Same rule now, and presence is still read before the exemption, so a trivial body that
+  // does call a writer passes rather than sitting out.
+  it("declines to judge a trivial sensitive mutation, as auth-boundary does", () => {
+    const source = `import { doTheThing } from "~/models/admin.server";
+       export async function action({ request }) { return doTheThing(request, "/admin"); }`;
+    expect(run("audit-trail", "resources.impersonation.ts", source).status).toBe("not-applicable");
+    expect(run("auth-boundary", "resources.impersonation.ts", source).status).toBe(
+      "not-applicable"
+    );
+  });
+
+  it("still passes a trivial sensitive mutation that calls a writer", () => {
+    const r = run(
+      "audit-trail",
+      "resources.impersonation.ts",
+      `import { clearImpersonation } from "~/models/admin.server";
+       export async function action({ request }) { return clearImpersonation(request, "/admin"); }`
     );
     expect(r.status).toBe("pass");
   });
@@ -1640,6 +1683,21 @@ describe("auth-scope", () => {
     );
     expect(r.status).toBe("fail");
     expect(r.detail).toContain("action (createActionPATApiRoute)");
+  });
+
+  // Round D item 3, at the check level: the shape that cleared both real findings.
+  it("is not cleared by a dead object holding the caller id", () => {
+    const r = run(
+      "auth-scope",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const action = createActionPATApiRoute({ method: "POST" }, async ({ user, params }) => {
+         const unused = { userId: user.id };
+         return json(await prisma.orgMember.deleteMany({ where: { slug: params.orgParam } }));
+       });`
+    );
+    expect(r.status).toBe("fail");
   });
 
   it("is not applicable to a route that is not sensitive", () => {

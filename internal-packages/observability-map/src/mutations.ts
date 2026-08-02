@@ -421,10 +421,14 @@ export const MUTATIONS: Mutation[] = [
   prependToEveryFile(
     "suppress-every-check",
     "prepend an obs-map-disable directive for every check to every file",
+    // Every check, which this said it was and was not: `auth-scope` was added a round after the
+    // entry was written and never added here, so the "a suppression cannot raise a score"
+    // invariant went untested at tree scale for the 19 routes it applies to.
     [
       "// obs-map-disable error-classification -- mutation corpus",
       "// obs-map-disable request-context -- mutation corpus",
       "// obs-map-disable auth-boundary -- mutation corpus",
+      "// obs-map-disable auth-scope -- mutation corpus",
       "// obs-map-disable audit-trail -- mutation corpus",
     ].join("\n")
   ),
@@ -521,6 +525,22 @@ export const MUTATIONS: Mutation[] = [
     "wrap every route body in a non-array receiver's .map(...)",
     "return obsMapResult.map(async () => {",
     "});"
+  ),
+  // Round D item 3. `auth-scope` fired on any property at all whose value was a caller id, wherever
+  // it sat, so one dead statement at the head of a body cleared it. These are the two halves: the
+  // wrong property name, and the right property name in an object nothing is handed. Both raised
+  // `settings.sso` and `settings.team`, the only two findings the check has ever produced.
+  wrapEveryBody(
+    "dead-caller-scope-object",
+    "prepend a dead object holding the caller id under an arbitrary key to every route body",
+    "const obsMapDeadScope = { anything: user.id };",
+    ""
+  ),
+  wrapEveryBody(
+    "dead-caller-scope-userid",
+    "prepend a dead object holding the caller id under userId to every route body",
+    "const obsMapDeadUserId = { userId: user.id };",
+    ""
   ),
   // C1a. `auth-boundary` matched `/^(require|authenticate)/`, so any callee at all beginning
   // `require` cleared a sensitive route. These two prepend the shapes that paid: an invented guard
@@ -850,6 +870,8 @@ export const ADDITIVE_IDS = [
   "registered-throw",
   "fake-require-guard",
   "fake-authenticated-lookup",
+  "dead-caller-scope-object",
+  "dead-caller-scope-userid",
 ];
 
 function isSingleConst(statement: ts.Statement): statement is ts.VariableStatement {

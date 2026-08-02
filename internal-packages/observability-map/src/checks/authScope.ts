@@ -65,11 +65,13 @@ function builderExports(ep: EntryPoint): BuilderExport[] {
  * made this check agree with a route that resolves its target org from a URL slug and puts nothing
  * else in front of it.
  *
- * Applicable only where it is answerable: sensitive, builder-wrapped and not delegating. Outside
+ * Applicable only where it is answerable: sensitive and builder-wrapped. Outside
  * that it would be a second near-universal fail, which is the shape the `request-context` figure
  * already has and which the report has to collapse rather than list. There is no triviality test
  * here because there is nothing left for one to refuse: `isTrivial` answers false for any route
- * with an initializer callee, so a builder-wrapped route is never trivial.
+ * with an initializer callee, so a builder-wrapped route is never trivial. Nor is there a
+ * delegating test: `scoreEntry` answers not-applicable for a delegating entry before any check
+ * runs, so one here would be unreachable, and one WAS here saying otherwise.
  *
  * Three residuals, running in both directions.
  *
@@ -92,9 +94,6 @@ function builderExports(ep: EntryPoint): BuilderExport[] {
 export const authScope = {
   id: ID,
   run(ep: EntryPoint): CheckResult {
-    if (ep.delegating) {
-      return { id: ID, status: "not-applicable", detail: "delegates its body to another module" };
-    }
     if (!classifySensitivity(ep).sensitive) {
       return { id: ID, status: "not-applicable", detail: "not sensitive" };
     }

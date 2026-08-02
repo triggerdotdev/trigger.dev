@@ -464,11 +464,11 @@ describe("hasDelta", () => {
   });
 
   it("is true when the audit gap closed, which no score reports", () => {
-    const audited = `import { auditLog } from "~/services/audit.server";
+    const audited = `import { clearImpersonation } from "~/models/admin.server";
        import { prisma } from "~/db.server";
        export async function action() {
          const token = await prisma.token.create({ data: {} });
-         await auditLog("token.created", { tokenId: token.id });
+         await clearImpersonation(request, "/admin");
          return json(token);
        }`;
     const unaudited = `import { prisma } from "~/db.server";

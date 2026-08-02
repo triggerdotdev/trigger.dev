@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { scanDirectory } from "./scan.js";
 import { buildReport } from "./score.js";
 import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
+import { CHECKS } from "./checks/index.js";
 
 /**
  * The tree-scale mutation corpus.
@@ -41,7 +42,7 @@ const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
  *
  * `dead-classifying-try-with-call` is the shape `dead-classifying-try` only looked like it closed.
  * `canRaise` accepts any call at all, so `try { String(0); }` reads as a clause guarding real work
- * and takes the tree from 15 to 42, raising 224 routes, exactly as `try { 0; }` did before it was
+ * and takes the tree from 19 to 44, raising 224 routes, exactly as `try { 0; }` did before it was
  * refused. Telling an inert call from one that can throw needs types the scanner does not have.
  * The docstrings in `scan.ts`, `types.ts` and `errorClassification.ts` say the rule refuses
  * `try { 0; }` and is defeated by one call, rather than claiming the family is closed.
@@ -195,6 +196,30 @@ function mutate(
   return { files: out, changed, sites };
 }
 
+/**
+ * Deliberately NOT gated behind `OBS_MAP_MUTATION_CORPUS`, unlike everything below it.
+ *
+ * This is the guard for the way the corpus actually failed. `auth-scope` was added a round after
+ * `suppress-every-check` was written and never added to its directive list, so the "a suppression
+ * cannot raise a score" invariant went untested at tree scale for the 19 routes that check applies
+ * to, while the entry's own description said "every check". Nothing noticed, because the entry
+ * still passed: omitting a check from the sweep leaves its failures in place, which lowers the
+ * score rather than raising it, so the corpus cannot catch its own omission by failing.
+ *
+ * A registry assertion can, and it belongs in the default suite so that adding a check without
+ * extending the corpus turns `pnpm test` red rather than a job nobody runs locally.
+ */
+describe("the corpus keeps up with the check registry", () => {
+  it("suppresses every registered check in the exhaustive sweep", () => {
+    const sweep = MUTATIONS.find((m) => m.id === "suppress-every-check")!;
+    const mutated = sweep.apply("api.v1.a.ts", "export const loader = () => null;")!.source;
+    const missing = CHECKS.map((c) => c.id).filter(
+      (id) => !mutated.includes(`obs-map-disable ${id} `)
+    );
+    expect(missing).toEqual([]);
+  });
+});
+
 const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
 
 /**
@@ -242,7 +267,7 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
    *
    * The guard the design asked for, verdict movement, cannot be used, though not for the reason an
    * earlier version of this comment gave. Plenty of defended entries move verdicts hard:
-   * `delete-every-catch` takes the tree from 15 to 2 and `dead-throw-after-switch` to 6. The
+   * `delete-every-catch` takes the tree from 19 to 8 and `dead-throw-after-switch` to 10. The
    * narrower true reason is that the IDEAL defended shape is one the scanner is blind to, and those
    * move nothing at all: `dead-if-false` and the ten entries beside it are defended precisely
    * because the tree comes out identical. Requiring movement would fail exactly the entries that

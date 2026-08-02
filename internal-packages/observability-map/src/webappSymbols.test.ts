@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { AUDIT_SYMBOLS } from "./checks/auditTrail.js";
 import { GUARDS, SOFT_GUARDS } from "./checks/authBoundary.js";
 import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "./sensitivity.js";
 
@@ -153,6 +154,14 @@ describe("the names the tool matches on exist in the webapp", () => {
 
   it("every sensitive symbol is declared somewhere", () => {
     expect(SENSITIVE_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
+  });
+
+  // The list this test did not cover, and it had rotted completely: all three of `auditLog`,
+  // `recordAudit` and `writeAuditEvent` were exported nowhere, so `audit-trail`'s pass branch could
+  // not fire and the report said "No audit helper exists in the webapp" while
+  // `models/admin.server.ts` was writing `impersonationAuditLog` rows on two paths.
+  it("every audit symbol is declared somewhere", () => {
+    expect(AUDIT_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
   });
 
   it("every auth guard is declared somewhere, or is a listed dependency method", () => {

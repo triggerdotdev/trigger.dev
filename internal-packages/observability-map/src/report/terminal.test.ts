@@ -181,11 +181,11 @@ describe("rendering honestly when there is nothing to say", () => {
   it("does not claim no audit helper exists when one is in use", () => {
     const audited = scanFile(
       "api.v1.auth.tokens.ts",
-      `import { auditLog } from "~/services/audit.server";
+      `import { clearImpersonation } from "~/models/admin.server";
        import { prisma } from "~/db.server";
        export async function action() {
          const token = await prisma.token.create({ data: {} });
-         await auditLog("token.created", { tokenId: token.id });
+         await clearImpersonation(request, "/admin");
          return json(token);
        }`
     )!;

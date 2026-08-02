@@ -86,6 +86,44 @@ const CALLER_ID_PATH =
   /^(authentication|authenticationResult|auth|sessionAuth|user)(\.[A-Za-z0-9_$]+)*\.(userId|id|actor)$/;
 
 /**
+ * Property names that mean the value is being used to say WHOSE, rather than merely carrying the
+ * caller's id around. Read off the tree: of the ten names that take a caller-id value in
+ * `apps/webapp/app/routes`, these are the tenant and identity fields, and `sub`, `value` and
+ * `consumerId` are the three that are not. `anything: user.id` is what a mutation writes, and it
+ * does not match.
+ */
+const CALLER_ID_FIELD =
+  /^(id|userId|user|memberId|orgMemberId|createdBy|createdByUserId|environmentId|runtimeEnvironmentId|organizationId|orgId|projectId)$/;
+
+/**
+ * Whether the object literal holding this property is handed to a call, through any depth of
+ * nesting: `findMany({ where: { members: { some: { userId } } } })` is, and
+ * `const unused = { userId };` is not. Arrays count, so `{ OR: [{ userId }] }` still reaches its
+ * call.
+ *
+ * What this refuses is a filter built and dropped. What it does NOT refuse is a filter built and
+ * handed to a call that ignores it: `String({ userId: user.id });` reads as scoping, the same way
+ * `try { String(0); }` reads as error handling, and for the same reason. Knowing whether the callee
+ * uses the argument needs types the scanner does not have.
+ */
+function isHandedToACall(property: ts.PropertyAssignment): boolean {
+  let node: ts.Node = property;
+  for (let parent = node.parent; parent; node = parent, parent = node.parent) {
+    if (ts.isCallExpression(parent) || ts.isNewExpression(parent)) {
+      return parent.arguments?.some((a) => a === node) === true;
+    }
+    if (
+      !ts.isObjectLiteralExpression(parent) &&
+      !ts.isPropertyAssignment(parent) &&
+      !ts.isArrayLiteralExpression(parent)
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Whether any handler in `fns` assigns the caller's own id to an object-literal property, the
  * `where: { members: { some: { userId: authentication.userId } } }` and
  * `presenter.call({ userId: user.id })` shapes.
@@ -100,14 +138,28 @@ const CALLER_ID_PATH =
  * Nested functions are walked, since a filter built inside a callback still filters. Same-file
  * helpers are NOT followed, unlike the main walk: a route that computes its filter in a helper is
  * reported as unscoped. Nothing in the tree does.
+ *
+ * Three conditions, and the first version of this had only the middle one, which made the whole
+ * check free to defeat. Prepending `const __unused = { anything: user.id };` to every body raised
+ * `settings.sso` and `settings.team`, the only two findings `auth-scope` has ever produced and both
+ * confirmed cross-org exposures, because any property at all taking a caller id counted wherever it
+ * sat. `dead-caller-scope-object` and `dead-caller-scope-userid` in the mutation corpus are the two
+ * halves of that shape.
+ *
+ * So the property NAME has to be an identity field, and the object it sits in has to be handed to a
+ * call. See `isHandedToACall` for what that does and does not refuse.
  */
 function scopesByCallerIn(fns: Iterable<EntryFunction>): boolean {
   let found = false;
   const visit = (node: ts.Node) => {
     if (found) return;
-    if (ts.isPropertyAssignment(node)) {
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isIdentifier(node.name) &&
+      CALLER_ID_FIELD.test(node.name.text)
+    ) {
       const path = propertyPath(node.initializer);
-      if (path !== null && CALLER_ID_PATH.test(path)) {
+      if (path !== null && CALLER_ID_PATH.test(path) && isHandedToACall(node)) {
         found = true;
         return;
       }
@@ -253,13 +305,15 @@ function canRaise(node: ts.Node): boolean {
  * try block cannot raise is not error handling, and reading one as classification paid 50 points a
  * route to anyone willing to prepend `try { 0; } catch (e) { if (e instanceof Error) { return
  * json(x, { status: 400 }); } throw e; }` to a body: on the real tree that took the global from 15
- * to 42 and raised 224 routes, which is more than every other shape found on this branch put
- * together. `dead-classifying-try` in the mutation corpus is the tree-scale version.
+ * to 42 and raised 224 routes when it was measured, before round C moved the baseline to 19. More
+ * than every other shape found on this branch put together, and still true at today's figures, which
+ * `dead-classifying-try-with-call` shows live at 19 to 44. `dead-classifying-try` in the mutation
+ * corpus is the refused version.
  *
  * What this refuses is `try { 0; }` and nothing cleverer. `canRaise` accepts ANY call, member
  * access or `in`, and none of those has to be able to throw, so one inert call defeats the rule:
  * `try { String(0); } catch (e) { if (e instanceof Error) { return json(x, { status: 400 }); } throw
- * e; }` reads as classification and takes the tree back to 15 to 42, exactly as `try { 0; }` did.
+ * e; }` reads as classification and takes the tree from 19 to 44, exactly as `try { 0; }` did.
  * `dead-classifying-try-with-call` in the mutation corpus is that shape, running as an expected
  * failure. Telling a call that can throw from one that cannot needs types the scanner does not have,
  * so the rule closes the shape found rather than the family it belongs to. Read the docstrings that
@@ -558,7 +612,8 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   // after one of those is dead code, so it decides nothing. Raised at the END of each statement,
   // after that statement's own branch check: a deciding statement contains an exit by definition,
   // so raising it first makes every such statement refuse itself, which was measured at 78 routes
-  // losing their pass and the tree dropping from 15 to 6. This ordering leaves the real-tree report
+  // losing their pass and the tree dropping from 15 to 6, measured before round C moved the baseline
+  // to 19. This ordering leaves the real-tree report
   // and all 240 clauses' evidence byte-identical. The tests are the cases in `dead throw written
   // after something that already exited`.
   let exited = false;
