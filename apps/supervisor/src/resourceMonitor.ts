@@ -132,17 +132,21 @@ export class DockerResourceMonitor extends ResourceMonitor {
     let cpuUsed = 0;
     let memoryUsed = 0;
 
-    for (const container of stats) {
-      if (container.State === "running") {
-        const c = this.docker.getContainer(container.Id);
-        const { HostConfig } = await c.inspect();
+    const runningContainers = stats.filter((container) => container.State === "running");
+    const inspectedResources = await Promise.all(
+      runningContainers.map(async (container) => {
+        const { HostConfig } = await this.docker.getContainer(container.Id).inspect();
 
-        const cpu = this.resourceParser.cpu(HostConfig.NanoCpus ?? 0);
-        const memory = this.resourceParser.memory(HostConfig.Memory ?? 0);
+        return {
+          cpu: this.resourceParser.cpu(HostConfig.NanoCpus ?? 0),
+          memory: this.resourceParser.memory(HostConfig.Memory ?? 0),
+        };
+      })
+    );
 
-        cpuUsed += cpu;
-        memoryUsed += memory;
-      }
+    for (const resources of inspectedResources) {
+      cpuUsed += resources.cpu;
+      memoryUsed += resources.memory;
     }
 
     this.cachedResources = this.applyOverrides({
