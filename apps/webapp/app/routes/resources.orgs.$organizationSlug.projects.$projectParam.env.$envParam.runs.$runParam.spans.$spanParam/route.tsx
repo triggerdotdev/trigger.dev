@@ -36,6 +36,7 @@ import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButto
 import {
   failedRunPrompt,
   isFailedRunStatus,
+  waitingRunPrompt,
 } from "~/components/dashboard-agent/investigate-prompts";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -1141,6 +1142,7 @@ function RunBody({
                   waiting={queueMetrics.waiting}
                   status={run.status}
                   createdAt={run.createdAt}
+                  runFriendlyId={run.friendlyId}
                 />
               ) : null}
               <RunTimeline run={run} />
@@ -1265,6 +1267,7 @@ function WaitingInQueueBlock({
   waiting,
   status,
   createdAt,
+  runFriendlyId,
 }: {
   queueName: string;
   queuePath: string | undefined;
@@ -1272,6 +1275,7 @@ function WaitingInQueueBlock({
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
   createdAt: Date;
+  runFriendlyId: string;
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
@@ -1386,6 +1390,13 @@ function WaitingInQueueBlock({
           />
         </div>
       </div>
+
+      {/* This block only exists while the run is still waiting, so the ask is always apt: hand the
+          stuck run to the agent. Hidden when the agent isn't available. */}
+      <InvestigateButton
+        prompt={waitingRunPrompt(runFriendlyId, queueName)}
+        className="self-start"
+      />
     </div>
   );
 }
