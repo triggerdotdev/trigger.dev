@@ -633,7 +633,7 @@ export const MUTATIONS: Mutation[] = [
   prependToEveryCatch(
     "dead-if-empty-string",
     "preserving",
-    'append if ("") { throw e; } to every catch',
+    'splice if ("") { throw e; } into every catch',
     (e) => `if ("") { throw ${e}; }`
   ),
   prependToEveryCatch(

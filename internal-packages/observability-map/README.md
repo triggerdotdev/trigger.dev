@@ -119,7 +119,7 @@ rather than celebrating.
 The check list describes a composite the number mostly is not, so the report discloses the
 shape instead of hiding it behind a weight. Today:
 
-```
+```text
 CHECKS
   error-classification  166 applicable,  94 pass,   0 sole, global without it 10
   auth-boundary          62 applicable,  59 pass,   0 sole, global without it 15
