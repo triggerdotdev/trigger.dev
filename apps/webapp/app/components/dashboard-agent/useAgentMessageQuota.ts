@@ -1,19 +1,18 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useEffect, useState } from "react";
-import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { countUserMessages, resolveMessageQuota, type MessageQuota } from "./message-quota";
 
 /**
- * Whether this org is on the Free plan.
+ * Whether the message cap applies to this org.
  *
- * Undefined — not false — when we can't tell: self-hosted with no billing
- * service, a billing call that failed, or the org route data not loaded yet. The
- * quota treats undefined as "no cap" (see `resolveMessageQuota`), so an unknown
- * plan can never lock someone out.
+ * Always undefined for now: plan detection belongs to the billing service and
+ * will be wired up there (plan-defined limit, billing-period window). Undefined
+ * means "no cap" (see `resolveMessageQuota`), so the whole quota surface —
+ * counter, upgrade block, submit guard — stays built and tested but dormant
+ * until billing supplies the answer.
  */
 function useIsFreePlan(): boolean | undefined {
-  const isPaying = useCurrentPlan()?.v3Subscription?.isPaying;
-  return typeof isPaying === "boolean" ? !isPaying : undefined;
+  return undefined;
 }
 
 /**
