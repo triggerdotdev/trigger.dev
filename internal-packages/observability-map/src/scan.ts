@@ -1641,6 +1641,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
             throws: clause.throws,
             branches: clause.branches,
             ...guardedWork(node.tryBlock),
+            guardMayRaise: tryBlockMayThrow(node.tryBlock),
             tryStatementCount,
           });
         }

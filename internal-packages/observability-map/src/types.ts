@@ -54,6 +54,18 @@ export type CatchEvidence = {
    */
   guardCanRaise: boolean;
   /**
+   * The containment twin of `guardCanRaise`: false only when the guarded region provably cannot
+   * raise, i.e. every statement is an expression over a bare literal, which is `try { 0; }` and
+   * nothing else. Everything `canRaise`'s whitelist misses (a destructuring declaration, a
+   * temporal-dead-zone read) stays true here, so `guardCanRaise` implies `guardMayRaise`. What the
+   * refused-callback arm of `error-classification` reads: a route whose own classifying catch
+   * `canRaise` cannot see must never be told nothing it owns decides
+   * (`does not accuse a route that owns a catch of owning none`), while the provably dead
+   * `try { 0; }` clause still blocks nothing (`still fails a per-item swallow beside a deciding
+   * catch over a dead guard`).
+   */
+  guardMayRaise: boolean;
+  /**
    * Everything the guarded region waits for is one of those parses. What separates
    * `try { const body = await request.json(); } catch { 400 }` from
    * `try { const body = await request.json(); return await handleEverything(body); } catch { 500 }`,

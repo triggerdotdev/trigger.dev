@@ -743,8 +743,11 @@ describe("error-classification", () => {
 
   // I4. A route that owns a real classifying catch must never be told it owns none. `canRaise` does
   // not list destructuring, and `const { a } = undefined` throws, so the owned catch dropped out of
-  // `reachable`; with the callback branch ordered off `reachable` the route was then accused of
-  // having all its error handling in a callback, which was simply false.
+  // `reachable`; with the refused-swallow arm ordered off `reachable` the route was then accused of
+  // owning nothing that decides, which was simply false. The arm now reads own deciding catches
+  // through `guardMayRaise`, so the accusation is withheld and the route sits out exactly as it did
+  // before the arm existed. Asserted on `status`: an earlier version of this test asserted the
+  // absence of a detail string no arm ever emits, which could not fail.
   it("does not accuse a route that owns a catch of owning none", () => {
     const r = run(
       "error-classification",
@@ -764,7 +767,79 @@ describe("error-classification", () => {
          return json({ ok: true });
        }`
     );
-    expect(r.detail).not.toContain("callback the route does not own");
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("guards nothing that can throw");
+  });
+
+  // I4 sibling: the same shape through `.filter` and a different `canRaise` miss (a plain
+  // declaration is not on the whitelist either), so the fix is the rule and not the fixture.
+  it("does not accuse a route whose deciding catch guards a declaration beside a filter swallow", () => {
+    const r = run(
+      "error-classification",
+      "owned-filter.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         const kept = items.filter((item) => {
+           try { return check(item); } catch { return false; }
+         });
+         try { const parsed = { ...raw }; } catch (e) {
+           if (e instanceof TypeError) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         return json({ kept });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+  });
+
+  // The blocking catch has to DECIDE: an own inert rethrow catch over the same invisible guard
+  // still leaves the refused swallow in the verdict, or `wrap-body-in-rethrow` spelled with a
+  // destructuring guard would lift every per-item swallow out of it.
+  it("still fails a per-item swallow beside an inert catch over an invisible guard", () => {
+    const r = run(
+      "error-classification",
+      "owned-inert.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         await Promise.all(
+           items.map(async (item) => {
+             try { await processItem(item); } catch { return null; }
+           })
+         );
+         try { const { a } = undefined; } catch (e) { throw e; }
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("nothing the route owns decides");
+  });
+
+  // And the blocking catch has to guard something that MAY raise: the provably-inert `try { 0; }`
+  // clause `dead-classifying-try` prepends decides and must still block nothing, or the prepend
+  // would lift a refused-swallow fail to not-applicable at tree scale.
+  it("still fails a per-item swallow beside a deciding catch over a dead guard", () => {
+    const r = run(
+      "error-classification",
+      "owned-dead.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         await Promise.all(
+           items.map(async (item) => {
+             try { await processItem(item); } catch { return null; }
+           })
+         );
+         try { 0; } catch (e) {
+           if (e instanceof Error) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("nothing the route owns decides");
   });
 
   // C2. A single-element array cannot iterate, so `[0].map(async () => { whole body })` is not a

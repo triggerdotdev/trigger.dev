@@ -172,11 +172,16 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * throwing one needs types the scanner does not have. `dead-classifying-try-with-call` in the
  * mutation corpus is the open shape, running as an expected failure.
  *
- * The filter also has to run BEFORE nothing. Ordering the callback branch off `reachable` rather
- * than `ep.catches` accused a route that owns a real classifying catch of owning none, whenever
- * `canRaise` missed what that catch guarded: a destructuring declaration is not on its list, so
- * `try { const { a } = undefined; } catch (e) { ... }` beside a per-item `.map` catch failed with
- * "its only error handling sits in a callback the route does not own", which was simply untrue.
+ * The refused-swallow arm reads the route's own deciding catches through `guardMayRaise`, never
+ * through `guardCanRaise`. `canRaise` is a whitelist and misses real raising code (a destructuring
+ * declaration is not on its list, and `const { a } = undefined` throws), so ordering the arm off
+ * `reachable` accused a route that owns a real classifying catch of owning none, which was simply
+ * untrue; `does not accuse a route that owns a catch of owning none` pins the verdict. The
+ * containment read `guardMayRaise` is false only for the provably-inert `try { 0; }`, so the one
+ * clause that must not block the accusation, the prepended dead classifier `dead-classifying-try`
+ * refuses, still does not block it (`still fails a per-item swallow beside a deciding catch over a
+ * dead guard`). The already-open residual is unchanged: `try { String(0); }` reads as may-raise
+ * AND can-raise, which is `dead-classifying-try-with-call`, the corpus's expected failure.
  */
 export const errorClassification = {
   id: ID,
@@ -209,8 +214,12 @@ export const errorClassification = {
     // `wrap-body-in-rethrow` adds to every route, must not lift a refused swallow out of the
     // verdict, or wrapping a per-item-swallow route in try/rethrow reads "every catch rethrows".
     // `fails a per-item swallow even when the route owns an inert rethrow catch` pins that.
+    // "Nothing the route owns decides" is read off `ep.catches` under `guardMayRaise`, not off
+    // `reachable`: a deciding catch `canRaise` cannot see still decides, and only the
+    // provably-inert `try { 0; }` guard is excluded. See the `guardMayRaise` paragraph above.
     const reachableCb = ep.callbackCatches.filter((c) => c.guardCanRaise);
-    if (!reachable.some(decides) && reachableCb.some(swallows)) {
+    const ownDecides = ep.catches.some((c) => decides(c) && c.guardMayRaise);
+    if (!ownDecides && reachableCb.some(swallows)) {
       return {
         id: ID,
         status: "fail",

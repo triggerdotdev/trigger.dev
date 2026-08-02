@@ -1752,6 +1752,7 @@ describe("scanFile: per-catch evidence", () => {
       guardsParse: true,
       awaitsOnlyParse: true,
       guardCanRaise: true,
+      guardMayRaise: true,
       tryStatementCount: 1,
     });
     expect(ep!.catches[1]).toMatchObject({
@@ -1856,6 +1857,7 @@ describe("scanFile: per-catch evidence", () => {
       guardsParse: false,
       awaitsOnlyParse: false,
       guardCanRaise: true,
+      guardMayRaise: true,
       tryStatementCount: 4,
     });
   });
