@@ -15,7 +15,7 @@ export const updateMetadataService = singleton(
       flushEnabled: env.BATCH_METADATA_OPERATIONS_FLUSH_ENABLED === "1",
       flushLoggingEnabled: env.BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED === "1",
       maximumSize: env.TASK_RUN_METADATA_MAXIMUM_SIZE,
-      logLevel: env.BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED === "1" ? "debug" : "info",
+      logLevel: env.BATCH_METADATA_OPERATIONS_LOG_LEVEL,
       // Buffered (parent/root) operations land via the flusher, not the caller's request —
       // publish here so those changes wake live feeds too (no-op when the backend is off).
       onRunFlushed: (run) => {

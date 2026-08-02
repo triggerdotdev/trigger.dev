@@ -908,6 +908,9 @@ const EnvironmentSchema = z
     BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
     BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
+    BATCH_METADATA_OPERATIONS_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
 
     // Run Engine 2.0
     RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
