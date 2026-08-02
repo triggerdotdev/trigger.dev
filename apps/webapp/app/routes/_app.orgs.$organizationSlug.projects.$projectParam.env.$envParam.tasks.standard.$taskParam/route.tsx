@@ -20,6 +20,7 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -234,21 +235,8 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Top bar — title on the left; TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <Header2>Runs</Header2>
-                <div className="ml-auto flex items-center gap-1.5">
-                  {newRunsCount > 0 ? (
-                    <NewRunsButton count={newRunsCount} onClick={() => showNewRunsRef.current()} />
-                  ) : null}
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
+              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright px-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
               </div>
 
               <ResizablePanelGroup orientation="vertical" className="max-h-full">
@@ -263,23 +251,39 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <TaskRunsList
-                              list={list}
-                              taskSlug={task.slug}
-                              onNewRunsCountChange={setNewRunsCount}
-                              showNewRunsRef={showNewRunsRef}
-                            />
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
+                              />
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>

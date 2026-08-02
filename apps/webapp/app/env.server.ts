@@ -1723,6 +1723,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),
     RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH: z.coerce.number().int().default(1),
     RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
     RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
@@ -2121,6 +2122,8 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
     REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCOUNT_URL: z.string().default("https://a.s2.dev/v1"),
+    REALTIME_STREAMS_S2_BASIN_URL: z.string().default("https://{basin}.b.s2.dev/v1"),
     REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()
