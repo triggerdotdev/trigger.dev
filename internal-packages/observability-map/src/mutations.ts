@@ -688,6 +688,17 @@ export const MUTATIONS: Mutation[] = [
     "splice if (e instanceof Error) { } into every catch",
     (e) => `if (${e} instanceof Error) { }`
   ),
+  // The if/else arm walk merges per-arm evidence by INTERSECTION, so a real classifier sitting in
+  // one arm only earns nothing: one arm running is a condition, not a guarantee. This is the entry
+  // that goes red the day someone "simplifies" the intersection to a union, at which point every
+  // clause in the tree earns a branch from a dead arm. Additive: it plants fake signal.
+  prependToEveryCatch(
+    "dead-classifier-one-arm",
+    "preserving",
+    "splice a dead one-arm classifier if/else into every catch",
+    (e) =>
+      `if (false) { if (${e} instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }`
+  ),
 
   // The additive class. Everything above either takes signal away or moves it about; these put in
   // signal that is not real, which is the direction the corpus was blind to.
@@ -905,6 +916,7 @@ export const ADDITIVE_IDS = [
   "wrap-body-in-rethrow",
   "wrap-body-in-same-arms-throw-ternary",
   "empty-instanceof-if",
+  "dead-classifier-one-arm",
   "registered-throw",
   "fake-require-guard",
   "fake-authenticated-lookup",

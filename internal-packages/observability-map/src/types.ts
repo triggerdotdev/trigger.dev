@@ -13,20 +13,22 @@ export type CheckResult = {
  */
 export type CatchEvidence = {
   /**
-   * Throwing is the clause's only way out. Two conditions: a `throw` is reached on its
-   * straight-line path (its own statements and a bare nested block's or a `do` body's, cut at the
-   * first statement that definitely exits, see `definitelyExits`), and the clause contains no
-   * `return` anywhere. A throw guarded by an `if`, a loop, a `switch`, a nested `try` or a callback
-   * does not count, however the guard is spelled, and neither does one written after something that
-   * has already returned.
+   * Throwing is the clause's only way out. Two conditions: a `throw` is reached on the clause's
+   * guaranteed path (the positions certain to execute whenever the clause runs: its own
+   * statements, a bare nested block's, a `do` body's, a catchless `try`'s tryBlock, a
+   * single-default `switch`'s clause, an `if (true)` then-arm, and both arms of an `if`/`else`
+   * together, cut at the first statement that definitely exits, see `catchClauseEvidence` and
+   * `definitelyExits`), and the clause contains no live `return` anywhere. A throw guarded by a
+   * condition the walk cannot fold, a loop, a nested caught `try`, a finally block or a callback
+   * does not count, and neither does one written after something that has already returned.
    */
   rethrows: boolean;
-  /** A `throw` is reached on that same straight-line path, whether or not it is the only way out.
+  /** A `throw` is reached on that same guaranteed path, whether or not it is the only way out.
    * `rethrows` is this AND no reachable `return`. Kept separately so a verdict can say what is true
    * of a clause that both throws and returns. */
   throws: boolean;
   /**
-   * The clause picks what to do from what it caught, on that same straight-line path: an `if` or
+   * The clause picks what to do from what it caught, on that same guaranteed path: an `if` or
    * `switch` whose condition references the caught error binding AND at least one of whose arms
    * returns or throws, or a conditional that is the whole value of a `return`/`throw`.
    * `if (retries > 0)` does not count, `if (e instanceof Error) { }` does not count, and a

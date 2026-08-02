@@ -506,12 +506,13 @@ const IN_DO_BODY: BareJumps = { break: false, continue: false };
  * nothing between the list and the jump can carry the label: `definitelyExits` answers false for a
  * labelled statement, so the recursion never descends through one.
  *
- * A sound under-approximation. `if` without an `else`, a labelled statement (a `break` to the label
+ * A sound under-approximation. `if` without an `else` (unless its guard is the literal `true`
+ * keyword, the one condition this function folds), a labelled statement (a `break` to the label
  * escapes it) and every other loop form answer false, because none of them is guaranteed to run its
  * body. That extends to a `do` that never falls through, `do { continue; } while (true)`, which is
- * now false for the same reason `while (true) { }` always was: separating it from
- * `do { continue; } while (c)` means folding the condition, which the dead-code defence deliberately
- * does not do. Saying false when the truth is true only leaves a later statement in the list, which
+ * false for the same reason `while (true) { }` always was: separating it from
+ * `do { continue; } while (c)` means folding a LOOP condition, which this function still does not
+ * do. Saying false when the truth is true only leaves a later statement in the list, which
  * is the direction that withholds evidence rather than inventing it.
  */
 function definitelyExits(statement: ts.Statement, jumps: BareJumps = ESCAPES): boolean {
@@ -524,6 +525,15 @@ function definitelyExits(statement: ts.Statement, jumps: BareJumps = ESCAPES): b
   // A `do` body runs before its condition is ever read.
   if (ts.isDoStatement(statement)) return definitelyExits(statement.statement, IN_DO_BODY);
   if (ts.isIfStatement(statement)) {
+    // A guard that is exactly the `true` keyword always takes its then-arm, so the statement
+    // definitely exits iff that arm does, with or without an else. Keyword-exact, same spelling
+    // rule as the walk's `if (true)` entry and for the same reason: this GRANTS a reachability
+    // cut, and a wrong grant pays. `cuts a dead trailing statement after an if true that exits`
+    // is the pin; `dead-throw-after-if-true` and `dead-branch-after-if-true` in the mutation
+    // corpus are the tree-scale versions.
+    if (unwrap(statement.expression).kind === ts.SyntaxKind.TrueKeyword) {
+      return definitelyExits(statement.thenStatement, jumps);
+    }
     return (
       statement.elseStatement !== undefined &&
       definitelyExits(statement.thenStatement, jumps) &&
@@ -735,10 +745,22 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
 /**
  * What a catch clause does with the error, beyond the fact that it caught one.
  *
- * Both answers are read off the clause's own straight-line path: the statements of its block, cut
- * at the first one that definitely exits, recursing into a bare nested block and nothing else. A
- * `throw` or a test that sits inside an `if`, a loop, a `switch`, a nested `try` or a callback is
- * not on that path, so it does not count.
+ * Both answers are read off the clause's own guaranteed path. The governing rule: the walk may
+ * enter a construct exactly where the entered statements are guaranteed to execute whenever the
+ * clause body runs, so no credit can ever come from code a semantics-preserving edit could have
+ * added dead. Entered on those terms: a bare nested block, a `do` body, the tryBlock of a `try`
+ * that has NO catch clause, the sole clause of a single-DefaultClause `switch`, the then-arm of an
+ * `if` whose condition is exactly the literal `true` keyword, and both arms of an `if`/`else` with
+ * per-arm states merged by intersection (evidence in both arms is unconditional; evidence in one
+ * is not). Each entry is pinned by `reads a clause wrapped in a single-default switch as the bare
+ * clause` and its sibling identity pairs.
+ *
+ * NOT entered, deliberately: a bare `if` without an else (except the literal-true case), loops
+ * other than `do` (a body that may run zero times), labelled statements, function-like nodes (the
+ * iteration-callback boundary is `walkBody`'s attribution rule and this walk never crosses any
+ * function boundary), nested catch clauses, finally blocks, and the tryBlock of a `try` WITH a
+ * catch clause, where a throw is intercepted by the nested catch rather than escaping the clause.
+ * A `throw` or a test in any of those positions does not count.
  *
  * That is the whole dead-code defence, and it replaces the list of statically-false shapes an
  * earlier round kept extending. The list was losing: `if (false)` and `while (false)` were
@@ -752,8 +774,9 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
  * the ONLY way out. Without it a `throw error;` written after a statement that already exited read
  * as a rethrow, in seven spellings: after a bare block, a `do` body, an `if (true)`, an `if`/`else`
  * where both arms return, a `switch` with a returning default, and a `try`/`finally` that returns.
- * `definitelyExits` handles most of those on its own, and the no-return rule handles the rest
- * without any constant folding. `dead-throw-after-*` in the mutation corpus covers them.
+ * `definitelyExits` handles every one of those, including the `if (true)` spelling since it folds
+ * the literal `true` keyword, and the no-return rule holds the rest of the line. `dead-throw-after-*`
+ * in the mutation corpus covers them.
  *
  * The cost is real, in both rules. `catch (e) { if (transient) throw e; return null; }` no longer
  * reads as a rethrow, so it reads as a swallow and fails rather than sitting out, and neither does
@@ -765,10 +788,12 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   throws: boolean;
   branches: boolean;
 } {
-  let rethrows = false;
-  let returns = false;
-  let branches = false;
-  // Set once a statement the walk has already passed could have left the clause. An error test
+  // `rethrows`, `branches` and `exited` travel in a state record so a walk can be run against an
+  // isolated copy (the if/else arm walks) as well as the shared root. `returns` stays a single
+  // shared flag: it is a clause-wide veto, never per-arm evidence.
+  //
+  // On `exited`: set once a statement the walk has already passed could have left the clause. An
+  // error test
   // after one of those is dead code, so it decides nothing. Raised at the END of each statement,
   // after that statement's own branch check: a deciding statement contains an exit by definition,
   // so raising it first makes every such statement refuse itself, which was measured at 78 routes
@@ -786,10 +811,24 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   // deferred code prepended to a deciding catch does not blind it`; the refusing half is the
   // `BRANCH_EXITED` list plus `still refuses an error test after an always-true spelling that
   // throws`.
-  let exited = false;
+  //
+  // `vetoReturns` is whether this walk's statements may feed the `returns` veto. True everywhere
+  // except the if/else arm walks: `returns` is read at the PARENT level, as a live containment
+  // read over the whole statement, so an arm walk re-reading its own statements adds nothing for
+  // a live guard and adds a false veto for a folded-dead arm (the walk enters both arms; the fold
+  // has already excluded the dead one from the parent read). `dead-classifier-one-arm` in the
+  // mutation corpus is the tree-scale shape this protects.
+  type ClauseState = {
+    rethrows: boolean;
+    branches: boolean;
+    exited: boolean;
+    vetoReturns: boolean;
+  };
+  let returns = false;
+  const state: ClauseState = { rethrows: false, branches: false, exited: false, vetoReturns: true };
   const bindingName = catchBindingName(clause);
 
-  const walk = (statements: readonly ts.Statement[]) => {
+  const walk = (statements: readonly ts.Statement[], state: ClauseState) => {
     // A block that re-declares the binding name means an `if` below it referencing that name is
     // referencing the shadowing declaration, not this clause's error. Nothing in such a block can
     // speak for the clause, so the whole list is skipped for branch purposes.
@@ -797,33 +836,91 @@ function catchClauseEvidence(clause: ts.CatchClause): {
 
     for (const statement of reachableStatements(statements)) {
       if (ts.isThrowStatement(statement)) {
-        rethrows = true;
+        state.rethrows = true;
         // Read the branch check here, before the path is cut. A thrown ternary picks WHICH error
         // leaves, which is a classification, and reading it only at the shared check below meant
         // the throw arm of that condition was unreachable: this arm always continued first. So
         // `throw e instanceof Response ? e : new ServerError(e)` read as inert while the same
         // clause written with `return` passed. `selectsAnErrorPath` is the same predicate either
         // way, so the same-arms rule applies and `throw e instanceof Error ? e : e;` is refused.
-        if (bindingName !== null && !shadowed && !exited && statement.expression !== undefined) {
+        if (
+          bindingName !== null &&
+          !shadowed &&
+          !state.exited &&
+          statement.expression !== undefined
+        ) {
           const thrown = unwrap(statement.expression);
           if (ts.isConditionalExpression(thrown) && selectsAnErrorPath(thrown, bindingName)) {
-            branches = true;
+            state.branches = true;
           }
         }
-        exited = true;
+        state.exited = true;
         continue;
       }
       if (ts.isBlock(statement)) {
-        walk(statement.statements);
-        if (containsLiveExit(statement)) exited = true;
+        walk(statement.statements, state);
+        if (containsLiveExit(statement)) state.exited = true;
         continue;
       }
       // A `do` body runs before its condition is ever read, so it is on the straight-line path
       // whatever the condition says. The only loop form that is; `definitelyExits` agrees.
       if (ts.isDoStatement(statement)) {
         const body = statement.statement;
-        walk(ts.isBlock(body) ? body.statements : [body]);
-        if (containsLiveExit(statement)) exited = true;
+        walk(ts.isBlock(body) ? body.statements : [body], state);
+        if (containsLiveExit(statement)) state.exited = true;
+        continue;
+      }
+      // The three handlers below share one template: walk the inner list with the SAME shared
+      // state, then read `returns` and `exited` off the whole statement and continue. The explicit
+      // `containsLiveReturn` read is load-bearing: the `continue` skips the shared read below, and
+      // `try { throw e; } finally { return null; }` genuinely swallows (the finally return eats
+      // the throw), so the veto must still see the finally block the walk does not enter. `reads a
+      // try whose finally returns as swallowing, not rethrowing` is the pin.
+      //
+      // A `try` WITHOUT a catch clause: its tryBlock always runs when the clause body does, and a
+      // throw there escapes the clause, so rethrow credit is genuine. The finallyBlock is NOT
+      // walked (classification living only in a finally block is under-credited; the tree has no
+      // such clause). A `try` WITH a catch clause is not entered at all: a throw in that tryBlock
+      // is intercepted by the nested catch, so crediting it would launder a returnless swallow
+      // into not-applicable. `does not read the tryBlock of a caught try as this clause's rethrow`
+      // is the pin, and the nested clause is judged separately as its own `ep.catches` entry.
+      if (ts.isTryStatement(statement) && statement.catchClause === undefined) {
+        walk(statement.tryBlock.statements, state);
+        if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
+        if (containsLiveExit(statement)) state.exited = true;
+        continue;
+      }
+      // A `switch` whose caseBlock is exactly one DefaultClause: that clause's statements always
+      // run, as a bare list. A bare `break` in it neither rethrows, branches nor raises `exited`
+      // (`containsLiveExit` does not count breaks), and `reachableStatements` cuts anything after
+      // a top-level `break`, which is correct: after a break, nothing in the clause list runs.
+      // Any other switch shape is not entered and falls through to the branch gate below exactly
+      // as before, so a real `switch (e.code) { case ...: }` keeps its top-level credit. `reads a
+      // clause wrapped in a single-default switch as the bare clause` is the pin.
+      if (ts.isSwitchStatement(statement)) {
+        const clauses = statement.caseBlock.clauses;
+        const only = clauses.length === 1 ? clauses[0] : undefined;
+        if (only !== undefined && ts.isDefaultClause(only)) {
+          walk(only.statements, state);
+          if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
+          if (containsLiveExit(statement)) state.exited = true;
+          continue;
+        }
+      }
+      // An `if` whose condition (after `unwrap()`) is exactly the `true` keyword: the then-arm
+      // always runs; the else-arm never does and is NEVER walked (`reads a dead else arm under if
+      // true as contributing nothing` is the pin). Keyword-exact on purpose: `!!1`, `1` and
+      // `!false` are deliberately not entry tickets, because entry GRANTS credit and a wrong grant
+      // pays, where `literalTruth`'s wider folding only withholds blindness. This asymmetry is
+      // deliberate; do not unify the two folds. Takes precedence over the if/else arm walk below.
+      if (
+        ts.isIfStatement(statement) &&
+        unwrap(statement.expression).kind === ts.SyntaxKind.TrueKeyword
+      ) {
+        const arm = statement.thenStatement;
+        walk(ts.isBlock(arm) ? arm.statements : [arm], state);
+        if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
+        if (containsLiveExit(statement)) state.exited = true;
         continue;
       }
       // Any other reachable statement that could return means throwing is not the only way out.
@@ -833,29 +930,59 @@ function catchClauseEvidence(clause: ts.CatchClause): {
       // can never run, and vetoing the rethrow on it regressed a rethrow-only clause from
       // not-applicable to fail on 11 real routes. `still sets rethrows past a dead return in an
       // if (false) arm` is the pin.
-      if (containsLiveReturn(statement)) returns = true;
+      if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
 
-      if (bindingName !== null && !shadowed && !exited) {
+      if (bindingName !== null && !shadowed && !state.exited) {
         if (
           (ts.isIfStatement(statement) || ts.isSwitchStatement(statement)) &&
           referencesBinding(statement.expression, bindingName) &&
           selectsADistinctPath(statement)
         ) {
-          branches = true;
+          state.branches = true;
         } else if (ts.isReturnStatement(statement) && statement.expression !== undefined) {
           const value = unwrap(statement.expression);
           if (ts.isConditionalExpression(value) && selectsAnErrorPath(value, bindingName)) {
-            branches = true;
+            state.branches = true;
           }
         }
       }
 
-      if (containsLiveExit(statement)) exited = true;
+      // An `if` WITH an else (its condition not the literal `true` keyword, which the handler
+      // above already took): one arm always runs, so evidence present in BOTH arms is
+      // unconditional and evidence in one arm only is conditional and earns nothing. Each arm is
+      // walked against an isolated state and the results merge into the parent by INTERSECTION.
+      // Union is the laundering direction: `if (false) { <classifier> } else { 0; }` must earn
+      // nothing, which `dead-classifier-one-arm` in the mutation corpus and `does not credit a
+      // classifier that sits in one arm only` pin. `returns` is never intersected and never
+      // per-arm: the shared read above already vetoed off the whole statement, over-approximate
+      // across the live arms, because narrowing a veto per-arm is the unsafe direction.
+      if (ts.isIfStatement(statement) && statement.elseStatement !== undefined) {
+        const armWalk = (arm: ts.Statement): ClauseState => {
+          const armState: ClauseState = {
+            rethrows: false,
+            branches: false,
+            exited: state.exited,
+            vetoReturns: false,
+          };
+          walk(ts.isBlock(arm) ? arm.statements : [arm], armState);
+          return armState;
+        };
+        const thenArm = armWalk(statement.thenStatement);
+        const elseArm = armWalk(statement.elseStatement);
+        state.rethrows ||= thenArm.rethrows && elseArm.rethrows;
+        state.branches ||= thenArm.branches && elseArm.branches;
+      }
+
+      if (containsLiveExit(statement)) state.exited = true;
     }
   };
-  walk(clause.block.statements);
+  walk(clause.block.statements, state);
 
-  return { rethrows: rethrows && !returns, throws: rethrows, branches };
+  return {
+    rethrows: state.rethrows && !returns,
+    throws: state.rethrows,
+    branches: state.branches,
+  };
 }
 
 /**

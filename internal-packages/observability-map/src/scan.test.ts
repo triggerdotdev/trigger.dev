@@ -865,6 +865,109 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
+  // The walk may enter a construct exactly where the entered statements are guaranteed to execute
+  // whenever the clause body runs. Before these entries existed, relocating a clause's own
+  // statements inside `if (true)`, a switch default, an if/else or a try/finally put the branch
+  // evidence out of reach while the returns veto still saw the return, so a deciding clause read
+  // as a swallow: 83 real routes regressed per corpus entry. Each identity pair here holds the
+  // wrapped and unwrapped spellings to the same evidence; `checks/index.test.ts` holds them to the
+  // same verdict.
+  describe("the walk enters exactly the positions guaranteed to execute", () => {
+    const clauseEvidence = (body: string) => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             ${body}
+           }
+         }`
+      );
+      return ep!.catches[0]!;
+    };
+
+    const DECIDING =
+      "if (e instanceof KnownError) { return new Response(e.code, { status: 400 }); }\n" +
+      "return new Response(null, { status: 500 });";
+    const RETHROW = "logger.error(e);\nthrow e;";
+
+    const WRAPPERS: Array<[string, (body: string) => string]> = [
+      ["a catchless try/finally", (body) => `try {\n${body}\n} finally { }`],
+      ["a single-default switch", (body) => `switch (pick()) { default: {\n${body}\n} }`],
+      ["an if (true)", (body) => `if (true) {\n${body}\n}`],
+      [
+        "an if/else with the body in both arms",
+        (body) => `if (pick()) {\n${body}\n} else {\n${body}\n}`,
+      ],
+    ];
+
+    for (const [label, wrap] of WRAPPERS) {
+      it(`reads a deciding clause wrapped in ${label} identically`, () => {
+        expect(clauseEvidence(wrap(DECIDING))).toEqual(clauseEvidence(DECIDING));
+      });
+
+      it(`reads a rethrowing clause wrapped in ${label} identically`, () => {
+        expect(clauseEvidence(wrap(RETHROW))).toEqual(clauseEvidence(RETHROW));
+      });
+    }
+
+    // The switch entry is exact: one clause and it is a default. Anything else is not entered and
+    // keeps its top-level treatment, which is what the identity pair below and the `break and
+    // continue inside the construct they target` family already pin for the multi-clause shapes.
+    it("reads a clause wrapped in a single-default switch as the bare clause", () => {
+      expect(clauseEvidence(`switch (1) { default: {\n${DECIDING}\n} }`)).toEqual(
+        clauseEvidence(DECIDING)
+      );
+    });
+
+    // Intersection, not union. One arm running is a condition, not a guarantee, so evidence in a
+    // single arm earns nothing; `dead-classifier-one-arm` in the mutation corpus is the tree-scale
+    // twin with the arm provably dead.
+    it("does not credit a classifier that sits in one arm only", () => {
+      const evidence = clauseEvidence(
+        "if (pick()) { if (e instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }\n" +
+          "return null;"
+      );
+      expect(evidence.branches).toBe(false);
+    });
+
+    it("does not credit a classifier in a dead arm beside an inert arm", () => {
+      const evidence = clauseEvidence(
+        "if (false) { if (e instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }\n" +
+          "return null;"
+      );
+      expect(evidence).toMatchObject({ branches: false, rethrows: false, throws: false });
+    });
+
+    // The else-arm under a literal-true guard can never run, so nothing in it is evidence: no
+    // rethrow minted, and the deciding statements after the wrapper keep their credit.
+    it("reads a dead else arm under if true as contributing nothing", () => {
+      const evidence = clauseEvidence(`if (true) { 0; } else { throw e; }\n${DECIDING}`);
+      expect(evidence).toMatchObject({ throws: false, branches: true });
+    });
+
+    // A throw in the tryBlock of a CAUGHT try never escapes the clause: the nested catch takes
+    // it. Crediting it as a rethrow would launder a returnless swallow into not-applicable.
+    it("does not read the tryBlock of a caught try as this clause's rethrow", () => {
+      const evidence = clauseEvidence("try { throw e; } catch {}\nlogger.error(e);");
+      expect(evidence).toMatchObject({ rethrows: false, throws: false });
+    });
+
+    // The walk does not enter a finally block, so the returns veto must still read it off the
+    // whole statement: this clause's finally return eats the throw, and the error never leaves.
+    it("reads a try whose finally returns as swallowing, not rethrowing", () => {
+      const evidence = clauseEvidence("try { throw e; } finally { return null; }");
+      expect(evidence.rethrows).toBe(false);
+    });
+
+    // The `definitelyExits` fold: `if (true) { X }` definitely exits iff X does, so the trailing
+    // throw is cut rather than read. Without the fold the throw still walks and mints `throws`.
+    it("cuts a dead trailing statement after an if true that exits", () => {
+      const evidence = clauseEvidence("if (true) { return null; }\nthrow e;");
+      expect(evidence.throws).toBe(false);
+    });
+  });
+
   // S1. The other end of the same problem. `reachableStatements` used to cut the statement list
   // only on a BARE `return`/`throw`, while the walk descended into blocks and `do` bodies, so a
   // `throw e;` written after a nested construct that had already returned was still read as the

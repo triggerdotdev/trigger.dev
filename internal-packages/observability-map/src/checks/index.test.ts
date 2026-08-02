@@ -796,6 +796,51 @@ describe("error-classification", () => {
     );
     expect(r.status).toBe("pass");
   });
+
+  // The verdict end of the walk's guaranteed-execution entries, one pair per entered construct.
+  // The evidence end is `the walk enters exactly the positions guaranteed to execute` in
+  // scan.test.ts; these hold the wrapped and unwrapped spellings to the same verdict, modeled on
+  // the switch pair above. Before the entries existed, every wrapper here turned a passing
+  // deciding clause into a fail with a detail line accusing it of ignoring the error.
+  const CLAUSE_WRAPPED = (clauseBody: string) => `import { prisma } from "~/db.server";
+     export async function loader() {
+       try {
+         return json(await prisma.thing.findMany());
+       } catch (e) {
+         ${clauseBody}
+       }
+     }`;
+
+  const DECIDING_CLAUSE =
+    "if (e instanceof Error) { return new Response(null, { status: 400 }); }\n" +
+    "return new Response(null, { status: 500 });";
+
+  const GUARANTEED_WRAPPERS: Array<[string, (body: string) => string]> = [
+    ["a catchless try/finally", (body) => `try {\n${body}\n} finally { }`],
+    ["a single-default switch", (body) => `switch (pick()) { default: {\n${body}\n} }`],
+    ["an if (true)", (body) => `if (true) {\n${body}\n}`],
+    [
+      "an if/else with the body in both arms",
+      (body) => `if (pick()) {\n${body}\n} else {\n${body}\n}`,
+    ],
+  ];
+
+  for (const [label, wrap] of GUARANTEED_WRAPPERS) {
+    it(`reads a deciding clause relocated into ${label} with the same verdict`, () => {
+      const wrapped = run(
+        "error-classification",
+        "api.v1.wrapped.ts",
+        CLAUSE_WRAPPED(wrap(DECIDING_CLAUSE))
+      );
+      const bare = run(
+        "error-classification",
+        "api.v1.wrapped.ts",
+        CLAUSE_WRAPPED(DECIDING_CLAUSE)
+      );
+      expect(bare.status).toBe("pass");
+      expect(wrapped).toEqual(bare);
+    });
+  }
 });
 
 describe("auth-boundary", () => {
