@@ -1974,6 +1974,58 @@ describe("a ternary on the error has to send its arms somewhere different", () =
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 
+  // S6. The same three cases on the throw path, which read none of them. The throw arm of the
+  // shared branch check was unreachable, because the walk sets `rethrows` and cuts the path first,
+  // so a thrown ternary was never offered to `selectsAnErrorPath` and every one of these clauses
+  // read as inert. Reading it in the throw arm, before the path is cut, uses the same predicate,
+  // so the arm test arrives with it. `wrap-body-in-same-arms-throw-ternary` is the tree-scale
+  // version of the refusal.
+  const throwing = (value: string) => `
+    export async function loader() {
+      try {
+        return await prisma.thing.findMany();
+      } catch (error) {
+        throw ${value};
+      }
+    }
+  `;
+
+  it("credits a thrown ternary whose arms go somewhere different", () => {
+    const ep = scanFile("x.ts", throwing("error instanceof Response ? error : new Error('x')"));
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+
+  it("does not credit a thrown ternary whose arms are identical", () => {
+    const ep = scanFile("x.ts", throwing("error instanceof Error ? error : error"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit a thrown ternary whose arms differ only in parentheses", () => {
+    const ep = scanFile("x.ts", throwing("error instanceof Error ? ((error)) : (error)"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit a thrown ternary that never reads the caught binding", () => {
+    const ep = scanFile("x.ts", throwing("other instanceof Error ? error : new Error('x')"));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  // The throw still cuts the path, so a decision written after it is dead and stays uncredited.
+  it("does not credit a thrown ternary written after the clause already threw", () => {
+    const ep = scanFile(
+      "x.ts",
+      `export async function loader() {
+        try {
+          return await prisma.thing.findMany();
+        } catch (error) {
+          throw error;
+          throw error instanceof Response ? error : new Error('x');
+        }
+      }`
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
   // The same comparison on the `if` path, which had the exit test but not the arm test.
   it("does not credit an if/else whose two arms are identical", () => {
     const ep = scanFile(

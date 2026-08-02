@@ -502,6 +502,18 @@ export const MUTATIONS: Mutation[] = [
     "try {",
     "} catch (obsMapMutationError) { throw obsMapMutationError; }"
   ),
+  // The A/B partner of the entry above: the only difference is the ternary. `error-classification`
+  // asks whether ANY reachable catch decides, so one deciding clause bought at zero cost would take
+  // every route in the tree to a pass. That is what the same-arms rule in `selectsAnErrorPath`
+  // refuses, and this is the tree-scale proof of it on the throw path, which was untested while
+  // the throw path could not credit a ternary at all.
+  wrapEveryBody(
+    "wrap-body-in-same-arms-throw-ternary",
+    "wrap every route body in try { ... } catch (e) { throw e instanceof Error ? e : e }",
+    "try {",
+    "} catch (obsMapMutationError) { throw obsMapMutationError instanceof Error " +
+      "? obsMapMutationError : obsMapMutationError; }"
+  ),
   wrapEveryBody(
     "wrap-body-in-trace",
     'wrap every route body in trace("x", async () => { ... })',
@@ -869,6 +881,7 @@ export const ADDITIVE_IDS = [
   "dead-throw-after-switch",
   "dead-throw-after-try-finally",
   "wrap-body-in-rethrow",
+  "wrap-body-in-same-arms-throw-ternary",
   "empty-instanceof-if",
   "registered-throw",
   "fake-require-guard",

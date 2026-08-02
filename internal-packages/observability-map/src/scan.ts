@@ -455,7 +455,9 @@ function normalizedText(node: ts.Node): string {
  * The two arms also have to differ, which is the same requirement `selectsADistinctPath` makes of
  * an `if`. `return e instanceof Error ? (X) : (X)` is a test whose outcome is the same either way,
  * and it was worth 50 points a route; `same-arms-ternary` in the mutation corpus is the tree-scale
- * version, and `scan.test.ts` has the unit case. Parentheses and whitespace are stripped
+ * version, and `scan.test.ts` has the unit case. The throw path is held to the same rule by
+ * `wrap-body-in-same-arms-throw-ternary`, which would take every route in the tree to a pass if it
+ * were not. Parentheses and whitespace are stripped
  * before the comparison, so the shape has to differ in something a reader would call a difference.
  * The residual both branch tests share is stated once, on `selectsADistinctPath`.
  */
@@ -628,6 +630,18 @@ function catchClauseEvidence(clause: ts.CatchClause): {
     for (const statement of reachableStatements(statements)) {
       if (ts.isThrowStatement(statement)) {
         rethrows = true;
+        // Read the branch check here, before the path is cut. A thrown ternary picks WHICH error
+        // leaves, which is a classification, and reading it only at the shared check below meant
+        // the throw arm of that condition was unreachable: this arm always continued first. So
+        // `throw e instanceof Response ? e : new ServerError(e)` read as inert while the same
+        // clause written with `return` passed. `selectsAnErrorPath` is the same predicate either
+        // way, so the same-arms rule applies and `throw e instanceof Error ? e : e;` is refused.
+        if (bindingName !== null && !shadowed && !exited && statement.expression !== undefined) {
+          const thrown = unwrap(statement.expression);
+          if (ts.isConditionalExpression(thrown) && selectsAnErrorPath(thrown, bindingName)) {
+            branches = true;
+          }
+        }
         exited = true;
         continue;
       }
@@ -656,10 +670,7 @@ function catchClauseEvidence(clause: ts.CatchClause): {
           selectsADistinctPath(statement)
         ) {
           branches = true;
-        } else if (
-          (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) &&
-          statement.expression !== undefined
-        ) {
+        } else if (ts.isReturnStatement(statement) && statement.expression !== undefined) {
           const value = unwrap(statement.expression);
           if (ts.isConditionalExpression(value) && selectsAnErrorPath(value, bindingName)) {
             branches = true;
