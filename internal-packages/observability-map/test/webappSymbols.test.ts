@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { GUARDS } from "../src/checks/authBoundary.js";
+import { GUARDS, SOFT_GUARDS } from "../src/checks/authBoundary.js";
 import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "../src/sensitivity.js";
 
 /**
@@ -35,7 +35,9 @@ import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "../
  * - that a guard actually guards. `resolveAuthenticatedEnv` declares fine and authenticates
  *   nothing, which is why it is not on the list; keeping it off is a hand-read judgement this test
  *   cannot make.
- * - anything outside `ROOTS`.
+ * - anything outside `ROOTS`. A guard declared only by a dependency is listed in
+ *   `EXTERNAL_GUARDS` and not resolved at all; see the comment there for why that is a list
+ *   rather than a path into `node_modules`.
  */
 
 const REPO = resolve(__dirname, "../../..");
@@ -53,14 +55,25 @@ const ROOTS = [
 ];
 
 /**
- * The one dependency that declares a guard the webapp calls: `authenticator.authenticate` and
- * `authenticator.isAuthenticated` are remix-auth's, and the login surface is built on them. Named
- * as a file rather than waved through on a list, so the two names are resolved rather than
- * asserted.
+ * Guard names declared by a dependency rather than by us, and therefore deliberately unchecked.
+ *
+ * Both are methods on remix-auth's `Authenticator`, reached as `authenticator.authenticate(...)`
+ * and `authenticator.isAuthenticated(...)`; the whole login surface is built on them. An earlier
+ * version of this test resolved them by reading
+ * `apps/webapp/node_modules/remix-auth/build/authenticator.d.ts` directly. That is a path into an
+ * installed tree: a hoisting change, a version bump that moves `build/`, or a fresh clone with a
+ * different install layout turns a real assertion into a confusing environmental failure, and a
+ * test that fails for environmental reasons teaches people to ignore it.
+ *
+ * So they are listed instead, which is a smaller claim honestly made. The test still fails if a
+ * guard name is neither declared in first-party source nor on this list, so a name that resolves
+ * nowhere cannot be added silently; what it no longer does is prove these two exist.
  */
-const EXTERNAL_DECLARATIONS = [
-  resolve(REPO, "apps/webapp/node_modules/remix-auth/build/authenticator.d.ts"),
-];
+const EXTERNAL_GUARDS = new Set(["authenticate", "isAuthenticated"]);
+
+/** Two is the number of remix-auth methods on the guard list. A third entry means someone widened
+ * the unchecked set, which is the thing this bound exists to make visible in review. */
+const MAX_EXTERNAL_GUARDS = 2;
 
 const ROUTES = resolve(REPO, "apps/webapp/app/routes");
 
@@ -85,7 +98,7 @@ function declaredNames(): Set<string> {
     }
   };
 
-  const files = [...ROOTS.flatMap((root) => walkFiles(root)), ...EXTERNAL_DECLARATIONS];
+  const files = ROOTS.flatMap((root) => walkFiles(root));
   for (const file of files) {
     const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, false);
     const visit = (node: ts.Node) => {
@@ -142,8 +155,15 @@ describe("the names the tool matches on exist in the webapp", () => {
     expect(SENSITIVE_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
   });
 
-  it("every auth guard is declared somewhere", () => {
-    expect([...GUARDS].filter((g) => !declared.has(g))).toEqual([]);
+  it("every auth guard is declared somewhere, or is a listed dependency method", () => {
+    const names = [...GUARDS, ...SOFT_GUARDS];
+    expect(names.filter((g) => !declared.has(g) && !EXTERNAL_GUARDS.has(g))).toEqual([]);
+  });
+
+  // The escape hatch is only worth having while it stays small.
+  it("keeps the unchecked guard names to the two remix-auth methods", () => {
+    expect(EXTERNAL_GUARDS.size).toBeLessThanOrEqual(MAX_EXTERNAL_GUARDS);
+    expect([...EXTERNAL_GUARDS].filter((g) => !GUARDS.has(g))).toEqual([]);
   });
 
   it("every sensitive path segment names a real route segment", () => {
@@ -166,6 +186,7 @@ describe("the names the tool matches on exist in the webapp", () => {
 
   it("would reject a guard name and a path segment that name nothing", () => {
     expect(declared.has("requireNothingAtAll")).toBe(false);
+    expect(EXTERNAL_GUARDS.has("requireNothingAtAll")).toBe(false);
     expect(segments.has("no-such-route-segment")).toBe(false);
   });
 });

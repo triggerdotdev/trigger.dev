@@ -1437,6 +1437,39 @@ describe("auth-boundary: the guard accept-list", () => {
   // The two live shapes that made the non-throwing variants worth crediting. Both act on the
   // answer, which is why they are on the list; a route that calls one and ignores it is the
   // residual, stated on `GUARDS`.
+  // Round C ruling 2. getUser and getUserId answer with null instead of throwing, so being called
+  // is not evidence of a boundary. They are credited only when the body reads the answer.
+  it("does not pass a route that resolves the caller and ignores the answer", () => {
+    const r = run(
+      "auth-boundary",
+      "invite-accept.tsx",
+      `import { getUser } from "~/services/session.server";
+       import { getInviteFromToken } from "~/models/member.server";
+       export async function loader({ request }) {
+         const user = await getUser(request);
+         const token = new URL(request.url).searchParams.get("token");
+         const invite = await getInviteFromToken({ token });
+         return json({ invite, email: user.email });
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("does not pass a route that drops the caller entirely", () => {
+    const r = run(
+      "auth-boundary",
+      "invite-accept.tsx",
+      `import { getUserId } from "~/services/session.server";
+       import { getInviteFromToken } from "~/models/member.server";
+       export async function loader({ request }) {
+         await getUserId(request);
+         const token = new URL(request.url).searchParams.get("token");
+         return json(await getInviteFromToken({ token }));
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
   it("passes an invite acceptance that resolves the caller and refuses a mismatch", () => {
     const r = run(
       "auth-boundary",
@@ -1533,7 +1566,11 @@ describe("auth-scope", () => {
     expect(r.detail).toContain("caller's identity");
   });
 
-  it("passes when the handler runs the ability gate itself", () => {
+  // Round C ruling 1. apps/webapp/CLAUDE.md: the OSS fallback ability is permissive, so
+  // `ability.can(...)` enforces the role and the membership-scoped query is the tenant floor.
+  // Crediting it made this check agree with `_app.orgs.$organizationSlug.settings.sso/route.tsx`,
+  // which resolves its target org from the URL slug and puts nothing else in front of it.
+  it("does not accept an ability gate in the handler as scoping", () => {
     const r = run(
       "auth-scope",
       "_app.orgs.$slug.settings.team/route.tsx",
@@ -1545,8 +1582,45 @@ describe("auth-scope", () => {
          return json({ members });
        });`
     );
-    expect(r.status).toBe("pass");
-    expect(r.detail).toContain("ability gate");
+    expect(r.status).toBe("fail");
+  });
+
+  // The two shapes on the real tree, both hand-read for round C.
+  it("fails when the loader is unscoped and only the action filters by the caller", () => {
+    const r = run(
+      "auth-scope",
+      "_app.orgs.$slug.settings.sso/route.tsx",
+      `import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+       import { prisma } from "~/db.server";
+       export const loader = dashboardLoader({ params: Params }, async ({ context, ability }) => {
+         if (!ability.can("manage", { type: "sso" })) throwPermissionDenied();
+         return json(await prisma.ssoConnection.findMany({ where: { organizationId: context.organizationId } }));
+       });
+       export const action = dashboardAction({ params: Params }, async ({ context, user }) =>
+         json(await ssoController.generatePortalLink({ organizationId: context.organizationId, userId: user.id }))
+       );`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("loader (dashboardLoader)");
+    expect(r.detail).not.toContain("action");
+  });
+
+  it("fails when the action is unscoped and only the loader filters by the caller", () => {
+    const r = run(
+      "auth-scope",
+      "_app.orgs.$slug.settings.team/route.tsx",
+      `import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+       import { prisma } from "~/db.server";
+       export const loader = dashboardLoader({ params: Params }, async ({ user }) =>
+         json(await new TeamPresenter().call({ userId: user.id }))
+       );
+       export const action = dashboardAction({ params: Params }, async ({ context, ability }) => {
+         if (!ability.can("manage", { type: "members" })) throwPermissionDenied();
+         return json(await prisma.orgMember.deleteMany({ where: { organizationId: context.organizationId } }));
+       });`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("action (dashboardAction)");
   });
 
   // A file whose loader is gated and whose action is not is not a gated route.
@@ -1565,6 +1639,7 @@ describe("auth-scope", () => {
        );`
     );
     expect(r.status).toBe("fail");
+    expect(r.detail).toContain("action (createActionPATApiRoute)");
   });
 
   it("is not applicable to a route that is not sensitive", () => {

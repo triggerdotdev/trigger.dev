@@ -4,15 +4,38 @@ import { BUILDERS } from "./errorClassification.js";
 
 const ID = "auth-scope";
 
-/** The builder-wrapped exports of an entry point, with the options each was given. */
-function builderExports(ep: EntryPoint): { callee: string; options: string[] }[] {
+type BuilderExport = { name: string; callee: string; scoped: boolean; why: string };
+
+/**
+ * The builder-wrapped exports of an entry point, each with its own verdict.
+ *
+ * Per export, because the exposure is per export. `authorization` is declared on the builder call
+ * one export made, and a caller filter is written in the handler one export runs, so neither says
+ * anything about the other half of the file.
+ */
+function builderExports(ep: EntryPoint): BuilderExport[] {
   const all = [
-    { callee: ep.loaderInitializerCallee, options: ep.loaderBuilderOptions },
-    { callee: ep.actionInitializerCallee, options: ep.actionBuilderOptions },
+    {
+      name: "loader",
+      callee: ep.loaderInitializerCallee,
+      authorization: ep.loaderBuilderOptions.includes("authorization"),
+      filters: ep.loaderScopesByCaller,
+    },
+    {
+      name: "action",
+      callee: ep.actionInitializerCallee,
+      authorization: ep.actionBuilderOptions.includes("authorization"),
+      filters: ep.actionScopesByCaller,
+    },
   ];
-  return all.filter(
-    (e): e is { callee: string; options: string[] } => e.callee !== null && BUILDERS.has(e.callee)
-  );
+  return all
+    .filter((e) => e.callee !== null && BUILDERS.has(e.callee))
+    .map((e) => ({
+      name: e.name,
+      callee: e.callee!,
+      scoped: e.authorization || e.filters,
+      why: e.authorization ? "an authorization gate" : "a filter on the caller's identity",
+    }));
 }
 
 /**
@@ -27,19 +50,20 @@ function builderExports(ep: EntryPoint): { callee: string; options: string[] }[]
  * `apps/webapp/CLAUDE.md` states the rule this measures: "A PAT route must resolve its target
  * org/project scoped to the caller's membership. Skipping it opens cross-org access."
  *
- * Three ways to be scoped, matching the three ways the tree does it:
+ * Two ways for an export to be scoped, and EVERY builder-wrapped export has to be one of them:
  *
- * - the builder options declare `authorization:`, which is the RBAC gate, or
- * - the handler filters by the caller's own id, the
+ * - its builder options declare `authorization:` with a real value, which is the RBAC gate, or
+ * - its own handler filters by the caller's own id, the
  *   `members: { some: { userId: authentication.userId } }` shape in `api.v1.projects.ts` and the
- *   `presenter.call({ userId: user.id })` shape the dashboard routes use, or
- * - the handler calls `ability.can(...)` itself, which is the same gate declared in the options
- *   moved into the body. Five dashboard routes do that deliberately, because which ability a
- *   request needs depends on the intent it carries.
+ *   `presenter.call({ userId: user.id })` shape the dashboard routes use.
  *
- * `authorization:` has to be declared on EVERY builder-wrapped export of the entry point, not one
- * of them. A file exporting a scoped loader beside an unscoped action is not a scoped route, and a
- * union would have said it was.
+ * `ability.can(...)` in the handler is deliberately NOT a third way, and it was one for part of
+ * round C. `apps/webapp/CLAUDE.md` is explicit that it cannot be: the OSS fallback ability is
+ * permissive (`internal-packages/rbac/src/fallback.ts` returns `permissiveAbility` for a PAT and
+ * `buildFallbackAbility(user.admin)` for a session, neither of which reads org membership), so an
+ * ability check enforces the ROLE and the membership-scoped query is the tenant floor. Crediting it
+ * made this check agree with a route that resolves its target org from a URL slug and puts nothing
+ * else in front of it.
  *
  * Applicable only where it is answerable: sensitive, builder-wrapped and not delegating. Outside
  * that it would be a second near-universal fail, which is the shape the `request-context` figure
@@ -47,19 +71,23 @@ function builderExports(ep: EntryPoint): { callee: string; options: string[] }[]
  * here because there is nothing left for one to refuse: `isTrivial` answers false for any route
  * with an initializer callee, so a builder-wrapped route is never trivial.
  *
- * Two residuals, both worth stating because they run in opposite directions.
+ * Three residuals, running in both directions.
  *
- * The accusing one: `scopesByCaller` reads property assignments only, so a handler that pulls the
- * id out first, `const { userId } = authentication; ... where: { userId }`, scopes itself and is
- * not seen. No route in the tree writes it that way.
+ * Accusing: `scopesByCallerIn` reads property assignments in that export's own handlers only. A
+ * handler that pulls the id into a local first, `const userId = user.id; ... { userId }`, or that
+ * builds its filter in a same-file helper, scopes itself and is not seen.
  *
- * The crediting one: an ability gate is a ROLE gate, and `apps/webapp/CLAUDE.md` is explicit that
- * it is not the tenant floor, because the OSS fallback ability is permissive
- * (`internal-packages/rbac/src/fallback.ts` returns `permissiveAbility` for a PAT and
- * `buildFallbackAbility(user.admin)` for a session, neither of which reads org membership). So a
- * pass here means "the route gates on something", not "a non-member is rejected on self-hosted".
- * Reading the membership-scoped query directly would need to follow the query into the presenter
- * or model it calls, which is a different kind of analysis from anything else in this package.
+ * Crediting: a caller id passed as an ACTOR argument rather than as a filter still counts.
+ * `ssoController.generatePortalLink({ organizationId: orgId, userId: user.id })` records who asked;
+ * it does not constrain which org is read. Telling the two apart means knowing what the callee does
+ * with the argument, which for the dashboard means following it into a presenter. No route in the
+ * tree is credited by this alone today.
+ *
+ * Crediting: a helper that runs the membership query for you is credited through the caller id
+ * handed to it. `ApiKeysPresenter`, `TeamPresenter`, `regenerateApiKey` and
+ * `DeleteOrganizationService` all do `members: { some: { userId } }` internally and throw when it
+ * misses, which makes those four correct, and it is the same syntax as the actor-argument case
+ * above. All were hand-read in round C.
  */
 export const authScope = {
   id: ID,
@@ -74,23 +102,16 @@ export const authScope = {
     if (builders.length === 0) {
       return { id: ID, status: "not-applicable", detail: "no route builder to read options from" };
     }
-    if (builders.every((b) => b.options.includes("authorization"))) {
-      return { id: ID, status: "pass", detail: "the builder declares an authorization gate" };
+    const unscoped = builders.filter((b) => !b.scoped);
+    if (unscoped.length === 0) {
+      const how = [...new Set(builders.map((b) => b.why))].join(" and ");
+      return { id: ID, status: "pass", detail: `every builder-wrapped export has ${how}` };
     }
-    if (ep.scopesByCaller) {
-      return { id: ID, status: "pass", detail: "the handler filters by the caller's identity" };
-    }
-    if (ep.checksAbility) {
-      return { id: ID, status: "pass", detail: "the handler runs the ability gate itself" };
-    }
-    const missing = builders
-      .filter((b) => !b.options.includes("authorization"))
-      .map((b) => b.callee)
-      .join(", ");
+    const which = unscoped.map((b) => `${b.name} (${b.callee})`).join(", ");
     return {
       id: ID,
       status: "fail",
-      detail: `authenticated but not scoped to the caller: ${missing} declares no authorization gate and the handler does not filter by the caller's identity`,
+      detail: `authenticated but not scoped to the caller: ${which} declares no authorization gate and does not filter by the caller's identity`,
     };
   },
 };

@@ -85,8 +85,40 @@ function propertyPath(expr: ts.Expression): string | null {
 const CALLER_ID_PATH =
   /^(authentication|authenticationResult|auth|sessionAuth|user)(\.[A-Za-z0-9_$]+)*\.(userId|id|actor)$/;
 
-/** `ability.can(...)`, the RBAC gate written in the handler instead of in the builder options. */
-const ABILITY_CHECK = /(^|\.)ability\.(can|canSuper)$/;
+/**
+ * Whether any handler in `fns` assigns the caller's own id to an object-literal property, the
+ * `where: { members: { some: { userId: authentication.userId } } }` and
+ * `presenter.call({ userId: user.id })` shapes.
+ *
+ * Per export rather than per entry point, and that is the whole point of computing it here instead
+ * of in the main body walk. A file whose loader narrows itself to the caller and whose action does
+ * not is not a scoped route, and the entry-point-wide version said it was: it passed
+ * `_app.orgs.$organizationSlug.settings.team/route.tsx`, whose loader calls
+ * `TeamPresenter.call({ userId: user.id })` while its action resolves the target org from the URL
+ * slug and gates only on `ability.can`.
+ *
+ * Nested functions are walked, since a filter built inside a callback still filters. Same-file
+ * helpers are NOT followed, unlike the main walk: a route that computes its filter in a helper is
+ * reported as unscoped. Nothing in the tree does.
+ */
+function scopesByCallerIn(fns: Iterable<EntryFunction>): boolean {
+  let found = false;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (ts.isPropertyAssignment(node)) {
+      const path = propertyPath(node.initializer);
+      if (path !== null && CALLER_ID_PATH.test(path)) {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  for (const fn of fns) {
+    if (fn.body) visit(fn.body);
+  }
+  return found;
+}
 
 /** Callee as recorded in `calleeNames`: the identifier, or the property for a member call. */
 function calleeName(expr: ts.Expression): string | null {
@@ -896,6 +928,10 @@ type EntryTarget = {
   actionInitializerCallee: string | null;
   loaderBuilderOptions: string[];
   actionBuilderOptions: string[];
+  /** Handler functions per export, so a scope signal can be attributed to the half of the file it
+   * was found in. `functions` is their union, which is what every entry-point-wide field reads. */
+  loaderFunctions: Set<EntryFunction>;
+  actionFunctions: Set<EntryFunction>;
   functions: Set<EntryFunction>;
 };
 
@@ -1015,6 +1051,8 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     actionInitializerCallee: null,
     loaderBuilderOptions: [],
     actionBuilderOptions: [],
+    loaderFunctions: new Set(),
+    actionFunctions: new Set(),
     functions: new Set(),
   };
 
@@ -1034,7 +1072,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         target.actionBuilderOptions = initializer.optionKeys;
       }
     }
-    for (const fn of initializer.functions) target.functions.add(fn);
+    const perExport = name === "loader" ? target.loaderFunctions : target.actionFunctions;
+    for (const fn of initializer.functions) {
+      target.functions.add(fn);
+      perExport.add(fn);
+    }
   };
 
   const isExported = (n: ts.Node) =>
@@ -1103,11 +1145,18 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   let statementCount = 0;
   let hasTryCatch = false;
   let callbackCatches = 0;
-  let scopesByCaller = false;
-  let checksAbility = false;
   const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
   const logCalls: LogCall[] = [];
+
+  // Locals initialised from a call, and the names any condition in the body reads. Their
+  // intersection is `checkedCallees`: callees whose answer the route demonstrably looked at.
+  const declaredFrom = new Map<string, string[]>();
+  const testedNames = new Set<string>();
+  const collectTested = (node: ts.Node) => {
+    if (ts.isIdentifier(node)) testedNames.add(node.text);
+    ts.forEachChild(node, collectTested);
+  };
 
   const localFunctions = collectLocalFunctions(sf);
   // A body that delegates to a same-file helper does the work in that helper, so the helper's
@@ -1167,18 +1216,28 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         return;
       }
 
-      if (ts.isPropertyAssignment(node)) {
-        const path = propertyPath(node.initializer);
-        if (path !== null && CALLER_ID_PATH.test(path)) scopesByCaller = true;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const initializer = unwrap(node.initializer);
+        if (ts.isCallExpression(initializer)) {
+          const cn = calleeName(initializer.expression);
+          if (cn) {
+            const existing = declaredFrom.get(node.name.text);
+            if (existing) existing.push(cn);
+            else declaredFrom.set(node.name.text, [cn]);
+          }
+        }
       }
+
+      if (ts.isIfStatement(node) || ts.isWhileStatement(node) || ts.isSwitchStatement(node)) {
+        collectTested(node.expression);
+      }
+      if (ts.isConditionalExpression(node)) collectTested(node.condition);
 
       if (ts.isCallExpression(node)) {
         const cn = calleeName(node.expression);
         if (cn) {
           const text = calleeText(node.expression) ?? cn;
           calleeNames.push(cn);
-
-          if (ABILITY_CHECK.test(text)) checksAbility = true;
 
           if (LOGGER_CALLEE.test(text)) {
             logCalls.push({
@@ -1223,8 +1282,15 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
       target.functions.size === 0 &&
       target.loaderInitializerCallee === null &&
       target.actionInitializerCallee === null,
-    scopesByCaller,
-    checksAbility,
+    loaderScopesByCaller: scopesByCallerIn(target.loaderFunctions),
+    actionScopesByCaller: scopesByCallerIn(target.actionFunctions),
+    checkedCallees: [
+      ...new Set(
+        [...declaredFrom]
+          .filter(([local]) => testedNames.has(local))
+          .flatMap(([, callees]) => callees)
+      ),
+    ],
     importedNames,
     calleeNames,
     hasTryCatch,

@@ -35,14 +35,6 @@ export const GUARDS = new Set([
   // Session and PAT identity, `apps/webapp/app/services/session.server.ts` and friends.
   "requireUser",
   "requireUserId",
-  // The non-throwing variants. They resolve the caller from the session cookie and hand back null
-  // rather than redirecting, so the route decides what to do with the answer:
-  // `invite-accept.tsx` refuses an invite addressed to a different email, `login._index` sends an
-  // already-authenticated caller away. Crediting them is a weaker claim than crediting
-  // `requireUserId`, and the residual is a route that calls one and ignores what it said. Both
-  // routes in the sensitive cohort that call one act on it; that was hand-read, not assumed.
-  "getUser",
-  "getUserId",
   "requireOrganization",
   "requireAdminApiRequest",
   "authenticateApiRequest",
@@ -79,6 +71,23 @@ export const GUARDS = new Set([
   "verifyWebhook",
   "verifyUserActorToken",
 ]);
+
+/**
+ * Guards that answer with null instead of throwing. Calling one is not evidence of a boundary,
+ * because the route is free to ignore the answer, so these are only credited when the body
+ * demonstrably reads what they returned (`EntryPoint.checkedCallees`).
+ *
+ * The distinction is the whole reason this set is separate from `GUARDS`. `requireUserId` redirects
+ * on its own, so calling it IS the boundary; `getUserId` hands back `string | null` and a route
+ * that drops it has no boundary at all. Both routes in the sensitive cohort that use one read the
+ * answer, `invite-accept.tsx` refusing an invite addressed to another email and `login._index`
+ * sending an already-authenticated caller away, and this rule is what makes that a measured fact
+ * rather than something a hand-read established once.
+ *
+ * What it still cannot see is whether the test that reads the answer guards anything. See
+ * `EntryPoint.checkedCallees` for the exact shape of that residual.
+ */
+export const SOFT_GUARDS = new Set(["getUser", "getUserId"]);
 
 /**
  * Whether a route that handles credentials, tokens or money checks who is asking.
@@ -119,6 +128,9 @@ export const authBoundary = {
     }
     if (ep.calleeNames.some((n) => GUARDS.has(n))) {
       return { id: ID, status: "pass", detail: "guarded in the body" };
+    }
+    if (ep.checkedCallees.some((n) => SOFT_GUARDS.has(n))) {
+      return { id: ID, status: "pass", detail: "resolves the caller and reads the answer" };
     }
     if (isTrivial(ep)) {
       return {

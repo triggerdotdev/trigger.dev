@@ -2151,7 +2151,7 @@ describe("scanFile: the signals auth-scope reads", () => {
          }));
        });`
     );
-    expect(api!.scopesByCaller).toBe(true);
+    expect(api!.loaderScopesByCaller).toBe(true);
 
     const dashboard = scanFile(
       "_app.orgs.$slug.apikeys/route.tsx",
@@ -2160,7 +2160,25 @@ describe("scanFile: the signals auth-scope reads", () => {
          return json(await presenter.call({ userId: user.id, slug: "x" }));
        });`
     );
-    expect(dashboard!.scopesByCaller).toBe(true);
+    expect(dashboard!.loaderScopesByCaller).toBe(true);
+  });
+
+  // Round C ruling 1. The signal is per export because the exposure is per export. Entry-point-wide
+  // it passed `_app.orgs.$organizationSlug.settings.team/route.tsx`, whose loader narrows itself to
+  // the caller and whose action resolves the target org from the URL slug.
+  it("attributes the caller filter to the export it was written in", () => {
+    const ep = scanFile(
+      "_app.orgs.$slug.settings.team/route.tsx",
+      `import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+       export const loader = dashboardLoader({}, async ({ user }) =>
+         json(await presenter.call({ userId: user.id }))
+       );
+       export const action = dashboardAction({}, async ({ context, request }) =>
+         json(await prisma.orgMember.deleteMany({ where: { organizationId: context.organizationId } }))
+       );`
+    );
+    expect(ep!.loaderScopesByCaller).toBe(true);
+    expect(ep!.actionScopesByCaller).toBe(false);
   });
 
   it("does not read a non-identity field off the caller as a scope", () => {
@@ -2171,7 +2189,7 @@ describe("scanFile: the signals auth-scope reads", () => {
          return json(await prisma.org.findMany({ where: { title: user.name } }));
        });`
     );
-    expect(ep!.scopesByCaller).toBe(false);
+    expect(ep!.loaderScopesByCaller).toBe(false);
   });
 
   // A resource's owner is not the caller.
@@ -2183,31 +2201,82 @@ describe("scanFile: the signals auth-scope reads", () => {
          return json(await prisma.org.findMany({ where: { userId: run.userId } }));
        });`
     );
-    expect(ep!.scopesByCaller).toBe(false);
+    expect(ep!.loaderScopesByCaller).toBe(false);
+  });
+});
+
+// Round C ruling 2. A guard that answers with null instead of throwing is only a boundary if the
+// route reads the answer, so the scan records which callees' results a condition looked at.
+describe("scanFile: callees whose answer the body read", () => {
+  it("records a resolver whose result a negated if tests", () => {
+    const ep = scanFile(
+      "invite-accept.tsx",
+      `import { getUser } from "~/services/session.server";
+       export async function loader({ request }) {
+         const user = await getUser(request);
+         if (!user) return redirect("/login");
+         return json({ email: user.email });
+       }`
+    );
+    expect(ep!.checkedCallees).toContain("getUser");
   });
 
-  it("sees the ability gate run from the handler", () => {
+  it("records one whose result a plain if tests", () => {
     const ep = scanFile(
-      "_app.orgs.$slug.settings.team/route.tsx",
-      `import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-       export const action = dashboardAction({}, async ({ ability, context }) => {
-         if (!ability.can("manage", { type: "members", id: context.organizationId })) {
-           throw new Response("Forbidden", { status: 403 });
-         }
-         return json({});
-       });`
+      "login._index/route.tsx",
+      `import { getUserId } from "~/services/session.server";
+       export async function loader({ request }) {
+         const userId = await getUserId(request);
+         if (userId) throw redirect("/");
+         return typedjson({});
+       }`
     );
-    expect(ep!.checksAbility).toBe(true);
+    expect(ep!.checkedCallees).toContain("getUserId");
   });
 
-  it("does not read an unrelated can() as the ability gate", () => {
+  it("records one whose result a ternary tests", () => {
     const ep = scanFile(
-      "api.v1.orgs.ts",
-      `${PAT}
-       export const loader = createActionPATApiRoute({}, async () => {
-         return json({ ok: features.can("x") });
-       });`
+      "x.ts",
+      `export async function loader({ request }) {
+         const user = await getUser(request);
+         return user ? json({ ok: true }) : redirect("/login");
+       }`
     );
-    expect(ep!.checksAbility).toBe(false);
+    expect(ep!.checkedCallees).toContain("getUser");
+  });
+
+  it("does not record a result that is bound and never tested", () => {
+    const ep = scanFile(
+      "x.ts",
+      `export async function loader({ request }) {
+         const user = await getUser(request);
+         return json(await prisma.invite.findMany({ where: { email: user.email } }));
+       }`
+    );
+    expect(ep!.checkedCallees).not.toContain("getUser");
+  });
+
+  it("does not record a result that is dropped entirely", () => {
+    const ep = scanFile(
+      "x.ts",
+      `export async function loader({ request }) {
+         await getUser(request);
+         return json(await prisma.invite.findMany());
+       }`
+    );
+    expect(ep!.checkedCallees).not.toContain("getUser");
+  });
+
+  it("does not record a callee just because a same-named local is tested elsewhere", () => {
+    const ep = scanFile(
+      "x.ts",
+      `export async function loader({ request }) {
+         const rows = await prisma.invite.findMany();
+         if (rows.length === 0) return json([]);
+         return json(rows);
+       }`
+    );
+    expect(ep!.checkedCallees).toContain("findMany");
+    expect(ep!.checkedCallees).not.toContain("getUser");
   });
 });

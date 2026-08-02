@@ -36,7 +36,17 @@ later phase decides to add one. See `.github/workflows/observability-map.yml`.
 ## What 19 means
 
 It is the mean score of the 412 entry points that had at least one applicable check, where an
-entry's score is the share of its applicable checks that passed. It is low because the webapp does
+entry's score is the share of its applicable checks that passed.
+
+Read that definition carefully before reading the number, because it has a property that will
+mislead you otherwise. **Changing which routes a check applies to moves the score without anything
+in the webapp changing.** It happened in the round that added this paragraph: widening the sensitive
+cohort from 26 routes to 67 gave `auth-boundary` 39 more routes to look at, 36 of which already
+passed it, and the global went from 15 to 19. Not one line of `apps/webapp` changed. The same thing
+runs in reverse: narrowing a check, or a refactor that takes routes out of the denominator, lowers
+or raises it for reasons that are about the tool. So a movement is only evidence about the codebase
+once you have checked the CHECKS block below for an applicability change. Compare fix lists, not
+scores. It is low because the webapp does
 not attach tenant identity to its failures: **11 of 412 entry points name an environment, project,
 organization or user on a failure path.** Everything else, when it breaks at 3am, tells you the
 route and the request id and nothing about whose request it was.
@@ -95,8 +105,8 @@ rather than celebrating.
   impersonation check who is asking.
 - **auth-scope**: a route builder authenticates the request, and its `authorization` option is
   optional, so a route can be authenticated and scoped to nobody. This asks whether a sensitive
-  builder-wrapped route also narrows itself to the caller, by declaring `authorization`, by
-  filtering on the caller's own id, or by running the ability gate in the handler.
+  builder-wrapped route also narrows itself to the caller, in every export, by declaring
+  `authorization` or by filtering on the caller's own id.
 - **request-context**: when this entry point's failure is reported, is the tenant named.
 - **audit-trail**: does a sensitive mutation leave a record of who did it. Nothing in the webapp
   writes one, so every applicable entry point fails.
@@ -112,7 +122,7 @@ shape instead of hiding it behind a weight. Today:
 CHECKS
   error-classification  166 applicable,  94 pass,   0 sole, global without it 10
   auth-boundary          62 applicable,  59 pass,   0 sole, global without it 15
-  auth-scope             19 applicable,  19 pass,   0 sole, global without it 18
+  auth-scope             19 applicable,  17 pass,   0 sole, global without it 18
   request-context       412 applicable,  11 pass, 223 sole, global without it 65
   audit-trail            49 applicable,   0 pass,   0 sole, not in the score
 ```
@@ -132,14 +142,14 @@ is made of`).
 
 `audit-trail` fails 49 of 49, and `request-context` fails 401 of 412. Printing either one per route
 would bury the route-specific findings under the same sentence repeated hundreds of times, so both
-are reported as a figure: the `AUDIT` and `CONTEXT` lines. 329 entry points fail nothing except
-`request-context` and appear only in that figure, which leaves 75 in the fix list. An entry that
+are reported as a figure: the `AUDIT` and `CONTEXT` lines. 328 entry points fail nothing except
+`request-context` and appear only in that figure, which leaves 76 in the fix list. An entry that
 fails `request-context` *and* another scored check keeps both findings and stays in the list, so
 `/account/tokens` still shows the whole picture. `audit-trail` does not count as "another" for this
 purpose: it is already a headline, so a route failing only `request-context` and `audit-trail`
-collapses too (29 do today, all of them sensitive).
+collapses too (28 do today, all of them sensitive).
 
-43 of those 329 are sensitive, so the `CONTEXT` line says how many. Read them out of
+42 of those 328 are sensitive, so the `CONTEXT` line says how many. Read them out of
 `observability-map.json`, where every entry keeps its full check results, rather than assuming the
 list is the whole story.
 
@@ -239,15 +249,26 @@ the cross-org IDOR class `apps/webapp/CLAUDE.md` names: "A PAT route must resolv
 org/project scoped to the caller's membership. Skipping it opens cross-org access."
 
 `auth-scope` is the check that can say "authenticated but not scoped" as a finding in its own
-right. It applies to 19 routes and all 19 pass today. It reads three things as scoping: an
-`authorization` option with a real value, a query filtered on the caller's own id
-(`userId: authentication.userId`, `userId: user.id`), or an `ability.can(...)` call in the handler.
+right. It applies to 19 routes and 17 pass. It reads two things as scoping, and requires EVERY
+builder-wrapped export of a file to have one of them: an `authorization` option with a real value,
+or a query in that export's own handler filtered on the caller's own id
+(`userId: authentication.userId`, `userId: user.id`).
 
-What a pass here means, precisely: the route gates on something. It does not mean a non-member is
-rejected on self-hosted. The OSS fallback ability is permissive
-(`internal-packages/rbac/src/fallback.ts`), so by the same CLAUDE.md rule the membership-scoped
-query is the tenant floor and the ability gate is only the role gate. Reading the query would mean
-following it into the presenter or model it calls, which this tool does not do.
+An `ability.can(...)` call in the handler is deliberately not a third way. The same CLAUDE.md
+passage says why: the OSS fallback ability is permissive
+(`internal-packages/rbac/src/fallback.ts` returns `permissiveAbility` for a PAT and
+`buildFallbackAbility(user.admin)` for a session, neither of which reads org membership), so an
+ability check enforces the role while the membership-scoped query is the tenant floor.
+
+The two routes that fail both resolve their target organization from the URL slug with no
+membership filter, and put nothing but an ability check in front of it:
+`_app.orgs.$organizationSlug.settings.sso/route.tsx` in its loader, whose `resolveOrg` is
+`findFirst({ where: { slug } })`, and `_app.orgs.$organizationSlug.settings.team/route.tsx` in its
+action, whose org id comes from `resolveOrgIdFromSlug`. Both were hand-read. The fix in each is to
+put `members: { some: { userId } }` on the lookup.
+
+That per-export rule is the load-bearing half. Both of those files scope themselves in their OTHER
+export, so an entry-point-wide reading passed them, and the exposure is per export.
 
 ## Suppression
 
@@ -302,19 +323,30 @@ Read these before trusting a specific verdict.
   imported from another module is ever opened. `auth-boundary` applies to 62 of the 67 sensitive
   entry points; the other 5 hand their work to an imported helper and are reported as unverified
   rather than unguarded.
-- **A guard is matched by name, not by what it does.** The accept-list is 31 names read off the
-  webapp. `test/webappSymbols.test.ts` proves each one is declared somewhere; nothing proves the
-  declaration it found is the guard we meant. `authenticateAdmin` and `authenticatePlainRequest`
-  are local helpers inside one route file each, so a second route declaring its own no-op function
-  of either name would be credited. `getUser` and `getUserId` are on the list because they resolve
-  the caller and the two routes that use them act on the answer; a route that calls one and ignores
-  what it said would be credited too.
-- **An `ability.can` call counts as scoping, and it is a role gate.** See the section above. On
-  self-hosted the fallback ability is permissive, so `auth-scope` passing a route is not a claim
-  that a non-member is rejected.
-- **`auth-scope` reads property assignments for the caller filter.** A handler that pulls the id
-  into a local first, `const { userId } = authentication; ... where: { userId }`, scopes itself and
-  is not seen, so it would be reported as unscoped. No route in the tree writes it that way.
+- **A guard is matched by name, not by what it does.** The accept-list is 29 names read off the
+  webapp, plus two `SOFT_GUARDS`. `test/webappSymbols.test.ts` proves each one is declared
+  somewhere; nothing proves the declaration it found is the guard we meant. `authenticateAdmin` and
+  `authenticatePlainRequest` are local helpers inside one route file each, so a second route
+  declaring its own no-op function of either name would be credited.
+- **Two guard names are only checked as far as being read.** `getUser` and `getUserId` answer with
+  null instead of throwing, so calling one is not a boundary. They are credited only when the body
+  binds the result and some condition reads it (`EntryPoint.checkedCallees`). What that cannot see
+  is whether the test guards anything: `if (!user) { logger.warn("anonymous"); }` followed by the
+  work reads the same as returning.
+- **`authenticate` and `isAuthenticated` are unresolved on purpose.** They are remix-auth's, and
+  resolving them meant reading a path inside `apps/webapp/node_modules`, which fails confusingly on
+  an install-layout change. They are listed in `EXTERNAL_GUARDS` instead, so the resolution test
+  still rejects a name that is neither first-party nor listed.
+- **`auth-scope` cannot tell a caller-id filter from a caller-id actor argument.**
+  `presenter.call({ userId: user.id })` narrows the query; `generatePortalLink({ organizationId,
+  userId: user.id })` just records who asked. Both read as scoping. Separating them means following
+  the argument into the callee, so the four helpers credited this way
+  (`ApiKeysPresenter`, `TeamPresenter`, `regenerateApiKey`, `DeleteOrganizationService`, all of
+  which do `members: { some: { userId } }` and throw) were hand-read instead. No route in the tree
+  passes on an actor argument alone.
+- **`auth-scope` reads property assignments in that export's own handler.** A handler that pulls the
+  id into a local first, `const userId = user.id; ... { userId }`, or that builds its filter in a
+  same-file helper, scopes itself and is not seen, so it would be reported as unscoped.
 - **Three login-flow routes fail `auth-boundary` correctly and unhelpfully.** `/auth/sso`,
   `/api/v1/authorization-code` and `/api/v1/token` are unauthenticated by design: the caller is
   anonymous at that point, which is the whole purpose. The check's statement about them is true and

@@ -102,20 +102,34 @@ export type EntryPoint = {
    */
   delegating: boolean;
   /**
-   * Some object-literal property in the loader/action body is assigned the caller's own id, the
+   * Whether THIS export's handler assigns the caller's own id to an object-literal property, the
    * `where: { members: { some: { userId: authentication.userId } } }` and
    * `presenter.call({ userId: user.id })` shapes. Read by `auth-scope` as evidence that the handler
-   * narrowed its work to whoever is asking. See `CALLER_ID_PATH` in `scan.ts` for the exact
-   * expressions. Property assignments only: a value read out into a local first
-   * (`const { userId } = authentication`) is not seen.
+   * narrowed its work to whoever is asking. See `CALLER_ID_PATH` and `scopesByCallerIn` in
+   * `scan.ts`.
+   *
+   * Split per export because the exposure is per export: a loader that narrows itself to the caller
+   * says nothing about the action beside it. Property assignments only, so a value read into a
+   * local first (`const userId = user.id; ... { userId }`) is not seen.
    */
-  scopesByCaller: boolean;
+  loaderScopesByCaller: boolean;
+  actionScopesByCaller: boolean;
   /**
-   * The body calls `ability.can(...)` or `ability.canSuper(...)`: the RBAC gate written in the
-   * handler rather than declared in the builder options. Several dashboard routes do this on
-   * purpose, because which ability a request needs depends on the intent it carries.
+   * Callees whose answer the body demonstrably looked at: the call's result was bound to a local
+   * and some `if`, `while`, `switch` or conditional in the same bodies reads that local.
+   * `const user = await getUser(request); if (!user) return redirect("/login");` puts `getUser`
+   * here; a call whose result is dropped, or bound and never tested, does not appear.
+   *
+   * Read by `auth-boundary` for the guards that answer with null instead of throwing, where being
+   * called is not evidence that the route acted on the answer.
+   *
+   * Deliberately coarse. It does not check that the test guards anything, that the local is the one
+   * tested rather than a same-named one in another scope, or that the branch exits: a route
+   * that writes `if (!user) { logger.warn("anonymous"); }` and carries on is credited. It separates
+   * "looked at the answer" from "ignored it", which is the distinction the check needs, and not
+   * "acted correctly on the answer", which it cannot see.
    */
-  checksAbility: boolean;
+  checkedCallees: string[];
   /** Named and default imports, file-wide. */
   importedNames: string[];
   /** Names of functions called inside the loader/action bodies, or in a same-file helper they call. */
