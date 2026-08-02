@@ -87,7 +87,7 @@ export function configureDevCommand(program: Command) {
       )
       .option(
         "--env-file <env file>",
-        "Path to the .env file to use for the dev session. Defaults to .env in the project directory."
+        "Path to the .env file to use for the dev session. Values are also passed to your tasks. Defaults to .env in the project directory."
       )
       .option(
         "--max-concurrent-runs <max concurrent runs>",
