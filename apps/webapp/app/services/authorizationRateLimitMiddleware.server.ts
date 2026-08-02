@@ -5,7 +5,6 @@ import { Ratelimit } from "@upstash/ratelimit";
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { env } from "~/env.server";
 import type { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
 import type { Duration, Limiter } from "./rateLimiter.server";
@@ -56,10 +55,17 @@ export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
 type LimitConfigOverrideFunction = (authorizationValue: string) => Promise<unknown>;
 
 type Options = {
-  redis?: RedisWithClusterOptions;
+  redis: RedisWithClusterOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
+  /**
+   * Escape hatch for requests that can only be admitted by consulting state, rather than by
+   * matching a path. Runs after the authorization header check, so an unauthenticated
+   * request is still rejected, and only skips the rate limit itself. Must not throw: a
+   * bypass that cannot decide should return false and let the limiter apply.
+   */
+  bypass?: (req: ExpressRequest) => Promise<boolean>;
   defaultLimiter: RateLimiterConfig;
   limiterConfigOverride?: LimitConfigOverrideFunction;
   limiterCache?: {
@@ -151,6 +157,7 @@ export function authorizationRateLimitMiddleware({
   defaultLimiter,
   pathMatchers,
   pathWhiteList = [],
+  bypass,
   log = {
     rejections: true,
     requests: true,
@@ -176,16 +183,7 @@ export function authorizationRateLimitMiddleware({
     }),
   });
 
-  const redisClient = createRedisRateLimitClient(
-    redis ?? {
-      port: env.RATE_LIMIT_REDIS_PORT,
-      host: env.RATE_LIMIT_REDIS_HOST,
-      username: env.RATE_LIMIT_REDIS_USERNAME,
-      password: env.RATE_LIMIT_REDIS_PASSWORD,
-      tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
-    }
-  );
+  const redisClient = createRedisRateLimitClient(redis);
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     if (log.requests) {
@@ -245,6 +243,26 @@ export function authorizationRateLimitMiddleware({
           2
         )
       );
+    }
+
+    if (bypass) {
+      let bypassed = false;
+
+      try {
+        bypassed = await bypass(req);
+      } catch (error) {
+        logger.warn(`RateLimiter (${keyPrefix}): bypass threw, applying the limit`, {
+          path: req.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      if (bypassed) {
+        if (log.requests) {
+          logger.info(`RateLimiter (${keyPrefix}): bypassed ${req.path}`);
+        }
+        return next();
+      }
     }
 
     const hash = createHash("sha256");

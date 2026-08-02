@@ -29,6 +29,7 @@ export type IdempotencyKeyRunMatch = {
 };
 
 export type CreateRunSnapshotInput = {
+  id?: string;
   engine: "V2";
   executionStatus: TaskRunExecutionStatus;
   description: string;

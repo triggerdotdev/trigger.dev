@@ -70,6 +70,8 @@ import {
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -243,6 +245,18 @@ export default function Page() {
   const view = value("view") === "keys" ? "keys" : "overview";
   const selectedKey = value("key");
 
+  // Is the queue in the state the page already tints warning? Two signals, both of which this page
+  // renders in warning colour elsewhere: at capacity with runs waiting (the Concurrency block), and
+  // a head-of-line run sitting unstarted past the threshold (the Oldest wait block). A paused queue
+  // is excluded — the banner above already says why nothing is moving, so there is nothing to
+  // diagnose. Only then do we offer to hand the queue to the agent.
+  const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
+  const concurrencyLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
+  const degraded =
+    !queue.paused &&
+    ((queue.running >= concurrencyLimit && queue.queued > 0) ||
+      (oldestWaitMs !== null && oldestWaitMs >= OLDEST_WAIT_WARNING_MS));
+
   return (
     <PageContainer>
       <NavBar>
@@ -303,6 +317,13 @@ export default function Page() {
               variant="secondary/small"
               withQueueName
             />
+            {/* Hand a backed-up queue to the agent. Hidden when the agent isn't available. */}
+            {degraded ? (
+              <InvestigateButton
+                prompt={queueBacklogPrompt(queue.name)}
+                tooltip="Ask why this queue is backed up"
+              />
+            ) : null}
           </div>
         </MetricsLayout.Filters>
 
@@ -312,7 +333,7 @@ export default function Page() {
           queue={queue}
           environmentConcurrencyLimit={environmentConcurrencyLimit}
           queuedRunsPath={queuedRunsPath}
-          oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
+          oldestWaitMs={oldestWaitMs}
           ids={ids}
           timeRange={timeRange}
           queueName={fullName}

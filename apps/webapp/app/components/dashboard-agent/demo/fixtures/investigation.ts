@@ -194,6 +194,29 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:06.000Z",
 };
 
+/**
+ * The card's very first frame: the subject and the one thing already read, and
+ * nothing else. No hypotheses yet, so the disclosure has nothing behind it —
+ * the state the gallery needs to prove an empty card still reads as an answer
+ * in the making rather than as a broken one.
+ */
+export const demoInvestigationEarly: DemoInvestigation = {
+  investigationId: demoId("investigation-order-receipt-early"),
+  revision: 0,
+  outcome: "in_progress",
+  severity: "warn",
+  confidence: "low",
+  runId: DEMO_WORLD.failedRunId,
+  title: `Why is ${DEMO_WORLD.taskId} failing?`,
+  headline:
+    "The run failed after three attempts. I'm reading its spans to see which call failed before I put any hypotheses up.",
+  progress: "Reading the run's spans",
+  hypotheses: [],
+  evidence: [runEvidence],
+  startedAt: "2026-07-27T10:14:02.000Z",
+  updatedAt: "2026-07-27T10:14:03.000Z",
+};
+
 /** Revision 1: one hypothesis settled, the other still open. Same id. */
 export const demoInvestigationStreamingRev1: DemoInvestigation = {
   ...demoInvestigationStreamingRev0,
@@ -289,6 +312,45 @@ export const demoInvestigationConcluded: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:24.000Z",
 };
 
+/**
+ * Concluded, and NOT code-grounded: the cause is a saturated concurrency limit,
+ * established entirely from telemetry. No file was read, so the card cites no
+ * source and the executor offers no "Show code" — the contrast the gallery needs
+ * against the concluded card above, whose verdict rests on a line of source.
+ */
+export const demoInvestigationConcludedNoCode: DemoInvestigation = {
+  investigationId: demoId("investigation-queue-saturation"),
+  revision: 2,
+  outcome: "concluded",
+  severity: "crit",
+  confidence: "high",
+  title: `${DEMO_WORLD.queue} is starving — nothing is starting`,
+  headline: `The ${DEMO_WORLD.queue} queue has sat at its concurrency limit of 50 for 38 of the last 60 minutes, so new runs wait behind the ones already running. The p95 wait is 2 minutes against a p50 of 38 seconds, and every run that does start finishes normally.`,
+  remediation:
+    "Raise the queue's concurrency limit (or the environment's, if that's the one it's hitting) until the depth trend flattens. You can set it from the queue page — no deploy needed. If the limit is deliberate, the backlog is telling you the arrival rate now exceeds it, and the trigger side is what has to change.",
+  hypotheses: [
+    {
+      id: demoId("hyp-queue-limit"),
+      statement: "Runs are waiting on the queue's concurrency limit, not failing.",
+      verdict: "validated",
+      finding:
+        "The queue was pinned at 50 of 50 for 38 of the last 60 minutes while the depth climbed from 10 to 4,210, and no run in the window failed.",
+      evidence: [queueEvidence],
+    },
+    {
+      id: demoId("hyp-queue-slow-task"),
+      statement: "The task itself got slower, so each slot is held longer.",
+      verdict: "invalidated",
+      finding:
+        "Runs that did start completed in ~1.2s, the same as earlier today — the slots turn over as fast as they ever did.",
+      evidence: [priorRunEvidence],
+    },
+  ],
+  evidence: [queueEvidence, priorRunEvidence],
+  startedAt: "2026-07-27T11:02:00.000Z",
+  updatedAt: "2026-07-27T11:02:19.000Z",
+};
+
 // ---------------------------------------------------------------------------
 // (c) Inconclusive — "What we know" + "What to check next", no fix.
 // ---------------------------------------------------------------------------
@@ -373,6 +435,54 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
 };
 
 // ---------------------------------------------------------------------------
+// (d) Degraded — a read failed mid-investigation, so the card says so.
+// ---------------------------------------------------------------------------
+
+/**
+ * Inconclusive because a tool failed, not because the evidence was thin.
+ *
+ * A read that comes back empty or unavailable is itself a finding, and the card
+ * has to name what it could not read rather than quietly answering around it: a
+ * hypothesis nobody could test is `testing`, never `invalidated`, and the
+ * missing read is the first thing on "What to check next".
+ */
+export const demoInvestigationDegraded: DemoInvestigation = {
+  investigationId: demoId("investigation-order-receipt-degraded"),
+  revision: 1,
+  outcome: "inconclusive",
+  severity: "warn",
+  confidence: "low",
+  runId: DEMO_WORLD.failedRunId,
+  title: `Why is ${DEMO_WORLD.taskId} failing?`,
+  headline: `Every attempt of this run ended in a 429 from the email provider, and 41 other runs hit the same error in the last hour. I couldn't read the trace — the spans for this run are no longer retained — so I can't tell whether the retries all landed inside one rate-limit window, which is what would explain it.`,
+  checkNext: [
+    "Re-run the investigation on a fresher failure, while its spans are still retained.",
+    "Check the provider's dashboard for the rate limit on this API key and when it resets.",
+    "Compare the task's retry settings against that window — three attempts inside one window would fail as a group.",
+  ],
+  hypotheses: [
+    {
+      id: demoId("hyp-rate-limit"),
+      statement: "The email provider is rate limiting this API key.",
+      verdict: "validated",
+      finding: "All three attempts returned 429 rate_limit_exceeded on the same fingerprint.",
+      evidence: [errorEvidence],
+    },
+    {
+      id: demoId("hyp-retry-window"),
+      statement: "The retry schedule keeps every attempt inside one rate-limit window.",
+      // Evidence we couldn't get leaves a hypothesis untested — never disproved.
+      verdict: "testing",
+      finding: "The run's spans are no longer retained, so the attempt timings can't be read.",
+      evidence: [],
+    },
+  ],
+  evidence: [runEvidence, errorEvidence],
+  startedAt: "2026-07-27T10:31:00.000Z",
+  updatedAt: "2026-07-27T10:31:14.000Z",
+};
+
+// ---------------------------------------------------------------------------
 // (e) Dirty-commit caveat — the same concluded card, hedged.
 // ---------------------------------------------------------------------------
 
@@ -394,10 +504,13 @@ export const demoInvestigationDirtyCommit: DemoInvestigation = {
 };
 
 export const demoInvestigations = {
+  early: demoInvestigationEarly,
   streamingRev0: demoInvestigationStreamingRev0,
   streamingRev1: demoInvestigationStreamingRev1,
   concluded: demoInvestigationConcluded,
+  concludedNoCode: demoInvestigationConcludedNoCode,
   inconclusive: demoInvestigationInconclusive,
+  degraded: demoInvestigationDegraded,
   dirtyCommit: demoInvestigationDirtyCommit,
 } as const;
 

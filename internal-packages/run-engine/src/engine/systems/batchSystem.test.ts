@@ -88,6 +88,14 @@ class CountingPostgresRunStore extends PostgresRunStore {
     return super.updateBatchTaskRun(args, tx);
   }
 
+  override async updateManyBatchTaskRun(
+    args: Prisma.BatchTaskRunUpdateManyArgs,
+    tx?: any
+  ): Promise<Prisma.BatchPayload> {
+    this.batchUpdates++;
+    return super.updateManyBatchTaskRun(args, tx);
+  }
+
   override async findWaitpoint<T extends Prisma.WaitpointFindFirstArgs>(
     args: any,
     client?: any

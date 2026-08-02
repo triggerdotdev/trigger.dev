@@ -884,6 +884,20 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
     BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
+    /**
+     * How long a created batch may remain unsealed before the seal-timeout reaper
+     * aborts it and resumes any blocked parent with an error. Must exceed the SDK's
+     * worst-case stream-retry budget (maxAttempts x server request timeout).
+     * Doubles as the TTL of the phase 2 streaming grant, so the grant and the reaper
+     * always agree on how long a batch is allowed to be sealing.
+     */
+    BATCH_SEAL_TIMEOUT_MS: z.coerce.number().int().positive().default(1_800_000),
+    /**
+     * Number of phase 2 (`POST /api/v3/batches/:id/items`) requests a created batch is
+     * granted, exempt from the general API rate limit. Sized above the SDK's stream
+     * maxAttempts so a batch admitted by the batch limiter can always finish streaming.
+     */
+    BATCH_STREAM_GRANT_ATTEMPTS: z.coerce.number().int().positive().default(10),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -1706,6 +1720,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),
     RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH: z.coerce.number().int().default(1),
     RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
     RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
@@ -2104,6 +2119,8 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
     REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCOUNT_URL: z.string().default("https://a.s2.dev/v1"),
+    REALTIME_STREAMS_S2_BASIN_URL: z.string().default("https://{basin}.b.s2.dev/v1"),
     REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()

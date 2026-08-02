@@ -1,7 +1,7 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 import {
   type AddOnPricing,
   type FreePlanDefinition,
@@ -95,6 +95,8 @@ export const action = dashboardAction(
               email: user.email,
               name: user.name ?? "",
               title: "Plan cancelation feedback",
+              organizationId: organization.id,
+              organizationName: organization.title,
               components: [
                 uiComponent.text({
                   text: `${user.name} (${user.email}) just canceled their plan.`,

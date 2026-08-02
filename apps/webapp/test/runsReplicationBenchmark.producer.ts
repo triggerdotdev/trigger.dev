@@ -15,6 +15,17 @@ interface ProducerConfig {
   numRuns: number;
   errorRate: number; // 0.07 = 7%
   batchSize: number;
+  poisonRate?: number;
+  poisonDepth?: number;
+}
+
+function deeplyNestedJson(depth: number): string {
+  const safeDepth = Number.isSafeInteger(depth) && depth >= 0 ? depth : 0;
+  const open: string[] = [];
+  for (let i = 0; i < safeDepth; i++) {
+    open.push(`{"k${i}":`);
+  }
+  return open.join("") + '{"leaf":1}' + "}".repeat(safeDepth);
 }
 
 // Error templates for realistic variety
@@ -108,6 +119,9 @@ async function runProducer(config: ProducerConfig) {
     const startTime = performance.now();
     let created = 0;
     let withErrors = 0;
+    let poisoned = 0;
+    const poisonRate = config.poisonRate ?? 0;
+    const poisonDepth = config.poisonDepth ?? 1500;
 
     // Process in batches to avoid overwhelming the database
     for (let batch = 0; batch < Math.ceil(config.numRuns / config.batchSize); batch++) {
@@ -119,6 +133,8 @@ async function runProducer(config: ProducerConfig) {
       for (let i = batchStart; i < batchEnd; i++) {
         const hasError = Math.random() < config.errorRate;
         const status = hasError ? "COMPLETED_WITH_ERRORS" : "COMPLETED_SUCCESSFULLY";
+
+        const isPoison = Math.random() < poisonRate;
 
         const runData: any = {
           friendlyId: `run_bench_${Date.now()}_${i}`,
@@ -140,6 +156,12 @@ async function runProducer(config: ProducerConfig) {
         if (hasError) {
           runData.error = generateError();
           withErrors++;
+        }
+
+        if (isPoison) {
+          runData.output = deeplyNestedJson(poisonDepth);
+          runData.outputType = "application/json";
+          poisoned++;
         }
 
         runs.push(runData);
@@ -168,6 +190,7 @@ async function runProducer(config: ProducerConfig) {
     console.log(`[Producer] Completed:`);
     console.log(`  - Total runs: ${created}`);
     console.log(`  - With errors: ${withErrors} (${((withErrors / created) * 100).toFixed(1)}%)`);
+    console.log(`  - Poisoned: ${poisoned} (${((poisoned / created) * 100).toFixed(1)}%)`);
     console.log(`  - Duration: ${duration.toFixed(0)}ms`);
     console.log(`  - Throughput: ${throughput.toFixed(0)} runs/sec`);
 
@@ -178,6 +201,7 @@ async function runProducer(config: ProducerConfig) {
         stats: {
           created,
           withErrors,
+          poisoned,
           duration,
           throughput,
         },

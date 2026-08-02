@@ -238,6 +238,12 @@ function describeRun(run: WaitingRunRow, now: Date): WaitingRunDiagnosis["run"] 
     // A delayed run isn't in the queue yet — this is a schedule, NOT queue latency.
     waitingLabel = `scheduled to start at ${run.delayUntil.toISOString()}`;
     waitingBasis = "delay_until";
+  } else if (run.delayUntil && run.queuedAt === null) {
+    // The delay elapsed but the run hasn't been enqueued yet — say that, not "time from
+    // creation", which would hide that the schedule already passed.
+    const ms = Math.max(0, now.getTime() - run.delayUntil.getTime());
+    waitingLabel = `delay elapsed ${formatMs(ms)} ago, not yet enqueued`;
+    waitingBasis = "delay_until";
   } else {
     // No queuedAt to measure from. Report creation age and SAY that's what it is.
     const ms = Math.max(0, (run.startedAt ?? now).getTime() - run.createdAt.getTime());
@@ -393,9 +399,14 @@ function deriveCause(
   if (!backlogged || (observedRate !== null && observedRate > 0)) {
     return { cause: "draining_normally", evidence };
   }
-  // Backlogged with nothing moving, but no capacity evidence to say whether that's a limit or a
-  // stall. flow.ts's lesson: don't name a concurrency cause without the evidence for it.
-  return { cause: "unknown", evidence: { ...evidence, missing: "env_concurrency" } };
+  // Backlogged with nothing conclusive. Only claim evidence is MISSING when it actually is —
+  // with concurrency evidence in hand this is "inconclusive", not "blind" (flow.ts's lesson:
+  // don't name a concurrency cause without the evidence for it, and don't mislabel evidence
+  // that's present).
+  return {
+    cause: "unknown",
+    evidence: { ...evidence, missing: hasConcurrencyEvidence ? null : "env_concurrency" },
+  };
 }
 
 // ---------------------------------------------------------------------------

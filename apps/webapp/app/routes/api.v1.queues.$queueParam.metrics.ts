@@ -66,7 +66,9 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, searchParams, authentication }) => {
-    const name = decodeURIComponent(params.queueParam).replace(/%2F/g, "/");
+    // Remix already URL-decoded the param and the schema's transform unescaped %2F —
+    // decoding again would throw a 500 on queue names containing a literal "%".
+    const name = params.queueParam;
     const queue = searchParams.type === "task" && !name.startsWith("task/") ? `task/${name}` : name;
 
     const windowMs = periodMs(searchParams.period);

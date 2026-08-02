@@ -42,6 +42,20 @@ export const action: ActionFunction = async ({ request, params }) => {
     return redirectWithErrorMessage(safeRedirectUrl, request, "Batch not found");
   }
 
+  const batch = await runStore.findBatchTaskRunById(ownedBatchRunId);
+
+  if (!batch) {
+    return redirectWithErrorMessage(safeRedirectUrl, request, "Batch not found");
+  }
+
+  if (!batch.sealed) {
+    return redirectWithErrorMessage(
+      safeRedirectUrl,
+      request,
+      "This batch was never finished being created, so it can't be resumed. Please get in touch and we'll recover it for you."
+    );
+  }
+
   try {
     // v3 (engine V1) is retired; finalize the batch through the v2 completion path (no-op if not ready).
     await tryCompleteBatchV3(ownedBatchRunId, prisma, true);

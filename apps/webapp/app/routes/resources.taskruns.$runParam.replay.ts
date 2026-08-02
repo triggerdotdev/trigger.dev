@@ -166,6 +166,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const [payload, regionsResult] = await Promise.all([
     prettyPrintPacket(run.payload, run.payloadType),
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the replay
+    // dialog's region picker, so it decides what the submitted form can select
+    // — and the run's own region is returned separately, so dropping entries
+    // can leave the current value off the list. "View as user" only changes
+    // what is shown.
     new RegionsPresenter().call({
       userId,
       projectSlug,

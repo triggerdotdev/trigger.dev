@@ -1,9 +1,16 @@
-import { prisma } from "./app/db.server";
-import { createOrganization } from "./app/models/organization.server";
-import { createProject } from "./app/models/project.server";
 import { ClickHouse } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
-import { generateFriendlyId } from "./app/v3/friendlyIdentifiers";
+// App modules compile to CommonJS under tsx (webapp has no "type": "module"), so
+// import them as default bindings and destructure — same pattern as seed-agent-examples.
+import dbServer from "./app/db.server";
+import organizationServer from "./app/models/organization.server";
+import projectServer from "./app/models/project.server";
+import friendlyIdentifiers from "./app/v3/friendlyIdentifiers";
+
+const { prisma } = dbServer;
+const { createOrganization } = organizationServer;
+const { createProject } = projectServer;
+const { generateFriendlyId } = friendlyIdentifiers;
 
 // Queue metrics simulator: writes realistic raw rows into a synthetic tenant's
 // queue_metrics_raw_v1 and lets the MV build queue_metrics_v1 (the same path the real

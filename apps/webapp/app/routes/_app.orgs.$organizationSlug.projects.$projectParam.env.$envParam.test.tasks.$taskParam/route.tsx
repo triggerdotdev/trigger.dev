@@ -117,6 +117,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         taskIdentifier: taskParam,
         environment: environment,
       }),
+      // Raw impersonation, not `hasAdminDisplayAccess`: this list is the test
+      // form's region picker, so it decides which region a submitted test run
+      // can be sent to. "View as user" only changes what is shown.
       new RegionsPresenter().call({
         userId: user.id,
         projectSlug: projectParam,

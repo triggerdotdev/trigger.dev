@@ -54,6 +54,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the
+    // playground's region picker, so it decides which region a submitted run
+    // can be sent to. "View as user" only changes what is shown.
     new RegionsPresenter().call({
       userId: user.id,
       projectSlug: projectParam,

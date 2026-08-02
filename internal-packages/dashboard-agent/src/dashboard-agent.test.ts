@@ -271,6 +271,126 @@ describe("dashboardAgent (mock harness)", () => {
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toBe("resolved from the tool");
   });
+
+  // -------------------------------------------------------------------------
+  // The settle guard: a card left in_progress when the turn ends is a defect
+  // -------------------------------------------------------------------------
+
+  // The turn needs a project + environment for an investigation to be scoped.
+  const INVESTIGATION_CLIENT_DATA = {
+    ...CLIENT_DATA,
+    projectRef: "proj_abc",
+    environmentId: "env_abc",
+  };
+
+  const openInvestigation = {
+    outcome: "in_progress",
+    severity: "warn",
+    confidence: "medium",
+    runId: "run_abc123",
+    title: "Why is send-order-receipt failing?",
+    headline: "Every attempt came back 429 from the email provider.",
+    progress: "Reading the run's spans",
+    hypotheses: [
+      {
+        id: "hyp_rate_limit",
+        statement: "The provider is rate limiting this API key.",
+        verdict: "testing",
+        evidence: [],
+      },
+    ],
+    evidence: [],
+  };
+
+  const renderViewStep = (investigation: Record<string, unknown>, toolCallId: string) =>
+    toolCallStep("render_view", { blocks: [{ type: "investigation", investigation }] }, toolCallId);
+
+  // The store's view of the investigation after the turn: what a refresh reads.
+  const finalInvestigationState = (calls: StoreCalls) =>
+    (calls.upsertInvestigationRevision[calls.upsertInvestigationRevision.length - 1] as {
+      state: Record<string, any>;
+    })!.state;
+
+  it("settles an investigation the turn left in progress", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_open_investigation",
+      clientData: INVESTIGATION_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        // The model opens the card and then just talks — no verdict render, the
+        // failure this guard exists for.
+        set(
+          dashboardAgentModelKey,
+          mockModel([renderViewStep(openInvestigation, "tc_open"), textStep("still looking")])
+        );
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // The turn wrote the open card; the guard wrote the settle on top of it.
+    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    const settle = calls.upsertInvestigationRevision[1] as Record<string, any>;
+    expect(settle.id).toBe("inv_fake");
+    expect(settle.chatId).toBe("chat_open_investigation");
+    expect(settle.projectRef).toBe("proj_abc");
+    expect(settle.environmentRef).toBe("env_abc");
+
+    const state = finalInvestigationState(calls);
+    expect(state.outcome).toBe("inconclusive");
+    // No spinner, no invented cause, no fix — and the facts the turn did
+    // establish are kept.
+    expect(state.progress).toBeUndefined();
+    expect(state.remediation).toBeUndefined();
+    expect(state.confidence).toBe("low");
+    expect(state.headline).toContain("didn't conclude within this turn");
+    expect(state.headline).toContain("429");
+    expect(state.hypotheses).toHaveLength(1);
+  });
+
+  it("leaves a concluded investigation alone", async () => {
+    const { store, calls } = fakeStore();
+    const concluded = {
+      ...openInvestigation,
+      outcome: "concluded",
+      confidence: "high",
+      progress: undefined,
+      remediation: "Raise minTimeoutInMs to 30s with a factor of 2.",
+      hypotheses: [
+        {
+          ...openInvestigation.hypotheses[0]!,
+          verdict: "validated",
+          finding: "All three attempts returned 429 inside 20 seconds.",
+        },
+      ],
+    };
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_concluded_investigation",
+      clientData: INVESTIGATION_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(
+          dashboardAgentModelKey,
+          mockModel([
+            renderViewStep(openInvestigation, "tc_open"),
+            renderViewStep(concluded, "tc_verdict"),
+            textStep("Rate limited — the retries all land in one window."),
+          ])
+        );
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Two renders, no third write: a turn that settled its own card is untouched.
+    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    const state = finalInvestigationState(calls);
+    expect(state.outcome).toBe("concluded");
+    expect(state.remediation).toBe("Raise minTimeoutInMs to 30s with a factor of 2.");
+  });
 });
 
 // ---------------------------------------------------------------------------

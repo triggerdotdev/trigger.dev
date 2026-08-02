@@ -13,6 +13,10 @@ import {
 } from "~/services/attio.server";
 import { sweepDashboardAgentWatches } from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
+import {
+  MembershipDevEnvironmentsSchema,
+  provisionDevEnvironmentsForMembership,
+} from "~/services/memberDevEnvironments.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
@@ -57,6 +61,13 @@ function initializeWorker() {
         visibilityTimeoutMs: 30_000,
         retry: {
           maxAttempts: 3,
+        },
+      },
+      "membership.provisionDevEnvironments": {
+        schema: MembershipDevEnvironmentsSchema,
+        visibilityTimeoutMs: 120_000,
+        retry: {
+          maxAttempts: 5,
         },
       },
       "v3.timeoutDeployment": {
@@ -167,6 +178,9 @@ function initializeWorker() {
       },
       "attio.syncUser": async ({ payload }) => {
         await runAttioUserSync(payload);
+      },
+      "membership.provisionDevEnvironments": async ({ payload }) => {
+        await provisionDevEnvironmentsForMembership(payload);
       },
       "v3.timeoutDeployment": async ({ payload }) => {
         const service = new TimeoutDeploymentService();

@@ -115,6 +115,11 @@ export const MANIFEST: GallerySection[] = [
   // The shipped `InvestigationCard` (fed the real block) first, then the demo
   // mockup whose review froze the payload — kept so the two can be compared.
   {
+    sectionId: "investigation-card-in-progress-early",
+    title: "In progress, early — subject and first evidence, no hypotheses",
+    group: "investigation",
+  },
+  {
     sectionId: "investigation-card-streaming-rev0",
     title: "Streaming, revision 0 — nothing settled",
     group: "investigation",
@@ -135,8 +140,25 @@ export const MANIFEST: GallerySection[] = [
     group: "investigation",
   },
   {
+    sectionId: "investigation-card-concluded-code-grounded",
+    title: "Concluded, code-grounded — source citation and Show code",
+    group: "investigation",
+    expandText: "How I worked this out",
+  },
+  {
+    sectionId: "investigation-card-concluded-not-code-grounded",
+    title: "Concluded, not code-grounded — no source citation, no Show code",
+    group: "investigation",
+    expandText: "How I worked this out",
+  },
+  {
     sectionId: "investigation-card-inconclusive",
     title: "Inconclusive — no fix, what to check next",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-card-degraded",
+    title: "Inconclusive, degraded after a tool failure — names what it couldn't read",
     group: "investigation",
   },
   {
