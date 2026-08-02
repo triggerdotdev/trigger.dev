@@ -639,6 +639,53 @@ const investigationBlockBodyInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// watch_result — what the configuration card leaves behind
+// ---------------------------------------------------------------------------
+
+/**
+ * The persisted trace of a submitted watch card (§2.2, binding). Only a SUBMITTED
+ * outcome reaches the transcript, and it is one of two things:
+ *
+ * - `watching` — the confirmation block. A watch is running; it states the four
+ *   lifetime facts (what · how often it checks · that it reports once · when it
+ *   gives up) and there is no separate request line, because this block IS the
+ *   transcript record.
+ * - `already_true` / `impossible` — the ONE-SHOT RESULT BLOCK. The immediate check
+ *   answered the request outright, so no watch exists: no chip, no wake, nothing
+ *   to cancel.
+ *
+ * The wording is FROZEN at append time, the same way a resolved watch's facts are
+ * (§7.5): the block carries final English rather than a key, so a later copy
+ * change never rewrites what a user was told. It is host-emitted only — absent
+ * from `viewBlockInputSchema`, exactly like `report`, so the model can neither
+ * fabricate a confirmation nor claim a watch that does not exist.
+ */
+export const watchResultOutcomeSchema = z.enum(["watching", "already_true", "impossible"]);
+export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
+
+const watchResultBlockBodySchema = z.object({
+  type: z.literal("watch_result"),
+  outcome: watchResultOutcomeSchema,
+  /** The fact, first: "Watching email-sends until the queue drains." */
+  headline: z.string(),
+  /** The lifetime sentence. Null on a one-shot result — nothing is watching. */
+  lifetime: z.string().nullable().default(null),
+  /** An honest aside, e.g. that the creation-time check couldn't run (§4.1). */
+  detail: z.string().nullable().default(null),
+  /** The follow-ups that were actually set up, one short line each. */
+  followUp: z.array(z.string()).max(4).default([]),
+  /** The live watch this confirms, for the chip it pairs with. Null one-shot. */
+  watchId: z.string().nullable().default(null),
+});
+
+export const watchResultBlockSchema = watchResultBlockBodySchema.merge(blockEnvelopeSchema);
+export const legacyWatchResultBlockSchema =
+  watchResultBlockBodySchema.extend(optionalEnvelopeShape);
+
+export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
+export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
+
+// ---------------------------------------------------------------------------
 // Model-facing input schemas (no envelope)
 // ---------------------------------------------------------------------------
 
@@ -701,6 +748,7 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   chartBlockSchema,
   reportBlockSchema,
   investigationBlockSchema,
+  watchResultBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
@@ -725,6 +773,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyChartBlockSchema,
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
+  legacyWatchResultBlockSchema,
 ]);
 
 /**

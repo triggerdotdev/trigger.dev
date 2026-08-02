@@ -25,6 +25,8 @@
  *   - `ChatPendingTool` — a tool call still in flight, as a compact pill
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
+ *   - `ChatSystemBlock` — a deterministic form/system block (the watch card and
+ *                         the confirmation it becomes): canned, honestly canned
  *   - `ChatWakeSlot`    — an unprompted turn: its banner and the narration under
  *                         it, kept together as one unit
  *   - `ChatStatusLine`  — an icon and one line of status
@@ -317,6 +319,57 @@ export function ChatWakeSlot({
     <div className={cn("min-w-0", UNIT_GAP)}>
       {banner}
       {children}
+    </div>
+  );
+}
+
+/** Rhythm between the lines inside a system block. Tighter than a turn body. */
+const BLOCK_LINE_GAP = "space-y-1";
+/** The system block's own padding. Owned here, never set by its contents. */
+const BLOCK_INSET = "px-3 py-2.5";
+
+/**
+ * A deterministic **system/form block** — the third voice in the transcript.
+ *
+ * "Who is speaking" is binding (design §2.2): the agent's voice belongs only
+ * where the model actually ran. A watch configuration card and the confirmation
+ * it becomes are canned UI, so they must read as canned — a bordered block with a
+ * micro-label, not prose in the agent's typography and not one of the rich cards
+ * (those are answers; this is a form).
+ *
+ * Like every other micro-layout: the frame, the inset and the internal rhythm are
+ * the library's, the contents are the consumer's. `actions` is the footer row, so
+ * a consumer never has to reach for `ChatActionsRow` and its own top margin.
+ */
+export function ChatSystemBlock({
+  label,
+  icon,
+  children,
+  actions,
+}: {
+  /** The micro-label that says this is the system, not the agent. */
+  label: string;
+  /** Colour it at the call site — the state lives in the icon, not the text. */
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-md border border-border-bright bg-background-dimmed",
+        BLOCK_INSET,
+        TURN_BODY_GAP
+      )}
+    >
+      <div className={cn("flex items-center", CHIP_GAP)}>
+        {icon}
+        <span className="text-xxs font-medium uppercase tracking-wider text-text-dimmed">
+          {label}
+        </span>
+      </div>
+      <div className={cn("min-w-0", BLOCK_LINE_GAP)}>{children}</div>
+      {actions ? <ChatActionsRow>{actions}</ChatActionsRow> : null}
     </div>
   );
 }

@@ -19,6 +19,7 @@ export function DashboardAgentDraft({
   currentPage,
   pageContext,
   promotedPrompt,
+  watchCard,
 }: {
   onSubmit: (text: string) => void;
   projectSlug: string;
@@ -28,6 +29,8 @@ export function DashboardAgentDraft({
   pageContext?: AgentPageContext;
   // The product-controlled promoted chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
+  /** The ephemeral watch card, when one is open. Sits above the composer. */
+  watchCard?: React.ReactNode;
 }) {
   const [input, setInput] = useState("");
 
@@ -48,6 +51,7 @@ export function DashboardAgentDraft({
         pageContext={pageContext}
         promoted={promotedPrompt}
       />
+      {watchCard}
       <DashboardAgentComposer
         value={input}
         onChange={setInput}

@@ -9,6 +9,8 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -288,6 +290,9 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
+            {/* The universal `Watch…` entry, pre-filled with this queue's
+                recommendation: tell me when it drains. */}
+            <WatchButton spec={queueWatchRecommendation(queue.name)} />
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}

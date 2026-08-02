@@ -18,6 +18,9 @@ import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import type { WatchObservedOutcome, WatchResolution } from "@internal/dashboard-agent-contracts";
+import { wakeResolution } from "./WakeBanner";
+import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-presentation";
 
 /** Matches sonner's default toast width, same as the app's other toasts. */
 const TOAST_WIDTH = 356;
@@ -28,9 +31,37 @@ export const WAKE_TOAST_MAX_INDIVIDUAL = 3;
 export type WatchWake = {
   watchId: string;
   chatId: string;
+  /** The wire encoding off the row (§7.5). Not the outcome — see `resolution`. */
   outcome: "fired" | "expired";
   note: string;
+  /**
+   * What actually happened, frozen on the row by the resolving check. The toast
+   * states the FACT ("email-sends queue drained"), not "Watch update" — same
+   * headline the banner and the email use, from the same presenter, so the three
+   * can never disagree. Absent on a row written before the resolution model, and
+   * the presenter falls back rather than guessing.
+   */
+  kind?: string;
+  identity?: string;
+  resolution?: WatchResolution | null;
+  observedOutcome?: WatchObservedOutcome | null;
 };
+
+/**
+ * The toast's title: the fact, or the neutral fallback when this wake predates
+ * the resolution model. Never a kind-specific sentence written here — the
+ * wording is `watch-presentation.ts`'s, and this only decides which watch to ask
+ * it about.
+ */
+export function watchWakeToastTitle(wake: WatchWake): string {
+  if (!wake.kind || !wake.identity) return WATCH_PRESENTATION_FALLBACK.headline;
+  return presentResolvedWatch({
+    kind: wake.kind,
+    identity: wake.identity,
+    resolution: wakeResolution(wake.outcome, { resolution: wake.resolution ?? null }),
+    observed: wake.observedOutcome ?? null,
+  }).headline;
+}
 
 function WakeToastUI({
   t,
@@ -97,7 +128,7 @@ export function showWatchWakeToast(wake: WatchWake, onOpenChat: (chatId: string)
     (t) => (
       <WakeToastUI
         t={t}
-        title="Watch update"
+        title={watchWakeToastTitle(wake)}
         message={wake.note}
         onOpenChat={() => onOpenChat(wake.chatId)}
       />

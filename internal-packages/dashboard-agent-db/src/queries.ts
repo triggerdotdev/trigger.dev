@@ -330,6 +330,38 @@ export async function persistMessages(
 }
 
 /**
+ * Append ONE message to a chat's transcript, atomically.
+ *
+ * This is the deterministic-append seam: the watch card's confirmation and its
+ * one-shot result block are host-decided facts, not model output, so they are
+ * written straight onto the transcript with no turn and no LLM. `||` on the JSONB
+ * column is a single statement, so it cannot lose a concurrent turn's write the
+ * way a read-modify-write from the app would.
+ *
+ * Owner-scoped and live-chat-scoped: a chatId the caller doesn't own appends
+ * nothing and returns false, so ownership never has to be re-proved by the caller
+ * after the fact.
+ */
+export async function appendChatMessage(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string; message: unknown }
+): Promise<boolean> {
+  const rows = await db
+    .update(chats)
+    .set({
+      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
+      lastMessageAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+    )
+    .returning({ id: chats.id });
+
+  return rows.length > 0;
+}
+
+/**
  * #6b Persist a completed turn (agent `onTurnComplete`): the finalized transcript
  * and the refreshed session state, in one transaction. Atomicity matters — on
  * the next page load the frontend reads `messages` and `lastEventId` in parallel;
@@ -594,9 +626,13 @@ export async function createWatch(
     spec: PersistedWatchSpec;
     organizationId: string;
     projectId: string;
+    /** The project's external `proj_…` ref — what a wake scopes an investigation by. */
+    projectRef?: string | null;
     environmentId: string;
     userId: string;
     expiresAt: Date;
+    /** Consent, given at creation, to investigate after an attention outcome. */
+    investigateOnAttention?: boolean;
     id?: string;
   }
 ): Promise<CreateWatchResult> {
@@ -649,9 +685,11 @@ export async function createWatch(
           spec: params.spec,
           organizationId: params.organizationId,
           projectId: params.projectId,
+          projectRef: params.projectRef ?? null,
           environmentId: params.environmentId,
           userId: params.userId,
           expiresAt: params.expiresAt,
+          investigateOnAttention: params.investigateOnAttention ?? false,
         })
         .returning();
 
@@ -890,6 +928,17 @@ export interface UnreadWatchWake {
   note: string;
   /** When the watch resolved: `fired_at` for a fire, `last_checked_at` for an expiry. */
   firedAt: Date;
+  /**
+   * The three fields a surface needs to state the FACT rather than "Watch update"
+   * (§5.3): the kind and identity name the thing, the resolution and the observed
+   * outcome decide what happened to it. Frozen on the row by the resolving check,
+   * so the toast and the banner can never disagree.
+   */
+  kind: string;
+  identity: string;
+  /** Null on a row written before the resolution model — the surface falls back. */
+  resolution: WatchResolution | null;
+  observedOutcome: WatchObservedOutcome | null;
 }
 
 // The toast fires one per wake, so a long-unopened panel doesn't need the whole
@@ -915,6 +964,8 @@ export async function listUnreadWatchWakes(
       status: watches.status,
       identity: watches.identity,
       spec: watches.spec,
+      resolution: watches.resolution,
+      observedOutcome: watches.observedOutcome,
       resolvedAt,
     })
     .from(watches)
@@ -942,6 +993,10 @@ export async function listUnreadWatchWakes(
     outcome: row.status as "fired" | "expired",
     note: row.spec.note?.trim() || row.identity,
     firedAt: new Date(row.resolvedAt),
+    kind: row.spec.kind,
+    identity: row.identity,
+    resolution: row.resolution,
+    observedOutcome: row.observedOutcome,
   }));
 }
 

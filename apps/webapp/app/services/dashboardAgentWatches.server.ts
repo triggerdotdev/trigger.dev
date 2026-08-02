@@ -217,6 +217,7 @@ async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promi
   switch (spec.kind) {
     case "run_start":
     case "run_finished":
+    case "run_failed":
       return (await deps.readRun(spec.runId)) !== null;
     case "backlog_drain":
     case "queue_depth_above":
@@ -257,6 +258,12 @@ export async function createDashboardAgentWatch(params: {
   userId: string;
   chatId: string;
   spec: WatchSpec;
+  /**
+   * Consent to investigate after an attention outcome (§6). Only ever true when
+   * the user asked for it at creation — it is never inferred here, and it is not
+   * part of the spec or the identity.
+   */
+  investigateOnAttention?: boolean;
   now?: Date;
   /** IO seams — tests inject fakes here instead of mocking the readers. */
   deps?: {
@@ -328,9 +335,13 @@ export async function createDashboardAgentWatch(params: {
     spec: persistedSpec,
     organizationId: environment.organizationId,
     projectId: environment.projectId,
+    // The external ref travels with the row so a wake can scope an investigation
+    // the same way a turn does — the agent can't translate the internal id.
+    projectRef: environment.project.externalRef,
     environmentId: environment.id,
     userId,
     expiresAt,
+    investigateOnAttention: params.investigateOnAttention === true,
   });
 
   if (!created.ok) {

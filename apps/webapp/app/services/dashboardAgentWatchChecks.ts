@@ -26,10 +26,11 @@
 
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import type {
-  WatchCheckResult,
-  WatchObservedOutcome,
-  WatchSpec,
+import {
+  watchRunDisposition,
+  type WatchCheckResult,
+  type WatchObservedOutcome,
+  type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
 
 // ---------------------------------------------------------------------------
@@ -332,6 +333,64 @@ export async function checkRunFinished(
 }
 
 /**
+ * run_failed — the same point read as `run_finished`, asked the other way round.
+ *
+ * The asymmetry is the whole point: a FAILING terminal status satisfies it, while
+ * a run that completes successfully makes the condition impossible rather than
+ * merely unmet — it can never fail now, and that is the good news the mapping
+ * presents (§4.2). A cancellation is neither, so it is also terminal: the run will
+ * not fail, and the presentation says it was cancelled rather than claiming a win.
+ */
+export async function checkRunFailed(
+  spec: Extract<WatchSpec, { kind: "run_failed" }>,
+  deps: WatchCheckDeps,
+  input: WatchCheckInput
+): Promise<WatchCheckOutcome> {
+  const run = await deps.readRun(spec.runId);
+  if (!run) {
+    return {
+      result: "terminal_unsatisfied",
+      facts: { runId: spec.runId, reason: "run_not_found" },
+      observed: { kind: "run_failed", verified: true, finalStatus: null, durationMs: null },
+    };
+  }
+
+  const finished = isTerminalRunStatus(run.status);
+  const durationMs =
+    run.startedAt && run.completedAt
+      ? Math.max(0, run.completedAt.getTime() - run.startedAt.getTime())
+      : null;
+
+  const wait = describeRunWait(run, input.now);
+  const facts = {
+    runId: run.friendlyId,
+    outcome: run.status,
+    startedAt: run.startedAt?.toISOString() ?? null,
+    completedAt: run.completedAt?.toISOString() ?? null,
+    durationMs,
+    durationLabel: durationMs === null ? null : formatMs(durationMs),
+    ...wait,
+  };
+  const observed: WatchObservedOutcome = {
+    kind: "run_failed",
+    verified: true,
+    finalStatus: finished ? run.status : null,
+    durationMs,
+  };
+
+  if (!finished) return { result: "pending", facts, observed };
+
+  return {
+    result: watchRunDisposition(run.status) === "failed" ? "satisfied" : "terminal_unsatisfied",
+    facts: {
+      ...facts,
+      ...(watchRunDisposition(run.status) === "failed" ? {} : { reason: "cannot_fail_now" }),
+    },
+    observed,
+  };
+}
+
+/**
  * The queue-depth read both threshold kinds share, resolved down to either a
  * usable reading or the outcome that replaces it.
  *
@@ -593,6 +652,8 @@ export async function checkWatch(
         return await checkRunStart(spec, deps, input);
       case "run_finished":
         return await checkRunFinished(spec, deps, input);
+      case "run_failed":
+        return await checkRunFailed(spec, deps, input);
       case "backlog_drain":
         return await checkBacklogDrain(spec, deps, input);
       case "queue_depth_above":
@@ -627,6 +688,8 @@ export function unobservedOutcome(spec: WatchSpec): WatchObservedOutcome {
       return { kind: "run_start", verified: false, status: null, started: false };
     case "run_finished":
       return { kind: "run_finished", verified: false, finalStatus: null, durationMs: null };
+    case "run_failed":
+      return { kind: "run_failed", verified: false, finalStatus: null, durationMs: null };
     case "backlog_drain":
       return { kind: "backlog_drain", verified: false, depth: null };
     case "queue_depth_above":

@@ -16,10 +16,12 @@ import {
   type DashboardAgentSession,
 } from "./DashboardAgentChat";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { WatchCard } from "./WatchCard";
+import { watchDraftFor } from "./watch-card";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt, WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 import { concurrencyPath } from "~/utils/pathBuilder";
@@ -82,6 +84,7 @@ export function DashboardAgentPanel({
   requestedMessage,
   openChatRequest,
   promotedPrompt,
+  watchRequest,
   onChatRead,
 }: {
   onClose: () => void;
@@ -93,6 +96,8 @@ export function DashboardAgentPanel({
   openChatRequest?: { chatId: string; seq: number };
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
+  // A watch card asked for by a `Watch…` entry. `seq` distinguishes repeats.
+  watchRequest?: { spec: WatchSpec; seq: number };
   // The chat in front of the user changed, so its watch wakes are seen — clears
   // the launcher's unread dot.
   onChatRead?: (chatId: string) => void;
@@ -389,6 +394,104 @@ export function DashboardAgentPanel({
     }
   }, [requestedMessage, loading, active, createChat]);
 
+  // ---------------------------------------------------------------------
+  // The watch card (§2.2). Everything here is EPHEMERAL until `submitWatch`
+  // succeeds: the draft, the pending flag and the error all live in the panel,
+  // and dropping the card drops all three without touching the transcript.
+  // ---------------------------------------------------------------------
+  const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
+  const [watchPending, setWatchPending] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  // The block the server appended, handed to the open chat so it appears now
+  // rather than on the next open. `seq` makes each append distinct.
+  const [appendedMessage, setAppendedMessage] = useState<
+    { message: UIMessage; seq: number } | undefined
+  >(undefined);
+
+  const handledWatchSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
+    handledWatchSeq.current = watchRequest.seq;
+    setWatchError(null);
+    setWatchPending(false);
+    setWatchDraft(watchDraftFor(watchRequest.spec));
+  }, [watchRequest]);
+
+  // A card offering a watch (an investigation's recurrence action, the health
+  // report's recovery offer) opens the SAME card, pre-filled — never a posted
+  // request, so an offer the user walks away from leaves no trace.
+  const openWatchCard = useCallback((spec: WatchSpec) => {
+    setWatchError(null);
+    setWatchPending(false);
+    setWatchDraft(watchDraftFor(spec));
+  }, []);
+
+  const dismissWatchCard = useCallback(() => {
+    setWatchDraft(null);
+    setWatchError(null);
+    setWatchPending(false);
+  }, []);
+
+  const submitWatch = useCallback(async () => {
+    if (!watchDraft) return;
+    setWatchPending(true);
+    setWatchError(null);
+    try {
+      const body = new FormData();
+      body.set("intent", "watch-create");
+      body.set("draft", JSON.stringify(watchDraft));
+      // No chat open: the server creates one and returns its id. A watch is
+      // chat-bound, so there is nowhere else for it to live.
+      if (active?.chatId) body.set("chatId", active.chatId);
+
+      const res = await fetch(actionPath, { method: "POST", body });
+      const data = (await res.json()) as {
+        chatId?: string;
+        message?: UIMessage;
+        error?: string;
+      };
+      if (!res.ok || !data.chatId || !data.message) {
+        // Validation, cap and network failures stay in the card and persist
+        // nothing — the user fixes the draft in place.
+        setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
+        return;
+      }
+
+      if (active?.chatId === data.chatId) {
+        setAppendedMessage((current) => ({
+          message: data.message!,
+          seq: (current?.seq ?? 0) + 1,
+        }));
+      } else {
+        // A chat that did not exist a moment ago: mount it on what the server
+        // wrote. No session — nothing is streaming, the block is the whole chat.
+        setActive({ chatId: data.chatId, messages: [data.message], session: null });
+      }
+      // The card BECOMES the persisted block, so it goes the moment that block
+      // is in the transcript (§2.2 step 3/4).
+      setWatchDraft(null);
+      void loadHistory();
+    } catch (error) {
+      console.error("Dashboard agent: failed to create watch", error);
+      setWatchError("We couldn't start that watch. Try again in a moment.");
+    } finally {
+      setWatchPending(false);
+    }
+  }, [watchDraft, active?.chatId, actionPath, loadHistory]);
+
+  const watchCard = watchDraft ? (
+    <div className="px-3 pb-2">
+      <WatchCard
+        draft={watchDraft}
+        onChange={setWatchDraft}
+        onSubmit={() => void submitWatch()}
+        onCancel={dismissWatchCard}
+        pending={watchPending}
+        error={watchError}
+      />
+    </div>
+  ) : null;
+
   const newChat = useCallback(() => {
     // Invalidate any in-flight open/create so its result can't replace the draft.
     openChatRequestSeq.current += 1;
@@ -514,6 +617,9 @@ export function DashboardAgentPanel({
           promotedPrompt={promotedPrompt}
           watches={chatWatches}
           pagePaths={pagePaths}
+          watchCard={watchCard}
+          appendedMessage={appendedMessage}
+          onWatchIntent={openWatchCard}
           onCancelWatch={cancelWatch}
           onTurnSettled={loadHistory}
           onActivityChange={handleActivityChange}
@@ -526,6 +632,7 @@ export function DashboardAgentPanel({
           currentPage={currentPage}
           pageContext={pageContext}
           promotedPrompt={promotedPrompt}
+          watchCard={watchCard}
         />
       )}
     </div>

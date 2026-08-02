@@ -246,6 +246,8 @@ async function generateAndSaveTitle(
 
 import {
   agentPageContextSchema,
+  isWatchKind,
+  resolveWatchResult,
   watchResolutions,
   type WatchObservedOutcome,
   type WatchResolution,
@@ -332,6 +334,12 @@ export type WatchWakeAction = {
   observed?: WatchObservedOutcome;
   /** Why the watch exists, in the user's words. */
   note?: string;
+  /**
+   * The user consented at creation to an investigation after an ATTENTION
+   * outcome (§6). It relaxes exactly one rule — "never a new investigation
+   * unprompted" — and only for that outcome.
+   */
+  investigateOnAttention?: boolean;
 };
 
 // Deliberately lenient on `spec`: a wake must never be lost to a validation
@@ -356,6 +364,7 @@ export const watchWakeActionSchema = z.object({
   resolution: z.enum(watchResolutions).optional(),
   observed: z.record(z.unknown()).optional(),
   note: z.string().optional(),
+  investigateOnAttention: z.boolean().optional(),
 });
 
 // The wake's own line. How a wake is narrated (once, briefly, outcome + facts +
@@ -437,6 +446,46 @@ function wakeOutcome(action: WatchWakeAction): string {
   }
 }
 
+/**
+ * Whether THIS wake is the one the consent covers (§6, binding).
+ *
+ * Consent is for the ATTENTION outcomes only — the contracts' resolved-result
+ * mapping decides which those are, per kind, and no surface may substitute its
+ * own judgement. A drained queue and a quiet error group are good news and never
+ * start anything, however the watch was configured.
+ */
+export function wakeStartsInvestigation(action: WatchWakeAction): boolean {
+  if (action.investigateOnAttention !== true) return false;
+  const kind = action.spec.kind;
+  // A kind this build doesn't know has no mapping, so it has no category either.
+  if (!isWatchKind(kind)) return false;
+  const { category } = resolveWatchResult({
+    kind,
+    resolution: wakeResolution(action),
+    outcome: action.observed as WatchObservedOutcome | undefined,
+  });
+  return category === "attention";
+}
+
+/** The thing being watched, for the seeded investigation's own words. */
+function wakeSubject(action: WatchWakeAction): string {
+  const spec = action.spec as Record<string, unknown>;
+  for (const key of ["runId", "queue", "fingerprint", "report"]) {
+    const value = spec[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return action.identity || String(spec.kind ?? "this");
+}
+
+// The wake's own line when the investigation is pre-approved. It states a fact
+// about this turn — the investigation IS being opened here — so the model can't
+// turn it into an offer, and the findings are explicitly somebody else's message.
+function investigationInstruction(action: WatchWakeAction): string {
+  return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them — say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: the findings arrive later, in their own message with the investigation card. Subject: ${wakeSubject(
+    action
+  )}.`;
+}
+
 function wakePrompt(action: WatchWakeAction): string {
   return [
     WAKE_INSTRUCTION,
@@ -447,9 +496,79 @@ function wakePrompt(action: WatchWakeAction): string {
       : undefined,
     action.note ? `Why the user asked for it: ${action.note}` : undefined,
     `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,
+    wakeStartsInvestigation(action) ? investigationInstruction(action) : undefined,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * Open the pre-approved investigation — the ONE relaxation of "never a new
+ * investigation unprompted" (§6).
+ *
+ * It is deliberately a seeded `in_progress` state and nothing more: the wake
+ * turn has no delegated token to read with, so it opens the thread and the
+ * findings arrive later, in their own message with the card.
+ *
+ * Independence is the binding part (§6). This runs AFTER the narration is in the
+ * transcript, it never throws, and the watcher has already marked the wake
+ * delivered by the time the agent sees the action — so a failure here cannot
+ * delay, retry or invalidate the wake.
+ */
+async function openConsentedInvestigation(args: {
+  action: WatchWakeAction;
+  chatId: string;
+  clientData: z.infer<typeof clientDataSchema> | undefined;
+}): Promise<void> {
+  const { action, chatId, clientData } = args;
+  const projectRef = clientData?.projectRef;
+  const environmentRef = clientData?.environmentId;
+  if (!projectRef || !environmentRef) {
+    // A watch created before the row carried the project's external ref. Scoping
+    // it by the wrong identifier would strand the investigation, so skip it —
+    // the wake itself already landed.
+    logger.warn("dashboard-agent watch wake can't scope a consented investigation", {
+      chatId,
+      watchId: action.watchId,
+    });
+    return;
+  }
+
+  const subject = wakeSubject(action);
+  const spec = action.spec as { runId?: unknown };
+  try {
+    const result = await getStore().upsertInvestigationRevision({
+      chatId,
+      projectRef,
+      environmentRef,
+      state: {
+        outcome: "in_progress",
+        severity: "warn",
+        confidence: "low",
+        title: `Investigating ${subject}`,
+        headline: `The watch on ${subject} resolved to something that needs attention${
+          action.note ? ` (${action.note})` : ""
+        }. Looking into why.`,
+        hypotheses: [],
+        evidence: [],
+        ...(typeof spec.runId === "string" ? { runId: spec.runId } : {}),
+        startedAt: new Date().toISOString(),
+      },
+    });
+    logger.info("dashboard-agent watch wake opened a consented investigation", {
+      chatId,
+      watchId: action.watchId,
+      investigationId: result.ok ? result.id : undefined,
+    });
+  } catch (error) {
+    // The wake is the delivery that matters; an investigation that couldn't be
+    // opened is a lost follow-up, never a lost wake.
+    logger.error("dashboard-agent watch wake failed to open its investigation", {
+      chatId,
+      watchId: action.watchId,
+      error: (error as Error).message,
+    });
+  }
 }
 
 /**
@@ -519,6 +638,12 @@ async function narrateWatchWake(args: {
   const messages = [...uiMessages, message];
   chat.history.set(messages);
   await getStore().persistMessages({ chatId, messages });
+
+  // Only now, with the wake in the transcript: the investigation is the turn's
+  // business after the banner exists, and it can never hold the banner up.
+  if (wakeStartsInvestigation(action)) {
+    await openConsentedInvestigation({ action, chatId, clientData: args.clientData });
+  }
 }
 
 export const dashboardAgent = chat.agent({

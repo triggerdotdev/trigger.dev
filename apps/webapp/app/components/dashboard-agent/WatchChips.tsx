@@ -8,12 +8,26 @@
  * default colour: only the icon is coloured, the same rule the run status cells
  * follow.
  */
-import { CheckCircleIcon, ClockIcon, NoSymbolIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import type { WatchStatus } from "@internal/dashboard-agent-contracts";
+import {
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  NoSymbolIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
+import type {
+  WatchObservedOutcome,
+  WatchResolution,
+  WatchSemanticIcon,
+  WatchStatus,
+} from "@internal/dashboard-agent-contracts";
 import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
+import { wakePresentation } from "./WakeBanner";
 import { watchChipLabel, watchChipTooltip } from "./watch-chips";
 
 /** One watch, as the panel's loader hands it over (dates already JSON strings). */
@@ -27,28 +41,46 @@ export type WatchChip = {
   expiresAt: string;
   /** Last check's reason — the wake banner distinguishes terminal_unsatisfied. */
   endedReason?: string | null;
+  /** How the watch ended. Null while active; absent on pre-resolution rows. */
+  resolution?: WatchResolution | null;
+  /** What the resolving check observed — the other half of the terminal icon. */
+  observedOutcome?: WatchObservedOutcome | null;
 };
 
-const STATUS_TONE: Record<WatchStatus, AgentTone> = {
-  active: "neutral",
-  fired: "success",
-  expired: "neutral",
-  cancelled: "neutral",
+/**
+ * Semantic icon → glyph, the same table the wake banner draws from. Which icon a
+ * resolved result deserves is decided in contracts; this only owns the glyph set.
+ */
+const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) => JSX.Element> = {
+  success: CheckCircleIcon,
+  attention: ExclamationTriangleIcon,
+  error: ExclamationCircleIcon,
+  waiting: ClockIcon,
+  info: InformationCircleIcon,
 };
 
-function StatusIcon({ status }: { status: WatchStatus }) {
-  const className = cn("size-3.5 shrink-0", TONE_ICON_COLOR[STATUS_TONE[status]]);
-  switch (status) {
-    case "active":
-      // Same choice as an executing run: a spinner is the "still going" state.
-      return <Spinner className="size-3.5 shrink-0" />;
-    case "fired":
-      return <CheckCircleIcon className={className} />;
-    case "expired":
-      return <ClockIcon className={className} />;
-    case "cancelled":
-      return <NoSymbolIcon className={className} />;
+/**
+ * A terminal chip wears the RESOLVED RESULT's icon, not its lifecycle status
+ * (§4.2, binding): a `run_finished` watch on a run that failed resolved
+ * `condition_met` and would otherwise be shown as a green check. The banner and
+ * the chip therefore agree by construction — both render the same presentation.
+ *
+ * Cancellation is the exception, and deliberately so: it has no resolution and
+ * never will (it is the one silent exit), so it keeps its own glyph.
+ */
+function StatusIcon({ watch }: { watch: WatchChip }) {
+  // Same choice as an executing run: a spinner is the "still going" state.
+  if (watch.status === "active") return <Spinner className="size-3.5 shrink-0" />;
+
+  if (watch.status === "cancelled") {
+    return <NoSymbolIcon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.neutral as string)} />;
   }
+
+  const presentation = wakePresentation(watch.status === "fired" ? "fired" : "expired", watch);
+  const Icon = SEMANTIC_ICON[presentation.semanticIcon];
+  return (
+    <Icon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR[presentation.tone as AgentTone])} />
+  );
 }
 
 export function WatchChips({
@@ -74,7 +106,7 @@ export function WatchChips({
             // label instead.
             className="inline-flex items-center gap-1.5 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-1.5 text-xs text-text-bright"
           >
-            <StatusIcon status={watch.status} />
+            <StatusIcon watch={watch} />
             <SimpleTooltip
               side="bottom"
               content={watchChipTooltip(watch)}

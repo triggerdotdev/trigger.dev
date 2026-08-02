@@ -39,6 +39,7 @@ export function watchChipLabel(watch: { kind: string; identity: string; note: st
   switch (watch.kind) {
     case "run_start":
     case "run_finished":
+    case "run_failed":
     case "backlog_drain":
       return value || fallbackLabel(watch);
     // `queue_depth_above:{queue}:{threshold}` — the chip names the queue; the

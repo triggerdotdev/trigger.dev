@@ -25,6 +25,7 @@ import {
   type WatchResolution,
   type WatchResolvedPresentation,
   type WatchSemanticIcon,
+  type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
 
 /** The micro-label above a wake headline. Not part of the fact. */
@@ -141,6 +142,11 @@ function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
       return `${runName(identity, kind)} is still running`;
     case "run_gone":
       return `${runName(identity, kind)} is no longer there`;
+
+    case "run_no_failure":
+      return `${runName(identity, kind)} hasn't failed`;
+    case "run_succeeded":
+      return `${runName(identity, kind)} succeeded`;
 
     case "queue_drained":
       return `${queueName(identity, kind)} drained`;
@@ -278,3 +284,163 @@ export function watchLifetimeSentence(args: {
  * set, and the choice itself stays here.
  */
 export type { WatchSemanticIcon };
+
+/* ------------------------------------------------------------------ *
+ * The configuration card (§2.2)
+ * ------------------------------------------------------------------ */
+
+/** Fixed, always on: the card states it as a fact, not as a choice (§2.2). */
+export const WATCH_IN_CHAT_DELIVERY_LINE = "When there's an answer: tell me in chat";
+
+/**
+ * WHAT is being watched, as the card's title names it — from the SPEC, because
+ * the card exists before any watch row does. The `{kind}:{value}` identity
+ * formatting above is the same answer read off the store; this is the same answer
+ * read off the draft.
+ */
+export function watchSubjectLabel(spec: WatchSpec): string {
+  switch (spec.kind) {
+    case "run_start":
+    case "run_finished":
+    case "run_failed":
+      return `run ${spec.runId}`;
+    case "backlog_drain":
+    case "queue_depth_above":
+      return spec.queue;
+    case "error_recurrence":
+      return `error ${spec.fingerprint.slice(0, FINGERPRINT_CHARS)}`;
+    case "health_recovery":
+      return "health";
+  }
+}
+
+/**
+ * The condition line: "Until the queue drains", "If it fails". Written as the
+ * user would read it under the subject, so the two lines together are one
+ * sentence without repeating the subject.
+ */
+export function watchConditionLabel(spec: WatchSpec): string {
+  switch (spec.kind) {
+    case "run_start":
+      return "Until it starts";
+    case "run_finished":
+      return "Until it finishes";
+    case "run_failed":
+      return "If it fails";
+    case "backlog_drain":
+      return "Until the queue drains";
+    case "queue_depth_above":
+      return `If the queue goes above ${spec.threshold}`;
+    case "error_recurrence":
+      return "If it happens again";
+    case "health_recovery":
+      return "Until it recovers";
+  }
+}
+
+/** "For 1 hour · checking every 5 min" — the duration line of the card. */
+export function watchDurationLabel(spec: WatchSpec): string {
+  return `For ${formatWatchWindow(spec.maxHours)} · checking ${formatWatchCadence(
+    spec.checkEveryMinutes
+  )}`;
+}
+
+/** The condition as a clause that follows "Watching {subject} …". */
+function watchConditionClause(spec: WatchSpec): string {
+  switch (spec.kind) {
+    case "run_start":
+      return "until it starts";
+    case "run_finished":
+      return "until it finishes";
+    case "run_failed":
+      return "in case it fails";
+    case "backlog_drain":
+      return "until the queue drains";
+    case "queue_depth_above":
+      return `in case the queue goes above ${spec.threshold}`;
+    case "error_recurrence":
+      return "in case it happens again";
+    case "health_recovery":
+      return "until it recovers";
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The persisted blocks (§2.2)
+ * ------------------------------------------------------------------ */
+
+/** The follow-up lines a confirmation states, for the opt-ins that took effect. */
+export function watchFollowUpLines(followUp: {
+  investigateOnAttention?: boolean;
+  notifyExternally?: boolean;
+}): string[] {
+  const lines: string[] = [];
+  if (followUp.investigateOnAttention) {
+    lines.push("If it turns out badly, I'll investigate straight away.");
+  }
+  if (followUp.notifyExternally) lines.push("You'll get an email as well as the chat.");
+  return lines;
+}
+
+/**
+ * The CONFIRMATION block: a watch is running. It states the four lifetime facts
+ * (§5.1.4) and nothing else — no separate request line, because this block is the
+ * transcript record of the request.
+ */
+export function watchConfirmationBlockBody(args: {
+  spec: WatchSpec;
+  watchId: string;
+  /** The creation-time check couldn't run. Said plainly rather than hidden. */
+  unavailable?: boolean;
+  followUp?: { investigateOnAttention?: boolean; notifyExternally?: boolean };
+}): {
+  type: "watch_result";
+  outcome: "watching";
+  headline: string;
+  lifetime: string;
+  detail: string | null;
+  followUp: string[];
+  watchId: string;
+} {
+  return {
+    type: "watch_result",
+    outcome: "watching",
+    headline: `Watching ${watchSubjectLabel(args.spec)} ${watchConditionClause(args.spec)}.`,
+    lifetime: watchLifetimeSentence({
+      checkEveryMinutes: args.spec.checkEveryMinutes,
+      maxHours: args.spec.maxHours,
+    }),
+    detail: args.unavailable ? immediateWatchMessage("unavailable") : null,
+    followUp: watchFollowUpLines(args.followUp ?? {}),
+    watchId: args.watchId,
+  };
+}
+
+/**
+ * The ONE-SHOT RESULT block: the immediate check answered outright, so no watch
+ * was created. No lifetime — there is nothing running to have one — and no
+ * follow-ups, because there is no later outcome to follow up on.
+ */
+export function watchOneShotBlockBody(args: {
+  spec: WatchSpec;
+  result: "satisfied" | "terminal_unsatisfied";
+}): {
+  type: "watch_result";
+  outcome: "already_true" | "impossible";
+  headline: string;
+  lifetime: null;
+  detail: null;
+  followUp: never[];
+  watchId: null;
+} {
+  const satisfied = args.result === "satisfied";
+  return {
+    type: "watch_result",
+    outcome: satisfied ? "already_true" : "impossible",
+    headline: immediateWatchMessage(args.result),
+    lifetime: null,
+    detail: null,
+    followUp: [],
+    watchId: null,
+  };
+}

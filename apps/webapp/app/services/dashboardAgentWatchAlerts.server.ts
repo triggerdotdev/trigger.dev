@@ -16,6 +16,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
 
 /** The alert type a watch fires under. */
 export const DASHBOARD_AGENT_WATCH_ALERT_TYPE = "DASHBOARD_AGENT_WATCH" as const;
@@ -140,6 +141,58 @@ export async function canUseDashboardAgentEmailAlerts(
   }
 
   return { allowed: true };
+}
+
+export type SubscribeToWatchAlertsResult =
+  | { ok: true; email: string }
+  | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" };
+
+/**
+ * Subscribe the signed-in user's own account email to this project's watch
+ * alerts — the card's "Also notify me externally" opt-in (§6).
+ *
+ * Always the caller's OWN email, read off the primary: the address is never taken
+ * from the request, so this path cannot be used to mail a watch to someone else.
+ * The deduplication key is stable per (email, project), so opting in twice
+ * re-enables the existing subscription rather than stacking channels — and the
+ * subscription stays visible and cancellable on the Alerts page, which is where
+ * §6 says it must be managed.
+ *
+ * Advisory by design: the caller creates the watch first and treats a refusal
+ * here as "no external delivery", never as a failed watch.
+ */
+export async function subscribeUserToWatchAlerts(params: {
+  userId: string;
+  environment: {
+    type: string;
+    organizationId: string;
+    organization: { slug: string };
+    project: { id: string; externalRef: string };
+  };
+}): Promise<SubscribeToWatchAlertsResult> {
+  const { userId, environment } = params;
+
+  const gate = await canUseDashboardAgentEmailAlerts({
+    userId,
+    organizationId: environment.organizationId,
+    organizationSlug: environment.organization.slug,
+    projectId: environment.project.id,
+  });
+  if (!gate.allowed) return { ok: false, reason: gate.reason };
+
+  const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
+  if (!user) return { ok: false, reason: "user_not_found" };
+
+  const service = new CreateAlertChannelService();
+  await service.call(environment.project.externalRef, userId, {
+    name: `Watch alerts for ${user.email}`,
+    alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
+    environmentTypes: [environment.type as never],
+    deduplicationKey: `dashboard-agent-watch:${user.email}`,
+    channel: { type: "EMAIL", email: user.email },
+  });
+
+  return { ok: true, email: user.email };
 }
 
 // ---------------------------------------------------------------------------

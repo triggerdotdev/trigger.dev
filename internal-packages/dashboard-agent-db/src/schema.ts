@@ -259,9 +259,25 @@ export const watches = dashboardAgentSchema.table(
      * happened (§7.5) and a retry cannot rebuild a different headline.
      */
     observedOutcome: jsonb("observed_outcome").$type<WatchObservedOutcome>(),
+    /**
+     * The one resolution ACTION the user consented to at creation (§6): after an
+     * attention outcome, the wake turn may open an investigation without asking.
+     * A flag on the row, not part of the spec and never part of `identity` — two
+     * watches on the same thing are the same watch whatever they do afterwards.
+     * Default false: the agent may only set it when the user asked for it.
+     */
+    investigateOnAttention: boolean("investigate_on_attention").notNull().default(false),
     // Immutable initiating identity — snapshot at creation.
     organizationId: text("organization_id").notNull(),
     projectId: text("project_id").notNull(),
+    /**
+     * The project's EXTERNAL ref (`proj_…`) — the same identifier the `trigger://`
+     * scheme and the investigations table use. Carried on the row because a wake
+     * has to scope an investigation exactly as a turn would, and the agent can't
+     * translate an internal project id (it has no access to the main database).
+     * Nullable: rows created before this column simply don't carry it.
+     */
+    projectRef: text("project_ref"),
     environmentId: text("environment_id").notNull(),
     userId: text("user_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

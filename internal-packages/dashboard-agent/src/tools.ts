@@ -5,6 +5,7 @@ import {
   investigationBlockSchema,
   safeParseTriggerUri,
   VIEW_BLOCK_VERSION,
+  WATCH_MAX_HOURS,
   type AgentPageContext,
   type Evidence,
   type EvidenceRef,
@@ -482,6 +483,14 @@ export function showCodeAskPrompt(args: { path: string; line: number; sha: strin
   );
 }
 
+/**
+ * The window and cadence the "Watch for a repeat" handoff proposes. Defaults the
+ * card shows and the user can change, not a decision: the longest window a watch
+ * may have (a recurrence question is "does this come back at all"), on the
+ * aggregate floor's next step up.
+ */
+const RECURRENCE_WATCH = { checkEveryMinutes: 15, maxHours: WATCH_MAX_HOURS } as const;
+
 // Always returns the same tool set so it stays stable across turns (the SDK
 // replays it over prior history). When a turn carried no delegated token, each
 // tool reports that rather than silently disappearing.
@@ -929,16 +938,38 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       });
     }
 
-    actions.push({
-      kind: "watch_recurrence",
-      label: "Watch for a repeat",
-      intent: {
-        kind: "ask",
-        prompt: "Watch for this happening again and tell me if it recurs.",
-      },
-    });
-
     const errorUri = cited.find((evidence) => evidence.kind === "error")?.uri;
+
+    // "Watch for a repeat" is a HANDOFF, not a question: it hands the Watch card
+    // a ready subject (§6 of the Investigate spec). So it needs a subject a
+    // recurrence watch can actually be built on — a cited error fingerprint —
+    // and a cause worth watching for, which only a concluded card has. Without
+    // the fingerprint there is nothing to pre-fill and the action is left off.
+    const parsedError = errorUri ? safeParseTriggerUri(errorUri) : undefined;
+    if (
+      state.outcome === "concluded" &&
+      parsedError?.success &&
+      parsedError.data.kind === "error"
+    ) {
+      actions.push({
+        kind: "watch_recurrence",
+        label: "Watch for a repeat",
+        intent: {
+          kind: "watch",
+          // The spec IS the pre-fill: kind + subject, plus the defaults the card
+          // shows before the user customizes them. Nothing is created by
+          // emitting it — the host decides what to do with an intent.
+          spec: {
+            kind: "error_recurrence",
+            fingerprint: parsedError.data.fingerprint,
+            checkEveryMinutes: RECURRENCE_WATCH.checkEveryMinutes,
+            maxHours: RECURRENCE_WATCH.maxHours,
+            note: `A repeat of: ${state.title}`,
+          },
+        },
+      });
+    }
+
     if (errorUri) {
       actions.push({
         kind: "view_similar",
@@ -1529,7 +1560,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     // request — a ONE-SHOT result with no watch behind it at all.
     schedule_watch: tool({
       ...scheduleWatchSchema,
-      execute: async ({ watch }) => {
+      execute: async ({ watch, investigateOnAttention }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) {
           return { error: "This turn isn't attached to a chat, so a watch can't be scheduled." };
@@ -1543,7 +1574,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
               "Content-Type": "application/json",
               Accept: "application/json",
             },
-            body: JSON.stringify({ spec: watch, chatId: ctx.chatId }),
+            body: JSON.stringify({
+              spec: watch,
+              chatId: ctx.chatId,
+              // Only ever sent as `true`: the flag is consent, and an absent
+              // field is the same as a refused one.
+              ...(investigateOnAttention === true ? { investigateOnAttention: true } : {}),
+            }),
           });
         } catch (error) {
           return { error: `Couldn't schedule the watch: ${(error as Error).message}` };
@@ -1620,6 +1657,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           checkEveryMinutes: watch.checkEveryMinutes,
           note: watch.note,
           watching: true,
+          // Echoed so the confirmation can say the second half out loud: this
+          // watch will also start looking into it if the news is bad.
+          ...(investigateOnAttention === true ? { investigateOnAttention: true } : {}),
           // The first check couldn't run. The watch is running anyway; say so
           // rather than implying the condition was evaluated.
           ...(data?.unavailable

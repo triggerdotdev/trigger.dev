@@ -1,4 +1,4 @@
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ResizableHandle,
@@ -67,6 +67,12 @@ export function DashboardAgent({
   const [openChatRequest, setOpenChatRequest] = useState<
     { chatId: string; seq: number } | undefined
   >(undefined);
+  // A watch card asked for by a `Watch…` entry (§2.1). A card is not a message,
+  // so it travels on its own channel: the panel opens it pre-filled, and nothing
+  // reaches the transcript unless the user submits it.
+  const [watchRequest, setWatchRequest] = useState<{ spec: WatchSpec; seq: number } | undefined>(
+    undefined
+  );
 
   // Closing drops any pending request, so reopening the panel later doesn't
   // replay text the user has moved on from.
@@ -77,6 +83,9 @@ export function DashboardAgent({
     if (!next) {
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
+      // An abandoned card leaves no trace (§2.2) — including no pending request
+      // that would re-open it the next time the panel is.
+      setWatchRequest(undefined);
     }
   }, []);
 
@@ -93,6 +102,11 @@ export function DashboardAgent({
     if (!trimmed) return;
     setOpen(true);
     setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
+  }, []);
+
+  const openWithWatch = useCallback((spec: WatchSpec) => {
+    setOpen(true);
+    setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
   // The dot's poll, and the toast's. Runs only while the panel is CLOSED — an
@@ -172,8 +186,8 @@ export function DashboardAgent({
   useDashboardAgentOpenRequests({ enabled: hasAccess, openWith, setOpen: setPanelOpen });
 
   const context = useMemo(
-    () => ({ open, setOpen: setPanelOpen, openWith, unreadWakes }),
-    [open, setPanelOpen, openWith, unreadWakes]
+    () => ({ open, setOpen: setPanelOpen, openWith, openWithWatch, unreadWakes }),
+    [open, setPanelOpen, openWith, openWithWatch, unreadWakes]
   );
 
   if (!hasAccess) {
@@ -197,6 +211,7 @@ export function DashboardAgent({
               onClose={() => setPanelOpen(false)}
               requestedMessage={requestedMessage}
               openChatRequest={openChatRequest}
+              watchRequest={watchRequest}
               promotedPrompt={promotedPrompt}
               onChatRead={markChatRead}
             />

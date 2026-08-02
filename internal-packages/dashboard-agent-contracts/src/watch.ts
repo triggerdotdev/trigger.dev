@@ -45,6 +45,12 @@ export const watchSpecSchema = z.union([
   watchCommonSchema
     .extend({ kind: z.literal("run_finished"), runId: z.string() })
     .merge(runStateCadenceSchema),
+  // The other half of the run pair (§3): "tell me IF it fails" rather than "tell
+  // me WHEN it lands". Same point read, opposite question — a successful
+  // completion makes a failure impossible, which is the good news here.
+  watchCommonSchema
+    .extend({ kind: z.literal("run_failed"), runId: z.string() })
+    .merge(runStateCadenceSchema),
   watchCommonSchema
     .extend({ kind: z.literal("backlog_drain"), queue: z.string() })
     .merge(standardCadenceSchema),
@@ -79,6 +85,7 @@ export type WatchKind = WatchSpec["kind"];
 export const WATCH_KINDS = [
   "run_start",
   "run_finished",
+  "run_failed",
   "backlog_drain",
   "queue_depth_above",
   "error_recurrence",
@@ -101,6 +108,7 @@ export function watchIdentity(spec: WatchSpec): string {
   switch (spec.kind) {
     case "run_start":
     case "run_finished":
+    case "run_failed":
       return `${spec.kind}:${spec.runId}`;
     case "backlog_drain":
       return `backlog_drain:${spec.queue}`;
@@ -270,6 +278,13 @@ export const watchObservedOutcomeSchema = z.union([
     durationMs: z.number().nullable().default(null),
   }),
   z.object({
+    kind: z.literal("run_failed"),
+    verified: z.boolean().default(true),
+    /** The run's FINAL status. Null while it is still running. */
+    finalStatus: z.string().nullable().default(null),
+    durationMs: z.number().nullable().default(null),
+  }),
+  z.object({
     kind: z.literal("backlog_drain"),
     verified: z.boolean().default(true),
     /** The depth the resolving check read. Null when it could not be read. */
@@ -339,6 +354,9 @@ export const watchHeadlineKeys = [
   "run_cancelled",
   "run_still_running",
   "run_gone",
+  // run_failed
+  "run_no_failure",
+  "run_succeeded",
   // backlog_drain
   "queue_drained",
   "queue_not_drained",
@@ -415,6 +433,15 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
     window_completed: { ...WAITING, headlineKey: "run_still_running" },
     condition_impossible: { ...NEUTRAL, headlineKey: "run_gone" },
   },
+  // The inverse question about the same run: the failure is the bad news, and a
+  // window that ran out without one is the good news. `condition_impossible`
+  // means it can no longer fail — refined below into the plain success headline
+  // when a final status proves it.
+  run_failed: {
+    condition_met: { ...ATTENTION_ERROR, headlineKey: "run_failed" },
+    window_completed: { ...POSITIVE, headlineKey: "run_no_failure" },
+    condition_impossible: { ...NEUTRAL, headlineKey: "run_gone" },
+  },
   backlog_drain: {
     condition_met: { ...POSITIVE, headlineKey: "queue_drained" },
     window_completed: { ...ATTENTION_WARN, headlineKey: "queue_not_drained" },
@@ -473,5 +500,86 @@ export function resolveWatchResult(args: {
     if (disposition === "cancelled") return { ...NEUTRAL, headlineKey: "run_cancelled" };
   }
 
+  // The mirror cell: a failure watch that can never be satisfied because the run
+  // SUCCEEDED is good news, not the neutral "it's gone" the default assumes.
+  if (kind === "run_failed" && resolution === "condition_impossible") {
+    const disposition = watchRunDisposition(
+      outcome?.kind === "run_failed" ? outcome.finalStatus : null
+    );
+    if (disposition === "succeeded") return { ...POSITIVE, headlineKey: "run_succeeded" };
+    if (disposition === "cancelled") return { ...NEUTRAL, headlineKey: "run_cancelled" };
+  }
+
   return RESOLVED_RESULTS[kind][resolution];
 }
+
+/* ------------------------------------------------------------------ *
+ * The configuration card — what the dashboard's `Watch…` entry offers
+ * ------------------------------------------------------------------ */
+
+/**
+ * The follow-up section of the card (§2.2, binding).
+ *
+ * In-chat delivery is FIXED and always on, so it is deliberately absent here:
+ * there is nothing to toggle. What remains is two **independent** opt-ins — never
+ * a radio group, because a user must not be able to choose email *instead of* the
+ * chat.
+ */
+export const watchFollowUpSchema = z.object({
+  /** Open an investigation when the outcome is an attention one (§6). */
+  investigateOnAttention: z.boolean().default(false),
+  /** Attach an external delivery subscription (email) to this watch (§6). */
+  notifyExternally: z.boolean().default(false),
+});
+
+export type WatchFollowUp = z.infer<typeof watchFollowUpSchema>;
+
+/** What the card submits: the configured spec plus its follow-up opt-ins. */
+export const watchDraftSchema = z.object({
+  spec: watchSpecSchema,
+  followUp: watchFollowUpSchema,
+});
+
+export type WatchDraft = z.infer<typeof watchDraftSchema>;
+
+/** The window lengths the card offers, in hours. Capped by {@link WATCH_MAX_HOURS}. */
+export const WATCH_WINDOW_HOURS_OPTIONS = [0.5, 1, 2, 6, 12, 24] as const;
+
+/** Run-state kinds may poll every minute; aggregates are floored at 5 (§7.1). */
+const RUN_STATE_KINDS = ["run_start", "run_finished", "run_failed"] as const;
+
+/** Whether a kind reads one run row (cheap) rather than an aggregate. */
+export function isRunStateWatchKind(kind: WatchKind): boolean {
+  return (RUN_STATE_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * The cadences the card may offer for a kind — the SCHEMA's limits, surfaced so
+ * the picker can't render an option that would then fail validation.
+ */
+export function watchCadenceOptions(kind: WatchKind): readonly number[] {
+  return isRunStateWatchKind(kind) ? [1, 5, 15, 60] : [5, 15, 60];
+}
+
+/**
+ * The condition variant sitting next to a kind under **Customize** (§3): "run
+ * finishes ↔ run fails", "queue drains ↔ queue above N". Null for the kinds that
+ * have no second question in this iteration.
+ */
+export function watchVariantKind(kind: WatchKind): WatchKind | null {
+  switch (kind) {
+    case "run_finished":
+      return "run_failed";
+    case "run_failed":
+      return "run_finished";
+    case "backlog_drain":
+      return "queue_depth_above";
+    case "queue_depth_above":
+      return "backlog_drain";
+    default:
+      return null;
+  }
+}
+
+/** The default threshold a `queue_depth_above` variant starts on. */
+export const WATCH_DEFAULT_QUEUE_THRESHOLD = 100;

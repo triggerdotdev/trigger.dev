@@ -1,4 +1,5 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { createContext, useContext } from "react";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -26,6 +27,13 @@ type DashboardAgentContextValue = {
    * that's already open (so an in-progress conversation is never hijacked).
    */
   openWith: (text: string) => void;
+  /**
+   * Open the panel with a watch CARD pre-filled — the universal `Watch…` entry
+   * (§2.1). Deliberately not `openWith`: a card is not a message. Nothing is
+   * posted to the transcript and nothing is persisted until the card is
+   * submitted, so an abandoned card leaves no trace.
+   */
+  openWithWatch: (spec: WatchSpec) => void;
   /**
    * Watch wakes the user hasn't seen. Polled only while the panel is closed —
    * with it open the chat itself is the notification, so this stays at 0.

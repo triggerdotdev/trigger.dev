@@ -10,6 +10,7 @@
 // readers (through the service's `checkDeps` seam) and the tick trigger
 // (`scheduleTick`).
 import {
+  appendChatMessage,
   cancelWatch,
   chatExists,
   claimWatchDelivery,
@@ -17,6 +18,7 @@ import {
   countUnreadWatchWakes,
   createChat,
   createDashboardAgentDb,
+  getChatMessages,
   getWatch,
   listActiveWatchesForChat,
   listChatIdsWithUnreadWakes,
@@ -246,6 +248,7 @@ function create(args: {
   spec?: WatchSpec;
   chatId?: string;
   environmentId?: string;
+  investigateOnAttention?: boolean;
   checkDeps?: Partial<WatchCheckDeps>;
   scheduled?: Array<{ watchId: string; token: string; tick: number }>;
   onSchedule?: () => void;
@@ -256,6 +259,7 @@ function create(args: {
     userId: args.seeded.user.id,
     chatId: args.chatId ?? "chat_1",
     spec: args.spec ?? RUN_START,
+    investigateOnAttention: args.investigateOnAttention,
     deps: {
       configured: () => true,
       checkDeps: () => fakeCheckDeps(args.checkDeps),
@@ -315,7 +319,29 @@ describe("createDashboardAgentWatch", () => {
         organizationId: seeded.organization.id,
         userId: seeded.user.id,
         tickCount: 0,
+        // Off unless the user asked for it, and the project's external ref is
+        // on the row so a wake can scope an investigation the way a turn does.
+        investigateOnAttention: false,
+        projectRef: seeded.project.externalRef,
       });
+    }
+  );
+
+  postgresTest(
+    "records the investigate-on-attention consent when the caller asks for it",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "watch");
+      await seedChat(seeded);
+
+      const result = await create({ seeded, investigateOnAttention: true });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok || !result.watching) return;
+      const row = await getWatch(ctx.agentDb, { id: result.watchId });
+      expect(row?.investigateOnAttention).toBe(true);
+      // It is an action flag, not identity: the dedup string is unchanged.
+      expect(result.identity).toBe("run_start:run_1");
     }
   );
 
@@ -1614,4 +1640,130 @@ describe("the check endpoint", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: "cancelled" });
   });
+});
+
+// The deterministic transcript append behind the configuration card's submit
+// path (§2.2): the confirmation and the one-shot result block are host-decided
+// facts, written with no turn and no LLM, so the append itself has to be atomic
+// and owner-scoped.
+describe("appendChatMessage", () => {
+  postgresTest(
+    "appends in order without rewriting the transcript",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "append");
+      await seedChat(seeded);
+
+      const first = { id: "watch-card:watch_1", role: "assistant", parts: [] };
+      const second = { id: "watch-card:watch_2", role: "assistant", parts: [] };
+
+      expect(
+        await appendChatMessage(ctx.agentDb, {
+          chatId: "chat_1",
+          userId: seeded.user.id,
+          message: first,
+        })
+      ).toBe(true);
+      await appendChatMessage(ctx.agentDb, {
+        chatId: "chat_1",
+        userId: seeded.user.id,
+        message: second,
+      });
+
+      const messages = await getChatMessages(ctx.agentDb, {
+        chatId: "chat_1",
+        userId: seeded.user.id,
+      });
+      expect(messages).toEqual([first, second]);
+    }
+  );
+
+  postgresTest(
+    "appends nothing for a chat the caller doesn't own",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "append-owner");
+      await seedChat(seeded);
+
+      expect(
+        await appendChatMessage(ctx.agentDb, {
+          chatId: "chat_1",
+          userId: "user_someone_else",
+          message: { id: "watch-card:watch_1", role: "assistant", parts: [] },
+        })
+      ).toBe(false);
+
+      const messages = await getChatMessages(ctx.agentDb, {
+        chatId: "chat_1",
+        userId: seeded.user.id,
+      });
+      expect(messages).toEqual([]);
+    }
+  );
+});
+
+// The card's second run condition, end to end through the real creation path.
+describe("run_failed creation", () => {
+  const RUN_FAILED: WatchSpec = {
+    kind: "run_failed",
+    runId: "run_1",
+    checkEveryMinutes: 1,
+    maxHours: 2,
+    note: "tell me if it fails",
+  };
+
+  postgresTest(
+    "watches a running run and dedups against the finished variant separately",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "runfailed");
+      await seedChat(seeded);
+
+      const failed = await create({
+        seeded,
+        spec: RUN_FAILED,
+        checkDeps: { readRun: async () => runRow({ status: "EXECUTING" }) },
+      });
+      expect(failed.ok).toBe(true);
+      if (!failed.ok || !failed.watching) return;
+      expect(failed.identity).toBe("run_failed:run_1");
+
+      // "When it finishes" and "if it fails" are two different questions about
+      // the same run, so the second one is not a duplicate of the first.
+      const finished = await create({
+        seeded,
+        spec: { ...RUN_FAILED, kind: "run_finished" } as WatchSpec,
+        checkDeps: { readRun: async () => runRow({ status: "EXECUTING" }) },
+      });
+      expect(finished.ok).toBe(true);
+      if (!finished.ok || !finished.watching) return;
+      expect(finished.identity).toBe("run_finished:run_1");
+    }
+  );
+
+  postgresTest(
+    "answers outright, with no watch row, once the run has succeeded",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "runfailed-done");
+      await seedChat(seeded);
+
+      const result = await create({
+        seeded,
+        spec: RUN_FAILED,
+        checkDeps: {
+          readRun: async () =>
+            runRow({ status: "COMPLETED_SUCCESSFULLY", completedAt: new Date() }),
+        },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // The one-shot path: it can never fail now, so there is nothing to watch.
+      expect(result.watching).toBe(false);
+      if (result.watching) return;
+      expect(result.immediate.result).toBe("terminal_unsatisfied");
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toEqual([]);
+    }
+  );
 });

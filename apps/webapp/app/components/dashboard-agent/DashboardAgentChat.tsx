@@ -18,30 +18,6 @@ import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
-/**
- * The message a card's watch button sends on the user's behalf. Written the way
- * the user would ask, so the transcript reads as a request the agent then
- * confirms (via schedule_watch), not as UI state that changed silently.
- */
-function watchRequestText(spec: WatchSpec): string {
-  const note = "note" in spec && spec.note ? spec.note.trim() : "";
-  if (note) return `Watch this for me — tell me when ${note}.`;
-  switch (spec.kind) {
-    case "backlog_drain":
-      return `Watch this for me — tell me when the ${spec.queue} backlog drains.`;
-    case "queue_depth_above":
-      return `Watch this for me — tell me if the ${spec.queue} queue grows past ${spec.threshold}.`;
-    case "run_start":
-      return `Watch this for me — tell me when run ${spec.runId} starts.`;
-    case "run_finished":
-      return `Watch this for me — tell me when run ${spec.runId} finishes.`;
-    case "error_recurrence":
-      return `Watch this for me — ping me if error ${spec.fingerprint} comes back.`;
-    case "health_recovery":
-      return "Watch this for me — tell me when health is back to normal.";
-  }
-}
-
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
 // from replaying the previous turn.
@@ -86,6 +62,9 @@ export function DashboardAgentChat({
   promotedPrompt,
   watches,
   pagePaths,
+  watchCard,
+  appendedMessage,
+  onWatchIntent,
   onCancelWatch,
   onTurnSettled,
   onActivityChange,
@@ -118,6 +97,21 @@ export function DashboardAgentChat({
   watches: WatchChip[];
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
+  /** The ephemeral watch card, when one is open. Sits above the composer. */
+  watchCard?: React.ReactNode;
+  /**
+   * A message the SERVER appended outside a turn — the watch card's confirmation
+   * or one-shot result. It is already durable in the store; this puts it in the
+   * live transcript now instead of on the next open. `seq` makes each append
+   * distinct, so the effect applies it exactly once.
+   */
+  appendedMessage?: { message: UIMessage; seq: number };
+  /**
+   * A card offered a watch. Every `watch` intent means the same thing — open the
+   * configuration card pre-filled with this spec — so the user reviews and
+   * submits it, and nothing is posted or persisted if they don't (§2.2).
+   */
+  onWatchIntent?: (spec: WatchSpec) => void;
   onCancelWatch: (watchId: string) => void;
   /** A watch was created — tell the panel to re-read the chips. */
   onTurnSettled: () => void;
@@ -195,6 +189,7 @@ export function DashboardAgentChat({
 
   const {
     messages: rawMessages,
+    setMessages,
     sendMessage,
     status,
     stop: aiStop,
@@ -228,6 +223,20 @@ export function DashboardAgentChat({
   // through long tool calls, where the agent is busy but silent.
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
+
+  // A server-appended block (the watch card's outcome) joins the live transcript
+  // in place. Applied once per `seq`: the append is already persisted, so
+  // replaying it would show the same confirmation twice.
+  const appendedSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!appendedMessage || appendedSeq.current === appendedMessage.seq) return;
+    appendedSeq.current = appendedMessage.seq;
+    setMessages((current) =>
+      current.some((message) => message.id === appendedMessage.message.id)
+        ? current
+        : [...current, appendedMessage.message]
+    );
+  }, [appendedMessage, setMessages]);
 
   // Cold start: trigger the first turn by sending the pending message once.
   const sentFirst = useRef(false);
@@ -293,11 +302,14 @@ export function DashboardAgentChat({
   );
 
   // What a card's action does. An `ask` goes back into the conversation as the
-  // user's own question — and so does a `watch`: the click becomes a visible
-  // request ("Watch this for me…") and the agent answers it with schedule_watch,
-  // confirming in its own words and offering an email alert when none is set up.
-  // A silent POST would be cheaper, but a watch the transcript never mentions
-  // reads as nothing having happened.
+  // user's own question.
+  //
+  // A `watch` does NOT: it opens the configuration card pre-filled with the spec
+  // the card offered. Every watch intent is treated this way, whatever offered it
+  // — so the user always sees what they are about to start, can change the window
+  // or the condition first, and an offer they walk away from leaves no trace. It
+  // used to post a visible "Watch this for me…" request and let the agent answer
+  // with schedule_watch; the card replaces that turn with 0 LLM.
   //
   // `propose_fix` is reserved and must never be executed.
   const handleIntent = useCallback(
@@ -307,7 +319,7 @@ export function DashboardAgentChat({
           submit(intent.prompt);
           return;
         case "watch":
-          submit(watchRequestText(intent.spec));
+          onWatchIntent?.(intent.spec);
           return;
         case "navigate":
           void goTo(intent);
@@ -316,7 +328,7 @@ export function DashboardAgentChat({
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, goTo]
+    [submit, goTo, onWatchIntent]
   );
 
   // The `navigate_to` tool answers with an intent and the agent then narrates it
@@ -391,6 +403,7 @@ export function DashboardAgentChat({
           resolveUri={resolveUri}
         />
       )}
+      {watchCard}
       {/* The Free plan's message cap occupies the composer slot: at the cap the
           composer is replaced by the upgrade block (a composer you can't send
           from is worse than none), and under it the composer is followed by the

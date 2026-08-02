@@ -5,6 +5,7 @@
 //     wire encoding in the message id (`fired`/`expired`) is only an address.
 import { describe, expect, it } from "vitest";
 import { wakePresentation, wakeRefFromMessageId, wakeResolution } from "./WakeBanner";
+import { watchWakeToastTitle } from "./WatchWakeToast";
 
 const runWatch = {
   id: "watch_1",
@@ -171,5 +172,63 @@ describe("wakePresentation", () => {
         resolution: "condition_met",
       }).headline
     ).toBe("Health recovered");
+  });
+});
+
+// The toast is the out-of-panel copy of the same fact. It must never fall back
+// to "Watch update" while the row can say what happened — the banner, the toast
+// and the email all read one presenter (§5.2).
+describe("watchWakeToastTitle", () => {
+  const wake = {
+    watchId: "watch_1",
+    chatId: "chat_1",
+    note: "tell me when the nightly invoice run finishes",
+  };
+
+  it("leads with the fact, not the notification", () => {
+    expect(
+      watchWakeToastTitle({
+        ...wake,
+        outcome: "fired",
+        kind: "backlog_drain",
+        identity: "backlog_drain:email-sends",
+        resolution: "condition_met",
+      })
+    ).toBe("email-sends queue drained");
+  });
+
+  it("follows the observed outcome, so a failed run is never good news", () => {
+    expect(
+      watchWakeToastTitle({
+        ...wake,
+        outcome: "fired",
+        kind: "run_finished",
+        identity: "run_finished:run_abc123",
+        resolution: "condition_met",
+        observedOutcome: {
+          kind: "run_finished",
+          verified: true,
+          finalStatus: "COMPLETED_WITH_ERRORS",
+          durationMs: 1200,
+        },
+      })
+    ).toBe("Run run_abc123 failed");
+  });
+
+  it("reconstructs a resolution for a row written before the model existed", () => {
+    expect(
+      watchWakeToastTitle({
+        ...wake,
+        outcome: "expired",
+        kind: "backlog_drain",
+        identity: "backlog_drain:email-sends",
+      })
+    ).toBe("email-sends queue still hasn't drained");
+  });
+
+  it("claims nothing when the wake carries no watch at all", () => {
+    expect(watchWakeToastTitle({ ...wake, outcome: "fired" })).toBe(
+      "The watch woke this chat up on its own."
+    );
   });
 });

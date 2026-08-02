@@ -554,6 +554,75 @@ describe("run_finished — status awareness", () => {
   });
 });
 
+describe("run_failed", () => {
+  const runFailed: WatchSpec = {
+    kind: "run_failed",
+    runId: "run_1",
+    checkEveryMinutes: 1,
+    maxHours: 2,
+    note: "tell me if it fails",
+  };
+
+  const finished = (status: string) =>
+    run({
+      status,
+      startedAt: new Date("2026-07-27T11:56:00.000Z"),
+      completedAt: new Date("2026-07-27T11:59:00.000Z"),
+    });
+
+  it("is satisfied by a failing terminal status", async () => {
+    for (const status of ["COMPLETED_WITH_ERRORS", "CRASHED", "SYSTEM_FAILURE", "TIMED_OUT"]) {
+      const outcome = await check(runFailed, deps({ readRun: async () => finished(status) }));
+      expect(outcome.result).toBe("satisfied");
+      expect(outcome.observed).toMatchObject({
+        kind: "run_failed",
+        verified: true,
+        finalStatus: status,
+        durationMs: 180_000,
+      });
+    }
+  });
+
+  // The asymmetry that makes this a separate kind: a success is not merely "not
+  // yet", it means the condition can NEVER become true — and the mapping presents
+  // that as good news rather than as a watch that ran out of road.
+  it("becomes impossible — not pending — once the run succeeds", async () => {
+    const outcome = await check(
+      runFailed,
+      deps({ readRun: async () => finished("COMPLETED_SUCCESSFULLY") })
+    );
+    expect(outcome.result).toBe("terminal_unsatisfied");
+    expect(outcome.observed).toMatchObject({ finalStatus: "COMPLETED_SUCCESSFULLY" });
+  });
+
+  it("treats a cancellation as terminal too — it will not fail now", async () => {
+    const outcome = await check(runFailed, deps({ readRun: async () => finished("CANCELED") }));
+    expect(outcome.result).toBe("terminal_unsatisfied");
+  });
+
+  it("keeps waiting while the run is still going, with no verdict on the row", async () => {
+    const outcome = await check(
+      runFailed,
+      deps({ readRun: async () => run({ status: "EXECUTING" }) })
+    );
+    expect(outcome.result).toBe("pending");
+    expect(outcome.observed).toMatchObject({ kind: "run_failed", finalStatus: null });
+  });
+
+  it("is unavailable, never a verdict, when the reader throws", async () => {
+    const outcome = await check(
+      runFailed,
+      deps({
+        readRun: async () => {
+          throw new Error("postgres is down");
+        },
+      })
+    );
+    expect(outcome.result).toBe("unavailable");
+    expect(outcome.observed).toMatchObject({ kind: "run_failed", verified: false });
+  });
+});
+
 describe("queue_depth_above", () => {
   it("is the drain check with the comparison inverted", async () => {
     const above = await check(

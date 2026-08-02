@@ -48,8 +48,10 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
     status: "active",
     deliveryStatus: "not_required",
     cancelReason: null,
+    investigateOnAttention: false,
     organizationId: "org_1",
     projectId: "proj_1",
+    projectRef: "proj_abc",
     environmentId: "env_1",
     userId: "user_1",
     createdAt: new Date("2026-01-01T11:00:00.000Z"),
@@ -298,6 +300,19 @@ describe("runWatchTick", () => {
     expect(calls.delivered).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     // And the webapp is told once, so the configured alerts go out.
     expect(notified).toEqual(["watch_1"]);
+  });
+
+  // The consent lives on the row and travels in the wake: the tick never acts on
+  // it (an investigation is the wake turn's business, §6), it only carries it.
+  it("the wake carries the row's investigate-on-attention consent", async () => {
+    const { store } = fakeStore(watchRow({ investigateOnAttention: true }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+
+    expect(appends[0]?.action.investigateOnAttention).toBe(true);
   });
 
   it("a failing fired notification does not fail the tick", async () => {

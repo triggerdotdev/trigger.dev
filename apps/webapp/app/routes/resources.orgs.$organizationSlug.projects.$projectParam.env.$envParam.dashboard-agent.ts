@@ -1,5 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
+  appendChatMessage,
   cancelWatch,
   chatExists,
   countUnreadWatchWakes,
@@ -16,6 +17,11 @@ import {
   renameChat,
   setChatPinned,
 } from "@internal/dashboard-agent-db";
+import {
+  VIEW_BLOCK_VERSION,
+  watchDraftSchema,
+  type WatchDraft,
+} from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -24,6 +30,14 @@ import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
+  watchConfirmationBlockBody,
+  watchOneShotBlockBody,
+  watchSubjectLabel,
+} from "~/components/dashboard-agent/watch-presentation";
+import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
+import {
+  authorizeWatchEnvironmentById,
+  createDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
 } from "~/services/dashboardAgentWatches.server";
@@ -62,6 +76,7 @@ const ActionBody = z.object({
     "read",
     "resolve",
     "watch-cancel",
+    "watch-create",
   ]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
@@ -74,6 +89,8 @@ const ActionBody = z.object({
   uri: z.string().optional(),
   // The watch to cancel, for `watch-cancel`.
   watchId: z.string().min(1).optional(),
+  // The configured card, for `watch-create`: a JSON `WatchDraft`.
+  draft: z.string().optional(),
 });
 
 // History list, or — with ?chatId= — the stored transcript + session for resume,
@@ -328,6 +345,148 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       path: resolved.url,
       label: resolved.label,
       external: resolved.external ?? false,
+    });
+  }
+
+  // The configuration card's submit path (§7.6). The card is a deterministic UI
+  // block, not a chat turn: nothing is written until this action runs, and what it
+  // writes is the ONE thing the transcript keeps — a confirmation (a watch is
+  // running) or a one-shot result (the immediate check already answered).
+  //
+  // This is an ADAPTER (§7.3), so it authorizes and hands `createDashboardAgentWatch`
+  // an already-authorized context. The environment comes from the URL the user is
+  // on, resolved through the same re-authorization a background tick passes — never
+  // from the request body, and never from the chat's stored context.
+  if (parsed.data.intent === "watch-create") {
+    let draft: WatchDraft;
+    try {
+      const result = watchDraftSchema.safeParse(JSON.parse(parsed.data.draft ?? ""));
+      if (!result.success) {
+        return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
+      }
+      draft = result.data;
+    } catch {
+      return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
+    }
+
+    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+
+    const environment = await authorizeWatchEnvironmentById({
+      userId,
+      environmentId: runtimeEnv.id,
+    });
+    if (!environment) {
+      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+    }
+
+    // A watch is chat-bound (§7.3), so a card submitted from a fresh panel needs a
+    // chat to belong to. Created here, with no first message and no agent run: the
+    // confirmation block below is the whole conversation until the user types.
+    let targetChatId = parsed.data.chatId;
+    if (targetChatId) {
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId: targetChatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
+      }
+    } else {
+      targetChatId = generateFriendlyId("chat");
+      await createChat(dashboardAgentDb, {
+        id: targetChatId,
+        organizationId: project.organizationId,
+        userId,
+        title: `Watch ${watchSubjectLabel(draft.spec)}`,
+      });
+    }
+
+    const result = await createDashboardAgentWatch({
+      environment,
+      userId,
+      chatId: targetChatId,
+      spec: draft.spec,
+      investigateOnAttention: draft.followUp.investigateOnAttention,
+    });
+
+    // Validation, cap and network errors stay inside the ephemeral card and
+    // persist nothing (§2.2 step 5) — so this returns before any append.
+    if (!result.ok) {
+      const status =
+        result.code === "limit_reached" || result.code === "duplicate"
+          ? 409
+          : result.code === "invalid_target" || result.code === "chat_not_found"
+            ? 404
+            : result.code === "not_configured"
+              ? 501
+              : 500;
+      return json(
+        {
+          error: result.error,
+          code: result.code,
+          ...(result.existingId ? { existingId: result.existingId } : {}),
+        },
+        { status }
+      );
+    }
+
+    // The external subscription is an EXTRA (§6): it is attached after the watch
+    // exists and its refusal never fails the creation — the in-dashboard signal
+    // always works, and the confirmation simply doesn't claim an email.
+    let notifiedExternally = false;
+    if (result.watching && draft.followUp.notifyExternally) {
+      const subscribed = await subscribeUserToWatchAlerts({ userId, environment });
+      notifiedExternally = subscribed.ok;
+    }
+
+    const body = result.watching
+      ? watchConfirmationBlockBody({
+          spec: draft.spec,
+          watchId: result.watchId,
+          unavailable: result.unavailable,
+          followUp: {
+            investigateOnAttention: draft.followUp.investigateOnAttention,
+            notifyExternally: notifiedExternally,
+          },
+        })
+      : watchOneShotBlockBody({
+          spec: draft.spec,
+          result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
+        });
+
+    // The block goes through the same envelope + `ViewBlocks` machinery every
+    // other card uses. `id` is the watch (or the identity, for a one-shot), so a
+    // retried submit replaces the block rather than stacking a second one.
+    const message = {
+      id: `watch-card:${result.watching ? result.watchId : result.identity}`,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "data-view" as const,
+          data: {
+            blocks: [
+              {
+                ...body,
+                revision: 0,
+                version: VIEW_BLOCK_VERSION,
+                id: `watch:${result.watching ? result.watchId : result.identity}`,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    await appendChatMessage(dashboardAgentDb, { chatId: targetChatId, userId, message });
+
+    return json({
+      chatId: targetChatId,
+      watching: result.watching,
+      watchId: result.watching ? result.watchId : null,
+      message,
     });
   }
 

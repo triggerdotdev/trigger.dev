@@ -525,11 +525,10 @@ export function ReportView({
   if (recoveryWatch && onIntent) {
     const watchItem: ReportFooterItem = {
       code: FOOTER_WATCH_CODE,
-      node: (
-        <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
-          Watch recovery
-        </ReportFooterAction>
-      ),
+      // The label is the universal one (§2.1, binding): the ENTRY is the same
+      // everywhere and only the pre-filled recommendation is contextual, so a
+      // per-object CTA ("Watch recovery") would break the pattern.
+      node: <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>Watch…</ReportFooterAction>,
     };
     // The watch joins the other buttons in the row, BEFORE the trailing
     // "or do nothing" prose.

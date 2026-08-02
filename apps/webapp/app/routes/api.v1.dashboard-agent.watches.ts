@@ -43,6 +43,12 @@ const BodySchema = z.object({
   spec: watchSpecSchema,
   chatId: z.string().min(1),
   /**
+   * The resolution action the user consented to at creation (§6): after an
+   * attention outcome the wake turn may open an investigation. Off unless the
+   * caller sends it — the agent may only send it on an explicit ask.
+   */
+  investigateOnAttention: z.boolean().optional(),
+  /**
    * Echoes of the turn's environment, if the caller sends them. Not overrides:
    * they're only ever checked against the token's environment scope, which is the
    * canonical `RuntimeEnvironment.id` (VERDICTS §3).
@@ -131,6 +137,7 @@ export async function action({ request }: ActionFunctionArgs) {
       userId,
       chatId: parsed.chatId,
       spec: parsed.spec,
+      investigateOnAttention: parsed.investigateOnAttention,
     });
 
     if (!result.ok) {

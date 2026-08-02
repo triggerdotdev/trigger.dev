@@ -24,6 +24,7 @@ export type GalleryGroup =
   | "report"
   | "chart"
   | "watches"
+  | "watch-card"
   | "wakes"
   | "prompts"
   | "intents"
@@ -52,6 +53,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
   { group: "watches", label: "Watch chips" },
+  { group: "watch-card", label: "Watch card" },
   { group: "wakes", label: "Wake banners" },
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
@@ -211,6 +213,36 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
   { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
   { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
+
+  // --- Watch card ----------------------------------------------------------
+  // The configuration card and the two blocks a submitted card leaves behind.
+  // The card is ephemeral (it never enters the transcript), so the states here
+  // are the whole of what a user can see of it.
+  {
+    sectionId: "watch-card-compact",
+    title: "Compact — the recommendation",
+    group: "watch-card",
+  },
+  { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
+  { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
+  { sectionId: "watch-card-pending", title: "Pending create", group: "watch-card" },
+  { sectionId: "watch-card-create-failure", title: "Create failure", group: "watch-card" },
+  { sectionId: "watch-card-confirmation", title: "Confirmation block", group: "watch-card" },
+  {
+    sectionId: "watch-card-one-shot-satisfied",
+    title: "One-shot result — already true",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-one-shot-impossible",
+    title: "One-shot result — can't happen now",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-toast-headline",
+    title: "Wake toast headline (fact first)",
+    group: "watch-card",
+  },
 
   // --- Wake banners --------------------------------------------------------
   // A wake narration through the production renderer: the banner plus the prose

@@ -448,6 +448,142 @@ describe("watch wake narration", () => {
     expect(wakeText(prompts)).toContain("condition_impossible");
   });
 
+  // -------------------------------------------------------------------------
+  // Watch → Investigate: the one relaxation of "never a new investigation
+  // unprompted" (§6). Consent is given at creation and applies to the ATTENTION
+  // outcomes only — the contracts mapping decides which those are.
+  // -------------------------------------------------------------------------
+
+  // A wake needs the project's external ref to scope the investigation exactly
+  // as a turn would; the watcher puts it in the wake's metadata.
+  const WAKE_CLIENT_DATA = {
+    ...CLIENT_DATA,
+    projectRef: "proj_abc",
+    environmentId: "env_abc",
+  };
+
+  const FAILED_RUN_WAKE = {
+    ...WAKE,
+    identity: "run_finished:run_abc123",
+    spec: { ...WAKE.spec, kind: "run_finished", runId: "run_abc123" },
+    resolution: "condition_met" as const,
+    observed: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 4200,
+    },
+    facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
+  };
+
+  it("opens the pre-approved investigation on an attention outcome, in the same wake turn", async () => {
+    const { store, calls } = fakeStore();
+    const { model, prompts } = recordingModel(
+      "Run run_abc123 failed — I've started looking into why."
+    );
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_investigate",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+
+    // The wake still lands first and says the investigation has started.
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(wakeText(prompts)).toContain("ALREADY been started");
+
+    // And the investigation exists: opened, not concluded — the wake has no
+    // token to read with, so the findings come later in their own message.
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    const opened = calls.upsertInvestigationRevision[0] as {
+      chatId: string;
+      projectRef: string;
+      environmentRef: string;
+      state: { outcome: string; runId?: string };
+    };
+    expect(opened.chatId).toBe("chat_wake_investigate");
+    expect(opened.projectRef).toBe("proj_abc");
+    expect(opened.environmentRef).toBe("env_abc");
+    expect(opened.state.outcome).toBe("in_progress");
+    expect(opened.state.runId).toBe("run_abc123");
+  });
+
+  // Consent is for bad news. A drained queue is the good kind, so the same flag
+  // starts nothing — the category comes from the contracts mapping, never from
+  // the flag or the resolution alone.
+  it("starts nothing on a positive outcome, consent or not", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_positive",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained.")]));
+      },
+    });
+
+    await harness.sendAction({
+      ...WAKE,
+      resolution: "condition_met" as const,
+      observed: { kind: "backlog_drain", verified: true, depth: 0 },
+      investigateOnAttention: true,
+    });
+
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+  });
+
+  it("starts nothing on an attention outcome without consent", async () => {
+    const { store, calls } = fakeStore();
+    const { model, prompts } = recordingModel("Run run_abc123 failed after 4.2s.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_no_consent",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(FAILED_RUN_WAKE);
+
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    // …and the wake is never framed as having started one.
+    expect(wakeText(prompts)).not.toContain("ALREADY been started");
+  });
+
+  // Binding independence (§6): scheduling the investigation never delays,
+  // retries or invalidates the wake. The watcher has already marked the delivery
+  // by the time the agent runs, so the only thing this can break is the turn —
+  // and it must not.
+  it("delivers the wake even when opening the investigation fails", async () => {
+    const { store, calls } = fakeStore();
+    const failing: DashboardAgentStore = {
+      ...store,
+      upsertInvestigationRevision: async () => {
+        throw new Error("investigations are down");
+      },
+    };
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_inv_fails",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, failing);
+        set(dashboardAgentModelKey, mockModel([textStep("Run run_abc123 failed.")]));
+      },
+    });
+
+    const wake = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+
+    expect(collectText(wake.chunks)).toBe("Run run_abc123 failed.");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
   it("a different outcome on the same watch is a different wake", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
@@ -1076,11 +1212,39 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/minimal change/i);
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
+
+    // "Watch for a repeat" is a HANDOFF, not a question: it carries the kind and
+    // the subject, so the Watch card can be pre-filled without another LLM turn.
+    expect(actions[1].intent).toEqual({
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "error_c4b4a797397a9c43",
+        checkEveryMinutes: 15,
+        maxHours: 24,
+        note: `A repeat of: ${concludedWithSource.title}`,
+      },
+    });
+
     // The follow-up that navigates points at the canonical error URI.
     expect(actions[2].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
     });
+  });
+
+  // The handoff needs a subject a recurrence watch can be built on. A concluded
+  // card that cites no error group has none, so the action is left off rather
+  // than offering a button that can't pre-fill anything.
+  it("offers no repeat watch when the card cites no error group", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, concludedState);
+    const kinds = (output.blocks[0].capabilities?.actions ?? []).map(
+      (a: { kind: string }) => a.kind
+    );
+    expect(kinds).not.toContain("watch_recurrence");
   });
 
   it("offers no actions while an investigation is still in progress", async () => {
@@ -1090,7 +1254,9 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].capabilities).toBeUndefined();
   });
 
-  it("offers a keep-digging follow-up, and never Show code, on an inconclusive card", async () => {
+  // An inconclusive card has no cause to watch for a repeat OF, so the handoff
+  // stays off it — "keep digging" is the follow-up that fits.
+  it("offers a keep-digging follow-up, and never Show code or a repeat watch, on an inconclusive card", async () => {
     await seedWorkspace();
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({
@@ -1108,7 +1274,6 @@ describe("buildDashboardAgentTools", () => {
     });
     expect(output.blocks[0].capabilities.actions.map((a: { kind: string }) => a.kind)).toEqual([
       "ask_follow_up",
-      "watch_recurrence",
       "view_similar",
     ]);
   });

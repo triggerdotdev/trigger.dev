@@ -23,6 +23,7 @@ const common = { maxHours: 6, note: "because I asked" };
 const specs = {
   run_start: { ...common, kind: "run_start", runId: "run_123", checkEveryMinutes: 1 },
   run_finished: { ...common, kind: "run_finished", runId: "run_x", checkEveryMinutes: 5 },
+  run_failed: { ...common, kind: "run_failed", runId: "run_y", checkEveryMinutes: 5 },
   backlog_drain: { ...common, kind: "backlog_drain", queue: "email-sends", checkEveryMinutes: 5 },
   queue_depth_above: {
     ...common,
@@ -113,6 +114,7 @@ describe("watchIdentity", () => {
   it("identifies the condition, not the cadence", () => {
     expect(watchIdentity(specs.run_start)).toBe("run_start:run_123");
     expect(watchIdentity(specs.run_finished)).toBe("run_finished:run_x");
+    expect(watchIdentity(specs.run_failed)).toBe("run_failed:run_y");
     expect(watchIdentity(specs.backlog_drain)).toBe("backlog_drain:email-sends");
     expect(watchIdentity(specs.queue_depth_above)).toBe("queue_depth_above:email-sends:500");
     expect(watchIdentity(specs.error_recurrence)).toBe("error_recurrence:a1b2c3");
@@ -144,6 +146,8 @@ function describeWatch(spec: WatchSpec): string {
       return `start of ${spec.runId}`;
     case "run_finished":
       return `finish of ${spec.runId}`;
+    case "run_failed":
+      return `failure of ${spec.runId}`;
     case "backlog_drain":
       return `drain of ${spec.queue}`;
     case "queue_depth_above":
@@ -160,9 +164,9 @@ function describeWatch(spec: WatchSpec): string {
 }
 
 describe("exhaustiveness", () => {
-  it("handles all six kinds", () => {
-    expect(Object.values(specs).map(describeWatch)).toHaveLength(6);
-    expect(WATCH_KINDS).toHaveLength(6);
+  it("handles every kind", () => {
+    expect(Object.values(specs).map(describeWatch)).toHaveLength(WATCH_KINDS.length);
+    expect(WATCH_KINDS).toHaveLength(7);
   });
 });
 
@@ -245,6 +249,7 @@ describe("watchObservedOutcomeSchema", () => {
     const outcomes = [
       { kind: "run_start", started: true, status: "EXECUTING" },
       { kind: "run_finished", finalStatus: "COMPLETED_SUCCESSFULLY", durationMs: 1200 },
+      { kind: "run_failed", finalStatus: "COMPLETED_WITH_ERRORS", durationMs: 900 },
       { kind: "backlog_drain", depth: 0 },
       { kind: "queue_depth_above", depth: 612, threshold: 500 },
       { kind: "error_recurrence", countSince: 3 },

@@ -94,8 +94,25 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
 function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   const spec = viewSpecFor(part);
   if (spec) return spec.blocks;
+  const hostBlocks = hostViewBlocks(part);
+  if (hostBlocks) return hostBlocks;
   const report = reportBlockFromToolPart(part);
   return report ? [report] : null;
+}
+
+/**
+ * Blocks the HOST wrote, with no tool behind them.
+ *
+ * The watch card's confirmation and its one-shot result are deterministic facts
+ * the webapp decided (§2.2) — there is no model turn and no tool call to hang
+ * them off, so they travel as a plain `data-view` part and render through exactly
+ * the same `ViewBlocks` catalog as everything else. Same envelope, same
+ * latest-wins, one renderer.
+ */
+function hostViewBlocks(part: UIMessage["parts"][number]): unknown[] | null {
+  const p = part as { type: string; data?: { blocks?: unknown[] } };
+  if (p.type !== "data-view") return null;
+  return Array.isArray(p.data?.blocks) ? p.data!.blocks! : null;
 }
 
 type InvestigationRef = { id: string; revision: number };

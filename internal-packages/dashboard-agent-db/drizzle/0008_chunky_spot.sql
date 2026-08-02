@@ -1,0 +1,2 @@
+ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "investigate_on_attention" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "project_ref" text;

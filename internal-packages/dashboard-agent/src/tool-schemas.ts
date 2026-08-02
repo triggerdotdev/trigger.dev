@@ -375,6 +375,12 @@ export const scheduleWatchSchema = tool({
     watch: watchSpecSchema.describe(
       "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words — it is shown when it fires."
     ),
+    investigateOnAttention: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set this ONLY when the user explicitly asked you to dig in / look into it / find out why if the outcome is bad — never as a helpful extra. It gives standing permission to open an investigation when (and only when) the watch resolves to something needing attention. Leave it out otherwise."
+      ),
   }),
 });
 
@@ -600,6 +606,8 @@ Watches — telling the user later:
 - A chat holds at most 3 watches. If the tool says the limit is reached or that this thing is already watched, say so and name the existing watch instead of trying again.
 - If the tool returns an immediate outcome, the condition already holds: answer now and don't promise a message later.
 - A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else — no new investigation, no fresh reads, no recap of the conversation.
+- The ONE exception to "no new investigation": the user consented at creation ("watch it and dig in if it goes wrong"). Pass investigateOnAttention on schedule_watch only when they asked for that in so many words, and confirm it in the same line as the rest of the watch. Never add it as a helpful extra — an investigation nobody asked for is worse than none.
+- A consented investigation applies only to outcomes that need attention: a run that failed, a queue that stayed backed up, an error that came back. Good news and neutral news end the watch and nothing else happens. When the wake tells you the investigation has already started, say so in one short clause and stop — the findings come later, in their own message.
 - On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
 - Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
 - When schedule_watch returns emailAlerts "none", the confirmation line MAY end with one short offer: "I can also email you when it fires — say the word." On "subscribed" add nothing, they already get one; on "unavailable" say nothing at all — never advertise an alert the plan denies.

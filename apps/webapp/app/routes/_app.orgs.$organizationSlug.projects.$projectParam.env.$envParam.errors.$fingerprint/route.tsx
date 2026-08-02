@@ -24,6 +24,8 @@ import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { errorWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
@@ -583,13 +585,19 @@ function ErrorDetailSidebar({
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
         {/* Hand this error group to the agent. Hidden when the agent isn't available. */}
-        <InvestigateButton
-          prompt={errorGroupPrompt(
-            ErrorId.toFriendlyId(errorGroup.fingerprint),
-            errorGroup.taskIdentifier
-          )}
-          label="Investigate this error"
-        />
+        <div className="flex shrink-0 items-center gap-1">
+          <InvestigateButton
+            prompt={errorGroupPrompt(
+              ErrorId.toFriendlyId(errorGroup.fingerprint),
+              errorGroup.taskIdentifier
+            )}
+            label="Investigate this error"
+          />
+          {/* Same entry, this object's recommendation: if it happens again. */}
+          <WatchButton
+            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
+          />
+        </div>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">

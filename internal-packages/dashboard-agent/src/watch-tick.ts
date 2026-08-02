@@ -343,6 +343,10 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
     resolution: watch.resolution ?? undefined,
     observed: watch.observedOutcome ?? undefined,
     note: spec.note,
+    // The consent given at creation. The wake carries it so the narration can
+    // say the investigation has started — the investigation itself is the wake
+    // turn's business, never this task's (§6).
+    investigateOnAttention: watch.investigateOnAttention,
   };
 }
 
@@ -663,6 +667,10 @@ export async function appendWakeToSession(args: {
         organizationId: args.watch.organizationId,
         projectId: args.watch.projectId,
         environmentId: args.watch.environmentId,
+        // The external ref a consented investigation is scoped by — the same
+        // one a normal turn carries, so a follow-up turn revises that
+        // investigation instead of opening a second one.
+        ...(args.watch.projectRef ? { projectRef: args.watch.projectRef } : {}),
       },
     },
   });
