@@ -15,7 +15,13 @@ import {
   type Watch,
   type WatchDeliveryClaim,
 } from "@internal/dashboard-agent-db";
-import type { WatchCheckResult } from "@internal/dashboard-agent-contracts";
+import {
+  watchResolutionForCheck,
+  watchResolutionToWireStatus,
+  type WatchCheckResult,
+  type WatchObservedOutcome,
+  type WatchResolution,
+} from "@internal/dashboard-agent-contracts";
 import { logger, sessions, task, tasks } from "@trigger.dev/sdk";
 import type { WatchWakeAction } from "./dashboard-agent";
 
@@ -95,7 +101,8 @@ export type WatchTickStore = {
   claimWatchTick(params: { id: string; generation: number }): Promise<Watch | null>;
   transitionWatchCondition(params: {
     id: string;
-    status: "fired" | "expired";
+    resolution: WatchResolution;
+    observedOutcome?: WatchObservedOutcome | null;
     lastResult?: Record<string, unknown> | null;
   }): Promise<Watch | null>;
   /**
@@ -173,12 +180,18 @@ export type WatchTickResult = { outcome: WatchTickOutcome; tickCount?: number };
 
 /** The check endpoint's answer, normalized. */
 type CheckOutcome =
-  | { kind: "result"; result: WatchCheckResult; facts?: Record<string, unknown> }
+  | {
+      kind: "result";
+      result: WatchCheckResult;
+      facts?: Record<string, unknown>;
+      /** What the check SAW — the second half of a resolved result (§4.2). */
+      observed?: WatchObservedOutcome;
+    }
   // The row is already over and the webapp knows it: the tick exits without
   // transitioning or delivering.
   | { kind: "revoked"; code?: string }
   // The check itself couldn't run. Never true, never false.
-  | { kind: "unavailable"; detail?: string };
+  | { kind: "unavailable"; detail?: string; observed?: WatchObservedOutcome };
 
 /**
  * Codes that mean the ROW is no longer active, so there is nothing left for the
@@ -222,7 +235,13 @@ async function postCheck(
   }
 
   const body = (await response.json().catch(() => undefined)) as
-    | { result?: WatchCheckResult; facts?: Record<string, unknown>; code?: string; error?: string }
+    | {
+        result?: WatchCheckResult;
+        facts?: Record<string, unknown>;
+        observed?: WatchObservedOutcome;
+        code?: string;
+        error?: string;
+      }
     | undefined;
 
   if (!response.ok) {
@@ -230,12 +249,15 @@ async function postCheck(
     return {
       kind: "unavailable",
       detail: body?.error ?? `status ${response.status}${body?.code ? ` (${body.code})` : ""}`,
+      observed: body?.observed,
     };
   }
 
   if (!body?.result) return { kind: "unavailable", detail: "the check returned no result" };
-  if (body.result === "unavailable") return { kind: "unavailable", detail: body.error };
-  return { kind: "result", result: body.result, facts: body.facts };
+  if (body.result === "unavailable") {
+    return { kind: "unavailable", detail: body.error, observed: body.observed };
+  }
+  return { kind: "result", result: body.result, facts: body.facts, observed: body.observed };
 }
 
 /**
@@ -300,6 +322,14 @@ export function expiredFacts(
   };
 }
 
+/**
+ * The wake, as the agent receives it.
+ *
+ * The transport keeps its as-built two-value encoding (§7.5, binding): the type
+ * and the action id still say `fired`/`expired`, so persisted wakes, dedup keys
+ * and banner render keys stay valid. The RESOLUTION and the OBSERVED OUTCOME
+ * travel in the payload beside them — that is where the meaning lives now.
+ */
 function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeAction {
   const spec = watch.spec as PersistedWatchSpec;
   return {
@@ -310,6 +340,8 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
     identity: watch.identity,
     spec,
     facts,
+    resolution: watch.resolution ?? undefined,
+    observed: watch.observedOutcome ?? undefined,
     note: spec.note,
   };
 }
@@ -393,12 +425,14 @@ async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boole
 export async function resolveAndDeliver(
   deps: WatchDeliveryDeps,
   watch: Watch,
-  status: "fired" | "expired",
-  facts: Record<string, unknown>
+  resolution: WatchResolution,
+  facts: Record<string, unknown>,
+  observed?: WatchObservedOutcome
 ): Promise<WatchTickResult> {
   const transitioned = await deps.store.transitionWatchCondition({
     id: watch.id,
-    status,
+    resolution,
+    observedOutcome: observed ?? null,
     lastResult: facts,
   });
 
@@ -418,7 +452,7 @@ export async function resolveAndDeliver(
   }
 
   await deliverWake(deps, transitioned);
-  return { outcome: status === "fired" ? "fired" : "expired" };
+  return { outcome: watchResolutionToWireStatus(resolution) };
 }
 
 /**
@@ -504,40 +538,55 @@ export async function runWatchTick(
     }
     // The final check couldn't run, but the deadline still passed: the watch
     // expires, and the narration says the condition couldn't be verified.
+    // The window completed without a usable final read: `window_completed`, but
+    // the observation is unverified, so the presentation says the condition
+    // couldn't be confirmed rather than that it didn't happen.
     return resolveAndDeliver(
       deps,
       claimed,
-      "expired",
-      expiredFacts(claimed, { verified: false, reason: "unverified_at_expiry" })
+      "window_completed",
+      expiredFacts(claimed, { verified: false, reason: "unverified_at_expiry" }),
+      check.observed
     );
   }
 
-  if (check.result === "satisfied") {
-    return resolveAndDeliver(deps, claimed, "fired", firedFacts(check.facts));
+  // §7.4 (binding): the final evaluation is a real evaluation. `satisfied` and
+  // `terminal_unsatisfied` resolve the same way at the boundary as before it —
+  // only `pending` and `unavailable` become `window_completed`.
+  const resolution = watchResolutionForCheck(check.result, final);
+
+  if (resolution === "condition_met") {
+    return resolveAndDeliver(
+      deps,
+      claimed,
+      "condition_met",
+      firedFacts(check.facts),
+      check.observed
+    );
   }
 
-  if (check.result === "terminal_unsatisfied") {
+  if (resolution === "condition_impossible") {
     // Not a failure: it can never happen now. Stop checking and say so.
     return resolveAndDeliver(
       deps,
       claimed,
-      "expired",
+      "condition_impossible",
       expiredFacts(claimed, {
         verified: true,
         reason: "terminal_unsatisfied",
         facts: check.facts,
-      })
+      }),
+      check.observed
     );
   }
 
-  // Still pending. Past the deadline that's an expiry (the condition was checked
-  // and hadn't happened); before it, tick again.
-  if (final) {
+  if (resolution === "window_completed") {
     return resolveAndDeliver(
       deps,
       claimed,
-      "expired",
-      expiredFacts(claimed, { verified: true, reason: "not_met_by_expiry", facts: check.facts })
+      "window_completed",
+      expiredFacts(claimed, { verified: true, reason: "not_met_by_expiry", facts: check.facts }),
+      check.observed
     );
   }
 

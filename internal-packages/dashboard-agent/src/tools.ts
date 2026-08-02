@@ -567,16 +567,22 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }
 
     const data = (await res.json().catch(() => undefined)) as
-      | { error?: string; reason?: string }
+      | { error?: string; reason?: string; code?: string }
       | undefined;
 
+    // 403 is a capability refusal, and the host says which one. A 400 with
+    // `email_not_allowed` is a caller mistake (an address that isn't the user's
+    // own), and its message is written to be relayed as-is.
     if (res.status === 403) {
       return {
         error:
-          data?.reason === "plan"
-            ? "Email alerts aren't available on this plan. Tell the user that, and that watch fires still show in the dashboard."
-            : "Email alerts aren't enabled here. Tell the user that, and that watch fires still show in the dashboard.",
+          data?.reason === "email_alerts_not_configured"
+            ? "Email delivery isn't set up on this instance, so an email alert can't be created. Tell the user that, and that watch results still show in the dashboard."
+            : "Email alerts aren't enabled here. Tell the user that, and that watch results still show in the dashboard.",
       };
+    }
+    if (res.status === 400 && data?.code === "email_not_allowed") {
+      return { error: data.error ?? "Alerts can only go to the user's own account email." };
     }
     if (!res.ok) {
       return { error: data?.error ?? `The alerts API failed (status ${res.status}).` };
@@ -1518,8 +1524,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     // The one tool that schedules future work. The host owns everything the
     // model shouldn't: the tenancy snapshot, the watch token, the periodic
     // checks, and the guardrails (≤3 per chat, no duplicate on the same thing,
-    // 24h ceiling). The model composes the spec and gets back either the created
-    // watch or — when the condition already holds — the immediate outcome.
+    // 24h ceiling). The model composes the spec and gets back one of two things:
+    // a running watch, or — when the creation-time check already answered the
+    // request — a ONE-SHOT result with no watch behind it at all.
     schedule_watch: tool({
       ...scheduleWatchSchema,
       execute: async ({ watch }) => {
@@ -1544,11 +1551,15 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
         const data = (await res.json().catch(() => undefined)) as
           | {
+              /** False = the ONE-SHOT result: the check answered, no watch exists. */
+              watching?: boolean;
               watchId?: string;
               identity?: string;
               status?: string;
               expiresAt?: string;
-              /** Whether a fire would already reach the user outside the chat. */
+              /** The creation-time check couldn't run; the watch is active anyway. */
+              unavailable?: boolean;
+              /** Whether a resolution would already reach the user outside the chat. */
               emailAlerts?: "subscribed" | "none" | "unavailable";
               immediate?: { result?: string; facts?: unknown };
               existingId?: string;
@@ -1585,19 +1596,19 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           }
         }
 
-        // Already true at creation time: there is nothing to wait for, so the
-        // model must answer now instead of promising a message later.
-        //
-        // `watchId` travels with the outcome on purpose: this result, once
-        // persisted next to the answer, is the proof that THIS watch's outcome
-        // reached the user — the backstop that would otherwise post the outcome as
-        // a wake reads it and stays quiet (see `hasInlineWatchNarration`).
-        if (data?.immediate) {
+        // The ONE-SHOT result. The creation-time check already answered the
+        // request, so NO watch was created — no row, no chip, no later wake. The
+        // model must answer from this result now; there is nothing to promise.
+        if (data?.watching === false && data.immediate) {
+          const satisfied = data.immediate.result === "satisfied";
           return {
-            watchId: data.watchId,
-            immediate: data.immediate,
             watching: false,
-            note: "The condition already holds, so no watch is running. Answer now.",
+            identity: data.identity,
+            outcome: satisfied ? "already_true" : "no_longer_possible",
+            immediate: data.immediate,
+            note: satisfied
+              ? "That already happened, so there is nothing left to watch. Answer now from these facts."
+              : "That can no longer happen, so there is nothing to watch. Answer now from these facts.",
           };
         }
 
@@ -1609,6 +1620,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           checkEveryMinutes: watch.checkEveryMinutes,
           note: watch.note,
           watching: true,
+          // The first check couldn't run. The watch is running anyway; say so
+          // rather than implying the condition was evaluated.
+          ...(data?.unavailable
+            ? { firstCheck: "unavailable" as const, checked: false }
+            : { checked: true }),
           // Decides whether the confirmation may offer an email alert: only
           // "none" leaves something to offer.
           emailAlerts: data?.emailAlerts ?? "none",

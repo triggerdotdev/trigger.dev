@@ -4,6 +4,7 @@ import {
   type WebAPIPlatformError,
   type WebAPIRateLimitedError,
 } from "@slack/web-api";
+import type { WatchObservedOutcome, WatchResolution } from "@internal/dashboard-agent-contracts";
 import { type ProjectAlertChannel } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
@@ -24,6 +25,7 @@ import {
   canUseDashboardAgentAlerts,
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
 } from "~/services/dashboardAgentWatchAlerts.server";
+import { presentResolvedWatch } from "~/components/dashboard-agent/watch-presentation";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
@@ -56,6 +58,14 @@ export type DashboardAgentWatchAlertPayload = {
   note: string;
   firedAt: string;
   facts: Record<string, unknown>;
+  /**
+   * How the watch ended and what the resolving check observed — the two halves
+   * the headline is built from (§4.2). Optional so a job enqueued by an older
+   * build still delivers; absent, the headline falls back to `condition_met`
+   * with no observation, which is the only resolution that alerts today.
+   */
+  resolution?: WatchResolution;
+  observed?: WatchObservedOutcome;
 };
 
 /** One channel's delivery: the fan-out payload plus the channel it targets. */
@@ -64,7 +74,23 @@ export type DashboardAgentWatchChannelAlertPayload = DashboardAgentWatchAlertPay
 };
 
 /** Bumped when the webhook body's shape changes. */
-const WEBHOOK_VERSION = "2026-07-29";
+const WEBHOOK_VERSION = "2026-08-02";
+
+/**
+ * The one place this service words a watch result — and it doesn't word it
+ * itself: it asks the shared presenter, so the email subject, the Slack line and
+ * the chat's wake banner are the same sentence (§6, visual continuity).
+ */
+function presentAlert(payload: DashboardAgentWatchAlertPayload) {
+  return presentResolvedWatch({
+    kind: payload.kind,
+    identity: payload.identity,
+    // Only a met condition fans out today; the fallback keeps an older payload
+    // from silently presenting as something else.
+    resolution: payload.resolution ?? "condition_met",
+    observed: payload.observed ?? null,
+  });
+}
 
 class SkipRetryError extends Error {}
 
@@ -250,6 +276,8 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       to: emailProperties.data.email,
       identity: payload.identity,
       kind: payload.kind,
+      headline: presentAlert(payload).headline,
+      tone: presentAlert(payload).tone,
       note: payload.note,
       firedAt: payload.firedAt,
       facts: factList(payload.facts),
@@ -326,7 +354,11 @@ export class DeliverDashboardAgentWatchChannelAlertService {
           identity: payload.identity,
           kind: payload.kind,
           note: payload.note,
+          // `outcome` keeps its as-built two-value encoding for receivers that
+          // already parse it (§7.5); `resolution` and `observed` carry the model.
           outcome: "fired",
+          resolution: payload.resolution ?? "condition_met",
+          observed: payload.observed ?? null,
           firedAt: payload.firedAt,
           facts: payload.facts,
         },
@@ -411,15 +443,16 @@ export class DeliverDashboardAgentWatchChannelAlertService {
     context: ResolvedContext
   ): { text: string; blocks: object[] } {
     const facts = factList(payload.facts);
+    const { headline } = presentAlert(payload);
 
     return {
-      text: `Watch fired: ${payload.identity} [${context.environmentName}]`,
+      text: `${headline} [${context.environmentName}]`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Watch fired: ${payload.identity}* [${context.environmentName}]\nYou asked to be told when: ${payload.note}`,
+            text: `*${headline}* [${context.environmentName}]\nYou asked to be told when: ${payload.note}`,
           },
         },
         ...(facts.length > 0

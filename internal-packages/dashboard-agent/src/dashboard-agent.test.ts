@@ -337,138 +337,115 @@ describe("watch wake narration", () => {
   });
 
   /**
-   * A history snapshot, as the agent reads it at boot. The wakes below run as
-   * continuation runs, which is how a real wake arrives: minutes after the turn
-   * that created the watch, on a run that boots from this snapshot.
+   * A model that records the prompt it was asked with, so the wake's framing can
+   * be asserted directly. The narration IS the prompt's job — what it must never
+   * say is as load-bearing as what it must.
    */
-  function snapshotOf(messages: UIMessage[]) {
-    return { version: 1 as const, savedAt: Date.now(), messages };
+  function recordingModel(text: string) {
+    const prompts: unknown[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        return { stream: simulateReadableStream({ chunks: textStep(text) }) };
+      },
+      doGenerate: async () => ({
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: USAGE,
+        warnings: [],
+      }),
+    });
+    return { model, prompts };
   }
 
-  /**
-   * The turn that created the watch, as it lands in the transcript: ONE assistant
-   * message whose parts are the `schedule_watch` call that came back with an
-   * immediate outcome and then the answer the model wrote from it. The SDK keys a
-   * whole turn (all steps) to one assistant message id, so that ordering is what a
-   * completed turn really looks like.
-   *
-   * `preamble` is the text a model sometimes writes on its way TO the tool call —
-   * before the outcome exists, so it can't be the answer to it.
-   */
-  function inlineTurn(options: { narrated: boolean; preamble?: boolean }): UIMessage[] {
-    return [
-      { id: "u1", role: "user", parts: [{ type: "text", text: "tell me when it drains" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          ...(options.preamble
-            ? [{ type: "text" as const, text: "Let me check the queue first." }]
-            : []),
-          {
-            type: "tool-schedule_watch",
-            toolCallId: "call_1",
-            state: "output-available",
-            input: {},
-            output: { watchId: "watch_1", immediate: { result: "satisfied" }, watching: false },
-          },
-          ...(options.narrated
-            ? [{ type: "text" as const, text: "It's already drained — 0 pending." }]
-            : []),
-        ],
-      },
-    ] as unknown as UIMessage[];
+  function wakeText(prompts: unknown[]): string {
+    return JSON.stringify(prompts);
   }
 
-  it("an outcome the creating turn already answered inline is not told a second time", async () => {
-    const { store, calls } = fakeStore();
+  // §4.2 / §7.7: the narration speaks the resolution model, and a completed
+  // window is an ANSWER — never "the watch expired with nothing to say".
+  it("frames a completed window as the answer the user asked for", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("The backlog still hasn't drained — 42 pending.");
     harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline",
+      chatId: "chat_wake_window",
       clientData: CLIENT_DATA,
-      continuation: true,
-      snapshot: snapshotOf(inlineTurn({ narrated: true })),
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
+        set(dashboardAgentModelKey, model);
       },
     });
 
-    // The wake is delivered anyway — the host can't tell whether the turn survived —
-    // so the narration is where the transcript decides. It already holds this
-    // watch's outcome, so the wake says nothing and the row just closes out.
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("");
-    expect(calls.persistMessages).toHaveLength(0);
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired" as const,
+      id: "watch:watch_1:expired",
+      resolution: "window_completed" as const,
+      observed: { kind: "backlog_drain", verified: true, depth: 42 },
+      facts: { verified: true, reason: "not_met_by_expiry", depth: 42 },
+    });
+
+    const prompt = wakeText(prompts);
+    expect(prompt).toContain("window_completed");
+    expect(prompt).toContain("this is the answer the user asked for");
+    expect(prompt).toContain("reports once");
+    // The wire encoding is transport, not vocabulary (§7.5).
+    expect(prompt).not.toContain("the watch ended without firing");
   });
 
-  it("an inline outcome whose turn died before answering is narrated by the wake", async () => {
-    const { store, calls } = fakeStore();
+  it("hands the observed outcome to the narration, not just the resolution", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("Run run_abc123 failed after 4.2s.");
     harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_lost",
+      chatId: "chat_wake_failed",
       clientData: CLIENT_DATA,
-      continuation: true,
-      // The turn persisted the tool result but never the answer, and the user then
-      // typed something else — which moves the chat's last-message time without
-      // telling anyone what the watch found.
-      snapshot: snapshotOf([
-        ...inlineTurn({ narrated: false }),
-        { id: "u2", role: "user", parts: [{ type: "text", text: "what happened?" }] },
-      ] as unknown as UIMessage[]),
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+        set(dashboardAgentModelKey, model);
       },
     });
 
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
+    await harness.sendAction({
+      ...WAKE,
+      identity: "run_finished:run_abc123",
+      spec: { ...WAKE.spec, kind: "run_finished", runId: "run_abc123" },
+      resolution: "condition_met" as const,
+      observed: {
+        kind: "run_finished",
+        verified: true,
+        finalStatus: "COMPLETED_WITH_ERRORS",
+        durationMs: 4200,
+      },
+      facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
+    });
+
+    const prompt = wakeText(prompts);
+    expect(prompt).toContain("What the final check observed");
+    expect(prompt).toContain("COMPLETED_WITH_ERRORS");
   });
 
-  it("a later answer to a different question is not proof the outcome was told", async () => {
-    const { store, calls } = fakeStore();
+  // A wake from a watcher that predates the resolution model still narrates: the
+  // resolution is reconstructed from the transport rather than lost.
+  it("falls back to the transport encoding when a wake carries no resolution", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("That can't happen any more.");
     harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_unrelated",
+      chatId: "chat_wake_legacy",
       clientData: CLIENT_DATA,
-      continuation: true,
-      // The creating turn died before it answered. The user then asked something
-      // else and got an answer — about that something else. It says nothing about
-      // what the watch found, so the wake is still the only telling of it.
-      snapshot: snapshotOf([
-        ...inlineTurn({ narrated: false }),
-        { id: "u2", role: "user", parts: [{ type: "text", text: "how many runs failed?" }] },
-        { id: "a2", role: "assistant", parts: [{ type: "text", text: "Three runs failed." }] },
-      ] as unknown as UIMessage[]),
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+        set(dashboardAgentModelKey, model);
       },
     });
 
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
-  });
-
-  it("text written before the tool call is not the answer to its outcome", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_preamble",
-      clientData: CLIENT_DATA,
-      continuation: true,
-      // The turn wrote its lead-in, called the tool, and then died. The prose is in
-      // the same message as the tool part but BEFORE it, so it was written without
-      // the outcome in hand.
-      snapshot: snapshotOf(inlineTurn({ narrated: false, preamble: true })),
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
-      },
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired" as const,
+      id: "watch:watch_1:expired",
+      facts: { reason: "terminal_unsatisfied" },
     });
 
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(wakeText(prompts)).toContain("condition_impossible");
   });
 
   it("a different outcome on the same watch is a different wake", async () => {
@@ -1414,12 +1391,39 @@ describe("buildDashboardAgentTools", () => {
     expect(duplicate.result.error).toContain("already being watched");
   });
 
-  it("schedule_watch reports an immediate outcome instead of a running watch", async () => {
+  // §2.2/§4.1: the host answered the request outright and created no watch, so
+  // the tool result is a ONE-SHOT the model must answer from in this turn.
+  it("schedule_watch reports a one-shot outcome instead of a running watch", async () => {
     const { result } = await scheduleWatch({
-      body: { immediate: { result: "satisfied", facts: { status: "COMPLETED" } } },
+      body: {
+        watching: false,
+        identity: "run_finished:run_abc",
+        immediate: { result: "satisfied", facts: { status: "COMPLETED" } },
+      },
     });
     expect(result.watching).toBe(false);
+    expect(result.outcome).toBe("already_true");
     expect(result.immediate).toEqual({ result: "satisfied", facts: { status: "COMPLETED" } });
+    // No watch id: there is nothing to cancel, and nothing will wake later.
+    expect(result.watchId).toBeUndefined();
+
+    const impossible = await scheduleWatch({
+      body: {
+        watching: false,
+        identity: "run_finished:run_abc",
+        immediate: { result: "terminal_unsatisfied", facts: {} },
+      },
+    });
+    expect(impossible.result.outcome).toBe("no_longer_possible");
+  });
+
+  it("schedule_watch says so when the first check couldn't run", async () => {
+    const { result } = await scheduleWatch({
+      body: { watching: true, watchId: "watch_1", status: "active", unavailable: true },
+    });
+    expect(result.watching).toBe(true);
+    expect(result.firstCheck).toBe("unavailable");
+    expect(result.checked).toBe(false);
   });
 
   it("schedule_watch fails closed with no chat and rejects a cadence the contract floors", async () => {
@@ -1712,20 +1716,35 @@ describe("watch alert tools", () => {
   });
 
   it("create_alert relays a 403 with the reason the host gave", async () => {
-    const plan = await callAlertTool(
+    const noEmailSetup = await callAlertTool(
       "create_alert",
       {},
-      { status: 403, body: { error: "denied", reason: "plan" } }
+      { status: 403, body: { error: "denied", reason: "email_alerts_not_configured" } }
     );
-    expect(plan.result.error).toContain("aren't available on this plan");
-    expect(plan.result.error).toContain("dashboard");
+    expect(noEmailSetup.result.error).toContain("isn't set up on this instance");
+    expect(noEmailSetup.result.error).toContain("dashboard");
 
     const flag = await callAlertTool(
       "create_alert",
       {},
-      { status: 403, body: { error: "denied", reason: "flag" } }
+      { status: 403, body: { error: "denied", reason: "dashboard_agent_disabled" } }
     );
     expect(flag.result.error).toContain("aren't enabled here");
+  });
+
+  it("create_alert relays the address refusal verbatim", async () => {
+    const refused = await callAlertTool(
+      "create_alert",
+      { email: "someone@else.com" },
+      {
+        status: 400,
+        body: {
+          code: "email_not_allowed",
+          error: "Alerts can only be sent to your own account email.",
+        },
+      }
+    );
+    expect(refused.result.error).toBe("Alerts can only be sent to your own account email.");
   });
 
   it("delete_alert deletes by id and surfaces a failure as text", async () => {

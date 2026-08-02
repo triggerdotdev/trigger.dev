@@ -370,7 +370,7 @@ export const renderViewSchema = tool({
 
 export const scheduleWatchSchema = tool({
   description:
-    "Watch something and tell the user when it happens, later, without them asking again. Use this whenever they want to be told about a future event: a run starting or finishing, a backlog draining, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. The watch checks on its own cadence and wakes the chat once, with the outcome; it expires within 24 hours either way. A chat may hold at most 3 at once. `note` is why the watch exists in the user's own words — it is shown when it fires.",
+    "Watch something and tell the user when it happens, later, without them asking again. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining or growing past a threshold, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. The watch checks on its own cadence and reports ONCE, with what it found; it stops within 24 hours either way, and a window that ran out with the condition still not true is still an answer. A chat may hold at most 3 at once. `note` is why the watch exists in the user's own words — it is shown with the result. If the condition is already true (or can no longer become true) when you call this, no watch is created: you get the answer back immediately and must answer from it in the same turn.",
   inputSchema: z.object({
     watch: watchSpecSchema.describe(
       "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words — it is shown when it fires."
@@ -388,24 +388,26 @@ export const scheduleWatchSchema = tool({
 
 export const listAlertsSchema = tool({
   description:
-    'List this project\'s alert subscriptions for watch fires — who gets notified when a watch fires, and whether each one is enabled. Use this to answer "what alerts do I have?".',
+    'List this project\'s alert subscriptions for watch results — who gets notified when a watch resolves, and whether each one is enabled. Use this to answer "what alerts do I have?".',
   inputSchema: z.object({}),
 });
 
 export const createAlertSchema = tool({
   description:
-    "Subscribe to an email alert for every watch that fires in this project. Defaults to the user's account email. ONLY call this when the user explicitly asked for an alert — never as a helpful extra. If it comes back denied by plan or feature flag, relay that honestly and offer the dashboard notification, which is always on, instead.",
+    "Subscribe to an email alert for every watch that resolves in this project. It always goes to the user's own account email. ONLY call this when the user explicitly asked for an alert — never as a helpful extra. If it comes back denied, relay that honestly and offer the dashboard notification, which is always on, instead.",
   inputSchema: z.object({
     email: z
       .string()
       .optional()
-      .describe("Email to alert. Omit to use the user's own account email."),
+      .describe(
+        "Omit this. Alerts can only go to the user's own account email; any other address is rejected."
+      ),
   }),
 });
 
 export const deleteAlertSchema = tool({
   description:
-    "Turn one alert subscription off, by its id from list_alerts. Watch fires still show in the dashboard.",
+    "Turn one alert subscription off, by its id from list_alerts. Watch results still show in the dashboard.",
   inputSchema: z.object({
     alertId: z.string().describe("The alert id returned by list_alerts."),
   }),

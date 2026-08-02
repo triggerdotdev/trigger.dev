@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import {
   ProjectAlertEmailProperties,
   ProjectAlertSlackProperties,
@@ -27,8 +27,8 @@ import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChann
  * it trusts is the agent acting for the signed-in user in a live chat. The
  * environment is the token's, not the body's (see `resolveAgentAlertContext`).
  *
- * The plan/flag gate is enforced here AND at delivery, and its denial carries a
- * machine-readable `reason` so the agent can say why instead of guessing.
+ * The feature-flag/transport gate is enforced here AND at delivery, and its denial
+ * carries a machine-readable `reason` so the agent can say why instead of guessing.
  */
 
 const ListQuerySchema = z.object({
@@ -40,7 +40,7 @@ const ListQuerySchema = z.object({
 const CreateBodySchema = z.object({
   chatId: z.string().min(1),
   channel: z.literal("email"),
-  /** Defaults to the authenticated user's account email. */
+  /** Omit it: it defaults to, and may only be, the authenticated user's account email. */
   email: z.string().email().optional(),
   environmentId: z.string().min(1).optional(),
   projectRef: z.string().min(1).optional(),
@@ -165,15 +165,25 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Alerts are not available here", code: gate.reason }, { status: 403 });
   }
 
-  // Default to the account email: the agent must not be able to point an alert at
-  // an address the user didn't give it.
-  let email = body.email;
-  if (!email) {
-    const user = await $replica.user.findFirst({ where: { id: userId }, select: { email: true } });
-    if (!user) {
-      return json({ error: "User not found", code: "invalid_request" }, { status: 404 });
-    }
-    email = user.email;
+  // The agent may only ever subscribe the signed-in user's own account email.
+  // Omitting it is the normal path; supplying one is accepted only when it IS that
+  // address, so a model can't be talked into mailing a watch to someone else.
+  // Read off the primary, not the replica: this is the identity the subscription
+  // is pinned to.
+  const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
+  if (!user) {
+    return json({ error: "User not found", code: "invalid_request" }, { status: 404 });
+  }
+  const email = user.email;
+  if (body.email && body.email.trim().toLowerCase() !== email.toLowerCase()) {
+    return json(
+      {
+        error:
+          "Watch alerts can only go to your own account email. Ask the user to add another address on the Alerts page.",
+        code: "email_not_allowed",
+      },
+      { status: 400 }
+    );
   }
 
   try {

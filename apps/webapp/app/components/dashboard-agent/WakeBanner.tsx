@@ -1,23 +1,45 @@
 /**
  * The banner above a wake narration.
  *
- * A wake arrives unprompted: nobody typed anything, the watch fired and the chat
- * spoke. Rendered as plain assistant prose that reads like an answer to a
- * question the user never asked — so the narration gets a banner that says what
- * happened before the text does, with the outcome carried by a coloured accent
- * and icon (the same rule the run status cells and the watch chips follow: the
- * text keeps its colour, the state is the icon's job).
+ * A wake arrives unprompted: nobody typed anything, the watch resolved and the
+ * chat spoke. Rendered as plain assistant prose it would read like an answer to a
+ * question the user never asked — so the narration gets a banner that states the
+ * FACT before the text does, with the outcome carried by a coloured accent and
+ * icon (the same rule the run status cells and the watch chips follow: the text
+ * keeps its colour, the state is the icon's job).
  *
- * A wake is identified by its message id — `wake:watch:{watchId}:{fired|expired}`,
- * written by the agent's `narrateWatchWake` — so no protocol change is needed to
- * spot one in the transcript.
+ * **This component contains no kind-specific wording.** Category, tone, semantic
+ * icon and headline key come from the exhaustive resolved-result mapping in
+ * contracts; the final English comes from `watch-presentation.ts`. All this file
+ * decides is which glyph a semantic icon draws and which frame a tone paints.
+ *
+ * A wake is identified by its message id — `wake:watch:{watchId}:{fired|expired}`.
+ * That two-value suffix is the stable TRANSPORT encoding (§7.5): it is not the
+ * outcome, it is how the wake is addressed. The outcome comes off the watch row.
  */
-import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import {
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/20/solid";
+import type {
+  WatchObservedOutcome,
+  WatchResolution,
+  WatchSemanticIcon,
+} from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
+import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-presentation";
 
 const WAKE_ID_PREFIX = "wake:watch:";
 
+/**
+ * The wire encoding in a wake's message id. NOT the resolution — a
+ * `window_completed` and a `condition_impossible` are both addressed as
+ * `expired`, and the row is the authority on which one it was.
+ */
 export type WakeOutcome = "fired" | "expired";
 
 /** The watch fields a banner can use. A `WatchChip` satisfies it. */
@@ -26,20 +48,17 @@ export type WakeWatch = {
   kind: string;
   note: string;
   identity: string;
+  /** How the watch ended. Absent on a row written before the resolution model. */
+  resolution?: WatchResolution | null;
+  /** What the resolving check observed — the other half of the headline. */
+  observedOutcome?: WatchObservedOutcome | null;
   /**
    * Why the watch ended, from its last result — `terminal_unsatisfied` when the
-   * condition became impossible (a cancelled run, a deleted queue). Absent when
-   * the host doesn't carry it, and the banner falls back to the plain expiry.
+   * condition became impossible. Only used to reconstruct a resolution for rows
+   * that predate the `resolution` column.
    */
   endedReason?: string | null;
 };
-
-/**
- * A watch that expired because its condition can never happen now. That IS an
- * answer, so it gets its own headline instead of "no answer" — the watcher writes
- * this reason when a check comes back `terminal_unsatisfied`.
- */
-const TERMINAL_UNSATISFIED = "terminal_unsatisfied";
 
 export type WakeRef = { watchId: string; outcome: WakeOutcome };
 
@@ -63,44 +82,49 @@ export function findWakeWatch(watches: WakeWatch[] | undefined, watchId: string)
   return watches?.find((watch) => watch.id === watchId);
 }
 
-// Kinds whose condition being met is good news. `error_recurrence` is the
-// inverse: it fires because something broke again.
-const GOOD_NEWS_KINDS = new Set(["health_recovery", "backlog_drain", "run_start", "run_finished"]);
-
-function toneFor(outcome: WakeOutcome, kind: string | undefined): AgentTone {
-  if (outcome === "expired") return "neutral";
-  if (kind === "error_recurrence") return "error";
-  if (kind && GOOD_NEWS_KINDS.has(kind)) return "success";
-  // Fired, but we don't know what for: say so without claiming an outcome.
-  return "neutral";
-}
-
-/** The banner's headline. Exported for the tests; the component owns the tone. */
-export function wakeHeadline(
+/**
+ * The watch's resolution, falling back to what the transport can prove for a row
+ * written before the `resolution` column existed. `fired` is unambiguous;
+ * `expired` splits on the last check's reason, exactly as the old banner did.
+ */
+export function wakeResolution(
   outcome: WakeOutcome,
-  watch: Pick<WakeWatch, "endedReason"> | undefined,
-  tone: AgentTone
-): string {
-  if (outcome === "expired") {
-    return watch?.endedReason === TERMINAL_UNSATISFIED
-      ? "Watch ended — the condition can no longer happen"
-      : "Watch expired — no answer";
-  }
-  switch (tone) {
-    case "success":
-      return "Watch update — all clear";
-    case "error":
-      return "Watch update — needs your attention";
-    default:
-      return "Watch update — condition met";
-  }
+  watch: Pick<WakeWatch, "resolution" | "endedReason"> | undefined
+): WatchResolution {
+  if (watch?.resolution) return watch.resolution;
+  if (outcome === "fired") return "condition_met";
+  return watch?.endedReason === "terminal_unsatisfied"
+    ? "condition_impossible"
+    : "window_completed";
 }
 
-const TONE_ICON: Record<AgentTone, (props: { className?: string }) => JSX.Element> = {
-  neutral: ClockIcon,
+/**
+ * What this banner shows. Exported for the tests and for any surface that wants
+ * the same answer without the markup.
+ */
+export function wakePresentation(outcome: WakeOutcome, watch: WakeWatch | undefined) {
+  if (!watch) return WATCH_PRESENTATION_FALLBACK;
+  return presentResolvedWatch({
+    kind: watch.kind,
+    identity: watch.identity,
+    resolution: wakeResolution(outcome, watch),
+    observed: watch.observedOutcome ?? null,
+  });
+}
+
+/**
+ * Semantic icon → glyph. The mapping lives here because the icon SET is this
+ * app's; which icon a resolved result deserves was decided in contracts, and the
+ * rule it encodes is that the icon follows the outcome, never the resolution — a
+ * failed run gets `error`, not the success check its `condition_met` would
+ * otherwise suggest.
+ */
+const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) => JSX.Element> = {
   success: CheckCircleIcon,
-  warning: ExclamationTriangleIcon,
-  error: ExclamationTriangleIcon,
+  attention: ExclamationTriangleIcon,
+  error: ExclamationCircleIcon,
+  waiting: ClockIcon,
+  info: InformationCircleIcon,
 };
 
 const TONE_FRAME: Record<AgentTone, string> = {
@@ -111,32 +135,39 @@ const TONE_FRAME: Record<AgentTone, string> = {
 };
 
 /** What the watch was for: the user's own words, else whatever names it. */
-function subline(watch: WakeWatch | undefined): string {
+function subline(watch: WakeWatch | undefined): string | null {
   const note = watch?.note.trim();
   if (note) return note;
   if (watch?.identity) return watch.identity;
   if (watch?.kind) return watch.kind;
-  return "The watch woke this chat up on its own.";
+  return null;
 }
 
 export function WakeBanner({
   outcome,
   watch,
 }: {
+  /** The wire encoding from the wake's message id (§7.5). */
   outcome: WakeOutcome;
-  /** The watch that woke, when the host has it. Absent: kind-agnostic wording. */
+  /** The watch that woke, when the host has it. Absent: the neutral fallback. */
   watch?: WakeWatch;
 }) {
-  const tone = toneFor(outcome, watch?.kind);
-  const Icon = TONE_ICON[tone];
+  const presentation = wakePresentation(outcome, watch);
+  const tone = presentation.tone as AgentTone;
+  const Icon = SEMANTIC_ICON[presentation.semanticIcon];
+  const note = subline(watch);
+
   return (
     <div
       className={cn("flex items-start gap-2 rounded-r-md border-l-2 px-3 py-2", TONE_FRAME[tone])}
     >
       <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_ICON_COLOR[tone])} />
       <div className="min-w-0">
-        <p className="text-sm font-medium text-text-bright">{wakeHeadline(outcome, watch, tone)}</p>
-        <p className="truncate text-xs text-text-dimmed">{subline(watch)}</p>
+        <p className="text-xxs font-medium uppercase tracking-wider text-text-dimmed">
+          {presentation.label}
+        </p>
+        <p className="text-sm font-medium text-text-bright">{presentation.headline}</p>
+        {note ? <p className="truncate text-xs text-text-dimmed">{note}</p> : null}
       </div>
     </div>
   );

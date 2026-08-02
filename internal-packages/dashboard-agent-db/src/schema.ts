@@ -11,7 +11,11 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { WatchSpec } from "@internal/dashboard-agent-contracts";
+import type {
+  WatchObservedOutcome,
+  WatchResolution,
+  WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 
 /**
  * All dashboard-agent tables live in a dedicated Postgres schema. In cloud this
@@ -194,7 +198,12 @@ export type WatchStatus = "active" | "fired" | "expired" | "cancelled";
  * concurrent invocations can't both wake the chat (see `claimWatchDelivery`).
  */
 export type WatchDeliveryStatus = "not_required" | "pending" | "delivering" | "delivered";
-export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted";
+/**
+ * `scheduling_failed` is the one cancellation the system issues on its own: the
+ * first tick could not be scheduled, so nothing would ever check this watch.
+ * Silent like every other cancellation — no resolution, no wake.
+ */
+export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted" | "scheduling_failed";
 
 /**
  * The persisted spec adds a server-set `since` to the caller's spec. It's the
@@ -235,6 +244,21 @@ export const watches = dashboardAgentSchema.table(
       .notNull()
       .default("not_required"),
     cancelReason: text("cancel_reason").$type<WatchCancelReason>(),
+    /**
+     * HOW the watch ended, in the model's own three values — `condition_met`,
+     * `window_completed`, `condition_impossible`. `status` above stays as the
+     * two-value transport encoding (§7.5) so persisted wake ids and dedup keys
+     * remain valid; this column is the meaning. NULL while active and on every
+     * cancellation (a cancelled watch has no resolution).
+     */
+    resolution: text("resolution").$type<WatchResolution>(),
+    /**
+     * WHAT the resolving check observed — the run's final status, the depth, the
+     * recurrence count. Written in the SAME statement as `resolution` and
+     * `lastResult`, so delivery never re-reads the source to reconstruct what
+     * happened (§7.5) and a retry cannot rebuild a different headline.
+     */
+    observedOutcome: jsonb("observed_outcome").$type<WatchObservedOutcome>(),
     // Immutable initiating identity — snapshot at creation.
     organizationId: text("organization_id").notNull(),
     projectId: text("project_id").notNull(),

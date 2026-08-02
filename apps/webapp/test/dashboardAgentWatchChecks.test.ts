@@ -495,3 +495,183 @@ describe("health_recovery", () => {
     expect(outcome.facts.reason).toBe("report_unavailable");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The observed outcome — the second half of a resolved result (§4.2).
+//
+// The resolution says HOW a watch ended; the observation says what was true when
+// it did. These pin the observations the presentation actually splits on.
+// ---------------------------------------------------------------------------
+
+const queueAbove: WatchSpec = {
+  kind: "queue_depth_above",
+  queue: "email-sends",
+  threshold: 500,
+  checkEveryMinutes: 5,
+  maxHours: 2,
+  note: "tell me if it grows past 500",
+};
+
+describe("run_finished — status awareness", () => {
+  // The reader PRESERVES the final status. Without it "finished" and "failed"
+  // are the same `condition_met` and the banner cannot tell them apart.
+  it("keeps the final status on a completion, whatever it was", async () => {
+    for (const status of ["COMPLETED_SUCCESSFULLY", "COMPLETED_WITH_ERRORS", "CRASHED"]) {
+      const outcome = await check(
+        runFinished,
+        deps({
+          readRun: async () =>
+            run({
+              status,
+              startedAt: new Date("2026-07-27T11:56:00.000Z"),
+              completedAt: new Date("2026-07-27T11:59:00.000Z"),
+            }),
+        })
+      );
+      expect(outcome.result).toBe("satisfied");
+      expect(outcome.observed).toMatchObject({
+        kind: "run_finished",
+        verified: true,
+        finalStatus: status,
+        durationMs: 180_000,
+      });
+    }
+  });
+
+  it("never claims a final status for a run that is still going", async () => {
+    const outcome = await check(
+      runFinished,
+      deps({ readRun: async () => run({ status: "EXECUTING" }) })
+    );
+    expect(outcome.result).toBe("pending");
+    expect(outcome.observed).toMatchObject({ kind: "run_finished", finalStatus: null });
+  });
+
+  it("observes nothing verifiable when the run is gone", async () => {
+    const outcome = await check(runFinished, deps({ readRun: async () => null }));
+    expect(outcome.result).toBe("terminal_unsatisfied");
+    expect(outcome.observed).toMatchObject({ kind: "run_finished", finalStatus: null });
+  });
+});
+
+describe("queue_depth_above", () => {
+  it("is the drain check with the comparison inverted", async () => {
+    const above = await check(
+      queueAbove,
+      deps({ readQueueDepth: async () => ({ depth: 612, source: "live_queue", current: true }) })
+    );
+    expect(above.result).toBe("satisfied");
+    expect(above.observed).toMatchObject({
+      kind: "queue_depth_above",
+      verified: true,
+      depth: 612,
+      threshold: 500,
+    });
+
+    const below = await check(
+      queueAbove,
+      deps({ readQueueDepth: async () => ({ depth: 500, source: "live_queue", current: true }) })
+    );
+    // Exactly AT the threshold is not above it.
+    expect(below.result).toBe("pending");
+  });
+
+  // A quiet queue can grow at any moment — that is what this watch is for. Only
+  // the queue disappearing makes the condition impossible.
+  it("stays pending on an empty queue and is terminal only when the queue is gone", async () => {
+    const empty = await check(
+      queueAbove,
+      deps({ readQueueDepth: async () => ({ depth: 0, source: "live_queue", current: true }) })
+    );
+    expect(empty.result).toBe("pending");
+
+    const gone = await check(
+      queueAbove,
+      deps({ readQueueDepth: async () => null, queueExists: async () => false })
+    );
+    expect(gone.result).toBe("terminal_unsatisfied");
+  });
+
+  // The freshness fence is shared verbatim with backlog_drain: a stale empty
+  // bucket can no more prove "still below" than it can prove "drained".
+  it("refuses a stale zero, and marks a stale non-zero approximate", async () => {
+    const stale = await check(
+      queueAbove,
+      deps({
+        readQueueDepth: async () => ({
+          depth: 0,
+          source: "queue_metrics",
+          current: false,
+          asOf: new Date("2026-07-27T11:40:00.000Z"),
+        }),
+      })
+    );
+    expect(stale.result).toBe("unavailable");
+    expect(stale.observed).toMatchObject({ kind: "queue_depth_above", verified: false });
+
+    const staleAbove = await check(
+      queueAbove,
+      deps({
+        readQueueDepth: async () => ({
+          depth: 900,
+          source: "queue_metrics",
+          current: false,
+          asOf: new Date("2026-07-27T11:40:00.000Z"),
+        }),
+      })
+    );
+    expect(staleAbove.result).toBe("satisfied");
+    expect(staleAbove.facts).toMatchObject({ depthApproximate: true, threshold: 500 });
+  });
+
+  it("reports the depth it read, so the headline needs no second look", async () => {
+    const outcome = await check(
+      queueAbove,
+      deps({ readQueueDepth: async () => ({ depth: 612, source: "live_queue", current: true }) })
+    );
+    expect(outcome.observed).toMatchObject({ depth: 612, threshold: 500 });
+  });
+});
+
+describe("observations", () => {
+  it("marks the observation unverified when a reader throws", async () => {
+    const outcome = await check(
+      runFinished,
+      deps({
+        readRun: async () => {
+          throw new Error("postgres is down");
+        },
+      })
+    );
+    expect(outcome.result).toBe("unavailable");
+    expect(outcome.observed).toMatchObject({ kind: "run_finished", verified: false });
+  });
+
+  it("never records a severity off an untrustworthy health report", async () => {
+    const outcome = await check(
+      healthRecovery,
+      deps({ readHealth: async () => ({ trustworthy: false, severity: "ok" }) })
+    );
+    expect(outcome.result).toBe("pending");
+    expect(outcome.observed).toMatchObject({
+      kind: "health_recovery",
+      verified: false,
+      severity: null,
+    });
+  });
+
+  it("gives every kind an observation of its own kind", async () => {
+    const specs: WatchSpec[] = [
+      runStart,
+      runFinished,
+      backlogDrain,
+      queueAbove,
+      errorRecurrence,
+      healthRecovery,
+    ];
+    for (const spec of specs) {
+      const outcome = await check(spec, deps());
+      expect(outcome.observed.kind).toBe(spec.kind);
+    }
+  });
+});

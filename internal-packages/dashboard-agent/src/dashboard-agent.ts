@@ -244,7 +244,13 @@ async function generateAndSaveTitle(
   }
 }
 
-import { agentPageContextSchema, type WatchSpec } from "@internal/dashboard-agent-contracts";
+import {
+  agentPageContextSchema,
+  watchResolutions,
+  type WatchObservedOutcome,
+  type WatchResolution,
+  type WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 
 export type {
   AgentPage,
@@ -305,6 +311,10 @@ export const clientDataSchema = z.object({
  * becomes the narration message's id. That is the dedup: a redelivered wake (the
  * watcher retried after appending but before marking the delivery) finds its
  * message already in the history and narrates nothing.
+ *
+ * `type` and `id` keep that two-value encoding on purpose (§7.5, binding): it is
+ * the stable TRANSPORT, not the model. How the watch actually ended travels in
+ * `resolution`, and what was observed when it did travels in `observed`.
  */
 export type WatchWakeAction = {
   type: "watch.fired" | "watch.expired";
@@ -316,6 +326,10 @@ export type WatchWakeAction = {
   spec: WatchSpec & { since?: string };
   /** What the final check observed. The numbers the narration must use. */
   facts: Record<string, unknown>;
+  /** How the watch ended: met · window completed · impossible. */
+  resolution?: WatchResolution;
+  /** What was true when it ended — the run's final status, the depth, the count. */
+  observed?: WatchObservedOutcome;
   /** Why the watch exists, in the user's words. */
   note?: string;
 };
@@ -336,6 +350,11 @@ export const watchWakeActionSchema = z.object({
     })
     .passthrough(),
   facts: z.record(z.unknown()).default({}),
+  // Lenient for the same reason `spec` is: a wake must never be lost to a
+  // validation error. An older watcher that predates the resolution model simply
+  // sends neither, and the narration falls back to the transport encoding.
+  resolution: z.enum(watchResolutions).optional(),
+  observed: z.record(z.unknown()).optional(),
   note: z.string().optional(),
 });
 
@@ -343,7 +362,7 @@ export const watchWakeActionSchema = z.object({
 // one suggestion) lives in the managed system prompt's "Watches" section, which
 // is the cached block — this is only the per-wake framing.
 const WAKE_INSTRUCTION =
-  "This is a watch wake, not a question: nobody is waiting on a reply. Write ONE short message — the outcome, the numbers from the facts below, and one suggested next step. No tools, no new investigation, no recap.";
+  'A watch you set up earlier has resolved and reports once, right now — this is not a question, and nobody is waiting on a reply. Write ONE short message: what the watch found, the numbers from the facts below, and one suggested next step. Say what happened; never say the watch "fired" or "expired". A window that ran out with the condition still not true is an answer, not a failure. No tools, no new investigation, no recap.';
 
 /**
  * Coerce replayed tool-call inputs the Anthropic API would reject back to `{}`.
@@ -388,69 +407,49 @@ function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   ];
 }
 
+/**
+ * How the watch ended, in the resolution model's own words.
+ *
+ * The narration speaks resolution + observed outcome, never "fired"/"expired":
+ * those are the wire encoding (§7.5), and a watch that ran its whole window and
+ * found nothing has an ANSWER to give, not a failure to apologise for.
+ *
+ * Falls back to the transport when a wake predates the resolution model.
+ */
+function wakeResolution(action: WatchWakeAction): WatchResolution {
+  if (action.resolution) return action.resolution;
+  if (action.type === "watch.fired") return "condition_met";
+  return (action.facts as { reason?: string } | undefined)?.reason === "terminal_unsatisfied"
+    ? "condition_impossible"
+    : "window_completed";
+}
+
 function wakeOutcome(action: WatchWakeAction): string {
-  if (action.type === "watch.fired") return "the condition happened";
-  // An expiry can be a real answer: the condition became impossible (e.g. the
-  // watched run was cancelled), which is not the same as running out of time.
-  if ((action.facts as { reason?: string } | undefined)?.reason === "terminal_unsatisfied") {
-    return "the condition can no longer happen — that is the answer, not a timeout";
+  switch (wakeResolution(action)) {
+    case "condition_met":
+      return "the condition became true inside the window";
+    case "condition_impossible":
+      return "the condition can no longer become true — that is the answer, not a timeout";
+    case "window_completed":
+      // Deliberately not "nothing happened": "it didn't drain in an hour" is
+      // exactly the thing the user asked to be told.
+      return "the window ran out with the condition still not true — this is the answer the user asked for, so report it plainly";
   }
-  return "the watch ended without firing";
 }
 
 function wakePrompt(action: WatchWakeAction): string {
   return [
     WAKE_INSTRUCTION,
-    `Outcome: ${wakeOutcome(action)}.`,
+    `Resolution: ${wakeResolution(action)} — ${wakeOutcome(action)}.`,
     `Watching: ${action.spec.kind}${action.identity ? ` (${action.identity})` : ""}.`,
+    action.observed
+      ? `What the final check observed:\n${JSON.stringify(action.observed, null, 2)}`
+      : undefined,
     action.note ? `Why the user asked for it: ${action.note}` : undefined,
     `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,
   ]
     .filter(Boolean)
     .join("\n\n");
-}
-
-/**
- * Did the turn that CREATED this watch already tell the user its outcome?
- *
- * A watch whose condition was already true is resolved inline by the host and
- * answered in the same turn, so its wake is delivered later only as a backstop —
- * and it must not repeat an answer the user already has. The proof has to be
- * specific to this watch and durable, so it is read out of the persisted
- * transcript: a completed `schedule_watch` call that returned an immediate outcome
- * FOR THIS WATCH, and assistant prose that follows it IN THE SAME assistant
- * message. That is exactly how a completed turn persists — one assistant message
- * whose parts are the tool call and then the answer written from its result.
- *
- * Both halves of "follows it in the same message" are load-bearing:
- *
- * - A LATER message proves nothing about this watch. The user can ask anything at
- *   all afterwards, and the answer to that question would otherwise pass as the
- *   telling of an outcome that was never told. Same class of mistake as reading the
- *   chat's "last message" watermark, which a question, an error turn, or another
- *   watch's wake all move.
- * - Text BEFORE the tool part in the message was written without the outcome in
- *   hand (it is what the model said on its way to calling the tool), so it can't be
- *   the answer either.
- *
- * Anything short of that pair means no narration exists (the turn died before it,
- * or wrote nothing), and the wake narrates normally.
- */
-export function hasInlineWatchNarration(uiMessages: UIMessage[], watchId: string): boolean {
-  return uiMessages.some((message) => {
-    if (message.role !== "assistant") return false;
-
-    const resolvedAt = message.parts.findIndex((part) => {
-      if (part.type !== "tool-schedule_watch") return false;
-      const output = (part as { output?: { watchId?: unknown; immediate?: unknown } }).output;
-      return output?.watchId === watchId && output.immediate !== undefined;
-    });
-    if (resolvedAt === -1) return false;
-
-    return message.parts
-      .slice(resolvedAt + 1)
-      .some((part) => part.type === "text" && (part as { text?: string }).text?.trim());
-  });
 }
 
 /**
@@ -479,17 +478,6 @@ async function narrateWatchWake(args: {
       chatId,
       watchId: action.watchId,
       actionId: action.id,
-    });
-    return;
-  }
-
-  // The other way this outcome can already have been told: the turn that created
-  // the watch answered it inline. One telling per outcome, so the wake is silent
-  // here — the delivery is still marked, which closes the row out.
-  if (hasInlineWatchNarration(uiMessages, action.watchId)) {
-    logger.info("dashboard-agent watch outcome was narrated inline; skipping the wake", {
-      chatId,
-      watchId: action.watchId,
     });
     return;
   }

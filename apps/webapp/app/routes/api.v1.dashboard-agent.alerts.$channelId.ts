@@ -74,6 +74,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     projectId: context.environment.project.id,
   });
   if (!result.ok) {
+    if (result.reason === "conflict") {
+      return json(
+        { error: "That alert was being changed elsewhere. Try again.", code: "conflict" },
+        { status: 409 }
+      );
+    }
     return json({ error: "Alert not found", code: "not_found" }, { status: 404 });
   }
 

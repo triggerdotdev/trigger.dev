@@ -12,21 +12,26 @@
 
 import {
   MAX_ACTIVE_WATCHES_PER_CHAT,
+  cancelWatch,
   chatExists,
   createWatch,
   getChatWatchContext,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
-  markWatchDelivered,
+  precheckWatchCreation,
   softDeleteChat,
-  transitionWatchCondition,
   type ChatWatchContext,
   type PersistedWatchSpec,
   type WatchStatus,
 } from "@internal/dashboard-agent-db";
-import { watchIdentity, type WatchSpec } from "@internal/dashboard-agent-contracts";
+import {
+  watchIdentity,
+  type WatchObservedOutcome,
+  type WatchResolution,
+  type WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 import { TriggerClient } from "@trigger.dev/sdk";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
 import { isReportKey } from "~/presenters/v3/reports/report-registry";
@@ -35,7 +40,6 @@ import {
   isDashboardAgentConfigured as isDashboardAgentConfiguredDefault,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
-import { enqueueWatchFiredAlert } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import {
   checkWatch,
@@ -81,7 +85,10 @@ export async function authorizeWatchEnvironment(params: {
   projectId: string;
   environmentId: string;
 }): Promise<WatchAuthorization> {
-  const environment = await $replica.runtimeEnvironment.findFirst({
+  // The PRIMARY, not the replica: this is the authorization boundary every
+  // background tick passes through, and replica lag would extend access the user
+  // has already lost.
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id: params.environmentId,
       // The watch's snapshot has to still describe this environment — a mismatch
@@ -159,15 +166,35 @@ export type CreateWatchErrorCode =
   | "not_configured"
   | "internal";
 
+/**
+ * What creation answered with.
+ *
+ * Two shapes, because the resolution model gives the immediate check its own
+ * ending: either a watch is now running (`watching: true`), or the check already
+ * answered the request and **no watch row exists at all** (`watching: false`).
+ * The second one is the ONE-SHOT RESULT BLOCK of §2.2/§4.1 — it never enters the
+ * watch delivery state machine: no row, no claim, no chip, no wake.
+ */
 export type CreateDashboardAgentWatchResult =
   | {
       ok: true;
+      watching: true;
       watchId: string;
       identity: string;
       status: WatchStatus;
       expiresAt: Date;
-      /** The creation-time check, present only when it resolved right away. */
-      immediate?: WatchCheckOutcome;
+      /**
+       * Set when the creation-time check couldn't run. The watch is active
+       * anyway; the confirmation says "We couldn't check that just now."
+       */
+      unavailable?: boolean;
+    }
+  | {
+      ok: true;
+      watching: false;
+      identity: string;
+      /** `satisfied` (already true) or `terminal_unsatisfied` (can't happen now). */
+      immediate: WatchCheckOutcome;
     }
   | {
       ok: false;
@@ -192,6 +219,7 @@ async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promi
     case "run_finished":
       return (await deps.readRun(spec.runId)) !== null;
     case "backlog_drain":
+    case "queue_depth_above":
       return await deps.queueExists(spec.queue);
     case "error_recurrence":
       return spec.fingerprint.length > 0;
@@ -205,14 +233,24 @@ async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promi
  *
  * The caller (a UAT endpoint or a dashboard session action) has resolved the
  * environment and proven the chat belongs to this user; this function owns
- * everything after that: target validation, the server-set `since`, the dedup
- * identity, the ≤3 guardrail (enforced in the query layer, backed by a partial
- * unique index), the token, the creation-time check, and scheduling the first tick.
+ * everything after that.
  *
- * A watch is never left active-but-unwatched: if the condition is already resolved
- * at creation, or the first tick can't be scheduled, the row is resolved
- * immediately and the outcome is returned inline (already marked delivered,
- * because the caller is the one telling the user).
+ * The order is §4.4's, and it is load-bearing: **cap → dedup → immediate check →
+ * create**. The guardrails are consulted first, so "you already have three" and
+ * "you're already watching this" are answered the same way whether or not the
+ * condition happens to be true right now. Then the immediate check runs, and:
+ *
+ *   - `satisfied` / `terminal_unsatisfied` → **no row is written**. The check
+ *     answered the request; the caller renders a one-shot result block and the
+ *     agent answers from it. There is no chip, no wake, and nothing to cancel.
+ *   - `pending` / `unavailable` → the watch is created and the first tick
+ *     scheduled. `unavailable` is not a verdict, so it never resolves anything —
+ *     the confirmation just says we couldn't check yet.
+ *
+ * A watch is never left active-but-unwatched: if the first tick can't be
+ * scheduled, the row is CANCELLED (silent, no resolution, no wake — a scheduling
+ * failure is not an answer about the user's condition) and a plain failure is
+ * returned.
  */
 export async function createDashboardAgentWatch(params: {
   environment: AuthenticatedEnvironment;
@@ -251,12 +289,37 @@ export async function createDashboardAgentWatch(params: {
     };
   }
 
+  const identity = watchIdentity(spec);
+
+  // The guardrails, before the check and before any write. Advisory (a plain
+  // read); `createWatch` below re-applies both atomically and stays the authority.
+  const precheck = await precheckWatchCreation(dashboardAgentDb, {
+    chatId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    identity,
+  });
+  if (!precheck.ok) return creationGuardrailError(precheck);
+
   // `since` is SERVER-SET so the model can't backdate a recurrence window and
   // make a pre-existing error look like a recurrence.
   const persistedSpec: PersistedWatchSpec =
     spec.kind === "error_recurrence" ? { ...spec, since: now.toISOString() } : spec;
 
-  const identity = watchIdentity(spec);
+  // The creation-time check. Many watches are asked for after the condition has
+  // already happened, and answering in the same turn beats waiting a cadence —
+  // and under the resolution model that answer needs no watch at all.
+  const immediate = await checkWatch(persistedSpec, checkDeps, { now, since: now }, (error) =>
+    logger.error("Dashboard agent watch: immediate check failed", { chatId, identity, error })
+  );
+
+  if (immediate.result === "satisfied" || immediate.result === "terminal_unsatisfied") {
+    // The one-shot result block. Nothing is persisted here on purpose: no row
+    // means no chip, no delivery claim, and no wake that could tell the user a
+    // second time (§7.5).
+    return { ok: true, watching: false, identity, immediate };
+  }
+
   const expiresAt = new Date(now.getTime() + spec.maxHours * 60 * 60 * 1000);
 
   const created = await createWatch(dashboardAgentDb, {
@@ -271,52 +334,20 @@ export async function createDashboardAgentWatch(params: {
   });
 
   if (!created.ok) {
-    switch (created.error) {
-      case "limit_reached":
-        return {
-          ok: false,
-          code: "limit_reached",
-          error: `This chat already has ${MAX_ACTIVE_WATCHES_PER_CHAT} active watches. Cancel one first.`,
-        };
+    if (created.error === "chat_not_found") {
       // The chat was deleted while this create was in flight — the query layer
       // re-reads it under the per-chat lock, so nothing was written.
-      case "chat_not_found":
-        return {
-          ok: false,
-          code: "chat_not_found",
-          error: "That chat no longer exists, so nothing is being watched.",
-        };
-      default:
-        return {
-          ok: false,
-          code: "duplicate",
-          error: "This chat is already watching that.",
-          existingId: created.existingId,
-        };
+      return {
+        ok: false,
+        code: "chat_not_found",
+        error: "That chat no longer exists, so nothing is being watched.",
+      };
     }
+    return creationGuardrailError(created);
   }
 
   const watch = created.watch;
   const token = await mintDashboardAgentWatchToken({ watchId: watch.id, expiresAt });
-
-  // The creation-time check: many watches are asked for after the condition has
-  // already happened, and answering in the same turn beats waiting a cadence.
-  const immediate = await checkWatch(persistedSpec, checkDeps, { now, since: now }, (error) =>
-    logger.error("Dashboard agent watch: immediate check failed", { id: watch.id, error })
-  );
-
-  if (immediate.result === "satisfied" || immediate.result === "terminal_unsatisfied") {
-    const status = immediate.result === "satisfied" ? "fired" : "expired";
-    const resolved = await resolveWatchInline(watch.id, status, immediate);
-    return {
-      ok: true,
-      watchId: watch.id,
-      identity,
-      status: resolved,
-      expiresAt,
-      immediate,
-    };
-  }
 
   try {
     await scheduleTick({
@@ -334,15 +365,10 @@ export async function createDashboardAgentWatch(params: {
       error,
     });
     // Nothing will ever check this watch, so don't leave it sitting active and
-    // silently blocking a re-ask: end the row and report a plain failure. NOT an
-    // `immediate` outcome — that means "the condition already resolved", and
-    // saying so here would have the agent narrate a verdict nobody measured.
-    await resolveWatchInline(
-      watch.id,
-      "expired",
-      { result: "unavailable", facts: { kind: spec.kind, reason: "scheduling_failed" } },
-      { narrate: false }
-    );
+    // silently blocking a re-ask. CANCELLED, not resolved: the user's condition
+    // was never evaluated, and a resolution would have the agent narrate a verdict
+    // nobody measured. Cancellation is silent, so no wake is ever sent.
+    await cancelWatch(dashboardAgentDb, { id: watch.id, reason: "scheduling_failed" });
     return {
       ok: false,
       code: "internal",
@@ -350,54 +376,36 @@ export async function createDashboardAgentWatch(params: {
     };
   }
 
-  return { ok: true, watchId: watch.id, identity, status: "active", expiresAt };
+  return {
+    ok: true,
+    watching: true,
+    watchId: watch.id,
+    identity,
+    status: "active",
+    expiresAt,
+    ...(immediate.result === "unavailable" ? { unavailable: true } : {}),
+  };
 }
 
-/**
- * Resolve a watch whose outcome is being reported in the SAME response that
- * created it — the condition was already true when the user asked.
- *
- * The delivery is left owed, NOT marked delivered here. The caller is the
- * notification, but only if the turn survives: a completed tool call renders
- * nothing, so the outcome the user actually sees is the assistant's message about
- * it, and a turn that dies after the tool result and before that message leaves the
- * user with nothing. So the row stays owed and the sweep hands the outcome over as a
- * wake like any other; the agent's narration is what decides prose is unnecessary,
- * because it can see whether this watch's outcome is already in the transcript
- * (`hasInlineWatchNarration`).
- *
- * `narrate: false` is for the one outcome there is nothing to narrate later (the
- * first tick couldn't be scheduled): the row is closed out immediately, so no wake
- * is ever sent for an internal failure the caller already reported inline.
- */
-async function resolveWatchInline(
-  watchId: string,
-  status: "fired" | "expired",
-  outcome: WatchCheckOutcome,
-  options: { narrate?: boolean } = {}
-): Promise<WatchStatus> {
-  const narrate = options.narrate ?? true;
-  const transitioned = await transitionWatchCondition(dashboardAgentDb, {
-    id: watchId,
-    status,
-    lastResult: { result: outcome.result, facts: outcome.facts },
-  });
-  if (!transitioned) return status;
-
-  if (!narrate) await markWatchDelivered(dashboardAgentDb, { id: watchId });
-
-  // The chat is being told inline; the configured alert channels still need the
-  // fan-out. Keyed on the watch, so the watcher task can't double-alert it.
-  try {
-    await enqueueWatchFiredAlert(transitioned, status);
-  } catch (error) {
-    logger.error("Dashboard agent watch: failed to enqueue the fired alert", {
-      id: watchId,
-      error,
-    });
+/** The two guardrail refusals, worded once for both the pre-check and the insert. */
+function creationGuardrailError(
+  refusal:
+    | { error: "limit_reached"; activeCount: number }
+    | { error: "duplicate"; existingId: string | null }
+): CreateDashboardAgentWatchResult {
+  if (refusal.error === "limit_reached") {
+    return {
+      ok: false,
+      code: "limit_reached",
+      error: `This chat already has ${MAX_ACTIVE_WATCHES_PER_CHAT} active watches. Cancel one first.`,
+    };
   }
-
-  return transitioned.status;
+  return {
+    ok: false,
+    code: "duplicate",
+    error: "This chat is already watching that.",
+    existingId: refusal.existingId,
+  };
 }
 
 /**
@@ -508,6 +516,10 @@ export type ChatWatchChip = {
   checkEveryMinutes: number;
   expiresAt: string;
   endedReason: string | null;
+  /** How the watch ended — what the wake banner presents. Null while active. */
+  resolution: WatchResolution | null;
+  /** What the resolving check observed — the other half of the headline. */
+  observedOutcome: WatchObservedOutcome | null;
 };
 
 /**
@@ -534,6 +546,8 @@ export async function listActiveWatchesForChats(params: {
         checkEveryMinutes: watch.checkEveryMinutes,
         expiresAt: watch.expiresAt.toISOString(),
         endedReason: watch.endedReason,
+        resolution: watch.resolution,
+        observedOutcome: watch.observedOutcome,
       })),
     ])
   );

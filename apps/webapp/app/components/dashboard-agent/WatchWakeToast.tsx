@@ -117,6 +117,8 @@ export function showWatchWakesSummaryToast(count: number, onOpenChat: () => void
         onOpenChat={onOpenChat}
       />
     ),
-    `watch-wakes-summary-${count}-${Date.now()}`
+    // One id for all summaries: a later poll rewrites the count in place instead
+    // of stacking a second never-expiring toast on top of the first.
+    "watch-wakes-summary"
   );
 }

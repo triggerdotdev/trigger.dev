@@ -50,6 +50,13 @@
       "when": 1785527453164,
       "tag": "0006_wooden_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785706535148,
+      "tag": "0007_glamorous_colleen_wing",
+      "breakpoints": true
     }
   ]
 }

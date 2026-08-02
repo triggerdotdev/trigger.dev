@@ -11,6 +11,10 @@ import {
 } from "./services/alerts/deliverDashboardAgentWatchAlert.server";
 import { DeliverErrorGroupAlertService } from "./services/alerts/deliverErrorGroupAlert.server";
 import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.server";
+import {
+  watchObservedOutcomeSchema,
+  watchResolutionSchema,
+} from "@internal/dashboard-agent-contracts";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 
@@ -26,6 +30,13 @@ const DashboardAgentWatchAlertPayload = z.object({
   note: z.string(),
   firedAt: z.string(),
   facts: z.record(z.unknown()),
+  // The resolution model, carried alongside the as-built fields (§7.5). Optional
+  // so a job enqueued before this deploy still validates and delivers.
+  resolution: watchResolutionSchema.optional().catch(undefined),
+  // `.catch` rather than a hard parse: an observation shape this build doesn't
+  // recognize must degrade to "no observation" (the headline then uses the
+  // kind's default cell), never drop the whole alert.
+  observed: watchObservedOutcomeSchema.optional().catch(undefined),
 });
 
 function initializeWorker() {

@@ -14,7 +14,6 @@ import { type Watch } from "@internal/dashboard-agent-db";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { getCachedLimit } from "~/services/platform.v3.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
@@ -37,6 +36,8 @@ export type WatchFiredAlertSource = Pick<
   | "userId"
   | "firedAt"
   | "lastResult"
+  | "resolution"
+  | "observedOutcome"
 >;
 
 /**
@@ -72,6 +73,10 @@ export async function enqueueWatchFiredAlert(
       note: watch.spec.note,
       firedAt: (watch.firedAt ?? new Date()).toISOString(),
       facts: watch.lastResult ?? {},
+      // The frozen resolved result — the email renders from these, never re-reading
+      // the source. A fired watch is condition_met by construction.
+      resolution: watch.resolution ?? "condition_met",
+      observed: watch.observedOutcome ?? undefined,
     },
   });
 }
@@ -83,10 +88,6 @@ export async function enqueueWatchFiredAlert(
 export type DashboardAgentAlertDenyReason =
   /** The user can't use the dashboard agent, so its watches can't alert either. */
   | "dashboard_agent_disabled"
-  /** The org's plan has no alerts. */
-  | "alerts_not_available"
-  /** The plan's alert-channel allowance is used up. */
-  | "alert_limit_reached"
   /** This installation has no alert email transport configured. */
   | "email_alerts_not_configured";
 
@@ -94,13 +95,12 @@ export type DashboardAgentAlertGate =
   | { allowed: true }
   | { allowed: false; reason: DashboardAgentAlertDenyReason };
 
-/** Effectively unlimited, matching the alerts page's self-hosted fallback. */
-const ALERTS_LIMIT_FALLBACK = 100_000_000;
-
 /**
- * May this user's watches alert at all? The dashboard-agent feature flag plus the
- * org's `alerts` plan limit — the same limit the Alerts page counts channels
- * against, so a plan without alerts can't gain them through the agent.
+ * May this user's watches alert at all? Operational checks only — the
+ * dashboard-agent feature flag here, the email transport below.
+ *
+ * No plan check: billing gates this separately, later. The `organizationId` stays
+ * in the signature so that gate can be re-attached here without touching callers.
  */
 export async function canUseDashboardAgentAlerts(params: {
   userId: string;
@@ -120,25 +120,15 @@ export async function canUseDashboardAgentAlerts(params: {
   });
   if (!hasAgent) return { allowed: false, reason: "dashboard_agent_disabled" };
 
-  const limit = await alertsLimit(params.organizationId);
-  if (limit <= 0) return { allowed: false, reason: "alerts_not_available" };
-
   return { allowed: true };
 }
 
-async function alertsLimit(organizationId: string): Promise<number> {
-  const result = await getCachedLimit(organizationId, "alerts", ALERTS_LIMIT_FALLBACK);
-  return result.val ?? ALERTS_LIMIT_FALLBACK;
-}
-
 /**
- * The same gate for *creating* an email subscription: the plan's channel
- * allowance has to have room, and the installation needs an email transport, or
- * the channel would be created and never deliver.
+ * The same gate for *creating* an email subscription: the installation also needs
+ * an email transport, or the channel would be created and never deliver.
  */
 export async function canUseDashboardAgentEmailAlerts(
-  params: Parameters<typeof canUseDashboardAgentAlerts>[0] & { projectId: string },
-  db: PrismaClientOrTransaction = prisma
+  params: Parameters<typeof canUseDashboardAgentAlerts>[0] & { projectId: string }
 ): Promise<DashboardAgentAlertGate> {
   const base = await canUseDashboardAgentAlerts(params);
   if (!base.allowed) return base;
@@ -149,10 +139,6 @@ export async function canUseDashboardAgentEmailAlerts(
     return { allowed: false, reason: "email_alerts_not_configured" };
   }
 
-  const limit = await alertsLimit(params.organizationId);
-  const used = await db.projectAlertChannel.count({ where: { projectId: params.projectId } });
-  if (used >= limit) return { allowed: false, reason: "alert_limit_reached" };
-
   return { allowed: true };
 }
 
@@ -162,7 +148,10 @@ export async function canUseDashboardAgentEmailAlerts(
 
 export type UnsubscribeResult =
   | { ok: true; channelName: string; disabledChannel: boolean }
-  | { ok: false; reason: "not_found" };
+  | { ok: false; reason: "not_found" | "conflict" };
+
+/** How many times a lost race is retried before the caller is told to try again. */
+const UNSUBSCRIBE_ATTEMPTS = 3;
 
 /**
  * Take `DASHBOARD_AGENT_WATCH` off a channel — what both the email's one-click
@@ -171,27 +160,44 @@ export type UnsubscribeResult =
  * A channel that subscribed to nothing else is disabled rather than left with an
  * empty `alertTypes`: an empty subscription list is a channel that silently
  * receives nothing, which reads as a bug on the Alerts page.
+ *
+ * Removing one entry from a list can't be expressed as a blind update, so the
+ * write is conditional on the list the read saw. Anyone editing the channel's
+ * other subscriptions concurrently makes this attempt fail rather than clobber
+ * them, and it retries against the new list.
  */
 export async function unsubscribeChannelFromWatchAlerts(
   channelId: string,
   options: { projectId?: string } = {},
   db: PrismaClientOrTransaction = prisma
 ): Promise<UnsubscribeResult> {
-  const channel = await db.projectAlertChannel.findFirst({
-    where: { id: channelId, ...(options.projectId ? { projectId: options.projectId } : {}) },
-    select: { id: true, name: true, alertTypes: true },
-  });
-  if (!channel) return { ok: false, reason: "not_found" };
+  const scope = { id: channelId, ...(options.projectId ? { projectId: options.projectId } : {}) };
 
-  const remaining = channel.alertTypes.filter((type) => type !== DASHBOARD_AGENT_WATCH_ALERT_TYPE);
+  for (let attempt = 0; attempt < UNSUBSCRIBE_ATTEMPTS; attempt++) {
+    const channel = await db.projectAlertChannel.findFirst({
+      where: scope,
+      select: { name: true, alertTypes: true },
+    });
+    if (!channel) return { ok: false, reason: "not_found" };
 
-  await db.projectAlertChannel.update({
-    where: { id: channel.id },
-    data: {
-      alertTypes: remaining,
-      ...(remaining.length === 0 ? { enabled: false } : {}),
-    },
-  });
+    const remaining = channel.alertTypes.filter(
+      (type) => type !== DASHBOARD_AGENT_WATCH_ALERT_TYPE
+    );
 
-  return { ok: true, channelName: channel.name, disabledChannel: remaining.length === 0 };
+    const { count } = await db.projectAlertChannel.updateMany({
+      // `alertTypes` here is the compare-and-swap: the row must still hold the
+      // exact list this attempt read.
+      where: { ...scope, alertTypes: { equals: channel.alertTypes } },
+      data: {
+        alertTypes: remaining,
+        ...(remaining.length === 0 ? { enabled: false } : {}),
+      },
+    });
+
+    if (count > 0) {
+      return { ok: true, channelName: channel.name, disabledChannel: remaining.length === 0 };
+    }
+  }
+
+  return { ok: false, reason: "conflict" };
 }

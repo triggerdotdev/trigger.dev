@@ -215,9 +215,16 @@ export const MANIFEST: GallerySection[] = [
   // --- Wake banners --------------------------------------------------------
   // A wake narration through the production renderer: the banner plus the prose
   // the agent wrote, as the panel shows them.
-  { sectionId: "wake-fired-good-news", title: "Fired — good news", group: "wakes" },
-  { sectionId: "wake-fired-attention", title: "Fired — needs attention", group: "wakes" },
-  { sectionId: "wake-expired", title: "Expired — no answer", group: "wakes" },
+  { sectionId: "wake-positive", title: "Positive", group: "wakes" },
+  { sectionId: "wake-attention", title: "Attention", group: "wakes" },
+  {
+    sectionId: "wake-attention-failed-run",
+    title: "Attention — a run that finished badly",
+    group: "wakes",
+  },
+  { sectionId: "wake-window-completed", title: "Window completed", group: "wakes" },
+  { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
+  { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
   {
     sectionId: "wake-unknown-watch",
     title: "Fired, watch not in hand — kind-agnostic",

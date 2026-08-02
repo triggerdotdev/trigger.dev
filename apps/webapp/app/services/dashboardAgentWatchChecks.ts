@@ -16,11 +16,21 @@
  *    here, deterministically, so the model never has to derive a duration or a
  *    depth itself. Durations carry their BASIS (VERDICTS.md §4): a wait is only
  *    labelled a queue wait when `queuedAt` exists.
+ * 3. **`observed` is what the check SAW**, in the contracts' per-kind shape. It is
+ *    the second half of a resolved result: the resolution says how the watch
+ *    ended, the observation says what was true when it did — and the presentation
+ *    needs both (§4.2). `run_finished` is the clearest case: the reader preserves
+ *    the final status, so a completion WITH FAILURE presents as attention rather
+ *    than as the success its `condition_met` resolution would otherwise imply.
  */
 
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import type { WatchCheckResult, WatchSpec } from "@internal/dashboard-agent-contracts";
+import type {
+  WatchCheckResult,
+  WatchObservedOutcome,
+  WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 
 // ---------------------------------------------------------------------------
 // Inputs — plain data, no Prisma / ClickHouse types.
@@ -117,6 +127,12 @@ export type WatchCheckInput = {
 export type WatchCheckOutcome = {
   result: WatchCheckResult;
   facts: Record<string, unknown>;
+  /**
+   * What this check observed, in the contracts' per-kind shape. Frozen onto the
+   * row by the resolving transition, so every delivery surface reads the same
+   * observation and none of them re-reads the source (§7.5).
+   */
+  observed: WatchObservedOutcome;
 };
 
 // ---------------------------------------------------------------------------
@@ -231,6 +247,7 @@ export async function checkRunStart(
     return {
       result: "terminal_unsatisfied",
       facts: { runId: spec.runId, reason: "run_not_found" },
+      observed: { kind: "run_start", verified: true, status: null, started: false },
     };
   }
 
@@ -243,15 +260,31 @@ export async function checkRunStart(
     queuedAt: run.queuedAt?.toISOString() ?? null,
     ...wait,
   };
+  const observed: WatchObservedOutcome = {
+    kind: "run_start",
+    verified: true,
+    status: run.status,
+    started: run.startedAt !== null,
+  };
 
-  if (run.startedAt) return { result: "satisfied", facts };
+  if (run.startedAt) return { result: "satisfied", facts, observed };
   if (isTerminalRunStatus(run.status)) {
-    return { result: "terminal_unsatisfied", facts: { ...facts, reason: "never_started" } };
+    return {
+      result: "terminal_unsatisfied",
+      facts: { ...facts, reason: "never_started" },
+      observed,
+    };
   }
-  return { result: "pending", facts };
+  return { result: "pending", facts, observed };
 }
 
-/** run_finished — satisfied on any terminal status; facts carry outcome + duration. */
+/**
+ * run_finished — satisfied on ANY terminal status, and the observation PRESERVES
+ * that status. The resolution alone cannot tell "Run abc123 finished" from "Run
+ * abc123 failed": both are `condition_met`, and only `observed.finalStatus`
+ * separates them (§4.2, §7.4). The reader never filters on status — a watch on a
+ * run that fails is still answered, just presented as attention.
+ */
 export async function checkRunFinished(
   spec: Extract<WatchSpec, { kind: "run_finished" }>,
   deps: WatchCheckDeps,
@@ -262,6 +295,7 @@ export async function checkRunFinished(
     return {
       result: "terminal_unsatisfied",
       facts: { runId: spec.runId, reason: "run_not_found" },
+      observed: { kind: "run_finished", verified: true, finalStatus: null, durationMs: null },
     };
   }
 
@@ -284,52 +318,145 @@ export async function checkRunFinished(
     ...wait,
   };
 
-  return { result: finished ? "satisfied" : "pending", facts };
+  return {
+    result: finished ? "satisfied" : "pending",
+    facts,
+    observed: {
+      kind: "run_finished",
+      verified: true,
+      // Only a terminal status is a FINAL status. A running run has no verdict yet.
+      finalStatus: finished ? run.status : null,
+      durationMs,
+    },
+  };
 }
 
 /**
- * backlog_drain — satisfied when the queue's current pending count is 0. A queue
- * that no longer exists can never drain in an observable sense, so that's
- * `terminal_unsatisfied`; a depth we can't read is `unavailable`, never "drained".
+ * The queue-depth read both threshold kinds share, resolved down to either a
+ * usable reading or the outcome that replaces it.
  *
- * A zero needs a reading that describes NOW (`current`): a stale analytics bucket
- * that happened to be empty says nothing about the runs queued after it, so it's
- * `unavailable` too. A stale NON-zero depth is still worth reporting — the queue
- * demonstrably wasn't empty — and is marked approximate.
+ * A queue that no longer exists can never be observed, so that is
+ * `terminal_unsatisfied`; a depth we can't read is `unavailable`, never a number.
+ * The freshness fence lives here too: a stale analytics bucket says nothing about
+ * the runs queued after it, so a zero from one is `unavailable`. A stale NON-zero
+ * depth is still worth reporting — the queue demonstrably wasn't empty — and is
+ * marked approximate.
  */
-export async function checkBacklogDrain(
-  spec: Extract<WatchSpec, { kind: "backlog_drain" }>,
+async function readDepthOrOutcome(
+  queue: string,
   deps: WatchCheckDeps,
-  _input: WatchCheckInput
-): Promise<WatchCheckOutcome> {
-  const depth = await deps.readQueueDepth(spec.queue);
+  observedKind: "backlog_drain" | "queue_depth_above",
+  threshold: number
+): Promise<
+  | { ok: true; depth: WatchQueueDepth; facts: Record<string, unknown> }
+  | { ok: false; outcome: WatchCheckOutcome }
+> {
+  const unobserved = (verified: boolean): WatchObservedOutcome =>
+    observedKind === "queue_depth_above"
+      ? { kind: "queue_depth_above", verified, depth: null, threshold }
+      : { kind: "backlog_drain", verified, depth: null };
+
+  const depth = await deps.readQueueDepth(queue);
 
   if (depth === null) {
     // Distinguish "no such queue" from "couldn't read the depth" — only the
     // former is terminal.
-    const exists = await deps.queueExists(spec.queue);
+    const exists = await deps.queueExists(queue);
     if (!exists) {
       return {
-        result: "terminal_unsatisfied",
-        facts: { queue: spec.queue, reason: "queue_not_found" },
+        ok: false,
+        outcome: {
+          result: "terminal_unsatisfied",
+          facts: { queue, reason: "queue_not_found" },
+          observed: unobserved(true),
+        },
       };
     }
-    return { result: "unavailable", facts: { queue: spec.queue, reason: "depth_unavailable" } };
+    return {
+      ok: false,
+      outcome: {
+        result: "unavailable",
+        facts: { queue, reason: "depth_unavailable" },
+        observed: unobserved(false),
+      },
+    };
   }
 
   const facts = {
-    queue: spec.queue,
+    queue,
     depth: depth.depth,
     depthSource: depth.source,
     depthAsOf: depth.asOf?.toISOString() ?? null,
     depthApproximate: !depth.current,
   };
 
+  // A zero needs a reading that describes NOW. Reading a stale empty bucket as
+  // "drained" (or as "below the threshold") is the one mistake these must never
+  // make.
   if (depth.depth === 0 && !depth.current) {
-    return { result: "unavailable", facts: { ...facts, reason: "depth_stale" } };
+    return {
+      ok: false,
+      outcome: {
+        result: "unavailable",
+        facts: { ...facts, reason: "depth_stale" },
+        observed: unobserved(false),
+      },
+    };
   }
 
-  return { result: depth.depth === 0 ? "satisfied" : "pending", facts };
+  return { ok: true, depth, facts };
+}
+
+/**
+ * backlog_drain — satisfied when the queue's current pending count is 0.
+ *
+ * The observation carries the depth the resolving check read, so a window that
+ * completes without a drain can say HOW backed up the queue still was without
+ * going back to the source.
+ */
+export async function checkBacklogDrain(
+  spec: Extract<WatchSpec, { kind: "backlog_drain" }>,
+  deps: WatchCheckDeps,
+  _input: WatchCheckInput
+): Promise<WatchCheckOutcome> {
+  const read = await readDepthOrOutcome(spec.queue, deps, "backlog_drain", 0);
+  if (!read.ok) return read.outcome;
+
+  return {
+    result: read.depth.depth === 0 ? "satisfied" : "pending",
+    facts: read.facts,
+    observed: { kind: "backlog_drain", verified: true, depth: read.depth.depth },
+  };
+}
+
+/**
+ * queue_depth_above — the SAME depth reader with the comparison inverted:
+ * satisfied when the pending count rises ABOVE `threshold`. No new IO, and the
+ * freshness fence is shared verbatim, so a stale bucket can no more prove "still
+ * below" than it can prove "drained".
+ *
+ * Deliberately no `terminal_unsatisfied` on a live queue: a queue that is quiet
+ * now can grow at any moment, which is exactly what this watch is for. Only the
+ * queue disappearing makes the condition impossible.
+ */
+export async function checkQueueDepthAbove(
+  spec: Extract<WatchSpec, { kind: "queue_depth_above" }>,
+  deps: WatchCheckDeps,
+  _input: WatchCheckInput
+): Promise<WatchCheckOutcome> {
+  const read = await readDepthOrOutcome(spec.queue, deps, "queue_depth_above", spec.threshold);
+  if (!read.ok) return read.outcome;
+
+  return {
+    result: read.depth.depth > spec.threshold ? "satisfied" : "pending",
+    facts: { ...read.facts, threshold: spec.threshold },
+    observed: {
+      kind: "queue_depth_above",
+      verified: true,
+      depth: read.depth.depth,
+      threshold: spec.threshold,
+    },
+  };
 }
 
 /**
@@ -359,14 +486,28 @@ export async function checkErrorRecurrence(
   const recurrence = await deps.readErrorRecurrence(fingerprint, input.since);
   const base = { fingerprint, since: input.since.toISOString() };
 
+  const quiet: WatchObservedOutcome = {
+    kind: "error_recurrence",
+    verified: true,
+    countSince: 0,
+  };
+
   if (!recurrence) {
-    return { result: "pending", facts: { ...base, countSince: 0, lastSeenAt: null } };
+    return {
+      result: "pending",
+      facts: { ...base, countSince: 0, lastSeenAt: null },
+      observed: quiet,
+    };
   }
 
   const lastSeenAt = recurrence.lastSeenAt?.toISOString() ?? null;
 
   if (!recurrence.occurredAt) {
-    return { result: "pending", facts: { ...base, countSince: 0, lastSeenAt } };
+    return {
+      result: "pending",
+      facts: { ...base, countSince: 0, lastSeenAt },
+      observed: quiet,
+    };
   }
 
   return {
@@ -378,6 +519,11 @@ export async function checkErrorRecurrence(
       countSince: recurrence.countSince,
       countApproximate: recurrence.countApproximate,
       lastSeenAt,
+    },
+    observed: {
+      kind: "error_recurrence",
+      verified: true,
+      countSince: recurrence.countSince,
     },
   };
 }
@@ -398,6 +544,7 @@ export async function checkHealthRecovery(
     return {
       result: "unavailable",
       facts: { report: spec.report, reason: "report_unavailable" },
+      observed: { kind: "health_recovery", verified: false, severity: null },
     };
   }
 
@@ -409,10 +556,20 @@ export async function checkHealthRecovery(
   };
 
   if (!health.trustworthy) {
-    return { result: "pending", facts: { ...facts, reason: "untrustworthy" } };
+    // An untrustworthy report is not an observation of the severity: recording it
+    // would let a window completion cite a severity nobody could stand behind.
+    return {
+      result: "pending",
+      facts: { ...facts, reason: "untrustworthy" },
+      observed: { kind: "health_recovery", verified: false, severity: null },
+    };
   }
 
-  return { result: health.severity === "ok" ? "satisfied" : "pending", facts };
+  return {
+    result: health.severity === "ok" ? "satisfied" : "pending",
+    facts,
+    observed: { kind: "health_recovery", verified: true, severity: health.severity },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +595,8 @@ export async function checkWatch(
         return await checkRunFinished(spec, deps, input);
       case "backlog_drain":
         return await checkBacklogDrain(spec, deps, input);
+      case "queue_depth_above":
+        return await checkQueueDepthAbove(spec, deps, input);
       case "error_recurrence":
         return await checkErrorRecurrence(spec, deps, input);
       case "health_recovery":
@@ -449,6 +608,41 @@ export async function checkWatch(
     }
   } catch (error) {
     onError?.(error);
-    return { result: "unavailable", facts: { kind: spec.kind, reason: "check_failed" } };
+    return {
+      result: "unavailable",
+      facts: { kind: spec.kind, reason: "check_failed" },
+      observed: unobservedOutcome(spec),
+    };
+  }
+}
+
+/**
+ * The "we saw nothing" observation for a check that couldn't run. `verified:
+ * false` is what makes a window completion say the condition couldn't be
+ * confirmed, instead of claiming it didn't happen (§4.2).
+ */
+export function unobservedOutcome(spec: WatchSpec): WatchObservedOutcome {
+  switch (spec.kind) {
+    case "run_start":
+      return { kind: "run_start", verified: false, status: null, started: false };
+    case "run_finished":
+      return { kind: "run_finished", verified: false, finalStatus: null, durationMs: null };
+    case "backlog_drain":
+      return { kind: "backlog_drain", verified: false, depth: null };
+    case "queue_depth_above":
+      return {
+        kind: "queue_depth_above",
+        verified: false,
+        depth: null,
+        threshold: spec.threshold,
+      };
+    case "error_recurrence":
+      return { kind: "error_recurrence", verified: false, countSince: 0 };
+    case "health_recovery":
+      return { kind: "health_recovery", verified: false, severity: null };
+    default: {
+      const unreachable: never = spec;
+      throw new Error(`Unhandled watch kind: ${JSON.stringify(unreachable)}`);
+    }
   }
 }

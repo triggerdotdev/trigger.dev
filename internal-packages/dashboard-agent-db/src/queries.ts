@@ -1,4 +1,9 @@
 import { and, desc, eq, inArray, ne, sql, isNull } from "drizzle-orm";
+import {
+  watchResolutionToWireStatus,
+  type WatchObservedOutcome,
+  type WatchResolution,
+} from "@internal/dashboard-agent-contracts";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId, generateWatchDeliveryClaimId, generateWatchId } from "./ids.js";
 import {
@@ -662,6 +667,54 @@ export async function createWatch(
 }
 
 /**
+ * The guardrails, BEFORE anything is written — the `cap → dedup → immediate
+ * check` order of §4.4.
+ *
+ * Under the resolution model the immediate check can answer the request outright
+ * (a one-shot result block, no watch row at all), so the cap and the dedup have to
+ * be consulted before it runs: refusing at the 4th watch, or pointing at the watch
+ * that already covers this, must not depend on whether the condition happens to be
+ * true right now.
+ *
+ * Advisory only. It is a plain read, so it is NOT race-proof — {@link createWatch}
+ * re-applies both guardrails atomically under the per-chat lock and the partial
+ * unique index, and remains the authority. This exists so the common case gets the
+ * friendly answer without a row being written first.
+ */
+export async function precheckWatchCreation(
+  db: DashboardAgentDb,
+  params: { chatId: string; projectId: string; environmentId: string; identity: string }
+): Promise<
+  | { ok: true }
+  | { ok: false; error: "limit_reached"; activeCount: number }
+  | { ok: false; error: "duplicate"; existingId: string }
+> {
+  const active = await db
+    .select({
+      id: watches.id,
+      identity: watches.identity,
+      projectId: watches.projectId,
+      environmentId: watches.environmentId,
+    })
+    .from(watches)
+    .where(and(eq(watches.chatId, params.chatId), eq(watches.status, "active")));
+
+  const duplicate = active.find(
+    (w) =>
+      w.identity === params.identity &&
+      w.projectId === params.projectId &&
+      w.environmentId === params.environmentId
+  );
+  if (duplicate) return { ok: false, error: "duplicate", existingId: duplicate.id };
+
+  if (active.length >= MAX_ACTIVE_WATCHES_PER_CHAT) {
+    return { ok: false, error: "limit_reached", activeCount: active.length };
+  }
+
+  return { ok: true };
+}
+
+/**
  * #13 The active watch on a given thing, if any — the dedup lookup behind
  * `createWatch`, also useful on its own ("am I already watching this?").
  * Covered by `watches_chat_active_identity_key`.
@@ -720,9 +773,13 @@ export interface ActiveWatchSummary {
   note: string;
   checkEveryMinutes: number;
   expiresAt: Date;
-  /** The last check's reason — lets an expired banner tell "can no longer
+  /** The last check's reason — lets a resolved banner tell "can no longer
    *  happen" (terminal_unsatisfied) apart from a plain timeout. */
   endedReason: string | null;
+  /** How it ended. NULL while active and for every cancellation. */
+  resolution: WatchResolution | null;
+  /** What the resolving check observed — the other half of the headline. */
+  observedOutcome: WatchObservedOutcome | null;
 }
 
 /**
@@ -752,6 +809,8 @@ export async function listActiveWatchesForChats(
       spec: watches.spec,
       expiresAt: watches.expiresAt,
       lastResult: watches.lastResult,
+      resolution: watches.resolution,
+      observedOutcome: watches.observedOutcome,
     })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
@@ -778,6 +837,8 @@ export async function listActiveWatchesForChats(
       checkEveryMinutes: row.spec.checkEveryMinutes,
       expiresAt: row.expiresAt,
       endedReason: typeof row.lastResult?.reason === "string" ? row.lastResult.reason : null,
+      resolution: row.resolution,
+      observedOutcome: row.observedOutcome,
     });
   }
   return byChat;
@@ -951,26 +1012,40 @@ export async function getChatWatchContext(
 }
 
 /**
- * #13 The watch's condition resolved: it fired, or it ran out of time. Atomic —
- * only an `active` row transitions, so a check that fires at the same moment the
- * sweeper expires the watch yields exactly one winner (the loser gets `null`).
- * Both outcomes notify, so `deliveryStatus` becomes `pending`.
+ * #13 The watch RESOLVED. Atomic — only an `active` row transitions, so a check
+ * that resolves at the same moment the sweeper completes the window yields
+ * exactly one winner (the loser gets `null`). Every resolution notifies, so
+ * `deliveryStatus` becomes `pending`.
+ *
+ * One statement writes all three halves of the answer — the `resolution`, the
+ * `observedOutcome`, and the frozen `lastResult` facts. That atomicity is what
+ * lets §7.5 hold: delivery never re-reads the source to reconstruct what
+ * happened, so a retry cannot rebuild a different headline, and banner, toast,
+ * email and narration all share one set of facts.
+ *
+ * `status` is derived, never passed: it is the two-value WIRE encoding of the
+ * resolution (§7.5 binding), so no caller can put a status on the row that
+ * disagrees with the resolution it recorded.
  */
 export async function transitionWatchCondition(
   db: DashboardAgentDb,
   params: {
     id: string;
-    status: "fired" | "expired";
+    resolution: WatchResolution;
+    observedOutcome?: WatchObservedOutcome | null;
     lastResult?: Record<string, unknown> | null;
   }
 ): Promise<Watch | null> {
+  const status = watchResolutionToWireStatus(params.resolution);
   const rows = await db
     .update(watches)
     .set({
-      status: params.status,
+      status,
+      resolution: params.resolution,
       deliveryStatus: "pending",
       lastCheckedAt: sql`now()`,
-      firedAt: params.status === "fired" ? sql`now()` : null,
+      firedAt: status === "fired" ? sql`now()` : null,
+      ...(params.observedOutcome !== undefined ? { observedOutcome: params.observedOutcome } : {}),
       ...(params.lastResult !== undefined ? { lastResult: params.lastResult } : {}),
     })
     .where(and(eq(watches.id, params.id), eq(watches.status, "active")))
@@ -1263,8 +1338,9 @@ export async function listWatchesAwaitingDelivery(
 }
 
 /**
- * #13 Sweep: active watches whose deadline has passed, oldest first. Callers
- * expire these via `transitionWatchCondition(id, { status: "expired" })`.
+ * #13 Sweep: active watches whose deadline has passed, oldest first. Callers run
+ * the final boundary evaluation and resolve these via
+ * `transitionWatchCondition` — which may still be `condition_met` (§7.4).
  * Covered by `watches_status_expires_idx`.
  */
 export async function listExpiredActiveWatches(

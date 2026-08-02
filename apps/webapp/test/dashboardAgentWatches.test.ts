@@ -22,7 +22,6 @@ import {
   listChatIdsWithUnreadWakes,
   listUnreadWatchWakes,
   markWatchDelivered,
-  persistMessages,
   recordWatchCheck,
   releaseWatchDelivery,
   transitionWatchCondition,
@@ -88,6 +87,12 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.canAccess,
 }));
 
+// The check endpoint verifies watch tokens with `env.SESSION_SECRET`. Pin it here
+// and hand the same string to the signer, so the suite never imports the env
+// schema just to read one value.
+const SESSION_SECRET = "test-session-secret-for-watch-tokens";
+process.env.SESSION_SECRET = SESSION_SECRET;
+
 const {
   authorizeWatchEnvironment,
   createDashboardAgentWatch,
@@ -100,7 +105,6 @@ const { action: createAction } = await import("~/routes/api.v1.dashboard-agent.w
 const { sweepDashboardAgentWatches, WATCH_DELIVERY_GRACE_MS, WATCH_EXPIRY_GRACE_MS } =
   await import("~/services/dashboardAgentWatchSweep.server");
 const { signDashboardAgentWatchToken } = await import("~/services/dashboardAgentWatchToken.server");
-const { env } = await import("~/env.server");
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -228,6 +232,15 @@ const BACKLOG: WatchSpec = {
 };
 
 /** Create a watch with the readers and the tick trigger injected. */
+/**
+ * A run that exists for the target validation and is gone by the time the
+ * immediate check reads it — the `condition_impossible` one-shot.
+ */
+function readRunOnce(first: WatchRunRow) {
+  let calls = 0;
+  return async () => (calls++ === 0 ? first : null);
+}
+
 function create(args: {
   seeded: Seeded;
   spec?: WatchSpec;
@@ -334,8 +347,10 @@ describe("createDashboardAgentWatch", () => {
     }
   );
 
+  // §2.2/§4.1: the immediate check answers the request outright, and the answer
+  // is a ONE-SHOT RESULT BLOCK — not a watch that resolves in the same breath.
   postgresTest(
-    "resolves inline when the condition already holds",
+    "answers with a one-shot result and writes no row when the condition already holds",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "watch");
@@ -353,18 +368,107 @@ describe("createDashboardAgentWatch", () => {
       });
 
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.status).toBe("fired");
-      expect(result.immediate?.result).toBe("satisfied");
+      if (!result.ok || result.watching) throw new Error("expected a one-shot result");
+      expect(result.immediate.result).toBe("satisfied");
+      // The status-aware observation travels with it, so the caller can word the
+      // block without going back to the source.
+      expect(result.immediate.observed).toMatchObject({ kind: "run_start", started: true });
       // Nothing to wait for, so no tick is scheduled at all.
       expect(ticks).toBe(0);
 
-      const row = await getWatch(ctx.agentDb, { id: result.watchId });
-      // Narrated in this very response — but the delivery stays owed, so a turn
-      // that dies before saying anything still reaches the user: the sweep hands the
-      // outcome over as a wake, and the agent decides it needs no prose.
-      expect(row).toMatchObject({ status: "fired", deliveryStatus: "pending" });
-      expect(row?.lastResult).toMatchObject({ result: "satisfied" });
+      // The whole point: NO row. No chip, no delivery claim, and no wake that
+      // could tell the user the same thing a second time.
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+      expect(
+        await listActiveWatchesForChats({
+          chatIds: ["chat_1"],
+          organizationId: seeded.organization.id,
+          userId: seeded.user.id,
+        })
+      ).toEqual({});
+    }
+  );
+
+  postgresTest(
+    "answers with a one-shot result when the condition can no longer happen",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "watch");
+      await seedChat(seeded);
+
+      const result = await create({
+        seeded,
+        // Validated as existing, then gone by the time the check reads it.
+        checkDeps: { readRun: readRunOnce(runRow({ status: "QUEUED" })) },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok || result.watching) throw new Error("expected a one-shot result");
+      expect(result.immediate.result).toBe("terminal_unsatisfied");
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  // The guardrails come BEFORE the immediate check (§4.4), so the refusal does
+  // not depend on whether the condition happens to be true right now.
+  postgresTest(
+    "refuses a duplicate before running the immediate check",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "watch");
+      await seedChat(seeded);
+
+      const first = await create({ seeded });
+      expect(first.ok).toBe(true);
+
+      let checks = 0;
+      const second = await create({
+        seeded,
+        checkDeps: {
+          readRun: async () => {
+            checks += 1;
+            return runRow({ status: "EXECUTING", startedAt: new Date() });
+          },
+        },
+      });
+
+      expect(second).toMatchObject({ ok: false, code: "duplicate" });
+      // One read for target validation, and no check after the refusal.
+      expect(checks).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "cancels the row silently when the first tick can't be scheduled",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "watch");
+      await seedChat(seeded);
+
+      const result = await create({
+        seeded,
+        onSchedule: () => {
+          throw new Error("no agent project");
+        },
+      });
+
+      expect(result).toMatchObject({ ok: false, code: "internal" });
+      // Cancelled, not resolved: nobody evaluated the user's condition, so there
+      // is nothing to narrate — and a cancellation is always silent.
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+      const rows = await ctx.prisma.$queryRawUnsafe<
+        { status: string; cancel_reason: string; delivery_status: string }[]
+      >(
+        `select status, cancel_reason, delivery_status
+         from trigger_dashboard_agent.watches where chat_id = 'chat_1'`
+      );
+      expect(rows).toMatchObject([
+        {
+          status: "cancelled",
+          cancel_reason: "scheduling_failed",
+          delivery_status: "not_required",
+        },
+      ]);
     }
   );
 
@@ -757,7 +861,11 @@ describe("unread watch wakes", () => {
 
       // Terminal but undelivered: the chat has no message to open yet, so the
       // launcher's dot and the toast must stay quiet.
-      await transitionWatchCondition(ctx.agentDb, { id: created.watchId, status: "fired" });
+      if (!created.watching) throw new Error("expected a watch");
+      await transitionWatchCondition(ctx.agentDb, {
+        id: created.watchId,
+        resolution: "condition_met",
+      });
       expect(await countUnreadWatchWakes(ctx.agentDb, scope)).toBe(0);
       expect(await listUnreadWatchWakes(ctx.agentDb, scope)).toEqual([]);
       expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set());
@@ -999,35 +1107,6 @@ describe("the watch sweep", () => {
   );
 
   postgresTest(
-    "an inline outcome the turn never narrated is delivered as a wake",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "sweep");
-      await seedChat(seeded);
-
-      // Already true at creation: resolved inline, narration owed by the turn.
-      const created = await create({
-        seeded,
-        checkDeps: { readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }) },
-      });
-      expect(created.ok).toBe(true);
-      if (!created.ok) return;
-      expect(await getWatch(ctx.agentDb, { id: created.watchId })).toMatchObject({
-        status: "fired",
-        deliveryStatus: "pending",
-      });
-
-      // The turn died: nothing was ever persisted to the chat.
-      const delivered: string[] = [];
-      const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
-      const result = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
-
-      expect(result).toMatchObject({ undelivered: 1, redelivered: 1 });
-      expect(delivered).toEqual([created.watchId]);
-    }
-  );
-
-  postgresTest(
     "a deliverer that died mid-delivery is recovered, but a fresh claim is left alone",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
@@ -1067,8 +1146,12 @@ describe("the watch sweep", () => {
     }
   );
 
+  // Under the resolution model an immediate answer never becomes a row, so there
+  // is no "inline outcome" for the sweep to recover: the one-shot result block IS
+  // the complete delivery (§7.5). What the sweep still owns is the wake for a
+  // watch that actually ran and resolved — covered above.
   postgresTest(
-    "an unrelated message after an inline outcome is not proof it was narrated",
+    "leaves nothing owed for a request the immediate check already answered",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "sweep");
@@ -1079,26 +1162,14 @@ describe("the watch sweep", () => {
         checkDeps: { readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }) },
       });
       expect(created.ok).toBe(true);
-      if (!created.ok) return;
-
-      // The turn died before narrating the outcome, and the user then typed
-      // something else entirely. That moves the chat's last-message watermark
-      // without telling anybody what the watch found, so the wake is still owed.
-      await persistMessages(ctx.agentDb, {
-        chatId: "chat_1",
-        messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "what happened?" }] }],
-      });
+      if (!created.ok || created.watching) throw new Error("expected a one-shot result");
 
       const delivered: string[] = [];
       const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
       const result = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
 
-      expect(result).toMatchObject({ undelivered: 1, redelivered: 1 });
-      expect(delivered).toEqual([created.watchId]);
-      // Still owed until the wake actually lands — the watcher task marks it.
-      expect(await getWatch(ctx.agentDb, { id: created.watchId })).toMatchObject({
-        deliveryStatus: "pending",
-      });
+      expect(result).toMatchObject({ overdue: 0, undelivered: 0, redelivered: 0 });
+      expect(delivered).toEqual([]);
     }
   );
 
@@ -1395,7 +1466,7 @@ describe("the check endpoint", () => {
   }
 
   function tokenFor(watchId: string, expiresAt: Date) {
-    return signDashboardAgentWatchToken(env.SESSION_SECRET, { watchId, expiresAt });
+    return signDashboardAgentWatchToken(SESSION_SECRET, { watchId, expiresAt });
   }
 
   postgresTest("401s on a bad token", async ({ prisma, postgresContainer }) => {

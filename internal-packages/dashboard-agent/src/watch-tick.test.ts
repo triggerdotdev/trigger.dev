@@ -1,3 +1,4 @@
+import { watchResolutionToWireStatus } from "@internal/dashboard-agent-contracts";
 import type { Watch } from "@internal/dashboard-agent-db";
 import { describe, expect, it } from "vitest";
 
@@ -118,10 +119,15 @@ function fakeStore(row: Watch) {
     transitionWatchCondition: async (params) => {
       calls.transition.push(params);
       if (row.status !== "active") return null;
-      row.status = params.status;
+      // Mirrors the query layer: the two-value status is DERIVED from the
+      // resolution (§7.5), never passed in alongside it.
+      const status = watchResolutionToWireStatus(params.resolution);
+      row.status = status;
+      row.resolution = params.resolution;
       row.deliveryStatus = "pending";
       row.lastCheckedAt = NOW;
-      if (params.status === "fired") row.firedAt = NOW;
+      if (status === "fired") row.firedAt = NOW;
+      if (params.observedOutcome !== undefined) row.observedOutcome = params.observedOutcome;
       if (params.lastResult !== undefined) row.lastResult = params.lastResult;
       return { ...row };
     },
@@ -767,5 +773,184 @@ describe("runWatchTick", () => {
     expect(result).toEqual({ outcome: "missing" });
     expect(fetchCalls).toHaveLength(0);
     expect(appends).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The resolution model (§4.2) and the window boundary (§7.4, binding)
+//
+// The tick's job is unchanged; what it RECORDS is not. Every terminal transition
+// now writes a resolution and the observation that came with it, atomically with
+// the frozen facts — and the wake carries both, while the wire keeps its
+// as-built two-value encoding (§7.5).
+// ---------------------------------------------------------------------------
+
+describe("the resolution model", () => {
+  const OBSERVED = {
+    kind: "run_finished" as const,
+    verified: true,
+    finalStatus: "COMPLETED_WITH_ERRORS",
+    durationMs: 4200,
+  };
+
+  it("records condition_met with the observation, and keeps the wire encoding", async () => {
+    const { store, calls, row } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({
+      body: {
+        result: "satisfied",
+        facts: { outcome: "COMPLETED_WITH_ERRORS" },
+        observed: OBSERVED,
+      },
+    }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+
+    // One statement carried all three halves of the answer.
+    expect(calls.transition).toEqual([
+      {
+        id: "watch_1",
+        resolution: "condition_met",
+        observedOutcome: OBSERVED,
+        lastResult: { verified: true, outcome: "COMPLETED_WITH_ERRORS" },
+      },
+    ]);
+    expect(row.resolution).toBe("condition_met");
+
+    // §7.5: the id and type are unchanged, and the meaning rides alongside.
+    expect(appends[0]?.action).toMatchObject({
+      type: "watch.fired",
+      id: "watch:watch_1:fired",
+      resolution: "condition_met",
+      observed: OBSERVED,
+    });
+  });
+
+  it("records condition_impossible, not a plain expiry", async () => {
+    const { store, calls, row } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({
+      body: { result: "terminal_unsatisfied", facts: { status: "CANCELED" } },
+    }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+
+    expect(calls.transition[0]).toMatchObject({ resolution: "condition_impossible" });
+    expect(row.resolution).toBe("condition_impossible");
+    // Still addressed as `expired` on the wire.
+    expect(appends[0]?.action).toMatchObject({
+      id: "watch:watch_1:expired",
+      resolution: "condition_impossible",
+    });
+  });
+
+  // Binding: the final evaluation is a REAL evaluation. A watch whose condition
+  // becomes true exactly at the deadline resolves `condition_met`, not
+  // `window_completed`.
+  it("lets the boundary check still resolve condition_met", async () => {
+    const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
+    const { fetch, calls: fetchCalls } = fakeFetch(() => ({
+      body: { result: "satisfied", facts: { pending: 0 } },
+    }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(
+      payloadFor(13),
+      deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:30:00.000Z") })
+    );
+
+    // The endpoint was told this is the final evaluation…
+    expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({ final: true });
+    // …and it still resolved as met.
+    expect(calls.transition[0]).toMatchObject({ resolution: "condition_met" });
+    expect(result).toEqual({ outcome: "fired" });
+  });
+
+  it("lets the boundary check still resolve condition_impossible", async () => {
+    const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
+    const { fetch } = fakeFetch(() => ({
+      body: { result: "terminal_unsatisfied", facts: { status: "CANCELED" } },
+    }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    await runWatchTick(
+      payloadFor(13),
+      deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:30:00.000Z") })
+    );
+
+    expect(calls.transition[0]).toMatchObject({ resolution: "condition_impossible" });
+  });
+
+  it("only a pending or unavailable boundary check becomes window_completed", async () => {
+    for (const body of [
+      { result: "pending" as const, facts: { pending: 7 } },
+      // `unavailable` arrives as a non-result: the check itself couldn't run.
+      undefined,
+    ]) {
+      const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
+      const { fetch } = fakeFetch(() =>
+        body ? { body } : { status: 500, body: { error: "clickhouse is down" } }
+      );
+      const { deliver } = fakeDeliver();
+      const { reschedule } = fakeReschedule();
+
+      await runWatchTick(
+        payloadFor(13),
+        deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:30:00.000Z") })
+      );
+
+      expect(calls.transition[0]).toMatchObject({ resolution: "window_completed" });
+    }
+  });
+
+  // Before the deadline those two resolve NOTHING — the watch keeps its state.
+  it("resolves nothing on a pending or unavailable check inside the window", async () => {
+    for (const body of [{ result: "pending" as const, facts: {} }, undefined]) {
+      const { store, calls, row } = fakeStore(watchRow());
+      const { fetch } = fakeFetch(() =>
+        body ? { body } : { status: 503, body: { error: "down" } }
+      );
+      const { deliver } = fakeDeliver();
+      const { reschedule } = fakeReschedule();
+
+      await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+
+      expect(calls.transition).toHaveLength(0);
+      expect(row.status).toBe("active");
+      expect(row.resolution ?? null).toBeNull();
+    }
+  });
+
+  it("carries an unverified observation through a window that could not be confirmed", async () => {
+    const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
+    // The endpoint answered; the CHECK is what couldn't run, so it says so and
+    // hands back the observation that carries `verified: false`.
+    const { fetch } = fakeFetch(() => ({
+      body: {
+        result: "unavailable",
+        error: "metrics unavailable",
+        observed: { kind: "backlog_drain", verified: false, depth: null },
+      },
+    }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    await runWatchTick(
+      payloadFor(13),
+      deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:30:00.000Z") })
+    );
+
+    expect(calls.transition[0]).toMatchObject({
+      resolution: "window_completed",
+      observedOutcome: { kind: "backlog_drain", verified: false },
+    });
+    expect(appends[0]?.action.facts).toMatchObject({
+      verified: false,
+      reason: "unverified_at_expiry",
+    });
   });
 });

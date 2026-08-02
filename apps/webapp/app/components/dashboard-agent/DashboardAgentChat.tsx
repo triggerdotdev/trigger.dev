@@ -29,6 +29,8 @@ function watchRequestText(spec: WatchSpec): string {
   switch (spec.kind) {
     case "backlog_drain":
       return `Watch this for me — tell me when the ${spec.queue} backlog drains.`;
+    case "queue_depth_above":
+      return `Watch this for me — tell me if the ${spec.queue} queue grows past ${spec.threshold}.`;
     case "run_start":
       return `Watch this for me — tell me when run ${spec.runId} starts.`;
     case "run_finished":

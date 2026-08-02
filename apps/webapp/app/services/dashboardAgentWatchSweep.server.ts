@@ -42,6 +42,12 @@ import {
   transitionWatchCondition,
   type Watch,
 } from "@internal/dashboard-agent-db";
+import {
+  watchResolutionForCheck,
+  watchResolutionToWireStatus,
+  type WatchObservedOutcome,
+  type WatchResolution,
+} from "@internal/dashboard-agent-contracts";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { enqueueWatchFiredAlert } from "~/services/dashboardAgentWatchAlerts.server";
@@ -150,17 +156,36 @@ function expiredFacts(
   };
 }
 
-/** How a final check's verdict resolves the row. */
+/**
+ * How a FINAL check's verdict resolves the row — the window boundary of §7.4.
+ *
+ * The last evaluation is a real evaluation: a successful final read may still
+ * resolve `condition_met` or `condition_impossible`, and only a `pending` or
+ * `unavailable` result becomes `window_completed`. `watchResolutionForCheck`
+ * owns that rule; this function only dresses it in the facts the surfaces read.
+ */
 function resolutionFor(
   watch: Watch,
   outcome: WatchCheckOutcome
-): { status: "fired" | "expired"; facts: Record<string, unknown> } {
+): {
+  resolution: WatchResolution;
+  observed: WatchObservedOutcome;
+  facts: Record<string, unknown>;
+} {
+  // Always non-null here: this is the boundary evaluation.
+  const resolution = watchResolutionForCheck(outcome.result, true)!;
+
   switch (outcome.result) {
     case "satisfied":
-      return { status: "fired", facts: { verified: true, ...outcome.facts } };
+      return {
+        resolution,
+        observed: outcome.observed,
+        facts: { verified: true, ...outcome.facts },
+      };
     case "terminal_unsatisfied":
       return {
-        status: "expired",
+        resolution,
+        observed: outcome.observed,
         facts: expiredFacts(watch, {
           verified: true,
           reason: "terminal_unsatisfied",
@@ -169,7 +194,8 @@ function resolutionFor(
       };
     case "pending":
       return {
-        status: "expired",
+        resolution,
+        observed: outcome.observed,
         facts: expiredFacts(watch, {
           verified: true,
           reason: "not_met_by_expiry",
@@ -177,10 +203,13 @@ function resolutionFor(
         }),
       };
     default:
-      // The check couldn't run. The deadline still passed, so the watch expires —
-      // but as unverified, never as "it didn't happen".
+      // The check couldn't run. The deadline still passed, so the window
+      // completes — but unverified, never as "it didn't happen". The observation
+      // carries `verified: false`, which is what makes the presentation say the
+      // condition couldn't be confirmed.
       return {
-        status: "expired",
+        resolution,
+        observed: outcome.observed,
         facts: expiredFacts(watch, { verified: false, reason: "unverified_at_expiry" }),
       };
   }
@@ -230,18 +259,19 @@ export async function finalizeOverdueWatch(
       })
   );
 
-  const resolution = resolutionFor(watch, outcome);
+  const resolved = resolutionFor(watch, outcome);
   const transitioned = await transitionWatchCondition(dashboardAgentDb, {
     id: watch.id,
-    status: resolution.status,
-    lastResult: resolution.facts,
+    resolution: resolved.resolution,
+    observedOutcome: resolved.observed,
+    lastResult: resolved.facts,
   });
 
   // Guarded on `active`: a tick resolved it between the list and here, and that
   // outcome (with its own delivery) stands.
   if (!transitioned) return "already_resolved";
 
-  if (resolution.status === "fired") {
+  if (resolved.resolution === "condition_met") {
     // The configured alert channels. Keyed on the watch, so the wake's own
     // notification can't double-alert it.
     try {
@@ -258,7 +288,7 @@ export async function finalizeOverdueWatch(
   // terminal with its delivery owed — recovered by the delivery half of the next
   // sweep, same as when there is no agent project to hand it to at all.
   if (canDeliver) await deliver(transitioned);
-  return resolution.status;
+  return watchResolutionToWireStatus(resolved.resolution);
 }
 
 /**

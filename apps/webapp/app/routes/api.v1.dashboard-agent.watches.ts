@@ -155,13 +155,25 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
+    // The one-shot result block (§2.2/§4.1): the immediate check answered the
+    // request, so there is no watch, no id, and nothing to cancel. The caller
+    // renders it as a deterministic result block and the agent answers from it.
+    if (!result.watching) {
+      return json({
+        watching: false,
+        identity: result.identity,
+        immediate: { result: result.immediate.result, facts: result.immediate.facts },
+      });
+    }
+
     return json({
+      watching: true,
       watchId: result.watchId,
       identity: result.identity,
       status: result.status,
       expiresAt: result.expiresAt.toISOString(),
       emailAlerts: await resolveEmailAlertsState({ userId, environment }),
-      ...(result.immediate ? { immediate: result.immediate } : {}),
+      ...(result.unavailable ? { unavailable: true } : {}),
     });
   } catch (error) {
     logger.error("Failed to create a dashboard agent watch", { error });

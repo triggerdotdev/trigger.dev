@@ -113,7 +113,7 @@ scenarios worth trying first.
 | "What's deployed right now?" / "did the last deploy cause this?" | deploy list, current version, run→commit correlation |
 | "What tasks does this project have?" | the task list with file paths |
 | "How do retries work?" / "how do I set a concurrency limit?" | docs answer with source links |
-| "What alerts do I have?" / "turn off the email alert" | lists and manages your watch-fire subscriptions |
+| "What alerts do I have?" / "turn off the email alert" | lists and manages your watch-result subscriptions |
 | "This looks broken, can you flag it to support?" | files the context to the support channel |
 
 ## Where the UI got updates
@@ -125,10 +125,11 @@ scenarios worth trying first.
 - **Chat history** — unread chats first and highlighted; per-chat status icon
   left of the title (spinner = agent working / watch active, magnifier =
   investigation in progress; hover for which).
-- **In the transcript** — wake messages open with a tone banner ("Watch
-  update — all clear" / "needs your attention" / expired); watch chips under
-  the composer show live watches with cancel; clicking a card's watch button
-  posts a visible request the agent answers.
+- **In the transcript** — a watch's result opens with a banner that states the
+  fact ("email-sends queue drained", "Run abc123 failed", "Health recovered"),
+  toned by what actually happened rather than by which kind of watch it was;
+  watch chips under the composer show live watches with cancel; clicking a
+  card's watch button posts a visible request the agent answers.
 - **Report cards** — terminal-style skin, metric grid with sparklines, *Next
   steps* footer with real buttons (docs entries always get the docs button).
 - **Alerts page** — the new "Dashboard agent watches" alert type on standard

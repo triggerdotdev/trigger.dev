@@ -23,6 +23,17 @@ export const AlertDashboardAgentWatchEmailSchema = z.object({
   identity: z.string(),
   /** The watch kind, e.g. `run_finished`. */
   kind: z.string(),
+  /**
+   * The fact headline, already rendered by the webapp's `watch-presentation.ts`
+   * — the SAME sentence the chat's wake banner shows, so chat and inbox read
+   * alike (§6). Optional so an older enqueue still renders something sane.
+   */
+  headline: z.string().optional(),
+  /**
+   * The presentation tone that headline was resolved with. Colours the accent
+   * only; the text keeps its colour, exactly as in the panel.
+   */
+  tone: z.enum(["success", "warning", "error", "neutral"]).optional(),
   /** Why the watch exists, in the user's own words. */
   note: z.string(),
   firedAt: z.string(),
@@ -41,6 +52,8 @@ const previewDefaults: AlertDashboardAgentWatchEmailProps = {
   email: "alert-dashboard-agent-watch",
   identity: "run_finished:run_abc123",
   kind: "run_finished",
+  headline: "Run run_abc123 finished",
+  tone: "success",
   note: "tell me when the nightly invoice run finishes",
   firedAt: "2026-07-29T12:00:00.000Z",
   facts: [
@@ -66,22 +79,32 @@ function formatFiredAt(firedAt: string) {
 }
 
 /**
- * The chat's wake banner, in email form. Same tone mapping as the panel's
- * WakeBanner: a fired good-news kind is "all clear", a recurred error "needs
- * your attention", anything else states the fact.
+ * The chat's wake banner, in email form.
+ *
+ * This template writes NO kind-specific wording of its own. The headline arrives
+ * already rendered by the webapp's presenter, off the same resolved-result
+ * mapping the panel's WakeBanner uses — so a failed run says "failed" in the
+ * inbox too, and there is no good-news kind list anywhere.
+ *
+ * Only the accent colour is chosen here, because it is an email palette.
  */
-const GOOD_NEWS_KINDS = new Set(["health_recovery", "backlog_drain", "run_start", "run_finished"]);
+const TONE_COLOR: Record<string, string> = {
+  success: "#A8FF53",
+  warning: "#FBBF24",
+  error: "#F87171",
+  neutral: "#D7D9DD",
+};
 
-function outcomeLine(kind: string): { accent: string; color: string } {
-  if (GOOD_NEWS_KINDS.has(kind)) return { accent: "all clear", color: "#A8FF53" };
-  if (kind === "error_recurrence") return { accent: "needs your attention", color: "#F87171" };
-  return { accent: "condition met", color: "#D7D9DD" };
+/** The fallback headline for a payload written before the presenter existed. */
+function fallbackHeadline(identity: string): string {
+  return `Your watch has an answer — ${identity}`;
 }
 
 export default function Email(props: AlertDashboardAgentWatchEmailProps) {
   const {
     identity,
-    kind,
+    headline,
+    tone,
     note,
     firedAt,
     facts,
@@ -93,12 +116,12 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
   } = { ...previewDefaults, ...props };
 
   const details = [identity, ...facts.slice(0, 3).map((fact) => `${fact.label}: ${fact.value}`)];
-  const outcome = outcomeLine(kind);
+  const accentColor = TONE_COLOR[tone ?? "neutral"] ?? TONE_COLOR.neutral;
 
   return (
     <Html>
       <Head />
-      <Preview>{`${organization}: your watch fired — ${identity}`}</Preview>
+      <Preview>{`${organization}: ${headline ?? fallbackHeadline(identity)}`}</Preview>
       <Tailwind>
         <Body className="bg-[#15171A] my-auto mx-auto font-sans">
           <Container className="my-[40px] mx-auto p-[20px] max-w-[600px]">
@@ -112,14 +135,20 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
               />
             </Section>
             <Section>
-              {/* The chat's wake banner IS the headline: the outcome first,
-                  toned — the details line below carries the watch identity. */}
-              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 my-[30px] mx-0">
-                Watch update — <strong style={{ color: outcome.color }}>{outcome.accent}</strong>
+              {/* Fact first, exactly as in the panel: the micro-label carries
+                  the "this is a watch" signal, the headline carries the fact. */}
+              <Text
+                className="text-[11px] uppercase tracking-widest m-0"
+                style={{ color: accentColor }}
+              >
+                Watch update
+              </Text>
+              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 mt-[8px] mb-[30px] mx-0">
+                {headline ?? fallbackHeadline(identity)}
               </Heading>
               <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
-                I was keeping an eye on {project} ({environment}) for you, and this just fired at{" "}
-                {formatFiredAt(firedAt)}. Your note on this watch: “{note}”.
+                I was keeping an eye on {project} ({environment}) for you, and this is the answer,
+                as of {formatFiredAt(firedAt)}. Your note on this watch: “{note}”.
               </Text>
               <Text className="text-[#878C99] text-[14px] leading-[20px]">
                 {details.join(" · ")}

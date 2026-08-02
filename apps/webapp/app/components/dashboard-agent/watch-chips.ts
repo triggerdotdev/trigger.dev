@@ -9,6 +9,13 @@
  */
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 
+// The immediate-check outcomes moved to the presenter: they are user-facing
+// wording, and §5.2 keeps all of that in one place. Re-exported so chip callers
+// don't have to know it moved.
+export { immediateWatchMessage } from "./watch-presentation";
+
+import { formatWatchCadence, watchIdentityValue } from "./watch-presentation";
+
 export const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
   active: "watching",
   fired: "fired",
@@ -34,6 +41,10 @@ export function watchChipLabel(watch: { kind: string; identity: string; note: st
     case "run_finished":
     case "backlog_drain":
       return value || fallbackLabel(watch);
+    // `queue_depth_above:{queue}:{threshold}` — the chip names the queue; the
+    // threshold is in the tooltip's note, where there is room for it.
+    case "queue_depth_above":
+      return watchIdentityValue(watch.kind, watch.identity) || fallbackLabel(watch);
     case "error_recurrence":
       return value ? value.slice(0, FINGERPRINT_CHARS) : fallbackLabel(watch);
     case "health_recovery":
@@ -56,26 +67,6 @@ export function watchChipTooltip(watch: {
   status: WatchStatus;
 }): string {
   const note = watch.note.trim();
-  const cadence = `every ${watch.checkEveryMinutes} min`;
+  const cadence = formatWatchCadence(watch.checkEveryMinutes);
   return [note, cadence, WATCH_STATUS_LABEL[watch.status]].filter(Boolean).join(" · ");
-}
-
-/**
- * A watch whose condition resolved the moment it was created never becomes a
- * chip — there is nothing left to watch — so the answer is said once, in a toast.
- *
- * `pending` and `unavailable` are not immediate outcomes (the watch stays active),
- * but they're handled so a future result can never fall through to nothing.
- */
-export function immediateWatchMessage(result: string): string {
-  switch (result) {
-    case "satisfied":
-      return "That already happened, so there's nothing left to watch.";
-    case "terminal_unsatisfied":
-      return "That can't happen any more, so there's nothing to watch.";
-    case "unavailable":
-      return "We couldn't check that just now. Watching anyway.";
-    default:
-      return "Watching.";
-  }
 }

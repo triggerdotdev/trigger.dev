@@ -1,7 +1,7 @@
 // Watch alert fan-out: one delivery job per channel, so a retry can only ever
 // re-send the channel that failed.
 //
-// Real service code, mocked IO only: the Prisma reads, the plan/flag gate, the
+// Real service code, mocked IO only: the Prisma reads, the feature gate, the
 // email transport, the Slack client and the webhook fetch. `~/v3/alertsWorker.server`
 // is already stubbed globally by test/setup.ts, so the fan-out's enqueues land on
 // a spy.
@@ -76,12 +76,9 @@ vi.mock("~/db.server", () => {
   return { prisma: db, $replica: db, sqlDatabaseSchema: undefined };
 });
 
-// The gate's two IO dependencies, so the real gate code runs.
+// The gate's one IO dependency, so the real gate code runs.
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.gateAllowed,
-}));
-vi.mock("~/services/platform.v3.server", () => ({
-  getCachedLimit: async () => ({ val: 100 }),
 }));
 
 vi.mock("~/services/email.server", () => ({ sendAlertEmail }));

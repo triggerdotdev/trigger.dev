@@ -71,10 +71,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const result = await unsubscribeChannelFromWatchAlerts(claims.channelId);
   if (!result.ok) {
-    return typedjson(
-      { success: false as const, message: "This alert no longer exists." },
-      { status: 404 }
-    );
+    return result.reason === "conflict"
+      ? typedjson(
+          {
+            success: false as const,
+            message: "This alert was being changed elsewhere. Please try again.",
+          },
+          { status: 409 }
+        )
+      : typedjson(
+          { success: false as const, message: "This alert no longer exists." },
+          { status: 404 }
+        );
   }
 
   return typedjson({ success: true as const, channelName: result.channelName });

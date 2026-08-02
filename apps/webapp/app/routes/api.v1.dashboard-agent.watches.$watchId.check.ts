@@ -150,8 +150,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Never touches `tickCount` — see the note above.
   await recordWatchCheck(dashboardAgentDb, {
     id: watchId,
-    lastResult: { result: outcome.result, facts: outcome.facts, final: body.final === true },
+    lastResult: {
+      result: outcome.result,
+      facts: outcome.facts,
+      observed: outcome.observed,
+      final: body.final === true,
+    },
   });
 
-  return json({ result: outcome.result, facts: outcome.facts });
+  // `observed` travels with the verdict: it is the other half of the resolved
+  // result (§4.2), and the task writes it onto the row in the SAME statement as
+  // the resolution, so no delivery surface has to re-read the source (§7.5).
+  return json({ result: outcome.result, facts: outcome.facts, observed: outcome.observed });
 }

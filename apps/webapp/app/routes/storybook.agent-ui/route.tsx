@@ -503,24 +503,62 @@ function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string
   };
 }
 
+// One watch per presentation category, plus the pair that proves the point of
+// the resolution model: the SAME `condition_met` on the same kind, presented as
+// a success and as a failure, decided only by the observed final status.
 const wakeWatches: WakeWatch[] = [
   {
     id: "watch_health",
     kind: "health_recovery",
     note: "prod health back to normal",
-    identity: "health_recovery:",
+    identity: "health_recovery:health",
+    resolution: "condition_met",
+    observedOutcome: { kind: "health_recovery", verified: true, severity: "ok" },
   },
   {
     id: "watch_error",
     kind: "error_recurrence",
     note: "tell me if that TypeError comes back",
     identity: "error_recurrence:a1b2c3d4e5f6",
+    resolution: "condition_met",
+    observedOutcome: { kind: "error_recurrence", verified: true, countSince: 6 },
   },
   {
     id: "watch_run",
     kind: "run_finished",
     note: "ping me when the nightly backfill finishes",
     identity: "run_finished:run_a1b2c3d4e5",
+    resolution: "window_completed",
+    observedOutcome: { kind: "run_finished", verified: true, finalStatus: null, durationMs: null },
+  },
+  {
+    id: "watch_run_failed",
+    kind: "run_finished",
+    note: "ping me when the nightly backfill finishes",
+    identity: "run_finished:run_a1b2c3d4e5",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 812_000,
+    },
+  },
+  {
+    id: "watch_queue_gone",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "condition_impossible",
+    observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
+  },
+  {
+    id: "watch_unverified",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "window_completed",
+    observedOutcome: { kind: "backlog_drain", verified: false, depth: null },
   },
 ];
 
@@ -682,7 +720,7 @@ const STATES: Record<string, React.ReactNode> = {
   "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
 
   // --- Wake banners -------------------------------------------------------
-  "wake-fired-good-news": (
+  "wake-positive": (
     <WakeHarness
       watches={wakeWatches}
       message={wakeMessage(
@@ -692,7 +730,7 @@ const STATES: Record<string, React.ReactNode> = {
       )}
     />
   ),
-  "wake-fired-attention": (
+  "wake-attention": (
     <WakeHarness
       watches={wakeWatches}
       message={wakeMessage(
@@ -702,13 +740,47 @@ const STATES: Record<string, React.ReactNode> = {
       )}
     />
   ),
-  "wake-expired": (
+  // The answer the resolution model insists is an answer: the window ran out
+  // with the condition still not true, and that is what the user asked to know.
+  "wake-window-completed": (
     <WakeHarness
       watches={wakeWatches}
       message={wakeMessage(
         "watch_run",
         "expired",
-        "I stopped watching the nightly backfill: it still hasn't finished, and the watch has run out. Ask me again if you want me to keep an eye on it."
+        "The nightly backfill is still running after two hours — it hasn't failed, it just hasn't landed. Ask me again if you want another window on it."
+      )}
+    />
+  ),
+  // Same kind, same `condition_met`, opposite presentation. The icon follows the
+  // outcome, never the resolution.
+  "wake-attention-failed-run": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_run_failed",
+        "fired",
+        "The nightly backfill finished, but with errors: 13m 32s in, it ended as COMPLETED_WITH_ERRORS. Worth looking at the last attempt's trace."
+      )}
+    />
+  ),
+  "wake-neutral-impossible": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_gone",
+        "expired",
+        "The email-sends queue was deleted, so there is nothing left to drain. I've stopped watching."
+      )}
+    />
+  ),
+  "wake-unverified": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_unverified",
+        "expired",
+        "The window ran out while I couldn't read the queue depth, so I can't tell you whether it drained. The last reading I do have was 42 pending, an hour ago."
       )}
     />
   ),
