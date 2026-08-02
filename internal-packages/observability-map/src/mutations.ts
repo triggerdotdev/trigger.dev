@@ -304,6 +304,11 @@ function containsLooseJump(node: ts.Node): boolean {
  * Only applied to a clause whose statements already end in a `return` or a `throw`, so the appended
  * throw really is unreachable, and never to one holding a loose `break` or `continue`, which a `do`
  * or a `switch` would capture.
+ *
+ * `dead-throw-after-switch-break` guards the opposite direction of the same rule. A `break` in a
+ * switch clause is no longer read as leaving the statement list the switch sits in, and the cheap
+ * way to write that is "a clause holding a break does not exit", which would take this whole family
+ * back: the clause here returns AND breaks, and the return is what has to win.
  */
 function deadThrowAfter(id: string, what: string, wrap: (body: string) => string): Mutation {
   return {
@@ -764,6 +769,11 @@ export const MUTATIONS: Mutation[] = [
     (body) => `switch (1) { default: {\n${body}\n} }`
   ),
   deadThrowAfter(
+    "dead-throw-after-switch-break",
+    "wrap every catch body in a switch default that also breaks and write throw e; after it",
+    (body) => `switch (1) { default: {\n${body}\n}\nbreak; }`
+  ),
+  deadThrowAfter(
     "dead-throw-after-try-finally",
     "wrap every catch body in try { ... } finally { } and write throw e; after it",
     (body) => `try {\n${body}\n} finally { }`
@@ -879,6 +889,7 @@ export const ADDITIVE_IDS = [
   "dead-throw-after-if-true",
   "dead-throw-after-if-else",
   "dead-throw-after-switch",
+  "dead-throw-after-switch-break",
   "dead-throw-after-try-finally",
   "wrap-body-in-rethrow",
   "wrap-body-in-same-arms-throw-ternary",

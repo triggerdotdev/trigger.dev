@@ -887,6 +887,121 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
+  // S3. `definitelyExits` counted a bare `break` and a bare `continue` wherever it found one, and
+  // both of those target the nearest enclosing construct of their kind rather than the statement
+  // list the question is about. A `switch` whose clauses all break falls through to the statement
+  // written after it, so cutting that statement as unreachable accused a route of swallowing an
+  // error it rethrows, with a detail line saying it "takes one way out regardless of what was
+  // thrown" about a clause that takes the same way out it arrived by. This is the false-accusation
+  // direction, so both halves are pinned: what must now stay reachable, and what must still be cut.
+  describe("break and continue inside the construct they target", () => {
+    const clause = (body: string) => `
+      export async function loader() {
+        try {
+          return await prisma.thing.findMany();
+        } catch (e) {
+          ${body}
+        }
+      }
+    `;
+
+    // Reachable, so the throw after them is a real rethrow. Each jump targets the construct it is
+    // written in, and every one of these constructs falls through to the next statement.
+    const FALLS_THROUGH: Array<[string, string]> = [
+      [
+        "a switch whose clauses all break",
+        'switch (e.code) { case "P2025": handleNotFound(); break; default: handleOther(); break; }',
+      ],
+      ["a switch whose default is a bare break", "switch (e.code) { default: break; }"],
+      ["a do body that breaks", "do { break; } while (false);"],
+      ["a do body that continues", "do { continue; } while (false);"],
+      [
+        "a do body whose if/else both break",
+        "do { if (pick()) { break; } else { break; } } while (false);",
+      ],
+    ];
+
+    for (const [label, wrapped] of FALLS_THROUGH) {
+      it(`still sets rethrows for a throw written after ${label}`, () => {
+        const ep = scanFile("x.ts", clause(`${wrapped}\nthrow e;`));
+        expect(ep!.catches[0]!.rethrows).toBe(true);
+      });
+
+      it(`still credits an error test written after ${label}`, () => {
+        const ep = scanFile(
+          "x.ts",
+          clause(`${wrapped}\nif (e instanceof Error) { return json({ a: 1 }); }\nthrow e;`)
+        );
+        expect(ep!.catches[0]!.branches).toBe(true);
+      });
+    }
+
+    // The clause the whole finding was about, end to end: sorting the error by code and then
+    // rethrowing is a rethrow, which is `not-applicable`, and never a swallow.
+    it("reads a switch on the error code followed by a rethrow as a rethrow", () => {
+      const ep = scanFile(
+        "x.ts",
+        clause(
+          'switch (e.code) { case "P2025": handleNotFound(); break; default: handleOther(); break; }\nthrow e;'
+        )
+      );
+      expect(ep!.catches[0]).toMatchObject({ rethrows: true, throws: true, branches: false });
+    });
+
+    // Cut, so the throw after them is dead and must not be credited. The first two are the
+    // over-correction control: a clause that returns and also breaks still exits, and reading the
+    // break as "no exit" would take the whole `dead-throw-after-*` family back.
+    const EXITS: Array<[string, string]> = [
+      [
+        "a switch clause that returns before it breaks",
+        "switch (1) { default: { return null; } break; }",
+      ],
+      [
+        "a switch whose every clause returns",
+        "switch (e.code) { case 1: return null; default: return 0; }",
+      ],
+      ["a do body that returns before it breaks", "do { return null; break; } while (false);"],
+    ];
+
+    for (const [label, wrapped] of EXITS) {
+      it(`does not set rethrows for a throw written after ${label}`, () => {
+        const ep = scanFile("x.ts", clause(`${wrapped}\nthrow e;`));
+        expect(ep!.catches[0]!.rethrows).toBe(false);
+      });
+    }
+
+    // A `continue` in a switch clause targets the enclosing loop, not the switch, so it is
+    // inherited through the clause rather than dropped with the `break`. Dropping it would leave
+    // the throw below reachable, and it is not: the continue goes to the `do`'s condition.
+    // The labelled jumps beside it leave the `for` entirely, so they are exits wherever they are
+    // written. The bare `break` is the control that separates the three.
+    const IN_LOOP: Array<[string, boolean]> = [
+      ["break outer", false],
+      ["continue outer", false],
+      ["continue", false],
+      ["break", true],
+    ];
+
+    for (const [jump, rethrows] of IN_LOOP) {
+      it(`reads a switch clause that says ${jump} inside a labelled loop as rethrows=${rethrows}`, () => {
+        const ep = scanFile(
+          "x.ts",
+          `export async function loader() {
+             outer: for (const x of items) {
+               try { await service.call(x); }
+               catch (e) {
+                 switch (e.code) { case 1: ${jump}; default: ${jump}; }
+                 throw e;
+               }
+             }
+             return null;
+           }`
+        );
+        expect(ep!.catches[0]!.rethrows).toBe(rethrows);
+      });
+    }
+  });
+
   // S2. A clause whose try block cannot throw is unreachable, so it is not error handling and
   // nothing should be read off it. Crediting one was the largest hole ever found here: prepending
   // this to a body takes the real tree from 19 to 44 and raises 224 routes, because the routes

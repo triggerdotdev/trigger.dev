@@ -469,6 +469,21 @@ function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string 
 }
 
 /**
+ * Which bare (unlabelled) jumps, at this point in the recursion, leave the statement list the
+ * question is being asked about. A bare jump targets the nearest enclosing construct of its kind,
+ * so descending past one of those targets changes the answer for the jumps it captures.
+ */
+type BareJumps = { break: boolean; continue: boolean };
+
+/** A jump written directly in the list under question always leaves it: whatever it targets
+ * encloses the list. */
+const ESCAPES: BareJumps = { break: true, continue: true };
+
+/** A `do` body, asked about from the list the `do` sits in. `break` ends the loop and `continue`
+ * goes to the condition, and both of those reach the statement written after the `do`. */
+const IN_DO_BODY: BareJumps = { break: false, continue: false };
+
+/**
  * A statement that leaves the statement list it sits in on every path through itself, so anything
  * after it in the same list never runs.
  *
@@ -477,44 +492,62 @@ function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string 
  * it was a block, a `do` body or an `if`/`else` that returned; `dead-throw-after-*` in the mutation
  * corpus is that family, and `scan.test.ts` has one case per construct.
  *
+ * A bare `break` or `continue` only counts where it actually leaves the list, which is what `jumps`
+ * carries. A `break` inside a switch clause targets the switch, so a switch whose clauses all break
+ * falls through to the statement after it and does NOT exit; reading that break as an exit accused
+ * `catch (e) { switch (e.code) { ... break; } throw e; }` of swallowing a rethrown error, which is
+ * both a false verdict and a detail line that says the opposite of what the route does. A `continue`
+ * inside a switch clause targets an enclosing loop instead, which the switch cannot be, so it is
+ * inherited rather than dropped: dropping it would stop
+ * `do { switch (x) { default: continue; } throw e; } while (c)` cutting a throw that really is dead.
+ * `break and continue inside the construct they target` in `scan.test.ts` holds both halves.
+ *
+ * A labelled `break`/`continue` always counts. Its target has to enclose the statement list, since
+ * nothing between the list and the jump can carry the label: `definitelyExits` answers false for a
+ * labelled statement, so the recursion never descends through one.
+ *
  * A sound under-approximation. `if` without an `else`, a labelled statement (a `break` to the label
  * escapes it) and every other loop form answer false, because none of them is guaranteed to run its
- * body. Saying false when the truth is true only leaves a later statement in the list, which is the
- * direction that withholds evidence rather than inventing it.
+ * body. That extends to a `do` that never falls through, `do { continue; } while (true)`, which is
+ * now false for the same reason `while (true) { }` always was: separating it from
+ * `do { continue; } while (c)` means folding the condition, which the dead-code defence deliberately
+ * does not do. Saying false when the truth is true only leaves a later statement in the list, which
+ * is the direction that withholds evidence rather than inventing it.
  */
-function definitelyExits(statement: ts.Statement): boolean {
-  if (
-    ts.isReturnStatement(statement) ||
-    ts.isThrowStatement(statement) ||
-    ts.isContinueStatement(statement) ||
-    ts.isBreakStatement(statement)
-  ) {
-    return true;
+function definitelyExits(statement: ts.Statement, jumps: BareJumps = ESCAPES): boolean {
+  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+  if (ts.isBreakStatement(statement)) return statement.label !== undefined || jumps.break;
+  if (ts.isContinueStatement(statement)) return statement.label !== undefined || jumps.continue;
+  if (ts.isBlock(statement)) {
+    return statement.statements.some((s) => definitelyExits(s, jumps));
   }
-  if (ts.isBlock(statement)) return statement.statements.some(definitelyExits);
   // A `do` body runs before its condition is ever read.
-  if (ts.isDoStatement(statement)) return definitelyExits(statement.statement);
+  if (ts.isDoStatement(statement)) return definitelyExits(statement.statement, IN_DO_BODY);
   if (ts.isIfStatement(statement)) {
     return (
       statement.elseStatement !== undefined &&
-      definitelyExits(statement.thenStatement) &&
-      definitelyExits(statement.elseStatement)
+      definitelyExits(statement.thenStatement, jumps) &&
+      definitelyExits(statement.elseStatement, jumps)
     );
   }
   if (ts.isTryStatement(statement)) {
-    if (statement.finallyBlock && definitelyExits(statement.finallyBlock)) return true;
-    if (!definitelyExits(statement.tryBlock)) return false;
-    return statement.catchClause === undefined || definitelyExits(statement.catchClause.block);
+    if (statement.finallyBlock && definitelyExits(statement.finallyBlock, jumps)) return true;
+    if (!definitelyExits(statement.tryBlock, jumps)) return false;
+    return (
+      statement.catchClause === undefined || definitelyExits(statement.catchClause.block, jumps)
+    );
   }
   if (ts.isSwitchStatement(statement)) {
+    const inClause: BareJumps = { break: false, continue: jumps.continue };
     const clauses = statement.caseBlock.clauses;
     const last = clauses[clauses.length - 1];
     if (!clauses.some(ts.isDefaultClause) || last === undefined) return false;
     // An empty clause falls through to the next one, so it does not have to exit itself; the last
     // clause has nothing to fall through to and does.
     return (
-      clauses.every((c) => c.statements.length === 0 || c.statements.some(definitelyExits)) &&
-      last.statements.some(definitelyExits)
+      clauses.every(
+        (c) => c.statements.length === 0 || c.statements.some((s) => definitelyExits(s, inClause))
+      ) && last.statements.some((s) => definitelyExits(s, inClause))
     );
   }
   return false;
@@ -522,7 +555,9 @@ function definitelyExits(statement: ts.Statement): boolean {
 
 /** `statements` up to and including the first one that definitely exits. */
 function reachableStatements(statements: readonly ts.Statement[]): readonly ts.Statement[] {
-  const index = statements.findIndex(definitelyExits);
+  // The arrow matters: `findIndex` passes an index as the second argument, which `definitelyExits`
+  // would read as its `jumps` record.
+  const index = statements.findIndex((s) => definitelyExits(s));
   return index === -1 ? statements : statements.slice(0, index + 1);
 }
 

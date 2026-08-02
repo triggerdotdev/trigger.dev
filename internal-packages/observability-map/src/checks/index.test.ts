@@ -741,6 +741,61 @@ describe("error-classification", () => {
     );
     expect(r.status).toBe("fail");
   });
+
+  // The verdict end of the `break and continue inside the construct they target` finding. A clause
+  // that sorts the error by code and then rethrows was failed, with a detail line asserting it
+  // takes one way out regardless of what was thrown, which is the opposite of what it does. Both
+  // spellings are here because the pair is the evidence: the switch must not change the verdict.
+  const SORTED_RETHROW = (sorter: string) => `import { prisma } from "~/db.server";
+     export async function action({ request, params }) {
+       try {
+         return json(await prisma.thing.update({ where: { id: params.id }, data: {} }));
+       } catch (e) {
+         ${sorter}
+         throw e;
+       }
+     }`;
+
+  it("does not accuse a clause that sorts the error by code and rethrows", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.sorted.ts",
+      SORTED_RETHROW(
+        'switch (e.code) { case "P2025": handleNotFound(e); break; default: handleOther(e); break; }'
+      )
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).not.toContain("one way out");
+  });
+
+  it("reads the same clause written without the switch identically", () => {
+    const withSwitch = run(
+      "error-classification",
+      "api.v1.sorted.ts",
+      SORTED_RETHROW(
+        'switch (e.code) { case "P2025": handleNotFound(e); break; default: handleOther(e); break; }'
+      )
+    );
+    const without = run(
+      "error-classification",
+      "api.v1.sorted.ts",
+      SORTED_RETHROW("handleOther(e);")
+    );
+    expect(withSwitch).toEqual(without);
+  });
+
+  // The other direction, so the rule above is not just "a switch is ignored": the same sorter with
+  // a clause that answers the request is a decision, and still passes.
+  it("still passes a clause whose switch on the error code answers the request", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.sorted.ts",
+      SORTED_RETHROW(
+        'switch (e.code) { case "P2025": return new Response(null, { status: 404 }); default: break; }'
+      )
+    );
+    expect(r.status).toBe("pass");
+  });
 });
 
 describe("auth-boundary", () => {
