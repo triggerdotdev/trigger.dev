@@ -357,6 +357,16 @@ Read these before trusting a specific verdict.
 - **`auth-scope` reads property assignments in that export's own handler.** A handler that pulls the
   id into a local first, `const userId = user.id; ... { userId }`, or that builds its filter in a
   same-file helper, scopes itself and is not seen, so it would be reported as unscoped.
+- **`auth-scope` reads the builder-wrapped exports and says nothing about the rest of the file.** A
+  route whose action is builder-wrapped and whose loader is a plain `export async function loader`
+  is judged on the action alone, and the pass detail, "every builder-wrapped export has an
+  authorization gate", is true of what it read while reading as a claim about the whole route. Ten
+  routes in the tree mix the two, and one of them is sensitive, so it is the only one the check runs
+  on: `_app.orgs.$organizationSlug.settings._index/route.tsx`, whose builder-wrapped action carries
+  the pass and whose plain loader filters on `members: { some: { userId } }` and is scoped. That was
+  hand-read; nothing in the check saw it. Widening the check to a hand-written export means deciding
+  first whether that export is authenticated at all, which is `auth-boundary`'s question rather than
+  this one.
 - **Three login-flow routes fail `auth-boundary` correctly and unhelpfully.** `/auth/sso`,
   `/api/v1/authorization-code` and `/api/v1/token` are unauthenticated by design: the caller is
   anonymous at that point, which is the whole purpose. The check's statement about them is true and
