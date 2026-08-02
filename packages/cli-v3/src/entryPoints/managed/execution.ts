@@ -25,6 +25,7 @@ import { type SnapshotState, SnapshotManager } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
 import type { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
+import { getWorkloadRunAttemptStartLogData } from "./runAttemptLogData.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -447,7 +448,9 @@ export class RunExecution {
       podScheduledAt: this.podScheduledAt?.getTime(),
     });
 
-    this.sendDebugLog("started attempt", { start: start.data });
+    this.sendDebugLog("started attempt", {
+      start: getWorkloadRunAttemptStartLogData(start.data),
+    });
 
     return { ...start.data, metrics };
   }
