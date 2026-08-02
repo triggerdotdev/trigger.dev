@@ -48,7 +48,7 @@ jobs:
           OBS_MAP_MUTATION_CORPUS: "1"
         run: |
           pnpm --filter @internal/observability-map exec vitest run \
-            test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
+            src/mutationCorpus.test.ts --disable-console-intercept
 
   # The package's own tests are NOT run here. They gate through pr_checks.yml, which is the only
   # workflow the all-checks aggregate can see, so a job in this file would report a result nobody

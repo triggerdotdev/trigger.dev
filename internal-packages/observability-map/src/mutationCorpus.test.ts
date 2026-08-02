@@ -197,7 +197,15 @@ function mutate(
 
 const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
 
-describeCorpus("mutation corpus over the real route tree", () => {
+/**
+ * Each entry rescans the whole tree, so the suite's default per-test timeout is far too short. Set
+ * here rather than left to a `--testTimeout` flag: the flag only helps someone who already knows to
+ * pass it, and without it the corpus fails as a timeout, which reads as a broken harness rather
+ * than a slow one.
+ */
+const ENTRY_TIMEOUT_MS = 120_000;
+
+describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIMEOUT_MS }, () => {
   const files = ENABLED && existsSync(ROUTES) ? readTree(ROUTES) : [];
   const baseline = ENABLED && existsSync(ROUTES) ? measure(files) : null;
 

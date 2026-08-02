@@ -86,7 +86,7 @@ you change this package, run it:
 
 ```bash
 OBS_MAP_MUTATION_CORPUS=1 pnpm --filter @internal/observability-map exec vitest run \
-  src/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
+  src/mutationCorpus.test.ts --disable-console-intercept
 ```
 
 So the number is deliberately unflattering, and one platform change would move most of it. Nothing
