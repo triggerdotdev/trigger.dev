@@ -9,7 +9,7 @@ import { parseWithZod } from "@conform-to/zod";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type FeedbackType, feedbackTypes, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
@@ -84,6 +84,18 @@ export function Feedback({
       setSearchParams(next);
     }
   }, [searchParams]);
+
+  // Reset the topic to the default once the dialog closes, so reopening always starts fresh. The
+  // dialog is now persistently mounted (hosted outside the popover), so without this it would keep
+  // the previously chosen topic selected and risk filing feedback under the wrong category. Keyed
+  // on the close transition (not just `!open`) so the ?feedbackPanel= open path isn't clobbered.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      setType(defaultValue);
+    }
+    wasOpen.current = open;
+  }, [open, defaultValue]);
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
