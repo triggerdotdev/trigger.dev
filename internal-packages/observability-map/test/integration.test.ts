@@ -192,7 +192,11 @@ describe("scanning the real webapp routes", () => {
     expect(report.global).toBeGreaterThanOrEqual(0);
     expect(report.global).toBeLessThanOrEqual(100);
     expect(Object.keys(report.byFamily).length).toBeGreaterThan(1);
-  });
+    // A full scan of the real tree runs a `ts.Program` per file for the parse diagnostics, and
+    // `countRouteModuleFiles` walks the tree a second time. That is 1.6 to 2.6 seconds on an idle
+    // machine and it flaked past the suite's 10s default under parallel load. Budgeted rather than
+    // left marginal, the same way the exhaustive sweep below is.
+  }, 30_000);
 
   // A1, exhaustive: every scored check suppressed on every real route, zero behavioural change.
   // The old measured-from-visible logic took this global from 17 to 33 and measured from 412 to
