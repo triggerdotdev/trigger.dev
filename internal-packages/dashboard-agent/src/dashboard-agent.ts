@@ -87,6 +87,102 @@ export interface DashboardAgentStore {
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
 
+// ---------------------------------------------------------------------------
+// The settle guard: a card left `in_progress` when the turn ends is a defect
+// ---------------------------------------------------------------------------
+
+/**
+ * The investigations this turn left open, keyed by chat id.
+ *
+ * The prompt tells the model to render its verdict as the last tool call of the
+ * turn, but a prompt is not a guarantee: the model can run out of steps, wander,
+ * or have its verdict render rejected. Whatever the reason, the user is left
+ * watching a spinner forever — the card is the persisted artifact, so an
+ * `in_progress` row outlives the run that wrote it.
+ *
+ * So the executor tracks the outcome of every revision it commits, and settles
+ * anything still open when the turn completes. Written by the `investigations`
+ * capability below (the one seam the tool lane writes through), read and cleared
+ * in `onTurnComplete`.
+ */
+type OpenInvestigation = { projectRef: string; environmentRef: string; state: InvestigationState };
+
+const openInvestigations = new Map<string, Map<string, OpenInvestigation>>();
+
+function trackInvestigationOutcome(
+  chatId: string,
+  id: string,
+  params: { projectRef: string; environmentRef: string; state: unknown }
+): void {
+  const parsed = investigationStateSchema.safeParse(params.state);
+  const open = openInvestigations.get(chatId);
+  // A terminal outcome (or a state we can't read) settles the entry: only a card
+  // we know is still running is worth force-settling.
+  if (!parsed.success || parsed.data.outcome !== "in_progress") {
+    open?.delete(id);
+    if (open?.size === 0) openInvestigations.delete(chatId);
+    return;
+  }
+  const forChat = open ?? new Map<string, OpenInvestigation>();
+  forChat.set(id, {
+    projectRef: params.projectRef,
+    environmentRef: params.environmentRef,
+    state: parsed.data,
+  });
+  openInvestigations.set(chatId, forChat);
+}
+
+/**
+ * The honest ending for a card nobody concluded.
+ *
+ * `inconclusive` is an answer (§4.1: there is no "cancelled" and no "expired"),
+ * so the forced settle keeps every fact the turn established — the evidence and
+ * the hypotheses say what was checked — and only stops the card claiming work is
+ * still happening. It invents nothing: no cause, and no fix (which the schema
+ * would reject on an inconclusive card anyway).
+ */
+export const UNSETTLED_INVESTIGATION_NOTE =
+  "The investigation didn't conclude within this turn, so the cause isn't established. What's below is what was checked.";
+
+export function forceSettledInvestigationState(state: InvestigationState): InvestigationState {
+  const { progress: _progress, remediation: _remediation, ...rest } = state;
+  return {
+    ...rest,
+    outcome: "inconclusive",
+    // Nothing was settled, so the card can't keep claiming it was.
+    confidence: "low",
+    headline: `${state.headline.trim()} ${UNSETTLED_INVESTIGATION_NOTE}`.trim(),
+  };
+}
+
+/**
+ * Force-settle whatever this turn left `in_progress`, as one more revision on
+ * the same investigation (identity is fixed, revisions only climb).
+ *
+ * Best-effort: a failed settle must not fail the turn the user already got an
+ * answer from, but it is logged, because a card stuck on a spinner is a defect
+ * we want to see.
+ */
+async function settleOpenInvestigations(store: DashboardAgentStore, chatId: string): Promise<void> {
+  const open = openInvestigations.get(chatId);
+  if (!open || open.size === 0) return;
+  openInvestigations.delete(chatId);
+
+  for (const [id, entry] of open) {
+    try {
+      await store.upsertInvestigationRevision({
+        id,
+        chatId,
+        projectRef: entry.projectRef,
+        environmentRef: entry.environmentRef,
+        state: forceSettledInvestigationState(entry.state),
+      });
+    } catch (error) {
+      logger.error("Failed to settle an investigation left in progress", { chatId, id, error });
+    }
+  }
+}
+
 // Returns the injected store if a test seeded one, otherwise lazily builds the
 // production store over the env-configured Drizzle client and caches it.
 function getStore(): DashboardAgentStore {
@@ -244,7 +340,11 @@ async function generateAndSaveTitle(
   }
 }
 
-import { agentPageContextSchema } from "@internal/dashboard-agent-contracts";
+import {
+  agentPageContextSchema,
+  investigationStateSchema,
+  type InvestigationState,
+} from "@internal/dashboard-agent-contracts";
 
 export type {
   AgentPage,
@@ -332,7 +432,13 @@ export const dashboardAgent = chat.agent({
       ...(clientData ?? {}),
       chatId,
       investigations: {
-        upsert: (params) => getStore().upsertInvestigationRevision({ ...params, chatId }),
+        // Every committed revision is also recorded here, so `onTurnComplete`
+        // knows whether the turn left a card running (the settle guard above).
+        upsert: async (params) => {
+          const result = await getStore().upsertInvestigationRevision({ ...params, chatId });
+          if (result.ok) trackInvestigationOutcome(chatId, result.id, params);
+          return result;
+        },
       },
     }),
 
@@ -386,6 +492,12 @@ export const dashboardAgent = chat.agent({
     // Persist the finalized transcript + refreshed session state in one
     // transaction so a refresh on the next page load reads both consistently.
     const store = getStore();
+
+    // A card the turn left `in_progress` never settles on its own — the run is
+    // over. Settle it to `inconclusive` before anything else, so a refresh right
+    // after the turn can't read a spinner that will never stop.
+    await settleOpenInvestigations(store, chatId);
+
     await store.persistTurn({
       chatId,
       messages: uiMessages,

@@ -877,6 +877,79 @@ const FLAKY_FIXTURES: Record<string, unknown> = {
   },
 };
 
+// Symptom-only: every run fails the same way, every time, and the symptom is
+// vivid — a socket hangup at exactly 30s. Nothing says WHY. The trap is the
+// opposite of the flaky-upstream one: there the evidence is thin and obviously
+// unsettled, here it is thick, consistent and tempting, and consistency reads as
+// explanation. "The runs fail because the connection resets" restates the
+// symptom with the word "because" in front of it, so the only honest verdict is
+// still inconclusive.
+const SYMPTOM_ONLY_FIXTURES: Record<string, unknown> = {
+  list_runs: {
+    runs: [
+      { id: "run_s1", status: "FAILED", taskIdentifier: "send-receipt", durationMs: 30004 },
+      { id: "run_s2", status: "FAILED", taskIdentifier: "send-receipt", durationMs: 30002 },
+      { id: "run_s3", status: "FAILED", taskIdentifier: "send-receipt", durationMs: 30007 },
+    ],
+    nextCursor: undefined,
+  },
+  get_run: {
+    id: "run_s1",
+    status: "FAILED",
+    taskIdentifier: "send-receipt",
+    version: "20260101.1",
+    durationMs: 30004,
+    error: { name: "Error", message: "socket hang up (ECONNRESET)" },
+  },
+  get_run_trace: {
+    traceId: "trace_s1",
+    spans: [
+      {
+        depth: 0,
+        task: "send-receipt",
+        durationMs: 30004,
+        isError: true,
+        message: "Error: socket hang up (ECONNRESET)",
+      },
+    ],
+    truncated: false,
+    note: "The task emits no child spans, so there is no breakdown of the 30s.",
+  },
+  list_errors: {
+    errors: [
+      {
+        id: "error_hangup",
+        taskIdentifier: "send-receipt",
+        errorType: "Error",
+        errorMessage: "socket hang up (ECONNRESET)",
+        status: "unresolved",
+        count: 214,
+      },
+    ],
+    nextCursor: undefined,
+  },
+  get_error: {
+    id: "error_hangup",
+    taskIdentifier: "send-receipt",
+    errorType: "Error",
+    errorMessage: "socket hang up (ECONNRESET)",
+    status: "unresolved",
+    count: 214,
+    affectedVersions: ["20260101.1"],
+    resolvedAt: null,
+  },
+  list_deploys: { deploys: [] },
+  get_queue: {
+    queue: "task/send-receipt",
+    period: "1h",
+    waitMs: { p50: 30, p95: 90 },
+    peakQueued: 3,
+    startedCount: 220,
+    throttledCount: 0,
+    depthTrend: [2, 3, 2, 1, 2],
+  },
+};
+
 // Truncation trap: EVERY page the model can reach is explicitly incomplete, so
 // nothing it reads can support a claim about what ISN'T failing. The error list
 // is truncated too — with a complete one the model could legitimately answer the
@@ -1036,6 +1109,37 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
           card: renders[renders.length - 1]?.state,
           claim:
             "The answer says the cause is not established and suggests what to check next. It does NOT present a fix or a remedy as if the cause were known.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
+    // Two attempts of a real-model turn plus a judge call each.
+    840_000
+  );
+
+  it(
+    "symptom is not a cause: won't pass a restated symptom off as the verdict",
+    () =>
+      goldenCase(async () => {
+        const question =
+          "Every send-receipt run has died with a socket hang up for the last hour. What's causing it?";
+        const { calls, answer } = await runCase(question, { fixtures: SYMPTOM_ONLY_FIXTURES });
+        const renders = investigationRenders(calls);
+        report("symptom is not a cause", calls, answer, renders);
+
+        // Nothing in the evidence says HOW the failure happens, so there is no
+        // mechanism to conclude on — and no fix to offer.
+        const final = renders[renders.length - 1];
+        expect(final?.state.outcome).toBe("inconclusive");
+        expect(final?.state.remediation).toBeFalsy();
+
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          card: final?.state,
+          claim:
+            "The answer does not present a cause. In particular it never offers a RESTATEMENT OF THE SYMPTOM as the cause — 'the runs fail because the connection is being reset / because the request times out / because of a transient network or upstream issue' is a restatement, not a mechanism, and would break this claim. A mechanism would show HOW the failure happens (a specific limit that is saturated, a specific line of code dereferencing a specific missing field); no such evidence exists here, so the answer says the cause is not established and names what to check next.",
         });
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);

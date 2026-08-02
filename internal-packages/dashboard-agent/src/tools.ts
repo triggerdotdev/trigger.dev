@@ -912,10 +912,24 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       // trigger:// URIs are built here, before anything is stored or emitted. A
       // citation that can't be canonicalized fails the call by name — losing it
       // quietly would leave a card claiming grounding it doesn't have.
-      const canonicalized = canonicalizeInvestigationState(
-        (block as InvestigationBlockBodyInput).investigation,
-        { projectRef, environmentId: ctx.environmentId }
-      );
+      // Citation building is strict enough to throw on a malformed ref (an
+      // empty id, a line that isn't a line). Tools return {error}, never throw,
+      // so that lands as a named failure the model can fix and render again —
+      // and if it doesn't, the turn's settle guard closes the card honestly
+      // rather than leaving it running.
+      let canonicalized: ReturnType<typeof canonicalizeInvestigationState>;
+      try {
+        canonicalized = canonicalizeInvestigationState(
+          (block as InvestigationBlockBodyInput).investigation,
+          { projectRef, environmentId: ctx.environmentId }
+        );
+      } catch (error) {
+        return {
+          error: `Couldn't cite that evidence: ${
+            error instanceof Error ? error.message : "a citation was malformed"
+          }. Fix or remove those citations and render again.`,
+        };
+      }
       if (canonicalized.errors.length > 0) {
         return {
           error: `Couldn't cite some of that evidence: ${canonicalized.errors.join(
@@ -939,7 +953,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         console.error("investigation upsert failed", error);
         return {
           error:
-            "Couldn't save the investigation right now. Answer in prose instead of rendering the card.",
+            "Couldn't save the investigation right now. Say what you found in prose, honestly — if a card is already open it will be closed as inconclusive when the turn ends.",
         };
       }
 

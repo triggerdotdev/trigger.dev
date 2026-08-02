@@ -1,10 +1,12 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
 import {
+  INVESTIGATION_CAPABILITIES_VERSION,
   safeParseTriggerUri,
   VIEW_BLOCK_VERSION,
   type AgentPageContext,
   type InvestigationBlock,
+  type InvestigationCapabilities,
   type ReportViewModelPayload,
   type SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
@@ -461,7 +463,8 @@ const untrustworthyReport: ReportViewModelPayload = {
  * which is the point of having reviewed the demo payload.
  */
 function investigationBlock(
-  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations]
+  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations],
+  capabilities?: InvestigationCapabilities
 ): InvestigationBlock {
   const { investigationId, revision, ...investigation } = fixture;
   return {
@@ -470,8 +473,55 @@ function investigationBlock(
     revision,
     version: VIEW_BLOCK_VERSION,
     investigation,
+    ...(capabilities ? { capabilities } : {}),
   };
 }
+
+/**
+ * The actions the executor would attach to each settled card — written out here
+ * because they are server-decided (§6) and the fixtures deliberately don't carry
+ * them. "Show code" hangs on a source citation the agent read at the pinned
+ * commit, which is exactly what separates the two concluded states below.
+ */
+// Both actions point at URIs the card already cites, the way the executor builds
+// them: an action can only ever target evidence the investigation resolved.
+const citedUri = (
+  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations],
+  kind: string
+) => fixture.evidence.find((evidence) => evidence.kind === kind)!.uri;
+
+const codeGroundedCapabilities: InvestigationCapabilities = {
+  version: INVESTIGATION_CAPABILITIES_VERSION,
+  actions: [
+    {
+      kind: "show_code",
+      label: "Show code",
+      intent: {
+        kind: "ask",
+        prompt:
+          "Show me the code behind this and propose the minimal fix as a fenced diff, anchored to the file, line and commit you read.",
+      },
+    },
+    {
+      kind: "view_similar",
+      label: "View similar failures",
+      intent: { kind: "navigate", target: citedUri(demoInvestigations.concluded, "error") },
+    },
+  ],
+};
+
+// Nothing was read, so there is no code to show — only the follow-up that needs
+// no source at all.
+const notCodeGroundedCapabilities: InvestigationCapabilities = {
+  version: INVESTIGATION_CAPABILITIES_VERSION,
+  actions: [
+    {
+      kind: "view_similar",
+      label: "View the queue",
+      intent: { kind: "navigate", target: citedUri(demoInvestigations.concludedNoCode, "queue") },
+    },
+  ],
+};
 
 function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
@@ -512,6 +562,9 @@ const STATES: Record<string, React.ReactNode> = {
   ),
 
   // --- Investigation card, the shipped one ---------------------------------
+  "investigation-card-in-progress-early": (
+    <InvestigationCard block={investigationBlock(demoInvestigations.early)} />
+  ),
   "investigation-card-streaming-rev0": (
     <InvestigationCard block={investigationBlock(demoInvestigations.streamingRev0)} />
   ),
@@ -528,9 +581,33 @@ const STATES: Record<string, React.ReactNode> = {
       resolveUri={fixtureResolveUri}
     />
   ),
+  // The two concluded endings side by side: one whose verdict rests on a line of
+  // source it read (so the host is offered "Show code"), one established from
+  // telemetry alone (no source citation, and no Show code to offer).
+  "investigation-card-concluded-code-grounded": (
+    <InvestigationCard
+      block={investigationBlock(demoInvestigations.concluded, codeGroundedCapabilities)}
+      resolveUri={fixtureResolveUri}
+      onIntent={noop}
+    />
+  ),
+  "investigation-card-concluded-not-code-grounded": (
+    <InvestigationCard
+      block={investigationBlock(demoInvestigations.concludedNoCode, notCodeGroundedCapabilities)}
+      resolveUri={fixtureResolveUri}
+      onIntent={noop}
+    />
+  ),
   "investigation-card-inconclusive": (
     <InvestigationCard
       block={investigationBlock(demoInvestigations.inconclusive)}
+      defaultExpanded
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+  "investigation-card-degraded": (
+    <InvestigationCard
+      block={investigationBlock(demoInvestigations.degraded)}
       defaultExpanded
       resolveUri={fixtureResolveUri}
     />
