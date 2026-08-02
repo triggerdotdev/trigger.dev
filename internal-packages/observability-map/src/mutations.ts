@@ -665,6 +665,17 @@ export const MUTATIONS: Mutation[] = [
     "splice if (1 === 2) { throw e; } into every catch",
     (e) => `if (1 === 2) { throw ${e}; }`
   ),
+  // The returns half of the dead-prepend family. The eleven entries above put a dead THROW in;
+  // this one puts a dead RETURN in, which used to veto `rethrows` through the containment read
+  // and turn a rethrow-only clause into a swallow verdict on 11 real routes. Same blinding class
+  // as `dead-if-false`, so like that entry it is not additive: it fakes no signal, it used to
+  // destroy real signal.
+  prependToEveryCatch(
+    "dead-if-false-return",
+    "preserving",
+    "splice if (false) { return null; } into every catch",
+    () => `if (false) { return null; }`
+  ),
   prependToEveryCatch(
     "registered-throw",
     "preserving",

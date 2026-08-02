@@ -561,15 +561,6 @@ function reachableStatements(statements: readonly ts.Statement[]): readonly ts.S
   return index === -1 ? statements : statements.slice(0, index + 1);
 }
 
-/** Whether the clause returns anywhere at all, nested functions excluded. A clause with a `return`
- * on any path has an exit that is not the throw, so the error does not leave it the way it arrived.
- */
-function containsReturn(node: ts.Node): boolean {
-  if (ts.isFunctionLike(node)) return false;
-  if (ts.isReturnStatement(node)) return true;
-  return ts.forEachChild(node, containsReturn) === true;
-}
-
 /** Whether the tree rooted at `node` contains a `return` or a `throw` of its own, not counting one
  * inside a nested function. What separates an arm that takes the error somewhere from an arm that
  * runs and falls back into the clause's single common exit. */
@@ -577,6 +568,138 @@ function containsExit(node: ts.Node): boolean {
   if (ts.isFunctionLike(node)) return false;
   if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
   return ts.forEachChild(node, containsExit) === true;
+}
+
+/**
+ * Literal truthiness of a guard expression: true, false, or null when not decidable from the
+ * token alone. Only literal tokens fold; an identifier, call, bigint, `&&`, `||` or a template
+ * literal with substitutions is always null, so a live guard can never be read as dead. The
+ * always-true side is pinned by `still refuses an error test after an always-true spelling that
+ * throws` and the fall-through slice by `reads a switch fall-through onto a live return as live`.
+ */
+function literalTruth(expr: ts.Expression): boolean | null {
+  const target = unwrap(expr);
+  if (target.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (target.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (target.kind === ts.SyntaxKind.NullKeyword) return false;
+  if (ts.isStringLiteral(target) || ts.isNoSubstitutionTemplateLiteral(target)) {
+    return target.text !== "";
+  }
+  if (ts.isNumericLiteral(target)) return Number(target.text) !== 0;
+  if (ts.isPrefixUnaryExpression(target) && target.operator === ts.SyntaxKind.ExclamationToken) {
+    const inner = literalTruth(target.operand);
+    return inner === null ? null : !inner;
+  }
+  if (ts.isBinaryExpression(target)) {
+    const op = target.operatorToken.kind;
+    if (
+      op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+    ) {
+      const left = literalValue(target.left);
+      const right = literalValue(target.right);
+      if (left === undefined || right === undefined) return null;
+      const equal = left === right;
+      return op === ts.SyntaxKind.EqualsEqualsEqualsToken ? equal : !equal;
+    }
+  }
+  return null;
+}
+
+/** The value of a literal token, or undefined when the expression is not a bare literal. */
+function literalValue(expr: ts.Expression): string | number | boolean | null | undefined {
+  const target = unwrap(expr);
+  if (target.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (target.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (target.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isStringLiteral(target) || ts.isNoSubstitutionTemplateLiteral(target)) return target.text;
+  if (ts.isNumericLiteral(target)) return Number(target.text);
+  return undefined;
+}
+
+/** Whether a try block could throw at all: false only when every statement is an expression
+ * statement over a bare literal, the one shape that provably cannot raise. */
+function tryBlockMayThrow(block: ts.Block): boolean {
+  return !block.statements.every(
+    (s) => ts.isExpressionStatement(s) && literalValue(s.expression) !== undefined
+  );
+}
+
+/**
+ * `containsExit`, minus exits that sit in a provably-untaken branch. `if (false) { throw e; }`
+ * contains an exit and can never run one; treating it as an exit is what let a dead statement
+ * blind the walk to the real classification below it, prepending one to a deciding clause turned
+ * its pass into a swallow verdict on 78 real routes. Folds literal guards only, so an unknown
+ * condition keeps the containsExit answer, which is the direction that refuses credit rather than
+ * inventing it. The mirror twins under `dead and deferred code prepended to a deciding catch does
+ * not blind it` hold the recovered half; the `BRANCH_EXITED` family holds the refusing half.
+ */
+function containsLiveWhere(root: ts.Node, hit: (n: ts.Node) => boolean): boolean {
+  const walk = (node: ts.Node): boolean => {
+    if (ts.isFunctionLike(node)) return false;
+    if (hit(node)) return true;
+    if (ts.isIfStatement(node)) {
+      const truth = literalTruth(node.expression);
+      if (truth === true) return walk(node.thenStatement);
+      if (truth === false) {
+        return node.elseStatement !== undefined && walk(node.elseStatement);
+      }
+      return (
+        walk(node.thenStatement) || (node.elseStatement !== undefined && walk(node.elseStatement))
+      );
+    }
+    if (ts.isWhileStatement(node)) {
+      if (literalTruth(node.expression) === false) return false;
+      return walk(node.statement);
+    }
+    if (ts.isForStatement(node)) {
+      if (node.condition !== undefined && literalTruth(node.condition) === false) return false;
+      return ts.forEachChild(node, walk) === true;
+    }
+    if (ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      const iterable = unwrap(node.expression);
+      const emptyArray = ts.isArrayLiteralExpression(iterable) && iterable.elements.length === 0;
+      const emptyObject =
+        ts.isForInStatement(node) &&
+        ts.isObjectLiteralExpression(iterable) &&
+        iterable.properties.length === 0;
+      if (emptyArray || emptyObject) return false;
+      return ts.forEachChild(node, walk) === true;
+    }
+    if (ts.isSwitchStatement(node)) {
+      const disc = literalValue(node.expression);
+      const clauses = node.caseBlock.clauses;
+      const allLiteral =
+        disc !== undefined &&
+        clauses.every((c) => ts.isDefaultClause(c) || literalValue(c.expression) !== undefined);
+      if (!allLiteral) return clauses.some((c) => c.statements.some(walk));
+      // Fall-through: from the first matching (or default) clause, every later clause is reachable.
+      let matched = clauses.findIndex(
+        (c) => !ts.isDefaultClause(c) && literalValue(c.expression) === disc
+      );
+      if (matched === -1) matched = clauses.findIndex(ts.isDefaultClause);
+      if (matched === -1) return false;
+      return clauses.slice(matched).some((c) => c.statements.some(walk));
+    }
+    if (ts.isTryStatement(node)) {
+      if (walk(node.tryBlock)) return true;
+      if (node.finallyBlock !== undefined && walk(node.finallyBlock)) return true;
+      if (node.catchClause !== undefined && tryBlockMayThrow(node.tryBlock)) {
+        return walk(node.catchClause.block);
+      }
+      return false;
+    }
+    return ts.forEachChild(node, walk) === true;
+  };
+  return walk(root);
+}
+
+function containsLiveExit(node: ts.Node): boolean {
+  return containsLiveWhere(node, (n) => ts.isReturnStatement(n) || ts.isThrowStatement(n));
+}
+
+function containsLiveReturn(node: ts.Node): boolean {
+  return containsLiveWhere(node, ts.isReturnStatement);
 }
 
 /**
@@ -653,6 +776,16 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   // to 19. This ordering leaves the real-tree report
   // and all 240 clauses' evidence byte-identical. The tests are the cases in `dead throw written
   // after something that already exited`.
+  //
+  // Raised off `containsLiveExit`, never `containsExit`. The containment read is true of
+  // `if (false) { throw e; }` itself, so a provably dead statement raised the flag and blinded the
+  // walk to the real classification below it: prepending one to a deciding clause turned its pass
+  // into a swallow verdict on 78 real routes, the same false accusation for all eleven dead
+  // spellings. The liveness fold only ever withholds this blindness; where `literalTruth` cannot
+  // decide, the containment answer stands and refusal is intact. The recovered half is `dead and
+  // deferred code prepended to a deciding catch does not blind it`; the refusing half is the
+  // `BRANCH_EXITED` list plus `still refuses an error test after an always-true spelling that
+  // throws`.
   let exited = false;
   const bindingName = catchBindingName(clause);
 
@@ -682,7 +815,7 @@ function catchClauseEvidence(clause: ts.CatchClause): {
       }
       if (ts.isBlock(statement)) {
         walk(statement.statements);
-        if (containsExit(statement)) exited = true;
+        if (containsLiveExit(statement)) exited = true;
         continue;
       }
       // A `do` body runs before its condition is ever read, so it is on the straight-line path
@@ -690,13 +823,17 @@ function catchClauseEvidence(clause: ts.CatchClause): {
       if (ts.isDoStatement(statement)) {
         const body = statement.statement;
         walk(ts.isBlock(body) ? body.statements : [body]);
-        if (containsExit(statement)) exited = true;
+        if (containsLiveExit(statement)) exited = true;
         continue;
       }
       // Any other reachable statement that could return means throwing is not the only way out.
       // Read here rather than over the whole clause so a `return` the walk has already cut as dead
       // does not count, which is what a `do { throw e; } while (false); return null;` produces.
-      if (containsReturn(statement)) returns = true;
+      // The LIVE read, not the containment one: `if (false) { return null; }` holds a return that
+      // can never run, and vetoing the rethrow on it regressed a rethrow-only clause from
+      // not-applicable to fail on 11 real routes. `still sets rethrows past a dead return in an
+      // if (false) arm` is the pin.
+      if (containsLiveReturn(statement)) returns = true;
 
       if (bindingName !== null && !shadowed && !exited) {
         if (
@@ -713,7 +850,7 @@ function catchClauseEvidence(clause: ts.CatchClause): {
         }
       }
 
-      if (containsExit(statement)) exited = true;
+      if (containsLiveExit(statement)) exited = true;
     }
   };
   walk(clause.block.statements);

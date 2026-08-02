@@ -758,6 +758,113 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
+  // The mirror of the family above. Each dead spelling earns nothing, and it must also COST
+  // nothing: `containsExit` was true of the dead statement itself, so prepending one raised the
+  // `exited` flag and blinded the walk to the real classification below it, turning a pass into a
+  // swallow verdict on 78 real routes. `containsLiveExit` folds the literal guard and sees no live
+  // exit, so the deciding statements keep their credit. The spellings are the CORPUS spellings
+  // from `dead-*` in `mutations.ts`, not the `DEAD_SHAPES` table's: that table's inner-try twin is
+  // `try { doThing(); } catch { throw e; }`, which is NOT provably dead (`doThing` may throw and
+  // the rethrow then runs), so conservatively raising the flag after it is correct and it gets no
+  // twin here.
+  describe("dead and deferred code prepended to a deciding catch does not blind it", () => {
+    const deciding = (mutation: string) => `
+      export async function loader() {
+        try {
+          return await prisma.thing.findMany();
+        } catch (e) {
+          ${mutation}
+          if (e instanceof Error) { return new Response(null, { status: 400 }); }
+          return new Response(null, { status: 500 });
+        }
+      }
+    `;
+
+    it("decides as a baseline with no mutation", () => {
+      const ep = scanFile("x.ts", deciding(""));
+      expect(ep!.catches[0]!.branches).toBe(true);
+    });
+
+    const DEAD_PREPENDS: Array<[string, string]> = [
+      ["if (false)", "if (false) { throw e; }"],
+      ["while (false)", "while (false) { throw e; }"],
+      ["for (;false;)", "for (;false;) { throw e; }"],
+      ["if (true) else", "if (true) { 0; } else { throw e; }"],
+      ["switch with no matching case", "switch (1) { case 2: throw e; }"],
+      ["an inner try over a literal", "try { 0; } catch { throw e; }"],
+      ["for...of an empty array", "for (const obsMapItem of []) { throw e; }"],
+      ["for...in an empty object", "for (const obsMapKey in {}) { throw e; }"],
+      ["if on an empty string", 'if ("") { throw e; }'],
+      ["if on a negated literal", "if (!true) { throw e; }"],
+      ["if on a constant comparison", "if (1 === 2) { throw e; }"],
+    ];
+
+    for (const [label, shape] of DEAD_PREPENDS) {
+      it(`keeps branches true past a dead throw inside ${label}`, () => {
+        const ep = scanFile("x.ts", deciding(shape));
+        expect(ep!.catches[0]!.branches).toBe(true);
+      });
+    }
+
+    // The composed shape: the dead if wrapped in a bare block, which the walk enters. The block's
+    // own live-exit read has to fold too, or entering it re-raises the flag the fold lowered.
+    it("keeps branches true past a dead throw in a block around an if (false)", () => {
+      const ep = scanFile("x.ts", deciding("{ if (false) { throw e; } }"));
+      expect(ep!.catches[0]!.branches).toBe(true);
+    });
+
+    // The returns half. A dead `return null;` must not veto the rethrow: `containsReturn` saw the
+    // return token inside `if (false)` and turned a rethrow-only clause into a swallow verdict,
+    // which regressed 11 real routes from not-applicable to fail. `dead-if-false-return` in the
+    // mutation corpus is the tree-scale version.
+    it("still sets rethrows past a dead return in an if (false) arm", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             if (false) { return null; }
+             throw e;
+           }
+         }`
+      );
+      expect(ep!.catches[0]!.rethrows).toBe(true);
+    });
+
+    // Negative controls: the fold only withholds blindness, it must never withhold refusal.
+    // An always-true guard really can run its throw, so the error test after it stays dead.
+    it("still refuses an error test after an always-true spelling that throws", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             if (!false) { throw e; }
+             if (e instanceof Error) { return new Response(null, { status: 400 }); }
+           }
+         }`
+      );
+      expect(ep!.catches[0]!.branches).toBe(false);
+    });
+
+    // The fall-through slice: `case 1` matches and runs on into `case 2`, so the return is live
+    // and vetoes the rethrow. Misreading the slice as dead would blind the returns veto, which is
+    // the direction that hands out credit.
+    it("reads a switch fall-through onto a live return as live", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             switch (1) { case 1: 0; case 2: return null; }
+             throw e;
+           }
+         }`
+      );
+      expect(ep!.catches[0]!.rethrows).toBe(false);
+    });
+  });
+
   // S1. The other end of the same problem. `reachableStatements` used to cut the statement list
   // only on a BARE `return`/`throw`, while the walk descended into blocks and `do` bodies, so a
   // `throw e;` written after a nested construct that had already returned was still read as the
@@ -803,8 +910,12 @@ describe("scanFile: catch clause evidence", () => {
     //
     // This asks a weaker question than `definitelyExits` does, and on purpose: "could this have
     // exited", not "must it have". That is why `if (true)`, a labelled block, a `for...of` and a
-    // `while` are all on the list even though none of them is guaranteed to run its body. Nothing
-    // here evaluates a condition, and none of these needs one evaluated.
+    // `while` are all on the list even though none of them is guaranteed to run its body. The flag
+    // is read through `containsLiveExit`, which folds LITERAL guards only, so every wrapper here
+    // still counts: `if (true)` descends its then-arm and finds the return, and a loop guarded by
+    // an identifier keeps the plain containment answer. What the fold withholds is the provably
+    // dead statement raising the flag itself, which is the twin family in `dead and deferred code
+    // prepended to a deciding catch does not blind it`.
     //
     // The ordering is the whole trick and it is easy to get backwards. The flag is raised at the
     // END of each statement, after that statement's own branch check. Raising it first makes every
