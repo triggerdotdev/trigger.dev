@@ -1,4 +1,4 @@
 <ParamField body="Env file" type="--env-file">
-  Load environment variables from a file. This will only hydrate the `process.env` of the CLI
-  process, not the tasks.
+  Load environment variables from a file. In `dev`, these are also passed to your tasks. For every
+  other command they only hydrate the `process.env` of the CLI process.
 </ParamField>
