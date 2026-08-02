@@ -720,6 +720,20 @@ export const MUTATIONS: Mutation[] = [
     (e) =>
       `if (false) { if (${e} instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }`
   ),
+  // A finally that leaves itself by `break` cancels the try's completion, so nothing hosted in
+  // that tryBlock ever escapes the clause: the whole statement is a no-op. The walk's
+  // catchless-try entry credited it anyway, minting a branch from the hosted classifier on 80
+  // routes and 8 global points when measured. Additive: it plants fake signal. The classifier is
+  // guarded (`if (e instanceof Error)`) rather than a bare `throw e` so `definitelyExits` cannot
+  // read the statement as an unconditional exit; the bare spelling trips a separate, pre-existing
+  // over-cut in `definitelyExits`'s try/finally case that this entry is not about.
+  prependToEveryCatch(
+    "dead-throw-in-cancelled-try",
+    "preserving",
+    "splice a finally-break try that discards its own throw into every catch",
+    (e) =>
+      `do { try { if (${e} instanceof Error) { throw ${e}; } } finally { break; } } while (false);`
+  ),
 
   // The additive class. Everything above either takes signal away or moves it about; these put in
   // signal that is not real, which is the direction the corpus was blind to.
@@ -951,6 +965,7 @@ export const ADDITIVE_IDS = [
   "wrap-body-in-same-arms-throw-ternary",
   "empty-instanceof-if",
   "dead-classifier-one-arm",
+  "dead-throw-in-cancelled-try",
   "dead-deciding-map",
   "registered-throw",
   "fake-require-guard",

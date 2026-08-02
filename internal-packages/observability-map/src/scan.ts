@@ -571,6 +571,43 @@ function reachableStatements(statements: readonly ts.Statement[]): readonly ts.S
   return index === -1 ? statements : statements.slice(0, index + 1);
 }
 
+/**
+ * Whether the tree rooted at `node` contains a `break` or `continue` that would leave it, i.e. a
+ * jump no construct INSIDE `node` captures. What the catch walk asks of a finally block before
+ * entering the tryBlock beside it: a finally that completes abruptly cancels the try's completion,
+ * so a throw in that tryBlock never leaves the clause and crediting it minted evidence
+ * (`reads a throw a finally break discards as no rethrow` and its continue and switch-hosted
+ * siblings pin the refusal; `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale
+ * shape, 80 routes when measured).
+ *
+ * A containment read, not a liveness one, on purpose: the caller is deciding whether to GRANT
+ * credit and a wrong grant pays, so a jump that only may run still refuses
+ * (`refuses the tryBlock when the finally only may break`). Two over-approximations in the same
+ * direction: a labelled jump always counts, even when its label sits inside `node`, and a `return`
+ * is not looked for here because the returns veto already reads it off the whole statement.
+ */
+function containsEscapingJump(node: ts.Node, jumps: BareJumps = ESCAPES): boolean {
+  if (ts.isFunctionLike(node)) return false;
+  if (ts.isBreakStatement(node)) return node.label !== undefined || jumps.break;
+  if (ts.isContinueStatement(node)) return node.label !== undefined || jumps.continue;
+  if (ts.isSwitchStatement(node)) {
+    const inClause: BareJumps = { break: false, continue: jumps.continue };
+    return node.caseBlock.clauses.some((c) =>
+      c.statements.some((s) => containsEscapingJump(s, inClause))
+    );
+  }
+  // Any loop captures both bare jumps, so nothing inside one can leave `node`
+  // (`does not refuse a finally whose loop captures its own break`).
+  if (ts.isIterationStatement(node, false)) {
+    return (
+      ts.forEachChild(node, (child) =>
+        containsEscapingJump(child, { break: false, continue: false })
+      ) === true
+    );
+  }
+  return ts.forEachChild(node, (child) => containsEscapingJump(child, jumps)) === true;
+}
+
 /** Whether the tree rooted at `node` contains a `return` or a `throw` of its own, not counting one
  * inside a nested function. What separates an arm that takes the error somewhere from an arm that
  * runs and falls back into the clause's single common exit. */
@@ -692,6 +729,16 @@ function containsLiveWhere(root: ts.Node, hit: (n: ts.Node) => boolean): boolean
       return clauses.slice(matched).some((c) => c.statements.some(walk));
     }
     if (ts.isTryStatement(node)) {
+      // A finally that always completes abruptly (a return, a throw, or a jump out of the block)
+      // supersedes the try's and the catch's completion: an exit written in either never leaves
+      // the statement, so only the finally's own statements stay live. Folded only when
+      // `definitelyExits` can prove it; a conditional jump keeps the containment answer, the
+      // direction that refuses credit rather than inventing it. Without this fold the
+      // `dead-throw-in-cancelled-try` prepend blinded the walk to every real classification below
+      // it (`keeps the classification after a finally-break no-op`).
+      if (node.finallyBlock !== undefined && definitelyExits(node.finallyBlock)) {
+        return walk(node.finallyBlock);
+      }
       if (walk(node.tryBlock)) return true;
       if (node.finallyBlock !== undefined && walk(node.finallyBlock)) return true;
       if (node.catchClause !== undefined && tryBlockMayThrow(node.tryBlock)) {
@@ -749,7 +796,11 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
  * enter a construct exactly where the entered statements are guaranteed to execute whenever the
  * clause body runs, so no credit can ever come from code a semantics-preserving edit could have
  * added dead. Entered on those terms: a bare nested block, a `do` body, the tryBlock of a `try`
- * that has NO catch clause, the sole clause of a single-DefaultClause `switch`, the then-arm of an
+ * that has NO catch clause and whose finally (if any) contains no jump out of itself (a finally
+ * that completes abruptly cancels the try's completion, so nothing in that tryBlock ever escapes
+ * the clause; `reads a throw a finally break discards as no rethrow` and
+ * `dead-throw-in-cancelled-try` in the mutation corpus hold it), the sole clause of a
+ * single-DefaultClause `switch`, the then-arm of an
  * `if` whose condition is exactly the literal `true` keyword, and both arms of an `if`/`else` with
  * per-arm states merged by intersection (evidence in both arms is unconditional; evidence in one
  * is not). Each entry is pinned by `reads a clause wrapped in a single-default switch as the bare
@@ -878,13 +929,27 @@ function catchClauseEvidence(clause: ts.CatchClause): {
       // try whose finally returns as swallowing, not rethrowing` is the pin.
       //
       // A `try` WITHOUT a catch clause: its tryBlock always runs when the clause body does, and a
-      // throw there escapes the clause, so rethrow credit is genuine. The finallyBlock is NOT
-      // walked (classification living only in a finally block is under-credited; the tree has no
-      // such clause). A `try` WITH a catch clause is not entered at all: a throw in that tryBlock
-      // is intercepted by the nested catch, so crediting it would launder a returnless swallow
-      // into not-applicable. `does not read the tryBlock of a caught try as this clause's rethrow`
-      // is the pin, and the nested clause is judged separately as its own `ep.catches` entry.
-      if (ts.isTryStatement(statement) && statement.catchClause === undefined) {
+      // throw there escapes the clause, so rethrow credit is genuine — unless the finally can
+      // complete abruptly. A `finally` holding a `return` is covered by the explicit
+      // `containsLiveReturn` read below; a `finally` holding a `break` or `continue` that leaves
+      // it cancels the try's completion the same way, so the throw never escapes and the tryBlock
+      // must not be entered (`reads a throw a finally break discards as no rethrow`, its continue
+      // and switch-hosted siblings, and `refuses the tryBlock when the finally only may break`;
+      // `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale shape). The refusal
+      // is a containment read and entry requires its absence, because entry GRANTS credit; the
+      // matching liveness fold in `containsLiveWhere` then keeps the refused statement from
+      // blinding what follows it (`keeps the classification after a finally-break no-op`). The
+      // finallyBlock itself is NOT walked (classification living only in a finally block is
+      // under-credited; the tree has no such clause). A `try` WITH a catch clause is not entered
+      // at all: a throw in that tryBlock is intercepted by the nested catch, so crediting it would
+      // launder a returnless swallow into not-applicable. `does not read the tryBlock of a caught
+      // try as this clause's rethrow` is the pin, and the nested clause is judged separately as
+      // its own `ep.catches` entry.
+      if (
+        ts.isTryStatement(statement) &&
+        statement.catchClause === undefined &&
+        (statement.finallyBlock === undefined || !containsEscapingJump(statement.finallyBlock))
+      ) {
         walk(statement.tryBlock.statements, state);
         if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
         if (containsLiveExit(statement)) state.exited = true;

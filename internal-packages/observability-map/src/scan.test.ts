@@ -960,6 +960,58 @@ describe("scanFile: catch clause evidence", () => {
       expect(evidence.rethrows).toBe(false);
     });
 
+    // A finally that leaves itself by `break` or `continue` cancels the try's completion the same
+    // way a finally return does, so a throw in that tryBlock never escapes the clause. Crediting
+    // it made `do { try { throw e; } finally { break; } } while (false);` a no-op that minted
+    // rethrows, and its classifier-hosting variant minted branches on 80 real routes;
+    // `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale twin.
+    it("reads a throw a finally break discards as no rethrow", () => {
+      const evidence = clauseEvidence(
+        "do { try { throw e; } finally { break; } } while (false);\nlogger.error(e);"
+      );
+      expect(evidence).toMatchObject({ rethrows: false, throws: false, branches: false });
+    });
+
+    it("reads a throw a finally continue discards as no rethrow", () => {
+      const evidence = clauseEvidence(
+        'do { try { throw e; } finally { continue; } } while (false);\nlogger.error("x", { e });'
+      );
+      expect(evidence).toMatchObject({ rethrows: false, throws: false, branches: false });
+    });
+
+    it("reads a throw a switch-hosted finally break discards as no rethrow", () => {
+      const evidence = clauseEvidence(
+        "switch (0) { default: try { throw e; } finally { break; } }\nlogger.error(e);"
+      );
+      expect(evidence).toMatchObject({ rethrows: false, throws: false, branches: false });
+    });
+
+    // The refusal is a containment read: a jump that only MAY run still cancels entry, because
+    // entry grants credit and a wrong grant pays.
+    it("refuses the tryBlock when the finally only may break", () => {
+      const evidence = clauseEvidence(
+        "do { try { throw e; } finally { if (pick()) { break; } } } while (false);\nlogger.error(e);"
+      );
+      expect(evidence).toMatchObject({ rethrows: false, throws: false });
+    });
+
+    // A loop inside the finally captures its own bare jumps, so nothing there leaves the finally
+    // and the try's completion stands: the rethrow is genuine.
+    it("does not refuse a finally whose loop captures its own break", () => {
+      const evidence = clauseEvidence("try { throw e; } finally { while (pick()) { break; } }");
+      expect(evidence).toMatchObject({ rethrows: true, throws: true });
+    });
+
+    // The cancelled statement contributes nothing, in either direction: no credit from inside it,
+    // and no blinding of the real classification after it. Same evidence as the bare clause.
+    it("keeps the classification after a finally-break no-op", () => {
+      expect(
+        clauseEvidence(
+          `do { try { if (e instanceof Error) { throw e; } } finally { break; } } while (false);\n${DECIDING}`
+        )
+      ).toEqual(clauseEvidence(DECIDING));
+    });
+
     // The `definitelyExits` fold: `if (true) { X }` definitely exits iff X does, so the trailing
     // throw is cut rather than read. Without the fold the throw still walks and mints `throws`.
     it("cuts a dead trailing statement after an if true that exits", () => {
