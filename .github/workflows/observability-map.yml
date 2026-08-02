@@ -16,9 +16,10 @@ permissions:
 
 jobs:
   # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
-  # asserting the score does not rise. Roughly three minutes, which is why it is gated out of the
-  # package's default `pnpm test` and run here instead. Unlike the report job below it has no token
-  # to lose, so it runs for fork PRs too, and unlike the report job it is allowed to fail the build.
+  # asserting the score does not rise. Roughly four and a half minutes for 44 entries, which is why
+  # it is gated out of the package's default `pnpm test` and run here instead. Unlike the report
+  # job below it has no token to lose, so it runs for fork PRs too, and unlike the report job it is
+  # allowed to fail the build.
   mutation-corpus:
     name: 🧬 Mutation corpus
     runs-on: warp-ubuntu-latest-x64-4x

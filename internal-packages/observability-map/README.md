@@ -56,7 +56,7 @@ every catch clause in the tree used to score it 100, which meant the metric paid
 error handling.
 
 The property behind that is now a test corpus rather than a claim. `src/mutationCorpus.test.ts`
-applies 42 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
+applies 44 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
 and asserts three things for each: the published global does not rise, the mean over the routes
 measured in both runs does not rise, and for a semantics-preserving rewrite no individual route's
 score rises or drops out of the measured set. Every laundering shape a reviewer has found on this
@@ -78,7 +78,7 @@ One of those is still open and the corpus says so. A catch over `try { 0; }` is 
 from 19 to 44 and raises 224 routes. Telling an inert call from one that can throw needs types the
 scanner does not have.
 
-The honest statement is "these 41 rewrites are defended, here they are, and here is the one that is
+The honest statement is "these 43 rewrites are defended, here they are, and here is the one that is
 not", not "unpaddable". One entry, `dead-classifying-try-with-call`, runs as an expected failure
 with the residual written out beside it. The corpus takes about four and a half minutes, so it is
 gated behind `OBS_MAP_MUTATION_CORPUS=1` and run as its own CI job rather than in `pnpm test`. If
@@ -108,8 +108,9 @@ rather than celebrating.
   builder-wrapped route also narrows itself to the caller, in every export, by declaring
   `authorization` or by filtering on the caller's own id.
 - **request-context**: when this entry point's failure is reported, is the tenant named.
-- **audit-trail**: does a sensitive mutation leave a record of who did it. Nothing in the webapp
-  writes one, so every applicable entry point fails.
+- **audit-trail**: does a sensitive mutation leave a record of who did it. Three routes do, all of
+  them impersonation paths reaching `prisma.impersonationAuditLog.create` in
+  `models/admin.server.ts`; the other 46 do not.
 
 `audit-trail` is excluded from the score. The other four are in it.
 
@@ -124,7 +125,7 @@ CHECKS
   auth-boundary          62 applicable,  59 pass,   0 sole, global without it 15
   auth-scope             19 applicable,  17 pass,   0 sole, global without it 18
   request-context       412 applicable,  11 pass, 223 sole, global without it 65
-  audit-trail            49 applicable,   0 pass,   0 sole, not in the score
+  audit-trail            49 applicable,   3 pass,   0 sole, not in the score
 ```
 
 `sole` is the figure that says the most: 223 of the 412 measured entry points have exactly one
@@ -140,7 +141,7 @@ is made of`).
 
 ## Two findings are headlines, not list entries
 
-`audit-trail` fails 49 of 49, and `request-context` fails 401 of 412. Printing either one per route
+`audit-trail` fails 46 of 49, and `request-context` fails 401 of 412. Printing either one per route
 would bury the route-specific findings under the same sentence repeated hundreds of times, so both
 are reported as a figure: the `AUDIT` and `CONTEXT` lines. 328 entry points fail nothing except
 `request-context` and appear only in that figure, which leaves 76 in the fix list. An entry that
@@ -270,6 +271,15 @@ put `members: { some: { userId } }` on the lookup.
 That per-export rule is the load-bearing half. Both of those files scope themselves in their OTHER
 export, so an entry-point-wide reading passed them, and the exposure is per export.
 
+One thing to know before reading a score on any of these 19 routes. `auth-scope` is only applicable
+when the route uses a builder, and `auth-boundary` passes any route that uses a builder, so
+**`auth-scope` applicable structurally implies `auth-boundary` pass**: all 19 carry the same
+`auth-boundary` detail, "authenticated by the builder". That free point is a third or a quarter of
+each of their scores. The 19 average 59.7 as scored and 44.6 with `auth-boundary` taken out, and
+`settings.team`, a confirmed cross-org exposure, scores 25 rather than 0 because of it. The score is
+not wrong, since the builder does authenticate. It is just less informative here than it looks, and
+the finding is the thing to read.
+
 ## Suppression
 
 ```ts
@@ -371,7 +381,12 @@ Read these before trusting a specific verdict.
   `export { action } from "./x"` beside a loader written in the file is not counted as delegating,
   so half the route is scored and half is invisible.
 - **`try { String(0); }` still buys a pass.** The open corpus entry, above. It is the largest single
-  hole known in the tool.
+  hole known in the tool: measured live, it takes the tree from 19 to 44 and raises 224 routes.
+- **A forged tenant field buys a pass too.** The gaming boundary above, restated here because it
+  belongs on this list: `request-context` reads the field name, never the value, so a codemod
+  writing `environmentId: "obs-map"` into every in-catch log call takes the global from 19 to 29.
+  Unlike the entry above this one is not a bug to fix, since no syntactic check can tell a real
+  tenant id from a constant, but it bounds what the number can mean either way.
 - **The score is a mean of means over a heuristic.** Read the fix list, the two headline figures and
   the CHECKS block. Watching the single number for small movements will mislead you.
 

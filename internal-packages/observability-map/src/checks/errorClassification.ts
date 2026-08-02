@@ -154,7 +154,7 @@ export function usesBuilder(ep: EntryPoint): boolean {
  *
  * A clause whose try block holds nothing that could raise is read as no clause at all,
  * `guardCanRaise` on the evidence. Prepending `try { 0; } catch (e) { if (e instanceof Error) {
- * return json(x, { status: 400 }); } throw e; }` to every body took the tree from 15 to 42 and
+ * return json(x, { status: 400 }); } throw e; }` to every body takes the tree from 19 to 44 and
  * raised 224 routes, because the 261 routes that catch nothing were sitting at not-applicable and a
  * dead clause moved each of them to pass.
  *

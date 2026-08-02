@@ -13,7 +13,7 @@ const gauge = (score: number | null) => {
 /**
  * Failing checks that actually feed `score`. `audit-trail` is deliberately excluded here: it is
  * excluded from the score for the same reason (see `score.ts`), and every sensitive mutation fails
- * it today, so folding it in would flood this list with the same finding repeated 52 times instead
+ * it today, so folding it in would flood this list with the same finding repeated 46 times instead
  * of the fixable, route-specific gaps the list exists to surface. That gap is reported once, as
  * `AUDIT`, below.
  */

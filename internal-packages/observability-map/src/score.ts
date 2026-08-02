@@ -112,6 +112,9 @@ export type MapReport = {
  * the file holds no handler function and no builder call, so there is nothing for a check to read
  * and no check may claim a verdict. `request-context` would otherwise fail such a route for leaving
  * its failures to the central handler, an accusation about a body this file does not contain.
+ *
+ * Because it is answered here, no check tests `ep.delegating` itself. Two did, and both branches
+ * were unreachable.
  */
 const DELEGATED_CHECKS = (): CheckResult[] =>
   CHECKS.map((c) => ({
