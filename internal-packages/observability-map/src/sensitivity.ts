@@ -123,7 +123,12 @@ export const SENSITIVE_SEGMENTS = [
  * layout (`resources.impersonation_.view-as.ts`) and changes nothing about what the route does.
  */
 function normalizeSegment(segment: string): string {
-  return segment.replace(/_+$/, "");
+  // Trimmed by hand rather than with /_+$/, which backtracks polynomially on a run of underscores
+  // and trips CodeQL. Nothing here is attacker-controlled (the input is a filename read off disk),
+  // so this is about not spending a reviewer's attention on the alert.
+  let end = segment.length;
+  while (end > 0 && segment[end - 1] === "_") end--;
+  return segment.slice(0, end);
 }
 
 export type Sensitivity = { sensitive: boolean; reasons: string[] };
