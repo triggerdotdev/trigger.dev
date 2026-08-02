@@ -224,7 +224,10 @@ describe("computeWaitingRunDiagnosis", () => {
         run({ status: "PENDING", queuedAt: null, delayUntil: new Date(NOW.getTime() - 60_000) }),
         signals()
       );
-      expect(result?.run.waitingBasis).toBe("created_at");
+      // The delay already passed but the run wasn't enqueued — the label says the
+      // delay elapsed rather than hiding it behind "time from creation".
+      expect(result?.run.waitingBasis).toBe("delay_until");
+      expect(result?.run.waitingLabel).toContain("not yet enqueued");
     });
   });
 

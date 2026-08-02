@@ -7,18 +7,31 @@
  * validated, and it rots. If it can't be expressed as a URI, it isn't evidence.
  */
 import { z } from "zod";
-import { triggerUriKindSchema, triggerUriSchema } from "./trigger-uri.js";
+import { safeParseTriggerUri, triggerUriKindSchema, triggerUriSchema } from "./trigger-uri.js";
 
-export const evidenceSchema = z.object({
-  /** What kind of resource this cites. Mirrors the URI's resource kinds. */
-  kind: triggerUriKindSchema,
-  /** The resource itself. */
-  uri: triggerUriSchema,
-  /** Short human label, e.g. "run_abc123 failed span" or "processOrder.ts:42". */
-  label: z.string(),
-  /** Optional verbatim snippet (error message, log line, source lines). */
-  excerpt: z.string().optional(),
-});
+export const evidenceSchema = z
+  .object({
+    /** What kind of resource this cites. Mirrors the URI's resource kinds. */
+    kind: triggerUriKindSchema,
+    /** The resource itself. */
+    uri: triggerUriSchema,
+    /** Short human label, e.g. "run_abc123 failed span" or "processOrder.ts:42". */
+    label: z.string(),
+    /** Optional verbatim snippet (error message, log line, source lines). */
+    excerpt: z.string().optional(),
+  })
+  // A citation must not claim one resource type while pointing at another — the
+  // renderer picks its icon and label from `kind`, so a mismatch is a lie.
+  .superRefine((evidence, ctx) => {
+    const parsed = safeParseTriggerUri(evidence.uri);
+    if (parsed.success && parsed.data.kind !== evidence.kind) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["kind"],
+        message: `kind "${evidence.kind}" does not match the URI's kind "${parsed.data.kind}"`,
+      });
+    }
+  });
 
 export type Evidence = z.infer<typeof evidenceSchema>;
 export type EvidenceKind = Evidence["kind"];
