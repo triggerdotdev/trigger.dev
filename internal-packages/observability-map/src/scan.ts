@@ -1358,7 +1358,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
 const SOURCE_FILE = /\.tsx?$/;
 
-function isScannableFile(fileName: string): boolean {
+/** Exported so `mutationCorpus.test.ts` materializes exactly the files `scanDirectory` reads. Its
+ * anti-vacuity thresholds count files and sites the scanner never saw if the two predicates drift. */
+export function isScannableFile(fileName: string): boolean {
   return SOURCE_FILE.test(fileName) && !fileName.endsWith(".d.ts");
 }
 

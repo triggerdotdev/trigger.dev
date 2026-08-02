@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { scanDirectory } from "./scan.js";
+import { isScannableFile, scanDirectory } from "./scan.js";
 import { buildReport } from "./score.js";
 import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
 import { CHECKS } from "./checks/index.js";
@@ -72,7 +72,9 @@ function readTree(dir: string): SourceFile[] {
       }
       continue;
     }
-    if (!entry.isFile() || !/\.tsx?$/.test(entry.name) || entry.name.endsWith(".d.ts")) continue;
+    // `scanDirectory`'s own predicate rather than a copy of it. A copy that drifts lets a mutation
+    // report files and sites the scanner never read, which is what the thresholds below are for.
+    if (!entry.isFile() || !isScannableFile(entry.name)) continue;
     take(join(dir, entry.name), entry.name);
   }
   return files;
@@ -218,6 +220,30 @@ describe("the corpus keeps up with the check registry", () => {
     );
     expect(missing).toEqual([]);
   });
+
+  // Ungated for the same reason as the sweep assertion above: it reads no route tree and costs
+  // nothing, so gating it would only hide a stale list from the run people actually do.
+  it("covers the additive direction, not only the subtractive one", () => {
+    // Every corpus entry once removed or restructured real signal, and none added fake signal. The
+    // two largest holes ever found here lived in that blind spot, so the class is asserted rather
+    // than left to whoever edits the list next.
+    const ids = new Set(MUTATIONS.map((m) => m.id));
+    expect(ADDITIVE_IDS.filter((id) => !ids.has(id))).toEqual([]);
+    expect(ADDITIVE_IDS.length).toBeGreaterThanOrEqual(8);
+  });
+});
+
+/**
+ * Ungated, because a `preserving` entry that changes behaviour is a false negative in the property
+ * the whole file exists to argue, and the shape is cheaper to state on a two-line fixture than to
+ * wait for a route to grow it.
+ */
+describe("a preserving mutation preserves what the route does", () => {
+  it("leaves a directive prologue alone when merging comma expressions", () => {
+    const merge = MUTATIONS.find((m) => m.id === "merge-comma-expressions")!;
+    const result = merge.apply("api.v1.a.tsx", '"use client";\nfoo();\nbar();\n');
+    expect(result?.source ?? "").not.toContain('"use client",');
+  });
 });
 
 const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
@@ -231,17 +257,17 @@ const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
 const ENTRY_TIMEOUT_MS = 120_000;
 
 describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIMEOUT_MS }, () => {
-  const files = ENABLED && existsSync(ROUTES) ? readTree(ROUTES) : [];
-  const baseline = ENABLED && existsSync(ROUTES) ? measure(files) : null;
+  let files: SourceFile[] = [];
+  let baseline: Measurement | null = null;
 
-  it("covers the additive direction, not only the subtractive one", () => {
-    // Every corpus entry once removed or restructured real signal, and none added fake signal. The
-    // two largest holes ever found here lived in that blind spot, so the class is asserted rather
-    // than left to whoever edits the list next.
-    const ids = new Set(MUTATIONS.map((m) => m.id));
-    expect(ADDITIVE_IDS.filter((id) => !ids.has(id))).toEqual([]);
-    expect(ADDITIVE_IDS.length).toBeGreaterThanOrEqual(8);
-  });
+  // In a hook rather than the suite body, which Vitest runs during collection where no test timeout
+  // applies and a throw has no test name to attach to. The baseline is the single most expensive
+  // step in the file, so it is the one that must be inside something that can be timed out and
+  // reported. `beforeAll` takes its own timeout.
+  beforeAll(() => {
+    files = readTree(ROUTES);
+    baseline = measure(files);
+  }, ENTRY_TIMEOUT_MS);
 
   it("has a baseline worth mutating", () => {
     expect(baseline).not.toBeNull();

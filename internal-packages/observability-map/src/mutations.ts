@@ -821,6 +821,9 @@ export const MUTATIONS: Mutation[] = [
           const previous = statements[i - 1]!;
           const current = statements[i]!;
           if (!ts.isExpressionStatement(previous) || !ts.isExpressionStatement(current)) continue;
+          // A directive prologue is an ExpressionStatement, and `"use client", foo();` is no longer
+          // a directive. That is a behaviour change, which this entry claims not to make.
+          if (ts.isStringLiteral(previous.expression)) continue;
           if (source[previous.end - 1] !== ";") continue;
           edits.push({ start: previous.end - 1, end: current.getStart(), text: ", " });
         }
