@@ -130,7 +130,10 @@ export function main(argv: string[], io: Io = processIo): number {
   }
 
   const report = buildReport(entryPoints, parseFailures);
-  for (const line of unknownSuppressionLines(report)) io.err(`${line}\n`);
+  // JSON only. `renderTerminal` puts these lines in the report body, so warning here as well
+  // printed each one twice in a terminal run. Stderr is what the JSON path has instead, since a
+  // warning on stdout would be inside the document a caller parses.
+  if (asJson) for (const line of unknownSuppressionLines(report)) io.err(`${line}\n`);
   io.out(asJson ? renderJson(report) : renderTerminal(report));
   io.out("\n");
   if (!noWrite) {

@@ -155,14 +155,29 @@ describe("map", () => {
   });
 });
 
-// B6. Stdout can be JSON a caller parses, so the warning goes to stderr in every mode, and the
-// terminal report carries it too (see report.test.ts).
+// B6. Stdout can be JSON a caller parses, so the warning goes to stderr whenever stdout is JSON.
+// The terminal report carries it in its body instead (`src/report/terminal.test.ts`), and printing
+// it on both streams meant a plain run showed every warning twice.
 describe("warning about a suppression that names no check", () => {
-  it("names the file and the bad id on stderr for the whole report", () => {
+  it("names the file and the bad id in the whole report", () => {
     const r = run("--no-write");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("api.v1.typo.ts");
+    expect(r.out).toContain("eror-classification");
+  });
+
+  it("prints the warning once for a terminal run of the whole report", () => {
+    const r = run("--no-write");
+    const lines = `${r.out}${r.err}`.split("\n").filter((l) => l.startsWith("UNKNOWN SUPPRESSION"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("names the file and the bad id on stderr when the whole report is json", () => {
+    const r = run("--no-write", "--json");
     expect(r.code).toBe(0);
     expect(r.err).toContain("api.v1.typo.ts");
     expect(r.err).toContain("eror-classification");
+    expect(r.out).not.toContain("UNKNOWN SUPPRESSION");
   });
 
   it("warns for a single route without putting the warning in the json", () => {
