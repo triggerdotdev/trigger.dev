@@ -242,7 +242,12 @@ describe("a preserving mutation preserves what the route does", () => {
   it("leaves a directive prologue alone when merging comma expressions", () => {
     const merge = MUTATIONS.find((m) => m.id === "merge-comma-expressions")!;
     const result = merge.apply("api.v1.a.tsx", '"use client";\nfoo();\nbar();\n');
-    expect(result?.source ?? "").not.toContain('"use client",');
+    // The first two assertions carry the test. Without them `?? ""` let it pass when the mutation
+    // did not apply at all, and it would still have passed had the mutation deleted the directive.
+    expect(result).toBeDefined();
+    expect(result?.source).toContain('"use client";');
+    expect(result?.source).not.toContain('"use client",');
+    expect(result?.source).toContain("foo(), bar()");
   });
 });
 
