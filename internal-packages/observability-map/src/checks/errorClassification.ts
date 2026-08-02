@@ -146,11 +146,19 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * `admin.api.v1.runs-replication.status.ts` at the top of the first rendered fix list.
  *
  * `callbackCatches` is the third case, and it is what stops "no catch is not-applicable" from being
- * a payout. A route whose catches all sat inside a callback the scanner refused to attribute has
- * error handling, the scanner just could not read it as the route's; excusing that is worth 50
- * points to anyone who wraps a body in something the boundary rule refuses, which
- * `Promise.all([0].map(async () => { ... }))` did. It fails instead. The precision cost is a route
- * that genuinely only handles errors per item, which now fails rather than sitting out.
+ * a payout. A refused catch is judged on its evidence, never on its placement: the same
+ * `catchClauseEvidence` an own catch gets, with two arms reading it. A refused swallow fails the
+ * route whenever nothing the route owns decides, and that arm is deliberately not conditioned on
+ * the route owning no catches, so an own inert rethrow catch cannot lift a refused swallow out of
+ * the verdict (`fails a per-item swallow even when the route owns an inert rethrow catch`). A
+ * route whose only catches are refused and none of them swallows sits out, and never passes: the
+ * not-applicable ceiling is what keeps a prepended dead deciding `.map` from minting a pass on the
+ * 261 catchless routes, which `dead-deciding-map` in the mutation corpus holds at tree scale and
+ * `sits out a catchless route with a prepended dead deciding map` pins on a fixture. What the old
+ * blanket placement rule blocked, relocating a swallow behind the boundary, still fails
+ * (`still fails a swallow wrapped in a non-array receiver's .map(...)`); what it wrongly accused,
+ * a route whose only error handling genuinely is per item, now sits out instead of failing
+ * (`sits out a route whose only catch is a deciding per-item boundary`).
  *
  * A clause whose try block holds nothing that could raise is read as no clause at all,
  * `guardCanRaise` on the evidence. Prepending `try { 0; } catch (e) { if (e instanceof Error) {
@@ -195,14 +203,35 @@ export const errorClassification = {
           : `catches its errors and chooses what to do without looking at what was thrown${which}`,
       };
     }
-    // Read off `ep.catches`, not `reachable`: a route that owns a catch owns one, whether or not
-    // `canRaise` could see what it guarded. Ordering this off `reachable` turned every `canRaise`
-    // miss on a route that also has a per-item catch into an accusation that was flatly false.
-    if (ep.catches.length === 0 && ep.callbackCatches > 0) {
+    // A refused (iteration-callback) catch is judged on its evidence, never on its placement.
+    // The fail arm first: a refused swallow fails whenever nothing the route owns decides.
+    // Deliberately NOT conditioned on `ep.catches.length === 0`: an own inert catch, which
+    // `wrap-body-in-rethrow` adds to every route, must not lift a refused swallow out of the
+    // verdict, or wrapping a per-item-swallow route in try/rethrow reads "every catch rethrows".
+    // `fails a per-item swallow even when the route owns an inert rethrow catch` pins that.
+    const reachableCb = ep.callbackCatches.filter((c) => c.guardCanRaise);
+    if (!reachable.some(decides) && reachableCb.some(swallows)) {
       return {
         id: ID,
         status: "fail",
-        detail: "its only error handling sits in a callback the route does not own",
+        detail:
+          "a catch inside an iteration callback swallows what it caught, and nothing the route owns decides",
+      };
+    }
+    // The ceiling: refused catches never reach the pass arm, so a route whose only catches are
+    // refused and none of them swallows sits out of the denominator rather than collecting
+    // anything. Read off `ep.catches`, not `reachable`: a route that owns a catch owns one,
+    // whether or not `canRaise` could see what it guarded; ordering this off `reachable` turned
+    // every `canRaise` miss on a route that also has a per-item catch into an accusation that was
+    // flatly false. The detail asserts nothing about ownership or per-item-ness the scanner
+    // cannot know: a once-invoked Result-style wrapper with a deciding inner catch reads the same
+    // as its inline equivalent would.
+    if (ep.catches.length === 0 && ep.callbackCatches.length > 0) {
+      return {
+        id: ID,
+        status: "not-applicable",
+        detail:
+          "its only catches sit in iteration callbacks and none swallows, so the route itself classifies nothing",
       };
     }
     if (!reachable.some(decides)) {

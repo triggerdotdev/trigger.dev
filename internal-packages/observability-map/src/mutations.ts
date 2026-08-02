@@ -828,6 +828,19 @@ export const MUTATIONS: Mutation[] = [
     },
   },
 
+  // The no-pass ceiling on refused (iteration-callback) catches, at tree scale. A two-element
+  // array literal iterates, so the boundary rule refuses this catch; it decides and cannot run
+  // its deciding arm (JSON.parse("0") never throws). Under any future rule that CREDITS refused
+  // catches, the ~261 catchless routes rise from not-applicable to pass and this entry goes red.
+  wrapEveryBody(
+    "dead-deciding-map",
+    "prepend a dead deciding per-item catch inside a two-element .map to every route body",
+    '[0, 1].map((obsMapV) => { try { JSON.parse("0"); } catch (obsMapDead) {' +
+      " if (obsMapDead instanceof SyntaxError) { return null; } throw obsMapDead; }" +
+      " return obsMapV; });",
+    ""
+  ),
+
   {
     id: "merge-declarations",
     kind: "preserving",
@@ -917,6 +930,7 @@ export const ADDITIVE_IDS = [
   "wrap-body-in-same-arms-throw-ternary",
   "empty-instanceof-if",
   "dead-classifier-one-arm",
+  "dead-deciding-map",
   "registered-throw",
   "fake-require-guard",
   "fake-authenticated-lookup",

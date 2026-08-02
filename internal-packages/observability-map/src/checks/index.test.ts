@@ -507,11 +507,11 @@ describe("error-classification", () => {
     expect(r.status).toBe("not-applicable");
   });
 
-  // A7 as revised. A per-item error boundary inside a `.map()` callback is still not judged as the
-  // route's own catch, so it never sets `catches` and never speaks for the route's `tryStatementCount`.
-  // It is no longer excused either. Reading "no catch of its own" as not-applicable was worth 50
-  // points to anything that could get the boundary rule to refuse the route's real catch, which
-  // `[0].map(...)` did, so a refused catch now fails instead of sitting out.
+  // A7 as revised twice. A per-item error boundary inside a `.map()` callback is still not judged
+  // as the route's own catch, so it never sets `catches` and never speaks for the route's
+  // `tryStatementCount`. This catch SWALLOWS what it caught, and nothing the route owns decides,
+  // so the route still fails: judging refused catches on their evidence must not stop failing the
+  // relocated swallow, which is the anti-laundering half of the rule.
   it("fails a route whose only catch is inside a Promise.all(items.map(...)) callback", () => {
     const source = `import { prisma } from "~/db.server";
        export async function action({ request }) {
@@ -529,10 +529,108 @@ describe("error-classification", () => {
        }`;
     const ep = scanFile("batch.process.ts", source)!;
     expect(ep.catches).toEqual([]);
-    expect(ep.callbackCatches).toBe(1);
+    expect(ep.callbackCatches).toHaveLength(1);
     const r = run("error-classification", "batch.process.ts", source);
     expect(r.status).toBe("fail");
-    expect(r.detail).toContain("callback the route does not own");
+    expect(r.detail).toContain("a catch inside an iteration callback swallows");
+  });
+
+  // The evidence half of the mechanism-C rule: a refused catch that DECIDES caps at not-applicable
+  // rather than failing (the old placement rule) or passing (the crediting rule `dead-deciding-map`
+  // exists to refuse). The route's error handling is real and per item; the route itself decides
+  // nothing, so out of the denominator is the honest place for it.
+  it("sits out a route whose only catch is a deciding per-item boundary", () => {
+    const r = run(
+      "error-classification",
+      "batch.decide.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const results = await stream.map(async (item) => {
+           try {
+             await service.call(item);
+           } catch (e) {
+             if (e instanceof KnownError) { return new Response(e.code, { status: 400 }); }
+             throw e;
+           }
+         });
+         return json({ results });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("its only catches sit in iteration callbacks");
+  });
+
+  // Same shape with an inert per-item rethrow: not a swallow, so it sits out too.
+  it("sits out a route whose only catch is an inert per-item rethrow", () => {
+    const r = run(
+      "error-classification",
+      "batch.rethrow.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const results = await stream.map(async (item) => {
+           try {
+             await service.call(item);
+           } catch (e) {
+             throw e;
+           }
+         });
+         return json({ results });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("its only catches sit in iteration callbacks");
+  });
+
+  // The refused-swallow arm is deliberately not conditioned on the route owning no catches. An
+  // own inert catch is what `wrap-body-in-rethrow`, a preserving corpus entry, adds to every
+  // route: were the arm gated on `catches.length === 0`, wrapping a per-item-swallow route in
+  // try/rethrow would read "every catch rethrows" and lift the fail to not-applicable, a rise
+  // that existed in the pre-evidence code and was masked only by the affected routes scoring 0 on
+  // every other check.
+  it("fails a per-item swallow even when the route owns an inert rethrow catch", () => {
+    const r = run(
+      "error-classification",
+      "batch.wrapped.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         try {
+           const items = await prisma.item.findMany();
+           await Promise.all(
+             items.map(async (item) => {
+               try {
+                 await processItem(item);
+               } catch {
+                 return null;
+               }
+             })
+           );
+           return json({ ok: true });
+         } catch (e) {
+           throw e;
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("a catch inside an iteration callback swallows");
+  });
+
+  // The no-pass ceiling at the fixture scale: a catchless route with a prepended dead deciding
+  // map sits out. A crediting rule would read pass here, which is 50 free points on the tree's
+  // 261 catchless routes; the old placement rule read fail, a false accusation on a preserving
+  // prepend. `dead-deciding-map` in the mutation corpus is the tree-scale version.
+  it("sits out a catchless route with a prepended dead deciding map", () => {
+    const r = run(
+      "error-classification",
+      "prepended-map.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         [0, 1].map((v) => { try { JSON.parse("0"); } catch (e) { if (e instanceof SyntaxError) { return null; } throw e; } return v; });
+         const rows = await prisma.thing.findMany();
+         return json({ rows });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("its only catches sit in iteration callbacks");
   });
 
   // The same route with nothing caught anywhere stays not-applicable, so the fail above is

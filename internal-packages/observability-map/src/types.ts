@@ -146,11 +146,15 @@ export type EntryPoint = {
   catches: CatchEvidence[];
   /**
    * Catch clauses the scan found but refused to attribute to the route, because they sit inside a
-   * per-item iteration callback. Kept rather than dropped so `error-classification` can tell "this
-   * route catches nothing" from "this route's only error handling was refused", which are 50 points
-   * apart and used to read the same.
+   * per-item iteration callback. Still refused for attribution: they never join `catches`, never
+   * speak for the route's `tryStatementCount`, and never reach a pass. Kept WITH their evidence,
+   * built by the same `catchClauseEvidence` machinery as an own catch, so `error-classification`
+   * can judge what a refused catch does rather than where it sits: a refused swallow fails the
+   * route (`fails a per-item swallow even when the route owns an inert rethrow catch`), a refused
+   * catch that decides or rethrows caps at not-applicable (`sits out a route whose only catch is a
+   * deciding per-item boundary`). The count the old field carried is `.length`.
    */
-  callbackCatches: number;
+  callbackCatches: CatchEvidence[];
   /** Calls to a `logger.*` or `log.*` callee in those bodies, in source order. */
   logCalls: LogCall[];
   /**

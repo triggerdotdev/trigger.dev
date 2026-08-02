@@ -1026,11 +1026,13 @@ function isAtMostSingletonArray(expr: ts.Expression): boolean {
  * whole body })` collected it.
  *
  * Two things changed. A receiver that is an array literal of one element or none is refused here,
- * because it cannot iterate. And the direction that used to pay no longer pays: `walkBody` counts
- * the catches it refuses, and `error-classification` fails a route whose only catches were refused
- * rather than excusing it. That is what makes the name list survivable, and it is why
+ * because it cannot iterate. And the direction that used to pay no longer pays: `walkBody` keeps
+ * the catches it refuses, evidence and all, and `error-classification` fails a route with a
+ * refused swallow when nothing the route owns decides, while a refused catch that decides caps at
+ * not-applicable and never a pass. That is what makes the name list survivable, and it is why
  * `Result.map(...)`, which no name list can tell from `users.map(...)`, is a corpus entry that
- * passes rather than a hole.
+ * passes rather than a hole: relocating a swallow behind the boundary still fails, and relocating
+ * a decision earns at most the route's exit from the denominator.
  *
  * The other direction still costs points and the earlier version of this comment said otherwise.
  * A per-item callback under a callee the name list does not know, `pMap(items, cb)` or
@@ -1509,7 +1511,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
   let statementCount = 0;
   let hasTryCatch = false;
-  let callbackCatches = 0;
+  const callbackCatches: CatchEvidence[] = [];
   const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
   const logCalls: LogCall[] = [];
@@ -1540,8 +1542,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     // not: a per-item catch is not part of this body's own statement list, and `countStatement`
     // already stops at a nested function boundary, so counting it here let `tryStatementCount`
     // exceed the entry point's whole `statementCount` and judged a per-item error boundary as
-    // though it were the route's own. What is refused is counted in `callbackCatches` instead of
-    // dropped, so a route whose only error handling was refused is failed rather than excused.
+    // though it were the route's own. What is refused is kept in `callbackCatches` with its
+    // evidence instead of dropped, so `error-classification` can fail a refused swallow and sit
+    // out a refused catch that decides, without ever crediting either as the route's own.
     //
     // Only an iteration callback is a boundary, not every function-like node: a route's own body
     // wrapped in `trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`
@@ -1562,11 +1565,13 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
       }
       if (ts.isTryStatement(node)) {
         hasTryCatch = true;
-        if (node.catchClause && inCallback) callbackCatches++;
-        if (node.catchClause && !inCallback) {
+        if (node.catchClause) {
+          // Built the same way for a refused catch as for an own one, so the dead-code defence
+          // and the walk's guaranteed-execution rules apply to both. Which list it lands in is
+          // walkBody's attribution decision alone.
           const tryStatementCount = countStatements(node.tryBlock.statements);
           const clause = catchClauseEvidence(node.catchClause);
-          catches.push({
+          (inCallback ? callbackCatches : catches).push({
             rethrows: clause.rethrows,
             throws: clause.throws,
             branches: clause.branches,

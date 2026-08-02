@@ -1567,6 +1567,52 @@ describe("scanFile: catch clause evidence", () => {
       );
       expect(ep!.catches).toEqual([]);
     });
+
+    // A refused catch keeps its evidence, built by the same machinery as an own catch, so
+    // `error-classification` can judge what it does rather than where it sits. Both flavours are
+    // pinned: the deciding per-item catch and the inert one.
+    it("populates evidence for a refused per-item catch that decides", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const items = await load(request);
+          return items.map(async (item) => {
+            try {
+              return await process(item);
+            } catch (e) {
+              if (e instanceof KnownError) { return new Response(e.code, { status: 400 }); }
+              throw e;
+            }
+          });
+        }
+        `
+      );
+      expect(ep!.catches).toEqual([]);
+      expect(ep!.callbackCatches).toHaveLength(1);
+      expect(ep!.callbackCatches[0]).toMatchObject({ branches: true, guardCanRaise: true });
+    });
+
+    it("populates evidence for a refused per-item catch that only rethrows", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const items = await load(request);
+          return items.map(async (item) => {
+            try {
+              return await process(item);
+            } catch (e) {
+              throw e;
+            }
+          });
+        }
+        `
+      );
+      expect(ep!.catches).toEqual([]);
+      expect(ep!.callbackCatches).toHaveLength(1);
+      expect(ep!.callbackCatches[0]).toMatchObject({ rethrows: true, branches: false });
+    });
   });
 });
 
