@@ -1631,6 +1631,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   }
 }
 
+export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
+  return Array.from(new Set(items.map((item) => item.task))).sort();
+}
+
 /**
  * Helper function that executes a 2-phase batch trigger:
  * 1. Creates the batch record with expected run count
@@ -1644,10 +1648,6 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
  * @param requestOptions - Optional request options
  * @internal
  */
-export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
-  return Array.from(new Set(items.map((item) => item.task))).sort();
-}
-
 async function executeBatchTwoPhase(
   apiClient: ReturnType<typeof apiClientManager.clientOrThrow>,
   items: BatchItemNDJSON[],
