@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { scanDirectory } from "../src/scan.js";
-import { buildReport } from "../src/score.js";
+import { scanDirectory } from "./scan.js";
+import { buildReport } from "./score.js";
 import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
 
 /**

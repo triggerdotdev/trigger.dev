@@ -1,7 +1,7 @@
-import { renderTerminal } from "../src/report/terminal.js";
-import { renderJson } from "../src/report/json.js";
-import { buildReport } from "../src/score.js";
-import { scanFile } from "../src/scan.js";
+import { renderTerminal } from "./terminal.js";
+import { renderJson } from "./json.js";
+import { buildReport } from "../score.js";
+import { scanFile } from "../scan.js";
 
 const report = () =>
   buildReport(

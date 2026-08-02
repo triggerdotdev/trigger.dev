@@ -1,5 +1,5 @@
-import { scoreEntry, buildReport } from "../src/score.js";
-import { scanFile } from "../src/scan.js";
+import { scoreEntry, buildReport } from "./score.js";
+import { scanFile } from "./scan.js";
 
 const BUILDER = `import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 export const loader = createLoaderApiRoute({}, async () => new Response("ok"));`;

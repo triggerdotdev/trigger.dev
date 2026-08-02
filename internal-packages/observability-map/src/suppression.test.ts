@@ -1,4 +1,4 @@
-import { parseSuppressions, suppressedChecks } from "../src/suppression.js";
+import { parseSuppressions, suppressedChecks } from "./suppression.js";
 
 describe("suppressedChecks", () => {
   it("reads a suppression with its reason", () => {

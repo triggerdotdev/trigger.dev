@@ -23,7 +23,7 @@ The whole-tree run also writes `observability-map.json` at the repo root, which 
 suppresses. The single-route mode takes either the route path the report prints (`/api/v1/token`) or
 the file name (`api.v1.token.ts`). An exact match wins over the routes it is a prefix of, and an
 ambiguous prefix warns and names the alternatives rather than silently picking one
-(`test/cli.test.ts`: `prefers an exact match over the routes it is a prefix of`, `warns when a
+(`src/cli.test.ts`: `prefers an exact match over the routes it is a prefix of`, `warns when a
 prefix matches more than one route rather than silently taking the first`).
 
 ## CI
@@ -55,12 +55,12 @@ The score was 76 until we stopped crediting routes for the error handling they d
 every catch clause in the tree used to score it 100, which meant the metric paid you for deleting
 error handling.
 
-The property behind that is now a test corpus rather than a claim. `test/mutationCorpus.test.ts`
+The property behind that is now a test corpus rather than a claim. `src/mutationCorpus.test.ts`
 applies 42 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
 and asserts three things for each: the published global does not rise, the mean over the routes
 measured in both runs does not rise, and for a semantics-preserving rewrite no individual route's
 score rises or drops out of the measured set. Every laundering shape a reviewer has found on this
-branch is an entry in it, `test/mutations.ts` holds them, and each entry says which it is.
+branch is an entry in it, `src/mutations.ts` holds them, and each entry says which it is.
 
 Two of them are worth naming because they are the ones the design turns on. Deleting every catch
 clause in the tree drops the score from 19 to 8, so the metric does not pay you for removing error
@@ -86,7 +86,7 @@ you change this package, run it:
 
 ```bash
 OBS_MAP_MUTATION_CORPUS=1 pnpm --filter @internal/observability-map exec vitest run \
-  test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
+  src/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
 ```
 
 So the number is deliberately unflattering, and one platform change would move most of it. Nothing
@@ -135,7 +135,7 @@ whether someone wrote a tenant field into a catch log.
 Weighting was considered and rejected in the design, and that reasoning has not changed: a
 coefficient nobody can explain invites argument about the number instead of about the finding. The
 block above is in the terminal report and in the JSON as `checkContributions`
-(`test/score.test.ts`: `per-check contribution`; `test/report.test.ts`: `reporting what the score
+(`src/score.test.ts`: `per-check contribution`; `src/report/terminal.test.ts`: `reporting what the score
 is made of`).
 
 ## Two findings are headlines, not list entries
@@ -159,13 +159,13 @@ is meant to show it. Only the presentation collapses.
 ## Not applicable is not a pass
 
 An entry with no applicable scored check is `measured: false`, and it is left out of every mean the
-report computes (`test/score.test.ts`: `excludes an unmeasured entry point from the global mean`,
+report computes (`src/score.test.ts`: `excludes an unmeasured entry point from the global mean`,
 `excludes an unmeasured entry point from its family mean too`). Its `score` field reads 100, which
 is a placeholder for "nothing was measured here", not a verdict, and nothing averages it. This
 matters because the alternative, letting unmeasured entries into the mean at 100, would let the tool
 look better the less it understood. The header prints every count (`412 measured, 15 unmeasured`) so
 the denominator is never hidden, and a family with nothing measured renders as `not measured` rather
-than as a full green bar (`test/report.test.ts`: `renders a family with nothing measured as not
+than as a full green bar (`src/report/terminal.test.ts`: `renders a family with nothing measured as not
 measured, not as 100`).
 
 15 of those 427 routes are unmeasured because `isTrivial` (`src/triviality.ts`) rules them out before
@@ -186,8 +186,8 @@ file, an ordinary refactor, deleted the route from the metric while the report s
 Delegating routes are now counted apart from the unmeasured ones, listed on a `DELEGATED` line and
 carried in the JSON as `delegating`, the same treatment a parse failure gets and for the same
 reason: the denominator is smaller than the entry point count and nothing about these routes has
-been checked (`test/score.test.ts`: `refactoring a body out of the route file`,
-`a route that delegates its body to another module`; `test/report.test.ts`: `reporting a route whose
+been checked (`src/score.test.ts`: `refactoring a body out of the route file`,
+`a route that delegates its body to another module`; `src/report/terminal.test.ts`: `reporting a route whose
 body is in another module`). There are none in the tree today, which is exactly why it would have
 gone unnoticed when someone wrote one.
 
@@ -220,13 +220,13 @@ Two rules hold the vocabulary honest.
 
 Calling a guard can never be what makes a route sensitive. `requireAdminApiRequest` was on the
 symbol list once and made 34 of the then 67 sensitive routes sensitive purely for being guarded,
-which `auth-boundary` then passed every one of them for (`test/sensitivity.test.ts`: `does not treat
+which `auth-boundary` then passed every one of them for (`src/sensitivity.test.ts`: `does not treat
 calling the admin guard as what makes a route sensitive`).
 
 Every name and every segment has to exist. Half the symbol list once named nothing at all:
 `Set.has` is exact, and `setImpersonation`, `createJWT`, `signJWT` and `updateEnvVars` are exported
 nowhere in the webapp, so the symbol half of the classifier was quietly doing almost nothing.
-`test/webappSymbols.test.ts` resolves every sensitive symbol, every path segment and every entry in
+`src/webappSymbols.test.ts` resolves every sensitive symbol, every path segment and every entry in
 `auth-boundary`'s guard list against `apps/webapp/app` and the two packages the webapp
 authenticates through, and fails if one stops resolving. The one exception is
 `ANTICIPATED_SEGMENTS`, three words that name no route yet and are held to naming none.
@@ -276,7 +276,7 @@ export, so an entry-point-wide reading passed them, and the exposure is per expo
 // obs-map-disable auth-boundary -- public by design, see ADR 12
 ```
 
-The reason is mandatory: a suppression without one is ignored (`test/suppression.test.ts`: `ignores
+The reason is mandatory: a suppression without one is ignored (`src/suppression.test.ts`: `ignores
 a suppression with no reason`). The directive is read from comments only, so a string literal
 quoting it does not switch a check off (`does not suppress from a directive quoted inside a string
 literal`, and six more for template literals and JSX text).
@@ -290,7 +290,7 @@ spelling`).
 
 A suppression cannot raise a score. The suppressed check leaves the numerator and the denominator,
 and the result is capped by what the entry would have scored unsuppressed, so suppressing a failing
-check holds the number still rather than improving it (`test/score.test.ts`: `does not raise the
+check holds the number still rather than improving it (`src/score.test.ts`: `does not raise the
 score when a failing check is suppressed`; `scoring 100 and 0, suppressing every check on the
 failing entry leaves the global at 50`), and `suppress-every-check` is the tree-scale version in
 the corpus. What you buy is removal from the worklist with a reason on the record. The report prints how many suppressions are
@@ -324,7 +324,7 @@ Read these before trusting a specific verdict.
   entry points; the other 5 hand their work to an imported helper and are reported as unverified
   rather than unguarded.
 - **A guard is matched by name, not by what it does.** The accept-list is 29 names read off the
-  webapp, plus two `SOFT_GUARDS`. `test/webappSymbols.test.ts` proves each one is declared
+  webapp, plus two `SOFT_GUARDS`. `src/webappSymbols.test.ts` proves each one is declared
   somewhere; nothing proves the declaration it found is the guard we meant. `authenticateAdmin` and
   `authenticatePlainRequest` are local helpers inside one route file each, so a second route
   declaring its own no-op function of either name would be credited.
@@ -383,7 +383,7 @@ body-scoped evidence. `checks/` holds the five checks, each a pure function of a
 entry point. `sensitivity.ts`, `triviality.ts` and `suppression.ts` are the three inputs the checks
 share.
 
-Tests sit next to their subject in `test/`. Every check has a false-positive fixture, something it
+Tests sit next to their subject in `src/`. Every check has a false-positive fixture, something it
 must not flag, alongside the positive one. Keep that: most of the bugs this package has had were
 checks that fired on the wrong thing, and a test that only proves the heuristic fires would have
 caught none of them.

@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { ParseFailureError, scanDirectory, scanFile } from "../src/scan.js";
+import { ParseFailureError, scanDirectory, scanFile } from "./scan.js";
 
 const LOADER = `
 import { json } from "@remix-run/server-runtime";
@@ -532,7 +532,7 @@ describe("scanFile: parse failures", () => {
   // above: both spellings find the same malformed files today. What a compiler upgrade can break
   // is the private one, and only a source-level guard can fail for that.
   it("reads its diagnostics through public typescript api rather than a private field", () => {
-    const source = readFileSync(resolve(__dirname, "../src/scan.ts"), "utf8");
+    const source = readFileSync(resolve(__dirname, "./scan.ts"), "utf8");
     expect(source).not.toContain("parseDiagnostics");
     expect(source).toContain("getSyntacticDiagnostics");
   });

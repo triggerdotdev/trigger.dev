@@ -1,5 +1,5 @@
-import { classifySensitivity } from "../src/sensitivity.js";
-import { scanFile } from "../src/scan.js";
+import { classifySensitivity } from "./sensitivity.js";
+import { scanFile } from "./scan.js";
 
 const ep = (fileName: string, source: string) => scanFile(fileName, source)!;
 

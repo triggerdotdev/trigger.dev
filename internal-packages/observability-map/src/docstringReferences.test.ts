@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { CHECKS } from "../src/checks/index.js";
+import { CHECKS } from "./checks/index.js";
 import { MUTATIONS } from "./mutations.js";
 
 /**
@@ -30,13 +30,19 @@ import { MUTATIONS } from "./mutations.js";
  *   the last line of a block or at the end of a file is never scanned at all. Every docstring in
  *   this package precedes a declaration, which is why the collector was written that way, and it
  *   is a coverage hole rather than a design choice.
- * - anything outside `src/`, including the docstrings in this file and in `mutations.ts`.
+ * - a `.test.ts` file, or `mutations.ts`. Tests live in `src/` for colocation, but a docstring in a
+ *   test or in the mutation corpus helper is exempted from this scan by name, the same as it was
+ *   when both lived outside `src/` in a separate `test/` directory.
  *
  * The kebab half is the half that has actually failed.
  */
 
-const SRC = resolve(__dirname, "../src");
+const SRC = resolve(__dirname);
 const TESTS = resolve(__dirname);
+/** Excluded from the `files` scan below: every `.test.ts` is a test rather than a source, and
+ * `mutations.ts` is the mutation-corpus helper, not production source. Both live in `src/` now for
+ * colocation, so the exclusion has to be by name rather than by directory. */
+const MUTATIONS_HELPER = resolve(SRC, "mutations.ts");
 
 /** Kebab-case tokens that are domain vocabulary rather than a test or corpus name. Anything added
  * here is a deliberate statement that the token names no test, and shows up in review as such. */
@@ -127,7 +133,9 @@ describe("docstrings in src name things that exist", () => {
   ]);
   const titles = testTitles();
   const corpusIds = MUTATIONS.map((m) => m.id);
-  const files = walkFiles(SRC, ".ts");
+  const files = walkFiles(SRC, ".ts").filter(
+    (f) => !f.endsWith(".test.ts") && f !== MUTATIONS_HELPER
+  );
 
   it("finds source files and test titles to check against", () => {
     expect(files.length).toBeGreaterThan(5);

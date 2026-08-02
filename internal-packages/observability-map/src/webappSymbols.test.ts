@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { GUARDS, SOFT_GUARDS } from "../src/checks/authBoundary.js";
-import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "../src/sensitivity.js";
+import { GUARDS, SOFT_GUARDS } from "./checks/authBoundary.js";
+import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "./sensitivity.js";
 
 /**
  * Every name and every path segment the tool matches on must exist in the codebase it is pointed

@@ -9,9 +9,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { scanDirectory, scanFile } from "../src/scan.js";
-import { buildReport } from "../src/score.js";
-import { SCORED_CHECK_IDS } from "../src/checks/index.js";
+import { scanDirectory, scanFile } from "./scan.js";
+import { buildReport } from "./score.js";
+import { SCORED_CHECK_IDS } from "./checks/index.js";
 
 /**
  * The one deliberate coupling to `apps/webapp/app/routes` in the suite. Everything else, including

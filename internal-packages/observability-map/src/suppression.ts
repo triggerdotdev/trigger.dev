@@ -38,7 +38,7 @@ function leafTokens(node: ts.Node): ts.Node[] {
  * BEGINS with `//` or `/*` is the shape that reached the real tree, in
  * `resources.branches.create.tsx`'s `<InlineCode>//</InlineCode>`.
  *
- * The four cases in `jsx text is content, not a comment` (`test/suppression.test.ts`) are the ones
+ * The four cases in `jsx text is content, not a comment` (`suppression.test.ts`) are the ones
  * that fail without `ts.isJsxText` here; the positive control beside them, `still reads a directive
  * from a comment in a JSX expression container`, is what stops the filter being widened until it
  * eats real comments. `does not suppress from a directive inside a template literal` and the two

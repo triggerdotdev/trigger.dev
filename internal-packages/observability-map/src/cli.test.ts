@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main, type Io } from "../src/cli.js";
+import { main, type Io } from "./cli.js";
 
 /**
  * A routes tree of this package's own making. These tests used to run against

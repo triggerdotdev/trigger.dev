@@ -1,5 +1,5 @@
-import { CHECKS, SCORED_CHECK_IDS } from "../src/checks/index.js";
-import { scanFile } from "../src/scan.js";
+import { CHECKS, SCORED_CHECK_IDS } from "./index.js";
+import { scanFile } from "../scan.js";
 
 const run = (id: string, fileName: string, source: string) => {
   const ep = scanFile(fileName, source)!;

@@ -25,7 +25,7 @@ const ID = "auth-boundary";
  *   three names for the same reason as the rest.
  *
  * Every name resolves to a declaration in the webapp or in the packages it authenticates through;
- * `test/webappSymbols.test.ts` fails if one stops doing so. What that test cannot check is that a
+ * `webappSymbols.test.ts` fails if one stops doing so. What that test cannot check is that a
  * declaration with the right name is the guard we meant: `authenticateAdmin` and
  * `authenticatePlainRequest` are local helpers inside a single route file, so a second route
  * declaring its own no-op `authenticateAdmin` would be credited. That is a narrower hole than a

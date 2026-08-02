@@ -1,5 +1,5 @@
-import { isTrivial } from "../src/triviality.js";
-import { scanFile } from "../src/scan.js";
+import { isTrivial } from "./triviality.js";
+import { scanFile } from "./scan.js";
 
 const ep = (fileName: string, source: string) => scanFile(fileName, source)!;
 

@@ -401,7 +401,7 @@ function normalizedText(node: ts.Node): string {
  * The two arms also have to differ, which is the same requirement `selectsADistinctPath` makes of
  * an `if`. `return e instanceof Error ? (X) : (X)` is a test whose outcome is the same either way,
  * and it was worth 50 points a route; `same-arms-ternary` in the mutation corpus is the tree-scale
- * version, and `test/scan.test.ts` has the unit case. Parentheses and whitespace are stripped
+ * version, and `scan.test.ts` has the unit case. Parentheses and whitespace are stripped
  * before the comparison, so the shape has to differ in something a reader would call a difference.
  * The residual both branch tests share is stated once, on `selectsADistinctPath`.
  */
@@ -419,7 +419,7 @@ function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string 
  * Recognises a nested construct, not only a bare `return`/`throw`/`break`/`continue`. Recognising
  * only the bare form is what let a dead `throw error;` count as a rethrow when the statement before
  * it was a block, a `do` body or an `if`/`else` that returned; `dead-throw-after-*` in the mutation
- * corpus is that family, and `test/scan.test.ts` has one case per construct.
+ * corpus is that family, and `scan.test.ts` has one case per construct.
  *
  * A sound under-approximation. `if` without an `else`, a labelled statement (a `break` to the label
  * escapes it) and every other loop form answer false, because none of them is guaranteed to run its

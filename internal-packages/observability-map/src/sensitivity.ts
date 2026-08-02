@@ -11,7 +11,7 @@ import { routePathOf } from "./adapters/remix.js";
  * Half of this list used to name nothing. `Set.has` is exact, so `setImpersonation`, `createJWT`,
  * `signJWT` and `updateEnvVars`, none of which are exported anywhere in `apps/webapp/app`, matched
  * no route at all, while the real escalation `startImpersonation` was absent. Every name here now
- * resolves to a declaration in the webapp, and `test/webappSymbols.test.ts` fails if one stops
+ * resolves to a declaration in the webapp, and `webappSymbols.test.ts` fails if one stops
  * doing so.
  */
 export const SENSITIVE_SYMBOLS = [
@@ -47,7 +47,7 @@ export const SENSITIVE_SYMBOLS = [
  * Segments in `SENSITIVE_SEGMENTS` that match no route in the tree today. Kept because they are
  * ordinary words for the thing they name, so a route called one of them would be sensitive the day
  * it lands, and separated because the rest of the vocabulary is read off the tree and
- * `test/webappSymbols.test.ts` holds it to that. Adding a word here is a deliberate statement that
+ * `webappSymbols.test.ts` holds it to that. Adding a word here is a deliberate statement that
  * it names nothing yet, and shows up in review as one.
  */
 export const ANTICIPATED_SEGMENTS = ["payment", "invoices", "secrets"];
@@ -56,7 +56,7 @@ export const ANTICIPATED_SEGMENTS = ["payment", "invoices", "secrets"];
  * Whole path segments only, so "authorship" does not match "auth".
  *
  * Every entry is a segment that exists in `apps/webapp/app/routes` today; the vocabulary was read
- * off the tree rather than invented, and `test/webappSymbols.test.ts` fails if a segment stops
+ * off the tree rather than invented, and `webappSymbols.test.ts` fails if a segment stops
  * appearing in a route name. Two consequences of that rule are worth stating rather than leaving
  * to be rediscovered: there is no `transfer` segment because the webapp has no org or project
  * transfer route, and org/project deletion is reached through `DeleteOrganizationService` above

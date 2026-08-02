@@ -1,6 +1,6 @@
-import { hasDelta, renderPrComment } from "../src/report/prComment.js";
-import { buildReport } from "../src/score.js";
-import { scanFile } from "../src/scan.js";
+import { hasDelta, renderPrComment } from "./prComment.js";
+import { buildReport } from "../score.js";
+import { scanFile } from "../scan.js";
 
 const cleanSource = `
   import { requireUserId } from "~/services/session.server";

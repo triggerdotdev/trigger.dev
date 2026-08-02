@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main, type Io } from "../src/report/prCommentCli.js";
-import { buildReport } from "../src/score.js";
-import { renderJson } from "../src/report/json.js";
-import { scanFile } from "../src/scan.js";
+import { main, type Io } from "./prCommentCli.js";
+import { buildReport } from "../score.js";
+import { renderJson } from "./json.js";
+import { scanFile } from "../scan.js";
 
 const capture = () => {
   const out: string[] = [];

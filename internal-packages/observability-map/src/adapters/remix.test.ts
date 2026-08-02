@@ -1,4 +1,4 @@
-import { familyOf, routePathOf } from "../src/adapters/remix.js";
+import { familyOf, routePathOf } from "./remix.js";
 
 describe("familyOf", () => {
   it("classifies each family from the flat-route filename", () => {
