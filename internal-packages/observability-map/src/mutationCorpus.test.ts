@@ -20,6 +20,11 @@ import { CHECKS } from "./checks/index.js";
  * - for a semantics-preserving rewrite, no individual route's score rises and no measured route
  *   drops out of the measured set. The tree mean can hide a route going up by taking another down;
  *   `[0].map(...)` is exactly that shape.
+ * - the mirror of that, for a semantics-preserving rewrite: no individual route's score FALLS on
+ *   the routes measured in both runs. A fall is a false accusation, which is the direction that
+ *   gets the tool switched off, and it went unasserted for three rounds while 19 entries regressed
+ *   104 routes (see `fallsIn`). Exactly two entries carry a permanent `lowers` exemption, with the
+ *   reason on the entry and the residual shape asserted instead of waived.
  *
  * Tree scale, not per-fixture, because that is where laundering pays. A shape that moves one
  * hand-written fixture by 50 points may move the tree by nothing; a shape that moves the tree is the
@@ -163,6 +168,45 @@ function risesIn(baseline: Measurement, after: Measurement): Rise[] {
   return rises.sort((a, b) => b.to - b.from - (a.to - a.from));
 }
 
+type Fall = { fileName: string; from: number; to: number; before: string; after: string };
+
+/**
+ * The mirror of `risesIn`: route files the mutation made look WORSE, worst first. A preserving
+ * edit lowering a route's score is a false accusation, the direction that gets the tool switched
+ * off, and for three rounds it was structurally invisible here because only rises were asserted.
+ * 19 of 43 preserving entries were regressing 104 routes when it was first measured.
+ *
+ * Only routes measured in BOTH runs are compared. A route ENTERING the measured set is not a fall:
+ * unmeasured routes score the vacuous 100, so a mutation that brings one in at 50 registers a
+ * 100 -> 50 "fall" that is nothing of the kind. A route LEAVING the measured set is already
+ * counted by `risesIn`, not double-counted here. `compared` is the size of the both-measured
+ * population, asserted against `baseline.measured` in every preserving entry so a silently
+ * shrunken comparison cannot pass.
+ */
+function fallsIn(baseline: Measurement, after: Measurement): { falls: Fall[]; compared: number } {
+  const falls: Fall[] = [];
+  let compared = 0;
+  for (const [fileName, before] of baseline.perEntry) {
+    const now = after.perEntry.get(fileName);
+    if (!now || !before.measured || !now.measured) continue;
+    compared++;
+    if (now.score >= before.score) continue;
+    falls.push({
+      fileName,
+      from: before.score,
+      to: now.score,
+      before: before.checks,
+      after: now.checks,
+    });
+  }
+  return { falls: falls.sort((a, b) => a.to - a.from - (b.to - b.from)), compared };
+}
+
+/** The `id=status` pairs of a `perEntry.checks` string, for the exemption shape assertion. */
+function checkStatuses(checks: string): Map<string, string> {
+  return new Map(checks.split(" ").map((pair) => pair.split("=") as [string, string]));
+}
+
 /** Mean score over the routes measured in BOTH runs. The plain mean moves when the measured
  * population moves, which a mutation can do without making any route look better: an inert
  * try/catch takes 15 trivial routes off the exemption list and into the report, and a route joining
@@ -277,6 +321,10 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
   it("has a baseline worth mutating", () => {
     expect(baseline).not.toBeNull();
     expect(baseline!.entryPoints).toBeGreaterThan(300);
+    // The falls assertions compare over the routes measured in both runs and pin that population
+    // to `baseline.measured`, so the baseline itself has to be big enough that a broken scan
+    // cannot produce a tiny population the mirror trivially holds over.
+    expect(baseline!.measured).toBeGreaterThan(300);
     expect(baseline!.global).not.toBeNull();
     console.log(
       `[corpus] baseline global=${baseline!.global} mean=${baseline!.exactMean.toFixed(3)} ` +
@@ -327,18 +375,26 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
       expect([...baseline!.perEntry.keys()].filter((f) => !after.perEntry.has(f))).toEqual([]);
 
       const rises = risesIn(baseline!, after);
+      const { falls, compared } = fallsIn(baseline!, after);
       const common = commonMean(baseline!, after);
       console.log(
         `[corpus] ${mutation.id}: global ${baseline!.global} -> ${after.global} ` +
           `(mean ${baseline!.exactMean.toFixed(3)} -> ${after.exactMean.toFixed(3)}, ` +
           `common mean ${common.before.toFixed(3)} -> ${common.after.toFixed(3)}, ` +
           `measured ${baseline!.measured} -> ${after.measured}, files ${changed}, sites ${sites}, ` +
-          `routes raised ${rises.length})` +
+          `routes raised ${rises.length}, routes lowered ${falls.length})` +
           rises
             .slice(0, 3)
             .map(
               (r) =>
                 `\n    ${r.fileName} ${r.from}->${r.to}\n      was: ${r.before}\n      now: ${r.after}`
+            )
+            .join("") +
+          falls
+            .slice(0, 3)
+            .map(
+              (f) =>
+                `\n    ${f.fileName} ${f.from}->${f.to}\n      was: ${f.before}\n      now: ${f.after}`
             )
             .join("")
       );
@@ -357,6 +413,37 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
       // figure above is where that trade is held to account.
       if (mutation.kind === "preserving") {
         expect(rises.map((r) => `${r.fileName} ${r.from}->${r.to}`)).toEqual([]);
+
+        // The mirror direction. A preserving edit must not make any route look WORSE either: a
+        // fall here is a false accusation, the direction that gets the tool switched off, and it
+        // went unasserted for three rounds while 19 entries regressed 104 routes. Together with
+        // the rises assertion and the entry-point guards above, this pins per-route score
+        // EQUALITY for a preserving entry. The comparison population is pinned to the whole
+        // measured baseline first, so a silently shrunken population cannot pass vacuously.
+        expect(compared).toBe(baseline!.measured);
+        if (mutation.lowers === undefined) {
+          expect(falls.map((f) => `${f.fileName} ${f.from}->${f.to}`)).toEqual([]);
+        } else {
+          // An exempted entry must still be falling, or the exemption is stale and has to be
+          // removed deliberately rather than sitting as cover for the next defect.
+          expect(falls.length).toBeGreaterThan(0);
+          // And the falls must have exactly the measured residual shape the exemption was
+          // granted for: `error-classification` moving pass -> not-applicable, every other
+          // check's status unchanged, nothing anywhere moving to fail. Anything else is a new
+          // defect hiding under the exemption.
+          for (const fall of falls) {
+            const before = checkStatuses(fall.before);
+            const now = checkStatuses(fall.after);
+            expect([...now.keys()].sort()).toEqual([...before.keys()].sort());
+            for (const [id, was] of before) {
+              const is = now.get(id);
+              if (is === was) continue;
+              expect(`${fall.fileName}: ${id} ${was}->${is}`).toBe(
+                `${fall.fileName}: error-classification pass->not-applicable`
+              );
+            }
+          }
+        }
       }
     });
   }

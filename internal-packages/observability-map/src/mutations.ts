@@ -44,6 +44,16 @@ export type Mutation = {
   kind: MutationKind;
   /** What the rewrite does, in one line, for the corpus table in the report. */
   what: string;
+  /**
+   * Set only on a `preserving` entry that is EXPECTED to lower some routes' scores, with the
+   * one-line reason on the entry itself. The mirror assertion in `mutationCorpus.test.ts` requires
+   * falls to be empty for every preserving entry without this field, and for an entry with it,
+   * requires falls to be nonzero and every fall to be exactly `error-classification` moving pass
+   * to not-applicable with nothing moving to fail. Deliberately a per-entry field rather than a
+   * set or a skip list: an exemption is a decision with a reason, enforced in both directions, and
+   * it must not be a place entries get filed so the suite stays green.
+   */
+  lowers?: string;
   /** The mutated file, or null when this file has nothing for the mutation to touch. */
   apply(fileName: string, source: string): MutationResult | null;
 };
@@ -335,11 +345,18 @@ function deadThrowAfter(id: string, what: string, wrap: (body: string) => string
 }
 
 /** Wrap every route body in a single-shot wrapper, `open` before its statements and `close` after. */
-function wrapEveryBody(id: string, what: string, open: string, close: string): Mutation {
+function wrapEveryBody(
+  id: string,
+  what: string,
+  open: string,
+  close: string,
+  lowers?: string
+): Mutation {
   return {
     id,
     kind: "preserving",
     what,
+    ...(lowers === undefined ? {} : { lowers }),
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
@@ -541,7 +558,9 @@ export const MUTATIONS: Mutation[] = [
     "wrap-body-in-non-array-map",
     "wrap every route body in a non-array receiver's .map(...)",
     "return obsMapResult.map(async () => {",
-    "});"
+    "});",
+    "moves every catch behind the iteration boundary; refused deciding catches cap at " +
+      "not-applicable, so a pass legitimately becomes n/a (mechanism C ruling)"
   ),
   // Round D item 3. `auth-scope` fired on any property at all whose value was a caller id, wherever
   // it sat, so one dead statement at the head of a body cleared it. These are the two halves: the
@@ -578,7 +597,9 @@ export const MUTATIONS: Mutation[] = [
     "wrap-body-in-non-array-filter",
     "wrap every route body in a non-array receiver's .filter(...)",
     "return obsMapPipe.filter(async () => {",
-    "});"
+    "});",
+    "moves every catch behind the iteration boundary; refused deciding catches cap at " +
+      "not-applicable, so a pass legitimately becomes n/a (mechanism C ruling)"
   ),
 
   {
