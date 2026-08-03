@@ -134,7 +134,9 @@ export {
 // Re-export time bucket utilities
 export {
   BUCKET_THRESHOLDS,
+  INTERVAL_UNIT_SECONDS,
   calculateTimeBucketInterval,
+  intervalToSeconds,
   type BucketThreshold,
   type TimeBucketInterval,
 } from "./query/time_buckets.js";
@@ -565,6 +567,12 @@ export interface CompileTSQLOptions {
    * Off by default; output is unchanged when not set.
    */
   fillGaps?: boolean;
+  /**
+   * Floor for the `timeBucket()` interval, in seconds. Widens buckets past what the range
+   * would pick, for series whose samples are too sparse to read at that width (e.g. a
+   * percentile over buckets that often contain no samples at all).
+   */
+  minBucketSeconds?: number;
 }
 
 /**
@@ -624,6 +632,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     enforcedWhereClause,
     timeRange: options.timeRange,
     fillGaps: options.fillGaps,
+    minBucketSeconds: options.minBucketSeconds,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

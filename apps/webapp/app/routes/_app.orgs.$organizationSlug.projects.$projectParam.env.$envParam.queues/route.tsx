@@ -391,13 +391,6 @@ function QueuesWithMetricsView() {
 
   const metricsByQueue = metrics?.byQueue ?? {};
 
-  // The four header charts mirror exactly the queue set the table is showing (post-search,
-  // post-pagination). These are the `task/`-prefixed queue_name values the queue_metrics table
-  // stores, so the client-side tile queries scope to the same rows the loader listed.
-  const chartQueueNames = success
-    ? queues.map((q) => (q.type === "task" ? `task/${q.name}` : q.name))
-    : [];
-
   const organization = useOrganization();
   const project = useProject();
   const env = useEnvironment();
@@ -635,13 +628,7 @@ function QueuesWithMetricsView() {
           </MetricsLayout.Grid>
         ) : null}
 
-        {/* Env saturation, Backlog, Scheduling delay p95, Throttled viz — full-size, synced,
-            drag-to-zoom line charts (Agent page pattern). Four chart tiles: 2x2 below lg, 4-up
-            from lg, derived from the tile count. `kind="charts"` bakes the fixed row height.
-            Only when there are queues to chart: not-success states (engine-version, no tasks) and a
-            filtered-to-empty list leave chartQueueNames empty, where the tiles would just render
-            four "No activity" cards above the blank state. */}
-        {chartQueueNames.length > 0 ? (
+        {success && (hasFilters || totalQueues !== 0) ? (
           <ChartSyncProvider onZoom={zoomToTimeFilter}>
             <MetricsLayout.Grid kind="charts">
               {QUEUE_HEADER_TILES.map((tile) => (
@@ -649,7 +636,6 @@ function QueuesWithMetricsView() {
                   key={tile.id}
                   tile={tile}
                   timeRange={timeRange}
-                  queueNames={chartQueueNames}
                   referenceLines={
                     tile.id === "saturation"
                       ? [
@@ -1202,8 +1188,7 @@ export function QueueFilters() {
 
 type MetricTileRow = Record<string, number | string | null>;
 
-/** One charted point per time bucket, already aggregated across the visible queue set. */
-type TilePoint = { bucket: number; value: number };
+type TilePoint = { bucket: number; value: number | null };
 
 // Inline colour swatch matching the chart's warning ("yellow") line — used in tooltip copy that
 // refers to that colour instead of naming it, so the swatch always matches the chart.
@@ -1235,15 +1220,29 @@ type QueueHeaderTile = {
   /** Hover tooltip explaining the headline readout next to the title (e.g. what "9% of current
    * period" means). Without it the readout has no tooltip. */
   totalTooltip?: string;
-  // Rows can be one-per-bucket (p95, throttled: aggregated across the set in ClickHouse) or
-  // one-per-(bucket, queue) (saturation, backlog: summed across the set here, since summing a
-  // gauge across queues can't be a flat aggregate without double-counting sub-buckets). Either
-  // way derive returns the per-bucket points the chart draws.
+  /** Turns one row per bucket into the per-bucket points the chart draws. A null value is a
+   * bucket the metric has nothing to say about, and the line breaks there rather than reading 0. */
   derive: (rows: MetricTileRow[]) => {
     points: TilePoint[];
     total: number;
     formatTotal?: (total: number) => string;
     totalClassName?: string;
+  };
+  /**
+   * Optional second query, run at the range's natural bucket width, that owns the headline readout.
+   * For a headline that is not invariant to bucket width — a share of buckets, or a percentile,
+   * as opposed to a max over gauges — deriving it from the plotted rows would move the number
+   * whenever this tile's floor widens them. Only requested while the floor is actually widening
+   * anything; on ranges whose natural width is already at or above the floor the chart's own rows
+   * are identical and are reused.
+   */
+  readout?: {
+    query: string;
+    derive: (rows: MetricTileRow[]) => {
+      total: number;
+      formatTotal?: (total: number) => string;
+      totalClassName?: string;
+    };
   };
 };
 
@@ -1257,39 +1256,23 @@ function tileTimeToMs(value: number | string | null): number {
   return Date.parse(s.endsWith("Z") ? s : `${s}Z`);
 }
 
-// Sums a per-(bucket, queue) row set into one value per bucket. `read` pulls the queue's
-// contribution; `envColumn`, when set, carries an env-wide column (identical across the set's
-// rows in a bucket) through as the max, so saturation can divide by the env limit.
-function sumByBucket(
-  rows: MetricTileRow[],
-  read: (row: MetricTileRow) => number,
-  envColumn?: string
-): Array<{ bucket: number; sum: number; env: number }> {
-  const byBucket = new Map<number, { sum: number; env: number }>();
-  for (const row of rows) {
-    const bucket = tileTimeToMs(row.t);
-    if (!Number.isFinite(bucket)) continue;
-    const entry = byBucket.get(bucket) ?? { sum: 0, env: 0 };
-    entry.sum += read(row);
-    if (envColumn) entry.env = Math.max(entry.env, tileNumber(row[envColumn]));
-    byBucket.set(bucket, entry);
-  }
-  return [...byBucket.entries()]
-    .map(([bucket, { sum, env }]) => ({ bucket, sum, env }))
-    .sort((a, b) => a.bucket - b.bucket);
+/** Peak of a series, ignoring the buckets it has nothing to say about. */
+function peakOf(points: TilePoint[]): number {
+  return points.reduce((max, p) => (p.value === null ? max : Math.max(max, p.value)), 0);
 }
 
-// Header tiles fetch their own TRQL query client-side (resources.metric) with fillGaps, scoped to
-// the visible queue set (queue_metrics WHERE queue IN <set>). Saturation and backlog GROUP BY the
-// queue too and sum here; p95 merges quantile states and throttled sums counters in ClickHouse.
+const SCHEDULING_DELAY_QUERY = `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  sum(wait_ms_count) AS samples\nFROM env_metrics\nGROUP BY t\nORDER BY t`;
+
+const THROTTLED_QUERY = `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`;
+
 const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "saturation",
     label: "Env saturation",
     description: (
       <>
-        How much of the environment's concurrency these queues are using. Turns <WarningSwatch />{" "}
-        above 100%, when they're into burst capacity.
+        How much of the environment's concurrency is in use. Turns <WarningSwatch /> above 100%,
+        when it's into burst capacity.
       </>
     ),
     color: "var(--color-queues)",
@@ -1297,35 +1280,32 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
       { color: "var(--color-queues)", label: "Saturation" },
       { color: "var(--color-warning)", label: "Over limit" },
     ],
-    // Numerator: running summed across the visible set. Denominator: the env-wide limit (same for
-    // every queue in a bucket), so the line reads as the set's share of the environment capacity.
-    query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     formatValue: (v) => (v > 100 ? `${v}% — over the environment limit` : `${v}%`),
     formatAxis: (v) => `${v}%`,
     derive: (rows) => {
-      const points = sumByBucket(rows, (r) => tileNumber(r.running), "env_limit").map(
-        ({ bucket, sum, env }) => ({
-          bucket,
-          value: env > 0 ? Math.round((sum / env) * 100) : 0,
-        })
-      );
-      const peak = points.reduce((max, p) => Math.max(max, p.value), 0);
-      return { points, total: peak, formatTotal: (v) => `${v}% peak` };
+      const points = rows.map((r) => {
+        const limit = tileNumber(r.env_limit);
+        return {
+          bucket: tileTimeToMs(r.t),
+          value: limit > 0 ? Math.round((tileNumber(r.running) / limit) * 100) : 0,
+        };
+      });
+      return { points, total: peakOf(points), formatTotal: (v) => `${v}% peak` };
     },
   },
   {
     id: "backlog",
     label: "Backlog",
-    description: "How many runs are waiting across these queues, over time.",
+    description: "How many runs are waiting across the environment, over time.",
     color: "var(--color-queues)",
-    query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
-      const points = sumByBucket(rows, (r) => tileNumber(r.queued)).map(({ bucket, sum }) => ({
-        bucket,
-        value: sum,
+      const points = rows.map((r) => ({
+        bucket: tileTimeToMs(r.t),
+        value: tileNumber(r.queued),
       }));
-      const peak = points.reduce((max, p) => Math.max(max, p.value), 0);
-      return { points, total: peak, formatTotal: (v) => `${v.toLocaleString()} peak` };
+      return { points, total: peakOf(points), formatTotal: (v) => `${v.toLocaleString()} peak` };
     },
   },
   {
@@ -1343,20 +1323,35 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
       { color: "var(--color-queues)", label: "p95" },
       { color: "var(--color-warning)", label: "Over 1 min" },
     ],
-    // quantilesMerge over the set's rows in a bucket is the true p95 across the union of samples
-    // (merging quantile states is valid; averaging per-queue percentiles would not be).
-    query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: SCHEDULING_DELAY_QUERY,
     formatValue: formatWaitMs,
     formatAxis: formatWaitMs,
     derive: (rows) => {
-      const points = rows.map((r) => ({ bucket: tileTimeToMs(r.t), value: tileNumber(r.p95) }));
-      const worst = points.reduce((max, p) => Math.max(max, p.value), 0);
-      return {
-        points,
-        total: worst,
-        formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
-        totalClassName: worst >= 60_000 ? "text-warning" : undefined,
-      };
+      const points = rows.map((r) => ({
+        bucket: tileTimeToMs(r.t),
+        value: tileNumber(r.samples) > 0 ? tileNumber(r.p95) : null,
+      }));
+      return { points, total: peakOf(points) };
+    },
+    readout: {
+      query: SCHEDULING_DELAY_QUERY,
+      /**
+       * Merging quantile states over a wider bucket yields a p95 between the sub-buckets' own, so
+       * the worst p95 has to be read at the range's natural width or a burst of slow starts shorter
+       * than the plotted bucket is averaged away. Unlike the gauges, whose max of maxes is the same
+       * at any width.
+       */
+      derive: (rows) => {
+        const worst = rows.reduce(
+          (max, r) => (tileNumber(r.samples) > 0 ? Math.max(max, tileNumber(r.p95)) : max),
+          0
+        );
+        return {
+          total: worst,
+          formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
+          totalClassName: worst >= 60_000 ? "text-warning" : undefined,
+        };
+      },
     },
   },
   {
@@ -1366,32 +1361,41 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
     color: "var(--color-queues)",
     legend: [{ color: "var(--color-warning)", label: "Throttled" }],
-    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: THROTTLED_QUERY,
     derive: (rows) => {
       const points = rows.map((r) => ({
         bucket: tileTimeToMs(r.t),
         value: tileNumber(r.throttled),
       }));
-      // Share of the window that saw any throttling. A raw event sum isn't interpretable (it
-      // scales with poll rate and window length); the fraction of buckets with a throttle is.
-      // The data path fills gaps (zero-fill for this counter), so every bucket in the window is
-      // present and `points.length` is the honest denominator.
-      const nonzero = points.filter((p) => p.value > 0).length;
-      const pct = points.length > 0 ? Math.round((nonzero / points.length) * 100) : 0;
-      return {
-        points,
-        total: pct,
-        formatTotal: (v) => `${v}% of current period`,
-        totalClassName: pct > 0 ? "text-warning" : undefined,
-      };
+      return { points, total: peakOf(points) };
+    },
+    readout: {
+      query: THROTTLED_QUERY,
+      /**
+       * Share of the window that saw any throttling. A raw event sum isn't interpretable (it
+       * scales with poll rate and window length); the fraction of buckets with a throttle is.
+       * Gap fill zero-fills this counter, so every bucket in the window is present and the row
+       * count is the honest denominator.
+       */
+      derive: (rows) => {
+        const nonzero = rows.filter((r) => tileNumber(r.throttled) > 0).length;
+        const pct = rows.length > 0 ? Math.round((nonzero / rows.length) * 100) : 0;
+        return {
+          total: pct,
+          formatTotal: (v) => `${v}% of current period`,
+          totalClassName: pct > 0 ? "text-warning" : undefined,
+        };
+      },
     },
   },
 ];
 
-// When a search matches no queues the set is empty. We still fetch (hooks can't be conditional),
-// but with a queue name that can't exist so the IN filter returns nothing and the tile falls
-// through to its "No activity" empty state instead of silently widening to the whole environment.
-const NO_QUEUES_SENTINEL = "__no_queues__";
+/**
+ * Bucket floor shared by every hero tile. Scheduling delay and throttling are event-driven, so at
+ * the 10-second width a short range would otherwise pick, most buckets hold no samples at all. One
+ * floor for all four keeps their x-axes identical, which the shared hover crosshair relies on.
+ */
+const HERO_CHART_MIN_BUCKET_SECONDS = 60;
 
 type TileTimeRange = MetricResourceTimeRange;
 
@@ -1401,7 +1405,6 @@ type TileTimeRange = MetricResourceTimeRange;
 function QueueEnvMetricChart({
   tile,
   timeRange,
-  queueNames,
   referenceLines,
   thresholdStroke,
   warningOverlay,
@@ -1409,8 +1412,6 @@ function QueueEnvMetricChart({
 }: {
   tile: QueueHeaderTile;
   timeRange: TileTimeRange;
-  /** The visible queue set (post-search, post-pagination) the chart scopes to. */
-  queueNames: string[];
   referenceLines?: Array<{
     y: number;
     label?: string;
@@ -1427,20 +1428,32 @@ function QueueEnvMetricChart({
   const project = useProject();
   const environment = useEnvironment();
 
-  // Scope to exactly the queues the table is showing. Empty set => sentinel that matches nothing,
-  // so the tile shows "No activity" rather than the whole environment. The hook re-fetches when
-  // this list changes (it keys on the joined names), so search/pagination reflow the charts.
-  const { rows, showLoading, failed } = useMetricResourceQuery(tile.query, {
+  const sharedOptions = {
     organizationId: organization.id,
     projectId: project.id,
     environmentId: environment.id,
     timeRange,
     defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
     fillGaps: true,
-    queues: queueNames.length > 0 ? queueNames : [NO_QUEUES_SENTINEL],
+  };
+
+  const { rows, showLoading, failed } = useMetricResourceQuery(tile.query, {
+    ...sharedOptions,
+    minBucketSeconds: HERO_CHART_MIN_BUCKET_SECONDS,
   });
 
-  const { points, total, formatTotal, totalClassName } = tile.derive(rows);
+  const derived = tile.derive(rows);
+  const points = derived.points;
+
+  const plottedBucketMs = points.length > 1 ? points[1]!.bucket - points[0]!.bucket : 0;
+  const floorWidenedBuckets =
+    plottedBucketMs > 0 && plottedBucketMs <= HERO_CHART_MIN_BUCKET_SECONDS * 1000;
+  const readoutQuery = tile.readout && floorWidenedBuckets ? tile.readout.query : "";
+  const readoutResult = useMetricResourceQuery(readoutQuery, sharedOptions);
+
+  const { total, formatTotal, totalClassName } = tile.readout
+    ? tile.readout.derive(readoutQuery ? readoutResult.rows : rows)
+    : derived;
 
   // Same point shape the shared axis/tooltip helpers expect.
   const data = points
@@ -1461,14 +1474,16 @@ function QueueEnvMetricChart({
     () => buildActivityTimeAxis(data),
     [data]
   );
-  const hasData = data.length > 0 && data.some((p) => (p[tile.id] as number) > 0);
+  const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
   // total renders no readout at all (skipping "0% peak", "0 peak", "0" and the p95 "–" placeholder)
   // so the card title stands alone until there's a non-zero value to show.
-  const peak = showLoading ? (
+  const readoutLoading = tile.readout ? readoutResult.showLoading : showLoading;
+  const readoutFailed = tile.readout ? readoutResult.failed : failed;
+  const peak = readoutLoading ? (
     <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
-  ) : failed || total === 0 ? null : formatTotal ? (
+  ) : readoutFailed || total === 0 ? null : formatTotal ? (
     formatTotal(total)
   ) : (
     total.toLocaleString()
@@ -1488,7 +1503,7 @@ function QueueEnvMetricChart({
               />
             </span>
             {peak != null ? (
-              tile.totalTooltip && !showLoading ? (
+              tile.totalTooltip && !readoutLoading ? (
                 <SimpleTooltip
                   button={
                     <span
