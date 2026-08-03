@@ -23,6 +23,7 @@ export type GalleryGroup =
   | "investigation"
   | "report"
   | "chart"
+  | "hero"
   | "prompts"
   | "intents"
   | "messages"
@@ -49,6 +50,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "investigation", label: "Investigation card" },
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
+  { group: "hero", label: "Blank-state hero" },
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
@@ -221,6 +223,35 @@ export const MANIFEST: GallerySection[] = [
     group: "chart",
   },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
+
+  // --- Blank-state hero -----------------------------------------------------
+  // The new-chat state, with the composer inside the hero. Both widths it ships
+  // at: the 380px side panel and the fullscreen takeover's centred column.
+  {
+    sectionId: "hero-panel",
+    title: "Side panel (380px) — no page context",
+    group: "hero",
+  },
+  {
+    sectionId: "hero-panel-contextual",
+    title: "Side panel — failed run on the page",
+    group: "hero",
+  },
+  {
+    sectionId: "hero-panel-promoted",
+    title: "Side panel — with a promoted prompt",
+    group: "hero",
+  },
+  {
+    sectionId: "hero-fullscreen",
+    title: "Fullscreen takeover — centred column",
+    group: "hero",
+  },
+  {
+    sectionId: "hero-in-chat",
+    title: "Empty chat — hero without its own composer",
+    group: "hero",
+  },
 
   // --- Suggested prompts ---------------------------------------------------
   { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },

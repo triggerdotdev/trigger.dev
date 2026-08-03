@@ -10,6 +10,7 @@ import {
   type ReportViewModelPayload,
   type SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
+import { useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { AGENT_CHART_PLOT_CLASS } from "~/components/dashboard-agent/AgentChart";
 import {
@@ -22,9 +23,12 @@ import {
   DemoReportCard,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
+import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
+import { DashboardAgentHero } from "~/components/dashboard-agent/DashboardAgentHero";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
+import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
 import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCard";
 import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
@@ -368,6 +372,61 @@ function PromptsHarness({
   );
 }
 
+/**
+ * The real blank-state hero, in the shape it ships in.
+ *
+ * `fullscreen` switches the wrapping `AgentPanelColumn` to the takeover's capped,
+ * centred column — the same component the panel uses — so this state shows the
+ * reading width the hero actually gets there rather than an approximation.
+ * `composer` mirrors the draft state, which owns the field; the empty-chat state
+ * passes none because its composer is docked below.
+ */
+function HeroHarness({
+  context,
+  promoted,
+  fullscreen = false,
+  withComposer = true,
+}: {
+  context: AgentPageContext;
+  promoted?: SuggestedPrompt;
+  fullscreen?: boolean;
+  withComposer?: boolean;
+}) {
+  const [input, setInput] = useState("");
+  return (
+    <div className={cn(PANEL_FRAME, "flex h-[30rem] flex-col", fullscreen && "w-[60rem]")}>
+      <AgentPanelColumn fullscreen={fullscreen}>
+        <DashboardAgentHero
+          onSelect={noop}
+          pageContext={context}
+          promoted={promoted}
+          dismissedIds={[]}
+          composer={
+            withComposer ? (
+              <DashboardAgentComposer
+                layout="hero"
+                autoFocus={false}
+                value={input}
+                onChange={setInput}
+                onSubmit={noop}
+                onStop={noop}
+                isStreaming={false}
+                context={
+                  <DashboardAgentContextBanner
+                    projectSlug="demo-storefront"
+                    environmentSlug="prod"
+                    currentPage="Runs"
+                  />
+                }
+              />
+            ) : undefined
+          }
+        />
+      </AgentPanelColumn>
+    </div>
+  );
+}
+
 function Missing({ what }: { what: string }) {
   return (
     <div className="rounded-md border border-error/50 bg-error/10 px-3 py-2 text-xs text-error">
@@ -687,6 +746,13 @@ const STATES: Record<string, React.ReactNode> = {
   ),
   "chart-empty": <EmptyChartCard />,
 
+  // --- Blank-state hero ---------------------------------------------------
+  "hero-panel": <HeroHarness context={demoPageContexts.other} />,
+  "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
+  "hero-panel-promoted": <HeroHarness context={demoPageContexts.runs} promoted={promotedPrompt} />,
+  "hero-fullscreen": <HeroHarness context={demoPageContexts.failedRun} fullscreen />,
+  "hero-in-chat": <HeroHarness context={demoPageContexts.runs} withComposer={false} />,
+
   // --- Suggested prompts --------------------------------------------------
   // The real component, resolving the registry against each fixture context.
   "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
@@ -784,7 +850,7 @@ function Section({ section, wide = false }: { section: GallerySection; wide?: bo
 }
 
 /** Groups whose states are wider than the panel. */
-const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix"]);
+const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
 
 function ThemeToggle() {
   return (

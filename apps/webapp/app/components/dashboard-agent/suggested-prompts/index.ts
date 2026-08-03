@@ -21,6 +21,9 @@ export {
 export {
   makeSuggestedPromptResolver,
   resolveSuggestedPrompts,
+  resolveSuggestedPromptsBySlot,
+  type ResolvedPromptSlot,
+  type ResolvedSuggestedPrompt,
   type ResolveSuggestedPromptsOptions,
 } from "./resolver";
 export {

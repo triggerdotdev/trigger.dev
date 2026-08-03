@@ -1,3 +1,4 @@
+import { ArrowsPointingInIcon, ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
@@ -34,6 +35,8 @@ export function DashboardAgentHeader({
   onOpenHistory,
   onSelectChat,
   onDeleteChat,
+  onToggleFullscreen,
+  isFullscreen,
   onClose,
 }: {
   // The active chat's title (the panel owns resolving it). Titles are written by
@@ -50,6 +53,9 @@ export function DashboardAgentHeader({
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
+  /** Swap between the side panel and the fullscreen takeover. */
+  onToggleFullscreen: () => void;
+  isFullscreen: boolean;
   onClose: () => void;
 }) {
   const [isHistoryOpen, setHistoryOpen] = useState(false);
@@ -104,6 +110,20 @@ export function DashboardAgentHeader({
             LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
           />
         )}
+        <Button
+          variant="minimal/small"
+          className="aspect-square h-6 p-1"
+          aria-label={isFullscreen ? "Collapse into the side panel" : "Expand"}
+          tooltip={isFullscreen ? "Collapse into the side panel" : "Expand"}
+          onClick={onToggleFullscreen}
+          LeadingIcon={
+            isFullscreen ? (
+              <ArrowsPointingInIcon className="size-4 text-text-dimmed" />
+            ) : (
+              <ArrowsPointingOutIcon className="size-4 text-text-dimmed" />
+            )
+          }
+        />
         {/* Esc is handled by the panel (only while focus is inside it), so the
             key is shown here rather than registered as a global shortcut. */}
         <Button

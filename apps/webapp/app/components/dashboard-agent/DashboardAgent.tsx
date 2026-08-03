@@ -9,6 +9,12 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
+import {
+  agentHiddenContentClassName,
+  agentTakeoverClassName,
+  readAgentFullscreen,
+  writeAgentFullscreen,
+} from "./panel-layout";
 
 /**
  * Mounts the dashboard agent in the env layout. Renders the page content
@@ -33,6 +39,16 @@ export function DashboardAgent({
   promotedPrompt?: SuggestedPrompt;
 }) {
   const [open, setOpen] = useState(false);
+  // The side panel is the default; someone who last worked fullscreen gets
+  // fullscreen back. Read lazily so SSR always renders the side panel.
+  const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
+
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((current) => {
+      writeAgentFullscreen(!current);
+      return !current;
+    });
+  }, []);
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
   // with the same text distinct, so the panel can tell them apart.
   const [requestedMessage, setRequestedMessage] = useState<
@@ -82,23 +98,37 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
-        <ResizablePanelGroup
-          orientation="horizontal"
-          autosaveId="dashboard-agent-split"
-          className="h-full min-h-0"
-        >
-          <ResizablePanel id="dashboard-content" min="320px">
-            <div className="h-full overflow-hidden">{children}</div>
-          </ResizablePanel>
-          <ResizableHandle id="dashboard-agent-handle" />
-          <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-            <DashboardAgentPanel
-              onClose={() => setPanelOpen(false)}
-              requestedMessage={requestedMessage}
-              promotedPrompt={promotedPrompt}
+        // `relative` is the takeover's containing block: in fullscreen the panel
+        // is pinned over this box — everything right of the side nav — while the
+        // split, the page content and the panel itself all stay mounted. Toggling
+        // fullscreen is a class change, nothing more, so the open chat's
+        // transport and transcript survive it. See `panel-layout.tsx`.
+        <div className="relative h-full min-h-0">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            autosaveId="dashboard-agent-split"
+            className="h-full min-h-0"
+          >
+            <ResizablePanel id="dashboard-content" min="320px">
+              <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
+            </ResizablePanel>
+            <ResizableHandle
+              id="dashboard-agent-handle"
+              className={fullscreen ? "invisible" : undefined}
             />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
+              <div className={agentTakeoverClassName(fullscreen)}>
+                <DashboardAgentPanel
+                  onClose={() => setPanelOpen(false)}
+                  requestedMessage={requestedMessage}
+                  promotedPrompt={promotedPrompt}
+                  isFullscreen={fullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden">{children}</div>
       )}

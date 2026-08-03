@@ -22,6 +22,7 @@ import type { DashboardAgentChat as DashboardAgentChatListItem } from "./Dashboa
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
+import { AgentPanelColumn } from "./panel-layout";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
 // Restore the last open chat across panel re-opens and page reloads — but only
@@ -81,8 +82,14 @@ export function DashboardAgentPanel({
   onClose,
   requestedMessage,
   promotedPrompt,
+  isFullscreen = false,
+  onToggleFullscreen,
 }: {
   onClose: () => void;
+  // Fullscreen is owned by `DashboardAgent` (it also has to hide the page
+  // behind the panel), so the panel only reflects it and asks for the toggle.
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
   // repeat requests with the same text.
   requestedMessage?: { text: string; seq: number };
@@ -397,43 +404,49 @@ export function DashboardAgentPanel({
         onOpenHistory={loadHistory}
         onSelectChat={switchChat}
         onDeleteChat={deleteChat}
+        onToggleFullscreen={onToggleFullscreen ?? (() => {})}
+        isFullscreen={isFullscreen}
         onClose={onClose}
       />
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner className="size-5" />
-        </div>
-      ) : active ? (
-        <DashboardAgentChat
-          key={active.chatId}
-          chatId={active.chatId}
-          initialMessages={active.messages}
-          session={active.session}
-          pendingFirstMessage={active.pendingFirstMessage}
-          streaming={active.streaming}
-          prefill={prefill && prefill.chatId === active.chatId ? prefill : undefined}
-          clientData={clientData}
-          apiOrigin={apiOrigin}
-          actionPath={actionPath}
-          projectSlug={project.slug}
-          environmentSlug={environment.slug}
-          currentPage={currentPage}
-          promotedPrompt={promotedPrompt}
-          pagePaths={pagePaths}
-          onTurnSettled={loadHistory}
-          onActivityChange={handleActivityChange}
-        />
-      ) : (
-        <DashboardAgentDraft
-          onSubmit={createChat}
-          projectSlug={project.slug}
-          environmentSlug={environment.slug}
-          currentPage={currentPage}
-          pageContext={pageContext}
-          promotedPrompt={promotedPrompt}
-        />
-      )}
+      {/* Always mounted, so switching to fullscreen only re-styles this column —
+          the chat below it keeps its transport, session and transcript. */}
+      <AgentPanelColumn fullscreen={isFullscreen}>
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Spinner className="size-5" />
+          </div>
+        ) : active ? (
+          <DashboardAgentChat
+            key={active.chatId}
+            chatId={active.chatId}
+            initialMessages={active.messages}
+            session={active.session}
+            pendingFirstMessage={active.pendingFirstMessage}
+            streaming={active.streaming}
+            prefill={prefill && prefill.chatId === active.chatId ? prefill : undefined}
+            clientData={clientData}
+            apiOrigin={apiOrigin}
+            actionPath={actionPath}
+            projectSlug={project.slug}
+            environmentSlug={environment.slug}
+            currentPage={currentPage}
+            promotedPrompt={promotedPrompt}
+            pagePaths={pagePaths}
+            onTurnSettled={loadHistory}
+            onActivityChange={handleActivityChange}
+          />
+        ) : (
+          <DashboardAgentDraft
+            onSubmit={createChat}
+            projectSlug={project.slug}
+            environmentSlug={environment.slug}
+            currentPage={currentPage}
+            pageContext={pageContext}
+            promotedPrompt={promotedPrompt}
+          />
+        )}
+      </AgentPanelColumn>
     </div>
   );
 }
