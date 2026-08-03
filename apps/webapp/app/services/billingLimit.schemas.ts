@@ -169,7 +169,7 @@ export type BillingLimitPageData = BillingLimitResult & {
   currentSpendCents: number;
 };
 
-/** Bridge webapp Zod schemas to BillingClient.fetch (separate Zod type instances). */
-export function asPlatformSchema(schema: z.ZodTypeAny) {
-  return schema as unknown as Parameters<BillingClient["fetch"]>[1];
+/** Preserve a concrete schema type when passing it to BillingClient.fetch. */
+export function asPlatformSchema<TSchema extends z.ZodType>(schema: TSchema): TSchema {
+  return schema;
 }
