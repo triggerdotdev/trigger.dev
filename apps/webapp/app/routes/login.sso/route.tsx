@@ -67,7 +67,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 // inline error before submit. Server-side errors keep flowing via ?error=.
 const ssoEmailSchema = z.object({
   email: z
-    .string({ required_error: "Enter your enterprise email address" })
+    .string({ error: "Enter your enterprise email address" })
     .email("Enter a valid email address"),
 });
 
