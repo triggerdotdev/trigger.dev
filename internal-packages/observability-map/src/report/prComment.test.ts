@@ -1,4 +1,5 @@
 import { hasDelta, renderPrComment } from "./prComment.js";
+import { renderTerminal } from "./terminal.js";
 import { buildReport } from "../score.js";
 import { scanFile } from "../scan.js";
 
@@ -267,8 +268,8 @@ describe("renderPrComment", () => {
     });
   });
 
-  // M5. Every other section is bounded by construction; this one rendered one line per file, and a
-  // tree-wide typo took the comment past GitHub's 65,536 character limit for a 422 nobody sees.
+  // M5. This section rendered one line per file, and a tree-wide typo took the comment past
+  // GitHub's 65,536 character limit for a 422 nobody sees.
   it("caps the unknown-suppression lines instead of running past the comment size limit", () => {
     const entries = [];
     for (let i = 0; i < 40; i++) {
@@ -285,6 +286,44 @@ describe("renderPrComment", () => {
     expect(out.split("\n").filter((l) => l.startsWith("UNKNOWN SUPPRESSION"))).toHaveLength(10);
     expect(out).toContain("and 30 more files with unknown ids");
     expect(out.length).toBeLessThan(65536);
+  });
+
+  // Round E item 1. The same unbounded-section failure, in the one other section that grows with
+  // the tree. A codemod moving route bodies into `.server.ts` modules is the refactor `delegating`
+  // exists to notice, and it is what makes this list tree-sized.
+  it("caps the delegated route list instead of running past the comment size limit", () => {
+    const entries = [];
+    for (let i = 0; i < 400; i++) {
+      const padding = `route-with-a-realistically-long-name-${String(i).padStart(4, "0")}`;
+      entries.push(
+        scanFile(
+          `_app.orgs.$organizationSlug.projects.$projectParam.${padding}/route.tsx`,
+          `export { action } from "./handler.server";`
+        )!
+      );
+    }
+    const head = buildReport(entries, []);
+    const line = renderPrComment(head, null)
+      .split("\n")
+      .find((l) => l.startsWith("DELEGATED"))!;
+
+    expect(line).toContain("400 routes");
+    expect(line).toContain(", and 385 more");
+    expect(line.match(/\/route\.tsx/g)).toHaveLength(15);
+    expect(renderPrComment(head, null).length).toBeLessThan(65536);
+  });
+
+  // The terminal has no size limit to respect, so the cap must not reach it.
+  it("leaves the terminal report naming every delegating route", () => {
+    const entries = [];
+    for (let i = 0; i < 40; i++) {
+      entries.push(scanFile(`webhooks.v1.hook${i}.ts`, `export { action } from "./h.server";`)!);
+    }
+    const line = renderTerminal(buildReport(entries, []))
+      .split("\n")
+      .find((l) => l.startsWith("DELEGATED"))!;
+    expect(line).toContain("webhooks.v1.hook39.ts");
+    expect(line).not.toContain("more");
   });
 
   it("sorts a sensitive entry with a small drop above a non-sensitive entry with a large drop", () => {

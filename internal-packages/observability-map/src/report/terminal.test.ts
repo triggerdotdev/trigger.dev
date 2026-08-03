@@ -194,6 +194,24 @@ describe("rendering honestly when there is nothing to say", () => {
     expect(out).not.toContain("No audit helper exists");
   });
 
+  // Round E item 2. The other half of the branch, which the test above did not pin. A zero used to
+  // print "No audit helper exists in the webapp", which is false: `models/admin.server.ts` writes
+  // `prisma.impersonationAuditLog.create(...)` and `AUDIT_SYMBOLS` names the helpers that reach it.
+  // The full tree reads 3 of 49 so nobody sees the sentence today, and a scan of any subset with no
+  // impersonation route in it brings the sentence straight back.
+  it("does not claim the webapp has no audit helper when nothing reached one", () => {
+    const unaudited = scanFile(
+      "api.v1.auth.tokens.ts",
+      `import { prisma } from "~/db.server";
+       export async function action() {
+         return json(await prisma.token.create({ data: {} }));
+       }`
+    )!;
+    const out = renderTerminal(buildReport([unaudited], []));
+    expect(out).toContain("AUDIT   0 of 1 sensitive mutations record an actor. 1 without one.");
+    expect(out).not.toContain("No audit helper exists");
+  });
+
   it("says nothing about audit when no sensitive mutation was found", () => {
     const plain = scanFile(
       "resources.things.ts",

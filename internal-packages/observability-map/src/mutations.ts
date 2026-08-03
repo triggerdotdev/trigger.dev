@@ -578,6 +578,17 @@ export const MUTATIONS: Mutation[] = [
     "const obsMapDeadUserId = { userId: user.id };",
     ""
   ),
+  // Round E item 3. The two entries above both prepend a DEAD object, which the handed-to-a-call
+  // condition refuses on its own, so neither of them would notice a future edit widening that
+  // condition. This one is live: the object really is handed to a real call, and the only thing
+  // refusing it is the callee constraint. It is also the cheaper shape to write, since a log line
+  // survives review in a way `const obsMapDeadUserId = ...` does not.
+  wrapEveryBody(
+    "log-caller-scope-userid",
+    "prepend a logger call handed the caller id under userId to every route body",
+    'logger.error("obs-map", { userId: user.id });',
+    ""
+  ),
   // C1a. `auth-boundary` matched `/^(require|authenticate)/`, so any callee at all beginning
   // `require` cleared a sensitive route. These two prepend the shapes that paid: an invented guard
   // and a real helper whose name merely contains "Authenticated" while it does a lookup by id.
@@ -972,6 +983,7 @@ export const ADDITIVE_IDS = [
   "fake-authenticated-lookup",
   "dead-caller-scope-object",
   "dead-caller-scope-userid",
+  "log-caller-scope-userid",
 ];
 
 function isSingleConst(statement: ts.Statement): statement is ts.VariableStatement {

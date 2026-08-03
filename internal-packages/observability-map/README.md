@@ -29,9 +29,19 @@ prefix matches more than one route rather than silently taking the first`).
 ## CI
 
 A PR that touches `apps/webapp/app/routes` or this package gets a sticky comment scanning head
-against the PR's merge base, with the score, what changed, and the current fix list. It is
+against the tip of the base branch, with the score, what changed, and the current fix list. It is
 report-only: nothing here fails the build or blocks a merge, and the gate stays deferred until a
 later phase decides to add one. See `.github/workflows/observability-map.yml`.
+
+This paragraph used to say "merge base", and two reviewers read that against
+`github.event.pull_request.base.sha` and reported the workflow as the thing that was wrong. It is
+the other way round. `actions/checkout` on a `pull_request` event checks out GitHub's test merge
+commit, whose two parents are `base.sha` and the PR head, so the head tree being scanned already
+contains everything on the base branch up to `base.sha`. Diffing that against `base.sha` isolates
+the PR's own work, which is what the comment is for. A real merge base would be the wrong base
+here: it would leave the intervening base-branch commits in the head tree and out of the base tree,
+and attribute all of them to the pull request. `git merge-base HEAD <base.sha>` would not even do
+that, since `base.sha` is a parent of `HEAD` and the command returns `base.sha` unchanged.
 
 ## What 19 means
 

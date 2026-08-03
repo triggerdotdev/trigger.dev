@@ -50,18 +50,29 @@ export function unknownSuppressionLines(report: MapReport): string[] {
   );
 }
 
-/** The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when
- * there is nothing to report, i.e. no sensitive mutation exists. */
+/**
+ * The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when
+ * there is nothing to report, i.e. no sensitive mutation exists.
+ *
+ * One shape for every count, and no branch on the count, because the branch is what carried the
+ * bug. A zero used to print "No audit helper exists in the webapp", which is false: the helper
+ * exists and `AUDIT_SYMBOLS` names it, `apps/webapp/app/models/admin.server.ts` writes
+ * `prisma.impersonationAuditLog.create(...)`, and `webappSymbols.test.ts` proves those symbols
+ * resolve. The count was already correct, so the sentence was the only wrong thing and it is gone
+ * rather than reworded. A zero here means nothing reached the helper, which is what
+ * "0 of N record an actor" already says.
+ *
+ * The full-tree scan reads 3 of 49 today, so the zero branch is not taken and nobody sees it. It is
+ * one `--routes=<dir>` away from being taken, and one reshaped impersonation route away on the full
+ * tree, which is why removing it beats leaving it unreachable.
+ */
 export function auditLine(report: MapReport): string | null {
   const { sensitiveMutations, withAudit } = report.auditGap;
   if (sensitiveMutations === 0) return null;
-  // The closing sentence is a claim about the codebase, so it is only made when the figure in
-  // front of it supports it. It was printed unconditionally, including next to a non-zero count.
-  const gap =
-    withAudit === 0
-      ? " No audit helper exists in the webapp."
-      : ` ${sensitiveMutations - withAudit} without one.`;
-  return `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor.${gap}`;
+  return (
+    `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor. ` +
+    `${sensitiveMutations - withAudit} without one.`
+  );
 }
 
 /** The CONTEXT figure, shared with `prComment.ts`. Null when nothing is applicable. */
@@ -83,14 +94,21 @@ export function contextLine(report: MapReport): string | null {
  * The DELEGATED lines, shared with `prComment.ts`. Empty when every route's body is in its own
  * file. Worded as a shortfall rather than a note: these routes left the denominator and no check
  * looked at any of them.
+ *
+ * `limit` caps how many file names are named, for the caller that has a size limit to respect. The
+ * count in front of the list is always the full one, so a capped line still reports the real
+ * shortfall and only shortens the evidence. The terminal passes no limit and prints them all.
  */
-export function delegatedLines(report: MapReport): string[] {
+export function delegatedLines(report: MapReport, limit = Infinity): string[] {
   if (report.delegating.length === 0) return [];
   const n = report.delegating.length;
+  const shown = report.delegating.slice(0, limit);
+  const tail = n > shown.length ? `, and ${n - shown.length} more` : "";
   return [
     `DELEGATED   ${n} route${n === 1 ? "" : "s"} keep${n === 1 ? "s" : ""} the body in another ` +
       `module, so nothing here was checked and ${n === 1 ? "it is" : "they are"} out of the score: ` +
-      report.delegating.join(", "),
+      shown.join(", ") +
+      tail,
   ];
 }
 

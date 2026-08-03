@@ -6,22 +6,64 @@ on:
     paths:
       - "apps/webapp/app/routes/**"
       - "internal-packages/observability-map/**"
+  # The corpus job below is gated to this package's own paths, so a scheduled run is what still
+  # scans the tree as it drifts. Nightly rather than per route pull request: a new route can make a
+  # known laundering shape start paying, but that is a property of the tree accumulating, not of any
+  # one pull request, and it does not need catching within five minutes of the merge.
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
 
 concurrency:
-  group: observability-map-${{ github.event.pull_request.number }}
+  group: observability-map-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  # The workflow's paths filter is the union of what the two jobs below want, because GitHub
+  # evaluates it once per workflow. This narrows it again for the corpus job alone.
+  changes:
+    name: 🔍 Which paths moved
+    runs-on: warp-ubuntu-latest-x64-2x
+    outputs:
+      package: ${{ steps.filter.outputs.package }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            package:
+              - 'internal-packages/observability-map/**'
+              - '.github/workflows/observability-map.yml'
+
   # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
-  # asserting the score does not rise. Roughly four and a half minutes for 44 entries, which is why
+  # asserting the score does not rise. Roughly four and a half minutes for 45 entries, which is why
   # it is gated out of the package's default `pnpm test` and run here instead. Unlike the report
   # job below it has no token to lose, so it runs for fork PRs too, and unlike the report job it is
   # allowed to fail the build.
+  #
+  # Gated to this package's own paths rather than running on every route pull request. What the
+  # corpus measures is the TOOL's resistance to laundering, and only an edit to the tool can weaken
+  # that, so a routes-only change was paying four and a half minutes of a 4x runner for a result
+  # that could not differ from the last one. It was also the worst kind of job to spend that on: a
+  # red x that fires on a large share of webapp pull requests, is allowed to fail, and gates
+  # nothing, which is the shape people learn to scroll past.
+  #
+  # What this gives up is real and small. A route landing a shape no corpus entry has seen can make
+  # a known laundering mutation start paying, and that is now caught by the nightly rather than by
+  # the pull request that caused it. Tree drift accrues over months, so a day is the right
+  # granularity for it; the tool's own regressions, which are the ones a single commit can cause,
+  # still gate per pull request.
   mutation-corpus:
     name: 🧬 Mutation corpus
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.package == 'true'
     runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
@@ -61,7 +103,11 @@ jobs:
       contents: read
       pull-requests: write
     # Fork PRs get a read-only token, so the comment cannot post. Skipping the job beats a red x.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # The event test is what keeps this job off the nightly, which has no pull request to comment on
+    # and only exists for the corpus job above.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -96,6 +142,12 @@ jobs:
             echo "head scan failed; the comment will say the report is stale for this run" >&2
           fi
 
+      # base.sha, not a merge base, and two reviewers have now read that as a bug. The checkout
+      # above is the default for a pull_request event, so the working tree is GitHub's test merge
+      # commit, whose parents are base.sha and the PR head. The head tree therefore already contains
+      # the base branch up to base.sha, and diffing it against base.sha is what isolates this pull
+      # request's own work. A merge base would leave the intervening base-branch commits in the head
+      # tree and out of the base tree, and blame the pull request for all of them.
       - name: 🔎 Scan base with the head's scanner
         run: |
           if git worktree add /tmp/base-tree ${{ github.event.pull_request.base.sha }} \

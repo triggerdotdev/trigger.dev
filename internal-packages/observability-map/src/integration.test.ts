@@ -23,11 +23,15 @@ import { SCORED_CHECK_IDS } from "./checks/index.js";
  * cannot tell us, since a fixture only contains shapes somebody thought to write down.
  *
  * What runs this for a webapp pull request is `.github/workflows/unit-tests-observability-map.yml`,
- * called from `pr_checks.yml` behind an `obsmap` paths filter covering this package and
- * `apps/webapp/app/routes/**`, and listed in the `all-checks` aggregate so it actually gates.
+ * called from `pr_checks.yml` behind an `obsmap` paths filter covering `apps/webapp/app/routes/**`,
+ * and listed in the `all-checks` aggregate so it actually gates. A pull request touching this
+ * PACKAGE reaches the same test by the other road: `internal` already matches
+ * `internal-packages/**`, and `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`
+ * over this package too. So both directions are gated, and neither is gated twice; the `obsmap`
+ * filter used to name the package as well, which ran this suite twice on every PR touching it.
  *
  * Two shapes were tried and rejected on the way here. Widening `pr_checks.yml`'s `internal` filter
- * to those paths ran all eighteen internal packages, twelve shards with postgres, clickhouse,
+ * to the route paths ran all eighteen internal packages, twelve shards with postgres, clickhouse,
  * redis and electric, to protect this one test. Putting the job in `observability-map.yml`
  * instead was targeted but gated nothing, because `all-checks` needs an explicit list of jobs and
  * cannot see another workflow.
@@ -141,10 +145,26 @@ describe("the package's tests are wired into the gate", () => {
     expect(read(REUSABLE)).toContain("workflow_call");
   });
 
-  it("watches the live route tree as well as the package itself", () => {
+  it("watches the live route tree, which is the only thing the internal filter misses", () => {
     const filter = read(PR_CHECKS).split("            obsmap:")[1]!.split("            cli:")[0]!;
-    expect(filter).toContain("'internal-packages/observability-map/**'");
     expect(filter).toContain("'apps/webapp/app/routes/**'");
+  });
+
+  // Round E item 6. `internal` matches `internal-packages/**` and `unit-tests-internal.yml` runs
+  // `turbo run test --filter "@internal/*"`, so naming this package here as well ran the suite
+  // twice on every pull request touching it. Asserted rather than left to the next reader, because
+  // the duplicate looks like the obviously right entry to add back.
+  it("leaves the package's own paths to the internal filter, so the suite runs once", () => {
+    const text = read(PR_CHECKS);
+    const obsmap = text.split("            obsmap:")[1]!.split("            cli:")[0]!;
+    expect(obsmap).not.toContain("'internal-packages/observability-map/**'");
+
+    const internal = text.split("            internal:")[1]!.split("            # ")[0]!;
+    expect(internal).toContain("'internal-packages/**'");
+    expect(internal).not.toContain("!internal-packages/observability-map");
+    expect(
+      read(resolve(__dirname, "../../../.github/workflows/unit-tests-internal.yml"))
+    ).toContain('--filter "@internal/*"');
   });
 
   it("is in the all-checks needs list, or it gates nothing", () => {
@@ -158,6 +178,38 @@ describe("the package's tests are wired into the gate", () => {
       "utf8"
     );
     expect(reportWorkflow).not.toContain("run test");
+  });
+
+  const REPORT = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
+
+  // Round E item 5. The corpus measures the tool's resistance to laundering, which only an edit to
+  // the tool can weaken, so it does not belong on every route pull request at four and a half
+  // minutes a run. The nightly is the other half of that trade and is asserted with it: dropping
+  // the schedule would leave tree drift uncovered rather than covered late.
+  it("runs the corpus on the package's own paths and on a schedule, not on every route PR", () => {
+    const text = read(REPORT);
+    const corpus = text.split("  mutation-corpus:")[1]!.split("    steps:")[0]!;
+    expect(corpus).toContain("needs.changes.outputs.package == 'true'");
+
+    const filter = text.split("            package:")[1]!.split("  #")[0]!;
+    expect(filter).toContain("'internal-packages/observability-map/**'");
+    expect(filter).not.toContain("apps/webapp/app/routes");
+
+    expect(text).toContain("schedule:");
+    expect(text).toContain("cron:");
+  });
+
+  // Round E item 4. Two reviewers read the README's "merge base" against the workflow's base.sha
+  // and reported the workflow. The checkout is a pull_request default, so the tree scanned is
+  // GitHub's test merge commit and base.sha is one of its parents, which makes base.sha the right
+  // base and the old wording the bug. Pinned so the wording cannot drift back without the workflow
+  // moving with it.
+  it("describes the base the report workflow actually scans against", () => {
+    expect(read(REPORT)).toContain("github.event.pull_request.base.sha");
+    const readme = readFileSync(resolve(__dirname, "../README.md"), "utf8");
+    const ci = readme.split("## CI")[1]!.split("\n## ")[0]!;
+    expect(ci).toContain("against the tip of the base branch");
+    expect(ci).not.toMatch(/scanning head\s+against the PR's merge base/);
   });
 });
 

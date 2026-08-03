@@ -2711,6 +2711,77 @@ describe("scanFile: the signals auth-scope reads", () => {
     expect(ep!.loaderScopesByCaller).toBe(false);
   });
 
+  // Round E item 3. Neither of the two conditions above constrains the CALLEE, so a log line
+  // carrying the caller's id satisfied a tenant-scoping security check. Cheaper to write than the
+  // dead object, and unlike the dead object it survives review, because a log line is real code
+  // somebody wants.
+  it("does not read a caller id handed to a log call as a scope", () => {
+    const logger = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         logger.error("create failed", { userId: user.id });
+         return json(await prisma.org.findMany({ where: { slug: "x" } }));
+       });`
+    );
+    expect(logger!.loaderScopesByCaller).toBe(false);
+
+    // A different logger family: `LOGGER_CALLEE` does not match `console.warn`, so this is the
+    // second sink rather than a restatement of the first.
+    const console_ = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         console.warn("create failed", { userId: user.id });
+         return json(await prisma.org.findMany({ where: { slug: "x" } }));
+       });`
+    );
+    expect(console_!.loaderScopesByCaller).toBe(false);
+  });
+
+  // The refusal is made at the call, not at the property, so burying the id under the depth of
+  // nesting a real filter has does not get it past.
+  it("does not read a caller id nested inside a log call's payload as a scope", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         logger.info("looking up", { where: { OR: [{ userId: user.id }] } });
+         return json(await prisma.org.findMany({ where: { slug: "x" } }));
+       });`
+    );
+    expect(ep!.loaderScopesByCaller).toBe(false);
+  });
+
+  // The response body is the other sink that takes the same object and cannot narrow a read.
+  it("does not read a caller id handed to a response serializer as a scope", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         return typedjson({ userId: user.id });
+       });`
+    );
+    expect(ep!.loaderScopesByCaller).toBe(false);
+  });
+
+  // The direction that matters more than any of the above: refusing the log line must not accuse a
+  // handler that also runs the query. This is the shape on the real tree today,
+  // `engine.v1.dev.runs.$runFriendlyId.snapshots.$snapshotFriendlyId.attempts.start.ts`, which logs
+  // the environment id and reads with it, and which must keep its pass.
+  it("still reads a real query filter written beside a log call", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ authentication }) => {
+         const run = await runStore.findRun({ runtimeEnvironmentId: authentication.environment.id });
+         if (!run) logger.error("no run", { environmentId: authentication.environment.id });
+         return json(run);
+       });`
+    );
+    expect(ep!.loaderScopesByCaller).toBe(true);
+  });
+
   // A resource's owner is not the caller.
   it("does not read another object's userId as a scope", () => {
     const ep = scanFile(

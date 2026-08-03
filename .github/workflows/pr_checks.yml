@@ -82,11 +82,17 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
-            # apps/webapp/app/routes is here because one test in @internal/observability-map scans
-            # the live route tree. Without it a webapp-only PR that renames a route merges green
-            # and the break lands on main, or on the next unrelated internal-packages PR.
+            # Routes only, and that is the whole reason this filter exists: one test in
+            # @internal/observability-map scans the live route tree, and without this a webapp-only
+            # PR that renames a route merges green and the break lands on main, or on the next
+            # unrelated internal-packages PR.
+            #
+            # The package's own paths are deliberately NOT here. `internal` above already matches
+            # `internal-packages/**`, and `unit-tests-internal.yml` runs `turbo run test --filter
+            # "@internal/*"`, which picks up @internal/observability-map and runs the same vitest
+            # suite including that route-tree test. Listing the package here as well ran the suite
+            # twice on every PR touching it, which was this filter's own doing.
             obsmap:
-              - 'internal-packages/observability-map/**'
               - 'apps/webapp/app/routes/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-observability-map.yml'

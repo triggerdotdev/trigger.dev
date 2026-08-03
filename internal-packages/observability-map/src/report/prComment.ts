@@ -16,12 +16,26 @@ export const MARKER = "<!-- observability-map-report -->";
 const MAX_CHANGED_ROWS = 15;
 
 /**
- * Every other section of this comment is bounded by construction. This one was not, and a single
- * mistyped directive applied tree wide renders one line per file: 87,938 characters against
+ * A mistyped directive applied tree wide renders one line per file: 87,938 characters against
  * GitHub's 65,536 limit, a 422, and the workflow's error tolerance swallowing it. The cap is what
  * stops the whole comment being lost to the section warning about a typo.
  */
 const MAX_UNKNOWN_SUPPRESSION_LINES = 10;
+
+/**
+ * The same failure in the other section that grows with the size of the tree. `delegating` holds
+ * one file name per route whose body lives elsewhere, joined into a single line, and a codemod that
+ * moves route bodies into `.server.ts` modules is both the refactor this feature exists to notice
+ * and the one that makes the list tree-sized. The cap was claimed here before it was written: the
+ * note above used to open "every other section of this comment is bounded by construction", which
+ * was not true of this one.
+ *
+ * Fifteen matches the changed-entries table rather than the ten above, because a delegating file
+ * name is one comma-separated item rather than a line naming every known check. The bound that
+ * matters is the section's worst case: the longest route file name in the tree is 130 characters,
+ * so fifteen of those plus separators is under 2kB against GitHub's 65,536.
+ */
+const MAX_DELEGATED_ROUTES = 15;
 
 // Scored checks only, same exclusion terminal.ts's scoredFailures makes: audit-trail fails almost
 // every sensitive mutation today, so listing it per route would nag with something unfixable
@@ -314,7 +328,7 @@ export function renderPrComment(head: MapReport, base: MapReport | null): string
   if (audit) lines.push(audit);
   const context = contextLine(head);
   if (context) lines.push(context);
-  const delegated = delegatedLines(head);
+  const delegated = delegatedLines(head, MAX_DELEGATED_ROUTES);
   lines.push(...delegated);
   const unknown = unknownSuppressionLines(head);
   lines.push(...unknown.slice(0, MAX_UNKNOWN_SUPPRESSION_LINES));

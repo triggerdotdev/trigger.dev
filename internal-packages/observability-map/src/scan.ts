@@ -96,21 +96,61 @@ const CALLER_ID_FIELD =
   /^(id|userId|user|memberId|orgMemberId|createdBy|createdByUserId|environmentId|runtimeEnvironmentId|organizationId|orgId|projectId)$/;
 
 /**
- * Whether the object literal holding this property is handed to a call, through any depth of
- * nesting: `findMany({ where: { members: { some: { userId } } } })` is, and
+ * Callees that are handed the caller's id and cannot narrow a read with it: the log line and the
+ * response body. Both take the very `{ userId: user.id }` object a query filter takes, so crediting
+ * them let one log statement clear `auth-scope` for a whole export. That is cheaper than the
+ * actor-argument residual `checks/authScope.ts` discloses, and it lands on the one check whose
+ * purpose is catching cross-org exposure.
+ *
+ * The shape is already in the tree rather than hypothetical: `engine.v1.dev.runs...attempts.start`
+ * writes `logger.error("...", { environmentId: authentication.environment.id })` beside the
+ * `runStore.findRun` that earns that export its credit honestly. Loggers account for 13 of the
+ * caller-id sites under `apps/webapp/app/routes` and the two response serializers for 2 more.
+ *
+ * A denylist of sinks rather than an allowlist of query callees, and that is a measurement rather
+ * than a preference. 72 distinct callees are handed a caller id across the route tree, running from
+ * `prisma.project.findFirst` through `presenter.call` and `new DeleteProjectService().call` to bare
+ * `regenerateApiKey` and `resolveOrganizationForApiUser`. No name pattern separates those from
+ * `sendToPlain`, so an allowlist would accuse whichever route named its helper next, and a wrong
+ * accusation is the failure this check cannot afford. Refusing the sinks that are known not to
+ * scope shrinks the residual without pretending to close it: `someHelper({ userId: user.id })` that
+ * ignores its argument still credits, which needs types the scanner does not have.
+ */
+const NON_SCOPING_CALLEE = /(^|\.)console\.[A-Za-z_$][\w$]*$|^(json|typedjson|defer)$/;
+
+/**
+ * Whether a callee could plausibly narrow a read with the object it is handed. A callee with no
+ * readable name of its own is credited: refusing it would ACCUSE the route, and under-crediting the
+ * constraint beats accusing a route that is fine.
+ */
+function couldScopeAQuery(callee: ts.Expression): boolean {
+  const text = calleeText(callee);
+  if (text === null) return true;
+  return !LOGGER_CALLEE.test(text) && !NON_SCOPING_CALLEE.test(text);
+}
+
+/**
+ * Whether the object literal holding this property is handed to a call that could scope a query,
+ * through any depth of nesting: `findMany({ where: { members: { some: { userId } } } })` is, and
  * `const unused = { userId };` is not. Arrays count, so `{ OR: [{ userId }] }` still reaches its
  * call.
  *
- * What this refuses is a filter built and dropped. What it does NOT refuse is a filter built and
- * handed to a call that ignores it: `String({ userId: user.id });` reads as scoping, the same way
- * `try { String(0); }` reads as error handling, and for the same reason. Knowing whether the callee
- * uses the argument needs types the scanner does not have.
+ * Two things are refused. A filter built and dropped, which is the dead-object shape
+ * `dead-caller-scope-object` and `dead-caller-scope-userid` cover. And a filter handed to a callee
+ * that provably cannot read with it, which is `NON_SCOPING_CALLEE` and which the corpus entry
+ * `log-caller-scope-userid` covers at tree scale.
+ *
+ * What this does NOT refuse is a filter handed to a named call that ignores it:
+ * `String({ userId: user.id });` reads as scoping, the same way `try { String(0); }` reads as error
+ * handling, and for the same reason. Knowing whether an arbitrary callee uses the argument needs
+ * types the scanner does not have.
  */
-function isHandedToACall(property: ts.PropertyAssignment): boolean {
+function isHandedToAScopingCall(property: ts.PropertyAssignment): boolean {
   let node: ts.Node = property;
   for (let parent = node.parent; parent; node = parent, parent = node.parent) {
     if (ts.isCallExpression(parent) || ts.isNewExpression(parent)) {
-      return parent.arguments?.some((a) => a === node) === true;
+      if (parent.arguments?.some((a) => a === node) !== true) return false;
+      return couldScopeAQuery(parent.expression);
     }
     if (
       !ts.isObjectLiteralExpression(parent) &&
@@ -147,7 +187,9 @@ function isHandedToACall(property: ts.PropertyAssignment): boolean {
  * halves of that shape.
  *
  * So the property NAME has to be an identity field, and the object it sits in has to be handed to a
- * call. See `isHandedToACall` for what that does and does not refuse.
+ * call that could scope a query. The third condition is what stops `logger.error("create failed",
+ * { userId: user.id })`, written anywhere in a builder-wrapped handler, clearing the check for that
+ * export. See `isHandedToAScopingCall` for what that does and does not refuse.
  */
 function scopesByCallerIn(fns: Iterable<EntryFunction>): boolean {
   let found = false;
@@ -159,7 +201,7 @@ function scopesByCallerIn(fns: Iterable<EntryFunction>): boolean {
       CALLER_ID_FIELD.test(node.name.text)
     ) {
       const path = propertyPath(node.initializer);
-      if (path !== null && CALLER_ID_PATH.test(path) && isHandedToACall(node)) {
+      if (path !== null && CALLER_ID_PATH.test(path) && isHandedToAScopingCall(node)) {
         found = true;
         return;
       }
