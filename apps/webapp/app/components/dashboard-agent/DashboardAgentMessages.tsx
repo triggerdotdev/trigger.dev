@@ -205,7 +205,10 @@ function renderDashboardPart(
       // One spinner at a time: an in_progress investigation card in this turn
       // already shows its own progress pill.
       if (options?.suppressPendingPill) return null;
-      return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
+      // Stable key across tool changes: only the LABEL changes from call to
+      // call, so the spinner keeps spinning instead of remounting (and
+      // restarting its animation) on every new tool.
+      return <ChatPendingTool key="agent-pending" label={`${toolPendingLabel(type.slice(5))}…`} />;
     }
     if (p.state === "output-error") return renderPart(part, i);
     return null;
