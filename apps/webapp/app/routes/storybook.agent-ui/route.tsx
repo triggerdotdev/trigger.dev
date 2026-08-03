@@ -1365,7 +1365,8 @@ const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
 function ThemeToggle() {
   return (
     <div className="flex items-center gap-1.5">
-      {(["dark", "light"] as const).map((theme) => (
+      {/* classic is still the default theme for most users, so it's part of the pack */}
+      {(["classic", "dark", "light"] as const).map((theme) => (
         <button
           key={theme}
           type="button"

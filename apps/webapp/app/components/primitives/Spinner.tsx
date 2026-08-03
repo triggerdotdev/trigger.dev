@@ -1,4 +1,4 @@
-import { AgentDotMatrix } from "~/components/primitives/AgentDotMatrix";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { cn } from "~/utils/cn";
 
 type CustomColor = {
@@ -86,14 +86,12 @@ export function SpinnerWhite({ className }: { className?: string }) {
  */
 export function AgentSpinner({ size = 16 }: { size?: number }) {
   return (
-    <AgentDotMatrix
+    <AgentMonoLogo
       size={size}
       active
       // A spinner is born spinning: resting on the playlist's first shape means
       // the initial frame is already mid-cycle — no logo-head flash on mount.
       restShape="square"
-      palette="mono"
-      restColor="#ffffff"
       decorative
     />
   );

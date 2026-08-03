@@ -11,6 +11,7 @@ import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   AgentDotMatrix,
+  AgentMonoLogo,
   DOT_MATRIX_PALETTES,
   DOT_SHAPES,
   EXTRA_FACE_SHAPES,
@@ -58,12 +59,6 @@ export default function Story() {
 }
 
 // --- Dot matrix (5x5) ---------------------------------------------------------
-
-// Dark-ink mono ramp for light surfaces (the built-in mono palette is white-based).
-const LIGHT_MONO = {
-  stops: ["#0d0e12", "#1a1b1f", "#3b3e45"] as [string, string, string],
-  glow: "#1a1b1f",
-};
 
 function DotMatrixTab() {
   return (
@@ -133,10 +128,10 @@ function DotMatrixTab() {
           />
         </div>
         <div className="flex items-center gap-8 rounded-md border border-grid-bright bg-charcoal-100 px-6 py-5">
-          <AgentDotMatrix size={40} mode="light" palette={LIGHT_MONO} restColor="#1a1b1f" />
+          <AgentDotMatrix size={40} mode="light" palette="monoLight" restColor="#1a1b1f" />
           <ToggleableMatrix
             size={40}
-            matrix={{ mode: "light", palette: LIGHT_MONO, restColor: "#1a1b1f" }}
+            matrix={{ mode: "light", palette: "monoLight", restColor: "#1a1b1f" }}
           />
         </div>
       </div>
@@ -202,15 +197,7 @@ function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSi
     <Button
       variant={variant}
       onClick={trigger}
-      LeadingIcon={
-        <AgentDotMatrix
-          size={matrixSize}
-          active={active}
-          palette="mono"
-          restColor="#ffffff"
-          decorative
-        />
-      }
+      LeadingIcon={<AgentMonoLogo size={matrixSize} active={active} decorative />}
     >
       Ask AI
     </Button>
@@ -233,16 +220,7 @@ function FaceButton({ name }: { name: DotShapeName }) {
     <Button
       variant="ask-ai/small"
       onClick={trigger}
-      LeadingIcon={
-        <AgentDotMatrix
-          size={16}
-          active={active}
-          restShape={name}
-          palette="mono"
-          restColor="#ffffff"
-          decorative
-        />
-      }
+      LeadingIcon={<AgentMonoLogo size={16} active={active} restShape={name} decorative />}
     >
       {name}
     </Button>

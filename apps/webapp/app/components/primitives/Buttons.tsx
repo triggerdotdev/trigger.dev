@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { AgentDotMatrix } from "./AgentDotMatrix";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -144,16 +144,16 @@ function createVariant(sizeName: Size, themeName: Theme) {
 // The ask-ai button always leads with the square agent logo, so it supplies its
 // own leading icon and its padding is tuned around it: small = 16px logo, 4px
 // left / 6px right; medium 32/16 -> 8px; large 40/20 -> 10px. Pass an explicit
-// `LeadingIcon` (e.g. an <AgentDotMatrix active />) to animate it.
+// `LeadingIcon` (e.g. an <AgentMonoLogo active />) to animate it.
 function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
   const base = createVariant(sizeName, "ask-ai");
   return {
     ...base,
     button: cn(base.button, opticalPadding),
     iconSpacing: "gap-x-1.5",
-    defaultLeadingIcon: (
-      <AgentDotMatrix size={logoSize} palette="mono" restColor="#ffffff" decorative />
-    ),
+    // The button is `bg-secondary` — charcoal on dark, white on light — so the
+    // logo has to follow the theme or it disappears on one of them.
+    defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
   };
 }
 
