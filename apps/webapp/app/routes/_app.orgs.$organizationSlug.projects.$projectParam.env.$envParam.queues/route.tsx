@@ -1,3 +1,4 @@
+// SCORER TEST FIXTURE: comment-only, no behaviour change. Never merge.
 import {
   ArrowUpCircleIcon,
   BookOpenIcon,
