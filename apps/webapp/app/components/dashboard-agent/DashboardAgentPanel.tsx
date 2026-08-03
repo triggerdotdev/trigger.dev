@@ -2,7 +2,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
 import { useApiOrigin } from "~/hooks/useApiOrigin";
@@ -427,7 +427,7 @@ export function DashboardAgentPanel({
       <AgentPanelColumn fullscreen={isFullscreen}>
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <Spinner className="size-5" />
+            <AgentSpinner size={20} />
           </div>
         ) : active ? (
           <DashboardAgentChat

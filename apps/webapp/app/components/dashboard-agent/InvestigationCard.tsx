@@ -31,7 +31,7 @@ import type {
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import {
   CategoryBadge,
   ConfidenceBadge,
@@ -118,7 +118,7 @@ function HypothesisRow({
         <VerdictBadge verdict={hypothesis.verdict}>
           {VERDICT_LABELS[hypothesis.verdict]}
         </VerdictBadge>
-        {hypothesis.verdict === "testing" ? <Spinner className="size-3" /> : null}
+        {hypothesis.verdict === "testing" ? <AgentSpinner size={12} /> : null}
       </div>
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}

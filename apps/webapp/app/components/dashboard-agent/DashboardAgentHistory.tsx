@@ -5,7 +5,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 
 // Date fields arrive as strings over the loader's JSON.
@@ -44,7 +44,7 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
       {process === "investigating" ? (
         <MagnifyingGlassIcon className="size-3.5" />
       ) : (
-        <Spinner className="size-3.5" />
+        <AgentSpinner size={14} />
       )}
     </span>
   );
