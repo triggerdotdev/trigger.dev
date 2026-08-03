@@ -119,14 +119,14 @@ const theme = {
   // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
   // softened trigger-green border.
   "ask-ai": {
-    // Hover fills with the brand green; ink flips DARK, not white — white on
-    // #41FF54 is ~1.4:1, charcoal-800 is ~12.8:1 (the brand's black-on-green).
+    // Hover fills with a pale brand-green tint; ink flips DARK — dark ink on
+    // the pale green is ~13:1 (white would be ~1.4:1 even on the full green).
     textColor:
       "text-text-bright transition group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
     // The trigger-green /25 border washes out on white, so the light theme
     // darkens it (the unified success token clears 3:1 on white).
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-[#41FF54] group-hover/button:border-[#41FF54] light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-[#e4ffe8] group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-charcoal-800 group-hover/button:border-charcoal-800/60",
     icon: "text-text-bright group-hover/button:text-charcoal-800",
