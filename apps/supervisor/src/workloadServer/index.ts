@@ -23,6 +23,8 @@ import EventEmitter from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { Counter } from "prom-client";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
@@ -30,6 +32,7 @@ import {
   workloadTokenEnforced,
   workloadTokensEnabled,
 } from "../workloadToken.js";
+import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   ComputeSnapshotService,
   type RunTraceContext,
@@ -49,6 +52,19 @@ interface DefaultEventsMap {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [event: string]: (...args: any[]) => void;
 }
+
+/**
+ * checkpointDeleteRequests counts the delete requests this supervisor makes, and every reason it
+ * decides not to: `sent`, `disabled`, `not_terminal`, `no_claims`, `no_project_ref`, `http_error`.
+ * Without the negative outcomes, "no deletes are happening" is indistinguishable from the feature
+ * being switched off - and with no lifecycle expiry, that difference is leaked storage.
+ */
+const checkpointDeleteRequests = new Counter({
+  name: "checkpoint_delete_requests_total",
+  help: "Checkpoint delete requests attempted at run completion, by outcome",
+  labelNames: ["result"],
+  registers: [register],
+});
 
 const WorkloadActionParams = z.object({
   runFriendlyId: z.string(),
@@ -181,10 +197,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
    * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   *
+   * `claims` are returned whenever the token verifies, in either mode. They are for addressing a
+   * run's own resources locally (e.g. its checkpoint storage) - never for scoping the platform,
+   * which is why environmentId above stays gated on enforce.
    */
   private async authorizeWorkloadRequest(
     req: IncomingMessage
-  ): Promise<{ ok: true; environmentId?: string } | { ok: false }> {
+  ): Promise<
+    { ok: true; environmentId?: string; claims?: WorkloadDeploymentTokenClaims } | { ok: false }
+  > {
     if (!workloadTokensEnabled) {
       return { ok: true };
     }
@@ -201,7 +223,68 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         workloadTokenEnforced && result.outcome === "jwt_valid"
           ? result.claims.environment_id
           : undefined,
+      claims: result.outcome === "jwt_valid" ? result.claims : undefined,
     };
+  }
+
+  /**
+   * reclaimCheckpoints asks the checkpoint service to delete a finished run's checkpoint storage.
+   *
+   * Called only after the reply has been sent, so it never delays the runner - the same shape the
+   * suspend route uses. Every early return is counted: with no lifecycle expiry behind this, a
+   * silently skipped delete is storage leaked forever, and silence must not look like success.
+   *
+   * `RUN_PENDING_CANCEL` is terminal too - a run cancelled mid-execution never restores - so it is
+   * reclaimed alongside `RUN_FINISHED`. Retries are deliberately excluded: the prefix is run-level,
+   * so a retry's checkpoints are cleaned by the final completion.
+   */
+  private async reclaimCheckpoints(
+    req: IncomingMessage,
+    runFriendlyId: string,
+    attemptStatus: string,
+    claims: WorkloadDeploymentTokenClaims | undefined
+  ): Promise<void> {
+    if (!env.DELETE_CHECKPOINTS_ON_COMPLETION || !this.checkpointClient || this.snapshotService) {
+      checkpointDeleteRequests.inc({ result: "disabled" });
+      return;
+    }
+
+    if (attemptStatus !== "RUN_FINISHED" && attemptStatus !== "RUN_PENDING_CANCEL") {
+      checkpointDeleteRequests.inc({ result: "not_terminal" });
+      return;
+    }
+
+    if (!claims) {
+      checkpointDeleteRequests.inc({ result: "no_claims" });
+      return;
+    }
+
+    const projectRef = this.projectRefFromRequest(req);
+    if (!projectRef) {
+      checkpointDeleteRequests.inc({ result: "no_project_ref" });
+      this.logger.error("Cannot reclaim checkpoints without a project ref", { runFriendlyId });
+      return;
+    }
+
+    const [error, accepted] = await tryCatch(
+      this.checkpointClient.deleteCheckpoints({
+        runFriendlyId,
+        body: {
+          orgId: claims.org_id,
+          envId: claims.environment_id,
+          deploymentVersion: claims.deployment_version,
+          projectRef,
+        },
+      })
+    );
+
+    if (error || !accepted) {
+      checkpointDeleteRequests.inc({ result: "http_error" });
+      this.logger.error("Failed to request checkpoint reclaim", { runFriendlyId, error });
+      return;
+    }
+
+    checkpointDeleteRequests.inc({ result: "sent" });
   }
 
   /**
@@ -364,6 +447,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 reply.json(completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody);
+
+                await this.reclaimCheckpoints(
+                  req,
+                  params.runFriendlyId,
+                  completeResponse.data.result.attemptStatus,
+                  auth.claims
+                );
                 return;
               }
             ),

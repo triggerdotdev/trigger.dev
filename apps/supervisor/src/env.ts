@@ -22,6 +22,7 @@ export const Env = z
     // also reject invalid tokens.
     WORKLOAD_TOKEN_SECRET: z.string().optional(),
     WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
     // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
     // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
     WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
