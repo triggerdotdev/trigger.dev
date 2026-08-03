@@ -5106,6 +5106,9 @@ return __qmret(results)
     // queue keep their timestamp score domain. The per-candidate serve body is a
     // verbatim copy of dequeueMessagesFromCkQueueTracked's, with the marked NEW
     // lines added (tag advance on serve, ZREM ckVtime on GC, floor advance from pass 1).
+    // Pass 2 always runs: when the batch is already full it registers the variants
+    // pass 1 could not see rather than serving them, which is what keeps a backlog
+    // queued before the flag went on from being unreachable.
     this.redis.defineCommand("dequeueMessagesFromCkQueueVtimeTracked", {
       numberOfKeys: 13,
       lua: `
@@ -5264,23 +5267,48 @@ end
 
 -- Pass 1: fair order (lowest virtual start tag first)
 local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, window - 1)
+-- NEW: the window read doubles as a free membership set for pass 2's discovery
+-- step. It is complete whenever ckVtime holds no more than window variants,
+-- which is the common case; when it is truncated the discovery ZADD is NX so the
+-- variants it cannot rule out cost correctness nothing.
+local registered = {}
+for _, ckQueueName in ipairs(vtimeCandidates) do
+  registered[ckQueueName] = true
+end
 for _, ckQueueName in ipairs(vtimeCandidates) do
   if dequeuedCount >= actualMaxCount then break end
   tryServe(ckQueueName, true)
 end
 
 -- Pass 2: fill + discovery in age order (work conservation, mixed-deploy safety).
--- Never runs when pass 1 filled the batch.
-if dequeuedCount < actualMaxCount then
-  -- Clamp to at least 3x so pass 2 never scans fewer index variants than the old command, preserving work conservation regardless of the configured multiplier
-  local pass2Window = math.max(window, actualMaxCount * 3)
-  local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, pass2Window)
-  for _, ckQueueName in ipairs(ckQueues) do
-    if dequeuedCount >= actualMaxCount then break end
-    if not attempted[ckQueueName] then
+-- Clamp to at least 3x so pass 2 never scans fewer index variants than the old command, preserving work conservation regardless of the configured multiplier
+local pass2Window = math.max(window, actualMaxCount * 3)
+local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, pass2Window)
+-- NEW: pass 2 runs even when pass 1 filled the batch. A variant that reached
+-- ckIndex without a ckVtime entry (queued before the flag went on, enqueued by an
+-- instance that still has it off, or left behind by an expired ckVtime) is invisible
+-- to pass 1, and pass 1 filling the batch off the registered variants alone kept it
+-- that way until one of them drained. With no batch slot left we only register it,
+-- at the floor, so the next call's pass 1 leads with it. Serving is still capped at
+-- actualMaxCount, so this adds no serve the old gate would have refused.
+local discovered = nil
+for _, ckQueueName in ipairs(ckQueues) do
+  if not attempted[ckQueueName] then
+    if dequeuedCount < actualMaxCount then
       tryServe(ckQueueName, false)
+    elseif not registered[ckQueueName] then
+      -- Collected into one variadic ZADD: discovery costs at most a single op per
+      -- call however many variants it registers. Skipping attempted matters:
+      -- tryServe GCs a drained variant out of both indexes, and re-adding it here
+      -- would resurrect a ckVtime entry with no ckIndex member.
+      if discovered == nil then discovered = {ckVtimeKey, 'NX'} end
+      table.insert(discovered, tostring(floor))
+      table.insert(discovered, ckQueueName)
     end
   end
+end
+if discovered ~= nil then
+  redis.call('ZADD', unpack(discovered))
 end
 
 -- NEW: persist floor and refresh TTLs
