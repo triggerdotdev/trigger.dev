@@ -1,4 +1,9 @@
-import { SUGGESTED_PROMPT_CAP, type SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import {
+  SUGGESTED_PROMPT_CAP,
+  type AgentPage,
+  type AgentPageKind,
+  type SuggestedPrompt,
+} from "@internal/dashboard-agent-contracts";
 import { describe, expect, it } from "vitest";
 import { demoFreshFailureSignal, demoPageContexts } from "../demo/fixtures/page-context";
 import { GENERIC_PROMPTS, pageDefaultPrompts, pageSlotPrompts } from "./registry";
@@ -269,5 +274,367 @@ describe("pageSlotPrompts", () => {
     const queuePage = demoPageContexts.queue.page;
     if (queuePage.kind !== "queue") throw new Error("fixture changed");
     expect(pageDefaultPrompts(queuePage).some((p) => p.prompt.includes(queuePage.name))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Every page kind, exhaustively
+// ---------------------------------------------------------------------------
+
+/**
+ * One sample page per kind, in its NORMAL state (nothing wrong). Keyed by
+ * `AgentPageKind`, so adding a kind to the contract without giving it chips is a
+ * type error here rather than a generic-fallback row in production.
+ */
+const SAMPLE_PAGES: Record<AgentPageKind, AgentPage> = {
+  runs: { kind: "runs" },
+  run: { kind: "run", runId: "run_1", status: "Executing", taskId: "process-order" },
+  errors: { kind: "errors" },
+  error: { kind: "error", fingerprint: "9f2c1a" },
+  queues: { kind: "queues" },
+  queue: { kind: "queue", name: "orders", health: "ok" },
+  deployments: { kind: "deployments" },
+  deployment: { kind: "deployment", version: "20260803.1", status: "DEPLOYED" },
+  tasks: { kind: "tasks" },
+  task: { kind: "task", taskId: "process-order", triggerSource: "STANDARD" },
+  schedule: { kind: "schedule", scheduleId: "sched_1", taskId: "nightly", active: true },
+  batches: { kind: "batches" },
+  batch: { kind: "batch", batchId: "batch_1", status: "COMPLETED", failedRunCount: 0 },
+  test: { kind: "test", taskId: "process-order", queuePaused: false },
+  alerts: { kind: "alerts", channelCount: 2, disabledChannelCount: 0 },
+  apikeys: { kind: "apikeys" },
+  envvars: { kind: "envvars" },
+  concurrency: { kind: "concurrency" },
+  regions: { kind: "regions" },
+  settings: { kind: "settings" },
+  waitpoints: { kind: "waitpoints", timedOutCount: 0, overdueCount: 0 },
+  bulkactions: { kind: "bulkactions", pendingCount: 0 },
+  branches: { kind: "branches", atLimit: false },
+  logs: { kind: "logs" },
+  limits: { kind: "limits" },
+  query: { kind: "query" },
+  dashboards: { kind: "dashboards", title: "Run metrics" },
+  agents: { kind: "agents", agentId: "support-triage" },
+  playground: { kind: "playground" },
+  prompts: { kind: "prompts", overriddenCount: 0 },
+  models: { kind: "models" },
+  sessions: { kind: "sessions", expiredCount: 0 },
+  other: { kind: "other", path: "/orgs/a/projects/b/env/prod/nowhere" },
+};
+
+const ALL_PAGES = Object.values(SAMPLE_PAGES);
+
+describe("pageSlotPrompts, across every page kind", () => {
+  it.each(ALL_PAGES.map((page) => [page.kind, page] as const))(
+    "gives %s an explain and a docs chip",
+    (_kind, page) => {
+      const slots = pageSlotPrompts(page);
+      expect(slots.explain.label).toBeTruthy();
+      expect(slots.explain.prompt).toBeTruthy();
+      expect(slots.docs.label).toBeTruthy();
+      expect(slots.docs.prompt).toBeTruthy();
+    }
+  );
+
+  it("offers no investigate or status chip on a page where nothing is wrong", () => {
+    for (const page of ALL_PAGES) {
+      const slots = pageSlotPrompts(page);
+      // A run page and an error page are inherently about a failure, and a queue
+      // always has a live backlog question — everything else stays quiet.
+      const inherentlyLoud = ["run", "error", "queue"];
+      if (inherentlyLoud.includes(page.kind)) continue;
+      expect(slots.investigate, page.kind).toBeUndefined();
+      expect(slots.status, page.kind).toBeUndefined();
+    }
+  });
+
+  it("puts docs last and keeps each page's ids unique", () => {
+    for (const page of ALL_PAGES) {
+      const prompts = pageDefaultPrompts(page);
+      expect(prompts.length, page.kind).toBeGreaterThan(0);
+      expect(new Set(prompts.map((p) => p.id)).size, page.kind).toBe(prompts.length);
+      expect(prompts.at(-1)?.id, page.kind).toBe(pageSlotPrompts(page).docs.id);
+    }
+  });
+
+  it("never reuses one chip id for two different questions", () => {
+    // Dismissals are stored by id, so the same id has to mean the same chip
+    // everywhere it appears.
+    const byId = new Map<string, string>();
+    for (const page of ALL_PAGES) {
+      for (const prompt of pageDefaultPrompts(page)) {
+        const seen = byId.get(prompt.id);
+        if (seen !== undefined) expect(prompt.prompt, `${prompt.id} on ${page.kind}`).toBe(seen);
+        byId.set(prompt.id, prompt.prompt);
+      }
+    }
+  });
+
+  it("gives every section its own chips rather than the generic pair", () => {
+    for (const page of ALL_PAGES) {
+      if (page.kind === "other") continue;
+      const slots = pageSlotPrompts(page);
+      expect(slots.explain.id, page.kind).not.toBe(GENERIC_PROMPTS[0]!.id);
+      expect(slots.docs.id, page.kind).not.toBe(GENERIC_PROMPTS[1]!.id);
+    }
+  });
+});
+
+describe("pageSlotPrompts, the gated chips", () => {
+  it("offers a task investigate chip only when the task can't run", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.task).investigate).toBeUndefined();
+
+    // A scheduled task with nothing to fire it: it has never run.
+    const noSchedules = pageSlotPrompts({
+      kind: "task",
+      taskId: "nightly",
+      triggerSource: "SCHEDULED",
+      schedules: { total: 0, active: 0 },
+    });
+    expect(noSchedules.investigate?.id).toBe("sp:task-no-schedules");
+    expect(noSchedules.investigate?.prompt).toContain("nightly");
+
+    // Schedules attached but all switched off: it has stopped running.
+    const allOff = pageSlotPrompts({
+      kind: "task",
+      taskId: "nightly",
+      triggerSource: "SCHEDULED",
+      schedules: { total: 2, active: 0 },
+    });
+    expect(allOff.investigate?.id).toBe("sp:task-schedules-disabled");
+
+    // One live schedule is enough for the page to be quiet.
+    const oneOn = pageSlotPrompts({
+      kind: "task",
+      taskId: "nightly",
+      triggerSource: "SCHEDULED",
+      schedules: { total: 2, active: 1 },
+    });
+    expect(oneOn.investigate).toBeUndefined();
+
+    // A paused queue stops the next run, so it comes after the schedule checks.
+    const paused = pageSlotPrompts({
+      kind: "task",
+      taskId: "process-order",
+      queue: "orders",
+      queuePaused: true,
+    });
+    expect(paused.investigate?.id).toBe("sp:task-queue-paused");
+    expect(paused.investigate?.prompt).toContain("orders");
+
+    const both = pageSlotPrompts({
+      kind: "task",
+      taskId: "nightly",
+      triggerSource: "SCHEDULED",
+      queue: "orders",
+      queuePaused: true,
+      schedules: { total: 0, active: 0 },
+    });
+    expect(both.investigate?.id).toBe("sp:task-no-schedules");
+  });
+
+  it("points a scheduled task at the schedules docs", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.task).docs.id).toBe("sp:docs-tasks");
+    expect(
+      pageSlotPrompts({ kind: "task", taskId: "nightly", triggerSource: "SCHEDULED" }).docs.id
+    ).toBe("sp:docs-schedules");
+  });
+
+  it("offers a schedule investigate chip only when the schedule is disabled", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.schedule).investigate).toBeUndefined();
+
+    const disabled = pageSlotPrompts({
+      kind: "schedule",
+      scheduleId: "sched_1",
+      taskId: "nightly",
+      active: false,
+    });
+    expect(disabled.investigate?.prompt).toContain("sched_1");
+    expect(disabled.investigate?.prompt).toContain("nightly");
+  });
+
+  it("offers a batches investigate chip only when the newest batch failed", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.batches).investigate).toBeUndefined();
+
+    const failed = pageSlotPrompts({ kind: "batches", latestFailedBatchId: "batch_9" });
+    expect(failed.investigate?.prompt).toContain("batch_9");
+  });
+
+  it("words the batch chips off the batch's status and failure count", () => {
+    const clean = pageSlotPrompts(SAMPLE_PAGES.batch);
+    expect(clean.investigate).toBeUndefined();
+    expect(clean.status).toBeUndefined();
+
+    const partial = pageSlotPrompts({
+      kind: "batch",
+      batchId: "batch_1",
+      status: "PARTIAL_FAILED",
+      failedRunCount: 3,
+    });
+    expect(partial.investigate?.prompt).toContain("3 of its runs failed");
+    expect(partial.status).toBeUndefined();
+
+    // A live batch is a status question, not an investigation.
+    const running = pageSlotPrompts({ kind: "batch", batchId: "batch_1", status: "PROCESSING" });
+    expect(running.status?.id).toBe("sp:batch-progress");
+    expect(running.investigate).toBeUndefined();
+
+    // Still processing, and already failing.
+    const both = pageSlotPrompts({
+      kind: "batch",
+      batchId: "batch_1",
+      status: "PROCESSING",
+      failedRunCount: 2,
+    });
+    expect(both.investigate?.id).toBe("sp:batch-failures");
+    expect(both.status?.id).toBe("sp:batch-progress");
+  });
+
+  it("warns on the test page only when the queue is paused", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.test).investigate).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "test", queuePaused: true }).investigate?.id).toBe(
+      "sp:test-queue-paused"
+    );
+  });
+
+  it("asks a different explain question with and without a task under test", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.test).explain.prompt).toContain("process-order");
+    expect(pageSlotPrompts({ kind: "test" }).explain.id).toBe("sp:test-what-to-trigger");
+  });
+
+  it("offers an alerts status chip only when a channel is switched off", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.alerts).status).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "alerts", channelCount: 2, disabledChannelCount: 1 }).status?.id
+    ).toBe("sp:alerts-disabled-channel");
+  });
+
+  it("offers a waitpoint investigate chip only for tokens that won't complete", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.waitpoints).investigate).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "waitpoints", timedOutCount: 1, overdueCount: 0 }).investigate?.id
+    ).toBe("sp:waitpoints-stuck");
+    expect(
+      pageSlotPrompts({ kind: "waitpoints", timedOutCount: 0, overdueCount: 2 }).investigate?.id
+    ).toBe("sp:waitpoints-stuck");
+
+    // One token: only a timed-out one has something to explain.
+    expect(
+      pageSlotPrompts({ kind: "waitpoints", tokenId: "wp_1", status: "WAITING" }).investigate
+    ).toBeUndefined();
+    const timedOut = pageSlotPrompts({
+      kind: "waitpoints",
+      tokenId: "wp_1",
+      status: "TIMED_OUT",
+    });
+    expect(timedOut.investigate?.prompt).toContain("wp_1");
+  });
+
+  it("words the bulk-action chips off the action's status and failures", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.bulkactions).status).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "bulkactions", pendingCount: 1 }).status?.id).toBe(
+      "sp:bulkactions-pending"
+    );
+
+    const failed = pageSlotPrompts({
+      kind: "bulkactions",
+      bulkActionId: "bulk_1",
+      status: "COMPLETED",
+      failedRunCount: 4,
+    });
+    expect(failed.investigate?.prompt).toContain("bulk_1");
+    expect(failed.status).toBeUndefined();
+
+    const aborted = pageSlotPrompts({
+      kind: "bulkactions",
+      bulkActionId: "bulk_1",
+      status: "ABORTED",
+    });
+    expect(aborted.investigate?.id).toBe("sp:bulkaction-failures");
+
+    const pending = pageSlotPrompts({
+      kind: "bulkactions",
+      bulkActionId: "bulk_1",
+      status: "PENDING",
+    });
+    expect(pending.status?.id).toBe("sp:bulkaction-progress");
+    expect(pending.investigate).toBeUndefined();
+  });
+
+  it("offers a branches status chip only at the limit", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.branches).status).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "branches", atLimit: true }).status?.id).toBe(
+      "sp:branches-at-limit"
+    );
+  });
+
+  it("names the exhausted quota on the limits page", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.limits).status).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "limits", exhausted: [] }).status).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "limits", exhausted: ["Branches", "Schedules"] }).status?.prompt
+    ).toContain("Branches");
+  });
+
+  it("offers a prompts status chip only when an override is live", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.prompts).status).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "prompts", overriddenCount: 2 }).status?.id).toBe(
+      "sp:prompts-overrides"
+    );
+
+    expect(
+      pageSlotPrompts({ kind: "prompts", slug: "summarise", overridden: false }).status
+    ).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "prompts", slug: "summarise", overridden: true }).status?.prompt
+    ).toContain("summarise");
+  });
+
+  it("offers a session investigate chip only when its run failed", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.sessions).investigate).toBeUndefined();
+    expect(pageSlotPrompts({ kind: "sessions", expiredCount: 1 }).status?.id).toBe(
+      "sp:sessions-expired"
+    );
+
+    const healthy = pageSlotPrompts({
+      kind: "sessions",
+      sessionId: "session_1",
+      runId: "run_1",
+      runStatus: "COMPLETED_SUCCESSFULLY",
+    });
+    expect(healthy.investigate).toBeUndefined();
+
+    const failed = pageSlotPrompts({
+      kind: "sessions",
+      sessionId: "session_1",
+      runId: "run_1",
+      runStatus: "CRASHED",
+    });
+    expect(failed.investigate?.prompt).toContain("session_1");
+    expect(failed.investigate?.prompt).toContain("run_1");
+  });
+
+  it("reads a named dashboard, and offers to chart something on the chooser", () => {
+    expect(pageSlotPrompts(SAMPLE_PAGES.dashboards).explain.prompt).toContain("Run metrics");
+    expect(pageSlotPrompts({ kind: "dashboards" }).explain.id).toBe("sp:dashboards-chart");
+  });
+
+  it("names the subject on the pages that have one", () => {
+    const named: [AgentPage, string][] = [
+      [{ kind: "agents", agentId: "support-triage" }, "support-triage"],
+      [{ kind: "playground", agentId: "support-triage" }, "support-triage"],
+      [{ kind: "models", modelId: "claude-sonnet-4-6" }, "claude-sonnet-4-6"],
+      [{ kind: "prompts", slug: "summarise" }, "summarise"],
+      [{ kind: "sessions", sessionId: "session_1" }, "session_1"],
+      [{ kind: "batch", batchId: "batch_1" }, "batch_1"],
+      [{ kind: "task", taskId: "process-order" }, "process-order"],
+    ];
+
+    for (const [page, subject] of named) {
+      expect(
+        pageDefaultPrompts(page).some((prompt) => prompt.prompt.includes(subject)),
+        page.kind
+      ).toBe(true);
+    }
   });
 });

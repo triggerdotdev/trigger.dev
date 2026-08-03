@@ -105,6 +105,14 @@ import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Same mapper as a standard task, plus the schedule counts this loader resolves
+// synchronously: a scheduled task with no enabled schedule never runs.
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
+};
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;

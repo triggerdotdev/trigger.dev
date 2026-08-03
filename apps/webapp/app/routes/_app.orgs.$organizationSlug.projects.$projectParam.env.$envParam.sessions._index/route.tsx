@@ -22,6 +22,13 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent how many sessions expired instead of being closed.
+export const handle: Handle = {
+  agentPageContext: (data) => sessionsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

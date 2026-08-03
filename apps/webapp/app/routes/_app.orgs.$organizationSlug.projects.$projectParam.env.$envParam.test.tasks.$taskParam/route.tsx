@@ -80,6 +80,8 @@ import { AIPayloadTabContent } from "./AIPayloadTabContent";
 import { SchemaTabContent } from "./SchemaTabContent";
 import { TestSidebarTabs } from "./TestSidebarTabs";
 import { Header2 } from "~/components/primitives/Headers";
+import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 
@@ -268,6 +270,12 @@ export const action: ActionFunction = async ({ request, params }) => {
       return redirectBackWithErrorMessage(request, "Failed to process request");
     }
   }
+};
+
+// Tell the dashboard agent which task is being tested, and whether its queue is
+// paused — a paused queue means the test run won't start.
+export const handle: Handle = {
+  agentPageContext: (data) => testAgentPageContext(data),
 };
 
 export default function Page() {

@@ -59,6 +59,13 @@ import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Same mapper as the picker: with an agent in the payload it names that agent.
+export const handle: Handle = {
+  agentPageContext: (data) => playgroundAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];

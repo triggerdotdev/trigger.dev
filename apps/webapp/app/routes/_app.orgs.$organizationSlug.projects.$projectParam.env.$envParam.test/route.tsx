@@ -35,6 +35,13 @@ import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
+import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's on the test page, with no task picked yet.
+export const handle: Handle = {
+  agentPageContext: (data) => testAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

@@ -36,6 +36,14 @@ import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's on the API keys page, so it offers key and
+// authentication questions rather than generic ones.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("apikeys"),
+};
 
 export const meta: MetaFunction = () => {
   return [

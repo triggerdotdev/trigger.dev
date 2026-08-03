@@ -42,6 +42,8 @@ import {
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
@@ -51,6 +53,12 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   if (levelParams.length === 0) return undefined;
   return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
 }
+
+// Tell the dashboard agent it's in the log explorer. The logs themselves are
+// deferred, so the page kind is all we can say without a query.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("logs"),
+};
 
 export const meta: MetaFunction = () => {
   return [

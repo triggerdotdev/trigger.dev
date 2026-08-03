@@ -42,6 +42,8 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
+import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -137,6 +139,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleOperations,
     possibleProviders,
   });
+};
+
+// Name the built-in dashboard the user is on. Its widget values are fetched
+// client-side, so the title is the whole context.
+export const handle: Handle = {
+  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {

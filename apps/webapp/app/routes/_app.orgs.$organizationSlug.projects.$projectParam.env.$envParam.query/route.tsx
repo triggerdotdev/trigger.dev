@@ -18,6 +18,8 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -249,6 +251,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       { status: 500 }
     );
   }
+};
+
+// Tell the dashboard agent it's in the query editor. The loader carries editor seed
+// data only — results come from the action.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("query"),
 };
 
 export default function Page() {

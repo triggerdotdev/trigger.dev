@@ -12,6 +12,14 @@ import {
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's in project settings. Sits on the layout so it
+// covers both settings tabs, neither of which has state worth reporting.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("settings"),
+};
 
 export const meta: MetaFunction = () => {
   return [

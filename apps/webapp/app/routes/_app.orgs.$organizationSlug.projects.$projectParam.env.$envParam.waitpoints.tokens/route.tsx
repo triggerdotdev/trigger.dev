@@ -47,6 +47,14 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent how many wait tokens timed out, and how many are still
+// waiting past their own timeout.
+export const handle: Handle = {
+  agentPageContext: (data) => waitpointsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

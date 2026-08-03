@@ -48,3 +48,22 @@ export function errorGroupPrompt(errorFriendlyId: string, taskIdentifier?: strin
 export function queueBacklogPrompt(queueName: string): string {
   return `Investigate the ${queueName} queue — why is it backed up?`;
 }
+
+/**
+ * "… is paused, so nothing will start" — a task or test page whose queue is
+ * paused. The name is optional: the test page knows the queue is paused but not
+ * what it's called.
+ */
+export function pausedQueuePrompt(queueName?: string): string {
+  const subject = queueName ? `The ${queueName} queue` : "The queue this task runs on";
+  return `${subject} is paused, so nothing new will start on it. What's waiting behind it?`;
+}
+
+/** "Investigate batch …" — a batch that didn't come out clean. */
+export function batchFailurePrompt(batchFriendlyId: string, failedRunCount?: number): string {
+  const scale =
+    failedRunCount !== undefined && failedRunCount > 0
+      ? `${failedRunCount} of its runs failed`
+      : "some of its runs failed";
+  return `Investigate batch ${batchFriendlyId} — ${scale}. Which ones, and why?`;
+}

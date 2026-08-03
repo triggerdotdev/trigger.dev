@@ -28,6 +28,14 @@ import {
   v3EnvironmentPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// The tasks activity dashboard asks the same questions as the list, so it reports
+// the same page kind. Its series are deferred.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Tasks | Trigger.dev" }];

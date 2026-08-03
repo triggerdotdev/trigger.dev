@@ -74,6 +74,15 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's on the concurrency page. This page manages the
+// limit and carries no live running/queued counts, so there's nothing here to
+// call saturated — that lives on the queues page.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("concurrency"),
+};
 
 export const meta: MetaFunction = () => {
   return [

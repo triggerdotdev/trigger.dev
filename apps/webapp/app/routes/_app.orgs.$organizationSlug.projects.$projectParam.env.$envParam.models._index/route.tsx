@@ -109,6 +109,14 @@ import { parseFiniteInt } from "~/utils/searchParams";
 
 import { IconColumns3 } from "@tabler/icons-react";
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's in the model registry, so the panel offers spend
+// and latency questions.
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Models | Trigger.dev" }];

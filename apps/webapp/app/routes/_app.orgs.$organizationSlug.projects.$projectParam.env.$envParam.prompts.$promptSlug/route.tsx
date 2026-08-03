@@ -85,10 +85,18 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
+import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
+
+// Same mapper as the list: with one prompt in the payload it names that prompt and
+// whether an override is live.
+export const handle: Handle = {
+  agentPageContext: (data) => promptsAgentPageContext(data),
+};
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [{ title: `${(data as any)?.prompt.slug ?? "Prompt"} | Trigger.dev` }];
