@@ -1611,7 +1611,12 @@ export function routeModuleFiles(dir: string): RouteModuleFile[] {
     if (!entry.isFile() || !isScannableFile(entry.name)) continue;
     files.push({ absolutePath: join(dir, entry.name), relativeName: entry.name });
   }
-  return files;
+  // `readdirSync` order is filesystem-defined, and it reaches the report: head and base are scanned
+  // from two different directories, so an order difference alone would read as a delta and post a
+  // comment claiming a change no score made.
+  return files.sort((a, b) =>
+    a.relativeName < b.relativeName ? -1 : a.relativeName > b.relativeName ? 1 : 0
+  );
 }
 
 export function scanDirectory(dir: string): {

@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { ParseFailureError, scanDirectory, scanFile } from "./scan.js";
+import { ParseFailureError, routeModuleFiles, scanDirectory, scanFile } from "./scan.js";
 
 const LOADER = `
 import { json } from "@remix-run/server-runtime";
@@ -2955,5 +2955,29 @@ describe("scanFile: callees whose answer the body read", () => {
     );
     expect(ep!.loaderCheckedCallees).toContain("findMany");
     expect(ep!.loaderCheckedCallees).not.toContain("getUser");
+  });
+});
+
+/**
+ * Contract only. Enumeration order is not controllable from a test: ext4 returns name-hash order, so
+ * every name set constructed here already comes back sorted and the assertion cannot be made to fail
+ * locally. It still holds the contract for a filesystem that enumerates in creation order.
+ */
+describe("routeModuleFiles", () => {
+  it("returns the tree in name order", () => {
+    const dir = mkdtempSync(join(tmpdir(), "obs-map-order-"));
+    try {
+      for (const name of ["zeta.ts", "alpha.ts", "middle.ts"]) {
+        writeFileSync(join(dir, name), LOADER);
+      }
+      mkdirSync(join(dir, "beta"));
+      writeFileSync(join(dir, "beta", "route.ts"), LOADER);
+
+      const names = routeModuleFiles(dir).map((f) => f.relativeName);
+      expect(names).toEqual([...names].sort());
+      expect(names).toEqual(["alpha.ts", "beta/route.ts", "middle.ts", "zeta.ts"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
