@@ -90,9 +90,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
-  const promotedDashboardAgentPrompt = await getPromotedDashboardAgentPrompt({
-    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-  });
+  // Only read the promoted-prompt flag when the agent renders at all — without
+  // access the panel never mounts, so the flag read would be a wasted query.
+  const promotedDashboardAgentPrompt = hasDashboardAgentAccess
+    ? await getPromotedDashboardAgentPrompt({
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+      })
+    : null;
 
   return {
     ...project,
