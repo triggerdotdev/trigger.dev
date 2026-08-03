@@ -49,52 +49,33 @@ export function DashboardAgentDraft({
   );
 
   return (
-<<<<<<< HEAD
-    <>
-      <DashboardAgentSuggestedPrompts
-        onSelect={submit}
-        pageContext={pageContext}
-        promoted={promotedPrompt}
-      />
-      {watchCard}
-      <DashboardAgentComposer
-        value={input}
-        onChange={setInput}
-        onSubmit={() => submit(input)}
-        onStop={() => {}}
-        isStreaming={false}
-        context={
-          <DashboardAgentContextBanner
-            projectSlug={projectSlug}
-            environmentSlug={environmentSlug}
-            currentPage={currentPage}
-          />
-        }
-      />
-    </>
-=======
     <DashboardAgentHero
       onSelect={submit}
       pageContext={pageContext}
       promoted={promotedPrompt}
       composer={
-        <DashboardAgentComposer
-          layout="hero"
-          value={input}
-          onChange={setInput}
-          onSubmit={() => submit(input)}
-          onStop={() => {}}
-          isStreaming={false}
-          context={
-            <DashboardAgentContextBanner
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              currentPage={currentPage}
-            />
-          }
-        />
+        // The card rides in the composer slot, directly above the field — the
+        // same place a chat puts it, so an ephemeral card reads the same in the
+        // blank state as it does mid-conversation.
+        <div className="flex w-full flex-col gap-3">
+          {watchCard}
+          <DashboardAgentComposer
+            layout="hero"
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submit(input)}
+            onStop={() => {}}
+            isStreaming={false}
+            context={
+              <DashboardAgentContextBanner
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                currentPage={currentPage}
+              />
+            }
+          />
+        </div>
       }
     />
->>>>>>> origin/feat/dashboard-agent-flows
   );
 }

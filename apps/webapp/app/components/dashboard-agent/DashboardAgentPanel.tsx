@@ -85,13 +85,10 @@ export function DashboardAgentPanel({
   requestedMessage,
   openChatRequest,
   promotedPrompt,
-<<<<<<< HEAD
   watchRequest,
   onChatRead,
-=======
   isFullscreen = false,
   onToggleFullscreen,
->>>>>>> origin/feat/dashboard-agent-flows
 }: {
   onClose: () => void;
   // Fullscreen is owned by `DashboardAgent` (it also has to hide the page
@@ -607,48 +604,6 @@ export function DashboardAgentPanel({
         onClose={onClose}
       />
 
-<<<<<<< HEAD
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner className="size-5" />
-        </div>
-      ) : active ? (
-        <DashboardAgentChat
-          key={active.chatId}
-          chatId={active.chatId}
-          initialMessages={active.messages}
-          session={active.session}
-          pendingFirstMessage={active.pendingFirstMessage}
-          streaming={active.streaming}
-          prefill={prefill && prefill.chatId === active.chatId ? prefill : undefined}
-          clientData={clientData}
-          apiOrigin={apiOrigin}
-          actionPath={actionPath}
-          projectSlug={project.slug}
-          environmentSlug={environment.slug}
-          currentPage={currentPage}
-          promotedPrompt={promotedPrompt}
-          watches={chatWatches}
-          pagePaths={pagePaths}
-          watchCard={watchCard}
-          appendedMessage={appendedMessage}
-          onWatchIntent={openWatchCard}
-          onCancelWatch={cancelWatch}
-          onTurnSettled={loadHistory}
-          onActivityChange={handleActivityChange}
-        />
-      ) : (
-        <DashboardAgentDraft
-          onSubmit={createChat}
-          projectSlug={project.slug}
-          environmentSlug={environment.slug}
-          currentPage={currentPage}
-          pageContext={pageContext}
-          promotedPrompt={promotedPrompt}
-          watchCard={watchCard}
-        />
-      )}
-=======
       {/* Always mounted, so switching to fullscreen only re-styles this column —
           the chat below it keeps its transport, session and transcript. */}
       <AgentPanelColumn fullscreen={isFullscreen}>
@@ -672,7 +627,12 @@ export function DashboardAgentPanel({
             environmentSlug={environment.slug}
             currentPage={currentPage}
             promotedPrompt={promotedPrompt}
+            watches={chatWatches}
             pagePaths={pagePaths}
+            watchCard={watchCard}
+            appendedMessage={appendedMessage}
+            onWatchIntent={openWatchCard}
+            onCancelWatch={cancelWatch}
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
           />
@@ -684,10 +644,10 @@ export function DashboardAgentPanel({
             currentPage={currentPage}
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
+            watchCard={watchCard}
           />
         )}
       </AgentPanelColumn>
->>>>>>> origin/feat/dashboard-agent-flows
     </div>
   );
 }

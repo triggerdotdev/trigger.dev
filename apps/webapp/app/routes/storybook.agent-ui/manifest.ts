@@ -23,13 +23,10 @@ export type GalleryGroup =
   | "investigation"
   | "report"
   | "chart"
-<<<<<<< HEAD
   | "watches"
   | "watch-card"
   | "wakes"
-=======
   | "hero"
->>>>>>> origin/feat/dashboard-agent-flows
   | "prompts"
   | "intents"
   | "messages"
@@ -56,13 +53,10 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "investigation", label: "Investigation card" },
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
-<<<<<<< HEAD
   { group: "watches", label: "Watch chips" },
   { group: "watch-card", label: "Watch card" },
   { group: "wakes", label: "Wake banners" },
-=======
   { group: "hero", label: "Blank-state hero" },
->>>>>>> origin/feat/dashboard-agent-flows
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
@@ -236,7 +230,6 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
 
-<<<<<<< HEAD
   // --- Watch chips ---------------------------------------------------------
   { sectionId: "watches-active", title: "Active — cancellable", group: "watches" },
   { sectionId: "watches-fired", title: "Fired", group: "watches" },
@@ -292,7 +285,8 @@ export const MANIFEST: GallerySection[] = [
     sectionId: "wake-unknown-watch",
     title: "Fired, watch not in hand — kind-agnostic",
     group: "wakes",
-=======
+  },
+
   // --- Blank-state hero -----------------------------------------------------
   // The new-chat state, with the composer inside the hero. Both widths it ships
   // at: the 380px side panel and the fullscreen takeover's centred column.
@@ -320,7 +314,6 @@ export const MANIFEST: GallerySection[] = [
     sectionId: "hero-in-chat",
     title: "Empty chat — hero without its own composer",
     group: "hero",
->>>>>>> origin/feat/dashboard-agent-flows
   },
 
   // --- Suggested prompts ---------------------------------------------------
