@@ -51,34 +51,34 @@ describe("the recommendations", () => {
 
   it("recommends the condition §2.1 assigns to each object", () => {
     expect(runWatchRecommendation("run_abc123").kind).toBe("run_finished");
-    expect(queueWatchRecommendation("email-sends").kind).toBe("backlog_drain");
+    expect(queueWatchRecommendation("email-sends").kind).toBe("queue_oldest_age");
     expect(errorWatchRecommendation("error_a1b2c3d4").kind).toBe("error_recurrence");
     expect(healthWatchRecommendation("warn").kind).toBe("health_recovery");
   });
 
-  // §9.1: on a queue the page already calls late, "when it drains" is the wrong
-  // promise — the useful watch is the wait itself.
-  it("switches the queue recommendation to the age SLA once runs are already late", () => {
+  // The recommendation must be a FUTURE condition: once runs are already late,
+  // "if runs wait too long" is already true and would one-shot — the useful
+  // promise flips to the recovery, "when it drains".
+  it("switches the queue recommendation to the drain once runs are already late", () => {
     const late = queueWatchRecommendation("email-sends", {
       oldestWaitMs: OLDEST_WAIT_WARNING_MS,
     });
     expect(late).toMatchObject({
-      kind: "queue_oldest_age",
+      kind: "backlog_drain",
       queue: "email-sends",
-      thresholdMinutes: OLDEST_WAIT_WARNING_MS / 60_000,
     });
     expect(watchSpecSchema.safeParse(late).success).toBe(true);
   });
 
-  it("stays on the drain when the queue is merely busy, or the signal is missing", () => {
+  it("stays on the age SLA when the queue is merely busy, or the signal is missing", () => {
     expect(
       queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS - 1 }).kind
-    ).toBe("backlog_drain");
+    ).toBe("queue_oldest_age");
     expect(queueWatchRecommendation("email-sends", { oldestWaitMs: null }).kind).toBe(
-      "backlog_drain"
+      "queue_oldest_age"
     );
-    expect(queueWatchRecommendation("email-sends", {}).kind).toBe("backlog_drain");
-    expect(queueWatchRecommendation("email-sends").kind).toBe("backlog_drain");
+    expect(queueWatchRecommendation("email-sends", {}).kind).toBe("queue_oldest_age");
+    expect(queueWatchRecommendation("email-sends").kind).toBe("queue_oldest_age");
   });
 
   it("starts both follow-ups off — consent is never assumed", () => {
@@ -270,7 +270,7 @@ describe("the card's copy", () => {
   });
 
   it("states the condition and the duration as §2.2 writes them", () => {
-    const spec = queueWatchRecommendation("email-sends");
+    const spec = queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS });
     expect(watchConditionLabel(spec)).toBe("Until the queue drains");
     expect(watchDurationLabel(spec)).toBe("For 1 hour · checking every 5 min");
   });
@@ -314,7 +314,7 @@ describe("the card's copy", () => {
 describe("the persisted blocks (§2.2)", () => {
   it("states all four lifetime facts on a confirmation", () => {
     const body = watchConfirmationBlockBody({
-      spec: queueWatchRecommendation("email-sends"),
+      spec: queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS }),
       watchId: "watch_1",
     });
     expect(body.outcome).toBe("watching");

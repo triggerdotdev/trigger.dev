@@ -622,8 +622,9 @@ const queueStalledDraft = withVariant(queueWatchDraft, "queue_stalled");
 const queueAgeDraft = withAgeMinutes(withVariant(queueWatchDraft, "queue_oldest_age"), 5);
 
 // The contextual recommendation: on a queue whose oldest run is already waiting
-// past the page's warning threshold, the card OPENS on the age SLA instead of the
-// drain. Compact, because that is what the user sees first.
+// past the page's warning threshold the SLA is already breached, so the card
+// OPENS on the drain (the recovery) instead of the age SLA. Compact, because
+// that is what the user sees first.
 const lateQueueDraft = watchDraftFor(
   queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS })
 );
@@ -1140,8 +1141,8 @@ const STATES: Record<string, React.ReactNode> = {
   "watch-card-queue-age": (
     <WatchCard draft={queueAgeDraft} onChange={noop} onSubmit={noop} defaultExpanded />
   ),
-  // Opened from a queue that is already late: the recommendation itself changed.
-  "watch-card-queue-age-recommended": (
+  // Opened from a queue that is already late: the recommendation flips to the drain.
+  "watch-card-queue-late-recommended": (
     <WatchCard draft={lateQueueDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
   ),
 

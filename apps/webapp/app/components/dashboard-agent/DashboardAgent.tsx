@@ -1,4 +1,5 @@
 import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
+import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ResizableHandle,
@@ -73,6 +74,21 @@ export function DashboardAgent({
       return !current;
     });
   }, []);
+
+  // Navigating to another page drops the takeover back to the side panel: the
+  // user asked for a page (a navbar click, an agent navigation), so the page
+  // must be what they see. Pathname only — filter and search-param changes stay
+  // on the page and keep fullscreen.
+  const { pathname } = useLocation();
+  const previousPathname = useRef(pathname);
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    setFullscreen((current) => {
+      if (current) writeAgentFullscreen(false);
+      return false;
+    });
+  }, [pathname]);
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
   // with the same text distinct, so the panel can tell them apart.
   // Bumped by contextual ⌘J while the panel is open; the panel starts a new
