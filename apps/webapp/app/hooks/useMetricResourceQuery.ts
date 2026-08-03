@@ -51,6 +51,7 @@ function cacheSet(key: string, rows: MetricResourceRow[]) {
  * back-navigation to the queues list) shows its last data immediately and revalidates in the
  * background rather than flashing a loading skeleton.
  */
+/** An empty query means the caller has nothing to ask for, so no request is made. */
 export function useMetricResourceQuery(query: string, opts: MetricResourceQueryOptions) {
   const {
     organizationId,
@@ -101,6 +102,10 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   const loadedKeyRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
+    if (!query) {
+      setIsLoading(false);
+      return;
+    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;

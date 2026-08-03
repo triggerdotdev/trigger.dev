@@ -1228,6 +1228,19 @@ type QueueHeaderTile = {
     formatTotal?: (total: number) => string;
     totalClassName?: string;
   };
+  /**
+   * Optional second query, run at the range's natural bucket width, that owns the headline readout.
+   * A readout measured in buckets rather than in values (a share of buckets, not a peak) would
+   * otherwise move whenever this tile's bucket floor widens the plotted buckets.
+   */
+  readout?: {
+    query: string;
+    derive: (rows: MetricTileRow[]) => {
+      total: number;
+      formatTotal?: (total: number) => string;
+      totalClassName?: string;
+    };
+  };
 };
 
 function tileNumber(value: number | string | null): number {
@@ -1244,6 +1257,8 @@ function tileTimeToMs(value: number | string | null): number {
 function peakOf(points: TilePoint[]): number {
   return points.reduce((max, p) => (p.value === null ? max : Math.max(max, p.value)), 0);
 }
+
+const THROTTLED_QUERY = `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`;
 
 const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
@@ -1327,24 +1342,31 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
     color: "var(--color-queues)",
     legend: [{ color: "var(--color-warning)", label: "Throttled" }],
-    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    query: THROTTLED_QUERY,
     derive: (rows) => {
       const points = rows.map((r) => ({
         bucket: tileTimeToMs(r.t),
         value: tileNumber(r.throttled),
       }));
-      // Share of the window that saw any throttling. A raw event sum isn't interpretable (it
-      // scales with poll rate and window length); the fraction of buckets with a throttle is.
-      // The data path fills gaps (zero-fill for this counter), so every bucket in the window is
-      // present and `points.length` is the honest denominator.
-      const nonzero = points.filter((p) => p.value !== null && p.value > 0).length;
-      const pct = points.length > 0 ? Math.round((nonzero / points.length) * 100) : 0;
-      return {
-        points,
-        total: pct,
-        formatTotal: (v) => `${v}% of current period`,
-        totalClassName: pct > 0 ? "text-warning" : undefined,
-      };
+      return { points, total: peakOf(points) };
+    },
+    readout: {
+      query: THROTTLED_QUERY,
+      /**
+       * Share of the window that saw any throttling. A raw event sum isn't interpretable (it
+       * scales with poll rate and window length); the fraction of buckets with a throttle is.
+       * Gap fill zero-fills this counter, so every bucket in the window is present and the row
+       * count is the honest denominator.
+       */
+      derive: (rows) => {
+        const nonzero = rows.filter((r) => tileNumber(r.throttled) > 0).length;
+        const pct = rows.length > 0 ? Math.round((nonzero / rows.length) * 100) : 0;
+        return {
+          total: pct,
+          formatTotal: (v) => `${v}% of current period`,
+          totalClassName: pct > 0 ? "text-warning" : undefined,
+        };
+      },
     },
   },
 ];
@@ -1387,17 +1409,27 @@ function QueueEnvMetricChart({
   const project = useProject();
   const environment = useEnvironment();
 
-  const { rows, showLoading, failed } = useMetricResourceQuery(tile.query, {
+  const sharedOptions = {
     organizationId: organization.id,
     projectId: project.id,
     environmentId: environment.id,
     timeRange,
     defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
     fillGaps: true,
+  };
+
+  const { rows, showLoading, failed } = useMetricResourceQuery(tile.query, {
+    ...sharedOptions,
     minBucketSeconds: HERO_CHART_MIN_BUCKET_SECONDS,
   });
 
-  const { points, total, formatTotal, totalClassName } = tile.derive(rows);
+  const readoutResult = useMetricResourceQuery(tile.readout?.query ?? "", sharedOptions);
+
+  const derived = tile.derive(rows);
+  const points = derived.points;
+  const { total, formatTotal, totalClassName } = tile.readout
+    ? tile.readout.derive(readoutResult.rows)
+    : derived;
 
   // Same point shape the shared axis/tooltip helpers expect.
   const data = points
@@ -1423,9 +1455,11 @@ function QueueEnvMetricChart({
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
   // total renders no readout at all (skipping "0% peak", "0 peak", "0" and the p95 "–" placeholder)
   // so the card title stands alone until there's a non-zero value to show.
-  const peak = showLoading ? (
+  const readoutLoading = tile.readout ? readoutResult.showLoading : showLoading;
+  const readoutFailed = tile.readout ? readoutResult.failed : failed;
+  const peak = readoutLoading ? (
     <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
-  ) : failed || total === 0 ? null : formatTotal ? (
+  ) : readoutFailed || total === 0 ? null : formatTotal ? (
     formatTotal(total)
   ) : (
     total.toLocaleString()
@@ -1445,7 +1479,7 @@ function QueueEnvMetricChart({
               />
             </span>
             {peak != null ? (
-              tile.totalTooltip && !showLoading ? (
+              tile.totalTooltip && !readoutLoading ? (
                 <SimpleTooltip
                   button={
                     <span
