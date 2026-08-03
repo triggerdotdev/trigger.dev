@@ -35,7 +35,7 @@ flowchart TD
   workers --> reg
 ```
 
-Each component maps to a top-level key in `values.yaml`: `webapp`, `supervisor`, `postgres`, `redis`, `clickhouse`, `minio`/`s3`, `registry`, and `s2`. Bundled datastores carry a `deploy: true` default; setting `deploy: false` and an `external` block swaps in your own. Webapp and supervisor behaviour is driven by `config` and `extraEnvVars`.
+Each component maps to a top-level key in `values.yaml`: `webapp`, `supervisor`, `postgres`, `redis`, `electric`, `clickhouse`, `s3` (object storage), `s2`, and `registry`. The datastores default to `deploy: true` and run in-cluster; set `deploy: false` with an `external` block to bring your own. The registry is the exception - it defaults to `deploy: false`, so you point it at an external one. Webapp and supervisor behaviour is driven by `config` and `extraEnvVars`.
 
 ## Requirements
 
@@ -91,7 +91,7 @@ Bundled datastores let you run the whole stack with a single command and no exte
       --create-namespace
     ```
 
-    The chart deploys the webapp, supervisor, and bundled Postgres, Redis, ClickHouse, MinIO, registry, and s2-lite.
+    The chart deploys the webapp, supervisor, and bundled Postgres, Redis, Electric, ClickHouse, MinIO, and s2-lite. The registry is not deployed by default - configure an external one before deploying tasks.
   </Step>
 
   <Step title="Port-forward the webapp">
@@ -121,7 +121,7 @@ Confirm every component reached a healthy state:
 kubectl get pods -n trigger
 ```
 
-The webapp, supervisor, and each bundled datastore pod should report `Running` with all containers `READY`, and the bootstrap and migration jobs should show `Completed`. If a pod is stuck in `Pending` or `CrashLoopBackOff`, jump to [Troubleshooting](#troubleshooting).
+The webapp, supervisor, and each bundled datastore pod should report `Running` with all containers `READY`. Migrations and bootstrap run inside the webapp pod rather than as separate jobs, so if the webapp stays unready, check its logs. If a pod is stuck in `Pending` or `CrashLoopBackOff`, jump to [Troubleshooting](#troubleshooting).
 
 Once you can sign in and trigger a run, you've validated the stack. For a deployment that survives restarts, upgrades, and load, move on to the production install.
 
@@ -363,9 +363,8 @@ Object storage holds deploy artifacts and large payloads. See the [Docker object
 **Direct configuration:**
 
 ```yaml
-minio:
-  deploy: false
 s3:
+  deploy: false
   external:
     endpoint: "https://s3.amazonaws.com"
     accessKeyId: "my-access-key"
@@ -375,16 +374,14 @@ s3:
 **Using existing secrets (recommended):**
 
 ```yaml
-minio:
-  deploy: false
 s3:
+  deploy: false
   external:
     endpoint: "https://s3.amazonaws.com"
     existingSecret: "s3-credentials"
-    # Optional: Use secretKeys to specify the key names in the secret
-    # secretKeys:
-    #   accessKeyIdKey: "access-key-id"     # default
-    #   secretAccessKeyKey: "secret-access-key" # default
+    # Optional: override the key names in the secret
+    # existingSecretAccessKeyIdKey: "access-key-id"         # default
+    # existingSecretSecretAccessKeyKey: "secret-access-key" # default
 ```
 
 ### PostgreSQL SSL with custom CA certificates
