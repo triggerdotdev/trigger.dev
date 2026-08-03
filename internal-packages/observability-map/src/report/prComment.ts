@@ -56,7 +56,10 @@ function scoreLine(head: MapReport, base: MapReport | null): string {
       : `**${head.global}/100** over ${head.measured} measured of ${head.entries.length} entry points`;
 
   if (!base) return headline;
-  if (base.global === null || head.global === null) return `${headline} (base not measured)`;
+  // Head first: when this side has no score the headline already says so, and naming the base as the
+  // missing one sends the reader to the wrong commit.
+  if (head.global === null) return `${headline} (base ${base.global ?? "not measured"})`;
+  if (base.global === null) return `${headline} (base not measured)`;
 
   const diff = head.global - base.global;
   const comparison =

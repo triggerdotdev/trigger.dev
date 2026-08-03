@@ -130,6 +130,25 @@ describe("renderPrComment", () => {
       expect(row).not.toMatch(/\|\s*100\s*\|/);
     });
 
+    it("names the base score when it is the head that has none, not the base", () => {
+      const head = buildReport([scanFile("api.v1.auth.tokens.ts", trivial)!], []);
+      const base = buildReport([scanFile("api.v1.auth.tokens.ts", brokenSource)!], []);
+      expect(head.global).toBeNull();
+      expect(base.global).not.toBeNull();
+
+      const out = renderPrComment(head, base);
+      expect(out).toContain(`(base ${base.global})`);
+      expect(out).not.toContain("(base not measured)");
+    });
+
+    it("still says the base is the missing one when it really is", () => {
+      const head = buildReport([scanFile("api.v1.auth.tokens.ts", brokenSource)!], []);
+      const base = buildReport([scanFile("api.v1.auth.tokens.ts", trivial)!], []);
+      expect(base.global).toBeNull();
+
+      expect(renderPrComment(head, base)).toContain("(base not measured)");
+    });
+
     it("renders as not measured in the base column when the head gained real work", () => {
       const head = buildReport([scanFile("api.v1.auth.tokens.ts", brokenSource)!], []);
       const base = buildReport([scanFile("api.v1.auth.tokens.ts", trivial)!], []);
