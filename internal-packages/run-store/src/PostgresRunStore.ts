@@ -1,4 +1,4 @@
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, boundedIn } from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
@@ -247,7 +247,7 @@ async function batchHydrateJoinRelation(
   }
   const targetIds = [...new Set(links.map((l) => l[joinTargetField]))];
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -272,7 +272,7 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
     return byParent;
   }
   const rows = (await client.waitpoint.findMany(
-    targetFindManyArgs({ completedByTaskRunId: { in: parentIds } }, projection, [
+    targetFindManyArgs({ completedByTaskRunId: { in: boundedIn(parentIds) } }, projection, [
       "completedByTaskRunId",
     ])
   )) as Record<string, unknown>[];
@@ -316,7 +316,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     return byParent;
   }
   const edges = (await client.taskRunWaitpoint.findMany({
-    where: { waitpointId: { in: parentIds } },
+    where: { waitpointId: { in: boundedIn(parentIds) } },
   })) as Record<string, unknown>[];
   const nestedTaskRun = projection?.select?.taskRun;
   const runProjection = nestedTaskRun ? projectionOf(nestedTaskRun as SubProjection) : undefined;
@@ -326,7 +326,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     const runs = (
       runIds.length > 0
         ? await client.taskRun.findMany(
-            targetFindManyArgs({ id: { in: runIds } }, runProjection, ["id"])
+            targetFindManyArgs({ id: { in: boundedIn(runIds) } }, runProjection, ["id"])
           )
         : []
     ) as Record<string, unknown>[];
@@ -376,7 +376,7 @@ const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, 
   }
   const targetIds = [...new Set(links.map((l) => l.taskRunId))];
   const rows = (await client.taskRun.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -1472,7 +1472,7 @@ export class PostgresRunStore implements RunStore {
 
     // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt
     const result = await prisma.taskRun.updateMany({
-      where: { friendlyId: { in: params.byFriendlyIds } },
+      where: { friendlyId: { in: boundedIn(params.byFriendlyIds) } },
       data: { idempotencyKey: null },
     });
     return { count: result.count };
@@ -1705,7 +1705,9 @@ export class PostgresRunStore implements RunStore {
         ? { include: args.include }
         : {};
     const rows = (await this.findRuns(
-      { where: { id: { in: ids } }, ...projected } as Parameters<PostgresRunStore["findRuns"]>[0],
+      { where: { id: { in: boundedIn(ids) } }, ...projected } as Parameters<
+        PostgresRunStore["findRuns"]
+      >[0],
       client
     )) as Record<string, unknown>[];
     const byId = new Map<string, unknown>();
@@ -1797,7 +1799,7 @@ export class PostgresRunStore implements RunStore {
       return [];
     }
     return client.waitpoint.findMany({
-      where: { id: { in: links.map((l) => l.waitpointId) } },
+      where: { id: { in: boundedIn(links.map((l) => l.waitpointId)) } },
     });
   }
 

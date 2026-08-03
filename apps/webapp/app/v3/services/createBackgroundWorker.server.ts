@@ -767,7 +767,7 @@ export async function syncDeclarativeSchedules(
   const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
     where: {
       id: {
-        in: Array.from(missingSchedules),
+        in: boundedIn(Array.from(missingSchedules)),
       },
     },
     include: {
@@ -864,6 +864,7 @@ export async function createBackgroundFiles(
 
 import { createHash } from "crypto";
 
+import { boundedIn } from "@trigger.dev/database";
 function hashContent(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }

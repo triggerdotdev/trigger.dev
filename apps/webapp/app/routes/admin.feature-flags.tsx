@@ -28,6 +28,7 @@ import {
   DialogFooter,
 } from "~/components/primitives/Dialog";
 import { cn } from "~/utils/cn";
+import { boundedIn } from "@trigger.dev/database";
 import {
   UNSET_VALUE,
   BooleanControl,
@@ -146,7 +147,7 @@ export const action = dashboardAction(
     await prisma.$transaction([
       ...upsertOps,
       ...(keysToDelete.length > 0
-        ? [prisma.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
+        ? [prisma.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
         : []),
     ]);
 

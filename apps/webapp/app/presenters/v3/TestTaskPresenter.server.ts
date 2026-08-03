@@ -6,6 +6,7 @@ import {
   type RuntimeEnvironmentType,
   type TaskRunStatus,
   type TaskRunTemplate,
+  boundedIn,
 } from "@trigger.dev/database";
 import { inferSchema } from "@jsonhero/schema-infer";
 import parse from "parse-duration";
@@ -401,7 +402,7 @@ export class TestTaskPresenter {
     return this.runStore.findRuns(
       {
         where: {
-          id: { in: ids },
+          id: { in: boundedIn(ids) },
           payloadType: { in: ["application/json", "application/super+json"] },
         },
         select: RECENT_RUNS_SELECT,

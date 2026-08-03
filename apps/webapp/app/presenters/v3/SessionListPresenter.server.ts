@@ -1,6 +1,10 @@
 import { type Span } from "@opentelemetry/api";
 import { type ClickHouse } from "@internal/clickhouse";
-import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  boundedIn,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -188,7 +192,7 @@ export class SessionListPresenter {
           ? runStore.findRuns(
               {
                 where: {
-                  id: { in: currentRunIds },
+                  id: { in: boundedIn(currentRunIds) },
                   projectId,
                   runtimeEnvironmentId: environmentId,
                 },
