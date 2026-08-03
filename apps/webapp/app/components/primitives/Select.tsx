@@ -695,6 +695,15 @@ export function ComboBox({
   shortcut,
   ...props
 }: ComboBoxProps) {
+  const combobox = Ariakit.useComboboxContext();
+  const open = combobox?.useState("open");
+  const input = combobox?.useState("baseElement");
+
+  React.useEffect(() => {
+    if (!open || !input) return;
+    input.focus();
+  }, [open, input]);
+
   return (
     <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent pl-0 pr-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox

@@ -8,15 +8,16 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
-import { useIsImpersonating, useOptionalOrganization } from "~/hooks/useOrganizations";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 
 export function AdminDebugTooltip({ children }: { children?: React.ReactNode }) {
+  // `useHasAdminAccess` already folds in impersonation and the "view as user"
+  // toggle, so this one check is enough.
   const hasAdminAccess = useHasAdminAccess();
-  const isImpersonating = useIsImpersonating();
 
-  if (!hasAdminAccess && !isImpersonating) {
+  if (!hasAdminAccess) {
     return null;
   }
 

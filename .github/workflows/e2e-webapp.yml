@@ -15,7 +15,7 @@ jobs:
   e2eTests:
     name: "🧪 E2E Tests: Webapp"
     runs-on: warp-ubuntu-latest-x64-16x
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
@@ -80,6 +80,8 @@ jobs:
           docker pull postgres:14
           docker pull redis:7.2
           docker pull testcontainers/ryuk:0.11.0
+          docker pull ghcr.io/s2-streamstore/s2:0.40.0@sha256:b26249e2ede0949755f5af8028185dc2bcfc3aa2db21eb9610543d144eb6ee9d
+          docker pull minio/minio:latest
           echo "Image pre-pull complete"
 
       - name: 📥 Download deps
@@ -90,6 +92,9 @@ jobs:
 
       - name: 🏗️ Build Webapp
         run: pnpm run build --filter webapp
+
+      - name: 🎭 Install Playwright Chromium
+        run: cd apps/webapp && pnpm exec playwright install chromium
 
       - name: 🧪 Run Webapp E2E Tests
         run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default

@@ -2208,6 +2208,7 @@ model WorkerDeployment {
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
   @@index([commitSHA])
+  @@index([environmentId, createdAt])
 }
 
 enum WorkerDeploymentStatus {

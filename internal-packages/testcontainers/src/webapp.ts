@@ -3,7 +3,9 @@ import { createServer } from "net";
 import { delimiter, resolve } from "path";
 import { Network } from "testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { createPostgresContainer, createRedisContainer } from "./utils";
+import { createPostgresContainer, createRedisContainer, withCiResourceLimits } from "./utils";
+import { createS2Container, type StartedS2Container } from "./s2";
+import { MinIOContainer, type StartedMinIOContainer } from "./minio";
 
 const WEBAPP_ROOT = resolve(__dirname, "../../../apps/webapp");
 // pnpm hoists transitive deps to node_modules/.pnpm/node_modules but does NOT symlink them
@@ -65,6 +67,13 @@ export interface StartWebappOptions {
    * behaviour when the loader is short-circuited).
    */
   requirePlugins?: boolean;
+
+  /**
+   * Extra environment variables merged into the spawned webapp, after the
+   * defaults so they override them (e.g. the `REALTIME_STREAMS_S2_*` vars for
+   * session-stream e2e). `NODE_PATH` and the worker-disable vars still win.
+   */
+  extraEnv?: Record<string, string>;
 }
 
 export async function startWebapp(
@@ -115,6 +124,7 @@ export async function startWebapp(
       REDIS_HOST: redis.host,
       REDIS_PORT: String(redis.port),
       REDIS_TLS_DISABLED: "true", // all *_REDIS_TLS_DISABLED vars default to this; test Redis has no TLS
+      ...(options.extraEnv ?? {}),
       // Disable all background workers. Each worker has its own env var and its own
       // check idiom ("0" vs "false" vs boolean), so we set all of them explicitly.
       WORKER_ENABLED: "false", // disables workerQueue.initialize() (checked === "true")
@@ -254,4 +264,89 @@ export async function startTestServer(options: StartWebappOptions = {}): Promise
   };
 
   return { webapp, prisma: prisma!, databaseUrl: pgUrl!, stop };
+}
+
+export { createS2Container } from "./s2";
+export type { StartedS2Container } from "./s2";
+
+export interface SessionStreamTestServer extends TestServer {
+  s2: StartedS2Container;
+  minio: StartedMinIOContainer;
+}
+
+/**
+ * Full-stack session-stream harness: postgres + redis + s2-lite 0.40.0 + the
+ * real webapp, wired for S2 v2 realtime session streams. The webapp is a host
+ * process reaching every container over its mapped port, so the S2 endpoint is
+ * the mapped localhost URL (the docker-network alias is unusable from the host).
+ */
+export async function startSessionStreamTestServer(): Promise<SessionStreamTestServer> {
+  const network = await new Network().start();
+
+  let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pgUrl: string | undefined;
+  let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
+  let s2: StartedS2Container | undefined;
+  let minio: StartedMinIOContainer | undefined;
+  let prisma: PrismaClient | undefined;
+  let stopWebapp: (() => Promise<void>) | undefined;
+  let webapp: WebappInstance;
+
+  try {
+    const pg = await createPostgresContainer(network);
+    pgContainer = pg.container;
+    pgUrl = pg.url;
+
+    const { container: rc } = await createRedisContainer({ network });
+    redisContainer = rc;
+
+    s2 = await createS2Container(network);
+    minio = await withCiResourceLimits(new MinIOContainer()).withNetwork(network).start();
+    const minioConfig = minio.getConnectionConfig();
+
+    prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
+    await prisma.$connect();
+
+    const started = await startWebapp(
+      pg.url,
+      { host: rc.getHost(), port: rc.getPort() },
+      {
+        extraEnv: {
+          REALTIME_STREAMS_S2_ACCESS_TOKEN: "",
+          REALTIME_STREAMS_S2_BASIN: s2.basin,
+          REALTIME_STREAMS_S2_ENDPOINT: `${s2.endpoint}/v1`,
+          REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: "true",
+          REALTIME_STREAMS_DEFAULT_VERSION: "v2",
+          OBJECT_STORE_BASE_URL: minioConfig.baseUrl,
+          OBJECT_STORE_BUCKET: "packets",
+          OBJECT_STORE_ACCESS_KEY_ID: minioConfig.accessKeyId,
+          OBJECT_STORE_SECRET_ACCESS_KEY: minioConfig.secretAccessKey,
+          OBJECT_STORE_REGION: minioConfig.region,
+        },
+      }
+    );
+    webapp = started.instance;
+    stopWebapp = started.stop;
+  } catch (err) {
+    await stopWebapp?.().catch(() => {});
+    await prisma?.$disconnect().catch(() => {});
+    await minio?.stop().catch(() => {});
+    await s2?.container.stop().catch(() => {});
+    await pgContainer?.stop().catch(() => {});
+    await redisContainer?.stop().catch(() => {});
+    await network.stop().catch(() => {});
+    throw err;
+  }
+
+  const stop = async () => {
+    await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
+    await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
+    await minio!.stop().catch((err) => console.error("minio.stop failed:", err));
+    await s2!.container.stop().catch((err) => console.error("s2.stop failed:", err));
+    await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
+    await redisContainer!.stop().catch((err) => console.error("redisContainer.stop failed:", err));
+    await network.stop().catch((err) => console.error("network.stop failed:", err));
+  };
+
+  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, s2: s2!, minio: minio!, stop };
 }

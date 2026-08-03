@@ -520,8 +520,8 @@ describe("provisionMemberDevelopmentEnvironments", () => {
       });
 
       await provisionMemberDevelopmentEnvironments({
+        source: "invite",
         inviteId: invite.id,
-        user: { id: invitee.id, email: invitee.email },
         member,
         organization,
         projects: activeProjects,
@@ -545,7 +545,7 @@ describe("provisionMemberDevelopmentEnvironments", () => {
     { timeout: 60_000 },
     async ({ prisma }) => {
       prismaHolder.client = prisma;
-      const { provisionMemberDevelopmentEnvironments, ENV_SETUP_INCOMPLETE } =
+      const { provisionMemberDevelopmentEnvironments, DevEnvironmentProvisioningError } =
         await import("../app/models/member.server");
 
       const { invitee, organization, activeProjects, invite } = await seedInviteFixture(prisma, {
@@ -564,14 +564,13 @@ describe("provisionMemberDevelopmentEnvironments", () => {
 
       await expect(
         provisionMemberDevelopmentEnvironments({
-          inviteId: invite.id,
-          user: { id: invitee.id, email: invitee.email },
+          source: "sso_jit",
           member,
           organization,
           projects: [...activeProjects, { id: "missing-project-id" }],
           maximumConcurrencyLimit: 5,
         })
-      ).rejects.toThrow(ENV_SETUP_INCOMPLETE);
+      ).rejects.toThrow(DevEnvironmentProvisioningError);
 
       const devEnvs = await prisma.runtimeEnvironment.findMany({
         where: {
@@ -584,6 +583,57 @@ describe("provisionMemberDevelopmentEnvironments", () => {
       const envProjectIds = devEnvs.map((env) => env.projectId);
       expect(envProjectIds).toContain(activeProjects[0].id);
       expect(envProjectIds).toContain(activeProjects[1].id);
+    }
+  );
+});
+
+describe("acceptInvite environment provisioning failures", () => {
+  postgresTest(
+    "reports setup as incomplete and keeps the invite so it can be retried",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { acceptInvite, ENV_SETUP_INCOMPLETE, isAcceptInviteFormError } =
+        await import("../app/models/member.server");
+
+      const { invitee, organization, activeProjects, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 2,
+      });
+
+      const member = await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      const keys = devEnvKeys(`tr_stg_${randomHex(24)}`, `pk_stg_${randomHex(24)}`);
+      await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "dev",
+          type: "STAGING",
+          ...keys,
+          projectId: activeProjects[1].id,
+          organizationId: organization.id,
+          orgMemberId: member.id,
+        },
+      });
+
+      const error = await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(ENV_SETUP_INCOMPLETE);
+      expect(isAcceptInviteFormError(error)).toBe(true);
+
+      const remainingInvite = await prisma.orgMemberInvite.findFirst({
+        where: { id: invite.id },
+      });
+      expect(remainingInvite).not.toBeNull();
     }
   );
 });

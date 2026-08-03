@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.5.9
+
+### Patch Changes
+
+- Correct the `expirationTime` docs on `auth.createPublicToken` and the trigger-token helpers: a number is a Unix timestamp in seconds, not milliseconds. ([#4388](https://github.com/triggerdotdev/trigger.dev/pull/4388))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
 ## 4.5.8
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { timingSafeEqual } from "crypto";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";

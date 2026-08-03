@@ -21,6 +21,7 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
+import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
   normalizeThemeContrast,
@@ -90,6 +91,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const themeContrast = showThemeSwitcher
     ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
     : 0;
+  // Display-only: while impersonating, an admin can ask to see the dashboard
+  // the way the impersonated user sees it. Exposed from root so every route can
+  // read it.
+  //
+  // Resolved against the user this request authenticated as, which is the same
+  // condition `requireUser` applies — otherwise the flag the client reads and
+  // the `user.isViewingAsUser` the server computes could disagree, and the
+  // client-side admin UI would hide itself on a session that is not
+  // impersonating.
+  const { isViewingAsUser } = await getImpersonationState(request, user?.id);
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
@@ -97,6 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return typedjson(
     {
       user,
+      isViewingAsUser,
       toastMessage,
       posthogProjectKey,
       posthogUiHost,

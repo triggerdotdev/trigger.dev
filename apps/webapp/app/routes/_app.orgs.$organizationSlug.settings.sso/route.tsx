@@ -42,6 +42,7 @@ import { ssoController } from "~/services/sso.server";
 import { getSsoEntitlement } from "~/services/platform.v3.server";
 import type { DirectorySyncEffect, DirectorySyncStatus, Role } from "@trigger.dev/plugins";
 import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
+import { logger } from "~/services/logger.server";
 import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -328,7 +329,19 @@ export const action = dashboardAction(
           effects.push(...result.value.effects);
         }
         if (effects.length > 0) {
-          await applyDirectorySyncEffects(effects);
+          // The save itself has already been persisted, so a provisioning
+          // enqueue that failed must not turn it into an error page. There is no
+          // retry on this path; the members are repaired on their next sync.
+          const { unqueuedUserIds } = await applyDirectorySyncEffects(effects);
+          if (unqueuedUserIds.length > 0) {
+            logger.warn(
+              "directorySync: could not queue development environments after settings save",
+              {
+                organizationId: orgId,
+                userIds: unqueuedUserIds,
+              }
+            );
+          }
         }
         return redirect(`/orgs/${params.organizationSlug}/settings/sso`);
       }

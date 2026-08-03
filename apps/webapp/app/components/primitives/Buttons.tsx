@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { AgentDotMatrix } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -113,6 +114,16 @@ const theme = {
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
   },
+  // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
+  // softened trigger-green border.
+  "ask-ai": {
+    textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
+    button:
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
+    icon: "text-text-bright",
+  },
 };
 
 type Theme = keyof typeof theme;
@@ -125,6 +136,24 @@ function createVariant(sizeName: Size, themeName: Theme) {
     iconSpacing: sizes[sizeName].iconSpacing,
     shortcutVariant: sizes[sizeName].shortcutVariant,
     shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
+    // Rendered as the leading icon when the caller doesn't pass one.
+    defaultLeadingIcon: undefined as RenderIcon | undefined,
+  };
+}
+
+// The ask-ai button always leads with the square agent logo, so it supplies its
+// own leading icon and its padding is tuned around it: small = 16px logo, 4px
+// left / 6px right; medium 32/16 -> 8px; large 40/20 -> 10px. Pass an explicit
+// `LeadingIcon` (e.g. an <AgentDotMatrix active />) to animate it.
+function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
+  const base = createVariant(sizeName, "ask-ai");
+  return {
+    ...base,
+    button: cn(base.button, opticalPadding),
+    iconSpacing: "gap-x-1.5",
+    defaultLeadingIcon: (
+      <AgentDotMatrix size={logoSize} palette="mono" restColor="#ffffff" decorative />
+    ),
   };
 }
 
@@ -158,6 +187,9 @@ const variant = {
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
   "docs/extra-large": createVariant("extra-large", "docs"),
+  "ask-ai/small": createAskAiVariant("small", "px-1 pr-1.5", 16),
+  "ask-ai/medium": createAskAiVariant("medium", "px-2", 16),
+  "ask-ai/large": createAskAiVariant("large", "px-2.5", 20),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
@@ -166,6 +198,7 @@ const variant = {
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
   "small-menu-item": {
     textColor: "text-text-bright",
@@ -175,6 +208,7 @@ const variant = {
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
@@ -184,6 +218,7 @@ const variant = {
     iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
 };
 
@@ -240,6 +275,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
   }, [isLoading]);
 
   const variation = allVariants.variant[props.variant];
+  // Some variants (ask-ai) always lead with their own glyph unless overridden.
+  const leadingIcon = LeadingIcon ?? variation.defaultLeadingIcon;
 
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
@@ -269,9 +306,9 @@ export function ButtonContent(props: ButtonContentPropsType) {
             showSpinner && "invisible"
           )}
         >
-          {LeadingIcon && (
+          {leadingIcon && (
             <Icon
-              icon={LeadingIcon}
+              icon={leadingIcon}
               className={cn(
                 iconClassName,
                 variation.icon,

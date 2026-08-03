@@ -1,6 +1,10 @@
 import type { Organization, OrgMember, Project } from "@trigger.dev/database";
+import { z } from "zod";
 import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
-import { createEnvironment } from "./organization.server";
+import {
+  createDevelopmentEnvironmentForMember,
+  memberDevelopmentEnvironmentWhere,
+} from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
@@ -12,6 +16,31 @@ export const INVITE_BLOCKED_DIRECTORY_MANAGED =
   "Membership for this organization is managed by Directory Sync, so invites can't be accepted.";
 export const ENV_SETUP_INCOMPLETE =
   "You joined the organization, but we couldn't finish setting up your development environments. Please try accepting the invite again, or contact support if this persists.";
+
+/** How a membership came to exist. Also validates the queued job's payload. */
+export const MembershipSourceSchema = z.enum(["invite", "sso_jit", "directory_sync", "manual"]);
+
+export type MembershipSource = z.infer<typeof MembershipSourceSchema>;
+
+/** Thrown when provisioning fails partway through; the membership is still valid. */
+export class DevEnvironmentProvisioningError extends Error {
+  readonly logLevel = "warn" as const;
+
+  constructor(
+    message: string,
+    readonly context: {
+      source: MembershipSource;
+      organizationId: string;
+      orgMemberId: string;
+      failedProjectId?: string;
+      createdProjectIds: string[];
+    },
+    options?: { cause?: unknown }
+  ) {
+    super(message, options);
+    this.name = "DevEnvironmentProvisioningError";
+  }
+}
 
 export function isAcceptInviteFormError(error: unknown): error is Error {
   return (
@@ -186,7 +215,7 @@ export async function getUsersInvites({ email }: { email: string }) {
   });
 }
 
-async function getProjectsMissingMemberDevelopmentEnvironments({
+export async function getProjectsMissingMemberDevelopmentEnvironments({
   memberId,
   organizationId,
   projects,
@@ -201,10 +230,11 @@ async function getProjectsMissingMemberDevelopmentEnvironments({
 
   const existingEnvs = await prisma.runtimeEnvironment.findMany({
     where: {
-      orgMemberId: memberId,
       organizationId,
-      type: "DEVELOPMENT",
-      projectId: { in: projects.map((project) => project.id) },
+      ...memberDevelopmentEnvironmentWhere({
+        orgMemberId: memberId,
+        projectId: { in: projects.map((project) => project.id) },
+      }),
     },
     select: { projectId: true },
   });
@@ -214,15 +244,15 @@ async function getProjectsMissingMemberDevelopmentEnvironments({
 }
 
 export async function provisionMemberDevelopmentEnvironments({
+  source,
   inviteId,
-  user,
   member,
   organization,
   projects,
   maximumConcurrencyLimit,
 }: {
-  inviteId: string;
-  user: { id: string; email: string };
+  source: MembershipSource;
+  inviteId?: string;
   member: OrgMember;
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
   projects: Pick<Project, "id">[];
@@ -233,7 +263,7 @@ export async function provisionMemberDevelopmentEnvironments({
     organizationId: organization.id,
     projects,
   });
-  const projectIds = projects.map((project) => project.id);
+  const requestedProjectIds = projects.map((project) => project.id);
   const createdProjectIds: string[] = [];
   let failedProjectId: string | undefined;
   let failedProjectIndex: number | undefined;
@@ -243,39 +273,74 @@ export async function provisionMemberDevelopmentEnvironments({
       failedProjectId = project.id;
       failedProjectIndex = index;
 
-      await createEnvironment({
+      const { created } = await createDevelopmentEnvironmentForMember({
         organization,
         project,
-        type: "DEVELOPMENT",
-        // We set this true but no backfill (yet!?) so never used
-        // for dev environments
-        isBranchableEnvironment: true,
         member,
         maximumConcurrencyLimit,
       });
 
-      createdProjectIds.push(project.id);
+      if (created) {
+        createdProjectIds.push(project.id);
+      }
       failedProjectId = undefined;
       failedProjectIndex = undefined;
     }
   } catch (error) {
-    logger.error("acceptInvite: development environment creation failed after membership created", {
+    const message =
+      "provisionMemberDevelopmentEnvironments: development environment creation failed after membership created";
+    const context = {
+      source,
       inviteId,
-      userId: user.id,
+      userId: member.userId,
       organizationId: organization.id,
       orgMemberId: member.id,
-      projectIds,
+      requestedProjectIds,
       failedProjectId,
       failedProjectIndex,
-      totalProjects: projectsNeedingEnvs.length,
+      projectsNeedingEnvs: projectsNeedingEnvs.length,
       createdProjectIds,
       error:
         error instanceof Error
           ? { name: error.name, message: error.message, stack: error.stack }
           : String(error),
-    });
+    };
 
-    throw new Error(ENV_SETUP_INCOMPLETE);
+    if (source === "invite") {
+      logger.error(message, context);
+    } else {
+      logger.warn(message, context);
+    }
+
+    throw new DevEnvironmentProvisioningError(
+      `Failed to create development environments for org member ${member.id}`,
+      {
+        source,
+        organizationId: organization.id,
+        orgMemberId: member.id,
+        failedProjectId,
+        createdProjectIds,
+      },
+      { cause: error }
+    );
+  }
+}
+
+/** Provisions inline and surfaces a failure to the joiner as a retryable message. */
+async function provisionInviteDevelopmentEnvironments(args: {
+  inviteId: string;
+  member: OrgMember;
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  projects: Pick<Project, "id">[];
+  maximumConcurrencyLimit: number;
+}) {
+  try {
+    await provisionMemberDevelopmentEnvironments({ source: "invite", ...args });
+  } catch (error) {
+    if (error instanceof DevEnvironmentProvisioningError) {
+      throw new Error(ENV_SETUP_INCOMPLETE, { cause: error });
+    }
+    throw error;
   }
 }
 
@@ -375,9 +440,8 @@ async function tryRecoverIncompleteInviteAccept({
     "DEVELOPMENT"
   );
 
-  await provisionMemberDevelopmentEnvironments({
+  await provisionInviteDevelopmentEnvironments({
     inviteId,
-    user,
     member,
     organization: member.organization,
     projects: missingProjects,
@@ -484,9 +548,8 @@ export async function acceptInvite({
     }
   }
 
-  await provisionMemberDevelopmentEnvironments({
+  await provisionInviteDevelopmentEnvironments({
     inviteId,
-    user,
     member,
     organization: invite.organization,
     projects: invite.organization.projects,

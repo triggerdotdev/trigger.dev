@@ -65,6 +65,14 @@ class CountingPostgresRunStore extends PostgresRunStore {
     return super.createExecutionSnapshot(input, tx);
   }
 
+  override async createRun(
+    params: Parameters<PostgresRunStore["createRun"]>[0],
+    tx?: any
+  ): ReturnType<PostgresRunStore["createRun"]> {
+    this.creates++;
+    return super.createRun(params, tx);
+  }
+
   override async findLatestExecutionSnapshot(
     runId: string,
     client?: any
