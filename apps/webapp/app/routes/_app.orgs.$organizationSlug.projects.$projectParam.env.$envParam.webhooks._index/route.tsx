@@ -166,14 +166,11 @@ export default function Page() {
               <ListPagination list={{ pagination }} />
             </div>
           </div>
-          <div className="min-h-0 overflow-hidden">
-            <DeliveriesTable
-              deliveries={visibleDeliveries}
-              showWebhook
-              stickyHeader
-              hasFilters={hasFilters}
-            />
-          </div>
+          {/* Sits directly in the 1fr row, like the runs, sessions and batches lists. No
+              stickyHeader: that switches Table's container to overflow-visible, which stops it
+              being the scroll container. The header is sticky either way (TableHeader always sets
+              sticky top-0), and the other webhook tables only pass it because an ancestor scrolls. */}
+          <DeliveriesTable deliveries={visibleDeliveries} showWebhook hasFilters={hasFilters} />
         </div>
       </PageBody>
     </>
