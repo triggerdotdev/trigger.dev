@@ -83,7 +83,9 @@ export function DashboardAgentDraft({
             onSubmit={() => submit(input)}
             onStop={() => {}}
             isStreaming={false}
-            placeholderSuggestion={placeholderSuggestion}
+            // With the card open the field goes quiet: two competing calls to
+            // action in one block read as noise.
+            placeholderSuggestion={watchCard ? undefined : placeholderSuggestion}
             context={
               <DashboardAgentContextBanner
                 projectSlug={projectSlug}
