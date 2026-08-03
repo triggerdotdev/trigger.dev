@@ -463,8 +463,13 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
   // single fair pass can even see every key. The property to hold is that this
   // does NOT permanently starve the light key: as attackers advance their tags
   // out of the bottom of the window, the light key (still at the floor) rises
-  // into it and gets served, and every message drains exactly once. A bounded
-  // first-serve delay is fine; permanent starvation or a stuck drain is not.
+  // into it and gets served, and every message drains exactly once.
+  //
+  // The first-serve delay is bounded, and the bound is asserted rather than
+  // described. Measured: light is first served on step 9 with the flag on and
+  // step 72 with it off, and the run drains on step 79 (on) / 81 (off). The
+  // harness has no wall-clock wait and no randomness, so those are exact; the
+  // assertions below allow a little slack for tie-break churn only.
   redisTest(
     "ckManyKeys: light key is not starved when cardinality exceeds the fair window",
     async ({ redisContainer }) => {
@@ -512,6 +517,15 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
         onDrainStep: on.drainStep,
         offDrainStep: off.drainStep,
       });
+
+      // The bound: light waits at most a couple of fair rounds past the point
+      // where a 30-wide window has rotated the whole 61-variant set through it.
+      expect(onFirstServe).toBeLessThanOrEqual(12);
+      // And the fair order is what buys that: age order alone leaves light until
+      // the attackers are nearly drained.
+      expect(onFirstServe).toBeLessThan(0.25 * offFirstServe);
+      // Cardinality above the window costs no throughput either.
+      expect(on.drainStep).toBeLessThanOrEqual(off.drainStep + 5);
     }
   );
 
