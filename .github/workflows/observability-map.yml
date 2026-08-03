@@ -300,15 +300,21 @@ jobs:
           COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
         run: |
           rm -f /tmp/comment.md
+          # `--out` rather than a stdout redirect, for the reason the scan steps above give, and with a
+          # worse failure mode than theirs: the marker has to be the comment's first line for the
+          # lookup to find it, so a line printed ahead of the document makes every push post a new
+          # comment instead of updating the one already there. Held by
+          # `it("let the renderer write its own comment rather than capturing stdout")`.
           render() {
             pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts \
-              --commit-sha="$HEAD_SHA" --commit-url="$COMPARE_URL" "$@"
+              --commit-sha="$HEAD_SHA" --commit-url="$COMPARE_URL" --out=/tmp/comment.md.partial "$@"
           }
 
           # Every write goes through this, so a renderer that exits non-zero never leaves a 0-byte
           # comment.md for the upsert to skip in silence.
           emit() {
-            if render "$@" > /tmp/comment.md.partial; then
+            rm -f /tmp/comment.md.partial
+            if render "$@"; then
               mv /tmp/comment.md.partial /tmp/comment.md
               return 0
             fi

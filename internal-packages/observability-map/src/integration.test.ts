@@ -177,9 +177,18 @@ describe("the report workflow reconciles a comment the paths no longer reach", (
 
 /**
  * Asserts the shape that cannot have the stdout-capture bug rather than the pnpm version that happens
- * not to. Why, and why the render step is left alone: INTERNALS.md, "Tests, timeouts and CI".
+ * not to. Why: INTERNALS.md, "Tests, timeouts and CI".
  */
-describe("the report workflow's two scan steps", () => {
+describe("the report workflow's scan and render steps", () => {
+  it("let the renderer write its own comment rather than capturing stdout", () => {
+    const render = steps(read(REPORT)).find((step) => step.startsWith("📝 Render"))!;
+    expect(render).toBeDefined();
+    expect(render).toMatch(/--out=\S+\.md\S*/);
+    // The marker has to be the comment's first line for the lookup to find it, so a redirect that
+    // could put a package-manager banner ahead of the document costs the upsert, not just tidiness.
+    expect(render).not.toMatch(/render[^\n]*>\s*\S*\.md/);
+  });
+
   it("let the scanner write its own report rather than capturing stdout", () => {
     const scans = steps(read(REPORT)).filter((step) => step.startsWith("🔎 Scan"));
     expect(scans).toHaveLength(2);

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main, type Io } from "./prCommentCli.js";
@@ -195,6 +195,43 @@ describe("prCommentCli", () => {
     expect(r.err.split("\n").filter(Boolean)).toHaveLength(1);
     expect(r.err).toContain("head report is not valid JSON");
     expect(r.err).not.toContain(" at ");
+  });
+
+  describe("--out", () => {
+    it("writes the comment to the file and leaves stdout empty", () => {
+      const outPath = join(dir, "out-delta.md");
+      const r = run(headPath, basePath, `--out=${outPath}`);
+      expect(r.code).toBe(0);
+      expect(r.out).toBe("");
+
+      const written = readFileSync(outPath, "utf8");
+      expect(written.split("\n")[0]).toBe("<!-- observability-map-report -->");
+    });
+
+    it("writes an empty file when there is nothing to post, rather than no file", () => {
+      const outPath = join(dir, "out-nothing.md");
+      const r = run(unchangedPath, unchangedPath, `--out=${outPath}`);
+      expect(r.code).toBe(0);
+      expect(existsSync(outPath)).toBe(true);
+      expect(readFileSync(outPath, "utf8")).toBe("");
+    });
+
+    it("writes the resolved and scan-failed comments too", () => {
+      for (const mode of ["--resolved", "--scan-failed"]) {
+        const outPath = join(dir, `out${mode}.md`);
+        expect(run(mode, `--out=${outPath}`).code).toBe(0);
+        expect(readFileSync(outPath, "utf8").split("\n")[0]).toBe(
+          "<!-- observability-map-report -->"
+        );
+      }
+    });
+
+    it("truncates a file left by an earlier run", () => {
+      const outPath = join(dir, "out-stale.md");
+      writeFileSync(outPath, "stale content from a previous push\n");
+      expect(run(unchangedPath, unchangedPath, `--out=${outPath}`).code).toBe(0);
+      expect(readFileSync(outPath, "utf8")).toBe("");
+    });
   });
 
   it("exits 1 with a one-line message when base.json is malformed", () => {

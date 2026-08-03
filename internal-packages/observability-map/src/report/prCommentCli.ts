@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MapReport } from "../score.js";
@@ -72,6 +72,21 @@ export function main(argv: string[], io: Io = processIo): number {
   const headPath = positional[0];
   const basePath = positional[1];
 
+  /**
+   * The marker has to be the document's first line or the workflow's lookup cannot find the comment it
+   * left, and every later push posts a new one instead of updating it. `--out` keeps stdout free for
+   * whatever a tool decides to announce, the same reason `src/cli.ts` has it. An empty write is a real
+   * outcome and not a failure: it is how "post nothing" reaches the workflow's `-s` check.
+   */
+  const outPath = flag(args, "out");
+  const write = (text: string) => {
+    if (outPath === undefined) {
+      if (text) io.out(text);
+      return;
+    }
+    writeFileSync(outPath, text);
+  };
+
   let commit: CommitContext | undefined;
   try {
     commit = commitFrom(args);
@@ -81,12 +96,12 @@ export function main(argv: string[], io: Io = processIo): number {
   }
 
   if (scanFailed) {
-    io.out(`${renderScanFailedComment(commit)}\n`);
+    write(`${renderScanFailedComment(commit)}\n`);
     return 0;
   }
 
   if (resolved) {
-    io.out(`${renderResolvedComment(commit)}\n`);
+    write(`${renderResolvedComment(commit)}\n`);
     return 0;
   }
 
@@ -106,12 +121,10 @@ export function main(argv: string[], io: Io = processIo): number {
   }
 
   if (hasDelta(head, base)) {
-    io.out(`${renderPrComment(head, base, commit)}\n`);
+    write(`${renderPrComment(head, base, commit)}\n`);
     return 0;
   }
-  if (existingComment) {
-    io.out(`${renderResolvedComment(commit)}\n`);
-  }
+  write(existingComment ? `${renderResolvedComment(commit)}\n` : "");
   return 0;
 }
 

@@ -489,6 +489,12 @@ because
 `JSON.parse` and degrades the workflow to the stale-report comment permanently. What is asserted is
 the shape that cannot have the bug rather than the pinned 10.33.2 that happens not to.
 
+The render step writes through `--out` for the same reason, and its failure mode is the worse of the
+two. `renderPrComment` puts the marker on the first line and the lookup finds the comment with
+`startswith` on it, so a line printed ahead of the document does not degrade the comment, it hides it:
+the next push finds no id and posts a second comment, and no later run can reconcile either. The scan
+steps degrade to a stale report, which at least stays one comment.
+
 The corpus runs on the package's own paths and on a schedule rather than on every route pull request,
 because it measures the tool's resistance to laundering, which only an edit to the tool can weaken,
 and it costs four and a half minutes. The nightly covers tree drift late rather than not at all.
