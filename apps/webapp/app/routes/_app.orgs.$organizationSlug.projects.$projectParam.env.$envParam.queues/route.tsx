@@ -1,4 +1,3 @@
-// SCORER TEST FIXTURE: comment-only, no behaviour change. Never merge.
 import {
   ArrowUpCircleIcon,
   BookOpenIcon,
@@ -218,7 +217,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           };
         }
       } catch (error) {
-        logger.warn("Queue list metrics unavailable, rendering without them", { error });
+        logger.warn("Queue list metrics unavailable, rendering without them", {
+          error,
+          environmentId: environment.id,
+        });
       }
     }
 
