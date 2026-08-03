@@ -26,6 +26,10 @@ jobs:
   # evaluates it once per workflow. This narrows it again for the corpus job alone.
   changes:
     name: 🔍 Which paths moved
+    # Only the pull request path reads this job's output. On a schedule the action has no base to
+    # diff, warns that `before` is missing and reports the files in the last commit on main, which
+    # nothing then consults. Skipping it there keeps the nightly off a job it does not need.
+    if: github.event_name == 'pull_request'
     runs-on: warp-ubuntu-latest-x64-2x
     outputs:
       package: ${{ steps.filter.outputs.package }}
@@ -63,7 +67,20 @@ jobs:
   mutation-corpus:
     name: 🧬 Mutation corpus
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.package == 'true'
+    # `!cancelled()` is here for the nightly, not for tidiness. `needs` carries an implicit
+    # success() on the job it names, and that implicit test outranks the `||` below: with a plain
+    # condition, a `changes` job that failed or was skipped skips this one, so the nightly would
+    # stop scanning for tree drift and report nothing about having stopped. A status-check function
+    # in the `if` is what drops the implicit success(), so the event test below decides alone.
+    # `!cancelled()` rather than `always()` because `cancel-in-progress` above is a real path and a
+    # superseded run should not finish this job.
+    #
+    # Pull request behaviour is deliberately unchanged: on a PR a failed `changes` leaves
+    # `needs.changes.outputs.package` empty, so the corpus still skips. The nightly is the backstop
+    # for that, which is the same trade the paths gate already makes for routes-only pull requests.
+    if: >-
+      !cancelled() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.package == 'true')
     runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
