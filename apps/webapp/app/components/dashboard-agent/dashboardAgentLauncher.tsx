@@ -1,9 +1,8 @@
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { createContext, useContext } from "react";
+import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
-import { cn } from "~/utils/cn";
 
 /**
  * Opens and closes the panel. Registered once, by `DashboardAgent`; the launcher
@@ -63,18 +62,9 @@ export function DashboardAgentLauncher() {
         </span>
       }
       button={
-        <button
-          type="button"
-          aria-label="Ask Trigger"
-          onClick={() => setOpen(true)}
-          className={cn(
-            "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
-            "border-border-bright bg-background-bright hover:border-border-brighter"
-          )}
-        >
-          <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
-          Ask Trigger
-        </button>
+        <Button variant="ask-ai/small" aria-label="Ask AI" onClick={() => setOpen(true)}>
+          Ask AI
+        </Button>
       }
     />
   );
