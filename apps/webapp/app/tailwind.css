@@ -726,12 +726,15 @@
   & table {
     @apply w-full my-2 border-collapse;
   }
+  /* Theme-mapped, not raw charcoal — a charcoal header is a black bar in
+     light-mode prose. */
   & th,
   & td {
-    @apply border border-charcoal-600 px-2 py-1 text-left;
+    @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply bg-charcoal-700 font-semibold;
+    @apply font-semibold;
+    background-color: var(--muted);
   }
 
   & [data-code-block-header] {
