@@ -20,6 +20,7 @@ export function DashboardAgentComposer({
   context,
   layout = "docked",
   autoFocus = true,
+  placeholderSuggestion,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -38,6 +39,12 @@ export function DashboardAgentComposer({
   // Off only where a composer isn't the thing the user came for — the storybook
   // gallery renders several at once and must not steal the page's focus.
   autoFocus?: boolean;
+  /**
+   * A suggested prompt shown as the placeholder while the field is empty.
+   * Tab accepts it into the field as editable text — it is never sent on its
+   * own. Once anything is typed, Tab goes back to being Tab.
+   */
+  placeholderSuggestion?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -56,7 +63,7 @@ export function DashboardAgentComposer({
     // destructive action.
     <Button
       variant="minimal/small"
-      className="aspect-square h-6 p-1"
+      className="aspect-square h-6 min-w-0 p-1"
       aria-label="Stop generating"
       tooltip="Stop generating"
       onClick={onStop}
@@ -65,7 +72,7 @@ export function DashboardAgentComposer({
   ) : (
     <Button
       variant="primary/small"
-      className="aspect-square h-6 p-1"
+      className="aspect-square h-6 min-w-0 p-1"
       aria-label="Send"
       tooltip="Send"
       onClick={onSubmit}
@@ -106,8 +113,19 @@ export function DashboardAgentComposer({
                 e.preventDefault();
                 onSubmit();
               }
+              // Tab accepts the suggested placeholder into the field (still
+              // editable, not sent). Only while empty — with text present, Tab
+              // keeps its normal focus behavior.
+              if (e.key === "Tab" && !e.shiftKey && placeholderSuggestion && value === "") {
+                e.preventDefault();
+                onChange(placeholderSuggestion);
+                requestAnimationFrame(() => {
+                  const el = ref.current;
+                  el?.setSelectionRange(el.value.length, el.value.length);
+                });
+              }
             }}
-            placeholder="Type a message…"
+            placeholder={placeholderSuggestion ?? "Type a message…"}
             aria-label="Message the dashboard agent"
             className={cn(
               "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0",

@@ -972,7 +972,7 @@ describe("buildDashboardAgentTools", () => {
     await expect(
       callTool("navigate_to", { destination: { kind: "error", fingerprint: "error_1" } })
     ).resolves.toEqual({
-      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/error/error_1" },
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/error/1" },
     });
 
     // A queue name's `/` is percent-encoded, so a task queue round-trips.
@@ -1153,9 +1153,9 @@ describe("buildDashboardAgentTools", () => {
     expect(output.error).toBeUndefined();
     const investigation = output.blocks[0].investigation;
     expect(investigation.hypotheses[0].evidence.map((e: { uri: string }) => e.uri)).toEqual([
-      "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
+      "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
       "trigger://proj_abc/env_abc/deployment/20260726.4",
-      "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
+      "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     ]);
     expect(investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
       "trigger://proj_abc/env_abc/run/run_abc123",
@@ -1349,7 +1349,7 @@ describe("buildDashboardAgentTools", () => {
     // The follow-up that navigates points at the canonical error URI.
     expect(actions[2].intent).toEqual({
       kind: "navigate",
-      target: "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
+      target: "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     });
   });
 
