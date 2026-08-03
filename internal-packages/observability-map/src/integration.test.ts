@@ -326,41 +326,70 @@ describe("counting candidates independently of the scanner", () => {
   });
 });
 
+/**
+ * Timeout for the two real-tree tests, which do not fit the suite's 10s default: the first runs a
+ * ts.Program per route file for the parse diagnostics and walks the tree a second time to count
+ * candidates, the second scans the tree twice and re-scans every source with the suppression
+ * directive prepended.
+ *
+ * It is a hang detector and nothing else. Neither test asserts anything about how long the scan
+ * takes, so a number tight enough to be a performance budget would only be a way to fail on a busy
+ * runner, and a performance budget that flakes gets the whole suite marked unreliable.
+ *
+ * The old 30s and 60s were chosen on an idle machine and the 30s one does flake. Measured on an
+ * 8-core box, this file alone at load average 0.9: 6.3-6.4s for the scan, 10.8-11.2s for the sweep.
+ * Twenty-four runs of it as two batches of twelve concurrent copies on those same 8 cores:
+ * 24.2-34.0s for the scan and 27.6-39.7s for the sweep, with one of the first twelve dying on
+ * "Test timed out in 30000ms". That contention is not hypothetical:
+ * `.github/workflows/unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"` as
+ * twelve concurrent shard processes on one runner, and this file executes inside one of them.
+ *
+ * The local reproduction is deliberately harsher than CI, which is why it is the thing to size
+ * against: twelve processes over 8 cores is 1.5 per core where the 32-vCPU runner is 0.375. 120s is
+ * 3x the worst contended run measured and about 11x the idle sweep. 60s was the other candidate and
+ * is not enough on those numbers: the sweep already reached 39.7s, which is 1.5x, and a margin that
+ * thin on a machine nobody controls is how the 30s got here.
+ */
+const TREE_SCAN_TIMEOUT = 120_000;
+
 describe("scanning the real webapp routes", () => {
-  it("parses every route file and produces a report inside a wide band", () => {
-    const { entryPoints, parseFailures } = scanDirectory(ROUTES);
+  it(
+    "parses every route file and produces a report inside a wide band",
+    () => {
+      const { entryPoints, parseFailures } = scanDirectory(ROUTES);
 
-    expect(parseFailures).toEqual([]);
-    expect(entryPoints.length).toBeGreaterThan(100);
-    expect(entryPoints.length).toBeLessThan(countRouteModuleFiles(ROUTES));
+      expect(parseFailures).toEqual([]);
+      expect(entryPoints.length).toBeGreaterThan(100);
+      expect(entryPoints.length).toBeLessThan(countRouteModuleFiles(ROUTES));
 
-    const report = buildReport(entryPoints, parseFailures);
-    expect(report.global).toBeGreaterThanOrEqual(0);
-    expect(report.global).toBeLessThanOrEqual(100);
-    expect(Object.keys(report.byFamily).length).toBeGreaterThan(1);
-    // A full scan of the real tree runs a `ts.Program` per file for the parse diagnostics, and
-    // `countRouteModuleFiles` walks the tree a second time. That is 1.6 to 2.6 seconds on an idle
-    // machine and it flaked past the suite's 10s default under parallel load. Budgeted rather than
-    // left marginal, the same way the exhaustive sweep below is.
-  }, 30_000);
+      const report = buildReport(entryPoints, parseFailures);
+      expect(report.global).toBeGreaterThanOrEqual(0);
+      expect(report.global).toBeLessThanOrEqual(100);
+      expect(Object.keys(report.byFamily).length).toBeGreaterThan(1);
+    },
+    TREE_SCAN_TIMEOUT
+  );
 
   // A1, exhaustive: every scored check suppressed on every real route, zero behavioural change.
   // The old measured-from-visible logic took this global from 17 to 33 and measured from 412 to
   // 176, because every entry whose only applicable checks were suppressed dropped out of the
   // mean. Measured must not move: every entry point that had something applicable still does.
-  it("suppressing every scored check on every real route does not raise the global", () => {
-    const { entryPoints, parseFailures } = scanDirectory(ROUTES);
-    const before = buildReport(entryPoints, parseFailures);
+  it(
+    "suppressing every scored check on every real route does not raise the global",
+    () => {
+      const { entryPoints, parseFailures } = scanDirectory(ROUTES);
+      const before = buildReport(entryPoints, parseFailures);
 
-    const directive = SCORED_CHECK_IDS.map(
-      (id) => `// obs-map-disable ${id} -- exhaustive sweep\n`
-    ).join("");
-    const suppressed = entryPoints.map((ep) => scanFile(ep.fileName, directive + ep.source)!);
-    const after = buildReport(suppressed, parseFailures);
+      const directive = SCORED_CHECK_IDS.map(
+        (id) => `// obs-map-disable ${id} -- exhaustive sweep\n`
+      ).join("");
+      const suppressed = entryPoints.map((ep) => scanFile(ep.fileName, directive + ep.source)!);
+      const after = buildReport(suppressed, parseFailures);
 
-    expect(after.measured).toBe(before.measured);
-    expect(after.unmeasured).toBe(before.unmeasured);
-    expect(after.global).not.toBeGreaterThan(before.global!);
-    // Two full tree scans plus a re-scan of every source, which does not fit the suite default.
-  }, 60_000);
+      expect(after.measured).toBe(before.measured);
+      expect(after.unmeasured).toBe(before.unmeasured);
+      expect(after.global).not.toBeGreaterThan(before.global!);
+    },
+    TREE_SCAN_TIMEOUT
+  );
 });
