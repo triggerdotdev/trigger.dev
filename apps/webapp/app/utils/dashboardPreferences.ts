@@ -64,10 +64,14 @@ const DashboardPreferences = z.object({
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
 
-const DEFAULT_PREFERENCES: DashboardPreferences = {
-  version: "1",
-  projects: {},
-};
+/* A function, not a shared constant: the writers mutate through these objects,
+   so each caller needs its own container */
+function defaultPreferences(): DashboardPreferences {
+  return {
+    version: "1",
+    projects: {},
+  };
+}
 
 /** Parses the stored JSON, falling back to defaults on missing or invalid data. */
 export function parseDashboardPreferences(
@@ -75,13 +79,13 @@ export function parseDashboardPreferences(
   onError?: (error: z.ZodError) => void
 ): DashboardPreferences {
   if (!data) {
-    return { ...DEFAULT_PREFERENCES };
+    return defaultPreferences();
   }
 
   const result = DashboardPreferences.safeParse(data);
   if (!result.success) {
     onError?.(result.error);
-    return { ...DEFAULT_PREFERENCES };
+    return defaultPreferences();
   }
 
   return result.data;
