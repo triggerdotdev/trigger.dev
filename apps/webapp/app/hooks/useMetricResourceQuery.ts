@@ -51,7 +51,11 @@ function cacheSet(key: string, rows: MetricResourceRow[]) {
  * back-navigation to the queues list) shows its last data immediately and revalidates in the
  * background rather than flashing a loading skeleton.
  */
-/** An empty query means the caller has nothing to ask for, so no request is made. */
+/**
+ * An empty query means the caller has nothing to ask for, so no request is made and any rows or
+ * failure left by a previous query are dropped — a caller that stops asking must not keep reading
+ * the last answer, or a stale failure would outlive the query that caused it.
+ */
 export function useMetricResourceQuery(query: string, opts: MetricResourceQueryOptions) {
   const {
     organizationId,
@@ -103,6 +107,10 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
 
   const load = useCallback(() => {
     if (!query) {
+      abortRef.current?.abort();
+      loadedKeyRef.current = cacheKey;
+      setRows(null);
+      setFailed(false);
       setIsLoading(false);
       return;
     }
