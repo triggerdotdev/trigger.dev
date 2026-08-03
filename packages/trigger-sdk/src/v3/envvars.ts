@@ -338,7 +338,7 @@ export function update(
 
     $projectRef = projectRefOrName;
     $slug = slugOrParams;
-    $name = name!;
+    $name = nameOrRequestOptions as string;
     $params = params;
   }
 
