@@ -28,8 +28,8 @@ function builderExports(ep: EntryPoint): BuilderExport[] {
 
 /**
  * Whether a route the builder authenticated is also narrowed to the caller. The IDOR class it
- * measures, the two ways to be scoped, and why `ability.can(...)` is deliberately not a third:
- * README, "Authenticated is not the same as scoped".
+ * measures: README, "The five checks". The two ways to be scoped, and why `ability.can(...)` is
+ * deliberately not a third: INTERNALS.md, "What auth-scope reads as scoping".
  *
  * There is no triviality test here because `isTrivial` answers false for any route with an
  * initializer callee, and no delegating test because `scoreEntry` answers for every check before any

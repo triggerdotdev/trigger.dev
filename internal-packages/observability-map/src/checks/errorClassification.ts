@@ -31,7 +31,7 @@ export const BUILDERS = new Set([
  * An absolute count and not a ratio against the enclosing body, or padding the body relabels the
  * same broad swallow as a narrow guard (`inert-statements-after-try`). The count is NOT unpaddable,
  * which an earlier docstring claimed: it is one condition of three and no longer the load-bearing
- * one. See README, "Parse guards, and the narrow-try count".
+ * one. See INTERNALS.md, "Parse guards, and the narrow-try count".
  */
 const NARROW_TRY_STATEMENTS = 2;
 
@@ -88,7 +88,7 @@ function swallows(clause: CatchEvidence): boolean {
  * and is defeated by one inert call, so `try { String(0); }` reads as classification and takes the
  * tree from 19 to 44. `dead-classifying-try-with-call` in the mutation corpus is that shape,
  * running as an expected failure. Read the rule as "refuses `try { 0; }`", never as "an unreachable
- * catch cannot be credited". Everything else here: README, "The dead-code defence".
+ * catch cannot be credited". Everything else here: INTERNALS.md, "The dead-code defence".
  */
 export const errorClassification = {
   id: ID,

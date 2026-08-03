@@ -32,7 +32,7 @@ function logLevel(callee: string): string {
  * is the whole point rather than an oversight: its failures go to the global handler, which names no
  * tenant. Passing those routes, as this check used to, meant deleting every catch clause in the tree
  * scored it 100, and excusing them as not-applicable is the same mistake in quieter clothes. What the
- * platform attaches centrally and why none of it is a tenant: README, "What 19 means".
+ * platform attaches centrally and why none of it is a tenant: README, "What the score means".
  */
 export const requestContext = {
   id: ID,

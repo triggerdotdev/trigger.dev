@@ -18,7 +18,7 @@ const MAX_STATEMENTS = 3;
 /**
  * What the rule reads, so the entry-point-wide answer and a single export's answer are the same rule
  * over different bodies rather than two rules that can drift. Both limits, the reluctance and the
- * measured `hintText` decision: README, "Triviality, in detail".
+ * measured `hintText` decision: INTERNALS.md, "Triviality, in detail".
  */
 type TrivialityView = {
   statementCount: number;

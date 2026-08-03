@@ -213,7 +213,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
  * misses is a change the pull request silently does not report. The terms overlap on purpose, and
  * what is defended is that their union is complete rather than that each one is load bearing.
  * `MapReport.suppressions` is the one term deliberately left out, because its totals are summed from
- * the very per-entry arrays the loop below compares. See README, "Reporting".
+ * the very per-entry arrays the loop below compares. See INTERNALS.md, "Reporting".
  */
 export function hasDelta(head: MapReport, base: MapReport | null): boolean {
   if (!base) return true;

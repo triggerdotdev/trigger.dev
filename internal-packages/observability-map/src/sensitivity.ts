@@ -5,7 +5,8 @@ import { routePathOf } from "./adapters/remix.js";
  * Symbols whose presence says the route does something risky: minting or revoking a credential,
  * escalating to another user, destroying a tenant. Calling a guard is never one of them, because a
  * mitigation cannot be the hazard, and `webappSymbols.test.ts` fails if a name stops resolving in the
- * webapp. Both rules and what they cost: README, "Sensitivity, and the names the tool matches on".
+ * webapp. Both rules and what they cost: INTERNALS.md, "Sensitivity, and the names the tool
+ * matches on".
  */
 export const SENSITIVE_SYMBOLS = [
   // Escalation: acting as another user.

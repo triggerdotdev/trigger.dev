@@ -23,7 +23,7 @@ const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
 /**
  * Where a corpus entry goes when the tool does not defend it. `it.fails` keeps the entry running, so
  * closing the hole later turns this file red until the entry is moved back out deliberately. Both
- * gaps are described at length in README, "The mutation harness".
+ * gaps are described at length in INTERNALS.md, "The mutation harness".
  */
 const KNOWN_GAPS = new Set<string>([
   // `canRaise` accepts any call at all, so `try { String(0); }` reads as a clause guarding real work
@@ -201,7 +201,8 @@ function mutate(
  * Deliberately NOT gated behind `OBS_MAP_MUTATION_CORPUS`, unlike everything below it: the corpus
  * cannot catch its own omission by failing, since omitting a check from the sweep lowers the score
  * rather than raising it. Belongs in the default suite so adding a check without extending the corpus
- * turns `pnpm test` red rather than a job nobody runs locally. See README, "The mutation harness".
+ * turns `pnpm test` red rather than a job nobody runs locally. See INTERNALS.md, "The mutation
+ * harness".
  */
 describe("the corpus keeps up with the check registry", () => {
   it("suppresses every registered check in the exhaustive sweep", () => {
@@ -303,7 +304,7 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
   /**
    * How much a mutation must reach before its result means anything, since one that silently matched
    * nothing would otherwise pass by leaving the tree alone. On sites and not only files, and why
-   * verdict movement cannot be the guard instead: README, "The mutation harness".
+   * verdict movement cannot be the guard instead: INTERNALS.md, "The mutation harness".
    */
   const MINIMUM_FILES_TOUCHED = 20;
   const MINIMUM_SITES_TOUCHED = 40;

@@ -21,7 +21,7 @@ import { SCORED_CHECK_IDS } from "./checks/index.js";
  * The coupling is acceptable because nothing here names a route or a count: the scan must not crash,
  * the entry point count must sit inside a wide band, and parse failures must be zero. Those are the
  * only things a fixture tree cannot tell us, since a fixture only contains shapes somebody thought to
- * write down. How the whole suite is gated in CI: README, "Tests, timeouts and CI".
+ * write down. How the whole suite is gated in CI: INTERNALS.md, "Tests, timeouts and CI".
  */
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 
@@ -93,7 +93,8 @@ const steps = (block: string) => block.split(/^ {6}- name: /m).slice(1);
 
 /**
  * The one thing the docstring checker cannot reach, since it walks `src/` only. What the C1 defect was
- * and what replaced it: README, "Tests, timeouts and CI". These are text checks over the workflow
+ * and what replaced it: INTERNALS.md, "Tests, timeouts and CI". These are text checks over the
+ * workflow
  * rather than a parse of its semantics, so they catch the wiring coming apart and nothing about
  * whether GitHub agrees.
  */
@@ -176,7 +177,7 @@ describe("the report workflow reconciles a comment the paths no longer reach", (
 
 /**
  * Asserts the shape that cannot have the stdout-capture bug rather than the pnpm version that happens
- * not to. Why, and why the render step is left alone: README, "Tests, timeouts and CI".
+ * not to. Why, and why the render step is left alone: INTERNALS.md, "Tests, timeouts and CI".
  */
 describe("the report workflow's two scan steps", () => {
   it("let the scanner write its own report rather than capturing stdout", () => {
@@ -288,7 +289,7 @@ describe("the package's tests are wired into the gate", () => {
 /**
  * The third road into this suite, `turbo run test`. Asserts the task is uncacheable, because the
  * config is one line and reads like a performance oversight to anyone who does not know what the suite
- * reads. Measurement and the rejected `inputs` alternative: README, "Tests, timeouts and CI".
+ * reads. Measurement and the rejected `inputs` alternative: INTERNALS.md, "Tests, timeouts and CI".
  */
 describe("the third road in, turbo", () => {
   it("keeps its test task out of the turbo cache", () => {
@@ -322,7 +323,7 @@ describe("counting candidates independently of the scanner", () => {
  * Timeout for the two real-tree tests, which do not fit the suite's 10s default. A hang detector and
  * nothing else: neither test asserts anything about how long a scan takes, so a number tight enough to
  * be a performance budget would only be a way to fail on a busy runner. The contention measurements
- * behind 120s, and why 60s is not enough: README, "Tests, timeouts and CI".
+ * behind 120s, and why 60s is not enough: INTERNALS.md, "Tests, timeouts and CI".
  */
 const TREE_SCAN_TIMEOUT = 120_000;
 

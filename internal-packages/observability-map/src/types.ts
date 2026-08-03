@@ -9,7 +9,7 @@ export type CheckResult = {
 /**
  * One catch clause in a loader/action body, or in a same-file helper the body calls. Per clause
  * rather than per entry point, so a narrow parse guard sitting beside a broad handler catch stays
- * legible. Every field's exact rule and its measured reasoning: README, "Catch evidence, per
+ * legible. Every field's exact rule and its measured reasoning: INTERNALS.md, "Catch evidence, per
  * clause".
  */
 export type CatchEvidence = {
@@ -54,7 +54,7 @@ export type LogCall = {
 
 /**
  * Body-scoped evidence for one route module. Which fields are per export and why, and what "the
- * body" means: README, "How the scanner reads a route".
+ * body" means: INTERNALS.md, "How the scanner reads a route".
  */
 export type EntryPoint = {
   fileName: string;

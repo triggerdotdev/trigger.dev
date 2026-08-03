@@ -3,7 +3,7 @@ import ts from "typescript";
 /**
  * Source-to-source mutations for the tree-scale corpus in `mutationCorpus.test.ts`. Why they are text
  * rewrites rather than reprints, what `preserving` and `deleting` mean, and why the additive direction
- * is tracked separately in `ADDITIVE_IDS`: README, "The mutation harness".
+ * is tracked separately in `ADDITIVE_IDS`: INTERNALS.md, "The mutation harness".
  */
 
 export type MutationKind = "preserving" | "deleting";
@@ -306,7 +306,7 @@ function bindingNameOf(clause: ts.CatchClause): string | null {
 /**
  * Splice a statement in at the HEAD of every catch clause that names its binding, which is the whole
  * point of the helper: 234 of the tree's 260 clauses end in a `return` or a `throw`, so an appended
- * shape was dead by ordering before the rule under test looked at it. See README, "The mutation
+ * shape was dead by ordering before the rule under test looked at it. See INTERNALS.md, "The mutation
  * harness".
  */
 function prependToEveryCatch(

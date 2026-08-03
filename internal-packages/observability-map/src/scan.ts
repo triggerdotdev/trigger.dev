@@ -92,7 +92,7 @@ const CALLER_ID_FIELD =
 /**
  * Callees handed the caller's id that cannot narrow a read with it: the log line and the response
  * body. A denylist of sinks rather than an allowlist of query callees, which is a measurement and not
- * a preference. See README, "What auth-scope reads as scoping".
+ * a preference. See INTERNALS.md, "What auth-scope reads as scoping".
  */
 const NON_SCOPING_CALLEE = /(^|\.)console\.[A-Za-z_$][\w$]*$|^(json|typedjson|defer)$/;
 
@@ -135,7 +135,7 @@ function isHandedToAScopingCall(property: ts.PropertyAssignment): boolean {
 
 /**
  * Whether any handler in `fns` assigns the caller's own id to an object-literal property. Three
- * conditions, all load bearing: README, "What auth-scope reads as scoping".
+ * conditions, all load bearing: INTERNALS.md, "What auth-scope reads as scoping".
  *
  * Per export rather than per entry point, which is why it is computed here rather than in the main
  * body walk. Nested functions are walked, since a filter built inside a callback still filters.
@@ -272,7 +272,7 @@ function canRaise(node: ts.Node): boolean {
 
 /**
  * What the guarded region does, in the three terms `error-classification` needs. Each term's rule
- * and measurement: README, "Catch evidence, per clause".
+ * and measurement: INTERNALS.md, "Catch evidence, per clause".
  *
  * Two residuals in opposite directions, both live. `guardCanRaise` refuses `try { 0; }` and nothing
  * cleverer, because `canRaise` accepts any call at all, so `try { String(0); }` reads as
@@ -577,7 +577,7 @@ function tryBlockMayThrow(block: ts.Block): boolean {
 /**
  * Whether the tree rooted at `root` contains a node `hit` accepts that a provably-untaken branch does
  * not already rule out. Strictly subtractive against a plain containment read, which is what lets its
- * two callers read it for opposite purposes: see README, "Two folds, pointing opposite ways".
+ * two callers read it for opposite purposes: see INTERNALS.md, "Two folds, pointing opposite ways".
  *
  * The `exited` half is pinned by `dead and deferred code prepended to a deciding catch does not blind
  * it` and the `BRANCH_EXITED` family; the `selectsADistinctPath` half by `an arm whose only exit is
@@ -695,8 +695,9 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
  * Both answers are read off the clause's own guaranteed path: the walk enters a construct exactly
  * where the entered statements are guaranteed to execute whenever the clause body runs, so no credit
  * can ever come from code a semantics-preserving edit could have added dead. Which constructs are
- * entered and which are refused, and the eleven dead spellings this replaced: README, "The dead-code
- * defence". `dead-*` in the mutation corpus is the tree-scale proof, one entry per shape.
+ * entered and which are refused, and the eleven dead spellings this replaced: INTERNALS.md,
+ * "The dead-code defence". `dead-*` in the mutation corpus is the tree-scale proof, one entry per
+ * shape.
  *
  * The cost is real, in both rules. `catch (e) { if (transient) throw e; return null; }` no longer
  * reads as a rethrow, so it fails rather than sitting out. That is the direction to be wrong in.
@@ -896,7 +897,8 @@ function isAtMostSingletonArray(expr: ts.Expression): boolean {
 
 /**
  * Whether the function-like `node` is the callback argument of a per-item iteration. Both directions
- * of being wrong, and what makes the name list survivable: README, "The iteration-callback boundary".
+ * of being wrong, and what makes the name list survivable: INTERNALS.md, "The iteration-callback
+ * boundary".
  *
  * The residual a reader here needs: a per-item callback under a callee this list does not know,
  * `pMap(items, cb)`, is attributed to the route, so a per-element catch that decides can carry it to
@@ -1266,7 +1268,7 @@ const SYNTAX_ONLY_OPTIONS: ts.CompilerOptions = { noLib: true, noResolve: true, 
  * Syntactic diagnostics for an already-parsed source file, through `ts.Program` rather than off the
  * internal diagnostics array the parser hangs on the source file, which a compiler upgrade could
  * rename out from under us. The host hands the program the `sf` we already have, so nothing is parsed
- * twice. Costs and reasoning: README, "Tests, timeouts and CI".
+ * twice. Costs and reasoning: INTERNALS.md, "Tests, timeouts and CI".
  */
 function syntacticDiagnostics(sf: ts.SourceFile): readonly ts.Diagnostic[] {
   const host: ts.CompilerHost = {
@@ -1437,7 +1439,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     // since nesting deeper inside one is still inside it. `calleeNames`, `logCalls` and the statement
     // count keep descending regardless; a catch does not, and is kept in `callbackCatches` with its
     // evidence rather than dropped. Only an iteration callback is a boundary, not every function-like
-    // node. See README, "The iteration-callback boundary".
+    // node. See INTERNALS.md, "The iteration-callback boundary".
     const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
       if (ts.isFunctionLike(node)) {
         if (isEntryFunction(node)) addStatements(countFunctionStatements(node));

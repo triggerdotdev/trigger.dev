@@ -11,8 +11,9 @@ const ID = "auth-boundary";
  * A guard the route only imports and never calls does not count, and neither does one the OTHER
  * export calls.
  *
- * Names rather than the three patterns it replaces, all of which over-matched: README, "Sensitivity,
- * and the names the tool matches on". `webappSymbols.test.ts` fails if a name stops resolving, but
+ * Names rather than the three patterns it replaces, all of which over-matched: INTERNALS.md,
+ * "Sensitivity, and the names the tool matches on". `webappSymbols.test.ts` fails if a name stops
+ * resolving, but
  * cannot check that a declaration with the right name is the guard we meant, which is the residual
  * the two local helpers below carry.
  */

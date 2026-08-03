@@ -7,7 +7,7 @@ import { MUTATIONS } from "./mutations.js";
 /**
  * Every test name a docstring in `src/` claims to be covered by must exist. The rule was asked for six
  * times in prose and broken six times, so prose does not enforce itself. Exactly what is and is not
- * checked, and the coverage holes that leaves: README, "Tests, timeouts and CI".
+ * checked, and the coverage holes that leaves: INTERNALS.md, "Tests, timeouts and CI".
  */
 
 const SRC = resolve(__dirname);

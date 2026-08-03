@@ -31,7 +31,7 @@ function leafTokens(node: ts.Node): ts.Node[] {
  * `ignores the directive inside a string literal`.
  *
  * The mutation corpus cannot cover any of this, because a suppression can only lower a score. See
- * README, "Reading the directive out of the source".
+ * INTERNALS.md, "Reading the directive out of the source".
  */
 function isClaimedContent(node: ts.Node): boolean {
   return (
@@ -49,7 +49,8 @@ function isClaimedContent(node: ts.Node): boolean {
  * Every comment range in the source, read off a real parsed `ts.SourceFile` rather than a standalone
  * `ts.createScanner`, and then filtered against the spans above. Both halves are needed, and the
  * filter is on the range's start offset rather than on the gap between a token's full start and its
- * start: README, "Reading the directive out of the source". Both lexers are called at every token
+ * start: INTERNALS.md, "Reading the directive out of the source". Both lexers are called at every
+ * token
  * boundary, because which one returns a given comment depends on whether it shares a line with the
  * token before it.
  */
