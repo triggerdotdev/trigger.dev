@@ -346,10 +346,12 @@ describe("CK virtual-time concurrency and op-count budget", () => {
       expect(off.served).toBe(cks.length * perKey);
       expect(on.served).toBe(cks.length * perKey);
 
-      // Per dequeue call the vtime path adds at worst 7 fixed ops: GET floor,
-      // ZRANGE min, ZRANGE window, the pass-2 ZRANGEBYSCORE, SET floor,
-      // EXISTS ckVtime, EXPIRE ckVtime — plus per serve one ZSCORE and one ZADD.
-      const budget = dequeueCalls * (7 + 2 * maxCount);
+      // Per dequeue call the vtime path adds at worst 8 fixed ops: GET floor,
+      // ZRANGE min, ZRANGE window, the pass-2 ZRANGEBYSCORE, the pass-2
+      // discovery ZADD, SET floor, EXISTS ckVtime, EXPIRE ckVtime, plus per
+      // serve one ZSCORE and one ZADD. The discovery ZADD is variadic, so it
+      // stays a single op however many variants one call registers.
+      const budget = dequeueCalls * (8 + 2 * maxCount);
       expect(
         on.totalCalls,
         `on_total ${on.totalCalls} exceeds off_total ${off.totalCalls} + budget ${budget}`
