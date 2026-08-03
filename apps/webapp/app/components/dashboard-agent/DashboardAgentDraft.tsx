@@ -2,15 +2,19 @@ import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useCallback, useState } from "react";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
-import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
+import { DashboardAgentHero } from "./DashboardAgentHero";
 import type { AgentPageContext } from "./page-context-types";
 
 /**
- * The new-chat "draft" state: suggested prompts + composer with no transport
- * mounted and no chat id yet. The chat id is server-owned, so the first send
- * goes to the panel's `create` call, which generates the id and returns it;
- * only then does the real `DashboardAgentChat` mount. The client never invents
- * a chat id.
+ * The new-chat "draft" state: the blank-state hero — title, subtitle, the field
+ * you type in and the suggested prompts — with no transport mounted and no chat
+ * id yet. The chat id is server-owned, so the first send goes to the panel's
+ * `create` call, which generates the id and returns it; only then does the real
+ * `DashboardAgentChat` mount. The client never invents a chat id.
+ *
+ * The composer lives inside the hero here and docks to the bottom of the panel
+ * once a chat exists — the same component either way, so nothing about the field
+ * (focus, caret, keybindings) changes across that switch.
  */
 export function DashboardAgentDraft({
   onSubmit,
@@ -45,6 +49,7 @@ export function DashboardAgentDraft({
   );
 
   return (
+<<<<<<< HEAD
     <>
       <DashboardAgentSuggestedPrompts
         onSelect={submit}
@@ -67,5 +72,29 @@ export function DashboardAgentDraft({
         }
       />
     </>
+=======
+    <DashboardAgentHero
+      onSelect={submit}
+      pageContext={pageContext}
+      promoted={promotedPrompt}
+      composer={
+        <DashboardAgentComposer
+          layout="hero"
+          value={input}
+          onChange={setInput}
+          onSubmit={() => submit(input)}
+          onStop={() => {}}
+          isStreaming={false}
+          context={
+            <DashboardAgentContextBanner
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+              currentPage={currentPage}
+            />
+          }
+        />
+      }
+    />
+>>>>>>> origin/feat/dashboard-agent-flows
   );
 }

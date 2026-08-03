@@ -13,6 +13,7 @@ import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
+<<<<<<< HEAD
   showWatchWakesSummaryToast,
   showWatchWakeToast,
   WAKE_TOAST_MAX_INDIVIDUAL,
@@ -22,6 +23,13 @@ import {
 // How often the closed panel asks whether a watch woke a chat. A wake is worth
 // noticing within a minute, and the count is one indexed query.
 const UNREAD_POLL_INTERVAL_MS = 60_000;
+=======
+  agentHiddenContentClassName,
+  agentTakeoverClassName,
+  readAgentFullscreen,
+  writeAgentFullscreen,
+} from "./panel-layout";
+>>>>>>> origin/feat/dashboard-agent-flows
 
 /**
  * Mounts the dashboard agent in the env layout. Renders the page content
@@ -51,12 +59,25 @@ export function DashboardAgent({
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
 
   const [open, setOpen] = useState(false);
+<<<<<<< HEAD
   const [unreadWakes, setUnreadWakes] = useState(0);
   // Wakes already toasted this session. Session-scoped on purpose: a wake that
   // arrived overnight deserves the toast on the first poll after a reload, but a
   // wake the user has already been shown (and maybe dismissed) must not come
   // back every 60s while the chat stays unread.
   const toastedWakes = useRef(new Set<string>());
+=======
+  // The side panel is the default; someone who last worked fullscreen gets
+  // fullscreen back. Read lazily so SSR always renders the side panel.
+  const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
+
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((current) => {
+      writeAgentFullscreen(!current);
+      return !current;
+    });
+  }, []);
+>>>>>>> origin/feat/dashboard-agent-flows
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
   // with the same text distinct, so the panel can tell them apart.
   const [requestedMessage, setRequestedMessage] = useState<
@@ -197,6 +218,7 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
+<<<<<<< HEAD
         <ResizablePanelGroup
           orientation="horizontal"
           autosaveId="dashboard-agent-split"
@@ -214,9 +236,39 @@ export function DashboardAgent({
               watchRequest={watchRequest}
               promotedPrompt={promotedPrompt}
               onChatRead={markChatRead}
+=======
+        // `relative` is the takeover's containing block: in fullscreen the panel
+        // is pinned over this box — everything right of the side nav — while the
+        // split, the page content and the panel itself all stay mounted. Toggling
+        // fullscreen is a class change, nothing more, so the open chat's
+        // transport and transcript survive it. See `panel-layout.tsx`.
+        <div className="relative h-full min-h-0">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            autosaveId="dashboard-agent-split"
+            className="h-full min-h-0"
+          >
+            <ResizablePanel id="dashboard-content" min="320px">
+              <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
+            </ResizablePanel>
+            <ResizableHandle
+              id="dashboard-agent-handle"
+              className={fullscreen ? "invisible" : undefined}
+>>>>>>> origin/feat/dashboard-agent-flows
             />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
+              <div className={agentTakeoverClassName(fullscreen)}>
+                <DashboardAgentPanel
+                  onClose={() => setPanelOpen(false)}
+                  requestedMessage={requestedMessage}
+                  promotedPrompt={promotedPrompt}
+                  isFullscreen={fullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden">{children}</div>
       )}

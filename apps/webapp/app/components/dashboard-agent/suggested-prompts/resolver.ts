@@ -21,7 +21,26 @@ import {
   type SuggestedPrompt,
   type SuggestedPromptResolver,
 } from "@internal/dashboard-agent-contracts";
-import { contextualPromptsBySlot, pageSlotPrompts, PROMPT_SLOTS } from "./registry";
+import {
+  contextualPromptsBySlot,
+  pageSlotPrompts,
+  PROMPT_SLOTS,
+  type PromptSlot,
+} from "./registry";
+
+/** The slot a resolved prompt came from, including the product-chosen one. */
+export type ResolvedPromptSlot = "promoted" | PromptSlot;
+
+/**
+ * A resolved prompt with the slot it filled. The slot is what the blank-state
+ * hero styles each prompt button by (see `PROMPT_SLOT_BUTTON`), so it has to
+ * survive resolution — a `SuggestedPrompt` on its own can't say whether it is an
+ * investigate or a docs question.
+ */
+export type ResolvedSuggestedPrompt = {
+  slot: ResolvedPromptSlot;
+  prompt: SuggestedPrompt;
+};
 
 export type ResolveSuggestedPromptsOptions = {
   /** The product-controlled slot, taken as-is and forced to `promoted`. */
@@ -36,20 +55,32 @@ export function resolveSuggestedPrompts(
   context: AgentPageContext,
   opts: ResolveSuggestedPromptsOptions = {}
 ): SuggestedPrompt[] {
+  return resolveSuggestedPromptsBySlot(context, opts).map((resolved) => resolved.prompt);
+}
+
+/**
+ * The same resolution, keeping each prompt's slot. `resolveSuggestedPrompts` is
+ * this with the slots dropped, so the two can never disagree about ordering or
+ * the cap.
+ */
+export function resolveSuggestedPromptsBySlot(
+  context: AgentPageContext,
+  opts: ResolveSuggestedPromptsOptions = {}
+): ResolvedSuggestedPrompt[] {
   const now = opts.now ?? Date.now();
   const dismissed = new Set(opts.dismissedIds ?? []);
 
   const contextual = contextualPromptsBySlot(context, now);
   const pageSlots = pageSlotPrompts(context.page);
 
-  const resolved: SuggestedPrompt[] = [];
+  const resolved: ResolvedSuggestedPrompt[] = [];
   const seen = new Set<string>();
 
-  const take = (candidates: (SuggestedPrompt | undefined)[]): void => {
+  const take = (slot: ResolvedPromptSlot, candidates: (SuggestedPrompt | undefined)[]): void => {
     for (const candidate of candidates) {
       if (!candidate || dismissed.has(candidate.id) || seen.has(candidate.id)) continue;
       seen.add(candidate.id);
-      resolved.push(candidate);
+      resolved.push({ slot, prompt: candidate });
       return;
     }
   };
@@ -57,11 +88,11 @@ export function resolveSuggestedPrompts(
   // Whatever the flag says, it occupies the promoted slot — the caller doesn't
   // have to remember to set `source`.
   if (opts.promoted) {
-    take([{ ...opts.promoted, source: "promoted" }]);
+    take("promoted", [{ ...opts.promoted, source: "promoted" }]);
   }
 
   for (const slot of PROMPT_SLOTS) {
-    take([...contextual[slot], pageSlots[slot]]);
+    take(slot, [...contextual[slot], pageSlots[slot]]);
   }
 
   return resolved.slice(0, SUGGESTED_PROMPT_CAP);

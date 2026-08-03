@@ -9,8 +9,8 @@ import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
+import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
-import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
@@ -385,7 +385,9 @@ export function DashboardAgentChat({
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}
       {messages.length === 0 && !pendingFirstMessage ? (
-        <DashboardAgentSuggestedPrompts
+        // The blank state, minus the composer: this chat already has one docked
+        // below.
+        <DashboardAgentHero
           onSelect={submit}
           pageContext={clientData.pageContext}
           promoted={promotedPrompt}
