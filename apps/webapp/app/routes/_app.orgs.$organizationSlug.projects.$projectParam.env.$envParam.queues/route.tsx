@@ -1230,8 +1230,11 @@ type QueueHeaderTile = {
   };
   /**
    * Optional second query, run at the range's natural bucket width, that owns the headline readout.
-   * A readout measured in buckets rather than in values (a share of buckets, not a peak) would
-   * otherwise move whenever this tile's bucket floor widens the plotted buckets.
+   * For a headline that is not invariant to bucket width — a share of buckets, or a percentile,
+   * as opposed to a max over gauges — deriving it from the plotted rows would move the number
+   * whenever this tile's floor widens them. Only requested while the floor is actually widening
+   * anything; on ranges whose natural width is already at or above the floor the chart's own rows
+   * are identical and are reused.
    */
   readout?: {
     query: string;
@@ -1439,12 +1442,17 @@ function QueueEnvMetricChart({
     minBucketSeconds: HERO_CHART_MIN_BUCKET_SECONDS,
   });
 
-  const readoutResult = useMetricResourceQuery(tile.readout?.query ?? "", sharedOptions);
-
   const derived = tile.derive(rows);
   const points = derived.points;
+
+  const plottedBucketMs = points.length > 1 ? points[1]!.bucket - points[0]!.bucket : 0;
+  const floorWidenedBuckets =
+    plottedBucketMs > 0 && plottedBucketMs <= HERO_CHART_MIN_BUCKET_SECONDS * 1000;
+  const readoutQuery = tile.readout && floorWidenedBuckets ? tile.readout.query : "";
+  const readoutResult = useMetricResourceQuery(readoutQuery, sharedOptions);
+
   const { total, formatTotal, totalClassName } = tile.readout
-    ? tile.readout.derive(readoutResult.rows)
+    ? tile.readout.derive(readoutQuery ? readoutResult.rows : rows)
     : derived;
 
   // Same point shape the shared axis/tooltip helpers expect.
