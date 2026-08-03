@@ -3,4 +3,4 @@ area: webapp
 type: feature
 ---
 
-Adds an Interface theme setting on the account page: choose Dark, System preference, Light, or the original Classic look, and fine-tune the new themes with a contrast slider. System preference follows your OS appearance automatically.
+The dashboard gets a refreshed Dark theme as its new default look. On the account page you can switch to Light, System preference (follows your OS), or the original Classic look, and fine-tune the new themes with a contrast slider.
