@@ -153,7 +153,7 @@ secrets:
   existingSecret: "your-existing-secret"
 ```
 
-`PROVIDER_SECRET` and `COORDINATOR_SECRET` are not new secrets. Chart 4.5.6 made the webapp reject the shared, previously-published defaults these used to fall back to, so an existing Secret must now carry strong, unique values for both:
+The chart wires `PROVIDER_SECRET` and `COORDINATOR_SECRET` into the webapp deployment, and the pre-upgrade check requires both, so an existing Secret must include them. For a deployment that already runs, add them before upgrading:
 
 ```bash
 kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
@@ -539,7 +539,7 @@ With external datastores, secrets, registry, and authentication in place, you ha
   <Accordion title="You supply your own secret (secrets.existingSecret)">
     With `secrets.existingSecret` set, the chart reads every key from your Secret and generates none, so any key the app needs must already be present there.
 
-    Chart 4.5.6 hardened this: the webapp now requires strong, unique `PROVIDER_SECRET` and `COORDINATOR_SECRET` values — it previously fell back to a shared, published default for these, which it now rejects at startup. Add both to your Secret before upgrading:
+    As of chart 4.5.6 the webapp deployment references `PROVIDER_SECRET` and `COORDINATOR_SECRET`, and the pre-upgrade check requires both, so an existing Secret must carry them. Add both before upgrading:
 
     ```bash
     kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
