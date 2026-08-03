@@ -241,7 +241,8 @@ export class PrinterContext {
       this.fieldMappings,
       this.enforcedWhereClause,
       this.timeRange,
-      this.fillGaps
+      this.fillGaps,
+      this.minBucketSeconds
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
