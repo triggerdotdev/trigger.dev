@@ -31,12 +31,12 @@ export const PROMPT_SLOT_BUTTON: Record<
   ResolvedPromptSlot,
   { variant: ButtonVariant; icon: RenderIcon }
 > = {
-  promoted: { variant: "primary/medium", icon: SparklesIcon },
-  investigate: { variant: "primary/medium", icon: MagnifyingGlassIcon },
-  watch: { variant: "secondary/medium", icon: EyeIcon },
-  status: { variant: "secondary/medium", icon: ChartBarIcon },
-  explain: { variant: "tertiary/medium", icon: QuestionMarkCircleIcon },
-  docs: { variant: "docs/medium", icon: BookOpenIcon },
+  promoted: { variant: "primary/small", icon: SparklesIcon },
+  investigate: { variant: "primary/small", icon: MagnifyingGlassIcon },
+  watch: { variant: "secondary/small", icon: EyeIcon },
+  status: { variant: "secondary/small", icon: ChartBarIcon },
+  explain: { variant: "tertiary/small", icon: QuestionMarkCircleIcon },
+  docs: { variant: "docs/small", icon: BookOpenIcon },
 };
 
 /**
