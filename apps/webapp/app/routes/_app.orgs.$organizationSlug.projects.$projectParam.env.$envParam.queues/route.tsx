@@ -102,6 +102,16 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
+import {
+  QUEUE_METRICS_DEFAULT_PERIOD,
+  QUEUE_METRICS_RETENTION_DAYS,
+  clampQueueMetricsPeriod,
+  clipQueueMetricsWindow,
+  queueMetricsPeriodFromRequest,
+  resolveQueueMetricsPeriod,
+  useRememberQueueMetricsPeriod,
+} from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -111,8 +121,6 @@ const SearchParamsSchema = z.object({
   to: z.string().optional(),
   sort: z.enum(["busiest", "queued", "name"]).optional(),
 });
-
-const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 // The live "Queued" / "Running" header blocks poll ClickHouse on a short cadence so they stay
 // current after first paint. They read the env-wide gauges from env_metrics (the env-level rollup
@@ -163,6 +171,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // no metrics query fires.
   const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
 
+  const maxPeriodDays = queueMetricsUiEnabled
+    ? await queueMetricsMaxPeriodDays(environment.organizationId)
+    : QUEUE_METRICS_RETENTION_DAYS;
+  const defaultPeriod = clampQueueMetricsPeriod(
+    queueMetricsPeriodFromRequest(request),
+    maxPeriodDays
+  );
+
   try {
     const queueListPresenter = new QueueListPresenter();
     const queues = await queueListPresenter.call({
@@ -194,12 +210,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         const queueNames = queues.queues.map((q) =>
           q.type === "task" ? `task/${q.name}` : q.name
         );
-        const timeRange = timeFilterFromTo({
-          period,
-          from: parseFiniteInt(from),
-          to: parseFiniteInt(to),
-          defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
-        });
+        const timeRange = clipQueueMetricsWindow(
+          timeFilterFromTo({
+            period:
+              resolveQueueMetricsPeriod({ period, from, to, defaultPeriod, maxPeriodDays }) ??
+              undefined,
+            from: parseFiniteInt(from),
+            to: parseFiniteInt(to),
+            defaultPeriod,
+          }),
+          maxPeriodDays
+        );
         const queueMetrics =
           queueNames.length > 0
             ? await presenter.getQueueListMetrics({
@@ -239,6 +260,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       metrics,
       allocation,
       queueMetricsUiEnabled,
+      defaultPeriod,
+      maxPeriodDays,
     });
   } catch (error) {
     console.error(error);
@@ -362,6 +385,8 @@ function QueuesWithMetricsView() {
     autoReloadPollIntervalMs,
     metrics,
     allocation,
+    defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -377,18 +402,21 @@ function QueuesWithMetricsView() {
   const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   // The header tiles fetch client-side with the same period/from/to the TimeFilter writes.
   const { value } = useSearchParams();
   const timeRange = {
-    period: value("period") ?? null,
+    period: resolveQueueMetricsPeriod({
+      period: value("period"),
+      from: value("from"),
+      to: value("to"),
+      defaultPeriod,
+      maxPeriodDays,
+    }),
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  useRememberQueueMetricsPeriod(value("period"));
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
@@ -473,7 +501,8 @@ function QueuesWithMetricsView() {
             </div>
             <div className="flex items-center gap-1.5">
               <TimeFilter
-                defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+                period={timeRange.period ?? undefined}
+                defaultPeriod={defaultPeriod}
                 labelName="Period"
                 maxPeriodDays={maxPeriodDays}
                 shortcut={{ key: "d" }}

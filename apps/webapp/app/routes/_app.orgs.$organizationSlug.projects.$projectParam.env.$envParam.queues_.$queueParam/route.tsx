@@ -22,7 +22,6 @@ import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncConte
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   QUEUE_METRIC_COLORS as COLORS,
-  QUEUE_METRICS_DEFAULT_PERIOD,
   QueueMetricChartCard as QueueDetailChartCard,
   type QueueMetricIds as Ids,
   type QueueMetricTimeRange as TimeRangeParams,
@@ -55,7 +54,6 @@ import type {
   ConcurrencyKeyRow,
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
@@ -67,6 +65,13 @@ import {
   QueueOverrideConcurrencyButton,
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
+import {
+  clampQueueMetricsPeriod,
+  queueMetricsPeriodFromRequest,
+  resolveQueueMetricsPeriod,
+  useRememberQueueMetricsPeriod,
+} from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -106,6 +111,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const queue = retrieve.queue;
   const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
 
+  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
+
   const [ckBreakdown, oldestQueuedAt] = await Promise.all([
     engine.concurrencyKeyBreakdown(environment, fullName, { limit: CK_LIVE_LIMIT }),
     // Enqueue time of the oldest run still waiting in the queue right now (any queue, keyed or
@@ -134,6 +141,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
+    defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
+    maxPeriodDays,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -210,19 +219,23 @@ export default function Page() {
     loadedAt,
     backPath,
     ids,
+    defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
-  const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
-    period: value("period") ?? null,
+    period: resolveQueueMetricsPeriod({
+      period: value("period"),
+      from: value("from"),
+      to: value("to"),
+      defaultPeriod,
+      maxPeriodDays,
+    }),
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  useRememberQueueMetricsPeriod(value("period"));
 
   // The Concurrency keys tab exists only for queues with key activity: live keys in the
   // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
@@ -283,7 +296,8 @@ export default function Page() {
               />
             ) : null}
             <TimeFilter
-              defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+              period={timeRange.period ?? undefined}
+              defaultPeriod={defaultPeriod}
               labelName="Period"
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
