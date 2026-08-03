@@ -220,9 +220,14 @@ export function QueueMetricChart({
 
   // Report data presence so a wrapping card can hide its legend when the chart settles on the
   // "no activity" state. Only report once loaded, so the legend stays put while loading.
+  const hasPlottedData = useMemo(
+    () => data.some((point) => series.some((s) => point[s.key] != null)),
+    [data, series]
+  );
+
   useEffect(() => {
-    if (!showLoading) onHasDataChange?.(!failed && data.length > 0);
-  }, [showLoading, failed, data.length, onHasDataChange]);
+    if (!showLoading) onHasDataChange?.(!failed && hasPlottedData);
+  }, [showLoading, failed, hasPlottedData, onHasDataChange]);
 
   return (
     <Chart.Root
