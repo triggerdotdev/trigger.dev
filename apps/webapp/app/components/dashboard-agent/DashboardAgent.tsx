@@ -51,6 +51,9 @@ export function DashboardAgent({
   }, []);
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
   // with the same text distinct, so the panel can tell them apart.
+  // Bumped by contextual ⌘J while the panel is open; the panel starts a new
+  // chat when it changes.
+  const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
   >(undefined);
@@ -71,12 +74,18 @@ export function DashboardAgent({
     setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // ⌘J toggles the panel. Opening mounts the composer, which focuses itself, so
-  // the shortcut lands you in the text field. Enabled inside inputs too, so the
-  // same keystroke closes the panel while you're typing in it.
+  // ⌘J is contextual: closed → open the panel (the composer focuses itself, so
+  // the keystroke lands you in the text field); open → start a new chat.
+  // Closing is Esc or the header's ×, never ⌘J.
   useShortcutKeys({
     shortcut: TOGGLE_PANEL_SHORTCUT,
-    action: () => setPanelOpen(!open),
+    action: () => {
+      if (!open) {
+        setPanelOpen(true);
+      } else {
+        setNewChatSeq((seq) => seq + 1);
+      }
+    },
     disabled: !hasAccess,
     enabledOnInputElements: true,
   });
@@ -121,6 +130,7 @@ export function DashboardAgent({
                 <DashboardAgentPanel
                   onClose={() => setPanelOpen(false)}
                   requestedMessage={requestedMessage}
+                  newChatSeq={newChatSeq}
                   promotedPrompt={promotedPrompt}
                   isFullscreen={fullscreen}
                   onToggleFullscreen={toggleFullscreen}

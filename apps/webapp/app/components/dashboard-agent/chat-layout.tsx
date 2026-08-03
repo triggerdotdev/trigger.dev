@@ -22,7 +22,7 @@
  *                         card (diagnosis, investigation, report, chart), a
  *                         callout, a chip row
  *   - `ChatProgress`    — a spinner and one line of progress
- *   - `ChatPendingTool` — a tool call still in flight, as a compact pill
+ *   - `ChatPendingTool` — a tool call still in flight: a bare spinner line
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
  *   - `ChatStatusLine`  — an icon and one line of status
@@ -221,7 +221,7 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * A tool call still in flight, as a compact pill: a spinner and one short phrase
+ * A tool call still in flight: a spinner and one short phrase
  * saying what the agent is doing.
  *
  * It replaces the tool row for the whole in-flight phase, so the transcript never
@@ -232,17 +232,12 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
  */
 export function ChatPendingTool({ label }: { label: string }) {
   const insetClass = useInsetClass();
+  // A bare progress line, not a pill: bordered chips read as artifacts that
+  // stay, while in-flight work is transient — the same register as ChatProgress.
   return (
-    <div className={cn(insetClass, "flex min-w-0")}>
-      <span
-        className={cn(
-          "inline-flex h-6 min-w-0 items-center rounded-full border border-border-bright bg-background-bright px-2.5 text-xs text-text-dimmed",
-          CHIP_GAP
-        )}
-      >
-        <Spinner className="size-3 shrink-0" />
-        <span className="truncate">{label}</span>
-      </span>
+    <div className={cn(insetClass, "flex min-w-0 items-center text-xs text-text-dimmed", CHIP_GAP)}>
+      <Spinner className="size-3 shrink-0" />
+      <span className="truncate">{label}</span>
     </div>
   );
 }

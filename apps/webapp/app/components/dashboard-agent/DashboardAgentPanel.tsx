@@ -81,6 +81,7 @@ type ActiveChat = {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  newChatSeq,
   promotedPrompt,
   isFullscreen = false,
   onToggleFullscreen,
@@ -93,6 +94,9 @@ export function DashboardAgentPanel({
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
   // repeat requests with the same text.
   requestedMessage?: { text: string; seq: number };
+  // Bumped by the contextual ⌘J while the panel is open — each change starts a
+  // new chat.
+  newChatSeq?: number;
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
 }) {
@@ -354,6 +358,15 @@ export function DashboardAgentPanel({
     },
     [openChat]
   );
+
+  // Contextual ⌘J: each bump while the panel is open starts a new chat. A ref
+  // skips the mount-time value so opening the panel never resets a restored chat.
+  const seenNewChatSeq = useRef(newChatSeq ?? 0);
+  useEffect(() => {
+    if (newChatSeq === undefined || newChatSeq === seenNewChatSeq.current) return;
+    seenNewChatSeq.current = newChatSeq;
+    newChat();
+  }, [newChatSeq, newChat]);
 
   const deleteChat = useCallback(
     async (id: string) => {

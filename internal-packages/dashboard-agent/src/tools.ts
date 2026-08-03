@@ -783,7 +783,10 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           parsed = { ...base, kind: "run", runId: ref };
           break;
         case "error":
-          parsed = { ...base, kind: "error", fingerprint: ref };
+          // The errors API returns friendly ids ("error_<fingerprint>") but the
+          // canonical URI — and the dashboard error page it resolves to — key on
+          // the raw fingerprint. Same normalization the watch checks apply.
+          parsed = { ...base, kind: "error", fingerprint: ref.replace(/^error_/, "") };
           break;
         case "queue":
           parsed = { ...base, kind: "queue", name: ref };
@@ -1440,7 +1443,12 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
             parsed = { kind: "run", ...scope, runId: destination.runId };
             break;
           case "error":
-            parsed = { kind: "error", ...scope, fingerprint: destination.fingerprint };
+            // Accept the API's friendly id ("error_<fp>") — the page keys on the raw one.
+            parsed = {
+              kind: "error",
+              ...scope,
+              fingerprint: destination.fingerprint.replace(/^error_/, ""),
+            };
             break;
           case "queue":
             parsed = { kind: "queue", ...scope, name: destination.name };

@@ -8,12 +8,14 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { DashboardAgentHistoryMenu, type DashboardAgentChat } from "./DashboardAgentHistory";
 
-/** New chat. Sits next to the panel's own ⌘J so the pair is easy to remember. */
+/**
+ * New chat — the same ⌘J that opens the panel: contextual, registered ONCE in
+ * `DashboardAgent` (closed → open, open → new chat). This constant is display
+ * only; nothing else may register it or the keystroke would fire twice.
+ */
 export const NEW_CHAT_SHORTCUT: Shortcut = {
-  modifiers: ["mod", "shift"],
+  modifiers: ["mod"],
   key: "j",
-  // The composer holds focus while the panel is open, so a shortcut that only
-  // fires outside inputs would never fire at all.
   enabledOnInputElements: true,
 };
 
@@ -104,8 +106,12 @@ export function DashboardAgentHeader({
             variant="minimal/small"
             className="aspect-square h-6 p-1"
             aria-label="New chat"
-            tooltip="New chat"
-            shortcut={NEW_CHAT_SHORTCUT}
+            tooltip={
+              <span className="flex items-center">
+                New chat
+                <ShortcutKey shortcut={NEW_CHAT_SHORTCUT} variant="medium" />
+              </span>
+            }
             onClick={onNewChat}
             LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
           />
