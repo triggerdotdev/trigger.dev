@@ -1,6 +1,6 @@
-import { SparklesIcon } from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { BetaBadge } from "~/components/FeatureBadges";
+import { AgentDotMatrix } from "~/components/primitives/AgentDotMatrix";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
@@ -39,8 +39,8 @@ export function DashboardAgentHero({
       <div className="flex w-full max-w-2xl flex-col items-center gap-5">
         <div className="flex flex-col items-center gap-1.5 text-center">
           <Header1 className="flex items-center gap-2">
-            <SparklesIcon className="size-6 text-indigo-500" />
-            Ask Trigger
+            <AgentDotMatrix size={22} palette="mono" restColor="#ffffff" decorative />
+            Ask AI
             <BetaBadge />
           </Header1>
           <Paragraph variant="small" className="text-text-dimmed">
