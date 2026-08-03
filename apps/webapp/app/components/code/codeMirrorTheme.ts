@@ -84,7 +84,10 @@ export function darkTheme(): Extension {
         backgroundColor: "var(--color-editor-search-match-selected)",
       },
 
-      ".cm-activeLine": { backgroundColor: highlightBackground },
+      // Only highlight the active line while the editor has focus - on an
+      // unfocused editor the resting cursor paints a phantom gray bar
+      ".cm-activeLine": { backgroundColor: "transparent" },
+      "&.cm-focused .cm-activeLine": { backgroundColor: highlightBackground },
       ".cm-selectionMatch": { backgroundColor: "var(--color-editor-selection-match)" },
 
       "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
@@ -99,6 +102,9 @@ export function darkTheme(): Extension {
       },
 
       ".cm-activeLineGutter": {
+        backgroundColor: "transparent",
+      },
+      "&.cm-focused .cm-activeLineGutter": {
         backgroundColor: highlightBackground,
       },
 
