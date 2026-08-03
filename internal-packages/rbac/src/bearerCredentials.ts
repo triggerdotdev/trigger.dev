@@ -1,4 +1,3 @@
-import type { Result } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { extractJWTSub, isPublicJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
@@ -382,10 +381,14 @@ type EnvironmentWithBranches = Prisma.RuntimeEnvironmentGetPayload<{
   include: ReturnType<typeof environmentInclude>;
 }>;
 
+type BranchResolution =
+  | [error: string, environment: null]
+  | [error: null, environment: AuthenticatedEnvironment];
+
 function resolveBranch(
   environment: EnvironmentWithBranches,
   branchName: string | null
-): Result<AuthenticatedEnvironment, string> {
+): BranchResolution {
   if (environment.type === "PREVIEW" && !branchName) {
     return ["x-trigger-branch header required for preview env", null];
   }
