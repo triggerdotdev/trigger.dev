@@ -1631,6 +1631,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   }
 }
 
+export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
+  return Array.from(new Set(items.map((item) => item.task))).sort();
+}
+
 /**
  * Helper function that executes a 2-phase batch trigger:
  * 1. Creates the batch record with expected run count
@@ -1678,6 +1682,7 @@ async function executeBatchTwoPhase(
     batch = await apiClient.createBatch(
       {
         runCount: items.length,
+        taskIdentifiers: uniqueBatchTaskIdentifiers(items),
         parentRunId: options.parentRunId,
         resumeParentOnCompletion: options.resumeParentOnCompletion,
         idempotencyKey: options.idempotencyKey,

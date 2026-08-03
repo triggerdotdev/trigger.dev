@@ -20,6 +20,8 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -60,7 +62,7 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
+  async ({ body, headers, params, authentication, ability }) => {
     const {
       "idempotency-key": idempotencyKey,
       "idempotency-key-ttl": idempotencyKeyTTL,
@@ -76,7 +78,22 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-source": triggerSourceHeader,
     } = headers;
 
-    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+    if (
+      !(await canWriteParentRun(
+        ability,
+        authentication.environment.id,
+        authentication.environment.organizationId,
+        body.options?.parentRunId
+      ))
+    ) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const scopedIdempotencyKey = scopeRequestIdempotencyKey(requestIdempotencyKey, [
+      authentication.environment.id,
+      params.taskId,
+    ]);
+    const cachedResponse = await handleRequestIdempotency(scopedIdempotencyKey, {
       requestType: "trigger",
       findCachedEntity: async (cachedRequestId) => {
         return await runStore.findRun(
@@ -153,7 +170,7 @@ const { action, loader } = createActionApiRoute(
       // materialisation: once the run lands in PG, normal request-
       // idempotency from that point forward works as usual.
       if (!result.isMollified) {
-        await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+        await saveRequestIdempotency(scopedIdempotencyKey, "trigger", result.run.id);
       }
 
       const $responseHeaders = await responseHeaders(result.run, authentication);

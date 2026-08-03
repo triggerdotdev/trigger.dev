@@ -6,6 +6,7 @@ import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
+import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
@@ -53,9 +54,14 @@ async function authenticateRequestForApiBuilder(
   { allowJWT }: { allowJWT: boolean }
 ): Promise<
   | { ok: false; status: 401 | 403; error: string }
-  | { ok: true; authentication: ApiAuthenticationResultSuccess; ability: RbacAbility }
+  | {
+      ok: true;
+      authentication: ApiAuthenticationResultSuccess;
+      ability: RbacAbility;
+      restrictedApiKey: boolean;
+    }
 > {
-  const result = await rbac.authenticateBearer(request, { allowJWT });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
@@ -78,7 +84,47 @@ async function authenticateRequestForApiBuilder(
     actor: result.jwt?.act,
   };
 
-  return { ok: true, authentication, ability: result.ability };
+  return {
+    ok: true,
+    authentication,
+    ability: result.ability,
+    restrictedApiKey: result.subject.type === "apiKey" && result.subject.restricted,
+  };
+}
+
+export function shouldRejectRestrictedKeyWithoutAuthorization(
+  restrictedApiKey: boolean,
+  hasAuthorization: boolean
+): boolean {
+  return restrictedApiKey && !hasAuthorization;
+}
+
+async function rejectRestrictedKeyWithoutAuthorization({
+  request,
+  restrictedApiKey,
+  hasAuthorization,
+  useCors,
+}: {
+  request: Request;
+  restrictedApiKey: boolean;
+  hasAuthorization: boolean;
+  useCors: boolean;
+}): Promise<Response | undefined> {
+  if (!shouldRejectRestrictedKeyWithoutAuthorization(restrictedApiKey, hasAuthorization)) return;
+
+  return wrapResponse(
+    request,
+    json(
+      {
+        error: "Unauthorized",
+        code: "unauthorized",
+        param: "access_token",
+        type: "authorization",
+      },
+      { status: 403 }
+    ),
+    useCors
+  );
 }
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -115,14 +161,18 @@ type AnyResourceAuth = {
 type EveryResourceAuth = {
   readonly [EVERY_RESOURCE_MARKER]: true;
   readonly resources: readonly RbacResource[];
+  readonly orResources: readonly RbacResource[];
 };
 
 export function anyResource(resources: RbacResource[]): AnyResourceAuth {
   return { [ANY_RESOURCE_MARKER]: true, resources };
 }
 
-export function everyResource(resources: RbacResource[]): EveryResourceAuth {
-  return { [EVERY_RESOURCE_MARKER]: true, resources };
+export function everyResource(
+  resources: RbacResource[],
+  orResources: RbacResource[] = []
+): EveryResourceAuth {
+  return { [EVERY_RESOURCE_MARKER]: true, resources, orResources };
 }
 
 function isAnyResource(value: unknown): value is AnyResourceAuth {
@@ -143,8 +193,15 @@ function isEveryResource(value: unknown): value is EveryResourceAuth {
 
 type AuthResource = RbacResource | AnyResourceAuth | EveryResourceAuth;
 
-function checkAuth(ability: RbacAbility, action: string, resource: AuthResource): boolean {
+export function checkAuth(ability: RbacAbility, action: string, resource: AuthResource): boolean {
   if (isEveryResource(resource)) {
+    // A broad collection grant may be supplied as an alternative to all
+    // instance checks. This preserves scopes such as read:runs while making
+    // mixed selected-task filters require access to every requested task.
+    if (resource.orResources.length > 0 && ability.can(action, [...resource.orResources])) {
+      return true;
+    }
+
     // Empty array via [].every() is vacuously true — would let any token
     // pass auth. Routes building everyResource() from request bodies
     // (e.g. batch trigger items) should never produce zero elements
@@ -223,6 +280,7 @@ type ApiKeyHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  ability: RbacAbility;
   request: Request;
   resource: NonNullable<TResource>;
   apiVersion: API_VERSIONS;
@@ -263,6 +321,13 @@ export function createLoaderApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       let parsedParams: any = undefined;
       if (paramsSchema) {
@@ -364,6 +429,7 @@ export function createLoaderApiRoute<
             searchParams: parsedSearchParams,
             headers: parsedHeaders,
             authentication: authenticationResult,
+            ability,
             request,
             resource,
             apiVersion,
@@ -986,6 +1052,7 @@ type ApiKeyActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  ability: RbacAbility;
   request: Request;
   resource?: TResource;
 }) => Promise<Response>;
@@ -1055,6 +1122,13 @@ export function createActionApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");
@@ -1212,6 +1286,7 @@ export function createActionApiRoute<
             headers: parsedHeaders,
             body: parsedBody,
             authentication: authenticationResult,
+            ability,
             request,
             resource,
           })
@@ -1340,6 +1415,13 @@ export function createMultiMethodApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");

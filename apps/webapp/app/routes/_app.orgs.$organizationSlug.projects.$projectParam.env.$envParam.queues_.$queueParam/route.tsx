@@ -191,6 +191,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 const CK_LIVE_LIMIT = 50;
 
+/**
+ * Bucket floor for the charts in a synced group. The event-driven series (scheduling delay,
+ * throttling) need it: their samples only exist when something started or was held back, so at the
+ * 10-second width a short range picks, most buckets hold nothing and the line reads as a run of
+ * zeros. The gauges beside them take the same floor because the shared hover crosshair is a
+ * recharts ReferenceLine on a category x-axis, so it only draws where the hovered bucket
+ * timestamp exists in the other chart's own data — mixing widths in one group silently drops it.
+ */
+const SYNCED_CHART_MIN_BUCKET_SECONDS = 60;
+
 // Whole-queue oldest wait right now: for keyed queues the per-key breakdown carries the oldest
 // enqueue time per key, so the queue's oldest is the max wait across keys; otherwise fall back to
 // the queue's oldest message directly. Returns null when nothing is waiting.
@@ -409,6 +419,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -435,6 +446,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -454,6 +466,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -470,8 +483,10 @@ function OverviewCharts({
           info="How long runs wait before they start."
           showLegend
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99,\n  sum(wait_ms_count) AS samples\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -493,6 +508,7 @@ function OverviewCharts({
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -982,6 +998,7 @@ function KeyDrilldown({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -995,6 +1012,8 @@ function KeyDrilldown({
           title={`Key ${keyName}: throughput`}
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1003,7 +1022,10 @@ function KeyDrilldown({
         <QueueDetailChartCard
           title={`Key ${keyName}: mean scheduling delay`}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait, sum(wait_ms_count) AS samples\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}

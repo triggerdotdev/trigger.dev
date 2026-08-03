@@ -12,6 +12,8 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
@@ -45,9 +47,20 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
+  async ({ body, headers, params, authentication, ability }) => {
     if (!body.items.length) {
       return json({ error: "Batch cannot be triggered with no items" }, { status: 400 });
+    }
+
+    if (
+      !(await canWriteParentRun(
+        ability,
+        authentication.environment.id,
+        authentication.environment.organizationId,
+        body.parentRunId
+      ))
+    ) {
+      return json({ error: "Unauthorized" }, { status: 403 });
     }
 
     // Check the there are fewer than MAX_BATCH_V2_TRIGGER_ITEMS items
@@ -87,7 +100,11 @@ const { action, loader } = createActionApiRoute(
       requestIdempotencyKey,
     });
 
-    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+    const scopedIdempotencyKey = scopeRequestIdempotencyKey(requestIdempotencyKey, [
+      authentication.environment.id,
+      ...Array.from(new Set(body.items.map((item) => item.task))).sort(),
+    ]);
+    const cachedResponse = await handleRequestIdempotency(scopedIdempotencyKey, {
       requestType: "batch-trigger",
       findCachedEntity: async (cachedRequestId) => {
         const batch = await runStore.findBatchTaskRunById(cachedRequestId);
@@ -99,7 +116,7 @@ const { action, loader } = createActionApiRoute(
         runCount: cachedBatch.runCount,
       }),
       buildResponseHeaders: async (responseBody, cachedEntity) => {
-        return await responseHeaders(responseBody, authentication.environment, triggerClient);
+        return await responseHeaders(responseBody, authentication.environment);
       },
     });
 
@@ -116,7 +133,7 @@ const { action, loader } = createActionApiRoute(
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
-      await saveRequestIdempotency(requestIdempotencyKey, "batch-trigger", batch.id);
+      await saveRequestIdempotency(scopedIdempotencyKey, "batch-trigger", batch.id);
     });
 
     try {
@@ -132,11 +149,7 @@ const { action, loader } = createActionApiRoute(
         triggerAction: "trigger",
       });
 
-      const $responseHeaders = await responseHeaders(
-        batch,
-        authentication.environment,
-        triggerClient
-      );
+      const $responseHeaders = await responseHeaders(batch, authentication.environment);
 
       return json(batch, {
         status: 202,
@@ -176,35 +189,23 @@ const { action, loader } = createActionApiRoute(
 
 async function responseHeaders(
   batch: BatchTriggerTaskV3Response,
-  environment: AuthenticatedEnvironment,
-  triggerClient?: string | null
+  environment: AuthenticatedEnvironment
 ): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
+  const claims = {
     sub: environment.id,
     pub: true,
+    scopes: [`read:batch:${batch.id}`],
+  };
+
+  const jwt = await generateJWT({
+    secretKey: extractJwtSigningSecretKey(environment),
+    payload: claims,
+    expirationTime: "1h",
   });
 
-  if (triggerClient === "browser") {
-    const claims = {
-      sub: environment.id,
-      pub: true,
-      scopes: [`read:batch:${batch.id}`],
-    };
-
-    const jwt = await generateJWT({
-      secretKey: extractJwtSigningSecretKey(environment),
-      payload: claims,
-      expirationTime: "1h",
-    });
-
-    return {
-      "x-trigger-jwt-claims": claimsHeader,
-      "x-trigger-jwt": jwt,
-    };
-  }
-
   return {
-    "x-trigger-jwt-claims": claimsHeader,
+    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt": jwt,
   };
 }
 

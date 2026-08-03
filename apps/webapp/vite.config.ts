@@ -59,6 +59,8 @@ export default defineConfig({
       "@kapaai/react-sdk",
       "@fingerprintjs/fingerprintjs-pro",
       "@fingerprintjs/fingerprintjs-pro-spa",
+      "recharts",
+      /^victory-vendor/,
     ],
     optimizeDeps: {
       include: ["cron-parser"],

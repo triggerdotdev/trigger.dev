@@ -27,6 +27,7 @@ import {
   anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
+  everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
@@ -48,15 +49,19 @@ export const loader = createLoaderApiRoute(
       //   - Type-level `read:sessions` (the old superScope) matches the
       //     sessions element (collection-level — no id)
       //   - `read:all` / `admin` bypass via the JWT ability's wildcard branches
-      // The taskIdentifier filter accepts a string or an array; expand to
-      // one resource per task id so any per-task-scoped JWT among them
-      // grants access (the array gets OR semantics).
+      // The taskIdentifier filter accepts a string or an array. Broad
+      // sessions/tasks scopes remain alternatives, while ID-scoped keys must
+      // match every requested task so one allowed filter cannot expose others.
       resource: (_, __, searchParams) => {
         const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
-        return anyResource([
-          ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
-          { type: "sessions" as const },
-        ]);
+        if (taskFilter.length === 0) {
+          return anyResource([{ type: "sessions" as const }, { type: "tasks" as const }]);
+        }
+
+        return everyResource(
+          taskFilter.map((id) => ({ type: "tasks" as const, id })),
+          [{ type: "sessions" as const }, { type: "tasks" as const }]
+        );
       },
     },
     findResource: async () => 1,

@@ -430,6 +430,8 @@ export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Respon
 export const CreateBatchRequestBody = z.object({
   /** Expected number of items in the batch */
   runCount: z.number().int().positive(),
+  /** Distinct task identifiers expected in the item stream */
+  taskIdentifiers: z.array(z.string().min(1)).min(1).optional(),
   /** Parent run ID for batchTriggerAndWait (friendly ID) */
   parentRunId: z.string().optional(),
   /** Whether to resume parent on completion (true for batchTriggerAndWait) */

@@ -15,10 +15,10 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { publicAccessTokenResponseHeaders } from "~/services/publicAccessTokenResponse.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -103,11 +103,16 @@ const { action } = createActionApiRoute(
         standaloneResidency: residency,
       });
 
-      const $responseHeaders = await responseHeaders(authentication.environment);
+      const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
+      const $responseHeaders = await publicAccessTokenResponseHeaders({
+        environment: authentication.environment,
+        scopes: [`write:waitpoints:${waitpointId}`],
+        expirationTime: "24h",
+      });
 
       return json<CreateWaitpointTokenResponseBody>(
         {
-          id: WaitpointId.toFriendlyId(result.waitpoint.id),
+          id: waitpointId,
           isCached: result.isCached,
           url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
         },
@@ -123,18 +128,5 @@ const { action } = createActionApiRoute(
     }
   }
 );
-
-async function responseHeaders(
-  environment: AuthenticatedEnvironment
-): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
-    sub: environment.id,
-    pub: true,
-  });
-
-  return {
-    "x-trigger-jwt-claims": claimsHeader,
-  };
-}
 
 export { action };

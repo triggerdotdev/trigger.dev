@@ -21,6 +21,8 @@ export type MetricResourceQueryOptions = {
   defaultPeriod: string;
   queues?: string[];
   fillGaps?: boolean;
+  /** Floor for the query's bucket width, for series too sparse to read at the range's width. */
+  minBucketSeconds?: number;
   refreshIntervalMs?: number;
 };
 
@@ -49,6 +51,11 @@ function cacheSet(key: string, rows: MetricResourceRow[]) {
  * back-navigation to the queues list) shows its last data immediately and revalidates in the
  * background rather than flashing a loading skeleton.
  */
+/**
+ * An empty query means the caller has nothing to ask for, so no request is made and any rows or
+ * failure left by a previous query are dropped — a caller that stops asking must not keep reading
+ * the last answer, or a stale failure would outlive the query that caused it.
+ */
 export function useMetricResourceQuery(query: string, opts: MetricResourceQueryOptions) {
   const {
     organizationId,
@@ -56,6 +63,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     environmentId,
     defaultPeriod,
     fillGaps,
+    minBucketSeconds,
     refreshIntervalMs = 60_000,
   } = opts;
   const { period, from, to } = opts.timeRange;
@@ -71,10 +79,22 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         from ?? "",
         to ?? "",
         fillGaps ? 1 : 0,
+        minBucketSeconds ?? "",
         queuesKey ?? "",
         query,
       ].join("|"),
-    [organizationId, projectId, environmentId, resolvedPeriod, from, to, fillGaps, queuesKey, query]
+    [
+      organizationId,
+      projectId,
+      environmentId,
+      resolvedPeriod,
+      from,
+      to,
+      fillGaps,
+      minBucketSeconds,
+      queuesKey,
+      query,
+    ]
   );
 
   const [rows, setRows] = useState<MetricResourceRow[] | null>(
@@ -86,6 +106,14 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   const loadedKeyRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
+    if (!query) {
+      abortRef.current?.abort();
+      loadedKeyRef.current = cacheKey;
+      setRows(null);
+      setFailed(false);
+      setIsLoading(false);
+      return;
+    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -112,6 +140,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         organizationId,
         projectId,
         environmentId,
+        ...(minBucketSeconds !== undefined ? { minBucketSeconds } : {}),
         ...(queuesKey !== undefined ? { queues: queuesKey.split(",") } : {}),
       }),
       signal: controller.signal,
@@ -142,6 +171,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     from,
     to,
     fillGaps,
+    minBucketSeconds,
     organizationId,
     projectId,
     environmentId,

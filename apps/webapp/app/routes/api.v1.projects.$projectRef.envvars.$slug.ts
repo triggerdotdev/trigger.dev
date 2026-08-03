@@ -3,11 +3,13 @@ import { json } from "@remix-run/server-runtime";
 import { CreateEnvironmentVariableRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import {
-  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
-import { authorizeEnvVarApiRequest } from "~/services/environmentVariableApiAccess.server";
+import {
+  authenticateEnvVarApiRequest,
+  authorizeEnvVarApiRequest,
+} from "~/services/environmentVariableApiAccess.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -22,15 +24,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateRequest(request, {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: true,
-  });
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+  const authResult = await authenticateEnvVarApiRequest(request, "write");
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
@@ -42,6 +40,10 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const denied = await authorizeEnvVarApiRequest({
     request,
     authType: authenticationResult.type,
+    ability:
+      authenticationResult.type === "apiKey" && authenticationResult.result.ok
+        ? authenticationResult.result.ability
+        : undefined,
     organizationId: environment.organizationId,
     projectId: environment.project.id,
     envType: environment.type,
@@ -85,15 +87,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateRequest(request, {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: true,
-  });
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+  const authResult = await authenticateEnvVarApiRequest(request, "read");
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
@@ -105,6 +103,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const denied = await authorizeEnvVarApiRequest({
     request,
     authType: authenticationResult.type,
+    ability:
+      authenticationResult.type === "apiKey" && authenticationResult.result.ok
+        ? authenticationResult.result.ability
+        : undefined,
     organizationId: environment.organizationId,
     projectId: environment.project.id,
     envType: environment.type,
