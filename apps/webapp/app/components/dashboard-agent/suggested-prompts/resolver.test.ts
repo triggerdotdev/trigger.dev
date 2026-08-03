@@ -218,6 +218,48 @@ describe("pageSlotPrompts", () => {
     }
   });
 
+  it("gives the list pages their own explain and docs, not the generic pair", () => {
+    for (const kind of ["errors", "queues", "deployments"] as const) {
+      const slots = pageSlotPrompts({ kind });
+      expect(slots.explain.id, kind).not.toBe(GENERIC_PROMPTS[0]!.id);
+      expect(slots.docs.id, kind).not.toBe(GENERIC_PROMPTS[1]!.id);
+      // A list has nothing wrong with it by itself.
+      expect(slots.investigate, kind).toBeUndefined();
+    }
+  });
+
+  it("offers a queue investigate chip only when the queue is unhealthy", () => {
+    const healthy = pageSlotPrompts({ kind: "queue", name: "emails", health: "ok" });
+    expect(healthy.investigate).toBeUndefined();
+
+    for (const health of ["warn", "crit"] as const) {
+      const slots = pageSlotPrompts({ kind: "queue", name: "emails", health });
+      expect(slots.investigate?.prompt, health).toBe(
+        "Investigate the emails queue — why is it backed up?"
+      );
+    }
+  });
+
+  it("offers a deployment investigate chip only for a deploy that didn't land", () => {
+    expect(pageSlotPrompts({ kind: "deployment", version: "1.0" }).investigate).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "deployment", version: "1.0", status: "DEPLOYED" }).investigate
+    ).toBeUndefined();
+    expect(
+      pageSlotPrompts({ kind: "deployment", version: "1.0", status: "CANCELED" }).investigate
+    ).toBeUndefined();
+
+    for (const status of ["FAILED", "TIMED_OUT"]) {
+      const slots = pageSlotPrompts({ kind: "deployment", version: "20260727.1", status });
+      expect(slots.investigate?.prompt, status).toContain("20260727.1");
+    }
+  });
+
+  it("names the error page's subject in words, since a fingerprint is a hash", () => {
+    const slots = pageSlotPrompts({ kind: "error", fingerprint: "9f2c1a" });
+    expect(slots.investigate?.prompt).toContain("keep coming back");
+  });
+
   it("mentions the page's own subject where the page has one", () => {
     const runPage = demoPageContexts.failedRun.page;
     if (runPage.kind !== "run") throw new Error("fixture changed");

@@ -21,13 +21,22 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     taskId: z.string(),
     queue: z.string().optional(),
   }),
+  /** The errors list. Plural kinds are lists, singular kinds are one thing. */
+  z.object({ kind: z.literal("errors") }),
   z.object({ kind: z.literal("error"), fingerprint: z.string() }),
+  z.object({ kind: z.literal("queues") }),
   z.object({
     kind: z.literal("queue"),
     name: z.string(),
     health: z.enum(["ok", "warn", "crit"]).optional(),
   }),
-  z.object({ kind: z.literal("deployment"), version: z.string() }),
+  z.object({ kind: z.literal("deployments") }),
+  z.object({
+    kind: z.literal("deployment"),
+    version: z.string(),
+    /** `WorkerDeploymentStatus`. Plain string: a new status must not break stored context. */
+    status: z.string().optional(),
+  }),
   /** Anywhere we haven't classified: carry the raw path so the agent isn't blind. */
   z.object({ kind: z.literal("other"), path: z.string() }),
 ]);

@@ -95,7 +95,17 @@ export function resolveSuggestedPromptsBySlot(
     take(slot, [...contextual[slot], pageSlots[slot]]);
   }
 
-  return resolved.slice(0, SUGGESTED_PROMPT_CAP);
+  // Over the cap, optional slots yield in a fixed order — the generic status
+  // chip first, then watch, then investigate. Promoted, explain and docs never
+  // yield: explain and docs are required on every page (docs stays last), and
+  // the promoted slot is the product's own voice.
+  const yieldOrder: ResolvedPromptSlot[] = ["status", "watch", "investigate"];
+  let trimmed = resolved;
+  for (const slot of yieldOrder) {
+    if (trimmed.length <= SUGGESTED_PROMPT_CAP) break;
+    trimmed = trimmed.filter((entry) => entry.slot !== slot);
+  }
+  return trimmed.slice(0, SUGGESTED_PROMPT_CAP);
 }
 
 /**

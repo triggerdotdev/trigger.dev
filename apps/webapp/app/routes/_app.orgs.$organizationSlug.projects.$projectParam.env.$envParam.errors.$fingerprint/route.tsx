@@ -87,6 +87,15 @@ import {
 } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent which error group it's looking at. The fingerprint is
+// the one non-deferred field in this loader's payload, so it costs no query —
+// see `errorAgentPageContext`.
+export const handle: Handle = {
+  agentPageContext: (data) => errorAgentPageContext(data),
+};
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [

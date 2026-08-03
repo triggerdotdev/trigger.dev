@@ -158,8 +158,73 @@ export function runAgentPageContext(
 }
 
 // ---------------------------------------------------------------------------
-// Queue detail page
+// Errors list + error group
 // ---------------------------------------------------------------------------
+
+/**
+ * The errors list. Its loader defers the list itself, so the match carries
+ * promises rather than error groups — the page kind is all we can say without
+ * awaiting, which is enough to swap the generic chips for error ones.
+ */
+export function errorsAgentPageContext(): AgentPageContext {
+  return { page: { kind: "errors" }, signals: [] };
+}
+
+const errorLoaderDataSchema = z.object({ fingerprint: z.string().min(1) });
+
+/**
+ * One error group. The fingerprint is the only non-deferred field in this
+ * loader's payload, so there is no occurrence timestamp to call recent — the
+ * page's "is it still happening?" question goes to the agent instead of a
+ * signal we'd have to query for.
+ */
+export function errorAgentPageContext(data: unknown): AgentPageContext | undefined {
+  const parsed = errorLoaderDataSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+
+  return { page: { kind: "error", fingerprint: parsed.data.fingerprint }, signals: [] };
+}
+
+// ---------------------------------------------------------------------------
+// Queues list + queue detail
+// ---------------------------------------------------------------------------
+
+const queuesLoaderDataSchema = z.object({
+  environment: z.object({
+    running: z.number(),
+    queued: z.number(),
+    concurrencyLimit: z.number(),
+    burstFactor: z.number().nullish(),
+  }),
+});
+
+/**
+ * The queues list, with the environment-level concurrency the page's own
+ * "Running" tile tints (`getEnvConcurrencyLimitStatus`): at the burst limit
+ * with work waiting is saturation. The signal has no queue identity because
+ * this one is the environment's, not one queue's.
+ */
+export function queuesAgentPageContext(data: unknown): AgentPageContext | undefined {
+  const parsed = queuesLoaderDataSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+
+  const { running, queued, concurrencyLimit, burstFactor } = parsed.data.environment;
+  const limit = concurrencyLimit * (burstFactor && burstFactor > 0 ? burstFactor : 1);
+  const signals: AgentPageSignal[] = [];
+
+  if (limit > 0 && running >= limit && queued > 0) {
+    signals.push({ kind: "concurrency_saturation", severity: queued >= limit ? "crit" : "warn" });
+  }
+
+  return { page: { kind: "queues" }, signals };
+}
+
+/**
+ * How long the head of the queue may sit unstarted before the queue counts as
+ * degraded. The queue detail route imports this as its `OLDEST_WAIT_WARNING_MS`,
+ * so the page's warning tint and the health we report here are one threshold.
+ */
+export const QUEUE_OLDEST_WAIT_WARNING_MS = 5 * 60_000;
 
 const queueLoaderDataSchema = z.object({
   queue: z.object({
@@ -169,22 +234,57 @@ const queueLoaderDataSchema = z.object({
     queued: z.number(),
     concurrencyLimit: z.number().nullish(),
   }),
+  environmentConcurrencyLimit: z.number().nullish(),
+  /** Enqueue time of the oldest run still waiting, and the "now" it was read at. */
+  oldestQueuedAt: z.number().nullish(),
+  loadedAt: z.number().nullish(),
+  ckBreakdown: z
+    .object({
+      keys: z.array(z.object({ queued: z.number(), oldestEnqueuedAt: z.number() })).nullish(),
+    })
+    .nullish(),
 });
+
+/**
+ * Whole-queue oldest wait, as the page computes it (`wholeQueueOldestWaitMs`):
+ * for keyed queues the oldest wait is the worst across keys with a live
+ * backlog, otherwise the queue's own oldest message. Null when nothing waits.
+ */
+function oldestWaitMs(
+  keys: { queued: number; oldestEnqueuedAt: number }[],
+  oldestQueuedAt: number | null | undefined,
+  now: number | null | undefined
+): number | null {
+  if (now === null || now === undefined) return null;
+  const waiting = keys.filter((key) => key.queued > 0);
+  if (waiting.length > 0) {
+    return waiting.reduce((max, key) => Math.max(max, now - key.oldestEnqueuedAt), 0);
+  }
+  return oldestQueuedAt === null || oldestQueuedAt === undefined
+    ? null
+    : Math.max(0, now - oldestQueuedAt);
+}
 
 /**
  * Queue health, from the same running/queued/limit decision the queues list
  * renders as a badge (`queueHealthLabel`): at capacity with work waiting is
- * critical, a backlog under the limit is a warning, paused is a warning.
+ * critical, a backlog under the limit is a warning, paused is a warning. A
+ * head-of-line run waiting past the page's own threshold is a warning too —
+ * the same state that puts the page's Investigate button on screen.
  */
 export function queueAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = queueLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
 
   const { name, paused, running, queued, concurrencyLimit } = parsed.data.queue;
-  const limit = concurrencyLimit ?? null;
+  const { environmentConcurrencyLimit, oldestQueuedAt, loadedAt, ckBreakdown } = parsed.data;
+  const limit = concurrencyLimit ?? environmentConcurrencyLimit ?? null;
   const atCapacity = limit !== null && limit > 0 && running >= limit && queued > 0;
 
-  const health = atCapacity ? "crit" : paused || queued > 0 ? "warn" : "ok";
+  const oldestWait = oldestWaitMs(ckBreakdown?.keys ?? [], oldestQueuedAt, loadedAt);
+  const waitingTooLong = oldestWait !== null && oldestWait >= QUEUE_OLDEST_WAIT_WARNING_MS;
+
+  const health = atCapacity ? "crit" : paused || queued > 0 || waitingTooLong ? "warn" : "ok";
 
   const signals: AgentPageSignal[] = [];
   if (atCapacity) {
@@ -193,5 +293,39 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
   }
 
+  // No `waiting_run` for a stalled head of line: the loader has the wait time
+  // but not the run's id, and the signal is about a named run. The `warn`
+  // health carries it instead, which is what the page's Investigate button
+  // gates on.
+
   return { page: { kind: "queue", name, health }, signals };
+}
+
+// ---------------------------------------------------------------------------
+// Deployments list + deployment detail
+// ---------------------------------------------------------------------------
+
+/**
+ * The deployments list. Nothing here is abnormal on its own — a failed deploy
+ * in the table is history, not news — so the page kind carries the chips.
+ */
+export function deploymentsAgentPageContext(): AgentPageContext {
+  return { page: { kind: "deployments" }, signals: [] };
+}
+
+const deploymentLoaderDataSchema = z.object({
+  deployment: z.object({ version: z.string(), status: z.string() }),
+});
+
+/**
+ * One deployment. The status is the raw `WorkerDeploymentStatus`; the registry
+ * decides which of them is worth an investigate chip. No signal: the signal
+ * vocabulary is about runs and concurrency, and a failed deploy is neither.
+ */
+export function deploymentAgentPageContext(data: unknown): AgentPageContext | undefined {
+  const parsed = deploymentLoaderDataSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+
+  const { version, status } = parsed.data.deployment;
+  return { page: { kind: "deployment", version, status }, signals: [] };
 }

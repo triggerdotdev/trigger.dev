@@ -73,12 +73,25 @@ import {
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
 import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import {
+  QUEUE_OLDEST_WAIT_WARNING_MS,
+  queueAgentPageContext,
+} from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+
+// Tell the dashboard agent which queue it's looking at and how it's doing. The
+// health and the saturation signal come from the same running/queued/limit and
+// oldest-wait numbers the page renders, so this costs no queries — see
+// `queueAgentPageContext`.
+export const handle: Handle = {
+  agentPageContext: (data) => queueAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
 
@@ -1035,8 +1048,9 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// Oldest-wait threshold for the warning tint lives in ~/components/queues/queue-thresholds, shared
-// with the watch card's age-SLA recommendation so the two can't drift.
+// Oldest-wait threshold for the warning tint lives in ~/components/queues/queue-thresholds,
+// shared with the page-context mapper and the watch card's age-SLA recommendation so the
+// tint, the Investigate button, reported health and the card can't drift apart.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

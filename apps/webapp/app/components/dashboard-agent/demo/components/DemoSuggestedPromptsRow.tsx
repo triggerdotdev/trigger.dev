@@ -30,7 +30,9 @@ function contextLine(context: AgentPageContext): string {
             ? `error ${page.fingerprint}`
             : page.kind === "deployment"
               ? `deployment ${page.version}`
-              : page.path;
+              : page.kind === "other"
+                ? page.path
+                : `${page.kind} list`;
   const why = signals.length > 0 ? signals.map((s) => s.kind).join(", ") : "no signals";
   return `${where} — ${why}`;
 }

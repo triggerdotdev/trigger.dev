@@ -76,6 +76,15 @@ import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { errorsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's looking at the errors list, so the panel offers
+// error questions instead of generic ones. The list itself is deferred, so
+// there's nothing else to say without a query.
+export const handle: Handle = {
+  agentPageContext: () => errorsAgentPageContext(),
+};
 
 export const meta: MetaFunction = () => {
   return [
