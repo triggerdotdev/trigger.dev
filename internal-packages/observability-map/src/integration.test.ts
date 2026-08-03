@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { scanDirectory, scanFile } from "./scan.js";
+import { isScannableFile, scanDirectory, scanFile } from "./scan.js";
 import { buildReport } from "./score.js";
 import { SCORED_CHECK_IDS } from "./checks/index.js";
 
@@ -59,7 +59,7 @@ function countRouteModuleFiles(dir: string): number {
       count += countRouteModuleFiles(join(dir, entry.name));
       continue;
     }
-    if (entry.isFile() && /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) count++;
+    if (entry.isFile() && isScannableFile(entry.name)) count++;
   }
   return count;
 }
@@ -366,6 +366,37 @@ describe("scanning the real webapp routes", () => {
       expect(report.global).toBeGreaterThanOrEqual(0);
       expect(report.global).toBeLessThanOrEqual(100);
       expect(Object.keys(report.byFamily).length).toBeGreaterThan(1);
+    },
+    TREE_SCAN_TIMEOUT
+  );
+
+  /**
+   * The per-export split against the entry-point-wide union it came from, on every real route.
+   * `scan.test.ts` pins the same property on fixtures; this is the version that sees the shapes
+   * nobody thought to write down, and the two representations only stay honest while both hold.
+   */
+  it(
+    "every callee name is attributed to an export that exists",
+    () => {
+      const { entryPoints } = scanDirectory(ROUTES);
+      const orphaned: string[] = [];
+      const unattributed: string[] = [];
+
+      for (const ep of entryPoints) {
+        const attributed = new Set([...ep.loaderCalleeNames, ...ep.actionCalleeNames]);
+        for (const name of new Set(ep.calleeNames)) {
+          if (!attributed.has(name)) unattributed.push(`${ep.fileName}: ${name}`);
+        }
+        const union = new Set(ep.calleeNames);
+        for (const name of attributed) {
+          if (!union.has(name)) orphaned.push(`${ep.fileName}: ${name}`);
+        }
+        if (!ep.hasLoader) expect(ep.loaderCalleeNames).toEqual([]);
+        if (!ep.hasAction) expect(ep.actionCalleeNames).toEqual([]);
+      }
+
+      expect(unattributed).toEqual([]);
+      expect(orphaned).toEqual([]);
     },
     TREE_SCAN_TIMEOUT
   );

@@ -1833,6 +1833,199 @@ describe("auth-boundary: the guard accept-list", () => {
   });
 });
 
+/**
+ * Per-export attribution. Every input `auth-boundary` reads used to be entry-point-wide, so one
+ * guarded export spoke for the whole file. Each `it` here goes green on the entry-point-wide
+ * version of exactly one of those inputs, which is why they are separate cases rather than one.
+ */
+describe("auth-boundary: a guard credits only the export that calls it", () => {
+  const TOKENS = `import { requireUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";`;
+
+  it("fails an unguarded action beside a loader that calls a guard", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `${TOKENS}
+       export async function loader({ request }) {
+         const userId = await requireUserId(request);
+         return json(await prisma.token.findMany({ where: { userId } }));
+       }
+       export async function action({ request }) {
+         const body = await request.json();
+         await prisma.token.deleteMany({ where: { id: body.id } });
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("action");
+  });
+
+  it("fails an unguarded loader beside an action that calls a guard", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `${TOKENS}
+       export async function loader({ params }) {
+         const tokens = await prisma.token.findMany({ where: { orgId: params.orgId } });
+         return json({ tokens });
+       }
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         await prisma.token.deleteMany({ where: { userId } });
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("loader");
+  });
+
+  // The soft-guard arm reads its own export's checked-callee list for the same reason.
+  it("fails an unguarded action beside a loader that reads what getUserId returned", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `import { getUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         const userId = await getUserId(request);
+         if (!userId) return redirect("/login");
+         return json(await prisma.token.findMany({ where: { userId } }));
+       }
+       export async function action({ request }) {
+         const body = await request.json();
+         await prisma.token.deleteMany({ where: { id: body.id } });
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("action");
+  });
+
+  // The builder arm. `usesBuilder` was an OR over both initializer callees, so a builder on one
+  // export authenticated a hand-written handler on the other.
+  it("fails a hand-written action beside a builder-wrapped loader", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const loader = createLoaderApiRoute({}, async ({ authentication }) => {
+         return json(await prisma.token.findMany({ where: { userId: authentication.userId } }));
+       });
+       export async function action({ request }) {
+         const body = await request.json();
+         await prisma.token.deleteMany({ where: { id: body.id } });
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("action");
+  });
+
+  it("passes when both exports call a guard of their own", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `${TOKENS}
+       export async function loader({ request }) {
+         const userId = await requireUserId(request);
+         return json(await prisma.token.findMany({ where: { userId } }));
+       }
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         await prisma.token.deleteMany({ where: { userId } });
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // One handler serving both exports guards both, which is the dominant API-route shape.
+  it("passes a shared builder handler that both exports resolve to", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.tokens.ts",
+      `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       export const { action, loader } = createActionApiRoute({}, async ({ authentication }) => {
+         return json({ userId: authentication.userId });
+       });`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  /**
+   * The damper on the attribution, and the reason it is not simply "accuse every unguarded export".
+   * `auth.github.ts` and `auth.google.ts` are this shape: per export the loader is unguarded, and
+   * an entry-point-wide triviality rule calls the file non-trivial because the ACTION is not. Both
+   * routes went pass to fail on the real tree until `isTrivialExport` existed.
+   */
+  it("reports not-applicable for a redirect-stub loader beside a guarded action", () => {
+    const r = run(
+      "auth-boundary",
+      "auth.github.ts",
+      `import { authenticator } from "~/services/auth.server";
+       export let loader = () => redirect("/login");
+       export let action = async ({ request }) => {
+         const url = new URL(request.url);
+         const safeRedirect = sanitizeRedirectPath(url.searchParams.get("redirectTo"), "/");
+         return await authenticator.authenticate("github", request, {
+           successRedirect: safeRedirect,
+           failureRedirect: "/login",
+         });
+       };`
+    );
+    expect(r.status).toBe("pass");
+    expect(r.detail).toBe("guarded in the body");
+  });
+
+  /**
+   * The per-export excuse must read the export's own body and not the file's text. It read
+   * `ep.source` first, and `log-caller-scope-userid` in the mutation corpus, which prepends
+   * `logger.error(...)` to every body, put the word `logger` in this file and turned the untouched
+   * loader from excused into accused. A five-minute corpus run is the wrong place to catch that.
+   */
+  it("does not un-excuse a redirect-stub loader because the file mentions a logger", () => {
+    const r = run(
+      "auth-boundary",
+      "auth.github.ts",
+      `import { authenticator } from "~/services/auth.server";
+       import { logger } from "~/services/logger.server";
+       export let loader = () => redirect("/login");
+       export let action = async ({ request }) => {
+         logger.error("obs-map", { userId: request.userId });
+         return await authenticator.authenticate("github", request, {
+           successRedirect: "/",
+           failureRedirect: "/login",
+         });
+       };`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("fails an export whose own body does real work unguarded", () => {
+    const r = run(
+      "auth-boundary",
+      "auth.github.ts",
+      `import { authenticator } from "~/services/auth.server";
+       import { prisma } from "~/db.server";
+       export let loader = async ({ params }) => {
+         const org = await prisma.organization.findFirst({ where: { slug: params.slug } });
+         const members = await prisma.orgMember.findMany({ where: { orgId: org.id } });
+         return json({ org, members });
+       };
+       export let action = async ({ request }) => {
+         return await authenticator.authenticate("github", request, {
+           successRedirect: "/",
+           failureRedirect: "/login",
+         });
+       };`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("loader");
+  });
+});
+
 // C1b. A builder authenticates the request; it does not necessarily scope it. `authorization` is
 // optional on every one of them and the RBAC gate only runs when it is declared.
 describe("auth-scope", () => {

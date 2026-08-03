@@ -1,5 +1,6 @@
 import type { CheckResult, EntryPoint } from "../types.js";
 import { classifySensitivity } from "../sensitivity.js";
+import { routeExports } from "../routeExports.js";
 import { BUILDERS } from "./errorClassification.js";
 
 const ID = "auth-scope";
@@ -12,30 +13,22 @@ type BuilderExport = { name: string; callee: string; scoped: boolean; why: strin
  * Per export, because the exposure is per export. `authorization` is declared on the builder call
  * one export made, and a caller filter is written in the handler one export runs, so neither says
  * anything about the other half of the file.
+ *
+ * The enumeration itself is `routeExports`, shared with `auth-boundary`, which had to be given the
+ * same per-export treatment a round later and wrote a second copy of this literal to get it.
  */
 function builderExports(ep: EntryPoint): BuilderExport[] {
-  const all = [
-    {
-      name: "loader",
-      callee: ep.loaderInitializerCallee,
-      authorization: ep.loaderBuilderOptions.includes("authorization"),
-      filters: ep.loaderScopesByCaller,
-    },
-    {
-      name: "action",
-      callee: ep.actionInitializerCallee,
-      authorization: ep.actionBuilderOptions.includes("authorization"),
-      filters: ep.actionScopesByCaller,
-    },
-  ];
-  return all
-    .filter((e) => e.callee !== null && BUILDERS.has(e.callee))
-    .map((e) => ({
-      name: e.name,
-      callee: e.callee!,
-      scoped: e.authorization || e.filters,
-      why: e.authorization ? "an authorization gate" : "a filter on the caller's identity",
-    }));
+  return routeExports(ep)
+    .filter((e) => e.initializerCallee !== null && BUILDERS.has(e.initializerCallee))
+    .map((e) => {
+      const authorization = e.builderOptions.includes("authorization");
+      return {
+        name: e.name,
+        callee: e.initializerCallee!,
+        scoped: authorization || e.scopesByCaller,
+        why: authorization ? "an authorization gate" : "a filter on the caller's identity",
+      };
+    });
 }
 
 /**

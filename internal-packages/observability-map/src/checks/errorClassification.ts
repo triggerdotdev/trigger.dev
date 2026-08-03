@@ -118,13 +118,6 @@ function swallows(clause: CatchEvidence): boolean {
   return !decides(clause) && !inert(clause);
 }
 
-export function usesBuilder(ep: EntryPoint): boolean {
-  return (
-    (ep.loaderInitializerCallee !== null && BUILDERS.has(ep.loaderInitializerCallee)) ||
-    (ep.actionInitializerCallee !== null && BUILDERS.has(ep.actionInitializerCallee))
-  );
-}
-
 /**
  * Who decides what a failure means, and on what evidence.
  *

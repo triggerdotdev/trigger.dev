@@ -1,14 +1,16 @@
 import type { CheckResult, EntryPoint } from "../types.js";
 import { classifySensitivity } from "../sensitivity.js";
-import { isTrivial } from "../triviality.js";
-import { usesBuilder } from "./errorClassification.js";
+import { routeExports, type ExportName, type RouteExport } from "../routeExports.js";
+import { isTrivialExport } from "../triviality.js";
+import { BUILDERS } from "./errorClassification.js";
 
 const ID = "auth-boundary";
 
 /**
- * The guard helpers this webapp actually has, matched against `calleeNames`, which is scoped to the
- * loader/action bodies and follows one hop into a same-file helper. A guard the route only imports
- * and never calls does not count.
+ * The guard helpers this webapp actually has, matched against the calling export's own
+ * `loaderCalleeNames`/`actionCalleeNames`, each scoped to that export's handlers and following one
+ * hop into a same-file helper. A guard the route only imports and never calls does not count, and
+ * neither does one the OTHER export calls.
  *
  * A name list rather than the three patterns it replaces, because all three over-matched and this
  * is the one check where a false pass hides a security gap:
@@ -66,16 +68,22 @@ export const GUARDS = new Set([
   // Local helpers, each declared inside the one route that uses it.
   "authenticateAdmin",
   "authenticatePlainRequest",
-  // Proof of possession: a callback URL carrying an HMAC is authenticated by checking that HMAC.
+  // Proof of possession: a callback URL carrying an HMAC is authenticated by checking that HMAC,
+  // and a login-surface second factor is authenticated by checking the code presented.
+  // `login.mfa`'s action is the second half of a login, so like `authenticate` above it establishes
+  // identity from the credential rather than requiring an already authenticated caller. It reached
+  // this list when per-export attribution stopped its loader's `isAuthenticated` speaking for it.
   "verifyHttpCallbackHash",
   "verifyWebhook",
   "verifyUserActorToken",
+  "verifyTotpForLogin",
+  "verifyRecoveryCodeForLogin",
 ]);
 
 /**
  * Guards that answer with null instead of throwing. Calling one is not evidence of a boundary,
- * because the route is free to ignore the answer, so these are only credited when the body
- * demonstrably reads what they returned (`EntryPoint.checkedCallees`).
+ * because the route is free to ignore the answer, so these are only credited when THAT EXPORT's
+ * handlers demonstrably read what they returned (`EntryPoint.loaderCheckedCallees`).
  *
  * The distinction is the whole reason this set is separate from `GUARDS`. `requireUserId` redirects
  * on its own, so calling it IS the boundary; `getUserId` hands back `string | null` and a route
@@ -85,9 +93,42 @@ export const GUARDS = new Set([
  * rather than something a hand-read established once.
  *
  * What it still cannot see is whether the test that reads the answer guards anything. See
- * `EntryPoint.checkedCallees` for the exact shape of that residual.
+ * `EntryPoint.loaderCheckedCallees` for the exact shape of that residual.
  */
 export const SOFT_GUARDS = new Set(["getUser", "getUserId"]);
+
+type GuardedExport = { name: ExportName; guarded: boolean; how: string; export: RouteExport };
+
+/**
+ * The exports this file declares, each with its own verdict.
+ *
+ * Per export, because the exposure is per export, and this is the same defect `auth-scope` was
+ * fixed for one round earlier. Every input here was entry-point-wide: `calleeNames` is the union of
+ * both bodies, `checkedCallees` was too, and `usesBuilder` was an OR over the two initializer
+ * callees. So a file whose loader called `requireUser` and whose action called nothing read as
+ * "guarded in the body", and a file whose loader was `createLoaderApiRoute(...)` credited its
+ * hand-written action with the builder's authentication. Three inputs, one bug, and it is a false
+ * PASS on the one check where that hides a security gap.
+ *
+ * `routeExports` lists only the exports the file actually declares, so an export that calls nothing
+ * at all is judged rather than skipped: an empty body is exactly the unguarded case. It is shared
+ * with `auth-scope`, which grew its own copy of the same `[loader, action]` literal.
+ */
+function guardedExports(ep: EntryPoint): GuardedExport[] {
+  return routeExports(ep).map((e) => {
+    const verdict = (guarded: boolean, how: string) => ({ name: e.name, guarded, how, export: e });
+    if (e.initializerCallee !== null && BUILDERS.has(e.initializerCallee)) {
+      return verdict(true, "authenticated by the builder");
+    }
+    if (e.calleeNames.some((n) => GUARDS.has(n))) {
+      return verdict(true, "guarded in the body");
+    }
+    if (e.checkedCallees.some((n) => SOFT_GUARDS.has(n))) {
+      return verdict(true, "resolves the caller and reads the answer");
+    }
+    return verdict(false, "");
+  });
+}
 
 /**
  * Whether a route that handles credentials, tokens or money checks who is asking.
@@ -123,26 +164,30 @@ export const authBoundary = {
     if (!sensitivity.sensitive) {
       return { id: ID, status: "not-applicable", detail: "not sensitive" };
     }
-    if (usesBuilder(ep)) {
-      return { id: ID, status: "pass", detail: "authenticated by the builder" };
-    }
-    if (ep.calleeNames.some((n) => GUARDS.has(n))) {
-      return { id: ID, status: "pass", detail: "guarded in the body" };
-    }
-    if (ep.checkedCallees.some((n) => SOFT_GUARDS.has(n))) {
-      return { id: ID, status: "pass", detail: "resolves the caller and reads the answer" };
-    }
-    if (isTrivial(ep)) {
+    // Never empty: `scanFile` returns null unless the file declares a loader or an action.
+    const exports = guardedExports(ep);
+    const guarded = exports.filter((e) => e.guarded);
+    // Triviality excuses per export, matching the attribution: the reasoning below is about one
+    // body being the place a guard would have to be, and reading it entry-point-wide let a busy
+    // action make a redirect-stub loader answerable for a guard it has nothing to guard.
+    const accused = exports.filter((e) => !e.guarded && !isTrivialExport(e.export));
+    if (accused.length > 0) {
       return {
         id: ID,
-        status: "not-applicable",
-        detail: "cannot verify: no privileged work in the body, any guard is behind an import",
+        status: "fail",
+        detail: `sensitive (${sensitivity.reasons.join(", ")}) with no auth guard in the body: ${accused
+          .map((e) => e.name)
+          .join(", ")}`,
       };
+    }
+    if (guarded.length > 0) {
+      const how = [...new Set(guarded.map((e) => e.how))].join(" and ");
+      return { id: ID, status: "pass", detail: how };
     }
     return {
       id: ID,
-      status: "fail",
-      detail: `sensitive (${sensitivity.reasons.join(", ")}) with no auth guard in the body`,
+      status: "not-applicable",
+      detail: "cannot verify: no privileged work in the body, any guard is behind an import",
     };
   },
 };

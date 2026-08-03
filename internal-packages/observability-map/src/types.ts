@@ -129,13 +129,17 @@ export type EntryPoint = {
   loaderScopesByCaller: boolean;
   actionScopesByCaller: boolean;
   /**
-   * Callees whose answer the body demonstrably looked at: the call's result was bound to a local
-   * and some `if`, `while`, `switch` or conditional in the same bodies reads that local.
-   * `const user = await getUser(request); if (!user) return redirect("/login");` puts `getUser`
-   * here; a call whose result is dropped, or bound and never tested, does not appear.
+   * Callees whose answer THIS export's handlers demonstrably looked at: the call's result was bound
+   * to a local and some `if`, `while`, `switch` or conditional in the same handlers reads that
+   * local. `const user = await getUser(request); if (!user) return redirect("/login");` puts
+   * `getUser` here; a call whose result is dropped, or bound and never tested, does not appear.
    *
    * Read by `auth-boundary` for the guards that answer with null instead of throwing, where being
    * called is not evidence that the route acted on the answer.
+   *
+   * Split per export for the same reason `loaderScopesByCaller` is, and there is no entry-point-wide
+   * version on purpose: a loader that reads what `getUser` returned says nothing about the action
+   * beside it, so the union is not a fact any check should be able to reach for.
    *
    * Deliberately coarse. It does not check that the test guards anything, that the local is the one
    * tested rather than a same-named one in another scope, or that the branch exits: a route
@@ -143,17 +147,49 @@ export type EntryPoint = {
    * "looked at the answer" from "ignored it", which is the distinction the check needs, and not
    * "acted correctly on the answer", which it cannot see.
    */
-  checkedCallees: string[];
+  loaderCheckedCallees: string[];
+  actionCheckedCallees: string[];
   /** Named and default imports, file-wide. */
   importedNames: string[];
-  /** Names of functions called inside the loader/action bodies, or in a same-file helper they call. */
+  /**
+   * Names of functions called inside the loader/action bodies, or in a same-file helper they call.
+   *
+   * Entry-point-wide, and read only by the questions that are themselves entry-point-wide:
+   * `sensitivity.ts` asks what the file touches, `triviality.ts` counts how much the file does,
+   * `audit-trail` asks whether the file records anything. A question about ONE export's exposure
+   * must read `loaderCalleeNames`/`actionCalleeNames` instead. `auth-boundary` read this and
+   * credited a file whose loader called a guard for an action that called none.
+   */
   calleeNames: string[];
+  /**
+   * The same callee names attributed to the export whose handlers made the call. A handler serving
+   * both exports (`const { loader, action } = createActionApiRoute({ handler })`) contributes to
+   * both, and a same-file helper contributes to whichever exports reach it.
+   *
+   * Every name here appears in `calleeNames` and every name in `calleeNames` appears in at least one
+   * of these, because all three are filled from one push in `scanFile`. `scan.test.ts` pins that
+   * ("every callee name is attributed to an export that exists") and `integration.test.ts` pins it
+   * again across the real route tree, so the split cannot drift away from the union it came from.
+   */
+  loaderCalleeNames: string[];
+  actionCalleeNames: string[];
+  /**
+   * The same calls as `loaderCalleeNames`/`actionCalleeNames`, each as its whole dotted path
+   * (`prisma.organization.findFirst` rather than `findFirst`). Read by the per-export triviality
+   * rule, which has to know that a three-statement body reaches the datastore; the bare name that
+   * `auth-boundary` matches guards against throws that receiver away.
+   */
+  loaderCalleeTexts: string[];
+  actionCalleeTexts: string[];
   /**
    * Whether a `try` appears in the loader/action bodies, or in a same-file helper they call. Note
    * that this says a `try`, not a catch: a `try`/`finally` sets it while `catches` stays empty and
    * every catch-shaped field stays false. Read `catches.length` to ask whether anything is caught.
    */
   hasTryCatch: boolean;
+  /** The same fact for one export's handlers alone. Read by the per-export triviality rule. */
+  loaderHasTryCatch: boolean;
+  actionHasTryCatch: boolean;
   /** One entry per catch clause in those bodies, in source order. */
   catches: CatchEvidence[];
   /**
@@ -176,4 +212,11 @@ export type EntryPoint = {
    * one hop only: work in a helper's own helpers, or in an imported module, is not counted.
    */
   statementCount: number;
+  /**
+   * The same count for one export's handlers alone, counted by the same walk. A handler serving both
+   * exports is counted once in `statementCount` and once in each of these, so the two do not sum to
+   * the entry point's total and must not be used as though they did.
+   */
+  loaderStatementCount: number;
+  actionStatementCount: number;
 };

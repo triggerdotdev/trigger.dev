@@ -668,13 +668,11 @@ function containsExit(node: ts.Node): boolean {
  */
 function literalTruth(expr: ts.Expression): boolean | null {
   const target = unwrap(expr);
-  if (target.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (target.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (target.kind === ts.SyntaxKind.NullKeyword) return false;
-  if (ts.isStringLiteral(target) || ts.isNoSubstitutionTemplateLiteral(target)) {
-    return target.text !== "";
-  }
-  if (ts.isNumericLiteral(target)) return Number(target.text) !== 0;
+  // The five bare-literal kinds are `literalValue`'s list, not a second copy of it: this was the
+  // same five node-kind tests written out three lines above the function that already had them,
+  // differing only in returning the truthiness rather than the value.
+  const literal = literalValue(target);
+  if (literal !== undefined) return Boolean(literal);
   if (ts.isPrefixUnaryExpression(target) && target.operator === ts.SyntaxKind.ExclamationToken) {
     const inner = literalTruth(target.operand);
     return inner === null ? null : !inner;
@@ -1395,6 +1393,51 @@ function countFunctionStatements(fn: EntryFunction): number {
   return countStatements(fn.body.statements);
 }
 
+type ExportName = "loader" | "action";
+
+/**
+ * The call-site facts a body walk accumulates, kept in one shape so the entry-point-wide totals and
+ * each export's own totals are filled by the same code rather than by two similar loops.
+ */
+type BodyFacts = {
+  calleeNames: string[];
+  /**
+   * The same calls as `calleeNames`, each as its whole dotted path. `calleeName` keeps only the
+   * last segment, so `prisma.organization.findFirst` arrives in `calleeNames` as `findFirst` and
+   * the receiver that says WHAT is being called is gone. The per-export triviality rule needs it
+   * back: `prisma` in the path is how a short body is known to touch the datastore.
+   */
+  calleeTexts: string[];
+  /** Locals initialised from a call, by local name. */
+  declaredFrom: Map<string, string[]>;
+  /** Every identifier read by an `if`, `while`, `switch` or conditional condition. */
+  testedNames: Set<string>;
+  statementCount: number;
+  hasTryCatch: boolean;
+};
+
+function newBodyFacts(): BodyFacts {
+  return {
+    calleeNames: [],
+    calleeTexts: [],
+    declaredFrom: new Map(),
+    testedNames: new Set(),
+    statementCount: 0,
+    hasTryCatch: false,
+  };
+}
+
+/** Callees whose answer these bodies looked at: declared from a call AND read by a condition. */
+function checkedCalleesOf(facts: BodyFacts): string[] {
+  return [
+    ...new Set(
+      [...facts.declaredFrom]
+        .filter(([local]) => facts.testedNames.has(local))
+        .flatMap(([, callees]) => callees)
+    ),
+  ];
+}
+
 type EntryTarget = {
   hasLoader: boolean;
   hasAction: boolean;
@@ -1616,31 +1659,42 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
   if (!target.hasLoader && !target.hasAction) return null;
 
-  let statementCount = 0;
-  let hasTryCatch = false;
   const callbackCatches: CatchEvidence[] = [];
   const catches: CatchEvidence[] = [];
-  const calleeNames: string[] = [];
   const logCalls: LogCall[] = [];
 
-  // Locals initialised from a call, and the names any condition in the body reads. Their
-  // intersection is `checkedCallees`: callees whose answer the route demonstrably looked at.
-  const declaredFrom = new Map<string, string[]>();
-  const testedNames = new Set<string>();
-  const collectTested = (node: ts.Node) => {
-    if (ts.isIdentifier(node)) testedNames.add(node.text);
-    ts.forEachChild(node, collectTested);
+  const wholeEntry = newBodyFacts();
+  const byExport: Record<ExportName, BodyFacts> = {
+    loader: newBodyFacts(),
+    action: newBodyFacts(),
   };
 
   const localFunctions = collectLocalFunctions(sf);
   // A body that delegates to a same-file helper does the work in that helper, so the helper's
   // statements, try/catch and callees belong to the entry point. One hop only: a helper's own
   // helpers are not followed, and the visited set stops a cycle and any double counting.
+  //
+  // The helper's callees belong to whichever EXPORTS reach it, too, which is what `helperOwners`
+  // carries. A helper called from both halves of the file is owned by both; the union is taken on
+  // the second discovery rather than dropped, because `visited` has already queued it by then.
   const visited = new Set<EntryFunction>(target.functions);
   const helpers: EntryFunction[] = [];
+  const helperOwners = new Map<EntryFunction, Set<ExportName>>();
 
-  const walkBody = (fn: EntryFunction, followHelpers: boolean) => {
-    statementCount += countFunctionStatements(fn);
+  const walkBody = (fn: EntryFunction, followHelpers: boolean, owners: ReadonlySet<ExportName>) => {
+    // One push site feeds the entry-point-wide list and each owning export's list, so
+    // `calleeNames` and the per-export lists cannot drift apart. See `EntryPoint.loaderCalleeNames`.
+    const sinks: BodyFacts[] = [wholeEntry];
+    for (const owner of owners) sinks.push(byExport[owner]);
+    const collectTested = (node: ts.Node) => {
+      if (ts.isIdentifier(node)) for (const s of sinks) s.testedNames.add(node.text);
+      ts.forEachChild(node, collectTested);
+    };
+
+    const addStatements = (n: number) => {
+      for (const sink of sinks) sink.statementCount += n;
+    };
+    addStatements(countFunctionStatements(fn));
 
     if (!fn.body) return;
     // `inCallback` is true once the walk has entered a per-item iteration callback
@@ -1665,13 +1719,13 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     // the mutation corpus is that shape.
     const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
       if (ts.isFunctionLike(node)) {
-        if (isEntryFunction(node)) statementCount += countFunctionStatements(node);
+        if (isEntryFunction(node)) addStatements(countFunctionStatements(node));
         const entersIterationCallback = inCallback || isIterationCallback(node);
         ts.forEachChild(node, (child) => visit(child, inCatch, entersIterationCallback));
         return;
       }
       if (ts.isTryStatement(node)) {
-        hasTryCatch = true;
+        for (const sink of sinks) sink.hasTryCatch = true;
         if (node.catchClause) {
           // Built the same way for a refused catch as for an own one, so the dead-code defence
           // and the walk's guaranteed-execution rules apply to both. Which list it lands in is
@@ -1699,9 +1753,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         if (ts.isCallExpression(initializer)) {
           const cn = calleeName(initializer.expression);
           if (cn) {
-            const existing = declaredFrom.get(node.name.text);
-            if (existing) existing.push(cn);
-            else declaredFrom.set(node.name.text, [cn]);
+            for (const sink of sinks) {
+              const existing = sink.declaredFrom.get(node.name.text);
+              if (existing) existing.push(cn);
+              else sink.declaredFrom.set(node.name.text, [cn]);
+            }
           }
         }
       }
@@ -1715,7 +1771,10 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         const cn = calleeName(node.expression);
         if (cn) {
           const text = calleeText(node.expression) ?? cn;
-          calleeNames.push(cn);
+          for (const sink of sinks) {
+            sink.calleeNames.push(cn);
+            sink.calleeTexts.push(text);
+          }
 
           if (LOGGER_CALLEE.test(text)) {
             logCalls.push({
@@ -1733,6 +1792,10 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
             if (helper && !visited.has(helper)) {
               visited.add(helper);
               helpers.push(helper);
+              helperOwners.set(helper, new Set(owners));
+            } else if (helper) {
+              const already = helperOwners.get(helper);
+              if (already) for (const owner of owners) already.add(owner);
             }
           }
         }
@@ -1742,8 +1805,16 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     visit(fn.body, false, false);
   };
 
-  for (const fn of target.functions) walkBody(fn, true);
-  for (const helper of helpers) walkBody(helper, false);
+  // Every handler is walked exactly once, whichever exports own it, so the entry-point-wide
+  // statement count and catch list stay single while the per-export lists see it from both sides.
+  const ownersOf = (fn: EntryFunction): Set<ExportName> => {
+    const owners = new Set<ExportName>();
+    if (target.loaderFunctions.has(fn)) owners.add("loader");
+    if (target.actionFunctions.has(fn)) owners.add("action");
+    return owners;
+  };
+  for (const fn of target.functions) walkBody(fn, true, ownersOf(fn));
+  for (const helper of helpers) walkBody(helper, false, helperOwners.get(helper) ?? new Set());
 
   return {
     fileName,
@@ -1762,29 +1833,74 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
       target.actionInitializerCallee === null,
     loaderScopesByCaller: scopesByCallerIn(target.loaderFunctions),
     actionScopesByCaller: scopesByCallerIn(target.actionFunctions),
-    checkedCallees: [
-      ...new Set(
-        [...declaredFrom]
-          .filter(([local]) => testedNames.has(local))
-          .flatMap(([, callees]) => callees)
-      ),
-    ],
+    loaderCheckedCallees: checkedCalleesOf(byExport.loader),
+    actionCheckedCallees: checkedCalleesOf(byExport.action),
     importedNames,
-    calleeNames,
-    hasTryCatch,
+    calleeNames: wholeEntry.calleeNames,
+    loaderCalleeNames: byExport.loader.calleeNames,
+    actionCalleeNames: byExport.action.calleeNames,
+    loaderCalleeTexts: byExport.loader.calleeTexts,
+    actionCalleeTexts: byExport.action.calleeTexts,
+    hasTryCatch: wholeEntry.hasTryCatch,
+    loaderHasTryCatch: byExport.loader.hasTryCatch,
+    actionHasTryCatch: byExport.action.hasTryCatch,
     catches,
     callbackCatches,
     logCalls,
-    statementCount,
+    statementCount: wholeEntry.statementCount,
+    loaderStatementCount: byExport.loader.statementCount,
+    actionStatementCount: byExport.action.statementCount,
   };
 }
 
 const SOURCE_FILE = /\.tsx?$/;
 
-/** Exported so `mutationCorpus.test.ts` materializes exactly the files `scanDirectory` reads. Its
- * anti-vacuity thresholds count files and sites the scanner never saw if the two predicates drift. */
+/**
+ * Whether a file name is one the scanner reads at all.
+ *
+ * Exported because three other places ask the same question and each had written its own copy:
+ * `mutationCorpus.test.ts` materializes exactly the files `scanDirectory` reads, and
+ * `integration.test.ts` and `webappSymbols.test.ts` walk trees of their own. The corpus's
+ * anti-vacuity thresholds count files and sites the scanner never saw if those predicates drift,
+ * and `integration.test.ts`'s `entryPoints.length < countRouteModuleFiles(ROUTES)` stops meaning
+ * anything if its denominator counts files the scanner skips.
+ */
 export function isScannableFile(fileName: string): boolean {
   return SOURCE_FILE.test(fileName) && !fileName.endsWith(".d.ts");
+}
+
+/** One route module: where to read it, and the name the report and the scan record it under. */
+export type RouteModuleFile = { absolutePath: string; relativeName: string };
+
+/**
+ * The route modules under `dir`: every scannable flat file, plus the `route.ts`/`route.tsx` of each
+ * immediate subdirectory.
+ *
+ * Exported so `mutationCorpus.test.ts` can materialize exactly this set rather than re-deriving it.
+ * Its `readTree` was a verbatim copy of the walk below; the FILE half of that copy was later
+ * replaced by a call to `isScannableFile` while the DIRECTORY half stayed duplicated, which is the
+ * usual way this package's duplicates half-die. A corpus that enumerates a different tree from the
+ * scanner reports file and site counts for files the scan never reads, and those counts are the
+ * only thing standing between a mutation that reaches nothing and a green test.
+ */
+export function routeModuleFiles(dir: string): RouteModuleFile[] {
+  const files: RouteModuleFile[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      // Flat-route directories hold the route module in `route.ts`/`route.tsx`.
+      for (const child of readdirSync(join(dir, entry.name), { withFileTypes: true })) {
+        if (!child.isFile() || (child.name !== "route.ts" && child.name !== "route.tsx")) continue;
+        files.push({
+          absolutePath: join(dir, entry.name, child.name),
+          relativeName: `${entry.name}/${child.name}`,
+        });
+      }
+      continue;
+    }
+    if (!entry.isFile() || !isScannableFile(entry.name)) continue;
+    files.push({ absolutePath: join(dir, entry.name), relativeName: entry.name });
+  }
+  return files;
 }
 
 export function scanDirectory(dir: string): {
@@ -1810,18 +1926,7 @@ export function scanDirectory(dir: string): {
     if (ep) entryPoints.push(ep);
   };
 
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      // Flat-route directories hold the route module in `route.ts`/`route.tsx`.
-      for (const child of readdirSync(join(dir, entry.name), { withFileTypes: true })) {
-        if (!child.isFile() || (child.name !== "route.ts" && child.name !== "route.tsx")) continue;
-        scan(join(dir, entry.name, child.name), `${entry.name}/${child.name}`);
-      }
-      continue;
-    }
-    if (!entry.isFile() || !isScannableFile(entry.name)) continue;
-    scan(join(dir, entry.name), entry.name);
-  }
+  for (const file of routeModuleFiles(dir)) scan(file.absolutePath, file.relativeName);
 
   return { entryPoints, parseFailures };
 }

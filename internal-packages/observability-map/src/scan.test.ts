@@ -2795,6 +2795,96 @@ describe("scanFile: the signals auth-scope reads", () => {
   });
 });
 
+/**
+ * The per-export split of `calleeNames`. `auth-boundary` reads it, so a name landing in the wrong
+ * half is a wrong verdict on the one check where a false pass hides a security gap.
+ */
+describe("scanFile: callee names attributed per export", () => {
+  it("keeps each export's callees out of the other's list", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `export async function loader({ request }) {
+         const userId = await requireUserId(request);
+         return json(await prisma.token.findMany({ where: { userId } }));
+       }
+       export async function action({ request }) {
+         await deleteEverything(request);
+         return json({ ok: true });
+       }`
+    );
+    expect(ep!.loaderCalleeNames).toContain("requireUserId");
+    expect(ep!.loaderCalleeNames).not.toContain("deleteEverything");
+    expect(ep!.actionCalleeNames).toContain("deleteEverything");
+    expect(ep!.actionCalleeNames).not.toContain("requireUserId");
+  });
+
+  it("attributes a same-file helper to the export that calls it", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `async function loadTokens(request) {
+         const userId = await requireUserId(request);
+         return prisma.token.findMany({ where: { userId } });
+       }
+       export async function loader({ request }) { return json(await loadTokens(request)); }
+       export async function action({ request }) { return json(await request.json()); }`
+    );
+    expect(ep!.loaderCalleeNames).toContain("requireUserId");
+    expect(ep!.actionCalleeNames).not.toContain("requireUserId");
+  });
+
+  it("attributes a helper both exports call to both of them", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `async function guarded(request) { return requireUserId(request); }
+       export async function loader({ request }) { return json(await guarded(request)); }
+       export async function action({ request }) { return json(await guarded(request)); }`
+    );
+    expect(ep!.loaderCalleeNames).toContain("requireUserId");
+    expect(ep!.actionCalleeNames).toContain("requireUserId");
+  });
+
+  // One handler, both exports: `const { loader, action } = createActionApiRoute({ handler })`.
+  it("attributes a handler serving both exports to both of them", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `export const { action, loader } = createActionApiRoute({}, async ({ authentication }) => {
+         return json(await authenticateApiRequest(authentication));
+       });`
+    );
+    expect(ep!.loaderCalleeNames).toContain("authenticateApiRequest");
+    expect(ep!.actionCalleeNames).toContain("authenticateApiRequest");
+  });
+
+  // The union the split came from. `calleeNames` stays entry-point-wide for `sensitivity.ts`,
+  // `triviality.ts` and `audit-trail`, so the two representations have to agree.
+  it("every callee name is attributed to an export that exists", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `async function shared(request) { return audit(request); }
+       export async function loader({ request }) { return json(await shared(request)); }
+       export async function action({ request }) { return json(await mutate(request)); }`
+    );
+    const attributed = new Set([...ep!.loaderCalleeNames, ...ep!.actionCalleeNames]);
+    expect([...new Set(ep!.calleeNames)].filter((n) => !attributed.has(n))).toEqual([]);
+    for (const name of attributed) expect(ep!.calleeNames).toContain(name);
+  });
+
+  it("counts statements and a try per export as well as entry-point-wide", () => {
+    const ep = scanFile(
+      "api.v1.tokens.ts",
+      `export const loader = () => redirect("/login");
+       export async function action({ request }) {
+         try { return json(await request.json()); } catch (e) { throw e; }
+       }`
+    );
+    expect(ep!.loaderStatementCount).toBe(1);
+    expect(ep!.loaderHasTryCatch).toBe(false);
+    expect(ep!.actionHasTryCatch).toBe(true);
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.statementCount).toBe(ep!.loaderStatementCount + ep!.actionStatementCount);
+  });
+});
+
 // Round C ruling 2. A guard that answers with null instead of throwing is only a boundary if the
 // route reads the answer, so the scan records which callees' results a condition looked at.
 describe("scanFile: callees whose answer the body read", () => {
@@ -2808,7 +2898,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return json({ email: user.email });
        }`
     );
-    expect(ep!.checkedCallees).toContain("getUser");
+    expect(ep!.loaderCheckedCallees).toContain("getUser");
   });
 
   it("records one whose result a plain if tests", () => {
@@ -2821,7 +2911,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return typedjson({});
        }`
     );
-    expect(ep!.checkedCallees).toContain("getUserId");
+    expect(ep!.loaderCheckedCallees).toContain("getUserId");
   });
 
   it("records one whose result a ternary tests", () => {
@@ -2832,7 +2922,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return user ? json({ ok: true }) : redirect("/login");
        }`
     );
-    expect(ep!.checkedCallees).toContain("getUser");
+    expect(ep!.loaderCheckedCallees).toContain("getUser");
   });
 
   it("does not record a result that is bound and never tested", () => {
@@ -2843,7 +2933,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return json(await prisma.invite.findMany({ where: { email: user.email } }));
        }`
     );
-    expect(ep!.checkedCallees).not.toContain("getUser");
+    expect(ep!.loaderCheckedCallees).not.toContain("getUser");
   });
 
   it("does not record a result that is dropped entirely", () => {
@@ -2854,7 +2944,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return json(await prisma.invite.findMany());
        }`
     );
-    expect(ep!.checkedCallees).not.toContain("getUser");
+    expect(ep!.loaderCheckedCallees).not.toContain("getUser");
   });
 
   it("does not record a callee just because a same-named local is tested elsewhere", () => {
@@ -2866,7 +2956,7 @@ describe("scanFile: callees whose answer the body read", () => {
          return json(rows);
        }`
     );
-    expect(ep!.checkedCallees).toContain("findMany");
-    expect(ep!.checkedCallees).not.toContain("getUser");
+    expect(ep!.loaderCheckedCallees).toContain("findMany");
+    expect(ep!.loaderCheckedCallees).not.toContain("getUser");
   });
 });
