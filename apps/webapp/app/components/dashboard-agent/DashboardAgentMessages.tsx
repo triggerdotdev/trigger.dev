@@ -7,33 +7,23 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { sameOriginPath } from "./navigate-target";
-import { hasToolProgressLine, IN_FLIGHT_TOOL_STATES } from "./progress-line";
+import { IN_FLIGHT_TOOL_STATES, liveProgress, type TurnActivity } from "./progress-line";
 import { useTranscriptAutoScroll } from "./useTranscriptAutoScroll";
 import {
   ChatActionsRow,
   ChatCardSlot,
-  ChatPendingTool,
   ChatProgress,
   ChatText,
   ChatTranscript,
   ChatTurn,
   ChatWakeSlot,
 } from "./chat-layout";
-import { toolPendingLabel } from "./tool-labels";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
 import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
-// "thinking" — the turn is submitted but nothing has come back yet.
-// "working" — the turn is streaming: text, or (more often) tool calls, which can
-// run for a while with no visible output.
-export type TurnActivity = "thinking" | "working";
-
-const ACTIVITY_LABELS: Record<TurnActivity, string> = {
-  thinking: "Thinking…",
-  working: "Working…",
-};
+export type { TurnActivity };
 
 export type DashboardAgentMessagesProps = {
   messages: UIMessage[];
@@ -174,19 +164,15 @@ function withoutSupersededInvestigations(
  * Everything the panel styles itself is handled here; the rest falls through to
  * the shared `renderPart` so agent output still looks the same across the app.
  * The differences: text is always the rendered markdown (no raw toggle) at the
- * dashboard's default size, and tool calls never show their mechanics — while
- * running they are a pending pill ("Reading the queue…"), and once they land
- * they leave NO row at all: the answer is the prose and the cards, not the
- * input/output plumbing. The one exception is a FAILED call, which keeps its
- * error row — a silent failure would read as the agent ignoring the question.
- * Citations are handled a level up, where a run of them can be grouped into one
- * row.
+ * dashboard's default size, and tool calls never show their mechanics at all —
+ * while running they are spoken for by the turn's one progress line ("Reading the
+ * queue…", mounted at the end of the transcript), and once they land they leave NO
+ * row: the answer is the prose and the cards, not the input/output plumbing. The
+ * one exception is a FAILED call, which keeps its error row — a silent failure
+ * would read as the agent ignoring the question. Citations are handled a level up,
+ * where a run of them can be grouped into one row.
  */
-function renderDashboardPart(
-  part: UIMessage["parts"][number],
-  i: number,
-  options?: { suppressPendingPill?: boolean }
-) {
+function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   const p = part as {
     type: string;
     text?: string;
@@ -201,15 +187,12 @@ function renderDashboardPart(
   }
 
   if (type.startsWith("tool-")) {
-    if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
-      // One spinner at a time: an in_progress investigation card in this turn
-      // already shows its own progress pill.
-      if (options?.suppressPendingPill) return null;
-      // Stable key across tool changes: only the LABEL changes from call to
-      // call, so the spinner keeps spinning instead of remounting (and
-      // restarting its animation) on every new tool.
-      return <ChatPendingTool key="agent-pending" label={`${toolPendingLabel(type.slice(5))}…`} />;
-    }
+    // An in-flight call renders nothing HERE. The turn has exactly one live
+    // progress element, mounted once at the bottom of the transcript, and this
+    // call's phrase is simply the label it wears while the call runs (see
+    // `liveProgress`). Rendering a line per part is what used to remount — and so
+    // restart — the spinner's animation at every phase change.
+    if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) return null;
     if (p.state === "output-error") return renderPart(part, i);
     return null;
   }
@@ -298,22 +281,6 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   const parts = message.parts ?? [];
   if (parts.length === 0) return null;
 
-  // An in_progress investigation card carries its own live pill (its
-  // `progress` line), so a concurrent tool pill would put two spinners on
-  // screen — the card's, being the more specific, wins.
-  const hasLiveInvestigationCard = parts.some((part, i) =>
-    withoutSupersededInvestigations(
-      blocksFor(part) ?? [],
-      `${message.id}:${i}`,
-      investigationWinners
-    ).some(
-      (block) =>
-        (block as { type?: string; outcome?: unknown; investigation?: { outcome?: string } })
-          .type === "investigation" &&
-        (block as { investigation?: { outcome?: string } }).investigation?.outcome === "in_progress"
-    )
-  );
-
   const body: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
@@ -358,7 +325,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       continue;
     }
 
-    body.push(renderDashboardPart(part, i, { suppressPendingPill: hasLiveInvestigationCard }));
+    body.push(renderDashboardPart(part, i));
   }
 
   // A wake narration is identified by the message id the agent wrote it under,
@@ -398,12 +365,17 @@ export function DashboardAgentTurns({
   pagePaths,
   watches,
 }: DashboardAgentMessagesProps) {
-  // One status line at a time: a tool's own progress beats the generic activity.
-  const showActivity = activity !== null && !hasToolProgressLine(messages);
-
   // Strip once, up front: the winners map keys occurrences by part index, so
   // it must be computed on the exact parts the turns will render.
   const stripped = messages.map(stripStepParts);
+
+  // The turn's ONE live progress element. It is the last child of this fragment,
+  // which is a fixed slot: adding turns above it, a tool starting or landing, a
+  // card going live — none of that moves it, so React keeps the same
+  // `ChatProgress` (and the same animating spinner canvas) mounted for the whole
+  // turn and only the label changes underneath. Mounting a line per phase, which
+  // is what this replaced, restarted the animation at every hand-off.
+  const progress = liveProgress(stripped, activity);
 
   // Across the whole transcript, one card per investigation: the latest
   // revision renders where it landed; earlier working copies disappear.
@@ -422,9 +394,9 @@ export function DashboardAgentTurns({
           investigationWinners={investigationWinners}
         />
       ))}
-      {showActivity && activity && (
+      {progress && (
         <ChatTurn>
-          <ChatProgress>{ACTIVITY_LABELS[activity]}</ChatProgress>
+          <ChatProgress>{progress.label}</ChatProgress>
         </ChatTurn>
       )}
       {error && (

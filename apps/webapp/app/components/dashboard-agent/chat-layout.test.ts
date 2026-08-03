@@ -53,6 +53,14 @@ describe("chat-layout enforcement", () => {
       });
 
       for (const [i, region] of regions.entries()) {
+        it(`renders no spinner of its own in transcript region ${i + 1}`, () => {
+          // Rule 4: the turn's one progress element is `ChatProgress`, and it is
+          // the only thing that renders the agent spinner. A consumer reaching for
+          // `AgentSpinner` is a second spinner — and one that restarts its
+          // animation whenever the phase that mounted it changes.
+          expect(region).not.toContain("AgentSpinner");
+        });
+
         it(`writes no spacing class in transcript region ${i + 1}`, () => {
           const offenders = region
             .split("\n")
@@ -86,7 +94,6 @@ describe("chat-layout enforcement", () => {
         "ChatText",
         "ChatCardSlot",
         "ChatProgress",
-        "ChatPendingTool",
         "ChatToolRow",
         "ChatNote",
         "ChatStatusLine",
@@ -95,6 +102,14 @@ describe("chat-layout enforcement", () => {
       ]) {
         expect(source, name).toContain(`export function ${name}(`);
       }
+    });
+
+    it("renders the agent spinner from exactly one micro-layout", () => {
+      // One live progress element per turn (rule 4) starts here: if two
+      // micro-layouts can show a spinner, two of them eventually do.
+      const renderSites = [...source.matchAll(/<AgentSpinner\b/g)];
+      expect(renderSites).toHaveLength(1);
+      expect(source).toContain("export function ChatProgress(");
     });
 
     it("renders assistant text as prose, not as a card", () => {
@@ -112,6 +127,7 @@ describe("chat-layout enforcement", () => {
     it("documents the composition rules", () => {
       expect(source).toContain("## Composition rules");
       expect(source).toContain("ChatTranscript\n *       ChatTurn*");
+      expect(source).toContain("One live progress element per turn");
     });
   });
 });
