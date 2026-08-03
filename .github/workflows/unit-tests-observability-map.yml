@@ -36,7 +36,8 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
-      # One test in this suite scans apps/webapp/app/routes, which is why the filter that gates
-      # this workflow watches those paths as well as the package's own.
+      # This suite reads apps/webapp/app (the route tree for the scan, the whole app tree for the
+      # symbol check) and the report workflow's text, which is why the filter that gates this
+      # workflow watches all of those and not only the routes folder.
       - name: 🧪 Run tests
         run: pnpm --filter @internal/observability-map run test

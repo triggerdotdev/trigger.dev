@@ -14,8 +14,12 @@ import { buildReport } from "./score.js";
 import { SCORED_CHECK_IDS } from "./checks/index.js";
 
 /**
- * The one deliberate coupling to `apps/webapp/app/routes` in the suite. Everything else, including
- * the CLI tests, runs against a fixture tree of this package's own making.
+ * This file's deliberate coupling to `apps/webapp/app/routes`. It is not the suite's only one, and
+ * saying it was is what let the paths filter be written for this file alone:
+ * `webappSymbols.test.ts` walks all of `apps/webapp/app`, `packages/plugins/src` and
+ * `internal-packages/rbac/src`, and `mutationCorpus.test.ts` scans the route tree behind an env
+ * gate. Everything else, including the CLI tests, runs against a fixture tree of this package's own
+ * making.
  *
  * The coupling is acceptable because nothing here names a route or a count: the scan must not
  * crash, the entry point count must sit inside a wide band, and parse failures must be zero. Those
@@ -23,12 +27,16 @@ import { SCORED_CHECK_IDS } from "./checks/index.js";
  * cannot tell us, since a fixture only contains shapes somebody thought to write down.
  *
  * What runs this for a webapp pull request is `.github/workflows/unit-tests-observability-map.yml`,
- * called from `pr_checks.yml` behind an `obsmap` paths filter covering `apps/webapp/app/routes/**`,
- * and listed in the `all-checks` aggregate so it actually gates. A pull request touching this
- * PACKAGE reaches the same test by the other road: `internal` already matches
- * `internal-packages/**`, and `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`
- * over this package too. So both directions are gated, and neither is gated twice; the `obsmap`
- * filter used to name the package as well, which ran this suite twice on every PR touching it.
+ * called from `pr_checks.yml` behind an `obsmap` paths filter covering the whole of
+ * `apps/webapp/app` plus the report workflow, and listed in the `all-checks` aggregate so it
+ * actually gates. The filter is wider than this file's own coupling because the suite's is:
+ * `webappSymbols.test.ts` walks all of `apps/webapp/app`, and the describes below read
+ * `observability-map.yml`. A pull request touching this PACKAGE, or `packages/plugins/src` or
+ * `internal-packages/rbac/src`, reaches the same test by the other road: `internal` already matches
+ * `internal-packages/**` and `packages/**`, and `unit-tests-internal.yml` runs `turbo run test
+ * --filter "@internal/*"` over this package too. So every direction is gated and none is gated
+ * twice; the `obsmap` filter used to name the package as well, which ran this suite twice on every
+ * PR touching it.
  *
  * Two shapes were tried and rejected on the way here. Widening `pr_checks.yml`'s `internal` filter
  * to the route paths ran all eighteen internal packages, twelve shards with postgres, clickhouse,
@@ -179,9 +187,30 @@ describe("the package's tests are wired into the gate", () => {
     expect(read(REUSABLE)).toContain("workflow_call");
   });
 
-  it("watches the live route tree, which is the only thing the internal filter misses", () => {
+  // Round 5. The filter watched `apps/webapp/app/routes/**` while the suite reads more than that,
+  // so a rename outside the routes folder matched only `webapp`, ran no job that runs this suite,
+  // and broke the build for whoever pushed next. Asserted as the whole set the suite reads and no
+  // other filter covers, rather than as the one path that prompted the filter, because the routes
+  // entry looked complete right up until it wasn't.
+  it("watches every webapp path the internal filter misses, not just the routes folder", () => {
     const filter = read(PR_CHECKS).split("            obsmap:")[1]!.split("            cli:")[0]!;
-    expect(filter).toContain("'apps/webapp/app/routes/**'");
+    // webappSymbols.test.ts walks all of apps/webapp/app, not just routes.
+    expect(filter).toContain("'apps/webapp/app/**'");
+    // The report workflow, whose text the two describes above assert on. No other filter names it.
+    expect(filter).toContain("'.github/workflows/observability-map.yml'");
+  });
+
+  // The other two trees webappSymbols.test.ts reads. They belong to `internal`, not here, and this
+  // pins the reason so the obvious-looking addition has to argue with a test first.
+  it("leaves the two non-webapp roots it reads to the internal filter", () => {
+    const text = read(PR_CHECKS);
+    const obsmap = text.split("            obsmap:")[1]!.split("            cli:")[0]!;
+    expect(obsmap).not.toContain("packages/plugins");
+    expect(obsmap).not.toContain("internal-packages/rbac");
+
+    const internal = text.split("            internal:")[1]!.split("            # ")[0]!;
+    expect(internal).toContain("'packages/**'");
+    expect(internal).toContain("'internal-packages/**'");
   });
 
   // Round E item 6. `internal` matches `internal-packages/**` and `unit-tests-internal.yml` runs

@@ -82,20 +82,33 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
-            # Routes only, and that is the whole reason this filter exists: one test in
-            # @internal/observability-map scans the live route tree, and without this a webapp-only
-            # PR that renames a route merges green and the break lands on main, or on the next
-            # unrelated internal-packages PR.
+            # The whole webapp app tree, not just its routes, and that is the whole reason this
+            # filter exists. Two tests in @internal/observability-map read it: integration.test.ts
+            # scans the live route tree, and webappSymbols.test.ts walks all of apps/webapp/app and
+            # fails when a guard, sensitive or audit symbol stops resolving. Routes-only was this
+            # filter's own bug: renaming e.g. requireUserId in app/services/session.server.ts
+            # matched `webapp` and nothing else, so no job ran the suite and the break landed on
+            # main, or on the next unrelated internal-packages PR.
             #
-            # The package's own paths are deliberately NOT here. `internal` above already matches
-            # `internal-packages/**`, and `unit-tests-internal.yml` runs `turbo run test --filter
-            # "@internal/*"`, which picks up @internal/observability-map and runs the same vitest
-            # suite including that route-tree test. Listing the package here as well ran the suite
-            # twice on every PR touching it, which was this filter's own doing.
+            # The cost of the wider set, measured over the last 400 commits on main: 31% touch
+            # routes, 52% touch apps/webapp/app, so the job goes from firing on roughly a third of
+            # PRs to roughly a half. It is the cheap one -- a single 4x runner, no containers, no
+            # database, no prisma generate -- which is what makes that affordable.
+            #
+            # observability-map.yml is here because integration.test.ts asserts on its text and no
+            # other filter watches it, so editing the report workflow alone ran nothing at all.
+            #
+            # Deliberately NOT here: this package's own paths, and packages/plugins/src and
+            # internal-packages/rbac/src, the other two trees webappSymbols.test.ts reads.
+            # `internal` above already matches `internal-packages/**` and `packages/**`, and
+            # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
+            # @internal/observability-map and runs the same vitest suite. Listing them here as well
+            # ran the suite twice on every PR touching them, which was this filter's own doing.
             obsmap:
-              - 'apps/webapp/app/routes/**'
+              - 'apps/webapp/app/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-observability-map.yml'
+              - '.github/workflows/observability-map.yml'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
