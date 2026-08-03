@@ -490,6 +490,54 @@ describe("the commit stamp", () => {
 
 // B4. The job posts only when the pull request moves the report, so the decision has to be a
 // tested function of the two reports rather than shell logic in the workflow.
+/**
+ * `hasDelta` compares no `sensitive` field, and does not need one. Sensitivity reaches the rendered
+ * comment only through `fixFirstSection`, whose primary sort key it is, and a route can only appear
+ * there with a scored failure. A scored failure needs a try/catch in the body, `isTrivialExport`
+ * rejects any export that has one, and a sensitive non-trivial export is therefore either accused
+ * (`fail`) or guarded (`pass`) on `auth-boundary`, never `not-applicable`. So a flip that could move
+ * the fix list always moves `auth-boundary`, which moves `checkContributions`, which is compared.
+ *
+ * Both halves are pinned here because the argument rests on that coupling: make a trivial route
+ * capable of a scored failure and the first case below starts rendering a difference `hasDelta` cannot
+ * see.
+ */
+describe("a sensitivity flip", () => {
+  const stub = `import { redirect } from "@remix-run/server-runtime";
+    export const loader = () => redirect("/");`;
+  const stubSensitive = `import { redirect } from "@remix-run/server-runtime";
+    import { createPersonalAccessToken } from "~/services/personalAccessToken.server";
+    export const loader = () => redirect("/");`;
+
+  it("renders nothing different on a route too trivial to reach the fix list", () => {
+    const base = buildReport([scanFile("resources.stub.ts", stub)!], []);
+    const head = buildReport([scanFile("resources.stub.ts", stubSensitive)!], []);
+    expect(base.entries[0]!.sensitive).toBe(false);
+    expect(head.entries[0]!.sensitive).toBe(true);
+
+    expect(renderPrComment(head, base)).toBe(renderPrComment(base, base));
+    expect(hasDelta(head, base)).toBe(false);
+  });
+
+  it("moves auth-boundary, and so is caught, on a route that does real work", () => {
+    const working = `export async function loader() {
+      try { compute(); } catch (e) { return null; }
+    }`;
+    const workingSensitive = `import { createPersonalAccessToken } from "~/services/personalAccessToken.server";
+      export async function loader() {
+        try { compute(); } catch (e) { return null; }
+      }`;
+    const base = buildReport([scanFile("resources.work.ts", working)!], []);
+    const head = buildReport([scanFile("resources.work.ts", workingSensitive)!], []);
+
+    const status = (r: typeof base) =>
+      r.entries[0]!.checks.find((c) => c.id === "auth-boundary")!.status;
+    expect(status(base)).toBe("not-applicable");
+    expect(status(head)).toBe("fail");
+    expect(hasDelta(head, base)).toBe(true);
+  });
+});
+
 describe("hasDelta", () => {
   const trivial = `export const loader = () => new Response("ok");`;
   const one = (name: string, source: string) => buildReport([scanFile(name, source)!], []);
