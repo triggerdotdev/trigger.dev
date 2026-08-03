@@ -90,7 +90,7 @@ jobs:
           ok=""
           for attempt in 1 2 3; do
             if found=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-              --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
+              --jq '[.[] | select((.body // "") | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
               ok=1
               break
             fi
