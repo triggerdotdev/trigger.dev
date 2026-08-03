@@ -57,8 +57,19 @@ const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
  * flag raised before each statement's own branch check, which makes every deciding statement refuse
  * itself. Raising it after is byte-identical on the real tree and closes the shape, so the entry is
  * defended now and the `if (true)` family needed no condition folding after all.
+ *
+ * `dead-conjunction-instanceof-if` is the sibling of `dead-armed-instanceof-if` that the arm-liveness
+ * fix does not close. `selectsADistinctPath` now folds a dead ARM; a dead CONDITION still reaches
+ * the grant, and `e instanceof Error && false` is exactly that, a guard that references the caught
+ * binding and can never be true. No fold in `scan.ts` can see it, because `literalTruth` treats
+ * `&&` and `||` as always null on purpose so that a live guard can never be read as dead. Widening
+ * that fold is a different rule from the one this round fixed and needs its own measurement, so the
+ * shape is recorded and running rather than left for the next person to rediscover.
  */
-const KNOWN_GAPS = new Set<string>(["dead-classifying-try-with-call"]);
+const KNOWN_GAPS = new Set<string>([
+  "dead-classifying-try-with-call",
+  "dead-conjunction-instanceof-if",
+]);
 
 type SourceFile = { relativeName: string; source: string };
 

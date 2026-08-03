@@ -759,7 +759,7 @@ describe("scanFile: catch clause evidence", () => {
   });
 
   // The mirror of the family above. Each dead spelling earns nothing, and it must also COST
-  // nothing: `containsExit` was true of the dead statement itself, so prepending one raised the
+  // nothing: a plain containment read was true of the dead statement itself, so prepending one raised the
   // `exited` flag and blinded the walk to the real classification below it, turning a pass into a
   // swallow verdict on 78 real routes. `containsLiveExit` folds the literal guard and sees no live
   // exit, so the deciding statements keep their credit. The spellings are the CORPUS spellings
@@ -2468,6 +2468,88 @@ describe("a ternary on the error has to send its arms somewhere different", () =
     );
     expect(ep!.catches[0]!.branches).toBe(false);
   });
+});
+
+// The liveness gap in the branch predicate. `selectsADistinctPath` asked a plain containment
+// question, so an arm holding an exit that can never run read as an arm that takes the error
+// somewhere. `catch (e) { if (e instanceof Error) { if (false) { return null; } } return json(x,
+// { status: 500 }); }` is the same swallow as the clause without the `if`, and it was worth 50
+// points a route. The same eleven dead spellings had already been folded out of
+// `catchClauseEvidence`'s `exited` flag by `containsLiveExit`, and this predicate beside it kept
+// the containment read. `dead-armed-instanceof-if` in the mutation corpus is the tree-scale
+// version: global 19 -> 27 and 80 routes raised, before the fix.
+describe("an arm whose only exit is dead decides nothing", () => {
+  const swallow = (mutation: string) => `
+    export async function loader() {
+      try {
+        return await prisma.thing.findMany();
+      } catch (error) {
+        ${mutation}
+        return json({ error: "generic" }, { status: 500 });
+      }
+    }
+  `;
+
+  it("reads the unmutated clause as a swallow, as a baseline", () => {
+    const ep = scanFile("x.ts", swallow(""));
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  // The reported shape, plus three further spellings of the same no-op reaching the same
+  // predicate by different routes: a dead loop body, a dead else arm, and a switch clause.
+  const DEAD_ARMS: Array<[string, string]> = [
+    ["an if (false) arm", "if (error instanceof Error) { if (false) { return null; } }"],
+    ["a while (false) body", "if (error instanceof Error) { while (false) { throw error; } }"],
+    [
+      "a dead else arm beside an arm that goes nowhere",
+      "if (error instanceof Error) { doThing(); } else { for (const k in {}) { return null; } }",
+    ],
+    [
+      "a switch clause whose exit is dead",
+      "switch (error.code) { case 'x': if (1 === 2) { throw error; } }",
+    ],
+  ];
+
+  for (const [label, mutation] of DEAD_ARMS) {
+    it(`does not credit ${label}`, () => {
+      const ep = scanFile("x.ts", swallow(mutation));
+      expect(ep!.catches[0]!.branches).toBe(false);
+    });
+  }
+
+  // The positive controls. The fold is subtractive against containment, so anything it cannot
+  // prove dead reads exactly as it did, including a guard whose truth is not decidable from the
+  // token alone. Without these the fix could be "always false" and the four cases above would
+  // still pass.
+  //
+  // `an arm guarded by a condition that does not fold` is also the pin on the alternative that was
+  // measured and rejected: asking the arm to `definitelyExits` rather than to hold a live exit.
+  // That is the "guaranteed" reading, it refuses all four shapes above, and it accuses
+  // `admin.api.v1.orgs.$organizationId.environments.staging.ts` on the real tree, taking the global
+  // from 19 to 18. That clause recognises Prisma's P2002, re-reads the conflicting row and returns
+  // `{ status: "updated" }`, rethrowing everything else: a textbook classification whose arm
+  // happens to fall through to the rethrow when the re-read finds nothing. Accusing it of taking
+  // one way out regardless of what was thrown is simply false, and a new false accusation is the
+  // direction that gets the tool switched off.
+  const LIVE_ARMS: Array<[string, string]> = [
+    ["a plain returning arm", "if (error instanceof Error) { return badRequest(); }"],
+    [
+      "an arm guarded by a condition that does not fold",
+      "if (error instanceof Error) { if (error.code === 'P2002') { return conflict(); } }",
+    ],
+    [
+      "a live exit in the else arm only",
+      "if (error instanceof Error) { doThing(); } else { return badRequest(); }",
+    ],
+    ["a switch clause that returns", "switch (error.code) { case 'P2002': return conflict(); }"],
+  ];
+
+  for (const [label, mutation] of LIVE_ARMS) {
+    it(`still credits ${label}`, () => {
+      const ep = scanFile("x.ts", swallow(mutation));
+      expect(ep!.catches[0]!.branches).toBe(true);
+    });
+  }
 });
 
 // C4a. `export const { action, loader } = createActionApiRoute(...)` produced no entry point at

@@ -650,15 +650,6 @@ function containsEscapingJump(node: ts.Node, jumps: BareJumps = ESCAPES): boolea
   return ts.forEachChild(node, (child) => containsEscapingJump(child, jumps)) === true;
 }
 
-/** Whether the tree rooted at `node` contains a `return` or a `throw` of its own, not counting one
- * inside a nested function. What separates an arm that takes the error somewhere from an arm that
- * runs and falls back into the clause's single common exit. */
-function containsExit(node: ts.Node): boolean {
-  if (ts.isFunctionLike(node)) return false;
-  if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
-  return ts.forEachChild(node, containsExit) === true;
-}
-
 /**
  * Literal truthiness of a guard expression: true, false, or null when not decidable from the
  * token alone. Only literal tokens fold; an identifier, call, bigint, `&&`, `||` or a template
@@ -713,13 +704,25 @@ function tryBlockMayThrow(block: ts.Block): boolean {
 }
 
 /**
- * `containsExit`, minus exits that sit in a provably-untaken branch. `if (false) { throw e; }`
- * contains an exit and can never run one; treating it as an exit is what let a dead statement
- * blind the walk to the real classification below it, prepending one to a deciding clause turned
- * its pass into a swallow verdict on 78 real routes. Folds literal guards only, so an unknown
- * condition keeps the containsExit answer, which is the direction that refuses credit rather than
- * inventing it. The mirror twins under `dead and deferred code prepended to a deciding catch does
- * not blind it` hold the recovered half; the `BRANCH_EXITED` family holds the refusing half.
+ * Whether the tree rooted at `root` contains a node `hit` accepts that a provably-untaken branch
+ * does not already rule out. A plain containment walk, minus the hits it can prove never run:
+ * `if (false) { throw e; }` contains a throw and can never run one.
+ *
+ * Folds literal guards only, so wherever `literalTruth` cannot decide, every hit the plain walk
+ * would have found is still found. That makes this strictly subtractive against containment, which
+ * is what lets both of its callers read it for opposite purposes:
+ *
+ * - `catchClauseEvidence`'s `exited` flag, where a hit BLINDS the walk to whatever follows.
+ *   Containment blinded it on a dead statement, so prepending one to a deciding clause turned its
+ *   pass into a swallow verdict on 78 real routes. Subtracting dead hits only ever un-blinds.
+ * - `selectsADistinctPath`, where a hit GRANTS a branch. Containment granted one for an arm whose
+ *   only exit was dead, which is `dead-armed-instanceof-if` in the mutation corpus, measured at 80
+ *   routes and the tree from 19 to 27. Subtracting dead hits only ever withholds.
+ *
+ * The `exited` half is pinned by the mirror twins under `dead and deferred code prepended to a
+ * deciding catch does not blind it` (recovered) and the `BRANCH_EXITED` family (refusing). The
+ * `selectsADistinctPath` half is pinned by `an arm whose only exit is dead decides nothing` and its
+ * siblings, plus the corpus entry.
  */
 function containsLiveWhere(root: ts.Node, hit: (n: ts.Node) => boolean): boolean {
   const walk = (node: ts.Node): boolean => {
@@ -809,6 +812,16 @@ function containsLiveReturn(node: ts.Node): boolean {
  * An `if`/`else` whose two arms are textually identical does not count, the same comparison
  * `selectsAnErrorPath` makes of a ternary's arms.
  *
+ * The exit an arm is credited for has to be a LIVE one, `containsLiveExit` and never a plain
+ * containment read. `if (e instanceof Error) { if (false) { return null; } }` contains an exit that
+ * can never run, so under containment it read as a real decision and took a swallowing catch to a
+ * pass for the price of a mechanical edit: 80 routes and the tree from 19 to 27 when measured. The
+ * same liveness rule had already been put on `catchClauseEvidence`'s `exited` flag, for the same
+ * eleven dead spellings, and this predicate beside it kept the containment read. `an arm whose only
+ * exit is dead decides nothing` and its siblings are the unit pins; `dead-armed-instanceof-if` in
+ * the mutation corpus is the tree-scale version. Being subtractive against containment, the fold
+ * can only ever withhold a branch, never invent one, so a live arm reads exactly as it did.
+ *
  * The residual both branch tests share, stated here once for both: two arms that produce the same
  * outcome by different spellings still read as a real decision.
  * `if (e instanceof Error) { return json(x); } return Response.json(x);` counts and decides
@@ -822,11 +835,17 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
     const otherwise = statement.elseStatement;
     if (otherwise !== undefined) {
       if (normalizedText(statement.thenStatement) === normalizedText(otherwise)) return false;
-      return containsExit(statement.thenStatement) || containsExit(otherwise);
+      return containsLiveExit(statement.thenStatement) || containsLiveExit(otherwise);
     }
-    return containsExit(statement.thenStatement);
+    return containsLiveExit(statement.thenStatement);
   }
-  return statement.caseBlock.clauses.some((clause) => clause.statements.some(containsExit));
+  // Per clause statement rather than over the whole switch, so a live exit in any clause counts
+  // whatever the discriminant is. Reading the switch as one node would hand `containsLiveWhere`'s
+  // discriminant fold a `switch (e.code)` it cannot decide, which changes nothing, and a
+  // `switch (1)` it can, which is not this predicate's business: an unreachable CLAUSE is caught
+  // by the same fold one level down, and the statement is only reached at all when its condition
+  // references the caught binding.
+  return statement.caseBlock.clauses.some((clause) => clause.statements.some(containsLiveExit));
 }
 
 /**
@@ -893,7 +912,7 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   // and all 240 clauses' evidence byte-identical. The tests are the cases in `dead throw written
   // after something that already exited`.
   //
-  // Raised off `containsLiveExit`, never `containsExit`. The containment read is true of
+  // Raised off `containsLiveExit`, never a plain containment read. Containment is true of
   // `if (false) { throw e; }` itself, so a provably dead statement raised the flag and blinded the
   // walk to the real classification below it: prepending one to a deciding clause turned its pass
   // into a swallow verdict on 78 real routes, the same false accusation for all eleven dead

@@ -843,6 +843,34 @@ export const MUTATIONS: Mutation[] = [
     (e) =>
       `if (false) { if (${e} instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }`
   ),
+  // The sibling of `empty-instanceof-if`. That entry's arm is empty; this one's arm holds an exit
+  // that can never run, which is the same no-op written so that a containment read cannot tell the
+  // difference. `selectsADistinctPath` asked a plain containment question, true of
+  // `if (false) { return null; }`, so the test read as a real classification decision and turned a
+  // swallowing catch into a passing one: 80 routes and the tree from 19 to 27 when measured.
+  // Additive: it plants fake signal. `catchClauseEvidence`'s own `exited` flag had already been
+  // moved onto `containsLiveExit` for exactly this reason and the branch predicate beside it was
+  // left behind, which is why the shape is spelled with the corpus's own `if (false)` and not
+  // something exotic.
+  prependToEveryCatch(
+    "dead-armed-instanceof-if",
+    "preserving",
+    "splice if (e instanceof Error) { if (false) { return null; } } into every catch",
+    (e) => `if (${e} instanceof Error) { if (false) { return null; } }`
+  ),
+  // The sibling the entry above does NOT close, found while closing it and filed here rather than
+  // fixed. Moving the ARM's exit read onto `containsLiveExit` folds a dead arm; it does not fold a
+  // dead CONDITION, and a condition that both references the caught binding and is provably false
+  // reaches the same grant. `literalTruth` cannot see it: `&&` and `||` are documented there as
+  // always null, deliberately, so `e instanceof Error && false` is an undecidable guard to every
+  // fold in the file. Closing it means widening that fold, which is a different rule with its own
+  // measurement, so this runs as a `KNOWN_GAPS` expected failure instead of sitting unrecorded.
+  prependToEveryCatch(
+    "dead-conjunction-instanceof-if",
+    "preserving",
+    "splice if (e instanceof Error && false) { return null; } into every catch",
+    (e) => `if (${e} instanceof Error && false) { return null; }`
+  ),
   // A finally that leaves itself by `break` cancels the try's completion, so nothing hosted in
   // that tryBlock ever escapes the clause: the whole statement is a no-op. The walk's
   // catchless-try entry credited it anyway, minting a branch from the hosted classifier on 80
@@ -1087,6 +1115,8 @@ export const ADDITIVE_IDS = [
   "wrap-body-in-rethrow",
   "wrap-body-in-same-arms-throw-ternary",
   "empty-instanceof-if",
+  "dead-armed-instanceof-if",
+  "dead-conjunction-instanceof-if",
   "dead-classifier-one-arm",
   "dead-throw-in-cancelled-try",
   "dead-deciding-map",
