@@ -213,6 +213,37 @@ describe("the package's tests are wired into the gate", () => {
   });
 });
 
+/**
+ * The third road into this suite, after the two workflows above: `turbo run test`, which is what
+ * `pnpm run test` and `pnpm run test:internal` reach it by.
+ *
+ * Turbo keys a task's cache on the package's own files. This suite's real inputs are mostly not
+ * its own files, they are `apps/webapp/app`, `packages/plugins/src`, `internal-packages/rbac/src`
+ * and the workflow files read above, so turbo happily replayed a pass recorded before a route
+ * changed. Measured rather than argued: a route file with a syntax error in it makes
+ * `parses every route file and produces a report inside a wide band` fail under vitest, and the
+ * same tree came back FULL TURBO in 301ms with the failure cached away as a success.
+ *
+ * So the task is uncacheable, and this asserts that, because the config is one line and reads like
+ * a performance oversight to anyone who does not know what the suite reads.
+ *
+ * What this does not assert is the rejected alternative. `inputs` can name `../../apps/webapp/...`
+ * and does bust the cache, but it replaces turbo 1.x's default file set instead of adding to it,
+ * so it drops the package's own files from the hash unless every one of them is listed too; that
+ * was measured the same way, by editing `vitest.config.ts` and getting FULL TURBO back. The
+ * reasoning lives in `turbo.json` next to the config it explains.
+ */
+describe("the third road in, turbo", () => {
+  it("keeps its test task out of the turbo cache", () => {
+    const config = readFileSync(resolve(__dirname, "../turbo.json"), "utf8");
+    // Comments are legal in turbo.json and this one carries the reasoning, so strip them to parse.
+    const pipeline = JSON.parse(config.replace(/^\s*\/\/.*$/gm, "")) as {
+      pipeline?: { test?: { cache?: boolean } };
+    };
+    expect(pipeline.pipeline?.test?.cache).toBe(false);
+  });
+});
+
 describe("counting candidates independently of the scanner", () => {
   // The counter is only worth having if it disagrees with the scanner somewhere. It does: the
   // scanner attributes nothing to a nested file that is not `route.ts`/`route.tsx`, and the
