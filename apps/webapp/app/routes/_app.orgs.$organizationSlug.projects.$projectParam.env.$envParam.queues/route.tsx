@@ -92,6 +92,8 @@ import {
   v3QueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import type { Handle } from "~/utils/handle";
+import { queuesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
 import {
@@ -125,6 +127,13 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // the loader's Redis-exact live values (matches LIVE_GAUGE_FRESH_MS on the queue detail page / run
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
+
+// Tell the dashboard agent it's looking at the queues list, and whether the
+// environment's concurrency is pinned — the same running/limit/burst state the
+// "Running" tile already tints. Loader data only, no extra queries.
+export const handle: Handle = {
+  agentPageContext: (data) => queuesAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

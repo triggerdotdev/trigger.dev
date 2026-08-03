@@ -28,6 +28,8 @@ import type {
   AgentPageSignalKind,
   SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
+// The dashboard's own Investigate-button copy: same question, so same wording.
+import { queueBacklogPrompt } from "../investigate-prompts";
 
 /**
  * Chip ids are stable and carry no run/queue identity, on purpose: a dismissal
@@ -84,6 +86,33 @@ const DOCS_RETRIES = def(
   "How do retries work?",
   "How do retries work in Trigger.dev?"
 );
+/** Shared by the errors list and an error group — same subject, same docs. */
+const DOCS_ERRORS = def(
+  "docs-errors",
+  "How do I handle errors?",
+  "How do I catch and handle errors in Trigger.dev tasks?"
+);
+const DOCS_CONCURRENCY = def(
+  "docs-concurrency",
+  "How does concurrency work?",
+  "How do queues and concurrency limits work in Trigger.dev?"
+);
+const DOCS_DEPLOYS = def(
+  "docs-deploys",
+  "How do deploys work?",
+  "How do deployments and versions work in Trigger.dev?"
+);
+
+/**
+ * `WorkerDeploymentStatus` values that mean "this deploy didn't land". A
+ * canceled deploy is deliberate, so it isn't one of them.
+ */
+const FAILED_DEPLOYMENT_STATUSES = new Set(["FAILED", "TIMED_OUT"]);
+
+/** Whether a deployment status is one the agent can investigate. */
+export function isFailedDeploymentStatus(status: string | undefined): boolean {
+  return status !== undefined && FAILED_DEPLOYMENT_STATUSES.has(status);
+}
 
 /** The slots an unclassified page fills: explain, then docs. */
 export const GENERIC_PROMPTS: SuggestedPrompt[] = [EXPLAIN_PAGE, DOCS_GENERIC];
@@ -124,12 +153,24 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         docs: DOCS_RETRIES,
       };
 
+    case "errors":
+      return {
+        explain: def(
+          "errors-worst",
+          "Which errors matter most?",
+          "Which errors are hitting the most runs right now, and which are new?"
+        ),
+        docs: DOCS_ERRORS,
+      };
+
     case "error":
       return {
+        // The fingerprint is a hash, so the chip says "this error" and lets the
+        // agent read the identity off the page context.
         investigate: def(
           "error-cause",
-          "What's causing this error?",
-          "Investigate this error — what's causing it and which runs are affected?"
+          "Why does this keep happening?",
+          "Investigate this error — why does it keep coming back, and which runs are affected?"
         ),
         status: def(
           "error-recent-occurrences",
@@ -141,15 +182,31 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "Find similar failures",
           "Find other failures that look like this one."
         ),
-        docs: def(
-          "docs-errors",
-          "How do I handle errors?",
-          "How do I catch and handle errors in Trigger.dev tasks?"
+        docs: DOCS_ERRORS,
+      };
+
+    case "queues":
+      return {
+        explain: def(
+          "queues-busiest",
+          "Which queues are busiest?",
+          "Which queues have the deepest backlogs right now, and are they clearing?"
         ),
+        docs: DOCS_CONCURRENCY,
       };
 
     case "queue":
       return {
+        // The page shows warn/crit itself (the health badge, the Investigate
+        // button); a healthy queue has nothing to dig into.
+        investigate:
+          page.health === "warn" || page.health === "crit"
+            ? def(
+                "queue-backlog-cause",
+                "Why is this queue backed up?",
+                queueBacklogPrompt(page.name)
+              )
+            : undefined,
         status: def(
           "queue-backlog",
           "How big is the backlog?",
@@ -160,25 +217,35 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "How is this queue doing?",
           `Explain the current state of the ${page.name} queue.`
         ),
-        docs: def(
-          "docs-concurrency",
-          "How does concurrency work?",
-          "How do queues and concurrency limits work in Trigger.dev?"
+        docs: DOCS_CONCURRENCY,
+      };
+
+    case "deployments":
+      return {
+        explain: def(
+          "deployments-latest",
+          "How is the latest deploy doing?",
+          "How is the latest deployment doing, and did anything start failing after it?"
         ),
+        docs: DOCS_DEPLOYS,
       };
 
     case "deployment":
       return {
+        // Only a deployment that didn't land has something to investigate.
+        investigate: isFailedDeploymentStatus(page.status)
+          ? def(
+              "deployment-failure",
+              "Why did this deploy fail?",
+              `Investigate deployment ${page.version} — why did it fail?`
+            )
+          : undefined,
         explain: def(
           "deployment-diff",
           "What changed in this deploy?",
           `What changed in deployment ${page.version}?`
         ),
-        docs: def(
-          "docs-deploys",
-          "How do deploys work?",
-          "How do deployments and versions work in Trigger.dev?"
-        ),
+        docs: DOCS_DEPLOYS,
       };
 
     case "other":

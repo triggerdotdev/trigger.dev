@@ -81,6 +81,15 @@ import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { deploymentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's looking at the deployments list, so the panel
+// offers deploy questions. Nothing on this page is abnormal by itself, so there
+// are no signals.
+export const handle: Handle = {
+  agentPageContext: () => deploymentsAgentPageContext(),
+};
 
 export const meta: MetaFunction = () => {
   return [

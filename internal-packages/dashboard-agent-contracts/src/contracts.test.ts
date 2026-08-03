@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evidenceSchema } from "./evidence.js";
 import { agentIntentSchema, isExecutableIntent } from "./intent.js";
-import { dashboardAgentClientDataSchema } from "./page-context.js";
+import { agentPageSchema, dashboardAgentClientDataSchema } from "./page-context.js";
 import { SUGGESTED_PROMPT_CAP, suggestedPromptSchema } from "./suggested-prompts.js";
 import { formatTriggerUri } from "./trigger-uri.js";
 
@@ -89,6 +89,24 @@ describe("client data", () => {
       },
     });
     expect(parsed.pageContext?.signals).toHaveLength(2);
+  });
+
+  it("parses the list page kinds, which carry no identity of their own", () => {
+    for (const kind of ["runs", "errors", "queues", "deployments"] as const) {
+      expect(agentPageSchema.safeParse({ kind }).success, kind).toBe(true);
+    }
+  });
+
+  it("keeps the deployment status optional", () => {
+    expect(agentPageSchema.parse({ kind: "deployment", version: "20260803.1" }).kind).toBe(
+      "deployment"
+    );
+    const parsed = agentPageSchema.parse({
+      kind: "deployment",
+      version: "20260803.1",
+      status: "Failed",
+    });
+    expect(parsed).toMatchObject({ status: "Failed" });
   });
 
   it("rejects an unknown page kind", () => {

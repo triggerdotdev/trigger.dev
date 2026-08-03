@@ -52,6 +52,15 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent which deployment it's looking at, and its status, so a
+// deploy that didn't land gets an investigate chip. Both come off the loader's
+// own payload — see `deploymentAgentPageContext`.
+export const handle: Handle = {
+  agentPageContext: (data) => deploymentAgentPageContext(data),
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

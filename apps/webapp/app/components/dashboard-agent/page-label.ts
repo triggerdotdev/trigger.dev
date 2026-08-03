@@ -17,8 +17,11 @@ const FALLBACK_LABEL = "Dashboard";
 const KIND_LABELS: Record<Exclude<AgentPage["kind"], "other">, string> = {
   runs: "Runs",
   run: "Run detail",
+  errors: "Errors",
   error: "Error detail",
+  queues: "Queues",
   queue: "Queue detail",
+  deployments: "Deployments",
   deployment: "Deployment detail",
 };
 

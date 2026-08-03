@@ -70,12 +70,25 @@ import {
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
 import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import {
+  QUEUE_OLDEST_WAIT_WARNING_MS,
+  queueAgentPageContext,
+} from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+
+// Tell the dashboard agent which queue it's looking at and how it's doing. The
+// health and the saturation signal come from the same running/queued/limit and
+// oldest-wait numbers the page renders, so this costs no queries — see
+// `queueAgentPageContext`.
+export const handle: Handle = {
+  agentPageContext: (data) => queueAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
 
@@ -1028,8 +1041,9 @@ function KeyDrilldown({
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
 // Oldest-wait threshold for the warning tint: the head of the queue sitting unstarted this long
-// signals the queue is stuck, not just busy.
-const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+// signals the queue is stuck, not just busy. Shared with the agent's page-context mapper so the
+// tint, the Investigate button and the queue's reported health can't drift apart.
+const OLDEST_WAIT_WARNING_MS = QUEUE_OLDEST_WAIT_WARNING_MS;
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

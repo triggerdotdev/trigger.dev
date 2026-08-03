@@ -1,8 +1,14 @@
 import { agentPageContextSchema } from "@internal/dashboard-agent-contracts";
 import { describe, expect, it } from "vitest";
 import {
+  deploymentAgentPageContext,
+  deploymentsAgentPageContext,
+  errorAgentPageContext,
+  errorsAgentPageContext,
   FRESH_FAILURE_WINDOW_MS,
+  QUEUE_OLDEST_WAIT_WARNING_MS,
   queueAgentPageContext,
+  queuesAgentPageContext,
   runAgentPageContext,
 } from "./page-mappers";
 
@@ -233,5 +239,206 @@ describe("queueAgentPageContext", () => {
   it("returns undefined for data it doesn't recognise", () => {
     expect(queueAgentPageContext(undefined)).toBeUndefined();
     expect(queueAgentPageContext({ queue: { name: "x" } })).toBeUndefined();
+  });
+
+  it("falls back to the environment limit for a queue with no limit of its own", () => {
+    const context = queueAgentPageContext({
+      ...queueLoaderData({ concurrencyLimit: null, running: 10, queued: 4 }),
+      environmentConcurrencyLimit: 10,
+    });
+
+    expect(context?.page).toMatchObject({ health: "crit" });
+    expect(context?.signals).toEqual([{ kind: "concurrency_saturation", severity: "warn" }]);
+  });
+});
+
+/** The queue-detail loader's live oldest-wait fields, which the page tints on. */
+function queueWaitLoaderData(
+  wait: {
+    oldestQueuedAt?: number | null;
+    keys?: { queued: number; oldestEnqueuedAt: number }[];
+  } = {},
+  queue: Partial<Record<string, unknown>> = {}
+) {
+  return {
+    ...queueLoaderData(queue),
+    environmentConcurrencyLimit: 100,
+    oldestQueuedAt: wait.oldestQueuedAt ?? null,
+    loadedAt: NOW,
+    ckBreakdown: { keys: wait.keys ?? [] },
+  };
+}
+
+describe("queueAgentPageContext oldest wait", () => {
+  it("warns when the head of the queue has waited past the threshold", () => {
+    const context = queueAgentPageContext(
+      queueWaitLoaderData({ oldestQueuedAt: NOW - QUEUE_OLDEST_WAIT_WARNING_MS - 1000 })
+    );
+
+    expect(context?.page).toMatchObject({ health: "warn" });
+    // The wait alone is not a signal: the loader has no run id to point at.
+    expect(context?.signals).toEqual([]);
+  });
+
+  it("stays healthy for a wait under the threshold", () => {
+    const context = queueAgentPageContext(
+      queueWaitLoaderData({ oldestQueuedAt: NOW - 1000 }, { queued: 0 })
+    );
+
+    expect(context?.page).toMatchObject({ health: "ok" });
+  });
+
+  it("takes the worst wait across keys with a live backlog", () => {
+    const context = queueAgentPageContext(
+      queueWaitLoaderData({
+        keys: [
+          { queued: 0, oldestEnqueuedAt: NOW - 60 * 60_000 },
+          { queued: 3, oldestEnqueuedAt: NOW - QUEUE_OLDEST_WAIT_WARNING_MS - 1 },
+        ],
+      })
+    );
+
+    expect(context?.page).toMatchObject({ health: "warn" });
+  });
+
+  it("ignores a drained key's stale enqueue time", () => {
+    const context = queueAgentPageContext(
+      queueWaitLoaderData(
+        { keys: [{ queued: 0, oldestEnqueuedAt: NOW - 60 * 60_000 }] },
+        { queued: 0 }
+      )
+    );
+
+    expect(context?.page).toMatchObject({ health: "ok" });
+  });
+
+  it("stays healthy when the loader carries no wait fields at all", () => {
+    const context = queueAgentPageContext(queueLoaderData({ queued: 0 }));
+
+    expect(context?.page).toMatchObject({ health: "ok" });
+    expect(context?.signals).toEqual([]);
+  });
+});
+
+describe("queuesAgentPageContext", () => {
+  const queuesLoaderData = (environment: Partial<Record<string, unknown>> = {}) => ({
+    queues: [{ name: "black-friday" }],
+    environment: {
+      running: 1,
+      queued: 0,
+      concurrencyLimit: 10,
+      burstFactor: 1,
+      runsEnabled: true,
+      ...environment,
+    },
+  });
+
+  it("classifies the list and says nothing when the environment has room", () => {
+    const context = queuesAgentPageContext(queuesLoaderData());
+
+    expect(context).toEqual({ page: { kind: "queues" }, signals: [] });
+    expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+
+  it("emits no signal when the environment is at its limit with nothing waiting", () => {
+    expect(queuesAgentPageContext(queuesLoaderData({ running: 10, queued: 0 }))?.signals).toEqual(
+      []
+    );
+  });
+
+  it("emits concurrency_saturation at the limit with work waiting", () => {
+    expect(queuesAgentPageContext(queuesLoaderData({ running: 10, queued: 3 }))?.signals).toEqual([
+      { kind: "concurrency_saturation", severity: "warn" },
+    ]);
+  });
+
+  it("escalates to crit when the environment backlog is deeper than the limit", () => {
+    expect(queuesAgentPageContext(queuesLoaderData({ running: 10, queued: 20 }))?.signals).toEqual([
+      { kind: "concurrency_saturation", severity: "crit" },
+    ]);
+  });
+
+  it("counts the burst limit, not the base limit", () => {
+    const bursting = queuesLoaderData({ burstFactor: 2, running: 10, queued: 5 });
+    expect(queuesAgentPageContext(bursting)?.signals).toEqual([]);
+
+    const atBurst = queuesLoaderData({ burstFactor: 2, running: 20, queued: 5 });
+    expect(queuesAgentPageContext(atBurst)?.signals).toEqual([
+      { kind: "concurrency_saturation", severity: "warn" },
+    ]);
+  });
+
+  it("returns undefined for data it doesn't recognise", () => {
+    expect(queuesAgentPageContext(undefined)).toBeUndefined();
+    expect(queuesAgentPageContext({ environment: { running: 1 } })).toBeUndefined();
+  });
+});
+
+describe("errorsAgentPageContext", () => {
+  it("classifies the errors list with no signals", () => {
+    const context = errorsAgentPageContext();
+
+    expect(context).toEqual({ page: { kind: "errors" }, signals: [] });
+    expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+});
+
+describe("errorAgentPageContext", () => {
+  it("names the error group by fingerprint", () => {
+    const context = errorAgentPageContext({
+      fingerprint: "9f2c1a",
+      organizationSlug: "acme",
+      canReplayRuns: true,
+    });
+
+    expect(context).toEqual({
+      page: { kind: "error", fingerprint: "9f2c1a" },
+      signals: [],
+    });
+    expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+
+  it("returns undefined without a fingerprint to name", () => {
+    expect(errorAgentPageContext(undefined)).toBeUndefined();
+    expect(errorAgentPageContext({ fingerprint: "" })).toBeUndefined();
+    expect(errorAgentPageContext({ organizationSlug: "acme" })).toBeUndefined();
+  });
+});
+
+describe("deploymentsAgentPageContext", () => {
+  it("classifies the deployments list with no signals", () => {
+    const context = deploymentsAgentPageContext();
+
+    expect(context).toEqual({ page: { kind: "deployments" }, signals: [] });
+    expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+});
+
+describe("deploymentAgentPageContext", () => {
+  it("names the deployment and its status", () => {
+    const context = deploymentAgentPageContext({
+      deployment: { version: "20260727.1", status: "DEPLOYED", shortCode: "abcd" },
+      eventStream: null,
+    });
+
+    expect(context).toEqual({
+      page: { kind: "deployment", version: "20260727.1", status: "DEPLOYED" },
+      signals: [],
+    });
+    expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+
+  it("passes a failed status through without inventing a signal", () => {
+    const context = deploymentAgentPageContext({
+      deployment: { version: "20260727.2", status: "FAILED" },
+    });
+
+    expect(context?.page).toMatchObject({ status: "FAILED" });
+    expect(context?.signals).toEqual([]);
+  });
+
+  it("returns undefined for data it doesn't recognise", () => {
+    expect(deploymentAgentPageContext(undefined)).toBeUndefined();
+    expect(deploymentAgentPageContext({ deployment: { version: "20260727.1" } })).toBeUndefined();
   });
 });
