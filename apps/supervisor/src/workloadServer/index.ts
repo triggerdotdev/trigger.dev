@@ -231,8 +231,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * reclaimCheckpoints asks the checkpoint service to delete a finished run's checkpoint storage.
    *
    * Called only after the reply has been sent, so it never delays the runner - the same shape the
-   * suspend route uses. Every early return is counted: with no lifecycle expiry behind this, a
-   * silently skipped delete is storage leaked forever, and silence must not look like success.
+   * suspend route uses. Every early return is counted: nothing reclaims storage behind this, so a
+   * silently skipped request leaks it, and silence must not look like success.
+   *
+   * This covers runner-driven completion only. A run that dies without posting one - killed pod,
+   * OOM, node loss, platform-side expiry - is finalised on the platform, which the worker never
+   * hears about, so those are not reclaimed here and are not reclaimable from this side.
    *
    * `RUN_PENDING_CANCEL` is terminal too - a run cancelled mid-execution never restores - so it is
    * reclaimed alongside `RUN_FINISHED`. Retries are deliberately excluded: the prefix is run-level,
