@@ -185,6 +185,8 @@ export default function App() {
       <html
         lang="en"
         className="h-full"
+        // The pre-paint script below may flip data-theme before hydration
+        suppressHydrationWarning
         data-theme={resolvedTheme}
         data-theme-preference={themePreference}
         // Contrast overlay input for the System themes; Classic never reads it

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDashboardPreferences } from "~/services/dashboardPreferences.server";
+import { parseDashboardPreferences } from "~/utils/dashboardPreferences";
 import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 const VALID_THEMES: ThemePreference[] = ["classic", "system", "dark", "light"];
@@ -26,18 +26,18 @@ describe("normalizeThemePreference", () => {
 describe("DashboardPreferences theme schema", () => {
   it("accepts all four theme values", () => {
     for (const theme of VALID_THEMES) {
-      const result = getDashboardPreferences({ version: "1", projects: {}, theme });
+      const result = parseDashboardPreferences({ version: "1", projects: {}, theme });
       expect(result.theme).toBe(theme);
     }
   });
 
   it("accepts preferences without a theme", () => {
-    const result = getDashboardPreferences({ version: "1", projects: {} });
+    const result = parseDashboardPreferences({ version: "1", projects: {} });
     expect(result.theme).toBeUndefined();
   });
 
   it("rejects an invalid theme by falling back to defaults", () => {
-    const result = getDashboardPreferences({ version: "1", projects: {}, theme: "neon" });
+    const result = parseDashboardPreferences({ version: "1", projects: {}, theme: "neon" });
     expect(result.theme).toBeUndefined();
   });
 });

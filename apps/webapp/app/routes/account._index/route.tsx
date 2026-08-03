@@ -1,4 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { useEffect, useState } from "react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { ComputerDesktopIcon, MoonIcon, SunIcon, SwatchIcon } from "@heroicons/react/20/solid";
 import {
@@ -213,6 +214,17 @@ export default function Page() {
       ? normalizeThemePreference(pendingTheme)
       : normalizeThemePreference(user.dashboardPreferences.theme);
 
+  // Dragging previews the contrast via the CSS var before it persists; once the
+  // save settles, resnap the page and the thumb to the stored value so a failed
+  // or rejected save doesn't leave a phantom contrast level on screen.
+  const [contrastPreview, setContrastPreview] = useState(contrast);
+  useEffect(() => {
+    if (contrastFetcher.state === "idle") {
+      setContrastPreview(contrast);
+      document.documentElement.style.setProperty("--theme-contrast", String(contrast / 100));
+    }
+  }, [contrastFetcher.state, contrast]);
+
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
     // TODO: type this
@@ -305,6 +317,7 @@ export default function Page() {
               <div className="flex w-full items-center justify-between gap-4">
                 <Label>Interface theme</Label>
                 <Select<ThemePreference, ThemePreference>
+                  aria-label="Interface theme"
                   value={theme}
                   setValue={(value) =>
                     themeFetcher.submit(
@@ -338,15 +351,18 @@ export default function Page() {
                   <Slider
                     variant="settings"
                     className="w-44"
+                    aria-label="Contrast"
                     min={0}
                     max={100}
                     step={5}
-                    defaultValue={[contrast]}
+                    value={[contrastPreview]}
                     onValueChange={(values) => {
                       // Live preview before the preference persists
+                      const value = values[0] ?? 0;
+                      setContrastPreview(value);
                       document.documentElement.style.setProperty(
                         "--theme-contrast",
-                        String((values[0] ?? 0) / 100)
+                        String(value / 100)
                       );
                     }}
                     onValueCommit={(values) =>

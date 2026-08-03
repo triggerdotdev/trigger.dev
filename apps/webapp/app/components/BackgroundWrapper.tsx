@@ -16,7 +16,9 @@ const BACKDROPS = [
       table: blurredDashboardBackgroundTable,
     },
     tableFill: "#101214",
-    className: "hidden lg:block light:lg:hidden",
+    /* `light` is a zero-specificity variant, so `light:lg:hidden` ties with
+       `lg:block` - the `!` guarantees the dark backdrop loses on Light. */
+    className: "hidden lg:block light:lg:hidden!",
   },
   {
     images: {

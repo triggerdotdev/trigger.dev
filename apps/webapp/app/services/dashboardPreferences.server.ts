@@ -1,89 +1,29 @@
-import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
+import {
+  type DashboardPreferences,
+  type FavoritePage,
+  parseDashboardPreferences,
+  SideMenuPreferences,
+} from "~/utils/dashboardPreferences";
 
-const FavoritePage = z.object({
-  /** Stable id, generated client-side when the page is favorited. */
-  id: z.string(),
-  /** App-relative URL including any search params (filters, tabs). */
-  url: z.string(),
-  /** Display label shown in the side menu; user-renamable. */
-  label: z.string(),
-  /** Key into the favorite page icon registry. */
-  icon: z.string().optional(),
-});
-
-export type FavoritePage = z.infer<typeof FavoritePage>;
-
-const SideMenuPreferences = z.object({
-  isCollapsed: z.boolean().default(false),
-  /** Expanded side menu width in px, set by the resize handle. */
-  width: z.number().optional(),
-  // Map for section collapsed states - keys are section identifiers
-  collapsedSections: z.record(z.string(), z.boolean()).optional(),
-  /** Organization-specific settings */
-  organizations: z
-    .record(
-      z.string(),
-      z.object({
-        orderedItems: z.record(z.string(), z.array(z.string())),
-      })
-    )
-    .optional(),
-  /** Pages the user favorited, in display order. */
-  favorites: z.array(FavoritePage).optional(),
-  /** Custom top-to-bottom order of side menu sections (section ids). */
-  sectionOrder: z.array(z.string()).optional(),
-  /** Per-item visibility overrides (item id -> hidden). Items absent fall back to their default. */
-  hiddenItems: z.record(z.string(), z.boolean()).optional(),
-  /** Custom item order within a section (section id -> item ids). */
-  sectionItemOrder: z.record(z.string(), z.array(z.string())).optional(),
-});
-
-export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
+export type {
+  DashboardPreferences,
+  FavoritePage,
+  SideMenuPreferences,
+} from "~/utils/dashboardPreferences";
 
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
-import { ThemePreference } from "~/utils/themePreference";
+import { type ThemePreference } from "~/utils/themePreference";
 export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
-const DashboardPreferences = z.object({
-  version: z.literal("1"),
-  theme: ThemePreference.optional(),
-  /** Interface contrast for the System themes, 0-100. */
-  contrast: z.number().int().min(0).max(100).optional(),
-  currentProjectId: z.string().optional(),
-  projects: z.record(
-    z.string(),
-    z.object({
-      currentEnvironment: z.object({ id: z.string() }),
-    })
-  ),
-  sideMenu: SideMenuPreferences.optional(),
-});
-
-export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
-
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
-  if (!data) {
-    return {
-      version: "1",
-      projects: {},
-    };
-  }
-
-  const result = DashboardPreferences.safeParse(data);
-  if (!result.success) {
-    logger.error("Failed to parse DashboardPreferences", { data, error: result.error });
-    return {
-      version: "1",
-      projects: {},
-    };
-  }
-
-  return result.data;
+  return parseDashboardPreferences(data, (error) => {
+    logger.error("Failed to parse DashboardPreferences", { data, error });
+  });
 }
 
 /**

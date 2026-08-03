@@ -17,7 +17,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
@@ -859,7 +859,7 @@ export function VercelOnboardingModal({
                       variant="primary/medium"
                       onClick={handleProjectSelection}
                       disabled={!selectedVercelProject || fetcher.state !== "idle"}
-                      LeadingIcon={fetcher.state !== "idle" ? Spinner : undefined}
+                      LeadingIcon={fetcher.state !== "idle" ? SpinnerWhite : undefined}
                     >
                       {fetcher.state !== "idle" ? "Connecting..." : "Connect Project"}
                     </Button>
@@ -930,7 +930,7 @@ export function VercelOnboardingModal({
                     variant="primary/medium"
                     onClick={handleUpdateEnvMapping}
                     disabled={envMappingFetcher.state !== "idle"}
-                    LeadingIcon={envMappingFetcher.state !== "idle" ? Spinner : undefined}
+                    LeadingIcon={envMappingFetcher.state !== "idle" ? SpinnerWhite : undefined}
                   >
                     Next
                   </Button>
@@ -1112,7 +1112,7 @@ export function VercelOnboardingModal({
                     LeadingIcon={
                       fromMarketplaceContext &&
                       (completeOnboardingFetcher.state !== "idle" || isRedirecting)
-                        ? Spinner
+                        ? SpinnerWhite
                         : undefined
                     }
                   >
@@ -1168,7 +1168,7 @@ export function VercelOnboardingModal({
                     disabled={completeOnboardingFetcher.state !== "idle" || isRedirecting}
                     LeadingIcon={
                       completeOnboardingFetcher.state !== "idle" || isRedirecting
-                        ? Spinner
+                        ? SpinnerWhite
                         : undefined
                     }
                   >

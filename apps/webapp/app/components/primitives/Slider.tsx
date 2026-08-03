@@ -36,7 +36,14 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
   variant: VariantName;
 };
 
-export function Slider({ variant, className, LeadingIcon, TrailingIcon, ...props }: SliderProps) {
+export function Slider({
+  variant,
+  className,
+  LeadingIcon,
+  TrailingIcon,
+  "aria-label": ariaLabel,
+  ...props
+}: SliderProps) {
   const variation = variants[variant];
   return (
     <div className={cn("group flex items-center", variation.container)}>
@@ -52,7 +59,9 @@ export function Slider({ variant, className, LeadingIcon, TrailingIcon, ...props
         <RadixSlider.Track className={cn("relative grow rounded-full", variation.track)}>
           <RadixSlider.Range className={cn("absolute h-full rounded-full", variation.range)} />
         </RadixSlider.Track>
+        {/* The thumb is the role="slider" element, so the label lives here */}
         <RadixSlider.Thumb
+          aria-label={ariaLabel}
           className={cn(
             "block cursor-pointer rounded-full transition focus:outline-hidden",
             variation.thumb

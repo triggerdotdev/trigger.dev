@@ -46,7 +46,7 @@ import {
   SettingsRow,
   SettingsRowDescription,
 } from "~/components/primitives/SettingsLayout";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
@@ -609,8 +609,7 @@ export function ConnectGitHubRepoModal({
                     name="action"
                     value="connect-repo"
                     variant="primary/medium"
-                    LeadingIcon={isConnectRepositoryLoading ? Spinner : undefined}
-                    leadingIconClassName="text-white"
+                    LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
                     disabled={isConnectRepositoryLoading}
                   >
                     Connect repository
