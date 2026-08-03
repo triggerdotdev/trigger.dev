@@ -21,6 +21,8 @@ export type MetricResourceQueryOptions = {
   defaultPeriod: string;
   queues?: string[];
   fillGaps?: boolean;
+  /** Floor for the query's bucket width, for series too sparse to read at the range's width. */
+  minBucketSeconds?: number;
   refreshIntervalMs?: number;
 };
 
@@ -56,6 +58,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     environmentId,
     defaultPeriod,
     fillGaps,
+    minBucketSeconds,
     refreshIntervalMs = 60_000,
   } = opts;
   const { period, from, to } = opts.timeRange;
@@ -71,10 +74,22 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         from ?? "",
         to ?? "",
         fillGaps ? 1 : 0,
+        minBucketSeconds ?? "",
         queuesKey ?? "",
         query,
       ].join("|"),
-    [organizationId, projectId, environmentId, resolvedPeriod, from, to, fillGaps, queuesKey, query]
+    [
+      organizationId,
+      projectId,
+      environmentId,
+      resolvedPeriod,
+      from,
+      to,
+      fillGaps,
+      minBucketSeconds,
+      queuesKey,
+      query,
+    ]
   );
 
   const [rows, setRows] = useState<MetricResourceRow[] | null>(
@@ -112,6 +127,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         organizationId,
         projectId,
         environmentId,
+        ...(minBucketSeconds !== undefined ? { minBucketSeconds } : {}),
         ...(queuesKey !== undefined ? { queues: queuesKey.split(",") } : {}),
       }),
       signal: controller.signal,
@@ -142,6 +158,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     from,
     to,
     fillGaps,
+    minBucketSeconds,
     organizationId,
     projectId,
     environmentId,
