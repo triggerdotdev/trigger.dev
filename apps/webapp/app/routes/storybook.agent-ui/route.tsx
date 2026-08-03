@@ -1261,7 +1261,7 @@ export default function Story() {
       <div className="flex flex-col gap-10 py-6">
         <div className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-4">
-            <Header1>Dashboard agent UI</Header1>
+            <Header1>Trigger Agent — Chat UI</Header1>
             <ThemeToggle />
           </div>
           <Paragraph variant="small">
