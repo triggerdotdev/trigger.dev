@@ -10,7 +10,7 @@ import {
   reportAuthResource,
   reportResponse,
   ReportSearchParamsSchema,
-} from "~/routes/api.v1.reports.$key";
+} from "~/presenters/v3/reports/reportsApi.server";
 
 // `everyResource(...)` tags its payload with this Symbol.for marker (see apiBuilder.server.ts),
 // so a test can read back exactly which resources the route will require.
