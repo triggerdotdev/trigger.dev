@@ -954,6 +954,7 @@ export const MUTATIONS: Mutation[] = [
           if (!isSingleConst(previous) || !isSingleConst(current)) continue;
           if (source[previous.end - 1] !== ";") continue;
           const declaration = current.declarationList.declarations[0]!;
+          if (spansAComment(source, previous.end - 1, declaration.getStart())) continue;
           edits.push({ start: previous.end - 1, end: declaration.getStart(), text: ", " });
         }
       });
@@ -979,6 +980,7 @@ export const MUTATIONS: Mutation[] = [
           // claims not to make.
           if (ts.isStringLiteral(previous.expression)) continue;
           if (source[previous.end - 1] !== ";") continue;
+          if (spansAComment(source, previous.end - 1, current.getStart())) continue;
           edits.push({ start: previous.end - 1, end: current.getStart(), text: ", " });
         }
       });
@@ -1038,6 +1040,18 @@ export const ADDITIVE_IDS = [
   "dead-caller-scope-userid",
   "log-caller-scope-userid",
 ];
+
+/**
+ * Whether a comment sits in the span a statement merge replaces. A suppression is file-scoped and can
+ * only lower a score, so joining two statements across a directive raises the file back to its
+ * unsuppressed ratio, which is the one direction a `preserving` entry may not move. The span a merge
+ * replaces holds a semicolon, trivia and at most a `const` keyword, never a string literal, so a
+ * textual scan cannot be fooled by `//` inside quotes. Covered by `mutationTrivia.test.ts`.
+ */
+function spansAComment(source: string, start: number, end: number): boolean {
+  const between = source.slice(start, end);
+  return between.includes("//") || between.includes("/*");
+}
 
 function isSingleConst(statement: ts.Statement): statement is ts.VariableStatement {
   return (
