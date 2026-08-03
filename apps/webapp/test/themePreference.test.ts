@@ -36,8 +36,18 @@ describe("DashboardPreferences theme schema", () => {
     expect(result.theme).toBeUndefined();
   });
 
-  it("rejects an invalid theme by falling back to defaults", () => {
-    const result = parseDashboardPreferences({ version: "1", projects: {}, theme: "neon" });
+  it("drops an invalid theme without erasing the rest of the preferences", () => {
+    const result = parseDashboardPreferences({
+      version: "1",
+      projects: {},
+      theme: "neon",
+      contrast: 999,
+      currentProjectId: "proj_123",
+      sideMenu: { isCollapsed: true },
+    });
     expect(result.theme).toBeUndefined();
+    expect(result.contrast).toBeUndefined();
+    expect(result.currentProjectId).toBe("proj_123");
+    expect(result.sideMenu?.isCollapsed).toBe(true);
   });
 });

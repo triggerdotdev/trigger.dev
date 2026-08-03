@@ -47,9 +47,11 @@ export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
 const DashboardPreferences = z.object({
   version: z.literal("1"),
-  theme: ThemePreference.optional(),
+  /* An unknown value (e.g. written by a newer deploy) degrades to undefined
+     instead of failing the whole blob and erasing every other setting */
+  theme: ThemePreference.optional().catch(undefined),
   /** Interface contrast for the System themes, 0-100. */
-  contrast: z.number().int().min(0).max(100).optional(),
+  contrast: z.number().int().min(0).max(100).optional().catch(undefined),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),
