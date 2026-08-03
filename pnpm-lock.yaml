@@ -2048,8 +2048,8 @@ importers:
         specifier: 3.25.76
         version: 4.4.3
       zod-to-json-schema:
-        specifier: ^3.24.0
-        version: 3.24.6(zod@4.4.3)
+        specifier: ^3.25.0
+        version: 3.25.1(zod@4.4.3)
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
@@ -15071,11 +15071,6 @@ packages:
 
   zod-to-json-schema@3.24.5:
     resolution: {integrity: sha512-/AuWwMP+YqiPbsJx5D6TfgRTc4kTLjsh5SOcd4bLsfUg2RcEXrFMJl1DGgdHy2aCfsIA/cr/1JM0xcB2GZji8g==}
-    peerDependencies:
-      zod: 4.4.3
-
-  zod-to-json-schema@3.24.6:
-    resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
     peerDependencies:
       zod: 4.4.3
 
@@ -30499,10 +30494,6 @@ snapshots:
       zod: 4.4.3
 
   zod-to-json-schema@3.24.5(zod@4.4.3):
-    dependencies:
-      zod: 4.4.3
-
-  zod-to-json-schema@3.24.6(zod@4.4.3):
     dependencies:
       zod: 4.4.3
 
