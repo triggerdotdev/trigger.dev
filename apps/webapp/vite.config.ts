@@ -31,6 +31,11 @@ export default defineConfig({
   },
   server: {
     cors: false,
+    watch: {
+      // Seeder scripts live next to the app but are not app code — editing or
+      // running them must not full-reload every open dashboard tab.
+      ignored: ["**/seed-*.mts"],
+    },
     warmup: {
       clientFiles: ["./app/entry.client.tsx", "./app/root.tsx", "./app/components/**/*.tsx"],
       ssrFiles: ["./app/entry.server.tsx", "./app/root.tsx"],

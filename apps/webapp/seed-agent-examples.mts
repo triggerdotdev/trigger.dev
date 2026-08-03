@@ -77,8 +77,12 @@ import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
 import {
   buildAgentExampleChats,
+  buildShowcaseChat,
+  buildShowcaseWatches,
+  SHOWCASE_CHAT_SLUG,
   SKIPPED_DEMO_CHATS,
   type AgentExamplesWorld,
+  type SeedChat,
 } from "./seed-agent-examples-chats.mjs";
 // oxlint-disable import/default -- deliberate CommonJS interop, see below.
 // The webapp's own modules come in through their default binding on purpose.
@@ -1405,6 +1409,18 @@ function envQueueKey(organizationId: string, environmentId: string): string {
   return `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
 }
 
+// The PER-QUEUE counter (`engine.lengthOfQueue`) — what the watch checks and the
+// queue pages read. Staging only the env-level key leaves every queue reading 0,
+// so a drain watch one-shots with "that already happened".
+function queueDepthKey(
+  organizationId: string,
+  projectId: string,
+  environmentId: string,
+  queueName: string
+): string {
+  return `engine:runqueue:{org:${organizationId}}:proj:${projectId}:env:${environmentId}:queue:${queueName}`;
+}
+
 type RedisLike = {
   del: (key: string) => Promise<unknown>;
   zadd: (key: string, ...args: Array<string | number>) => Promise<unknown>;
@@ -1435,7 +1451,9 @@ async function stageRedisDepth(
   organizationId: string,
   environmentId: string,
   depth: number,
-  label: string
+  label: string,
+  projectId?: string,
+  queueName?: string
 ) {
   const connection = redisConnection();
   if (!connection) return;
@@ -1443,6 +1461,17 @@ async function stageRedisDepth(
     const { createRedisClient } = await import("@internal/redis");
     const redis = createRedisClient(connection) as unknown as RedisLike;
     await writeRedisDepth(redis, organizationId, environmentId, depth);
+    if (projectId && queueName) {
+      const key = queueDepthKey(organizationId, projectId, environmentId, queueName);
+      await redis.del(key);
+      const now = Date.now();
+      const args: Array<string | number> = [];
+      for (let j = 0; j < Math.min(depth, 1000); j++) {
+        args.push(now + j, `seed_agentex_q_${j}`);
+      }
+      if (args.length > 0) await redis.zadd(key, ...args);
+      console.log(`[${label}] staged ${queueName} queue depth ${Math.min(depth, 1000)} in Redis`);
+    }
     await redis.quit();
     console.log(`[${label}] staged env-queue depth ${depth} in Redis`);
   } catch (error) {
@@ -1656,9 +1685,118 @@ function agentDb() {
 
 /** Deletes only the chats this seeder minted — the id prefix is its marker. */
 async function deleteSeededChats(client: ReturnType<typeof agentDb>, userId: string) {
+  // Watches first: they hang off a chat id with no FK, so a chat deleted from
+  // under them would leave rows a re-seed then collides with on the watch id.
+  await client.sql`
+    delete from trigger_dashboard_agent.watches
+    where user_id = ${userId} and chat_id like ${`${CHAT_ID_PREFIX}%`}`;
   await client.sql`
     delete from trigger_dashboard_agent.chats
     where user_id = ${userId} and id like ${`${CHAT_ID_PREFIX}%`}`;
+}
+
+type ChatOwner = { organizationId: string; userId: string; projectId: string };
+
+/** One stored transcript, backdated. Shared by the full seed and `--showcase`. */
+async function writeChat(
+  client: ReturnType<typeof agentDb>,
+  chat: SeedChat,
+  world: AgentExamplesWorld,
+  owner: ChatOwner,
+  now: number
+) {
+  const chatId = `${CHAT_ID_PREFIX}${chat.slug}`;
+  const lastMessageAt = new Date(now - chat.minutesAgo * 60_000);
+  await createChat(client.db, {
+    id: chatId,
+    organizationId: owner.organizationId,
+    userId: owner.userId,
+    title: chat.title,
+    metadata: {
+      context: {
+        userId: owner.userId,
+        organizationId: owner.organizationId,
+        projectId: owner.projectId,
+        environmentId: world.environmentId,
+        currentPage: `/orgs/${world.organizationSlug}/projects/${world.projectSlug}/env/${world.environmentSlug}/runs`,
+      },
+      seededBy: "seed-agent-examples",
+    },
+  });
+  // `persistMessages` stamps `last_message_at` with now(), which would collapse
+  // the whole history onto one timestamp. The transcripts are backdated instead,
+  // so the list reads like a week of work.
+  await client.sql`
+    update trigger_dashboard_agent.chats
+    set title = ${chat.title},
+        messages = ${JSON.stringify(chat.messages)}::jsonb,
+        last_message_at = ${lastMessageAt.toISOString()}::timestamptz,
+        updated_at = ${lastMessageAt.toISOString()}::timestamptz
+    where id = ${chatId}`;
+  return chatId;
+}
+
+/**
+ * The showcase chat's watch rows.
+ *
+ * The wake banner takes its tone from the WATCH, not from the narration — kind,
+ * resolution and observed outcome go through the resolved-result mapping — so a
+ * seeded wake with no row renders in the kind-agnostic fallback wording. The
+ * second row is deliberately still active: that's the live chip on the chat, and
+ * the story is that it's still watching.
+ */
+async function writeShowcaseWatches(
+  client: ReturnType<typeof agentDb>,
+  world: AgentExamplesWorld,
+  owner: ChatOwner,
+  chatId: string,
+  now: number
+) {
+  const rows = buildShowcaseWatches(world);
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000);
+
+  // Raw SQL rather than the drizzle query layer: this entry runs under tsx and
+  // `drizzle-orm` is not one of the webapp's own dependencies, so importing the
+  // schema's table objects here would fail to resolve at runtime.
+  await client.sql`delete from trigger_dashboard_agent.watches where chat_id = ${chatId}`;
+
+  for (const row of rows) {
+    // `since` is server-set at creation: a recurrence check may never match an
+    // error that predates its own watch.
+    const spec = { ...row.spec, since: at(row.createdMinutesAgo).toISOString() };
+    const firedAt = row.firedMinutesAgo === null ? null : at(row.firedMinutesAgo).toISOString();
+    await client.sql`
+      insert into trigger_dashboard_agent.watches (
+        id, chat_id, identity, spec, status, delivery_status, resolution,
+        observed_outcome, investigate_on_attention, organization_id, project_id,
+        project_ref, environment_id, user_id, created_at, expires_at,
+        last_checked_at, fired_at, delivered_at, last_result, tick_count
+      ) values (
+        ${row.id},
+        ${chatId},
+        ${row.identity},
+        ${JSON.stringify(spec)}::jsonb,
+        ${row.status},
+        ${row.deliveryStatus},
+        ${row.resolution},
+        ${row.observedOutcome === null ? null : JSON.stringify(row.observedOutcome)}::jsonb,
+        ${row.identity.startsWith("error_recurrence:")},
+        ${owner.organizationId},
+        ${owner.projectId},
+        ${world.projectRef},
+        ${world.environmentId},
+        ${owner.userId},
+        ${at(row.createdMinutesAgo).toISOString()}::timestamptz,
+        ${at(-row.expiresInMinutes).toISOString()}::timestamptz,
+        ${at(row.lastCheckedMinutesAgo).toISOString()}::timestamptz,
+        ${firedAt}::timestamptz,
+        ${firedAt}::timestamptz,
+        ${row.lastResult === null ? null : JSON.stringify(row.lastResult)}::jsonb,
+        ${row.tickCount}
+      )`;
+  }
+
+  return rows;
 }
 
 async function seedChats(
@@ -1670,41 +1808,147 @@ async function seedChats(
 ) {
   const chats = buildAgentExampleChats(world);
   const now = Date.now();
+  const owner: ChatOwner = { organizationId, userId, projectId };
 
   await deleteSeededChats(client, userId);
 
   for (const chat of chats) {
-    const chatId = `${CHAT_ID_PREFIX}${chat.slug}`;
-    const lastMessageAt = new Date(now - chat.minutesAgo * 60_000);
-    await createChat(client.db, {
-      id: chatId,
-      organizationId,
-      userId,
-      title: chat.title,
-      metadata: {
-        context: {
-          userId,
-          organizationId,
-          projectId,
-          environmentId: world.environmentId,
-          currentPage: `/orgs/${world.organizationSlug}/projects/${world.projectSlug}/env/${world.environmentSlug}/runs`,
-        },
-        seededBy: "seed-agent-examples",
-      },
-    });
-    // `persistMessages` stamps `last_message_at` with now(), which would collapse
-    // the whole history onto one timestamp. The transcripts are backdated instead,
-    // so the list reads like a week of work.
-    await client.sql`
-      update trigger_dashboard_agent.chats
-      set title = ${chat.title},
-          messages = ${JSON.stringify(chat.messages)}::jsonb,
-          last_message_at = ${lastMessageAt.toISOString()}::timestamptz,
-          updated_at = ${lastMessageAt.toISOString()}::timestamptz
-      where id = ${chatId}`;
+    const chatId = await writeChat(client, chat, world, owner, now);
+    if (chat.slug === SHOWCASE_CHAT_SLUG) {
+      await writeShowcaseWatches(client, world, owner, chatId, now);
+    }
   }
 
   return chats;
+}
+
+/**
+ * `--showcase`: re-seed ONE chat over the stand that is already up.
+ *
+ * The full seed wipes and rebuilds two environments' worth of runs and metrics,
+ * which is the wrong tool for iterating on a transcript — and impossible while
+ * someone is looking at the stand. This path touches nothing but the showcase
+ * chat and its watches: the cast is read back out of Postgres, the report card is
+ * fetched live from the running dev server, and every id in the transcript is one
+ * the stand already has.
+ */
+async function seedShowcaseOnly() {
+  const user = await prisma.user.findFirst({ where: { email: "local@trigger.dev" } });
+  if (!user) {
+    console.error("User local@trigger.dev not found. Run `pnpm run db:seed` first.");
+    process.exit(1);
+  }
+  const project = await prisma.project.findFirst({
+    where: { externalRef: PROJECT_REF },
+    include: { organization: true },
+  });
+  if (!project) {
+    console.error(
+      `No "${PROJECT_NAME}" project found. Run the full seed first:\n` +
+        `  pnpm --filter webapp run db:seed:agent-examples`
+    );
+    process.exit(1);
+  }
+  const environment = await prisma.runtimeEnvironment.findFirst({
+    where: { projectId: project.id, type: "PRODUCTION" },
+  });
+  if (!environment) {
+    console.error(`No PRODUCTION environment on project ${project.slug}.`);
+    process.exit(1);
+  }
+
+  // The cast, as the stand really has it — the transcript may only cite runs that
+  // exist, so these come out of Postgres rather than being generated.
+  const pick = async (where: Record<string, unknown>, orderDesc = true) =>
+    prisma.taskRun.findFirst({
+      where: { runtimeEnvironmentId: environment.id, ...where },
+      orderBy: { createdAt: orderDesc ? "desc" : "asc" },
+      select: { friendlyId: true, spanId: true, createdAt: true },
+    });
+
+  const failed = await pick({ taskIdentifier: TASK_ID, status: "COMPLETED_WITH_ERRORS" });
+  const prior = await pick({ taskIdentifier: TASK_ID, status: "COMPLETED_WITH_ERRORS" }, false);
+  const waiting = await pick({ taskIdentifier: TASK_ID, status: "PENDING" });
+  const slow = await pick({ taskIdentifier: SLOW_TASK_ID, status: "EXECUTING" });
+  if (!failed || !prior || !waiting || !slow) {
+    console.error(
+      "The stand is missing part of the cast (failed / prior / queued / slow run). Re-run the full seed."
+    );
+    process.exit(1);
+  }
+
+  const now = Date.now();
+  const appOrigin = process.env.APP_ORIGIN ?? "http://localhost:3030";
+  const live = await fetchLiveHealthReport(appOrigin, environment.apiKey);
+  const degraded = live ?? buildDegradedReport(new Date(now), environment.slug);
+  const reported = readReportFigures(degraded);
+  const failureRate = reported.failureRate ?? STORY.failureRate;
+  const triggeredPerMin = reported.triggeredPerMin ?? STORY.triggeredPerMin;
+
+  const world: AgentExamplesWorld = {
+    organizationSlug: project.organization.slug,
+    projectSlug: project.slug,
+    projectRef: project.externalRef,
+    environmentId: environment.id,
+    environmentSlug: environment.slug,
+    appOrigin,
+    failedRunId: failed.friendlyId,
+    failedSpanId: failed.spanId,
+    waitingRunId: waiting.friendlyId,
+    slowRunId: slow.friendlyId,
+    priorRunId: prior.friendlyId,
+    taskId: TASK_ID,
+    slowTaskId: SLOW_TASK_ID,
+    queue: QUEUE,
+    backlogQueue: BACKLOG_QUEUE,
+    errorFingerprint: ERROR_FINGERPRINT,
+    deploymentVersion: DEPLOYMENT_VERSION,
+    sourceSha: GIT_SHA,
+    sourcePath: SOURCE_PATH,
+    envConcurrencyLimit: reported.envLimit ?? STORY.envConcurrencyLimit,
+    pinnedMinutes: reported.pinnedMinutes ?? STORY.pinnedMinutes,
+    pending: reported.pending ?? STORY.pending,
+    worstQueueShare: reported.worstQueueShare ?? STORY.worstQueueShare,
+    // Derived from the card's own ratio rather than counted: the showcase seeds
+    // no runs, so the only honest source for "how many failed" is the report the
+    // conversation is quoting.
+    failureCount: Math.max(1, Math.round(failureRate * triggeredPerMin * LIVE_WINDOW_MIN)),
+    failureRatePct: (failureRate * 100).toFixed(1),
+    donePerMin: reported.donePerMin ?? STORY.donePerMin,
+    triggeredPerMin,
+    drainMinutes: reported.drainMinutes ?? STORY.drainMinutes,
+    firstFailureClock: clock(prior.createdAt),
+    lastFailureClock: clock(failed.createdAt),
+    degradedReport: degraded,
+    healthyReport: buildHealthyReport(new Date(now - 3 * 3600_000), environment.slug),
+  };
+
+  const client = agentDb();
+  const owner: ChatOwner = {
+    organizationId: project.organizationId,
+    userId: user.id,
+    projectId: project.id,
+  };
+  const chat = buildShowcaseChat(world);
+  const chatId = `${CHAT_ID_PREFIX}${chat.slug}`;
+
+  // Re-runnable: this chat and its watches are replaced, nothing else is read or
+  // written. The delete is scoped by the chat's own id, not the seeder's prefix,
+  // so the rest of the seeded history survives.
+  await client.sql`delete from trigger_dashboard_agent.chats where id = ${chatId}`;
+  await writeChat(client, chat, world, owner, now);
+  const rows = await writeShowcaseWatches(client, world, owner, chatId, now);
+  await client.close();
+
+  console.log(`
+Showcase re-seeded${live ? " (live report card)" : " (built report card — is the dev server up?)"}.
+
+  Chat        ${chatId} — "${chat.title}" (${chat.messages.length} messages)
+  Watches     ${rows.map((row) => `${row.id} ${row.status}`).join("\n              ")}
+  Cast        failed ${world.failedRunId} · prior ${world.priorRunId} · queued ${world.waitingRunId} · slow ${world.slowRunId}
+  Dashboard   ${appOrigin}/orgs/${world.organizationSlug}/projects/${world.projectSlug}/env/${world.environmentSlug}/runs
+`);
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1959,7 +2203,9 @@ async function runFlip(mode: HeartbeatMode, scale: number) {
       organizationId,
       environment.id,
       mode === "calm" ? CALM.pendingDepth : STORY.pending,
-      environment.slug
+      environment.slug,
+      projectId,
+      QUEUE
     );
   }
 
@@ -2325,6 +2571,11 @@ Flags:
                  queue depth, sets the mode file to "degraded", and purges pinned
                  buckets a long heartbeat has pushed into the 7d baseline (without
                  that the spike is measured against itself and reads normal).
+  --showcase     re-seed just the "Morning after the deploy" chat (and its two
+                 watch rows) over an existing stand. Seeds no runs and wipes
+                 nothing else, so it's safe while someone is looking at the
+                 dashboard — the transcript's ids are read back out of the stand
+                 and the report card is fetched live.
   --reset-only   delete everything this seeder owns and exit
   --help         this text
 
@@ -2406,7 +2657,14 @@ async function seedEnvironment(opts: {
 
   // The pending depth the report prefers over the metric series. The queue
   // metrics are not scaled, so both environments tell the same depth story.
-  await stageRedisDepth(organizationId, environment.id, STORY.pending, label);
+  await stageRedisDepth(
+    organizationId,
+    environment.id,
+    STORY.pending,
+    label,
+    ids.project_id,
+    QUEUE
+  );
 
   return { environment, cast, castSpecs, bulkSpecs };
 }
@@ -2438,6 +2696,11 @@ async function main() {
   }
   if (flags.degrade === "true") {
     await runFlip("degraded", scale);
+    return;
+  }
+  // Also on top of an existing stand: one chat, nothing else touched.
+  if (flags.showcase === "true") {
+    await seedShowcaseOnly();
     return;
   }
 
