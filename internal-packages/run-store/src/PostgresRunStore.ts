@@ -432,7 +432,7 @@ async function batchHydrateEdgeTarget(
     return byParent;
   }
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: [...new Set(targetIds)] } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn([...new Set(targetIds)]) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const p of parents) {

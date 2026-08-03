@@ -4,6 +4,7 @@ import {
   type PrismaClient,
   type Project,
   type RuntimeEnvironment,
+  boundedIn,
 } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -71,7 +72,7 @@ async function pauseBillingLimitEnvironments(
     const environments = await db.runtimeEnvironment.findMany({
       where: {
         organizationId,
-        type: { in: [...BILLABLE_ENVIRONMENT_TYPES] },
+        type: { in: boundedIn([...BILLABLE_ENVIRONMENT_TYPES]) },
         paused: false,
       },
       take: batchSize,

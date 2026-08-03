@@ -3,6 +3,7 @@ import {
   type RunEngineVersion,
   type RuntimeEnvironmentType,
   type WaitpointStatus,
+  boundedIn,
 } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { type PrismaClientOrTransaction } from "~/db.server";
@@ -186,7 +187,7 @@ export class WaitpointListPresenter extends BasePresenter {
             type: "MANUAL",
             ...(cursor ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } } : {}),
             ...(id ? { friendlyId: id } : {}),
-            ...(statusesToFilter.length ? { status: { in: statusesToFilter } } : {}),
+            ...(statusesToFilter.length ? { status: { in: boundedIn(statusesToFilter) } } : {}),
             ...(filterOutputIsError !== undefined ? { outputIsError: filterOutputIsError } : {}),
             ...(idempotencyKey
               ? { OR: [{ idempotencyKey }, { inactiveIdempotencyKey: idempotencyKey }] }

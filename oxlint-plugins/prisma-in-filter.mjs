@@ -70,6 +70,10 @@ const BOUNDING_HELPER = "boundedIn";
  * A list filter is acceptable when its arity cannot vary at runtime: an inline array
  * literal (fixed in the source) or a `boundedIn()` call (padded to a power of two).
  * Type-only wrappers are unwrapped so `boundedIn(ids) as string[]` still counts.
+ *
+ * An array literal counts only when nothing spreads into it. `[...new Set(ids)]` is an
+ * ArrayExpression whose length is decided at runtime, which is precisely the case the
+ * helper exists for.
  */
 function isBounded(node) {
   let current = node;
@@ -83,7 +87,9 @@ function isBounded(node) {
   }
   if (!current) return false;
 
-  if (current.type === "ArrayExpression") return true;
+  if (current.type === "ArrayExpression") {
+    return current.elements.every((element) => !element || element.type !== "SpreadElement");
+  }
 
   if (current.type === "CallExpression") {
     const callee = current.callee;
@@ -107,20 +113,43 @@ function propertyKeyName(node) {
 /**
  * Reports every `in` / `notIn` reachable from a filter root without passing through a
  * value-position key. Depth-bounded so a pathological args object cannot stall the linter.
+ *
+ * Filters are routinely assembled conditionally, so the walk follows the shapes that carry
+ * them: `cond ? { … } : {}`, `cond && { … }`, and `...(cond ? { … } : {})`. Stopping at a
+ * plain ObjectExpression would leave those permanently invisible to the rule.
  */
 function reportListFilters(node, context, depth, messageId = "listFilter", extra = {}) {
   if (!node || typeof node !== "object" || depth > 12) return;
 
-  if (node.type === "ArrayExpression") {
-    for (const element of node.elements) {
-      reportListFilters(element, context, depth + 1, messageId, extra);
-    }
-    return;
+  const descend = (child) => reportListFilters(child, context, depth + 1, messageId, extra);
+
+  switch (node.type) {
+    case "TSAsExpression":
+    case "TSSatisfiesExpression":
+    case "TSNonNullExpression":
+      return descend(node.expression);
+    case "ConditionalExpression":
+      descend(node.consequent);
+      return descend(node.alternate);
+    case "LogicalExpression":
+      descend(node.left);
+      return descend(node.right);
+    case "ArrayExpression":
+      for (const element of node.elements) descend(element);
+      return;
+    case "SpreadElement":
+      return descend(node.argument);
+    default:
+      break;
   }
 
   if (node.type !== "ObjectExpression") return;
 
   for (const property of node.properties) {
+    if (property.type === "SpreadElement") {
+      descend(property.argument);
+      continue;
+    }
     if (property.type !== "Property") continue;
 
     const name = propertyKeyName(property);

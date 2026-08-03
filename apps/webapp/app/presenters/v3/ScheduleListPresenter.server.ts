@@ -1,4 +1,4 @@
-import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType, type ScheduleType, boundedIn } from "@trigger.dev/database";
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
@@ -164,7 +164,7 @@ export class ScheduleListPresenter extends BasePresenter {
     const totalCount = await this._replica.taskSchedule.count({
       where: {
         projectId: project.id,
-        taskIdentifier: tasks ? { in: tasks } : undefined,
+        taskIdentifier: tasks ? { in: boundedIn(tasks) } : undefined,
         instances: {
           some: {
             environmentId,
@@ -227,7 +227,7 @@ export class ScheduleListPresenter extends BasePresenter {
       },
       where: {
         projectId: project.id,
-        taskIdentifier: tasks ? { in: tasks } : undefined,
+        taskIdentifier: tasks ? { in: boundedIn(tasks) } : undefined,
         instances: {
           some: {
             environmentId,
