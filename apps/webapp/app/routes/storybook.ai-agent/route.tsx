@@ -26,7 +26,7 @@ export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex max-w-3xl flex-col gap-1">
-        <Header1>AI agent</Header1>
+        <Header1>Trigger Agent — Icons & Buttons</Header1>
         <Paragraph variant="small">
           A resting logo that animates while the agent thinks. Each tab is a separate experiment.
         </Paragraph>
