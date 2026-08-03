@@ -44,12 +44,18 @@ const FINGERPRINT_CHARS = 8;
  * identity is the store's own dedup key: a surface reading it can never disagree
  * with the store about what is being watched.
  *
- * `queue_depth_above` appends its threshold to the identity, so only the first
+ * The threshold kinds append their threshold to the identity, so only the first
  * segment is the queue name.
  */
+const IDENTITY_KINDS_WITH_TRAILING_VALUE = new Set([
+  "queue_depth_above",
+  "queue_depth_below",
+  "queue_oldest_age",
+]);
+
 export function watchIdentityValue(kind: string, identity: string): string {
   const value = identity.startsWith(`${kind}:`) ? identity.slice(kind.length + 1) : "";
-  if (kind === "queue_depth_above") {
+  if (IDENTITY_KINDS_WITH_TRAILING_VALUE.has(kind)) {
     const lastColon = value.lastIndexOf(":");
     return lastColon > 0 ? value.slice(0, lastColon) : value;
   }
@@ -66,6 +72,11 @@ function runName(identity: string, kind: string): string {
 function queueName(identity: string, kind: string): string {
   const value = watchIdentityValue(kind, identity);
   return value ? `${value} queue` : "The queue";
+}
+
+/** The bare queue name, for the sentences that read better without the word "queue". */
+function bareQueueName(identity: string, kind: string): string {
+  return watchIdentityValue(kind, identity) || "this queue";
 }
 
 /** How an error group is named in a sentence. */
@@ -88,6 +99,27 @@ export function formatWatchDuration(ms: number | null | undefined): string | nul
   if (minutes < 60) return `${minutes}m ${Math.round(seconds % 60)}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+/**
+ * A wait, in the words the queue page's Oldest wait block uses: whole minutes once
+ * it is minutes. An SLA is stated in minutes, so the wait it is compared against
+ * must not arrive with false seconds-precision next to it.
+ */
+export function formatWatchWait(ms: number | null | undefined): string | null {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** An SLA, as the card and the headline state it. */
+export function formatWatchSla(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
 /** A window length, as the confirmation and the tooltip state it. */
@@ -172,6 +204,47 @@ function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
       return threshold === null
         ? `${queueName(identity, kind)} stayed below the threshold`
         : `${queueName(identity, kind)} stayed below ${threshold}`;
+    }
+
+    case "queue_back_below": {
+      const threshold = observed?.kind === "queue_depth_below" ? observed.threshold : null;
+      return threshold === null
+        ? `${queueName(identity, kind)} is back below the threshold`
+        : `${queueName(identity, kind)} is back below ${threshold}`;
+    }
+    case "queue_still_above": {
+      const threshold = observed?.kind === "queue_depth_below" ? observed.threshold : null;
+      return threshold === null
+        ? `${queueName(identity, kind)} is still above the threshold`
+        : `${queueName(identity, kind)} is still above ${threshold}`;
+    }
+
+    case "queue_stalled": {
+      // The depth makes "stuck" concrete. Without it, say the fact we do have.
+      const depth = observed?.kind === "queue_stalled" ? observed.depth : null;
+      return depth === null
+        ? `${queueName(identity, kind)} isn't moving`
+        : `${queueName(identity, kind)} is stuck at ${depth}`;
+    }
+    case "queue_kept_moving":
+      return `${queueName(identity, kind)} kept moving`;
+
+    case "queue_wait_over_sla": {
+      const sla =
+        observed?.kind === "queue_oldest_age" ? formatWatchSla(observed.thresholdMinutes) : null;
+      const wait = observed?.kind === "queue_oldest_age" ? formatWatchWait(observed.ageMs) : null;
+      const queue = bareQueueName(identity, kind);
+      if (wait === null) return `runs in ${queue} are waiting too long`;
+      return sla === null
+        ? `runs in ${queue} are waiting ${wait}`
+        : `runs in ${queue} are waiting ${wait} (over your ${sla} limit)`;
+    }
+    case "queue_wait_under_sla": {
+      const sla =
+        observed?.kind === "queue_oldest_age" ? formatWatchSla(observed.thresholdMinutes) : null;
+      return sla === null
+        ? `${queueName(identity, kind)} stayed within its wait limit`
+        : `${queueName(identity, kind)} stayed under ${sla}`;
     }
 
     case "error_recurred":
@@ -306,6 +379,9 @@ export function watchSubjectLabel(spec: WatchSpec): string {
       return `run ${spec.runId}`;
     case "backlog_drain":
     case "queue_depth_above":
+    case "queue_depth_below":
+    case "queue_stalled":
+    case "queue_oldest_age":
       return spec.queue;
     case "error_recurrence":
       return `error ${spec.fingerprint.slice(0, FINGERPRINT_CHARS)}`;
@@ -331,6 +407,12 @@ export function watchConditionLabel(spec: WatchSpec): string {
       return "Until the queue drains";
     case "queue_depth_above":
       return `If the queue goes above ${spec.threshold}`;
+    case "queue_depth_below":
+      return `Until the queue is back below ${spec.threshold}`;
+    case "queue_stalled":
+      return "If the queue stops moving";
+    case "queue_oldest_age":
+      return `If runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
     case "error_recurrence":
       return "If it happens again";
     case "health_recovery":
@@ -358,6 +440,12 @@ function watchConditionClause(spec: WatchSpec): string {
       return "until the queue drains";
     case "queue_depth_above":
       return `in case the queue goes above ${spec.threshold}`;
+    case "queue_depth_below":
+      return `until it is back below ${spec.threshold}`;
+    case "queue_stalled":
+      return "in case it stops moving";
+    case "queue_oldest_age":
+      return `in case runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
     case "error_recurrence":
       return "in case it happens again";
     case "health_recovery":

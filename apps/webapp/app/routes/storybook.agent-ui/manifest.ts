@@ -267,6 +267,28 @@ export const MANIFEST: GallerySection[] = [
     title: "Wake toast headline (fact first)",
     group: "watch-card",
   },
+  // The queue pack (TRI-12890): the three conditions that live one tap deeper,
+  // each with its ONE contextual parameter.
+  {
+    sectionId: "watch-card-queue-below",
+    title: "Customize — back below a threshold",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-stalled",
+    title: "Customize — stopped moving (no parameter)",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-age",
+    title: "Customize — runs waiting past an SLA",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-age-recommended",
+    title: "Compact — age SLA recommended on a late queue",
+    group: "watch-card",
+  },
 
   // --- Wake banners --------------------------------------------------------
   // A wake narration through the production renderer: the banner plus the prose
@@ -286,6 +308,9 @@ export const MANIFEST: GallerySection[] = [
     title: "Fired, watch not in hand — kind-agnostic",
     group: "wakes",
   },
+  { sectionId: "wake-queue-below", title: "Queue back below its threshold", group: "wakes" },
+  { sectionId: "wake-queue-stalled", title: "Queue stopped moving", group: "wakes" },
+  { sectionId: "wake-queue-age", title: "Runs waiting past the SLA", group: "wakes" },
 
   // --- Blank-state hero -----------------------------------------------------
   // The new-chat state, with the composer inside the hero. Both widths it ships

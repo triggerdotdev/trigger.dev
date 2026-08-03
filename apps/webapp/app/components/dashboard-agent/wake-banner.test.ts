@@ -162,6 +162,123 @@ describe("wakePresentation", () => {
     );
   });
 
+  // The queue pack (TRI-12890). Every headline is fact first (§5.3), and the
+  // numbers come from the frozen observation — never a fresh read.
+  it("says a queue came back below its threshold, and when it never did", () => {
+    const below = {
+      id: "watch_below",
+      kind: "queue_depth_below",
+      identity: "queue_depth_below:email-sends:100",
+      note: "",
+    };
+    expect(
+      wakePresentation("fired", {
+        ...below,
+        resolution: "condition_met",
+        observedOutcome: { kind: "queue_depth_below", verified: true, depth: 42, threshold: 100 },
+      })
+    ).toMatchObject({ headline: "email-sends queue is back below 100", category: "positive" });
+
+    expect(
+      wakePresentation("expired", {
+        ...below,
+        resolution: "window_completed",
+        observedOutcome: { kind: "queue_depth_below", verified: true, depth: 780, threshold: 100 },
+      })
+    ).toMatchObject({ headline: "email-sends queue is still above 100", category: "attention" });
+  });
+
+  it("says a queue is stuck at the depth it stalled on, and that it kept moving", () => {
+    const stalled = {
+      id: "watch_stalled",
+      kind: "queue_stalled",
+      identity: "queue_stalled:email-sends",
+      note: "",
+    };
+    expect(
+      wakePresentation("fired", {
+        ...stalled,
+        resolution: "condition_met",
+        observedOutcome: {
+          kind: "queue_stalled",
+          verified: true,
+          depth: 42,
+          notDecreasingStreak: 3,
+          ticks: 3,
+        },
+      })
+    ).toMatchObject({ headline: "email-sends queue is stuck at 42", category: "attention" });
+
+    expect(
+      wakePresentation("expired", {
+        ...stalled,
+        resolution: "window_completed",
+        observedOutcome: {
+          kind: "queue_stalled",
+          verified: true,
+          depth: 3,
+          notDecreasingStreak: 1,
+          ticks: 3,
+        },
+      })
+    ).toMatchObject({ headline: "email-sends queue kept moving", category: "positive" });
+  });
+
+  it("states the wait and the limit it passed, in minutes", () => {
+    const age = {
+      id: "watch_age",
+      kind: "queue_oldest_age",
+      identity: "queue_oldest_age:email-sends:5",
+      note: "",
+    };
+    expect(
+      wakePresentation("fired", {
+        ...age,
+        resolution: "condition_met",
+        observedOutcome: {
+          kind: "queue_oldest_age",
+          verified: true,
+          ageMs: 12 * 60_000,
+          thresholdMinutes: 5,
+        },
+      })
+    ).toMatchObject({
+      headline: "runs in email-sends are waiting 12m (over your 5m limit)",
+      category: "attention",
+    });
+
+    expect(
+      wakePresentation("expired", {
+        ...age,
+        resolution: "window_completed",
+        observedOutcome: {
+          kind: "queue_oldest_age",
+          verified: true,
+          ageMs: 30_000,
+          thresholdMinutes: 5,
+        },
+      })
+    ).toMatchObject({ headline: "email-sends queue stayed under 5m", category: "positive" });
+  });
+
+  it("names the queue, not the threshold, when a queue-pack watch's queue is gone", () => {
+    for (const [kind, identity] of [
+      ["queue_depth_below", "queue_depth_below:email-sends:100"],
+      ["queue_stalled", "queue_stalled:email-sends"],
+      ["queue_oldest_age", "queue_oldest_age:email-sends:5"],
+    ] as const) {
+      expect(
+        wakePresentation("expired", {
+          id: `watch_${kind}`,
+          kind,
+          identity,
+          note: "",
+          resolution: "condition_impossible",
+        })
+      ).toMatchObject({ headline: "email-sends queue no longer exists", category: "neutral" });
+    }
+  });
+
   it("recovers health without naming an identity", () => {
     expect(
       wakePresentation("fired", {

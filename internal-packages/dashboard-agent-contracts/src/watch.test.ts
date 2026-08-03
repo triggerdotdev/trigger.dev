@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   WATCH_FAILED_RUN_STATUSES,
   WATCH_KINDS,
+  WATCH_MAX_QUEUE_AGE_MINUTES,
+  WATCH_STALL_TICKS_DEFAULT,
+  WATCH_STALL_TICKS_MAX,
+  WATCH_STALL_TICKS_MIN,
   resolveWatchResult,
+  watchConditionVariants,
   watchCheckResultSchema,
   watchDeliveryStatusSchema,
   watchHeadlineKeys,
@@ -30,6 +35,27 @@ const specs = {
     kind: "queue_depth_above",
     queue: "email-sends",
     threshold: 500,
+    checkEveryMinutes: 5,
+  },
+  queue_depth_below: {
+    ...common,
+    kind: "queue_depth_below",
+    queue: "email-sends",
+    threshold: 100,
+    checkEveryMinutes: 5,
+  },
+  queue_stalled: {
+    ...common,
+    kind: "queue_stalled",
+    queue: "email-sends",
+    ticks: 3,
+    checkEveryMinutes: 5,
+  },
+  queue_oldest_age: {
+    ...common,
+    kind: "queue_oldest_age",
+    queue: "email-sends",
+    thresholdMinutes: 5,
     checkEveryMinutes: 5,
   },
   error_recurrence: {
@@ -117,6 +143,11 @@ describe("watchIdentity", () => {
     expect(watchIdentity(specs.run_failed)).toBe("run_failed:run_y");
     expect(watchIdentity(specs.backlog_drain)).toBe("backlog_drain:email-sends");
     expect(watchIdentity(specs.queue_depth_above)).toBe("queue_depth_above:email-sends:500");
+    expect(watchIdentity(specs.queue_depth_below)).toBe("queue_depth_below:email-sends:100");
+    // `ticks` tunes the same question, so it is NOT in the identity — one queue has
+    // one "is this moving?" answer.
+    expect(watchIdentity(specs.queue_stalled)).toBe("queue_stalled:email-sends");
+    expect(watchIdentity(specs.queue_oldest_age)).toBe("queue_oldest_age:email-sends:5");
     expect(watchIdentity(specs.error_recurrence)).toBe("error_recurrence:a1b2c3");
     expect(watchIdentity(specs.health_recovery)).toBe("health_recovery:health");
   });
@@ -152,6 +183,12 @@ function describeWatch(spec: WatchSpec): string {
       return `drain of ${spec.queue}`;
     case "queue_depth_above":
       return `${spec.queue} above ${spec.threshold}`;
+    case "queue_depth_below":
+      return `${spec.queue} back below ${spec.threshold}`;
+    case "queue_stalled":
+      return `${spec.queue} stalled for ${spec.ticks} checks`;
+    case "queue_oldest_age":
+      return `${spec.queue} waits over ${spec.thresholdMinutes}m`;
     case "error_recurrence":
       return `recurrence of ${spec.fingerprint}`;
     case "health_recovery":
@@ -166,7 +203,7 @@ function describeWatch(spec: WatchSpec): string {
 describe("exhaustiveness", () => {
   it("handles every kind", () => {
     expect(Object.values(specs).map(describeWatch)).toHaveLength(WATCH_KINDS.length);
-    expect(WATCH_KINDS).toHaveLength(7);
+    expect(WATCH_KINDS).toHaveLength(10);
   });
 });
 
@@ -214,6 +251,108 @@ describe("queue_depth_above", () => {
   });
 });
 
+describe("the queue pack (TRI-12890)", () => {
+  it("floors all three at the 5-minute aggregate cadence", () => {
+    for (const spec of [specs.queue_depth_below, specs.queue_stalled, specs.queue_oldest_age]) {
+      expect(watchSpecSchema.safeParse({ ...spec, checkEveryMinutes: 1 }).success).toBe(false);
+      expect(watchSpecSchema.safeParse({ ...spec, checkEveryMinutes: 5 }).success).toBe(true);
+    }
+  });
+
+  it("defaults the stall count rather than asking for it", () => {
+    const { ticks, ...withoutTicks } = specs.queue_stalled;
+    const parsed = watchSpecSchema.parse(withoutTicks);
+    expect(parsed).toMatchObject({ kind: "queue_stalled", ticks: WATCH_STALL_TICKS_DEFAULT });
+  });
+
+  it("bounds the stall count", () => {
+    expect(
+      watchSpecSchema.safeParse({ ...specs.queue_stalled, ticks: WATCH_STALL_TICKS_MIN - 1 })
+        .success
+    ).toBe(false);
+    expect(
+      watchSpecSchema.safeParse({ ...specs.queue_stalled, ticks: WATCH_STALL_TICKS_MAX + 1 })
+        .success
+    ).toBe(false);
+    expect(watchSpecSchema.safeParse({ ...specs.queue_stalled, ticks: 1.5 }).success).toBe(false);
+  });
+
+  it("requires a positive whole-minute SLA under the watch ceiling", () => {
+    expect(
+      watchSpecSchema.safeParse({ ...specs.queue_oldest_age, thresholdMinutes: 0 }).success
+    ).toBe(false);
+    expect(
+      watchSpecSchema.safeParse({ ...specs.queue_oldest_age, thresholdMinutes: 1.5 }).success
+    ).toBe(false);
+    expect(
+      watchSpecSchema.safeParse({
+        ...specs.queue_oldest_age,
+        thresholdMinutes: WATCH_MAX_QUEUE_AGE_MINUTES + 1,
+      }).success
+    ).toBe(false);
+  });
+
+  it("treats the depth threshold and the SLA as part of the identity", () => {
+    expect(watchIdentity({ ...specs.queue_depth_below, threshold: 10 })).not.toBe(
+      watchIdentity(specs.queue_depth_below)
+    );
+    expect(watchIdentity({ ...specs.queue_oldest_age, thresholdMinutes: 30 })).not.toBe(
+      watchIdentity(specs.queue_oldest_age)
+    );
+    // …and the stall sensitivity as NOT part of it.
+    expect(watchIdentity({ ...specs.queue_stalled, ticks: 8 })).toBe(
+      watchIdentity(specs.queue_stalled)
+    );
+  });
+
+  it("offers the whole queue family under Customize, and the run pair separately", () => {
+    expect(watchConditionVariants("backlog_drain")).toEqual([
+      "backlog_drain",
+      "queue_depth_above",
+      "queue_depth_below",
+      "queue_stalled",
+      "queue_oldest_age",
+    ]);
+    // Every queue kind opens the same family, whichever one is current.
+    for (const kind of ["queue_depth_below", "queue_stalled", "queue_oldest_age"] as const) {
+      expect(watchConditionVariants(kind)).toContain("backlog_drain");
+      expect(watchConditionVariants(kind)).toContain(kind);
+    }
+    expect(watchConditionVariants("run_finished")).toEqual(["run_finished", "run_failed"]);
+    // The kinds with no second question offer only themselves.
+    expect(watchConditionVariants("health_recovery")).toEqual(["health_recovery"]);
+    expect(watchConditionVariants("error_recurrence")).toEqual(["error_recurrence"]);
+  });
+
+  it("presents each new kind per §9.1: crossing back below is good, a stall isn't", () => {
+    expect(
+      resolveWatchResult({ kind: "queue_depth_below", resolution: "condition_met" })
+    ).toMatchObject({ category: "positive", headlineKey: "queue_back_below" });
+    expect(
+      resolveWatchResult({ kind: "queue_depth_below", resolution: "window_completed" })
+    ).toMatchObject({ category: "attention", headlineKey: "queue_still_above" });
+    expect(
+      resolveWatchResult({ kind: "queue_stalled", resolution: "condition_met" })
+    ).toMatchObject({ category: "attention", headlineKey: "queue_stalled" });
+    expect(
+      resolveWatchResult({ kind: "queue_stalled", resolution: "window_completed" })
+    ).toMatchObject({ category: "positive", headlineKey: "queue_kept_moving" });
+    expect(
+      resolveWatchResult({ kind: "queue_oldest_age", resolution: "condition_met" })
+    ).toMatchObject({ category: "attention", headlineKey: "queue_wait_over_sla" });
+    expect(
+      resolveWatchResult({ kind: "queue_oldest_age", resolution: "window_completed" })
+    ).toMatchObject({ category: "positive", headlineKey: "queue_wait_under_sla" });
+    // A queue that no longer exists is nobody's fault, for all three.
+    for (const kind of ["queue_depth_below", "queue_stalled", "queue_oldest_age"] as const) {
+      expect(resolveWatchResult({ kind, resolution: "condition_impossible" })).toMatchObject({
+        category: "neutral",
+        headlineKey: "queue_gone",
+      });
+    }
+  });
+});
+
 describe("resolutions", () => {
   it("has three values, and `unavailable` is not one of them", () => {
     expect(watchResolutionSchema.options).toEqual([
@@ -252,6 +391,9 @@ describe("watchObservedOutcomeSchema", () => {
       { kind: "run_failed", finalStatus: "COMPLETED_WITH_ERRORS", durationMs: 900 },
       { kind: "backlog_drain", depth: 0 },
       { kind: "queue_depth_above", depth: 612, threshold: 500 },
+      { kind: "queue_depth_below", depth: 42, threshold: 100 },
+      { kind: "queue_stalled", depth: 42, notDecreasingStreak: 3, ticks: 3 },
+      { kind: "queue_oldest_age", ageMs: 720_000, thresholdMinutes: 5 },
       { kind: "error_recurrence", countSince: 3 },
       { kind: "health_recovery", severity: "ok" },
     ];
@@ -349,12 +491,21 @@ describe("resolveWatchResult", () => {
   });
 
   it("says the condition could not be confirmed when the final read failed", () => {
+    // The kinds whose observation carries a required number: it is part of the
+    // question, so even an unverified observation has to state it.
+    const required: Partial<Record<WatchKind, Record<string, number>>> = {
+      queue_depth_above: { threshold: 500 },
+      queue_depth_below: { threshold: 100 },
+      queue_stalled: { ticks: 3 },
+      queue_oldest_age: { thresholdMinutes: 5 },
+    };
+
     for (const kind of WATCH_KINDS) {
-      const outcome = watchObservedOutcomeSchema.parse(
-        kind === "queue_depth_above"
-          ? { kind, verified: false, threshold: 500 }
-          : { kind, verified: false }
-      );
+      const outcome = watchObservedOutcomeSchema.parse({
+        kind,
+        verified: false,
+        ...(required[kind] ?? {}),
+      });
       expect(
         resolveWatchResult({ kind: kind as WatchKind, resolution: "window_completed", outcome })
       ).toMatchObject({ category: "neutral", headlineKey: "unverified_at_window_end" });

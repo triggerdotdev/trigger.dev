@@ -41,10 +41,13 @@ export function watchChipLabel(watch: { kind: string; identity: string; note: st
     case "run_finished":
     case "run_failed":
     case "backlog_drain":
+    case "queue_stalled":
       return value || fallbackLabel(watch);
-    // `queue_depth_above:{queue}:{threshold}` — the chip names the queue; the
-    // threshold is in the tooltip's note, where there is room for it.
+    // `queue_depth_above:{queue}:{threshold}` and friends — the chip names the
+    // queue; the number is in the tooltip's note, where there is room for it.
     case "queue_depth_above":
+    case "queue_depth_below":
+    case "queue_oldest_age":
       return watchIdentityValue(watch.kind, watch.identity) || fallbackLabel(watch);
     case "error_recurrence":
       return value ? value.slice(0, FINGERPRINT_CHARS) : fallbackLabel(watch);

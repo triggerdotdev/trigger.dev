@@ -3,7 +3,7 @@ import { cancelWatch, getWatch, recordWatchCheck } from "@internal/dashboard-age
 import { z } from "zod";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
-import { checkWatch } from "~/services/dashboardAgentWatchChecks";
+import { checkWatch, previousCheckFacts } from "~/services/dashboardAgentWatchChecks";
 import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
 import { authorizeWatchEnvironment } from "~/services/dashboardAgentWatches.server";
 import {
@@ -140,7 +140,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const outcome = await checkWatch(
     watch.spec,
     watchCheckDeps(authorization.environment, now),
-    { now, since },
+    // `previous` is the stateful seam: the last check's facts, off the row this
+    // route already holds. A tick that couldn't read anything is unwrapped rather
+    // than read, so a data gap freezes a streak instead of resetting it.
+    { now, since, previous: previousCheckFacts(watch.lastResult) },
     (error) => logger.error("Dashboard agent watch check failed", { watchId, error })
   );
 

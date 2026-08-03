@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  WATCH_MAX_QUEUE_AGE_MINUTES,
   WATCH_MAX_QUEUE_THRESHOLD,
+  WATCH_STALL_TICKS_DEFAULT,
   watchSpecSchema,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
+import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import {
   clampCadence,
-  variantOf,
+  variantsOf,
   watchDraftError,
   watchDraftFor,
+  withAgeMinutes,
   withCadence,
   withFollowUp,
   withThreshold,
@@ -52,6 +56,31 @@ describe("the recommendations", () => {
     expect(healthWatchRecommendation("warn").kind).toBe("health_recovery");
   });
 
+  // §9.1: on a queue the page already calls late, "when it drains" is the wrong
+  // promise — the useful watch is the wait itself.
+  it("switches the queue recommendation to the age SLA once runs are already late", () => {
+    const late = queueWatchRecommendation("email-sends", {
+      oldestWaitMs: OLDEST_WAIT_WARNING_MS,
+    });
+    expect(late).toMatchObject({
+      kind: "queue_oldest_age",
+      queue: "email-sends",
+      thresholdMinutes: OLDEST_WAIT_WARNING_MS / 60_000,
+    });
+    expect(watchSpecSchema.safeParse(late).success).toBe(true);
+  });
+
+  it("stays on the drain when the queue is merely busy, or the signal is missing", () => {
+    expect(
+      queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS - 1 }).kind
+    ).toBe("backlog_drain");
+    expect(queueWatchRecommendation("email-sends", { oldestWaitMs: null }).kind).toBe(
+      "backlog_drain"
+    );
+    expect(queueWatchRecommendation("email-sends", {}).kind).toBe("backlog_drain");
+    expect(queueWatchRecommendation("email-sends").kind).toBe("backlog_drain");
+  });
+
   it("starts both follow-ups off — consent is never assumed", () => {
     expect(runDraft().followUp).toEqual({
       investigateOnAttention: false,
@@ -87,11 +116,19 @@ describe("cadence limits", () => {
 });
 
 describe("condition variants (§3)", () => {
-  it("pairs the two run questions and the two queue questions", () => {
-    expect(variantOf(runDraft())).toBe("run_failed");
-    expect(variantOf(queueDraft())).toBe("queue_depth_above");
-    expect(variantOf(watchDraftFor(errorWatchRecommendation("error_a1")))).toBeNull();
-    expect(variantOf(watchDraftFor(healthWatchRecommendation("warn")))).toBeNull();
+  it("offers the run pair and the whole queue family", () => {
+    expect(variantsOf(runDraft())).toEqual(["run_finished", "run_failed"]);
+    expect(variantsOf(queueDraft())).toEqual([
+      "backlog_drain",
+      "queue_depth_above",
+      "queue_depth_below",
+      "queue_stalled",
+      "queue_oldest_age",
+    ]);
+    // One entry means "no second question": the card states the condition instead
+    // of rendering a picker.
+    expect(variantsOf(watchDraftFor(errorWatchRecommendation("error_a1")))).toHaveLength(1);
+    expect(variantsOf(watchDraftFor(healthWatchRecommendation("warn")))).toHaveLength(1);
   });
 
   it("carries the subject, window and note across a swap", () => {
@@ -114,6 +151,34 @@ describe("condition variants (§3)", () => {
   it("swaps back without losing the queue", () => {
     const roundTrip = withVariant(withVariant(queueDraft(), "queue_depth_above"), "backlog_drain");
     expect(roundTrip.spec).toMatchObject({ kind: "backlog_drain", queue: "email-sends" });
+  });
+
+  it("gives every queue variant a submittable default and keeps the subject", () => {
+    for (const kind of [
+      "queue_depth_above",
+      "queue_depth_below",
+      "queue_stalled",
+      "queue_oldest_age",
+    ] as const) {
+      const swapped = withVariant(queueDraft(), kind);
+      expect(swapped.spec).toMatchObject({ kind, queue: "email-sends" });
+      expect(watchDraftError(swapped)).toBeNull();
+      expect(watchSpecSchema.safeParse(swapped.spec).success).toBe(true);
+    }
+  });
+
+  it("carries a typed threshold between the two threshold questions", () => {
+    const above = withThreshold(withVariant(queueDraft(), "queue_depth_above"), 500);
+    const below = withVariant(above, "queue_depth_below");
+    expect(below.spec).toMatchObject({ kind: "queue_depth_below", threshold: 500 });
+  });
+
+  it("keeps the stall count internal — the default, never a field", () => {
+    const stalled = withVariant(queueDraft(), "queue_stalled");
+    expect(stalled.spec).toMatchObject({ ticks: WATCH_STALL_TICKS_DEFAULT });
+    // No setter exists for it, and the number setters leave it alone.
+    expect(withThreshold(stalled, 5)).toEqual(stalled);
+    expect(withAgeMinutes(stalled, 5)).toEqual(stalled);
   });
 });
 
@@ -176,6 +241,25 @@ describe("validation stays inside the card", () => {
   it("ignores a threshold set on a kind that has none", () => {
     expect(withThreshold(runDraft(), 5)).toEqual(runDraft());
   });
+
+  it("refuses a half-typed threshold on the `below` variant too", () => {
+    const draft = withThreshold(withVariant(queueDraft(), "queue_depth_below"), Number.NaN);
+    expect(watchDraftError(draft)).toMatch(/whole number/i);
+  });
+
+  it("refuses an SLA that is empty, zero, or longer than a watch can run", () => {
+    const age = withVariant(queueDraft(), "queue_oldest_age");
+    expect(watchDraftError(withAgeMinutes(age, Number.NaN))).toMatch(/whole number of minutes/i);
+    expect(watchDraftError(withAgeMinutes(age, 0))).toMatch(/whole number of minutes/i);
+    expect(watchDraftError(withAgeMinutes(age, WATCH_MAX_QUEUE_AGE_MINUTES + 1))).toMatch(
+      /longer than a watch can run/i
+    );
+    expect(watchDraftError(withAgeMinutes(age, 30))).toBeNull();
+  });
+
+  it("ignores an SLA set on a kind that has none", () => {
+    expect(withAgeMinutes(runDraft(), 5)).toEqual(runDraft());
+  });
 });
 
 describe("the card's copy", () => {
@@ -194,6 +278,36 @@ describe("the card's copy", () => {
   it("carries the threshold into the condition line", () => {
     const above = withThreshold(withVariant(queueDraft(), "queue_depth_above"), 500);
     expect(watchConditionLabel(above.spec)).toBe("If the queue goes above 500");
+  });
+
+  it("states each new queue condition the way the user reads it", () => {
+    const below = withThreshold(withVariant(queueDraft(), "queue_depth_below"), 100);
+    expect(watchConditionLabel(below.spec)).toBe("Until the queue is back below 100");
+
+    const stalled = withVariant(queueDraft(), "queue_stalled");
+    expect(watchConditionLabel(stalled.spec)).toBe("If the queue stops moving");
+
+    const age = withAgeMinutes(withVariant(queueDraft(), "queue_oldest_age"), 90);
+    expect(watchConditionLabel(age.spec)).toBe("If runs wait longer than 1h 30m");
+    // The subject stays the queue name for all of them.
+    expect(watchSubjectLabel(age.spec)).toBe("email-sends");
+  });
+
+  it("writes the confirmation as one sentence for every queue condition", () => {
+    const stalled = withVariant(queueDraft(), "queue_stalled");
+    expect(watchConfirmationBlockBody({ spec: stalled.spec, watchId: "w" }).headline).toBe(
+      "Watching email-sends in case it stops moving."
+    );
+
+    const age = withAgeMinutes(withVariant(queueDraft(), "queue_oldest_age"), 5);
+    expect(watchConfirmationBlockBody({ spec: age.spec, watchId: "w" }).headline).toBe(
+      "Watching email-sends in case runs wait longer than 5m."
+    );
+
+    const below = withThreshold(withVariant(queueDraft(), "queue_depth_below"), 100);
+    expect(watchConfirmationBlockBody({ spec: below.spec, watchId: "w" }).headline).toBe(
+      "Watching email-sends until it is back below 100."
+    );
   });
 });
 

@@ -38,7 +38,11 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, vi } from "vitest";
-import type { WatchCheckDeps, WatchRunRow } from "~/services/dashboardAgentWatchChecks";
+import {
+  previousCheckFacts,
+  type WatchCheckDeps,
+  type WatchRunRow,
+} from "~/services/dashboardAgentWatchChecks";
 
 // --- Holders, wired per test into the mocked singletons ----------------------
 const ctx = vi.hoisted(() => ({
@@ -210,7 +214,8 @@ function fakeCheckDeps(overrides: Partial<WatchCheckDeps> = {}): WatchCheckDeps 
   return {
     readRun: async () => runRow(),
     queueExists: async () => true,
-    readQueueDepth: async () => ({ depth: 7, source: "live_queue" }),
+    readQueueDepth: async () => ({ depth: 7, source: "live_queue", current: true }),
+    readQueueOldestAge: async () => ({ ageMs: 30_000, source: "live_queue", current: true }),
     readErrorRecurrence: async () => null,
     readHealth: async () => ({ trustworthy: true, severity: "warn" }),
     ...overrides,
@@ -1764,6 +1769,186 @@ describe("run_failed creation", () => {
       if (result.watching) return;
       expect(result.immediate.result).toBe("terminal_unsatisfied");
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toEqual([]);
+    }
+  );
+});
+
+// The queue pack (TRI-12890) through the real creation path: three more questions
+// about one queue, each with its own identity, plus the stateful check reading its
+// own previous facts off the row.
+describe("the queue pack creation", () => {
+  const QUEUE = "task/my-task";
+
+  const BELOW: WatchSpec = {
+    kind: "queue_depth_below",
+    queue: QUEUE,
+    threshold: 100,
+    checkEveryMinutes: 5,
+    maxHours: 2,
+    note: "tell me when it's back below 100",
+  };
+
+  const STALLED: WatchSpec = {
+    kind: "queue_stalled",
+    queue: QUEUE,
+    ticks: 3,
+    checkEveryMinutes: 5,
+    maxHours: 2,
+    note: "tell me if it stops moving",
+  };
+
+  const AGE: WatchSpec = {
+    kind: "queue_oldest_age",
+    queue: QUEUE,
+    thresholdMinutes: 5,
+    checkEveryMinutes: 5,
+    maxHours: 2,
+    note: "tell me if runs wait longer than 5 minutes",
+  };
+
+  postgresTest(
+    "creates each kind with its own identity on the same queue",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "queuepack");
+      await seedChat(seeded);
+
+      // A backed-up queue: nothing here is already true, so all three are watching.
+      const busy = {
+        readQueueDepth: async () => ({
+          depth: 780,
+          source: "live_queue" as const,
+          current: true,
+        }),
+      };
+
+      const below = await create({ seeded, spec: BELOW, checkDeps: busy });
+      expect(below.ok && below.watching).toBe(true);
+      if (!below.ok || !below.watching) return;
+      expect(below.identity).toBe(`queue_depth_below:${QUEUE}:100`);
+
+      const stalled = await create({ seeded, spec: STALLED, checkDeps: busy });
+      expect(stalled.ok && stalled.watching).toBe(true);
+      if (!stalled.ok || !stalled.watching) return;
+      // The stall sensitivity is not in the identity — one queue, one "is it moving?".
+      expect(stalled.identity).toBe(`queue_stalled:${QUEUE}`);
+
+      const age = await create({ seeded, spec: AGE, checkDeps: busy });
+      expect(age.ok && age.watching).toBe(true);
+      if (!age.ok || !age.watching) return;
+      expect(age.identity).toBe(`queue_oldest_age:${QUEUE}:5`);
+
+      // Three distinct questions, so no dedup between them — but the chat cap is 3,
+      // so a fourth queue question is refused rather than silently dropped.
+      const drain = await create({
+        seeded,
+        spec: { ...BELOW, kind: "backlog_drain" } as WatchSpec,
+        checkDeps: busy,
+      });
+      expect(drain.ok).toBe(false);
+      if (drain.ok) return;
+      expect(drain.code).toBe("limit_reached");
+    }
+  );
+
+  postgresTest(
+    "dedups the same SLA and allows a different one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "queueage");
+      await seedChat(seeded);
+
+      const first = await create({ seeded, spec: AGE });
+      expect(first.ok && first.watching).toBe(true);
+
+      const same = await create({ seeded, spec: AGE });
+      expect(same.ok).toBe(false);
+      if (same.ok) return;
+      expect(same.code).toBe("duplicate");
+
+      // "Longer than 30 minutes" is a different promise about the same queue.
+      const other = await create({ seeded, spec: { ...AGE, thresholdMinutes: 30 } as WatchSpec });
+      expect(other.ok && other.watching).toBe(true);
+      if (!other.ok || !other.watching) return;
+      expect(other.identity).toBe(`queue_oldest_age:${QUEUE}:30`);
+    }
+  );
+
+  postgresTest(
+    "answers a back-below ask outright when the queue is already quiet",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "queuebelow");
+      await seedChat(seeded);
+
+      const result = await create({
+        seeded,
+        spec: BELOW,
+        checkDeps: {
+          readQueueDepth: async () => ({ depth: 4, source: "live_queue", current: true }),
+        },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // The one-shot path: it is already below, so there is nothing to watch.
+      expect(result.watching).toBe(false);
+      if (result.watching) return;
+      expect(result.immediate.result).toBe("satisfied");
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toEqual([]);
+    }
+  );
+
+  // The stateful seam against the real column: the streak lives in the facts the
+  // existing `recordWatchCheck` already persists — NO new column — and the check
+  // endpoint hands the next check whatever `previousCheckFacts` reads back off it.
+  postgresTest(
+    "round-trips the stall state through the row's existing facts column",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "queuestall");
+      await seedChat(seeded);
+
+      const created = await create({
+        seeded,
+        spec: STALLED,
+        checkDeps: {
+          readQueueDepth: async () => ({ depth: 42, source: "live_queue", current: true }),
+        },
+      });
+      expect(created.ok && created.watching).toBe(true);
+      if (!created.ok || !created.watching) return;
+
+      // What the check endpoint writes after a pending tick.
+      const facts = { queue: QUEUE, depth: 42, notDecreasingStreak: 2, ticks: 3 };
+      await recordWatchCheck(ctx.agentDb, {
+        id: created.watchId,
+        lastResult: {
+          result: "pending",
+          facts,
+          observed: {
+            kind: "queue_stalled",
+            verified: true,
+            depth: 42,
+            notDecreasingStreak: 2,
+            ticks: 3,
+          },
+          final: false,
+        },
+      });
+
+      const row = await getWatch(ctx.agentDb, { id: created.watchId });
+      expect(previousCheckFacts(row?.lastResult)).toEqual(facts);
+
+      // And after a FAILED tick, which is what the watcher task parks: the gap is
+      // unwrapped, so the last real observation is still the previous one and the
+      // streak neither grows nor resets.
+      await recordWatchCheck(ctx.agentDb, {
+        id: created.watchId,
+        lastResult: { checkFailed: true, detail: "clickhouse down", previous: facts },
+      });
+      const afterGap = await getWatch(ctx.agentDb, { id: created.watchId });
+      expect(previousCheckFacts(afterGap?.lastResult)).toEqual(facts);
     }
   );
 });

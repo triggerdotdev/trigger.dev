@@ -11,6 +11,7 @@ import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
 import { WatchButton } from "~/components/dashboard-agent/WatchButton";
 import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -305,8 +306,10 @@ export default function Page() {
               shortcut={{ key: "d" }}
             />
             {/* The universal `Watch…` entry, pre-filled with this queue's
-                recommendation: tell me when it drains. */}
-            <WatchButton spec={queueWatchRecommendation(queue.name)} />
+                recommendation: when it drains, or — when runs are already waiting
+                past the threshold this page tints at — when the wait crosses the
+                SLA. Same signal the Investigate button derives `degraded` from. */}
+            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -1032,9 +1035,8 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// Oldest-wait threshold for the warning tint: the head of the queue sitting unstarted this long
-// signals the queue is stuck, not just busy.
-const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+// Oldest-wait threshold for the warning tint lives in ~/components/queues/queue-thresholds, shared
+// with the watch card's age-SLA recommendation so the two can't drift.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

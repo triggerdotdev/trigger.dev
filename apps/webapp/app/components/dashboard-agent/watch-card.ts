@@ -13,13 +13,16 @@
  * submits it (§2.2, transcript hygiene).
  */
 import {
+  WATCH_DEFAULT_QUEUE_AGE_MINUTES,
   WATCH_DEFAULT_QUEUE_THRESHOLD,
   WATCH_MAX_HOURS,
+  WATCH_MAX_QUEUE_AGE_MINUTES,
   WATCH_MAX_QUEUE_THRESHOLD,
+  WATCH_STALL_TICKS_DEFAULT,
   WATCH_WINDOW_HOURS_OPTIONS,
   watchCadenceOptions,
+  watchConditionVariants,
   watchSpecSchema,
-  watchVariantKind,
   type WatchDraft,
   type WatchFollowUp,
   type WatchKind,
@@ -62,10 +65,26 @@ export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
       const queue = "queue" in spec ? spec.queue : "";
       return { ...draft, spec: { ...common, kind, queue } as WatchSpec };
     }
-    case "queue_depth_above": {
+    case "queue_depth_above":
+    case "queue_depth_below": {
       const queue = "queue" in spec ? spec.queue : "";
+      // The number carries across the two threshold questions: someone who typed
+      // 500 for "above" means the same 500 when they flip to "back below".
       const threshold = "threshold" in spec ? spec.threshold : WATCH_DEFAULT_QUEUE_THRESHOLD;
       return { ...draft, spec: { ...common, kind, queue, threshold } as WatchSpec };
+    }
+    case "queue_stalled": {
+      const queue = "queue" in spec ? spec.queue : "";
+      // K is not user-facing in this iteration (§3): the default is the product
+      // decision, and the card never shows a field for it.
+      const ticks = "ticks" in spec ? spec.ticks : WATCH_STALL_TICKS_DEFAULT;
+      return { ...draft, spec: { ...common, kind, queue, ticks } as WatchSpec };
+    }
+    case "queue_oldest_age": {
+      const queue = "queue" in spec ? spec.queue : "";
+      const thresholdMinutes =
+        "thresholdMinutes" in spec ? spec.thresholdMinutes : WATCH_DEFAULT_QUEUE_AGE_MINUTES;
+      return { ...draft, spec: { ...common, kind, queue, thresholdMinutes } as WatchSpec };
     }
     // The kinds with no second question keep the draft untouched.
     default:
@@ -73,9 +92,13 @@ export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
   }
 }
 
-/** The sibling this draft can toggle to, or null when the kind has none. */
-export function variantOf(draft: WatchDraft): WatchKind | null {
-  return watchVariantKind(draft.spec.kind);
+/**
+ * The conditions this draft's picker offers, in order, including the current one.
+ * A single-entry list means the kind has no second question and the card states
+ * the condition as a fact instead of a choice.
+ */
+export function variantsOf(draft: WatchDraft): readonly WatchKind[] {
+  return watchConditionVariants(draft.spec.kind);
 }
 
 export function withCadence(draft: WatchDraft, minutes: number): WatchDraft {
@@ -99,8 +122,19 @@ export function withWindow(draft: WatchDraft, maxHours: number): WatchDraft {
  * is what refuses to submit one.
  */
 export function withThreshold(draft: WatchDraft, threshold: number): WatchDraft {
-  if (draft.spec.kind !== "queue_depth_above") return draft;
+  if (draft.spec.kind !== "queue_depth_above" && draft.spec.kind !== "queue_depth_below") {
+    return draft;
+  }
   return { ...draft, spec: { ...draft.spec, threshold } };
+}
+
+/**
+ * The age SLA, in minutes, as the user is typing it. Same rule as the threshold:
+ * a half-typed field is a draft, and `watchDraftError` is what refuses to submit it.
+ */
+export function withAgeMinutes(draft: WatchDraft, thresholdMinutes: number): WatchDraft {
+  if (draft.spec.kind !== "queue_oldest_age") return draft;
+  return { ...draft, spec: { ...draft.spec, thresholdMinutes } };
 }
 
 /**
@@ -119,13 +153,23 @@ export function withFollowUp(draft: WatchDraft, patch: Partial<WatchFollowUp>): 
  * this only translates its refusal into the one sentence the card shows inline.
  */
 export function watchDraftError(draft: WatchDraft): string | null {
-  if (draft.spec.kind === "queue_depth_above") {
+  if (draft.spec.kind === "queue_depth_above" || draft.spec.kind === "queue_depth_below") {
     const { threshold } = draft.spec;
     if (!Number.isInteger(threshold) || threshold < 0) {
       return "Enter a whole number to watch for.";
     }
     if (threshold > WATCH_MAX_QUEUE_THRESHOLD) {
       return `That threshold is too high — ${WATCH_MAX_QUEUE_THRESHOLD.toLocaleString()} is the most a queue watch takes.`;
+    }
+  }
+
+  if (draft.spec.kind === "queue_oldest_age") {
+    const { thresholdMinutes } = draft.spec;
+    if (!Number.isInteger(thresholdMinutes) || thresholdMinutes < 1) {
+      return "Enter a whole number of minutes to watch for.";
+    }
+    if (thresholdMinutes > WATCH_MAX_QUEUE_AGE_MINUTES) {
+      return `That's longer than a watch can run — ${WATCH_MAX_QUEUE_AGE_MINUTES} minutes is the most.`;
     }
   }
 

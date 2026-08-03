@@ -41,10 +41,12 @@ import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
 import { WatchCard } from "~/components/dashboard-agent/WatchCard";
 import {
   watchDraftFor,
+  withAgeMinutes,
   withFollowUp,
   withThreshold,
   withVariant,
 } from "~/components/dashboard-agent/watch-card";
+import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import {
   watchConfirmationBlockBody,
@@ -612,6 +614,20 @@ const invalidThresholdDraft = withThreshold(
   Number.NaN
 );
 
+// The queue pack (TRI-12890). One draft per condition, each shown expanded so the
+// review is of the picker plus that condition's ONE parameter — and the stall
+// variant proves the case with no parameter at all.
+const queueBelowDraft = withThreshold(withVariant(queueWatchDraft, "queue_depth_below"), 100);
+const queueStalledDraft = withVariant(queueWatchDraft, "queue_stalled");
+const queueAgeDraft = withAgeMinutes(withVariant(queueWatchDraft, "queue_oldest_age"), 5);
+
+// The contextual recommendation: on a queue whose oldest run is already waiting
+// past the page's warning threshold, the card OPENS on the age SLA instead of the
+// drain. Compact, because that is what the user sees first.
+const lateQueueDraft = watchDraftFor(
+  queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS })
+);
+
 /** The envelope a host-emitted `watch_result` block carries into the transcript. */
 const WATCH_BLOCK_ENVELOPE = {
   id: "watch:watch_demo",
@@ -753,6 +769,43 @@ const wakeWatches: WakeWatch[] = [
     identity: "backlog_drain:email-sends",
     resolution: "condition_impossible",
     observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
+  },
+  // The queue pack (TRI-12890): the numbers in these headlines come from the
+  // frozen observation, so the banner is complete without the narration.
+  {
+    id: "watch_queue_below",
+    kind: "queue_depth_below",
+    note: "tell me when email-sends is back under 100",
+    identity: "queue_depth_below:email-sends:100",
+    resolution: "condition_met",
+    observedOutcome: { kind: "queue_depth_below", verified: true, depth: 42, threshold: 100 },
+  },
+  {
+    id: "watch_queue_stalled",
+    kind: "queue_stalled",
+    note: "tell me if email-sends stops moving",
+    identity: "queue_stalled:email-sends",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "queue_stalled",
+      verified: true,
+      depth: 42,
+      notDecreasingStreak: 3,
+      ticks: 3,
+    },
+  },
+  {
+    id: "watch_queue_age",
+    kind: "queue_oldest_age",
+    note: "tell me if runs wait longer than 5 minutes",
+    identity: "queue_oldest_age:email-sends:5",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "queue_oldest_age",
+      verified: true,
+      ageMs: 12 * 60_000,
+      thresholdMinutes: 5,
+    },
   },
   {
     id: "watch_unverified",
@@ -1076,6 +1129,21 @@ const STATES: Record<string, React.ReactNode> = {
   "watch-card-one-shot-satisfied": <WatchResultBlock block={watchSatisfiedBlock} />,
   "watch-card-one-shot-impossible": <WatchResultBlock block={watchImpossibleBlock} />,
   "watch-card-toast-headline": <WakeToastHeadlines wakes={toastWakes} />,
+  // The queue pack's three conditions, expanded: the picker now holds the whole
+  // queue family, and each condition brings at most one field.
+  "watch-card-queue-below": (
+    <WatchCard draft={queueBelowDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  "watch-card-queue-stalled": (
+    <WatchCard draft={queueStalledDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  "watch-card-queue-age": (
+    <WatchCard draft={queueAgeDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  // Opened from a queue that is already late: the recommendation itself changed.
+  "watch-card-queue-age-recommended": (
+    <WatchCard draft={lateQueueDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
+  ),
 
   // --- Wake banners -------------------------------------------------------
   "wake-positive": (
@@ -1139,6 +1207,38 @@ const STATES: Record<string, React.ReactNode> = {
         "watch_unverified",
         "expired",
         "The window ran out while I couldn't read the queue depth, so I can't tell you whether it drained. The last reading I do have was 42 pending, an hour ago."
+      )}
+    />
+  ),
+  // The queue pack's wakes. All three read the same presenter, so the number in
+  // each headline is the one the resolving check froze.
+  "wake-queue-below": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_below",
+        "fired",
+        "email-sends is back under 100 — 42 pending now, down from 780 twenty minutes ago. Throughput has been steady since the extra workers came up."
+      )}
+    />
+  ),
+  "wake-queue-stalled": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_stalled",
+        "fired",
+        "email-sends hasn't moved in three checks: 42 pending the whole time, nothing started. Concurrency is at its limit with every slot held by a run that's still executing."
+      )}
+    />
+  ),
+  "wake-queue-age": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_age",
+        "fired",
+        "The oldest run in email-sends has been waiting 12 minutes, past the 5 you set. The queue itself is small — 8 pending — so this is a concurrency limit, not a flood."
       )}
     />
   ),

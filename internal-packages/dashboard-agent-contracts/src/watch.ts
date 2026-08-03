@@ -35,8 +35,22 @@ export const watchCommonSchema = z.object({
 
 export type WatchCommon = z.infer<typeof watchCommonSchema>;
 
-/** Hard ceiling on the `queue_depth_above` threshold — a queue watch is not a query. */
+/** Hard ceiling on a queue-depth threshold — a queue watch is not a query. */
 export const WATCH_MAX_QUEUE_THRESHOLD = 1_000_000;
+
+/**
+ * `queue_stalled` counts consecutive checks that saw NO progress. It is a
+ * sensitivity knob, not a question: three checks in a row without the depth
+ * falling is ~15 minutes of a queue that isn't moving at the 5-minute floor, which
+ * is long enough to outlast one slow dequeue cycle and short enough to still be
+ * news. Not offered in the card (§3) — the default is the product decision.
+ */
+export const WATCH_STALL_TICKS_DEFAULT = 3;
+export const WATCH_STALL_TICKS_MIN = 2;
+export const WATCH_STALL_TICKS_MAX = 12;
+
+/** Ceiling on the `queue_oldest_age` SLA. Beyond a day the window itself expires first. */
+export const WATCH_MAX_QUEUE_AGE_MINUTES = 24 * 60;
 
 export const watchSpecSchema = z.union([
   watchCommonSchema
@@ -64,6 +78,42 @@ export const watchSpecSchema = z.union([
       threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
     })
     .merge(standardCadenceSchema),
+  // The mirror of `queue_depth_above`, on the same reader: satisfied when the
+  // pending count comes back DOWN below `threshold`. Not the same question as
+  // `backlog_drain` — "usable again" is a threshold, and a busy queue may never
+  // reach zero at all.
+  watchCommonSchema
+    .extend({
+      kind: z.literal("queue_depth_below"),
+      queue: z.string(),
+      threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
+    })
+    .merge(standardCadenceSchema),
+  // The first STATEFUL kind: satisfied when the depth has failed to decrease for
+  // `ticks` consecutive checks. The state lives in the facts each check emits and
+  // is handed to the next one as `previous` — no new column, and an `unavailable`
+  // tick freezes the streak instead of resetting it (§9.1, binding).
+  watchCommonSchema
+    .extend({
+      kind: z.literal("queue_stalled"),
+      queue: z.string(),
+      ticks: z
+        .number()
+        .int()
+        .min(WATCH_STALL_TICKS_MIN)
+        .max(WATCH_STALL_TICKS_MAX)
+        .default(WATCH_STALL_TICKS_DEFAULT),
+    })
+    .merge(standardCadenceSchema),
+  // "Runs wait longer than N minutes." Reads the oldest still-waiting run's age
+  // off the same seam the queue page's Oldest wait block trusts.
+  watchCommonSchema
+    .extend({
+      kind: z.literal("queue_oldest_age"),
+      queue: z.string(),
+      thresholdMinutes: z.number().int().positive().max(WATCH_MAX_QUEUE_AGE_MINUTES),
+    })
+    .merge(standardCadenceSchema),
   // `since` (the timestamp recurrence is measured from) is SERVER-SET when the
   // watch is persisted, so it is deliberately absent here: the model must not be
   // able to backdate a recurrence window.
@@ -88,6 +138,9 @@ export const WATCH_KINDS = [
   "run_failed",
   "backlog_drain",
   "queue_depth_above",
+  "queue_depth_below",
+  "queue_stalled",
+  "queue_oldest_age",
   "error_recurrence",
   "health_recovery",
 ] as const satisfies readonly WatchKind[];
@@ -116,6 +169,16 @@ export function watchIdentity(spec: WatchSpec): string {
     // different questions about the same queue, unlike cadence or note.
     case "queue_depth_above":
       return `queue_depth_above:${spec.queue}:${spec.threshold}`;
+    case "queue_depth_below":
+      return `queue_depth_below:${spec.queue}:${spec.threshold}`;
+    // `ticks` is NOT in the identity: like the cadence, it tunes how sensitive the
+    // same question is ("is this queue moving?"), and one queue has one answer.
+    case "queue_stalled":
+      return `queue_stalled:${spec.queue}`;
+    // The SLA is the question — 5 minutes and 30 minutes are two different
+    // promises about the same queue.
+    case "queue_oldest_age":
+      return `queue_oldest_age:${spec.queue}:${spec.thresholdMinutes}`;
     case "error_recurrence":
       return `error_recurrence:${spec.fingerprint}`;
     case "health_recovery":
@@ -297,6 +360,28 @@ export const watchObservedOutcomeSchema = z.union([
     threshold: z.number(),
   }),
   z.object({
+    kind: z.literal("queue_depth_below"),
+    verified: z.boolean().default(true),
+    depth: z.number().nullable().default(null),
+    threshold: z.number(),
+  }),
+  z.object({
+    kind: z.literal("queue_stalled"),
+    verified: z.boolean().default(true),
+    depth: z.number().nullable().default(null),
+    /** Consecutive checks that saw no progress, as of this one. */
+    notDecreasingStreak: z.number().default(0),
+    /** The streak length the watch is waiting for. */
+    ticks: z.number(),
+  }),
+  z.object({
+    kind: z.literal("queue_oldest_age"),
+    verified: z.boolean().default(true),
+    /** The oldest still-waiting run's age. Null when nothing was waiting, or unreadable. */
+    ageMs: z.number().nullable().default(null),
+    thresholdMinutes: z.number(),
+  }),
+  z.object({
     kind: z.literal("error_recurrence"),
     verified: z.boolean().default(true),
     /** Occurrences proven to be after the server-set `since`. */
@@ -364,6 +449,15 @@ export const watchHeadlineKeys = [
   // queue_depth_above
   "queue_above_threshold",
   "queue_stayed_below",
+  // queue_depth_below
+  "queue_back_below",
+  "queue_still_above",
+  // queue_stalled
+  "queue_stalled",
+  "queue_kept_moving",
+  // queue_oldest_age
+  "queue_wait_over_sla",
+  "queue_wait_under_sla",
   // error_recurrence
   "error_recurred",
   "error_quiet",
@@ -452,6 +546,25 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
   queue_depth_above: {
     condition_met: { ...ATTENTION_WARN, headlineKey: "queue_above_threshold" },
     window_completed: { ...POSITIVE, headlineKey: "queue_stayed_below" },
+    condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
+  },
+  // Coming back below the line is the good news; staying above it for the whole
+  // window is the thing the user asked to be told.
+  queue_depth_below: {
+    condition_met: { ...POSITIVE, headlineKey: "queue_back_below" },
+    window_completed: { ...ATTENTION_WARN, headlineKey: "queue_still_above" },
+    condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
+  },
+  // A stall is the bad news, and a window that ran out without one means the
+  // queue kept moving the whole time — which is the answer, not silence.
+  queue_stalled: {
+    condition_met: { ...ATTENTION_WARN, headlineKey: "queue_stalled" },
+    window_completed: { ...POSITIVE, headlineKey: "queue_kept_moving" },
+    condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
+  },
+  queue_oldest_age: {
+    condition_met: { ...ATTENTION_WARN, headlineKey: "queue_wait_over_sla" },
+    window_completed: { ...POSITIVE, headlineKey: "queue_wait_under_sla" },
     condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
   },
   error_recurrence: {
@@ -562,24 +675,37 @@ export function watchCadenceOptions(kind: WatchKind): readonly number[] {
 }
 
 /**
- * The condition variant sitting next to a kind under **Customize** (§3): "run
- * finishes ↔ run fails", "queue drains ↔ queue above N". Null for the kinds that
- * have no second question in this iteration.
+ * The condition variants offered side by side under **Customize** (§3) — one
+ * family per object, in the order the picker lists them, always including the
+ * kind asked about.
+ *
+ * A family, not a pair: the queue has five questions about the same queue name,
+ * and every one of them carries the subject across a swap.
  */
-export function watchVariantKind(kind: WatchKind): WatchKind | null {
-  switch (kind) {
-    case "run_finished":
-      return "run_failed";
-    case "run_failed":
-      return "run_finished";
-    case "backlog_drain":
-      return "queue_depth_above";
-    case "queue_depth_above":
-      return "backlog_drain";
-    default:
-      return null;
+const RUN_CONDITION_VARIANTS = ["run_finished", "run_failed"] as const;
+const QUEUE_CONDITION_VARIANTS = [
+  "backlog_drain",
+  "queue_depth_above",
+  "queue_depth_below",
+  "queue_stalled",
+  "queue_oldest_age",
+] as const;
+
+export function watchConditionVariants(kind: WatchKind): readonly WatchKind[] {
+  if ((RUN_CONDITION_VARIANTS as readonly string[]).includes(kind)) return RUN_CONDITION_VARIANTS;
+  if ((QUEUE_CONDITION_VARIANTS as readonly string[]).includes(kind)) {
+    return QUEUE_CONDITION_VARIANTS;
   }
+  // The kinds with no second question: the picker shows the condition as a fact.
+  return [kind];
 }
 
-/** The default threshold a `queue_depth_above` variant starts on. */
+/** The default threshold a `queue_depth_above` / `queue_depth_below` variant starts on. */
 export const WATCH_DEFAULT_QUEUE_THRESHOLD = 100;
+
+/**
+ * The default SLA an age variant starts on, in minutes. The same number the queue
+ * page already tints its Oldest wait block at, so the card can't recommend an SLA
+ * the page doesn't consider late.
+ */
+export const WATCH_DEFAULT_QUEUE_AGE_MINUTES = 5;

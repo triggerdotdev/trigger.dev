@@ -824,8 +824,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           continue;
         }
         // Re-formatted from the parse, so a hand-typed URI lands in exactly the
-        // encoding everything else stores.
-        evidence.push({ ...item, uri: formatTriggerUri(parsedUri) });
+        // encoding everything else stores. Error fingerprints are normalized the
+        // same way bare ids are — a canonical URI never carries the friendly
+        // "error_" prefix.
+        const normalizedUri =
+          parsedUri.kind === "error"
+            ? { ...parsedUri, fingerprint: parsedUri.fingerprint.replace(/^error_/, "") }
+            : parsedUri;
+        evidence.push({ ...item, uri: formatTriggerUri(normalizedUri) });
         continue;
       }
 

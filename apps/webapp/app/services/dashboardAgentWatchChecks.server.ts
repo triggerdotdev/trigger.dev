@@ -31,6 +31,7 @@ import type {
   WatchHealthSeverity,
   WatchHealthSnapshot,
   WatchQueueDepth,
+  WatchQueueOldestAge,
   WatchRunRow,
 } from "./dashboardAgentWatchChecks";
 
@@ -136,6 +137,46 @@ export async function readWatchQueueDepth(
 
   return { depth: newest.depth, source: "queue_metrics", current, asOf: bucketEnd };
 }
+
+/**
+ * How long the oldest run still waiting in one queue has been waiting — the SAME
+ * composition the queue detail page's **Oldest wait** block trusts: for a
+ * concurrency-keyed queue the oldest wait is the worst across keys with a live
+ * backlog (a lingering index entry whose subqueue drained would over-report),
+ * otherwise the queue's own oldest message.
+ *
+ * Live-only on purpose. There is no general oldest-wait gauge in the analytics
+ * rollup (`ck_max_wait_ms` exists for keyed queues alone), and an age is the one
+ * reading staleness corrupts in both directions — so a failure here is
+ * `unavailable` and the reading is always `current`, rather than a fallback that
+ * would quietly answer with a number from ten minutes ago.
+ *
+ * Returns `null` when the queue can't be read at all; `ageMs: null` when the queue
+ * is simply empty.
+ */
+export async function readWatchQueueOldestAge(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  now: Date = new Date()
+): Promise<WatchQueueOldestAge | null> {
+  const [breakdown, oldestQueuedAt] = await Promise.all([
+    engine.concurrencyKeyBreakdown(environment, queueName, { limit: OLDEST_AGE_CK_LIMIT }),
+    engine.oldestMessageInQueue(environment, queueName),
+  ]);
+
+  const waitingKeys = breakdown.keys.filter((key) => key.queued > 0);
+  const ageMs =
+    waitingKeys.length > 0
+      ? waitingKeys.reduce((max, key) => Math.max(max, now.getTime() - key.oldestEnqueuedAt), 0)
+      : typeof oldestQueuedAt === "number"
+        ? Math.max(0, now.getTime() - oldestQueuedAt)
+        : null;
+
+  return { ageMs, source: "live_queue", current: true, asOf: now };
+}
+
+/** Same cap the queue detail page reads keys with. */
+const OLDEST_AGE_CK_LIMIT = 50;
 
 const MINUTE_MS = 60_000;
 
@@ -298,6 +339,7 @@ export function watchCheckDeps(
     readRun: (runId) => readWatchRun(runId, environment.id),
     queueExists: (queue) => watchQueueExists(environment.id, queue),
     readQueueDepth: (queue) => readWatchQueueDepth(environment, queue, now),
+    readQueueOldestAge: (queue) => readWatchQueueOldestAge(environment, queue, now),
     readErrorRecurrence: (fingerprint, since) =>
       readWatchErrorRecurrence(environment, fingerprint, since),
     readHealth: () => readWatchHealth(environment),

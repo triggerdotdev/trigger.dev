@@ -36,8 +36,9 @@ import { AgentSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { ChatSystemBlock } from "./chat-layout";
 import {
-  variantOf,
+  variantsOf,
   watchDraftError,
+  withAgeMinutes,
   withCadence,
   withFollowUp,
   withThreshold,
@@ -60,6 +61,9 @@ const VARIANT_LABEL: Record<WatchKind, string> = {
   run_failed: "if it fails",
   backlog_drain: "when it drains",
   queue_depth_above: "if it grows",
+  queue_depth_below: "when it's back below",
+  queue_stalled: "if it stops moving",
+  queue_oldest_age: "if runs wait too long",
   error_recurrence: "if it recurs",
   health_recovery: "when it recovers",
 };
@@ -127,7 +131,7 @@ export function WatchCard({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { spec } = draft;
-  const variant = variantOf(draft);
+  const variants = variantsOf(draft);
   // Local validation first: a draft the schema would refuse never reaches the
   // server, and the same sentence appears whether it was caught here or there.
   const localError = watchDraftError(draft);
@@ -180,19 +184,19 @@ export function WatchCard({
         <div className="flex flex-col gap-3 pt-2">
           {/* The condition variant (§3). Only rendered where a second question
               exists — the kinds with none must not show an empty picker. */}
-          {variant ? (
+          {variants.length > 1 ? (
             <Field label="Tell me">
-              <Choice
-                selected
-                onSelect={() => {
-                  /* already the current condition */
-                }}
-              >
-                {VARIANT_LABEL[spec.kind]}
-              </Choice>
-              <Choice selected={false} onSelect={() => onChange(withVariant(draft, variant))}>
-                {VARIANT_LABEL[variant]}
-              </Choice>
+              {variants.map((kind) => (
+                <Choice
+                  key={kind}
+                  selected={kind === spec.kind}
+                  onSelect={() => {
+                    if (kind !== spec.kind) onChange(withVariant(draft, kind));
+                  }}
+                >
+                  {VARIANT_LABEL[kind]}
+                </Choice>
+              ))}
             </Field>
           ) : (
             <Field label="Tell me">
@@ -200,8 +204,10 @@ export function WatchCard({
             </Field>
           )}
 
-          {spec.kind === "queue_depth_above" ? (
-            <Field label="Above">
+          {/* ONE contextual parameter per condition, and only for the conditions
+              that have one. The stall count stays internal (§3). */}
+          {spec.kind === "queue_depth_above" || spec.kind === "queue_depth_below" ? (
+            <Field label={spec.kind === "queue_depth_above" ? "Above" : "Below"}>
               <Input
                 type="number"
                 min={0}
@@ -215,6 +221,23 @@ export function WatchCard({
                 }
                 aria-label="Queue depth threshold"
               />
+            </Field>
+          ) : null}
+
+          {spec.kind === "queue_oldest_age" ? (
+            <Field label="Waiting longer than">
+              <Input
+                type="number"
+                min={1}
+                variant="small"
+                className="w-28"
+                value={Number.isFinite(spec.thresholdMinutes) ? String(spec.thresholdMinutes) : ""}
+                onChange={(event) =>
+                  onChange(withAgeMinutes(draft, Number.parseInt(event.target.value, 10)))
+                }
+                aria-label="Wait limit in minutes"
+              />
+              <span className="text-xs text-text-dimmed">minutes</span>
             </Field>
           ) : null}
 

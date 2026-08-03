@@ -221,6 +221,9 @@ async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promi
       return (await deps.readRun(spec.runId)) !== null;
     case "backlog_drain":
     case "queue_depth_above":
+    case "queue_depth_below":
+    case "queue_stalled":
+    case "queue_oldest_age":
       return await deps.queueExists(spec.queue);
     case "error_recurrence":
       return spec.fingerprint.length > 0;

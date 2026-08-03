@@ -1339,7 +1339,7 @@ describe("buildDashboardAgentTools", () => {
       kind: "watch",
       spec: {
         kind: "error_recurrence",
-        fingerprint: "error_c4b4a797397a9c43",
+        fingerprint: "c4b4a797397a9c43",
         checkEveryMinutes: 15,
         maxHours: 24,
         note: `A repeat of: ${concludedWithSource.title}`,
