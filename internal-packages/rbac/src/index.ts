@@ -102,6 +102,33 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
   };
 }
 
+function resolveBearerResolution(
+  result: BearerAuthResult,
+  context: {
+    useHostForAdditionalKey: boolean;
+    useHostForPublicJWT: boolean;
+    rawToken: string | undefined;
+    usingPlugin: boolean;
+  }
+): BearerResolution {
+  if ("resolution" in result) {
+    return result.resolution as BearerResolution;
+  }
+
+  if (context.useHostForAdditionalKey) {
+    return { credentialKind: "additional_api_key", lookupPath: "additional" };
+  }
+
+  if (context.useHostForPublicJWT) {
+    return { credentialKind: "public_jwt", lookupPath: "jwt_current" };
+  }
+
+  return {
+    credentialKind: context.rawToken?.startsWith("tr_") ? "root_api_key" : "unknown",
+    lookupPath: context.usingPlugin ? "plugin" : "not_found",
+  };
+}
+
 // Loads the plugin lazily; falls back to the fallback implementation if not installed.
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
@@ -227,17 +254,12 @@ class LazyController implements RoleBaseAccessController {
         ? await this._hostCredentialResolver.authenticate(...args)
         : await controller.authenticateBearer(...args);
 
-    const resolution: BearerResolution =
-      "resolution" in result
-        ? (result.resolution as BearerResolution)
-        : useHostForAdditionalKey
-          ? { credentialKind: "additional_api_key", lookupPath: "additional" }
-          : useHostForPublicJWT
-            ? { credentialKind: "public_jwt", lookupPath: "jwt_current" }
-            : {
-                credentialKind: rawToken?.startsWith("tr_") ? "root_api_key" : "unknown",
-                lookupPath: usingPlugin ? "plugin" : "not_found",
-              };
+    const resolution = resolveBearerResolution(result, {
+      useHostForAdditionalKey,
+      useHostForPublicJWT,
+      rawToken,
+      usingPlugin,
+    });
 
     // The format is only a routing hint. A successful host resolution on the
     // additional-key path must still produce the expected principal type.
