@@ -1,9 +1,10 @@
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import type { AgentPageContext } from "./page-context-types";
+import { readDismissedPromptIds, resolveSuggestedPromptsBySlot } from "./suggested-prompts";
 
 /**
  * The new-chat "draft" state: the blank-state hero — title, subtitle, the field
@@ -35,6 +36,22 @@ export function DashboardAgentDraft({
 }) {
   const [input, setInput] = useState("");
 
+  // The top resolved prompt doubles as the field's placeholder (Tab accepts it
+  // as editable text). Same resolution the hero's buttons use, so the
+  // placeholder is always the first button the user sees.
+  const [dismissedIds] = useState(readDismissedPromptIds);
+  const placeholderSuggestion = useMemo(
+    () =>
+      resolveSuggestedPromptsBySlot(
+        pageContext ?? { page: { kind: "other", path: "" }, signals: [] },
+        {
+          promoted: promotedPrompt,
+          dismissedIds,
+        }
+      )[0]?.prompt.prompt,
+    [pageContext, promotedPrompt, dismissedIds]
+  );
+
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
@@ -58,6 +75,7 @@ export function DashboardAgentDraft({
           onSubmit={() => submit(input)}
           onStop={() => {}}
           isStreaming={false}
+          placeholderSuggestion={placeholderSuggestion}
           context={
             <DashboardAgentContextBanner
               projectSlug={projectSlug}
