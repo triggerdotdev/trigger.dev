@@ -1,10 +1,14 @@
-import type { BearerAuthResult, RbacEnvironment, RbacSubject } from "@trigger.dev/plugins";
-import { createHash } from "node:crypto";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { Result } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { extractJWTSub, isPublicJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { scopesGrantFullAccess } from "@trigger.dev/plugins";
+import type { Prisma, PrismaClient } from "@trigger.dev/database";
+import {
+  scopesGrantFullAccess,
+  type AuthenticatedEnvironment,
+  type BearerAuthResult,
+} from "@trigger.dev/plugins";
+import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export type BearerCredentialClients = {
@@ -31,6 +35,7 @@ export type BearerLookupPath =
   | "legacy_public"
   | "not_found";
 
+// Telemetry-only
 export type BearerResolution = {
   credentialKind: BearerCredentialKind;
   lookupPath: BearerLookupPath;
@@ -40,11 +45,8 @@ export type BearerCredentialResult = BearerAuthResult & {
   resolution: BearerResolution;
 };
 
-// JWT-signing material. Today this is the environment's root apiKey (or the
-// parent's, for branch envs) — which is why rotating a root key needs the
-// grace-window retry in `authenticate`. When a dedicated per-environment
-// signing secret lands, this is the only credential-resolution seam that needs
-// to change.
+// In the future if we remove the root env.apiKey for a dedicated JWT signing
+// key, this is the only function that needs to change to resolve that
 export function resolveJwtSigningKey(env: {
   apiKey: string;
   parentEnvironment?: { apiKey: string } | null;
@@ -54,8 +56,7 @@ export function resolveJwtSigningKey(env: {
 
 /**
  * Resolves an incoming bearer token into a `BearerAuthResult`: a public JWT, a
- * root environment API key, a grace-window rotated key, or a host-owned
- * additional API key (the `ApiKey` table).
+ * root environment API key, a grace-window rotated key, or an _sk_ additional key
  *
  * This is deliberately NOT part of the "no-plugin fallback". Additional API
  * keys are owned by the host, not by the optional RBAC plugin, so this
@@ -63,7 +64,7 @@ export function resolveJwtSigningKey(env: {
  * and the plugin-backed controller (which delegates host-owned keys here).
  *
  * Public JWTs carry inline scopes, which are compiled into an ability here.
- * Additional API-key credentials carry host-persisted effective scopes, which
+ * Additional API-key credentials carry DB-persisted effective scopes, which
  * are compiled into their final ability here without a plugin policy lookup.
  */
 export class BearerCredentialResolver {
@@ -206,49 +207,42 @@ export class BearerCredentialResolver {
       };
     }
 
-    // PREVIEW (and DEVELOPMENT) envs are parents — operating "on a branch" means routing
-    // to a child env keyed by branchName. The customer authenticates
-    // with the parent's apiKey + an `x-trigger-branch` header. Include the
-    // matching child env so the pivot below can adopt its identity.
     const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
-    const include = {
-      project: true,
-      organization: true,
-      orgMember: {
-        select: {
-          userId: true,
-          user: { select: { id: true, displayName: true, name: true } },
-        },
-      },
-      parentEnvironment: { select: { id: true, apiKey: true } },
-      childEnvironments: branchName ? { where: { branchName, archivedAt: null } } : undefined,
-    } as const;
-    const now = new Date();
-    const routesToAdditionalKey = isAdditionalApiKey(rawToken);
-    if (routesToAdditionalKey && !this.additionalApiKeyLookupEnabled()) {
-      return {
-        ok: false,
-        status: 401,
-        error: "Invalid API key",
-        resolution: {
-          credentialKind: "additional_api_key",
-          lookupPath: "additional_skipped",
-        },
-      };
+
+    if (isAdditionalApiKey(rawToken)) {
+      if (!this.additionalApiKeyLookupEnabled()) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Invalid API key",
+          resolution: {
+            credentialKind: "additional_api_key",
+            lookupPath: "additional_skipped",
+          },
+        };
+      }
+
+      return this.resolveAdditionalKey(rawToken, branchName);
     }
 
-    let rootEnvironment = routesToAdditionalKey
-      ? null
-      : await this.replica.runtimeEnvironment.findFirst({
-          where: { apiKey: rawToken },
-          include,
-        });
+    return this.resolveRootKey(rawToken, branchName);
+  }
 
-    // Revoked API key grace window — recently rotated keys keep working until
-    // their `expiresAt`; without this a customer who rotates an env API key
-    // gets immediate 401s on the new auth path.
-    let resolvedRotatedRoot = false;
-    if (!routesToAdditionalKey && !rootEnvironment) {
+  private async resolveRootKey(
+    rawToken: string,
+    branchName: string | null
+  ): Promise<BearerCredentialResult> {
+    const include = environmentInclude(branchName);
+    const now = new Date();
+    let env = await this.replica.runtimeEnvironment.findFirst({
+      where: { apiKey: rawToken },
+      include,
+    });
+
+    let lookupPath: BearerLookupPath = "root_current";
+
+    // Recently rotated root keys keep working until their grace period expires.
+    if (!env) {
       const revoked = await this.replica.revokedApiKey.findFirst({
         where: {
           apiKey: rawToken,
@@ -256,29 +250,14 @@ export class BearerCredentialResolver {
         },
         include: { runtimeEnvironment: { include } },
       });
-      rootEnvironment = revoked?.runtimeEnvironment ?? null;
-      resolvedRotatedRoot = rootEnvironment !== null;
+      env = revoked?.runtimeEnvironment ?? null;
+      lookupPath = env ? "root_rotated" : "not_found";
     }
 
-    const match = routesToAdditionalKey
-      ? await this.replica.apiKey.findFirst({
-          where: {
-            keyHash: createHash("sha256").update(rawToken, "utf8").digest("hex"),
-            revokedAt: null,
-            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          },
-          select: {
-            id: true,
-            lastUsedAt: true,
-            scopes: true,
-            runtimeEnvironment: { include },
-          },
-        })
-      : null;
-    const additionalApiKey = match
-      ? { id: match.id, lastUsedAt: match.lastUsedAt, scopes: match.scopes }
-      : null;
-    let env = rootEnvironment ?? match?.runtimeEnvironment ?? null;
+    const resolution: BearerResolution = {
+      credentialKind: "root_api_key",
+      lookupPath,
+    };
 
     if (!env || env.project.deletedAt !== null) {
       return {
@@ -286,21 +265,78 @@ export class BearerCredentialResolver {
         status: 401,
         error: "Invalid API key",
         resolution: {
-          credentialKind: routesToAdditionalKey ? "additional_api_key" : "root_api_key",
-          lookupPath: routesToAdditionalKey ? "additional" : "not_found",
+          credentialKind: "root_api_key",
+          lookupPath: "not_found",
         },
       };
     }
 
-    if (
-      additionalApiKey &&
-      (!additionalApiKey.lastUsedAt ||
-        additionalApiKey.lastUsedAt < new Date(now.getTime() - 300_000))
-    ) {
+    const [branchError, resolvedEnvironment] = resolveBranch(env, branchName);
+    if (branchError !== null) {
+      return {
+        ok: false,
+        status: 401,
+        error: branchError,
+        resolution,
+      };
+    }
+
+    return {
+      ok: true,
+      environment: toAuthenticatedEnvironment(resolvedEnvironment),
+      subject: {
+        type: "user",
+        userId: resolvedEnvironment.orgMember?.userId ?? "",
+        organizationId: resolvedEnvironment.organizationId,
+        projectId: resolvedEnvironment.projectId,
+      },
+      ability: permissiveAbility,
+      resolution,
+    };
+  }
+
+  private async resolveAdditionalKey(
+    rawToken: string,
+    branchName: string | null
+  ): Promise<BearerCredentialResult> {
+    const resolution: BearerResolution = {
+      credentialKind: "additional_api_key",
+      lookupPath: "additional",
+    };
+    const now = new Date();
+    const match = await this.replica.apiKey.findFirst({
+      where: {
+        keyHash: createHash("sha256").update(rawToken, "utf8").digest("hex"),
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        id: true,
+        lastUsedAt: true,
+        scopes: true,
+        runtimeEnvironment: { include: environmentInclude(branchName) },
+      },
+    });
+
+    if (!match || match.runtimeEnvironment.project.deletedAt !== null) {
+      return { ok: false, status: 401, error: "Invalid API key", resolution };
+    }
+
+    const [branchError, resolvedEnvironment] = resolveBranch(match.runtimeEnvironment, branchName);
+    if (branchError !== null) {
+      return {
+        ok: false,
+        status: 401,
+        error: branchError,
+        resolution,
+      };
+    }
+
+    if (!match.lastUsedAt || match.lastUsedAt < new Date(now.getTime() - 300_000)) {
       try {
         await this.prisma.apiKey.updateMany({
           where: {
-            id: additionalApiKey.id,
+            id: match.id,
             revokedAt: null,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
@@ -311,92 +347,84 @@ export class BearerCredentialResolver {
       }
     }
 
-    if (env.type === "PREVIEW" && !branchName) {
-      return {
-        ok: false,
-        status: 401,
-        error: "x-trigger-branch header required for preview env",
-        resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
-      };
-    }
-
-    if (env.type === "PREVIEW" || env.type === "DEVELOPMENT") {
-      // The "default" root branch is DEVELOPMENT-only: it maps to the dev root env
-      // (which carries no branch), so we skip the pivot there. For PREVIEW,
-      // "default" is an ordinary branch name and must still pivot to its child.
-      const isDevAndDefault = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
-      if (branchName !== null && !isDevAndDefault) {
-        const child = env.childEnvironments?.[0];
-        if (!child) {
-          return {
-            ok: false,
-            status: 401,
-            error: "No matching branch env",
-            resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
-          };
-        }
-        // Pivot to the child env: child's id/type/branchName, parent's
-        // apiKey/orgMember/organization/project.
-        env = {
-          ...child,
-          apiKey: env.apiKey,
-          orgMember: env.orgMember,
-          organization: env.organization,
-          project: env.project,
-          parentEnvironment: { id: env.id, apiKey: env.apiKey },
-          childEnvironments: [],
-        };
-      }
-    }
-
-    // An additional (ApiKey-table) key is a first-class `apiKey` principal.
-    // Root/legacy environment keys keep the `user` subject (they're on their
-    // way out once additional keys fully replace them).
-    const subject: RbacSubject = additionalApiKey
-      ? {
-          type: "apiKey",
-          apiKeyId: additionalApiKey.id,
-          restricted: !scopesGrantFullAccess(additionalApiKey.scopes),
-          organizationId: env.organizationId,
-          projectId: env.projectId,
-        }
-      : {
-          type: "user",
-          userId: env.orgMember?.userId ?? "",
-          organizationId: env.organizationId,
-          projectId: env.projectId,
-        };
-
     return {
       ok: true,
-      environment: toAuthenticatedEnvironment(env),
-      subject,
-      ability: additionalApiKey ? buildJwtAbility(additionalApiKey.scopes) : permissiveAbility,
-      resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
+      environment: toAuthenticatedEnvironment(resolvedEnvironment),
+      subject: {
+        type: "apiKey",
+        apiKeyId: match.id,
+        restricted: !scopesGrantFullAccess(match.scopes),
+        organizationId: resolvedEnvironment.organizationId,
+        projectId: resolvedEnvironment.projectId,
+      },
+      ability: buildJwtAbility(match.scopes),
+      resolution,
     };
   }
 }
 
-function bearerResolution(
-  additionalApiKey: boolean,
-  resolvedRotatedRoot: boolean
-): BearerResolution {
-  return additionalApiKey
-    ? { credentialKind: "additional_api_key", lookupPath: "additional" }
-    : {
-        credentialKind: "root_api_key",
-        lookupPath: resolvedRotatedRoot ? "root_rotated" : "root_current",
-      };
+function environmentInclude(branchName: string | null) {
+  return {
+    project: true,
+    organization: true,
+    orgMember: {
+      select: {
+        userId: true,
+        user: { select: { id: true, displayName: true, name: true } },
+      },
+    },
+    parentEnvironment: { select: { id: true, apiKey: true } },
+    childEnvironments: branchName ? { where: { branchName, archivedAt: null } } : undefined,
+  } as const satisfies Prisma.RuntimeEnvironmentInclude;
 }
 
-// Coerce a Prisma RuntimeEnvironment payload (with project/organization/
-// orgMember/parentEnvironment includes) into the slim AuthenticatedEnvironment
-// the auth contract carries. Explicit coercion keeps
-// `concurrencyLimitBurstFactor` a plain number across the auth boundary.
-function toAuthenticatedEnvironment(env: RbacEnvironment): RbacEnvironment {
-  const burst = env.concurrencyLimitBurstFactor;
+type EnvironmentWithBranches = Prisma.RuntimeEnvironmentGetPayload<{
+  include: ReturnType<typeof environmentInclude>;
+}>;
+
+function resolveBranch(
+  environment: EnvironmentWithBranches,
+  branchName: string | null
+): Result<AuthenticatedEnvironment, string> {
+  if (environment.type === "PREVIEW" && !branchName) {
+    return ["x-trigger-branch header required for preview env", null];
+  }
+
+  if (environment.type === "PREVIEW" || environment.type === "DEVELOPMENT") {
+    // The "default" root branch is DEVELOPMENT-only: it maps to the dev root env
+    // (which carries no branch), so we skip the pivot there. For PREVIEW,
+    // "default" is an ordinary branch name and must still pivot to its child.
+    const isDevAndDefault = environment.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
+    if (branchName !== null && !isDevAndDefault) {
+      const child = environment.childEnvironments[0];
+      if (!child) {
+        return ["No matching branch env", null];
+      }
+
+      return [
+        null,
+        {
+          ...child,
+          apiKey: environment.apiKey,
+          orgMember: environment.orgMember,
+          organization: environment.organization,
+          project: environment.project,
+          parentEnvironment: { id: environment.id, apiKey: environment.apiKey },
+        },
+      ];
+    }
+  }
+
+  return [null, environment];
+}
+
+// Coerce Prisma's Decimal value to a number at the authentication boundary.
+function toAuthenticatedEnvironment(
+  environment: AuthenticatedEnvironment
+): AuthenticatedEnvironment {
+  const burst = environment.concurrencyLimitBurstFactor;
   return {
-    ...env,
+    ...environment,
     concurrencyLimitBurstFactor: typeof burst === "number" ? burst : burst.toNumber(),
   };
 }

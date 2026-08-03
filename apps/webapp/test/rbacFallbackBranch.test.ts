@@ -62,6 +62,26 @@ async function createEnv(
   });
 }
 
+describe("RBAC fallback — root key resolution", () => {
+  it("reports an unknown root key as not found", async () => {
+    const prisma = {
+      runtimeEnvironment: { findFirst: vi.fn().mockResolvedValue(null) },
+      revokedApiKey: { findFirst: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaClient;
+    const rbac = makeController(prisma);
+
+    const result = await rbac.authenticateBearer(bearerRequest("tr_prod_unknown"));
+
+    expect(result).toMatchObject({
+      ok: false,
+      resolution: {
+        credentialKind: "root_api_key",
+        lookupPath: "not_found",
+      },
+    });
+  });
+});
+
 describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
   postgresTest("pivots to the named branch, carrying the parent's api key", async ({ prisma }) => {
     const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
@@ -145,6 +165,7 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.status).toBe(401);
+      expect(result.error).toBe("No matching branch env");
     }
   );
 });
@@ -275,6 +296,34 @@ describe("RBAC fallback — additional keys", () => {
     expect(result.environment.id).toBe(branch.id);
     expect(result.environment.parentEnvironment?.id).toBe(devRoot.id);
     expect(result.subject).toMatchObject({ type: "apiKey", restricted: false });
+  });
+
+  postgresTest("does not record use when branch resolution fails", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const devRoot = await createEnv(prisma, project.id, organization.id, {
+      type: "DEVELOPMENT",
+      orgMemberId: orgMember.id,
+    });
+    const additional = generateAdditionalApiKey("DEVELOPMENT").apiKey;
+    const created = await prisma.apiKey.create({
+      data: {
+        name: "Branch key",
+        keyHash: createHash("sha256").update(additional).digest("hex"),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: devRoot.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(additional, "missing-branch"));
+
+    expect(result).toMatchObject({ ok: false, status: 401, error: "No matching branch env" });
+    await expect(
+      prisma.apiKey.findUnique({ where: { id: created.id }, select: { lastUsedAt: true } })
+    ).resolves.toEqual({ lastUsedAt: null });
   });
 
   postgresTest("treats empty stored scopes as restricted and deny-all", async ({ prisma }) => {
@@ -481,6 +530,27 @@ describe("RBAC fallback — additional key permissions", () => {
 });
 
 describe("RBAC fallback — branch header guards", () => {
+  postgresTest("preview environments require a branch header", async ({ prisma }) => {
+    const { organization, project } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const previewParent = await createEnv(prisma, project.id, organization.id, {
+      type: "PREVIEW",
+      isBranchableEnvironment: true,
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(previewParent.apiKey));
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 401,
+      error: "x-trigger-branch header required for preview env",
+      resolution: {
+        credentialKind: "root_api_key",
+        lookupPath: "root_current",
+      },
+    });
+  });
+
   // The "default" sentinel is DEVELOPMENT-only: it maps the dev root env to its
   // (branchless) self. For PREVIEW, "default" is an ordinary branch name, so a
   // PREVIEW branch literally named "default" is reachable and the request pivots
