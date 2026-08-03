@@ -1258,6 +1258,8 @@ function peakOf(points: TilePoint[]): number {
   return points.reduce((max, p) => (p.value === null ? max : Math.max(max, p.value)), 0);
 }
 
+const SCHEDULING_DELAY_QUERY = `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  sum(wait_ms_count) AS samples\nFROM env_metrics\nGROUP BY t\nORDER BY t`;
+
 const THROTTLED_QUERY = `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`;
 
 const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
@@ -1318,7 +1320,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
       { color: "var(--color-queues)", label: "p95" },
       { color: "var(--color-warning)", label: "Over 1 min" },
     ],
-    query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  sum(wait_ms_count) AS samples\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    query: SCHEDULING_DELAY_QUERY,
     formatValue: formatWaitMs,
     formatAxis: formatWaitMs,
     derive: (rows) => {
@@ -1326,13 +1328,27 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         bucket: tileTimeToMs(r.t),
         value: tileNumber(r.samples) > 0 ? tileNumber(r.p95) : null,
       }));
-      const worst = peakOf(points);
-      return {
-        points,
-        total: worst,
-        formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
-        totalClassName: worst >= 60_000 ? "text-warning" : undefined,
-      };
+      return { points, total: peakOf(points) };
+    },
+    readout: {
+      query: SCHEDULING_DELAY_QUERY,
+      /**
+       * Merging quantile states over a wider bucket yields a p95 between the sub-buckets' own, so
+       * the worst p95 has to be read at the range's natural width or a burst of slow starts shorter
+       * than the plotted bucket is averaged away. Unlike the gauges, whose max of maxes is the same
+       * at any width.
+       */
+      derive: (rows) => {
+        const worst = rows.reduce(
+          (max, r) => (tileNumber(r.samples) > 0 ? Math.max(max, tileNumber(r.p95)) : max),
+          0
+        );
+        return {
+          total: worst,
+          formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
+          totalClassName: worst >= 60_000 ? "text-warning" : undefined,
+        };
+      },
     },
   },
   {
