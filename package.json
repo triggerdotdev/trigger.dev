@@ -143,7 +143,7 @@
       "@jsonhero/json-infer-types>ip-address": "^10.3.1",
       "express-rate-limit>ip-address": "^10.3.1",
       "find-my-way@>=9 <9.7.0": "^9.7.0",
-      "@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit": "^8.6.0"
+      "@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit": "^8.6.0",
       "zod": "4.4.3"
     },
     "onlyBuiltDependencies": [

@@ -382,7 +382,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     const result = await executeTSQL(queryClickhouse.reader, {
       ...baseOptions,
-      schema: z.record(z.string(), z.any()),
+      schema: z.record(z.string(), z.any()) as unknown as TOut,
       tableSchema: effectiveSchemas,
       transformValues: true,
       enforcedWhereClause,
