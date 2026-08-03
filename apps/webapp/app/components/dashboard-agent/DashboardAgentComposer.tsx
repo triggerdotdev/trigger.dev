@@ -63,11 +63,13 @@ export function DashboardAgentComposer({
     // destructive action.
     <Button
       variant="minimal/small"
-      className="aspect-square h-6 min-w-0 p-1"
+      // Filled neutral, not transparent: a white glyph needs a surface on the
+      // light theme too. Raw charcoal is deliberately theme-stable here.
+      className="aspect-square h-6 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
       aria-label="Stop generating"
       tooltip="Stop generating"
       onClick={onStop}
-      LeadingIcon={<StopIcon className="size-4 text-text-dimmed" />}
+      LeadingIcon={<StopIcon className="size-4 text-white" />}
     />
   ) : (
     <Button
@@ -77,7 +79,7 @@ export function DashboardAgentComposer({
       tooltip="Send"
       onClick={onSubmit}
       disabled={!value.trim()}
-      LeadingIcon={<ArrowUpIcon className="size-4" />}
+      LeadingIcon={<ArrowUpIcon className="size-4 text-white" />}
     />
   );
 

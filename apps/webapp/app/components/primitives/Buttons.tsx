@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { AgentMonoLogo } from "./AgentDotMatrix";
+import { AgentDotMatrix, AgentMonoLogo } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -107,7 +107,9 @@ const theme = {
   docs: {
     textColor:
       // System themes: monochrome label, the book icon keeps the blue
-      "text-callout-docs-text/70 system:text-text-bright transition group-disabled/button:text-text-dimmed/80",
+      // Monochrome on the dark themes; light keeps the docs-blue ink — a
+      // text-bright label on white reads as a plain grey button, not a link.
+      "text-callout-docs-text/70 dark:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
       "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
@@ -117,14 +119,17 @@ const theme = {
   // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
   // softened trigger-green border.
   "ask-ai": {
-    textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
-    // The trigger-green border reads on dark but washes out on white, so the
-    // light theme darkens it (the unified success token clears 3:1 on white).
+    // Hover fills with the brand green; ink flips DARK, not white — white on
+    // #41FF54 is ~1.4:1, charcoal-800 is ~12.8:1 (the brand's black-on-green).
+    textColor:
+      "text-text-bright transition group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
+    // The trigger-green /25 border washes out on white, so the light theme
+    // darkens it (the unified success token clears 3:1 on white).
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 light:border-success/60 light:group-hover/button:border-success/80 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-[#41FF54] group-hover/button:border-[#41FF54] light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
-    icon: "text-text-bright",
+      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-charcoal-800 group-hover/button:border-charcoal-800/60",
+    icon: "text-text-bright group-hover/button:text-charcoal-800",
   },
 };
 
