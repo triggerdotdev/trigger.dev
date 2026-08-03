@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BoolEnv, AdditionalEnvVars } from "./envUtil.js";
+import { BoolEnv, AdditionalEnvVars, NodeLabelValue, Tolerations } from "./envUtil.js";
 
 describe("BoolEnv", () => {
   it("should parse string 'true' as true", () => {
@@ -76,5 +76,120 @@ describe("AdditionalEnvVars", () => {
     expect(AdditionalEnvVars.parse("FOO=,BAR=value")).toEqual({
       BAR: "value",
     });
+  });
+});
+
+describe("NodeLabelValue", () => {
+  it("should keep a clean value untouched", () => {
+    expect(NodeLabelValue.parse("v4-worker")).toBe("v4-worker");
+  });
+
+  it("should trim surrounding whitespace, which Kubernetes would reject", () => {
+    expect(NodeLabelValue.parse(" v4-worker ")).toBe("v4-worker");
+    expect(NodeLabelValue.parse("\tv4-worker\n")).toBe("v4-worker");
+  });
+
+  it("should treat a whitespace-only value as the empty off-switch", () => {
+    expect(NodeLabelValue.parse("")).toBe("");
+    expect(NodeLabelValue.parse("   ")).toBe("");
+  });
+
+  it("should still apply a default only when unset", () => {
+    const withDefault = NodeLabelValue.default("v4-worker");
+    expect(withDefault.parse(undefined)).toBe("v4-worker");
+    expect(withDefault.parse("")).toBe("");
+  });
+
+  it("should reject a value Kubernetes would reject, rather than 422 every pod create", () => {
+    for (const invalid of ["my worker", "-bad-", "bad.", "a".repeat(64)]) {
+      expect(NodeLabelValue.safeParse(invalid).success).toBe(false);
+    }
+  });
+});
+
+describe("Tolerations", () => {
+  it("should parse key=value entries as Equal", () => {
+    expect(Tolerations.parse("dedicated=runs:NoSchedule")).toEqual([
+      { key: "dedicated", operator: "Equal", value: "runs", effect: "NoSchedule" },
+    ]);
+  });
+
+  it("should parse entries without a value as Exists", () => {
+    expect(Tolerations.parse("scheduled-runs:NoExecute")).toEqual([
+      { key: "scheduled-runs", operator: "Exists", effect: "NoExecute" },
+    ]);
+  });
+
+  it("should parse an empty string as no tolerations", () => {
+    expect(Tolerations.parse("")).toEqual([]);
+    expect(Tolerations.parse("  ")).toEqual([]);
+  });
+
+  it("should skip blank entries and trim whitespace", () => {
+    expect(Tolerations.parse(" a=b:NoSchedule , ,")).toEqual([
+      { key: "a", operator: "Equal", value: "b", effect: "NoSchedule" },
+    ]);
+  });
+
+  it("should reject a missing effect, an unknown effect, and an empty key", () => {
+    for (const invalid of ["dedicated=runs", "dedicated=runs:Nope", "=runs:NoSchedule"]) {
+      expect(Tolerations.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("should accept a hyphenated key, a digit-suffixed key, and every effect", () => {
+    expect(
+      Tolerations.parse("capacity-1=true:PreferNoSchedule,spot:NoExecute,gpu=a10:NoSchedule")
+    ).toEqual([
+      { key: "capacity-1", operator: "Equal", value: "true", effect: "PreferNoSchedule" },
+      { key: "spot", operator: "Exists", effect: "NoExecute" },
+      { key: "gpu", operator: "Equal", value: "a10", effect: "NoSchedule" },
+    ]);
+  });
+
+  it("should accept a DNS-subdomain prefixed key", () => {
+    expect(
+      Tolerations.parse("node.cluster.x-k8s.io/machinepool=scheduled-runs:NoSchedule")
+    ).toEqual([
+      {
+        key: "node.cluster.x-k8s.io/machinepool",
+        operator: "Equal",
+        value: "scheduled-runs",
+        effect: "NoSchedule",
+      },
+    ]);
+  });
+
+  it("should reject a key or value that Kubernetes would reject at pod create", () => {
+    for (const invalid of [
+      "dedicated=prod runs:NoSchedule",
+      "ded icated=runs:NoSchedule",
+      "dedicated=-runs:NoSchedule",
+      `dedicated=${"r".repeat(64)}:NoSchedule`,
+      `${"a".repeat(64)}=runs:NoSchedule`,
+      `example.com/${"a".repeat(64)}=runs:NoSchedule`,
+      "a/b/c=runs:NoSchedule",
+      "Example.com/pool=runs:NoSchedule",
+    ]) {
+      expect(Tolerations.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("should bound the prefix and the name separately, as Kubernetes does", () => {
+    const longestPrefix = `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(61)}`;
+    expect(longestPrefix.length).toBe(253);
+
+    expect(Tolerations.parse(`${longestPrefix}/${"n".repeat(63)}=runs:NoSchedule`)).toHaveLength(1);
+    expect(Tolerations.safeParse(`${longestPrefix}a/pool=runs:NoSchedule`).success).toBe(false);
+  });
+
+  it("should tolerate whitespace around the separators", () => {
+    expect(Tolerations.parse("dedicated = runs : NoSchedule")).toEqual([
+      { key: "dedicated", operator: "Equal", value: "runs", effect: "NoSchedule" },
+    ]);
+  });
+
+  it("should reject a stray extra effect instead of folding it into the value", () => {
+    expect(Tolerations.safeParse("dedicated=runs:NoSchedule:NoExecute").success).toBe(false);
   });
 });

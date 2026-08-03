@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
+import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -173,7 +173,7 @@ export const Env = z
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
     KUBERNETES_NAMESPACE: z.string().default("default"),
-    KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
+    KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
@@ -256,65 +256,8 @@ export const Env = z
       .max(100)
       .default(20),
 
-    // Schedule toleration settings - scheduled runs tolerate taints on the dedicated pool
-    // Comma-separated list of tolerations in the format: key=value:effect
-    // For Exists operator (no value): key:effect
-    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z
-      .string()
-      .transform((val, ctx) => {
-        const tolerations = val
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-          .map((entry) => {
-            const colonIdx = entry.lastIndexOf(":");
-            if (colonIdx === -1) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (missing effect): "${entry}"`,
-              });
-              return z.NEVER;
-            }
-
-            const effect = entry.slice(colonIdx + 1);
-            const validEffects = ["NoSchedule", "NoExecute", "PreferNoSchedule"];
-            if (!validEffects.includes(effect)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(
-                  ", "
-                )}`,
-              });
-              return z.NEVER;
-            }
-
-            const keyValue = entry.slice(0, colonIdx);
-            const eqIdx = keyValue.indexOf("=");
-            const key = eqIdx === -1 ? keyValue : keyValue.slice(0, eqIdx);
-
-            if (!key) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (empty key): "${entry}"`,
-              });
-              return z.NEVER;
-            }
-
-            if (eqIdx === -1) {
-              return { key, operator: "Exists" as const, effect };
-            }
-
-            return {
-              key,
-              operator: "Equal" as const,
-              value: keyValue.slice(eqIdx + 1),
-              effect,
-            };
-          });
-
-        return tolerations;
-      })
-      .optional(),
+    KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
+    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
