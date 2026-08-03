@@ -125,9 +125,7 @@ export function DashboardAgentComposer({
                 });
               }
             }}
-            placeholder={
-              placeholderSuggestion ? `${placeholderSuggestion} — Tab to use` : "Type a message…"
-            }
+            placeholder={placeholderSuggestion ?? "Type a message…"}
             aria-label="Message the dashboard agent"
             className={cn(
               "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0",
