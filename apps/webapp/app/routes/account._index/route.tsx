@@ -40,7 +40,7 @@ import {
   normalizeThemePreference,
   type ThemePreference,
 } from "~/utils/themePreference";
-import { flag } from "~/v3/featureFlags.server";
+import { cachedFlag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath } from "~/utils/pathBuilder";
@@ -123,7 +123,7 @@ function createSchema(
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   const showThemeSwitcher =
-    user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
+    user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
   return json({ showThemeSwitcher });
 }
 
@@ -135,7 +135,7 @@ export const action: ActionFunction = async ({ request }) => {
   if (formData.get("action") === "update-theme") {
     const user = await requireUser(request);
     const showThemeSwitcher =
-      user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
+      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }
@@ -147,7 +147,7 @@ export const action: ActionFunction = async ({ request }) => {
   if (formData.get("action") === "update-contrast") {
     const user = await requireUser(request);
     const showThemeSwitcher =
-      user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
+      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }
