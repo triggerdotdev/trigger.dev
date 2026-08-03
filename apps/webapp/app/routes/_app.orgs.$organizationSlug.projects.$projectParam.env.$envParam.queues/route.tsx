@@ -217,10 +217,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           };
         }
       } catch (error) {
-        logger.warn("Queue list metrics unavailable, rendering without them", {
-          error,
-          environmentId: environment.id,
-        });
+        logger.warn("Queue list metrics unavailable, rendering without them", { error });
       }
     }
 
