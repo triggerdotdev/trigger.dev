@@ -552,7 +552,12 @@ function QueuesWithMetricsView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -928,7 +933,7 @@ function QueuesWithMetricsView() {
                             bucketStartMs={metrics?.bucketStartMs}
                             bucketIntervalMs={metrics?.bucketIntervalMs}
                             width={134}
-                            color="var(--color-queues)"
+                            color="var(--color-queues-chart)"
                             unitLabel={{ singular: "queued", plural: "queued" }}
                             showPeak={false}
                             formatPeak={(v) => v.toLocaleString()}
@@ -1275,9 +1280,9 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         when it's into burst capacity.
       </>
     ),
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     legend: [
-      { color: "var(--color-queues)", label: "Saturation" },
+      { color: "var(--color-queues-chart)", label: "Saturation" },
       { color: "var(--color-warning)", label: "Over limit" },
     ],
     query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
@@ -1298,7 +1303,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "backlog",
     label: "Backlog",
     description: "How many runs are waiting across the environment, over time.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
       const points = rows.map((r) => ({
@@ -1318,9 +1323,9 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
       </>
     ),
     totalTooltip: "The worst p95 in the selected window.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     legend: [
-      { color: "var(--color-queues)", label: "p95" },
+      { color: "var(--color-queues-chart)", label: "p95" },
       { color: "var(--color-warning)", label: "Over 1 min" },
     ],
     query: SCHEDULING_DELAY_QUERY,
@@ -1359,7 +1364,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Throttled",
     description: "How often runs were held back by a limit.",
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     legend: [{ color: "var(--color-warning)", label: "Throttled" }],
     query: THROTTLED_QUERY,
     derive: (rows) => {
@@ -1614,20 +1619,26 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
   return "Idle";
 }
 
+// Tint + colored text, sized like the error status chips (see ErrorStatusBadge).
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "text-warning",
-  "At capacity": "text-warning",
-  Backlogged: "text-blue-500",
-  Active: "text-success",
-  Idle: "text-text-dimmed",
+  Paused: "bg-warning/10 text-warning",
+  "At capacity": "bg-warning/10 text-warning",
+  Backlogged: "bg-blue-500/10 text-blue-500",
+  Active: "bg-success/10 text-success",
+  Idle: "bg-charcoal-500/10 text-text-dimmed",
 };
 
 function QueueHealthBadge(health: QueueHealth) {
   const label = queueHealthLabel(health);
   return (
-    <Badge variant="extra-small" className={cn("ml-auto w-fit", QUEUE_HEALTH_STYLES[label])}>
+    <span
+      className={cn(
+        "contrast-chip ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        QUEUE_HEALTH_STYLES[label]
+      )}
+    >
       {label}
-    </Badge>
+    </span>
   );
 }
 
@@ -1724,7 +1735,12 @@ function ClassicQueuesView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Including {environment.running - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1755,7 +1771,12 @@ function ClassicQueuesView() {
               valueClassName={limitClassName}
               suffix={
                 environment.burstFactor > 1 ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>

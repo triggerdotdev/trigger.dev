@@ -106,6 +106,8 @@ export function UsageSparkline({
           </BarChart>
         </ResponsiveContainer>
       </div>
+      {/* No system-mono-label on the total: its color is often the only signal
+          (threshold breaches), there is no icon to carry it */}
       {hideTotal ? null : (
         <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
           {formatTotal ? formatTotal(total) : total.toLocaleString()}

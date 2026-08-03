@@ -17,7 +17,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
@@ -755,7 +755,7 @@ export function VercelOnboardingModal({
             </div>
           </DialogHeader>
           <div className="flex items-center justify-center py-8">
-            <SpinnerWhite className="size-6" />
+            <Spinner color="blue" className="size-6" />
           </div>
         </DialogContent>
       </Dialog>

@@ -1,3 +1,4 @@
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
   ArrowPathIcon,
   BookOpenIcon,
@@ -8,7 +9,6 @@ import {
   CloudArrowDownIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
-  GlobeAltIcon,
   KeyIcon,
   QueueListIcon,
   SignalIcon,
@@ -429,7 +429,9 @@ function RunBody({
           <Header2
             className={cn(
               "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500"
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500",
+              // System themes: monochrome title, the task icon keeps the color
+              "system:text-text-bright"
             )}
           >
             <span className="truncate">
@@ -720,7 +722,7 @@ function RunBody({
                               </div>
                               <div>
                                 <div className="mb-1 flex items-center gap-1">
-                                  <GlobeAltIcon className="size-4 text-blue-500" />
+                                  <GlobeLinesIcon className="size-4 text-blue-500" />
                                   <Header3>Scope</Header3>
                                 </div>
                                 <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
@@ -1472,7 +1474,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && (
             <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-200 [word-break:break-word]">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-500 dark:text-rose-200 [word-break:break-word]">
                 {enhancedError.message}
               </pre>
             </Callout>

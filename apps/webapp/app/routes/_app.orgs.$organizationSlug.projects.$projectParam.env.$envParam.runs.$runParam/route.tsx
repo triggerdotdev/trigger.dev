@@ -1490,7 +1490,7 @@ function TimelineView({
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
+                              "timeline-point -ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={disableSpansAnimations ? undefined : node.id}
@@ -1744,7 +1744,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-0.5 items-center",
+          "timeline-span relative flex h-4 w-full min-w-0.5 items-center",
           eventBackgroundClassName(node.data),
           fadeLeft ? "rounded-r-sm bg-linear-to-r from-black/50 to-transparent" : "rounded-sm"
         )}

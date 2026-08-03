@@ -1,10 +1,10 @@
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
   BoltIcon,
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
   FaceSmileIcon,
   FireIcon,
-  GlobeAltIcon,
   RocketLaunchIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
@@ -117,6 +117,16 @@ function styleFromSize(size: number) {
   };
 }
 
+// Bright tiles (Yellow, Orange) need dark letters for contrast; the rest read
+// best with white.
+function letterColorForBackground(hex: string): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return "#fff";
+  const n = parseInt(match[1], 16);
+  const luminance = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return luminance > 140 ? "#272A2E" : "#fff";
+}
+
 function AvatarLetters({
   avatar,
   size,
@@ -132,15 +142,13 @@ function AvatarLetters({
 
   const style = {
     backgroundColor: avatar.hex,
+    color: letterColorForBackground(avatar.hex),
   };
 
   const scaleFactor = includePadding ? 0.8 : 1;
 
   return (
-    <span
-      className="grid shrink-0 place-items-center overflow-hidden text-charcoal-750"
-      style={styleFromSize(size)}
-    >
+    <span className="grid shrink-0 place-items-center overflow-hidden" style={styleFromSize(size)}>
       {/* This is the square container */}
       <span
         className={cn(
@@ -185,7 +193,7 @@ function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
   if (!avatar.url) {
     return (
       <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
-        <GlobeAltIcon className="size-[90%] text-text-dimmed" />
+        <GlobeLinesIcon className="size-[90%] text-text-dimmed" />
       </span>
     );
   }

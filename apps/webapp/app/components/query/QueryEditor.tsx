@@ -248,7 +248,7 @@ const QueryEditorForm = forwardRef<
   );
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-background-deep pb-2">
+    <div className="flex h-full flex-col gap-2 bg-white pb-2 dark:bg-background-deep">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}

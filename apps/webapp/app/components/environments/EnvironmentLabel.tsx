@@ -119,7 +119,8 @@ export function EnvironmentLabel({
       ref={spanRef}
       className={cn(
         truncate ? "truncate" : "overflow-hidden whitespace-nowrap",
-        "text-left",
+        // system-mono-label: System themes uncolor the name, only the icon stays tinted
+        "text-left system-mono-label",
         environmentTextClassName(environment),
         className
       )}
@@ -135,7 +136,10 @@ export function EnvironmentLabel({
         asChild
         button={content}
         content={
-          <span ref={spanRef} className={cn("text-left", environmentTextClassName(environment))}>
+          <span
+            ref={spanRef}
+            className={cn("text-left system-mono-label", environmentTextClassName(environment))}
+          >
             {text}
           </span>
         }
@@ -151,7 +155,11 @@ export function EnvironmentLabel({
 }
 
 export function EnvironmentSlug({ environment }: { environment: Environment & { slug: string } }) {
-  return <span className={environmentTextClassName(environment)}>{environment.slug}</span>;
+  return (
+    <span className={cn("system-mono-label", environmentTextClassName(environment))}>
+      {environment.slug}
+    </span>
+  );
 }
 
 export function environmentTitle(environment: Environment, username?: string) {

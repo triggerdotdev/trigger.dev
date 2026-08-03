@@ -1,4 +1,5 @@
-import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
+import { GlobeAmericasIcon } from "@heroicons/react/20/solid";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { useRouteLoaderData } from "@remix-run/react";
 import { formatDistanceToNow } from "date-fns";
 import { Laptop } from "lucide-react";
@@ -523,7 +524,7 @@ function TooltipContent({
           title="UTC"
           dateTime={formatDateTime(realDate, "UTC", locales, true, true, true)}
           isoDateTime={formatDateTimeISO(realDate, "UTC")}
-          icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+          icon={<GlobeLinesIcon className="size-4 text-blue-500" />}
         />
         <DateTimeTooltipContent
           title="Local"

@@ -5,7 +5,6 @@ import {
   CheckIcon,
   ExclamationTriangleIcon,
   FolderIcon,
-  GlobeAltIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation, useSubmit } from "@remix-run/react";
@@ -13,6 +12,7 @@ import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import {
   MainHorizontallyCenteredContainer,
@@ -515,7 +515,7 @@ function LogoForm({
                     onLoad={() => setFaviconError(false)}
                   />
                 ) : (
-                  <GlobeAltIcon className="size-6 text-text-dimmed" />
+                  <GlobeLinesIcon className="size-6 text-indigo-500" />
                 )}
               </button>
               <Input
@@ -681,7 +681,7 @@ function RadioDot({ active }: { active: boolean }) {
 }
 
 const iconTileClass =
-  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
+  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-background-bright";
 
 function toRecord(json: unknown): Record<string, unknown> {
   return json && typeof json === "object" ? (json as Record<string, unknown>) : {};

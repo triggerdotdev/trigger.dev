@@ -1,11 +1,11 @@
 import { getFormProps, useForm } from "@conform-to/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { parseWithZod } from "@conform-to/zod";
 import {
   BellAlertIcon,
   BellSlashIcon,
   BookOpenIcon,
   EnvelopeIcon,
-  GlobeAltIcon,
   LockClosedIcon,
   PlusIcon,
   TrashIcon,
@@ -599,7 +599,7 @@ export function AlertChannelTypeIcon({
     case "SLACK":
       return <SlackIcon className={className} />;
     case "WEBHOOK":
-      return <GlobeAltIcon className={className} />;
+      return <GlobeLinesIcon className={className} />;
     default: {
       assertNever(channelType);
     }

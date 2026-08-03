@@ -275,7 +275,7 @@ function DateSegmentGuide({ segment }: { segment: DateSegment }) {
       style={{
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums text-rose-500 outline-hidden ${
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-hidden ${
         !segment.isEditable ? "text-text-faint" : "text-text-bright"
       }`}
     >

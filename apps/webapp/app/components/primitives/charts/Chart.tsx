@@ -5,7 +5,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: '[data-theme="dark"]' } as const;
+// dark covers Classic too; :is() keeps it one scoped selector when the prefix is
+// interpolated as `${prefix} [data-chart=...]` below (a comma would break scoping).
+const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="classic"])' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 

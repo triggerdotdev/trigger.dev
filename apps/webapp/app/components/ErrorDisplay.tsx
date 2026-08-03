@@ -60,10 +60,12 @@ type DisplayOptionsProps = {
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
+    // The backdrop stays dark in every theme (the rotating-logo animation is
+    // dark artwork), so the text pins to the dark-theme colors on light too.
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto bg-[#16181C]">
       <div className="z-10 mt-[30vh] flex shrink-0 flex-col items-center gap-8">
-        <Header1>{title}</Header1>
-        {message && <Paragraph>{message}</Paragraph>}
+        <Header1 className="light:text-charcoal-200">{title}</Header1>
+        {message && <Paragraph className="light:text-charcoal-400">{message}</Paragraph>}
         <LinkButton
           to={button ? button.to : "/"}
           shortcut={{ key: "enter" }}

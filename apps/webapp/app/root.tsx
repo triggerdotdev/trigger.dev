@@ -1,4 +1,5 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+import type { CSSProperties } from "react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -19,8 +20,15 @@ import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
+import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
+import {
+  normalizeThemeContrast,
+  normalizeThemePreference,
+  type ThemePreference,
+} from "~/utils/themePreference";
+import { cachedFlag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -71,6 +79,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
+  // Theme switching is feature-flagged; while off, everyone stays on the
+  // classic theme even if a preference was saved earlier. Admins always get
+  // the switcher so the team can dogfood before the flag flips. Cached: the
+  // root loader runs on every document request and client navigation.
+  const showThemeSwitcher = user
+    ? user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }))
+    : false;
+  // Logged-out pages (login, invites) always render the branded Classic look.
+  const themePreference: ThemePreference = showThemeSwitcher
+    ? normalizeThemePreference(user?.dashboardPreferences.theme)
+    : "classic";
+  const themeContrast = showThemeSwitcher
+    ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
+    : 0;
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
@@ -99,6 +121,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
       timezone,
+      showThemeSwitcher,
+      themePreference,
+      themeContrast,
+      // Consumed by ResizablePanel: the browser check must match between SSR
+      // and hydration, so it is derived from the request user-agent.
+      isFirefox: /firefox/i.test(request.headers.get("user-agent") ?? ""),
     },
     { headers }
   );
@@ -117,7 +145,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export function ErrorBoundary() {
   return (
     <>
-      <html lang="en" className="h-full" data-theme="dark">
+      <html lang="en" className="h-full" data-theme="classic">
         <head>
           <meta charSet="utf-8" />
 
@@ -141,13 +169,37 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, posthogUiHost, kapa: _kapa } = useTypedLoaderData<typeof loader>();
+  const {
+    posthogProjectKey,
+    posthogUiHost,
+    kapa: _kapa,
+    themePreference,
+    themeContrast,
+  } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
+  useSystemThemeSync(themePreference);
+  // SSR falls back to dark for `system`; the inline script below corrects it
+  // before paint, and useSystemThemeSync keeps it live afterwards.
+  const resolvedTheme = themePreference === "system" ? "dark" : themePreference;
 
   return (
     <>
-      <html lang="en" className="h-full" data-theme="dark">
+      <html
+        lang="en"
+        className="h-full"
+        // The pre-paint script below may flip data-theme before hydration
+        suppressHydrationWarning
+        data-theme={resolvedTheme}
+        data-theme-preference={themePreference}
+        // Contrast overlay input for the System themes; Classic never reads it
+        style={{ "--theme-contrast": themeContrast / 100 } as CSSProperties}
+      >
         <head>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{if(document.documentElement.getAttribute("data-theme-preference")==="system"){document.documentElement.setAttribute("data-theme",matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}}catch(e){}`,
+            }}
+          />
           <StaleAssetRecovery isProduction={isProduction} />
           <Meta />
           <Links />

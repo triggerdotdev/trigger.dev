@@ -1208,7 +1208,7 @@ function ConcurrencyBlock({
               <span
                 className={cn(
                   "text-xs tabular-nums",
-                  atLimit ? "text-warning" : "text-text-dimmed"
+                  atLimit ? "system-mono-label text-warning" : "text-text-dimmed"
                 )}
               >
                 {/* Separator so the limit and the percentage don't read as one number
@@ -1219,7 +1219,7 @@ function ConcurrencyBlock({
             )}
           </div>
           {limit !== null && limit > 0 && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal-750">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-charcoal-750">
               <div
                 className={cn("h-full rounded-full", atLimit ? "bg-warning" : "bg-queues")}
                 style={{ width: `${pct}%` }}

@@ -12,7 +12,14 @@ export function AlphaBadge({
   return (
     <SimpleTooltip
       button={
-        <Badge variant="extra-small" className={cn(inline ? "inline-grid" : "", className)}>
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "system:border-transparent system:bg-blue-500 system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
           Alpha
         </Badge>
       }
@@ -35,7 +42,14 @@ export function BetaBadge({ inline = false, className }: { inline?: boolean; cla
   return (
     <SimpleTooltip
       button={
-        <Badge variant="extra-small" className={cn(inline ? "inline-grid" : "", className)}>
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "system:border-transparent system:bg-blue-500 system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
           Beta
         </Badge>
       }
@@ -58,7 +72,11 @@ export function NewBadge({ inline = false, className }: { inline?: boolean; clas
   return (
     <Badge
       variant="extra-small"
-      className={cn("text-success", inline ? "inline-grid" : "", className)}
+      className={cn(
+        "text-success system:border-transparent system:bg-success system:text-white",
+        inline ? "inline-grid" : "",
+        className
+      )}
     >
       New
     </Badge>
