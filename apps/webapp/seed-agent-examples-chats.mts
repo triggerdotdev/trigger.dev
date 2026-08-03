@@ -89,6 +89,35 @@ export type SeedChat = {
   messages: SeedMessage[];
 };
 
+/**
+ * A watch row the showcase chat needs behind it.
+ *
+ * The wake banner reads its tone off the WATCH, not off the narration: kind +
+ * resolution + observed outcome go through the resolved-result mapping, so a wake
+ * with no row renders in the kind-agnostic fallback wording. Seeding the row is
+ * what makes the banner say "email-sends queue drained" in success green.
+ *
+ * Times are offsets from the seeder's "now", so a re-seed re-dates the whole
+ * story rather than leaving a watch that expired last week.
+ */
+export type SeedWatch = {
+  id: string;
+  identity: string;
+  /** `PersistedWatchSpec` — the caller's spec plus the server-set `since`. */
+  spec: Record<string, unknown>;
+  status: "active" | "fired";
+  deliveryStatus: "not_required" | "delivered";
+  resolution: "condition_met" | null;
+  observedOutcome: Record<string, unknown> | null;
+  createdMinutesAgo: number;
+  /** Positive = still in the future, which is what puts a live chip on the chat. */
+  expiresInMinutes: number;
+  firedMinutesAgo: number | null;
+  lastCheckedMinutesAgo: number;
+  tickCount: number;
+  lastResult: Record<string, unknown> | null;
+};
+
 /** Demo chats with no stored equivalent, and why. */
 export const SKIPPED_DEMO_CHATS: ReadonlyArray<{ id: string; reason: string }> = [
   {
@@ -210,8 +239,483 @@ function reportCard(vm: unknown, reportUri: string) {
   };
 }
 
+/**
+ * A card the HOST wrote, with no tool behind it — the watch card's confirmation
+ * and its one-shot result. It travels as a `data-view` part and renders through
+ * the same catalog as everything else; the message id and the block id follow the
+ * watch route's own convention (`watch-card:{watchId|identity}` /
+ * `watch:{watchId|identity}`), so a seeded turn is indistinguishable from a real
+ * submit.
+ */
+function watchCard(key: string, body: Record<string, unknown>): SeedMessage {
+  return {
+    id: `watch-card:${key}`,
+    role: "assistant",
+    parts: [
+      {
+        type: "data-view",
+        data: { blocks: [{ ...body, id: `watch:${key}`, revision: 0, version: 1 }] },
+      },
+    ],
+  };
+}
+
 function sourceUrl(url: string, title: string) {
   return { type: "source-url", sourceId: `src_seed_${toolCallId("source")}`, url, title };
+}
+
+// ---------------------------------------------------------------------------
+// The showcase conversation: one morning, every card type
+// ---------------------------------------------------------------------------
+
+/** Stable slug, so the showcase can be re-seeded on its own without duplicating. */
+export const SHOWCASE_CHAT_SLUG = "showcase-morning-after-deploy";
+
+/** The two watches the showcase story runs: one already resolved, one still live. */
+export const SHOWCASE_WATCH_IDS = {
+  drain: "watch_agentexshowcasedrain",
+  recurrence: "watch_agentexshowcaseerror",
+} as const;
+
+/**
+ * The rows behind the showcase's watch cards.
+ *
+ * The drain watch is the one that woke the chat: fired, delivered, with the depth
+ * its resolving check read frozen on the row (§7.5) so the banner and the
+ * narration state the same fact. The recurrence watch is still running, which is
+ * what puts the live chip on the chat header — the story is "it's still watching".
+ */
+/**
+ * The three watch specs the showcase asks for. Exported because two things have
+ * to agree about them: the rows the seeder writes, and the frozen English in the
+ * transcript's watch blocks — which the seed test re-derives from these specs
+ * through the real presentation helpers.
+ */
+export function showcaseWatchSpecs(w: AgentExamplesWorld) {
+  return {
+    drain: {
+      kind: "backlog_drain" as const,
+      queue: w.queue,
+      checkEveryMinutes: 5 as const,
+      maxHours: 6,
+      note: `tell me when the ${w.queue} backlog clears`,
+    },
+    recurrence: {
+      kind: "error_recurrence" as const,
+      fingerprint: w.errorFingerprint,
+      checkEveryMinutes: 5 as const,
+      maxHours: 12,
+      note: "tell me if the 429 comes back",
+    },
+    /** The one that was already answered by the immediate check — no row, no watch. */
+    finishedRun: {
+      kind: "run_finished" as const,
+      runId: w.priorRunId,
+      checkEveryMinutes: 1 as const,
+      maxHours: 2,
+      note: `did ${w.priorRunId} ever land?`,
+    },
+  };
+}
+
+export function buildShowcaseWatches(w: AgentExamplesWorld): SeedWatch[] {
+  const { drain: drainSpec, recurrence: recurrenceSpec } = showcaseWatchSpecs(w);
+
+  return [
+    {
+      id: SHOWCASE_WATCH_IDS.drain,
+      identity: `backlog_drain:${w.queue}`,
+      spec: drainSpec,
+      status: "fired",
+      deliveryStatus: "delivered",
+      resolution: "condition_met",
+      observedOutcome: { kind: "backlog_drain", verified: true, depth: 0 },
+      createdMinutesAgo: 74,
+      expiresInMinutes: 6 * 60 - 74,
+      firedMinutesAgo: 14,
+      lastCheckedMinutesAgo: 14,
+      tickCount: 12,
+      lastResult: { result: "satisfied", facts: { depth: 0 } },
+    },
+    {
+      id: SHOWCASE_WATCH_IDS.recurrence,
+      identity: `error_recurrence:${w.errorFingerprint}`,
+      spec: recurrenceSpec,
+      status: "active",
+      deliveryStatus: "not_required",
+      resolution: null,
+      observedOutcome: null,
+      createdMinutesAgo: 20,
+      expiresInMinutes: 12 * 60 - 20,
+      firedMinutesAgo: null,
+      lastCheckedMinutesAgo: 3,
+      tickCount: 4,
+      lastResult: { result: "pending", facts: { countSince: 0 } },
+    },
+  ];
+}
+
+/**
+ * One morning, told once: the health report, a chart, an investigation that
+ * revises itself in place, two watch cards, a wake, and a docs answer at the end.
+ *
+ * It exists because every card type in the panel is reviewable in isolation but
+ * nowhere reviewable TOGETHER — and the thing worth reviewing is the rhythm: how
+ * much prose a card needs around it, whether two cards in a row read as one
+ * answer, whether the wake still reads as an interruption after eight turns of
+ * ordinary conversation.
+ */
+export function buildShowcaseChat(w: AgentExamplesWorld): SeedChat {
+  const scope = { projectRef: w.projectRef, environmentId: w.environmentId };
+  const reportUri = formatTriggerUri({ kind: "report", ...scope, key: "health" });
+  const runUri = formatTriggerUri({ kind: "run", ...scope, runId: w.failedRunId });
+  const spanUri = formatTriggerUri({
+    kind: "span",
+    ...scope,
+    runId: w.failedRunId,
+    spanId: w.failedSpanId,
+  });
+  const errorUri = formatTriggerUri({ kind: "error", ...scope, fingerprint: w.errorFingerprint });
+  const queueUri = formatTriggerUri({ kind: "queue", ...scope, name: w.queue });
+  const sourceUri = formatTriggerUri({
+    kind: "source",
+    ...scope,
+    sha: w.sourceSha,
+    path: w.sourcePath,
+    line: 18,
+  });
+  const envBase = `${w.appOrigin}/orgs/${w.organizationSlug}/projects/${w.projectSlug}/env/${w.environmentSlug}`;
+
+  const runEvidence = {
+    kind: "run",
+    uri: runUri,
+    label: `${w.failedRunId} · failed after 3 attempts`,
+    excerpt: "attempt 1 429 · attempt 2 429 · attempt 3 429 — all inside 19.4s",
+  };
+  const spanEvidence = {
+    kind: "span",
+    uri: spanUri,
+    label: "sendEmail span, attempt 3 of 3",
+    excerpt: "sendEmail  412ms  ✕  429 Too Many Requests",
+  };
+  const errorEvidence = {
+    kind: "error",
+    uri: errorUri,
+    label: `rate_limit_exceeded · ${w.failureCount} runs in the last hour`,
+    excerpt: "ProviderError: 429 Too Many Requests (rate_limit_exceeded)",
+  };
+  const queueEvidence = {
+    kind: "queue",
+    uri: queueUri,
+    label: `${w.queue} · ${w.envConcurrencyLimit} of ${w.envConcurrencyLimit} in use`,
+    excerpt: `pinned at ${w.envConcurrencyLimit} for ${w.pinnedMinutes} of the last 60 min`,
+  };
+  const sourceEvidence = {
+    kind: "source",
+    uri: sourceUri,
+    label: `${w.sourcePath}:18`,
+    excerpt: "retry: { maxAttempts: 3, minTimeoutInMs: 1_000, factor: 1 },",
+  };
+
+  // One investigation, two revisions of the same id: the working copy the turn
+  // put up, then the verdict. The renderer keeps the highest revision, so the
+  // transcript reads as one card that finished — not two cards that disagree.
+  const investigationId = "inv_agentexshowcasereceipt";
+  const investigationInProgress = {
+    type: "investigation",
+    id: investigationId,
+    revision: 0,
+    version: 1,
+    investigation: {
+      outcome: "in_progress",
+      severity: "warn",
+      confidence: "low",
+      runId: w.failedRunId,
+      title: `Why is ${w.taskId} failing?`,
+      headline: `All three attempts of ${w.failedRunId} came back with an error from the email provider. I'm reading the spans to see whether the retries ever had a chance.`,
+      progress: "Reading the run's spans",
+      hypotheses: [
+        {
+          id: "hyp-rate-limit",
+          statement: "The email provider is rate limiting this API key.",
+          verdict: "testing",
+          evidence: [],
+        },
+        {
+          id: "hyp-bad-payload",
+          statement: "The payload is malformed and the provider rejects it.",
+          verdict: "testing",
+          evidence: [],
+        },
+        {
+          id: "hyp-retry-window",
+          statement: "The retry schedule keeps every attempt inside one rate-limit window.",
+          verdict: "testing",
+          evidence: [],
+        },
+      ],
+      evidence: [runEvidence, spanEvidence],
+    },
+  };
+  const investigationConcluded = {
+    type: "investigation",
+    id: investigationId,
+    revision: 1,
+    version: 1,
+    investigation: {
+      outcome: "concluded",
+      severity: "crit",
+      confidence: "high",
+      runId: w.failedRunId,
+      title: `${w.taskId} is failing on every retry`,
+      headline: `The provider is rate limiting this API key, and the task's three attempts all land inside one limit window — so a run that hits the limit once cannot recover. ${w.failureCount} runs failed this way in the last hour, all on ${w.queue}.`,
+      remediation: `Raise \`minTimeoutInMs\` to 30s with a factor of 2 (and \`randomize: true\`) so the attempts span the limit window instead of sharing it, and cap \`${w.queue}\` at 20 concurrency so a draining backlog can't burst into the provider. The queue cap is a dashboard setting and takes effect without a deploy.`,
+      hypotheses: [
+        {
+          id: "hyp-rate-limit",
+          statement: "The email provider is rate limiting this API key.",
+          verdict: "validated",
+          finding: `All three attempts returned 429 rate_limit_exceeded, and ${w.failureCount} runs hit the same fingerprint in the last hour.`,
+          evidence: [errorEvidence, spanEvidence],
+        },
+        {
+          id: "hyp-bad-payload",
+          statement: "The payload is malformed and the provider rejects it.",
+          verdict: "invalidated",
+          finding: `The same payload shape succeeded on thousands of runs earlier today, and the provider never returned a 4xx other than 429 — \`${w.priorRunId}\` failed identically at ${w.firstFailureClock}.`,
+          evidence: [runEvidence],
+        },
+        {
+          id: "hyp-retry-window",
+          statement: "The retry schedule keeps every attempt inside one rate-limit window.",
+          verdict: "validated",
+          finding:
+            "maxAttempts 3 with a 1s base delay and factor 1 puts all three attempts inside 20 seconds.",
+          evidence: [sourceEvidence],
+        },
+        {
+          id: "hyp-queue-burst",
+          statement: "The queue bursts into the provider faster than its per-second ceiling.",
+          verdict: "validated",
+          finding: `${w.queue} sat at its limit for ${w.pinnedMinutes} of the last 60 minutes, so a batch of sends lands on the provider every time it drains.`,
+          evidence: [queueEvidence],
+        },
+      ],
+      evidence: [errorEvidence, spanEvidence, sourceEvidence, queueEvidence],
+    },
+    capabilities: {
+      version: 1,
+      actions: [
+        {
+          kind: "show_code",
+          label: "Show the code",
+          intent: { kind: "navigate", target: sourceUri },
+        },
+        {
+          kind: "watch_recurrence",
+          label: "Watch for a repeat",
+          intent: {
+            kind: "watch",
+            spec: {
+              kind: "error_recurrence",
+              fingerprint: w.errorFingerprint,
+              checkEveryMinutes: 5,
+              maxHours: 12,
+              note: "tell me if the 429 comes back",
+            },
+          },
+        },
+        {
+          kind: "view_similar",
+          label: "See the other failures",
+          intent: { kind: "navigate", target: errorUri },
+        },
+      ],
+    },
+  };
+
+  const pendingChart = {
+    id: "chart_showcase_pending",
+    revision: 0,
+    version: 1,
+    type: "chart",
+    title: "Pending runs, last 12 hours",
+    query:
+      "SELECT timeBucket() AS t, max(max_env_queued) AS pending FROM env_metrics GROUP BY t ORDER BY t",
+    period: "12h",
+    chartType: "line",
+    xAxisColumn: "t",
+    yAxisColumns: ["pending"],
+    stacked: false,
+    aggregation: "max",
+    actions: [
+      {
+        label: `Investigate the ${w.taskId} failures`,
+        intent: {
+          kind: "ask",
+          prompt: `Investigate why ${w.taskId} is failing — is it the same error every time?`,
+        },
+      },
+      {
+        label: `Open the ${w.queue} queue`,
+        intent: { kind: "navigate", target: queueUri },
+      },
+    ],
+  };
+
+  // The wording of a watch block is FROZEN at append time (§7.5) — the block
+  // carries final English, not a key, so a later copy change can't rewrite what a
+  // user was told. That's why these strings are literals here: they are what
+  // `watchConfirmationBlockBody` / `watchOneShotBlockBody` produced, and the seed
+  // test asserts they still match those helpers exactly.
+  const drainConfirmation = {
+    type: "watch_result",
+    outcome: "watching",
+    headline: `Watching ${w.queue} until the queue drains.`,
+    lifetime: "Checking every 5 min for up to 6 hours. It reports once, then stops.",
+    detail: null,
+    followUp: [],
+    watchId: SHOWCASE_WATCH_IDS.drain,
+  };
+  const recurrenceConfirmation = {
+    type: "watch_result",
+    outcome: "watching",
+    headline: `Watching error ${w.errorFingerprint.slice(0, 8)} in case it happens again.`,
+    lifetime: "Checking every 5 min for up to 12 hours. It reports once, then stops.",
+    detail: null,
+    followUp: ["If it turns out badly, I'll investigate straight away."],
+    watchId: SHOWCASE_WATCH_IDS.recurrence,
+  };
+  const alreadyHappened = {
+    type: "watch_result",
+    outcome: "already_true",
+    headline: "That already happened, so there's nothing left to watch.",
+    lifetime: null,
+    detail: null,
+    followUp: [],
+    watchId: null,
+  };
+
+  return {
+    slug: SHOWCASE_CHAT_SLUG,
+    title: "Morning after the deploy",
+    // The freshest chat in the history, so the showcase is the one that opens.
+    minutesAgo: 0,
+    messages: [
+      user("show", `How is prod doing this morning? We shipped ${w.deploymentVersion} last night.`),
+      assistant("show", [
+        text(
+          "Not clean, but not the deploy. Here's the last hour against your 7-day normal — flow, execution and telemetry freshness, with the numbers behind each verdict."
+        ),
+        reportCard(w.degradedReport, reportUri),
+      ]),
+      assistant("show", [
+        text(
+          `The short version: work is arriving faster than the environment's concurrency limit of ${w.envConcurrencyLimit} lets it start, so runs are waiting in front of execution rather than failing inside it.`
+        ),
+      ]),
+
+      user("show", `${w.pending.toLocaleString("en-US")} pending is a lot. Is it still climbing?`),
+      assistant("show", [
+        text(
+          `It was, until about half an hour ago. Arrivals are ${w.triggeredPerMin.toLocaleString(
+            "en-US"
+          )} a minute against the ${w.donePerMin.toLocaleString(
+            "en-US"
+          )} you're completing, so the backlog is still growing — but the gap is narrowing, and \`${w.queue}\` is ${Math.round(
+            w.worstQueueShare * 100
+          )}% of the depth on its own. That's one queue's spike, not the whole environment.`
+        ),
+        renderView([pendingChart]),
+      ]),
+
+      user("show", `Fine. Tell me when \`${w.queue}\` actually clears.`),
+      watchCard(SHOWCASE_WATCH_IDS.drain, drainConfirmation),
+
+      user(
+        "show",
+        `Meanwhile — investigate that error. ${w.failureRatePct}% failures is low but it's all one task.`
+      ),
+      assistant("show", [
+        reasoning(
+          "Four candidates worth separating: the provider's rate limit, a bad payload, the retry schedule, and last night's deploy. Each has a read that can rule it out, so run all four before writing anything down."
+        ),
+        tool(
+          "query_runs",
+          { fingerprint: w.errorFingerprint, period: "1h" },
+          {
+            matches: w.failureCount,
+            tasks: [w.taskId],
+            firstSeen: w.firstFailureClock,
+            lastSeen: w.lastFailureClock,
+          }
+        ),
+        tool(
+          "get_run_details",
+          { runId: w.failedRunId },
+          { status: "COMPLETED_WITH_ERRORS", attempts: 3, spanId: w.failedSpanId }
+        ),
+        renderView([investigationInProgress]),
+      ]),
+      assistant("show", [
+        tool(
+          "get_queue_health",
+          { queue: w.queue, period: "1h" },
+          {
+            limit: w.envConcurrencyLimit,
+            pinnedMinutes: w.pinnedMinutes,
+            pending: w.pending,
+          }
+        ),
+        tool(
+          "read_source",
+          { path: w.sourcePath, sha: w.sourceSha, lines: "14-20" },
+          { excerpt: "retry: { maxAttempts: 3, minTimeoutInMs: 1_000, factor: 1 }" }
+        ),
+        renderView([investigationConcluded]),
+        text(
+          `Two changes fix it and neither is a code bug: spread the retries out, and stop \`${w.queue}\` bursting into the provider.`
+        ),
+      ]),
+
+      user("show", "Watch for a repeat of this."),
+      watchCard(SHOWCASE_WATCH_IDS.recurrence, recurrenceConfirmation),
+
+      user("show", `And tell me when \`${w.priorRunId}\` finishes — did that one ever land?`),
+      watchCard(`run_finished:${w.priorRunId}`, alreadyHappened),
+      assistant("show", [
+        text(
+          `It ended at ${w.firstFailureClock} on its third attempt, with the same 429 — so it's final rather than still going. It'll need re-triggering once the retry change is out.`
+        ),
+        sourceUrl(`${envBase}/runs/${w.priorRunId}`, `Run ${w.priorRunId}`),
+      ]),
+
+      wake(SHOWCASE_WATCH_IDS.drain, "fired", [
+        text(
+          `\`${w.queue}\` is at zero. The backlog cleared 14 minutes ago, after ${w.drainMinutes} minutes of draining, and starts have been keeping up with arrivals since — nothing waiting, nothing throttled.
+
+That's this watch done. The recurrence watch on the 429 is still running.`
+        ),
+        sourceUrl(
+          `${envBase}/dashboards/queues?query=${encodeURIComponent(w.queue)}`,
+          `Queue ${w.queue}`
+        ),
+      ]),
+
+      user("show", "How do I stop this from happening again?"),
+      assistant("show", [
+        tool("search_docs", { query: "retry backoff jitter queue concurrency" }, { hits: 3 }),
+        text(
+          `Two knobs, and the docs for both:
+
+- **Retries.** \`minTimeoutInMs * factor^(attempt - 1)\`, capped at \`maxTimeoutInMs\`. \`randomize: true\` is the part that matters here — without jitter a whole batch retries in lockstep and hits the limit together.
+- **Concurrency.** A per-queue limit is what keeps a draining backlog from arriving at the provider all at once. It's a dashboard setting, so it's the one you can apply before the next deploy.`
+        ),
+        sourceUrl("https://trigger.dev/docs/errors-retrying", "Errors & retrying"),
+        sourceUrl("https://trigger.dev/docs/queue-concurrency", "Concurrency & queues"),
+      ]),
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +865,9 @@ export function buildAgentExampleChats(w: AgentExamplesWorld): SeedChat[] {
     aggregation: "max",
   };
 
-  const chats: SeedChat[] = [];
+  // The showcase first: it's the whole panel in one conversation, and the newest
+  // chat in the list, so it's the one a reviewer opens on.
+  const chats: SeedChat[] = [buildShowcaseChat(w)];
 
   // --- Investigate -------------------------------------------------------
 

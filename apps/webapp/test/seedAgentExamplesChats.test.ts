@@ -1,7 +1,18 @@
+import { viewBlockSchema, watchSpecSchema } from "@internal/dashboard-agent-contracts";
 import { describe, expect, it } from "vitest";
 import { wakeRefFromMessageId } from "~/components/dashboard-agent/WakeBanner";
+import {
+  watchConfirmationBlockBody,
+  watchOneShotBlockBody,
+} from "~/components/dashboard-agent/watch-presentation";
 import { resolveTriggerUri, type TriggerUriScope } from "~/services/resolveTriggerUri.server";
-import { buildAgentExampleChats, type AgentExamplesWorld } from "../seed-agent-examples-chats.mjs";
+import {
+  buildAgentExampleChats,
+  buildShowcaseWatches,
+  SHOWCASE_CHAT_SLUG,
+  showcaseWatchSpecs,
+  type AgentExamplesWorld,
+} from "../seed-agent-examples-chats.mjs";
 
 /**
  * The example transcripts are hand-written JSON that the production renderer has
@@ -89,7 +100,9 @@ describe("agent example transcripts", () => {
   });
 
   it("only uses part shapes the production renderer displays", () => {
-    const rendered = new Set(["text", "reasoning", "source-url"]);
+    // `data-view` is the host's own card channel (the watch blocks): no tool
+    // behind it, so it carries `data.blocks` instead of a tool state.
+    const rendered = new Set(["text", "reasoning", "source-url", "data-view"]);
     for (const { chat, part } of parts()) {
       if (rendered.has(part.type)) continue;
       expect(part.type.startsWith("tool-"), `${chat}: ${part.type}`).toBe(true);
@@ -107,14 +120,14 @@ describe("agent example transcripts", () => {
     for (const { chat, blocks: list } of blocks) {
       expect(Array.isArray(list) && list.length > 0, chat).toBe(true);
       for (const block of list as Array<{ type: string }>) {
-        expect(["diagnosis", "chart", "report"], chat).toContain(block.type);
+        expect(["diagnosis", "chart", "report", "investigation"], chat).toContain(block.type);
       }
     }
   });
 
   it("gives get_report a view model with the generatedAt the card requires", () => {
     const reports = parts().filter(({ part }) => part.type === "tool-get_report");
-    expect(reports.length).toBe(2);
+    expect(reports.length).toBe(3);
     for (const { chat, part } of reports) {
       const vm = (part.output as { vm: { generatedAt?: unknown } }).vm;
       // Without a string `generatedAt` the adapter rejects the block and the card
@@ -179,6 +192,122 @@ describe("agent example transcripts", () => {
       const resolved = resolveTriggerUri(SCOPE, uri);
       expect(resolved, uri).not.toBeNull();
       expect(resolved!.url, uri).toContain(WORLD.projectSlug);
+    }
+  });
+
+  it("validates every showcase card against the emitted-block schema", () => {
+    // The showcase is the one transcript written entirely to today's rules, so it
+    // can be held to the strict schema: envelope required, evidence as canonical
+    // URIs, remediation only on a concluded investigation. The renderer doesn't
+    // parse, so an invalid block would silently render as a broken card.
+    const showcase = chats.find((chat) => chat.slug === SHOWCASE_CHAT_SLUG)!;
+    const blocks = (showcase.messages.flatMap((message) => message.parts) as Part[]).flatMap(
+      (part) => {
+        if (part.type === "tool-render_view") {
+          return (part.output as { blocks: unknown[] }).blocks;
+        }
+        if (part.type === "data-view") return (part.data as { blocks: unknown[] }).blocks;
+        return [];
+      }
+    );
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      const parsed = viewBlockSchema.safeParse(block);
+      expect(
+        parsed.success,
+        `${(block as { type?: string }).type}: ${
+          parsed.success ? "" : JSON.stringify(parsed.error.issues)
+        }`
+      ).toBe(true);
+    }
+  });
+
+  it("collapses the showcase investigation to one card, latest revision winning", () => {
+    // Two revisions of the SAME id: the working copy and the verdict. Different
+    // ids would stack two near-duplicate cards, which is the bug this guards.
+    const showcase = chats.find((chat) => chat.slug === SHOWCASE_CHAT_SLUG)!;
+    const investigations = showcase.messages
+      .flatMap((message) => message.parts as Part[])
+      .filter((part) => part.type === "tool-render_view")
+      .flatMap((part) => (part.output as { blocks: Array<Record<string, unknown>> }).blocks)
+      .filter((block) => block.type === "investigation");
+
+    expect(investigations).toHaveLength(2);
+    expect(new Set(investigations.map((block) => block.id)).size).toBe(1);
+    expect(investigations.map((block) => block.revision)).toEqual([0, 1]);
+    expect(
+      investigations.map((block) => (block.investigation as { outcome: string }).outcome)
+    ).toEqual(["in_progress", "concluded"]);
+
+    // A concluded card has to be grounded: an error citation and a source
+    // citation are what make it more than an assertion.
+    const concluded = investigations[1]!.investigation as {
+      remediation?: string;
+      evidence: Array<{ kind: string }>;
+    };
+    expect(concluded.remediation).toBeTruthy();
+    const kinds = concluded.evidence.map((evidence) => evidence.kind);
+    expect(kinds).toContain("error");
+    expect(kinds).toContain("source");
+  });
+
+  it("keeps the showcase's frozen watch wording in step with the presenter", () => {
+    // A watch block carries final English rather than a key, so the seeded
+    // strings are copies. If the presenter's wording moves, these must move with
+    // it — otherwise the showcase teaches a sentence the product no longer says.
+    const showcase = chats.find((chat) => chat.slug === SHOWCASE_CHAT_SLUG)!;
+    const specs = showcaseWatchSpecs(WORLD);
+    const blocks = showcase.messages
+      .flatMap((message) => message.parts as Part[])
+      .filter((part) => part.type === "data-view")
+      .flatMap((part) => (part.data as { blocks: Array<Record<string, unknown>> }).blocks);
+
+    expect(blocks.map((block) => block.outcome)).toEqual(["watching", "watching", "already_true"]);
+
+    const watchRows = buildShowcaseWatches(WORLD);
+    const expected = [
+      watchConfirmationBlockBody({ spec: specs.drain, watchId: watchRows[0]!.id }),
+      watchConfirmationBlockBody({
+        spec: specs.recurrence,
+        watchId: watchRows[1]!.id,
+        followUp: { investigateOnAttention: true },
+      }),
+      watchOneShotBlockBody({ spec: specs.finishedRun, result: "satisfied" }),
+    ];
+    for (const [index, body] of expected.entries()) {
+      const { id, revision, version, ...seeded } = blocks[index]!;
+      expect(seeded, `block ${index}`).toEqual(body);
+      expect(typeof id === "string" && id.startsWith("watch:"), `block ${index} id`).toBe(true);
+      expect(revision, `block ${index} revision`).toBe(0);
+      expect(version, `block ${index} version`).toBe(1);
+    }
+  });
+
+  it("backs the showcase's wake with a watch row the banner can read", () => {
+    const showcase = chats.find((chat) => chat.slug === SHOWCASE_CHAT_SLUG)!;
+    const rows = buildShowcaseWatches(WORLD);
+    const wakes = showcase.messages
+      .map((message) => wakeRefFromMessageId(message.id))
+      .filter((ref): ref is NonNullable<typeof ref> => ref !== null);
+
+    expect(wakes).toHaveLength(1);
+    const fired = rows.find((row) => row.id === wakes[0]!.watchId);
+    // Without a row the banner falls back to kind-agnostic wording, which is
+    // exactly the tone the showcase exists to demonstrate.
+    expect(fired, "the wake's watch row").toBeDefined();
+    expect(fired!.status).toBe("fired");
+    expect(fired!.resolution).toBe("condition_met");
+    expect(fired!.observedOutcome).not.toBeNull();
+    expect(fired!.deliveryStatus).toBe("delivered");
+
+    // The other row is still running — that's the live chip on the chat header.
+    const active = rows.filter((row) => row.status === "active");
+    expect(active).toHaveLength(1);
+    expect(active[0]!.expiresInMinutes).toBeGreaterThan(0);
+
+    // Every row's spec has to be a real one, or the check would never run.
+    for (const row of rows) {
+      expect(watchSpecSchema.safeParse(row.spec).success, row.id).toBe(true);
     }
   });
 
