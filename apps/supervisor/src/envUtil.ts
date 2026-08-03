@@ -122,6 +122,14 @@ export const Tolerations = z.string().transform((val, ctx) => {
       }
 
       const value = keyValue.slice(eqIdx + 1).trim();
+      if (!value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid toleration format (empty value): "${entry}". Drop the "=" to tolerate any value of "${key}".`,
+        });
+        return z.NEVER;
+      }
+
       if (!isLabelValue(value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
