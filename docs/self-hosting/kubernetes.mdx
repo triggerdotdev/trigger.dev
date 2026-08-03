@@ -35,7 +35,7 @@ flowchart TD
   workers --> reg
 ```
 
-Each component maps to a top-level key in `values.yaml`: `webapp`, `supervisor`, `postgres`, `redis`, `electric`, `clickhouse`, `s3` (object storage), `s2`, and `registry`. The datastores default to `deploy: true` and run in-cluster; set `deploy: false` with an `external` block to bring your own. The registry is the exception - it defaults to `deploy: false`, so you point it at an external one. Webapp and supervisor behaviour is driven by `config` and `extraEnvVars`.
+Each component maps to a top-level key in `values.yaml`: `webapp`, `supervisor`, `postgres`, `redis`, `electric`, `clickhouse`, `s3` (object storage), `s2`, and `registry`. The datastores default to `deploy: true` and run in-cluster; set `deploy: false` with an `external` block to bring your own. The registry is the exception - it defaults to `deploy: false`, so you point it at an external one. Webapp settings live under `webapp`, supervisor settings under `supervisor.config`, and each service takes `extraEnvVars` for anything else.
 
 ## Requirements
 
@@ -135,27 +135,19 @@ Application, control-plane, and bundled-datastore secrets left unset are generat
 
 For production, supply your own Secret instead so credentials live outside the release. With `secrets.existingSecret` set, the chart generates nothing and reads every key from your Secret; a preflight check fails the install - before touching a running release - and lists any keys it can't find.
 
+To pin values inline instead of letting the chart generate them - for example to share `MANAGED_WORKER_SECRET` with an external supervisor - set them under `secrets`:
+
 ```yaml
-# Leave these unset to have the chart auto-generate strong values on first
-# install (retained across upgrades). Set them explicitly only if you need to
-# control the value - e.g. sharing MANAGED_WORKER_SECRET with an external
-# supervisor - or use an existingSecret.
 secrets:
   enabled: true
   sessionSecret: "your-32-char-hex-secret-1"
   magicLinkSecret: "your-32-char-hex-secret-2"
   # ...
+```
 
-# Recommended: existingSecret, must contain at least the following keys:
-# - SESSION_SECRET
-# - MAGIC_LINK_SECRET
-# - ENCRYPTION_KEY
-# - PROVIDER_SECRET
-# - COORDINATOR_SECRET
-# - MANAGED_WORKER_SECRET
-# Plus s3-auth-access-key-id and s3-auth-secret-access-key if you deploy the
-# bundled MinIO with s3.auth.existingSecret cleared. The chart lists any keys
-# it can't find and fails the install before touching a running release.
+To use an existing Secret instead, leave the values unset and set `existingSecret`. It must contain at least `SESSION_SECRET`, `MAGIC_LINK_SECRET`, `ENCRYPTION_KEY`, `PROVIDER_SECRET`, `COORDINATOR_SECRET`, and `MANAGED_WORKER_SECRET` - plus `s3-auth-access-key-id` and `s3-auth-secret-access-key` if you deploy the bundled MinIO with `s3.auth.existingSecret` cleared:
+
+```yaml
 secrets:
   enabled: false
   existingSecret: "your-existing-secret"
@@ -186,7 +178,7 @@ Most values map directly to the environment variables documented in the [webapp]
 APP_ORIGIN=https://trigger.example.com
 
 # Becomes Helm value
-config:
+webapp:
   appOrigin: "https://trigger.example.com"
 ```
 
@@ -205,14 +197,11 @@ helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
 Create a `values-custom.yaml` that overrides the defaults with your URLs and resource requests:
 
 ```yaml
-# Application URLs
-config:
+# Application URLs and resource limits
+webapp:
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com"
   apiOrigin: "https://trigger.example.com"
-
-# Resource limits
-webapp:
   resources:
     requests:
       cpu: 1000m
@@ -318,7 +307,7 @@ redis:
 
 #### ClickHouse
 
-Migration from the old Bitnami subchart to the official `clickhouse/clickhouse-server` image is automatic - a normal upgrade moves you across with no manual step.
+Migration from the old Bitnami subchart to the official `clickhouse/clickhouse-server` image is automatic - a normal upgrade moves you across with no manual step. The one exception: if you pinned `clickhouse.image` to a Bitnami tag, switch it to an official `clickhouse/clickhouse-server` tag first, since Bitnami tags don't exist in the official repository.
 
 <Note>
   Trigger.dev requires ClickHouse 25.8 or newer. The bundled ClickHouse is single-node — run
@@ -438,8 +427,7 @@ registry:
   # Part of deployment image ref, for example: your-registry.example.com/your-company/proj_123:20250625.1.prod
   repositoryNamespace: "your-company"
   external:
-    host: "your-registry.example.com"
-    port: 5000
+    host: "your-registry.example.com:5000"
     auth:
       enabled: true
       username: "your-username"
@@ -447,7 +435,7 @@ registry:
 ```
 
 <Note>
-  The internal registry (`registry.external: false`) is experimental and requires proper TLS setup
+  The internal registry (`registry.deploy: true`) is experimental and requires proper TLS setup
   and additional cluster configuration. Use an external registry for production.
 </Note>
 
@@ -577,7 +565,6 @@ With external datastores, secrets, registry, and authentication in place, you ha
 
     - Point `clickhouse.persistence.existingClaim` at your ClickHouse data volume (`data-<release>-clickhouse-shard0-0`) and keep it set on future syncs, so ClickHouse reuses its data instead of starting on an empty volume.
     - Confirm `PROVIDER_SECRET` and `COORDINATOR_SECRET` are already in your Secret before syncing.
-    - If you pinned `clickhouse.image` to a Bitnami tag, switch it to an official `clickhouse/clickhouse-server` tag.
   </Accordion>
 </AccordionGroup>
 
