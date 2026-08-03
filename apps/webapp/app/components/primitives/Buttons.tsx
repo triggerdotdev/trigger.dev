@@ -118,8 +118,10 @@ const theme = {
   // softened trigger-green border.
   "ask-ai": {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
+    // The trigger-green border reads on dark but washes out on white, so the
+    // light theme darkens it (the unified success token clears 3:1 on white).
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 light:border-success/60 light:group-hover/button:border-success/80 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
