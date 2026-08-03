@@ -149,10 +149,24 @@ jobs:
       # Guarded rather than allowed to fail: this job must never block a pull request. The failure
       # is not swallowed either, the render step below turns a missing head report into a comment
       # saying so, because a swallowed failure with no comment is the outcome nobody wants.
+      #
+      # `--out` rather than a stdout redirect, so nothing a tool decides to print can end up inside
+      # the document `prCommentCli` parses. `pnpm --filter` takes its recursive path and some
+      # versions announce `Scope: N of M workspace projects` on the way; that line landing in
+      # head.json would fail the parse and degrade every run to the stale-report comment, which is
+      # a permanent quiet failure rather than a loud one. It does not reproduce on the 10.33.2
+      # pinned above, so this closes the class rather than a reproduction: the file is written by
+      # the process that owns it and stdout is left to be log output. Held by
+      # `it("let the scanner write its own report rather than capturing stdout")` in
+      # `internal-packages/observability-map/src/integration.test.ts`.
+      #
+      # `-s` keeps the partial dance honest now the redirect no longer creates the file: a scanner
+      # that exits 0 without writing takes the else branch and the stale-report comment, instead of
+      # failing the `mv` and turning the job red.
       - name: 🔎 Scan head
         run: |
-          if pnpm --filter @internal/observability-map exec tsx src/cli.ts --json --no-write \
-            > /tmp/head.json.partial; then
+          if pnpm --filter @internal/observability-map exec tsx src/cli.ts \
+            --out=/tmp/head.json.partial && [ -s /tmp/head.json.partial ]; then
             mv /tmp/head.json.partial /tmp/head.json
           else
             rm -f /tmp/head.json /tmp/head.json.partial
@@ -168,8 +182,9 @@ jobs:
       - name: 🔎 Scan base with the head's scanner
         run: |
           if git worktree add /tmp/base-tree ${{ github.event.pull_request.base.sha }} \
-            && pnpm --filter @internal/observability-map exec tsx src/cli.ts --json --no-write \
-              --routes=/tmp/base-tree/apps/webapp/app/routes > /tmp/base.json; then
+            && pnpm --filter @internal/observability-map exec tsx src/cli.ts \
+              --routes=/tmp/base-tree/apps/webapp/app/routes --out=/tmp/base.json \
+            && [ -s /tmp/base.json ]; then
             :
           else
             echo "-" > /tmp/base.json || true

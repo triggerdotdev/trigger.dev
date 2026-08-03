@@ -118,6 +118,40 @@ describe("the report workflow's two readers of the comment lookup", () => {
 });
 
 /**
+ * Both scan steps used to capture the scanner's stdout with a shell redirect, into files the
+ * renderer then `JSON.parse`s. Anything else reaching stdout therefore corrupted the report:
+ * `pnpm --filter` takes its recursive path, and some versions of pnpm announce
+ * `Scope: N of M workspace projects` on it. A single line of that in head.json fails the parse,
+ * and the workflow degrades to the stale-report comment on every run, quietly and permanently.
+ *
+ * It does not reproduce on the 10.33.2 the workflow pins, which was checked. What is asserted here
+ * is the shape that cannot have the bug at all rather than the version that happens not to: the
+ * scanner writes its own file through `--out`, so stdout carries log output and nothing else.
+ * The same is not yet true of the render step, which has no `--out` to reach for; a banner there
+ * puts a stray line in a markdown comment instead of breaking a parse, so it is left alone.
+ */
+describe("the report workflow's two scan steps", () => {
+  const WORKFLOW = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
+
+  it("let the scanner write its own report rather than capturing stdout", () => {
+    const scans = readFileSync(WORKFLOW, "utf8")
+      .split(/^ {6}- name: /m)
+      .slice(1)
+      .filter((step) => step.startsWith("🔎 Scan"));
+    expect(scans).toHaveLength(2);
+
+    for (const step of scans) {
+      // The `if ...; then` condition only, which is where the scanner runs. The else branch writes
+      // `echo "-" > /tmp/base.json`, a redirect of the workflow's own making that has nothing to
+      // do with capturing the scanner, and an earlier version of this test failed on it.
+      const command = step.split("; then")[0]!;
+      expect(command).toMatch(/--out=\S+\.json/);
+      expect(command).not.toMatch(/>\s*\S*\.json/);
+    }
+  });
+});
+
+/**
  * The gating half of the same problem. A test job that nothing waits for is decoration, and the
  * first attempt at this was exactly that: a job inside `observability-map.yml`, which reads well
  * and gates nothing, because `pr_checks.yml`'s `all-checks` aggregate needs an explicit list of
