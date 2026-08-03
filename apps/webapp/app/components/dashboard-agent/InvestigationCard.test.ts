@@ -43,6 +43,13 @@ describe("InvestigationCard purity", () => {
     expect(source).toMatch(/ChatActionsRow/);
   });
 
+  it("renders no spinner — the transcript owns the one live progress element", () => {
+    // The card is re-emitted as the investigation progresses, so a spinner inside
+    // it restarts its animation on every revision. The transcript's single
+    // progress line wears the card's `progress` phrase instead (progress-line.ts).
+    expect(source).not.toMatch(/AgentSpinner|ChatProgress|ChatPendingTool/);
+  });
+
   it("renders nothing action-shaped without a host to hand intents to", () => {
     expect(source).toMatch(/if \(!onIntent \|\| actions\.length === 0\) return null;/);
   });

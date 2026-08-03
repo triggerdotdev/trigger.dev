@@ -308,12 +308,12 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "messages-reasoning", title: "Reasoning part", group: "messages" },
   {
     sectionId: "messages-tool-in-flight",
-    title: "Tool call in flight — pending pill",
+    title: "Tool call in flight — the turn's one progress line",
     group: "messages",
   },
   {
     sectionId: "messages-tool-pending-pills",
-    title: "Pending pills — the labels, including a card tool",
+    title: "Progress labels — one per tool, including a card tool",
     group: "messages",
   },
   {
@@ -329,6 +329,11 @@ export const MANIFEST: GallerySection[] = [
   {
     sectionId: "messages-render-view",
     title: "render_view part — blocks as cards",
+    group: "messages",
+  },
+  {
+    sectionId: "messages-investigation-live",
+    title: "Live investigation — the card, and the turn's one progress line under it",
     group: "messages",
   },
   { sectionId: "messages-docs-sources", title: "Answer with source links", group: "messages" },

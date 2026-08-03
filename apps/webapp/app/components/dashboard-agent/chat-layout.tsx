@@ -21,8 +21,8 @@
  *   - `ChatCardSlot`    — a full-width block that owns its own internals: a rich
  *                         card (diagnosis, investigation, report, chart), a
  *                         callout, a chip row
- *   - `ChatProgress`    — a spinner and one line of progress
- *   - `ChatPendingTool` — a tool call still in flight: a bare spinner line
+ *   - `ChatProgress`    — the live progress line: a spinner and one line of text.
+ *                         The transcript mounts exactly one, for the whole turn
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
  *   - `ChatStatusLine`  — an icon and one line of status
@@ -44,7 +44,14 @@
  *    rhythm — is the card's business and must stay in the card. Anything about
  *    how the card sits in the transcript — full width, inset, distance to its
  *    neighbours — is `ChatCardSlot`'s, and a card must not set it.
- * 4. **Role drives alignment and nothing else.** `role="user"` is right-aligned
+ * 4. **One live progress element per turn.** `ChatProgress` is the only thing in
+ *    the transcript that renders `AgentSpinner`, and the transcript mounts one of
+ *    them at a fixed position for the whole in-flight period — only its label
+ *    changes as the turn moves from tool to tool, or into a live card (see
+ *    `progress-line.ts`). Nothing else — no card, no tool part — may render a
+ *    spinner of its own: the spinner is an animated canvas, so a second one is
+ *    both a second focal point and an animation that restarts on every remount.
+ * 5. **Role drives alignment and nothing else.** `role="user"` is right-aligned
  *    in a grey bubble; `role="assistant"` is left-aligned, full width and
  *    unboxed — plain prose, so the cards are the only things that read as cards.
  */
@@ -64,8 +71,6 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 /** Gap inside a single-line row (icon to text, button to button). */
 const ROW_GAP = "gap-2";
-/** Gap inside a chip (icon to label). Tighter than a row. */
-const CHIP_GAP = "gap-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
@@ -199,7 +204,12 @@ export function ChatCardSlot({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The progress line: a spinner and one line of dimmed text, left-aligned.
+ * The live progress line: a spinner and one line of dimmed text, left-aligned.
+ *
+ * The transcript's ONE indicator that the agent is working, and the only place
+ * `AgentSpinner` appears in it. Whatever the turn is doing — waiting on a tool,
+ * streaming, running an investigation — it is this line, relabelled; the host keeps
+ * the element mounted and swaps `children` (see `progress-line.ts`).
  *
  * It always carries the transcript's inset — either from the turn it sits in, or
  * by applying it itself when it is mounted loose (under a card, say). There is no
@@ -218,30 +228,6 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
         <AgentSpinner size={12} />
       </span>
       {children}
-    </div>
-  );
-}
-
-/**
- * A tool call still in flight: a spinner and one short phrase
- * saying what the agent is doing.
- *
- * It replaces the tool row for the whole in-flight phase, so the transcript never
- * shows a half-streamed blob of input JSON that then flips to a card. The pill is
- * deliberately the smallest thing that fits the transcript's chip language — when
- * the call lands, whatever the result renders as takes its place, and the jump is
- * one line high.
- */
-export function ChatPendingTool({ label }: { label: string }) {
-  const insetClass = useInsetClass();
-  // A bare progress line, not a pill: bordered chips read as artifacts that
-  // stay, while in-flight work is transient — the same register as ChatProgress.
-  return (
-    <div className={cn(insetClass, "flex min-w-0 items-center text-xs text-text-dimmed", CHIP_GAP)}>
-      <span className="shrink-0">
-        <AgentSpinner size={12} />
-      </span>
-      <span className="truncate">{label}</span>
     </div>
   );
 }

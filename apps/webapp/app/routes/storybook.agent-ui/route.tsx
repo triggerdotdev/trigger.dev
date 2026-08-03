@@ -23,12 +23,14 @@ import {
   DemoReportCard,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
+import { ChatProgress, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
 import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
 import { DashboardAgentHero } from "~/components/dashboard-agent/DashboardAgentHero";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
+import { liveProgress } from "~/components/dashboard-agent/progress-line";
 import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCard";
 import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
@@ -287,13 +289,16 @@ function MessageHarness({
 }
 
 /**
- * Every pending pill next to each other, one turn per in-flight tool.
+ * Every progress label next to each other, one line per in-flight tool.
  *
- * A real turn only ever has one call in flight, so this is a label sheet rather
- * than a transcript: the phrasing has to hold up read as a set, and the two tools
- * that used to stream the most input JSON before flipping to a card (`render_view`,
- * `get_report`) have to look like every other wait. The last one is a tool the
- * label map doesn't know, showing the `Running <name>` fallback.
+ * A real turn shows exactly ONE progress line, relabelled as it goes, so this is a
+ * label sheet rather than a transcript: the phrasing has to hold up read as a set,
+ * and the two tools that used to stream the most input JSON before flipping to a
+ * card (`render_view`, `get_report`) have to look like every other wait. The last
+ * one is a tool the label map doesn't know, showing the `Running <name>` fallback.
+ *
+ * The labels come from `liveProgress` — the same decision the panel makes — fed a
+ * one-part transcript per tool, so the sheet can't drift from what ships.
  */
 const PENDING_PILL_TOOLS: { tool: string; input: unknown }[] = [
   { tool: "render_view", input: { blocks: [{ type: "diagnosis" }] } },
@@ -305,14 +310,26 @@ const PENDING_PILL_TOOLS: { tool: string; input: unknown }[] = [
 ];
 
 function PendingPillsHarness() {
-  const messages: UIMessage[] = PENDING_PILL_TOOLS.map(({ tool, input }) =>
-    demoFixtures.assistantMessage(`pending-${tool}`, [
-      demoFixtures.pendingToolPart(tool, input, `pending-${tool}`),
-    ])
-  );
+  const lines = PENDING_PILL_TOOLS.map(({ tool, input }) => ({
+    tool,
+    progress: liveProgress(
+      [
+        demoFixtures.assistantMessage(`pending-${tool}`, [
+          demoFixtures.pendingToolPart(tool, input, `pending-${tool}`),
+        ]),
+      ],
+      "working"
+    ),
+  }));
   return (
     <div className={PANEL_FRAME}>
-      <DashboardAgentMessages messages={messages} activity={null} />
+      <ChatTranscript>
+        {lines.map(({ tool, progress }) => (
+          <ChatTurn key={tool}>
+            <ChatProgress>{progress?.label}</ChatProgress>
+          </ChatTurn>
+        ))}
+      </ChatTranscript>
     </div>
   );
 }
@@ -588,6 +605,35 @@ function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   return { label: uri.split("/").slice(-1)[0]!, url: "#resolved-by-the-host" };
 }
 
+/**
+ * A live investigation through the production renderer.
+ *
+ * The state that proves the unified progress element: the card carries no spinner
+ * of its own, and the turn's ONE progress line sits at the bottom of the transcript
+ * wearing the card's phrase. It is the same element that showed "Rendering a card…"
+ * a moment earlier, which is why the spinner never restarts.
+ */
+function LiveInvestigationHarness() {
+  const messages: UIMessage[] = [
+    demoFixtures.userMessage("live-inv-q", "Why did this run fail?"),
+    demoFixtures.assistantMessage("live-inv", [
+      demoFixtures.renderViewPart(
+        [investigationBlock(demoInvestigations.streamingRev1)],
+        "render-live-investigation"
+      ),
+    ]),
+  ];
+  return (
+    <div className={PANEL_FRAME}>
+      <DashboardAgentMessages
+        messages={messages}
+        activity="working"
+        resolveUri={fixtureResolveUri}
+      />
+    </div>
+  );
+}
+
 const STATES: Record<string, React.ReactNode> = {
   // --- Diagnosis card -----------------------------------------------------
   "diagnosis-full-high": <RunDiagnosisCard block={fullDiagnosis} />,
@@ -621,6 +667,9 @@ const STATES: Record<string, React.ReactNode> = {
   ),
 
   // --- Investigation card, the shipped one ---------------------------------
+  // The card only, so the unfinished states show no progress line here: progress
+  // belongs to the transcript, which mounts one line for the whole turn — see
+  // `messages-investigation-live` for the card as the panel shows it.
   "investigation-card-in-progress-early": (
     <InvestigationCard block={investigationBlock(demoInvestigations.early)} />
   ),
@@ -792,6 +841,7 @@ const STATES: Record<string, React.ReactNode> = {
   // Two turns only: the resumed chat's third turn is a live `chart` block, and
   // the real AgentChart has no environment to query outside a project route.
   "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
+  "messages-investigation-live": <LiveInvestigationHarness />,
   "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
 
   // --- Context banner (variants live here, not in demo chats) --------------
