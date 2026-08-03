@@ -666,7 +666,10 @@ export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "rest
       {...props}
       mode={mode}
       palette={light ? "monoLight" : "mono"}
-      restColor={light ? DOT_MATRIX_PALETTES.monoLight.glow : DOT_MATRIX_PALETTES.mono.glow}
+      // Rest ink is one step off the surface's extreme (charcoal-100 on dark,
+      // charcoal-800 on light) — pure white/black is reserved for the animated
+      // peak, so a resting logo is calm and a thinking one visibly glows.
+      restColor={light ? "#1a1b1f" : "#d7d9dd"}
     />
   );
 }
