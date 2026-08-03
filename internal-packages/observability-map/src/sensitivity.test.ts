@@ -173,11 +173,9 @@ describe("what sensitivity must not mean", () => {
   });
 });
 
-// C2. The classifier covered tokens, billing, impersonation and envvars and missed the entire
-// surface where authorization bugs live, so `auth-boundary` and `audit-trail` never looked at
-// membership, the login surface, API keys or the two billing settings the bare `billing` segment
-// does not match. The vocabulary below is read off `apps/webapp/app/routes`;
-// `test/webappSymbols.test.ts` is what holds it to that.
+// The classifier once covered tokens, billing, impersonation and envvars and missed the entire
+// surface where authorization bugs live. The vocabulary is read off `apps/webapp/app/routes`, and
+// `webappSymbols.test.ts` holds it to that.
 describe("classifySensitivity: the access-control surface", () => {
   const flags = (fileName: string) =>
     classifySensitivity(ep(fileName, `export async function loader() { return 1; }`)).sensitive;

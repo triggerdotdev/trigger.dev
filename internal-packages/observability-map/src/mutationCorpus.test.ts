@@ -7,80 +7,42 @@ import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
 import { CHECKS } from "./checks/index.js";
 
 /**
- * The tree-scale mutation corpus.
+ * The tree-scale mutation corpus. Every laundering shape anyone has found is an entry, each rewrites
+ * the whole real route tree in a temp copy, and each is held to four assertions: the published global
+ * does not rise, the mean over the routes measured in both runs does not rise, no individual route
+ * rises or drops out of the measured set, and the mirror of that, no individual route falls.
  *
- * The tool's central claim is that no semantics-preserving edit to a route raises its score. Three
- * rounds argued that claim shape by shape and lost each time. This file turns it into evidence
- * instead: every laundering shape anyone has found is a corpus entry, and each entry rewrites the
- * whole real route tree in a temp copy and is held to three assertions.
- *
- * - the published global does not rise. That is the figure the claim is about.
- * - the mean over the routes measured in BOTH runs does not rise. Same comparison at full
- *   precision, with the population held fixed so it measures scores rather than denominators.
- * - for a semantics-preserving rewrite, no individual route's score rises and no measured route
- *   drops out of the measured set. The tree mean can hide a route going up by taking another down;
- *   `[0].map(...)` is exactly that shape.
- * - the mirror of that, for a semantics-preserving rewrite: no individual route's score FALLS on
- *   the routes measured in both runs. A fall is a false accusation, which is the direction that
- *   gets the tool switched off, and it went unasserted for three rounds while 19 entries regressed
- *   104 routes (see `fallsIn`). Exactly two entries carry a permanent `lowers` exemption, with the
- *   reason on the entry and the residual shape asserted instead of waived.
- *
- * Tree scale, not per-fixture, because that is where laundering pays. A shape that moves one
- * hand-written fixture by 50 points may move the tree by nothing; a shape that moves the tree is the
- * one worth defending.
- *
- * The honest statement this file supports is "these N mutations are defended, and here they are",
- * never "unpaddable".
- *
- * Runtime is roughly six seconds per entry, which is why the whole file is gated behind
- * `OBS_MAP_MUTATION_CORPUS=1`. The `observability-map` workflow sets it, so the gate keeps the
- * default suite fast without making this the thing nobody runs.
+ * Tree scale rather than per fixture, because that is where laundering pays. The honest statement this
+ * file supports is "these N mutations are defended, and here they are", never "unpaddable". Roughly
+ * six seconds an entry, which is why the file is gated behind `OBS_MAP_MUTATION_CORPUS=1`.
  */
 
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
 
 /**
- * Where a corpus entry goes when the tool does not defend it. `it.fails` keeps the entry running,
- * so closing the hole later turns this file red until the entry is moved back out deliberately.
- *
- * `dead-classifying-try-with-call` is the shape `dead-classifying-try` only looked like it closed.
- * `canRaise` accepts any call at all, so `try { String(0); }` reads as a clause guarding real work
- * and takes the tree from 19 to 44, raising 224 routes, exactly as `try { 0; }` did before it was
- * refused. Telling an inert call from one that can throw needs types the scanner does not have.
- * The docstrings in `scan.ts`, `types.ts` and `errorClassification.ts` say the rule refuses
- * `try { 0; }` and is defeated by one call, rather than claiming the family is closed.
- *
- * `dead-branch-after-if-true` used to be listed here on a measurement that was wrong. See the round
- * A fix 3 report; the short version is that the rejected alternative was implemented with the exit
- * flag raised before each statement's own branch check, which makes every deciding statement refuse
- * itself. Raising it after is byte-identical on the real tree and closes the shape, so the entry is
- * defended now and the `if (true)` family needed no condition folding after all.
- *
- * `dead-conjunction-instanceof-if` is the sibling of `dead-armed-instanceof-if` that the arm-liveness
- * fix does not close. `selectsADistinctPath` now folds a dead ARM; a dead CONDITION still reaches
- * the grant, and `e instanceof Error && false` is exactly that, a guard that references the caught
- * binding and can never be true. No fold in `scan.ts` can see it, because `literalTruth` treats
- * `&&` and `||` as always null on purpose so that a live guard can never be read as dead. Widening
- * that fold is a different rule from the one this round fixed and needs its own measurement, so the
- * shape is recorded and running rather than left for the next person to rediscover.
+ * Where a corpus entry goes when the tool does not defend it. `it.fails` keeps the entry running, so
+ * closing the hole later turns this file red until the entry is moved back out deliberately. Both
+ * gaps are described at length in README, "The mutation harness".
  */
 const KNOWN_GAPS = new Set<string>([
+  // `canRaise` accepts any call at all, so `try { String(0); }` reads as a clause guarding real work
+  // and takes the tree from 19 to 44, exactly as `try { 0; }` did before it was refused. Telling an
+  // inert call from one that can throw needs types the scanner does not have.
   "dead-classifying-try-with-call",
+  // `selectsADistinctPath` folds a dead ARM but not a dead CONDITION, and `literalTruth` treats `&&`
+  // as always null on purpose so a live guard can never be read as dead. Widening that fold is a
+  // different rule and needs its own measurement.
   "dead-conjunction-instanceof-if",
 ]);
 
 type SourceFile = { relativeName: string; source: string };
 
 /**
- * Route modules exactly as `scanDirectory` enumerates them, because it is the same enumeration and
- * no longer a copy of it. `isScannableFile` had already replaced the file half of the copy; the
- * directory half survived, so "one `route.ts(x)` per immediate subdirectory" was still written
- * twice. A harness that reads a different tree from the scanner reports files and sites the scan
- * never saw, and those counts are what the thresholds below rest on.
- *
- * Read once; every mutation rewrites this list rather than the tree on disk.
+ * Route modules exactly as `scanDirectory` enumerates them, because it is the same enumeration and no
+ * longer a copy of it: a harness reading a different tree reports files and sites the scan never saw,
+ * and those counts are what the thresholds below rest on. Read once; every mutation rewrites this list
+ * rather than the tree on disk.
  */
 function readTree(dir: string): SourceFile[] {
   return routeModuleFiles(dir).map((file) => ({
@@ -104,15 +66,14 @@ function materialize(files: SourceFile[]): string {
 
 type Measurement = {
   global: number | null;
-  /** The unrounded mean the global is a rounding of. A rise of less than half a point is invisible
-   * in `global` and is still a rise, so the assertions read this. */
+  /** The unrounded mean `global` rounds. A rise of less than half a point is invisible in `global`
+   * and is still a rise. */
   exactMean: number;
   measured: number;
   entryPoints: number;
   parseFailures: number;
   /** Per route file, so a mutation that raises one route while lowering the tree is still caught.
-   * `[0].map(...)` is exactly that shape: it deletes a route's catches, which takes a failing route
-   * to 100 and a passing one to nothing, and the two cancel in the global. */
+   * `[0].map(...)` is that shape, and the two movements cancel in the global. */
   perEntry: Map<string, { score: number; measured: boolean; checks: string }>;
 };
 
@@ -146,13 +107,9 @@ function measure(files: SourceFile[]): Measurement {
 type Rise = { fileName: string; from: number; to: number; before: string; after: string };
 
 /**
- * Route files the mutation made look better, worst first. Two ways to qualify, both counted: the
- * score went up, or a route that was being measured stopped being measured. The second is a rise
- * too. An unmeasured route's score is the vacuous 100 and it leaves every mean, so dropping out of
- * the measured set is the most complete form of the thing the property forbids.
- *
- * A route the mutation removed from the report entirely is not counted here; the entry-point guard
- * catches that instead.
+ * Route files the mutation made look better, worst first. Two ways to qualify: the score went up, or a
+ * measured route stopped being measured, which is the most complete form of the thing the property
+ * forbids. A route removed from the report entirely is the entry-point guard's business instead.
  */
 function risesIn(baseline: Measurement, after: Measurement): Rise[] {
   const rises: Rise[] = [];
@@ -175,17 +132,13 @@ function risesIn(baseline: Measurement, after: Measurement): Rise[] {
 type Fall = { fileName: string; from: number; to: number; before: string; after: string };
 
 /**
- * The mirror of `risesIn`: route files the mutation made look WORSE, worst first. A preserving
- * edit lowering a route's score is a false accusation, the direction that gets the tool switched
- * off, and for three rounds it was structurally invisible here because only rises were asserted.
- * 19 of 43 preserving entries were regressing 104 routes when it was first measured.
+ * The mirror of `risesIn`: route files the mutation made look WORSE. A preserving edit lowering a
+ * score is a false accusation, and for three rounds it was structurally invisible here, with 19 of 43
+ * preserving entries regressing 104 routes when it was first measured.
  *
- * Only routes measured in BOTH runs are compared. A route ENTERING the measured set is not a fall:
- * unmeasured routes score the vacuous 100, so a mutation that brings one in at 50 registers a
- * 100 -> 50 "fall" that is nothing of the kind. A route LEAVING the measured set is already
- * counted by `risesIn`, not double-counted here. `compared` is the size of the both-measured
- * population, asserted against `baseline.measured` in every preserving entry so a silently
- * shrunken comparison cannot pass.
+ * Only routes measured in BOTH runs are compared: one ENTERING the measured set would register a
+ * 100 to 50 fall that is nothing of the kind, and one LEAVING it is already `risesIn`'s business.
+ * `compared` is asserted against `baseline.measured` so a silently shrunken comparison cannot pass.
  */
 function fallsIn(baseline: Measurement, after: Measurement): { falls: Fall[]; compared: number } {
   const falls: Fall[] = [];
@@ -212,10 +165,8 @@ function checkStatuses(checks: string): Map<string, string> {
 }
 
 /** Mean score over the routes measured in BOTH runs. The plain mean moves when the measured
- * population moves, which a mutation can do without making any route look better: an inert
- * try/catch takes 15 trivial routes off the exemption list and into the report, and a route joining
- * at 50 raises a tree averaging 15 while itself having gone from an unmeasured 100 to a measured 50.
- * Holding the population fixed is what makes the comparison about the scores. */
+ * population moves, which a mutation can do without making any route look better, so holding the
+ * population fixed is what makes the comparison about the scores. */
 function commonMean(baseline: Measurement, after: Measurement): { before: number; after: number } {
   let sumBefore = 0;
   let sumAfter = 0;
@@ -247,17 +198,10 @@ function mutate(
 }
 
 /**
- * Deliberately NOT gated behind `OBS_MAP_MUTATION_CORPUS`, unlike everything below it.
- *
- * This is the guard for the way the corpus actually failed. `auth-scope` was added a round after
- * `suppress-every-check` was written and never added to its directive list, so the "a suppression
- * cannot raise a score" invariant went untested at tree scale for the 19 routes that check applies
- * to, while the entry's own description said "every check". Nothing noticed, because the entry
- * still passed: omitting a check from the sweep leaves its failures in place, which lowers the
- * score rather than raising it, so the corpus cannot catch its own omission by failing.
- *
- * A registry assertion can, and it belongs in the default suite so that adding a check without
- * extending the corpus turns `pnpm test` red rather than a job nobody runs locally.
+ * Deliberately NOT gated behind `OBS_MAP_MUTATION_CORPUS`, unlike everything below it: the corpus
+ * cannot catch its own omission by failing, since omitting a check from the sweep lowers the score
+ * rather than raising it. Belongs in the default suite so adding a check without extending the corpus
+ * turns `pnpm test` red rather than a job nobody runs locally. See README, "The mutation harness".
  */
 describe("the corpus keeps up with the check registry", () => {
   it("suppresses every registered check in the exhaustive sweep", () => {
@@ -269,12 +213,10 @@ describe("the corpus keeps up with the check registry", () => {
     expect(missing).toEqual([]);
   });
 
-  // Ungated for the same reason as the sweep assertion above: it reads no route tree and costs
-  // nothing, so gating it would only hide a stale list from the run people actually do.
+  // Ungated for the same reason as the sweep assertion above: it reads no route tree, so gating it
+  // would only hide a stale list from the run people actually do. Every corpus entry once removed or
+  // restructured real signal and none added fake signal, which is where the two largest holes lived.
   it("covers the additive direction, not only the subtractive one", () => {
-    // Every corpus entry once removed or restructured real signal, and none added fake signal. The
-    // two largest holes ever found here lived in that blind spot, so the class is asserted rather
-    // than left to whoever edits the list next.
     const ids = new Set(MUTATIONS.map((m) => m.id));
     expect(ADDITIVE_IDS.filter((id) => !ids.has(id))).toEqual([]);
     expect(ADDITIVE_IDS.length).toBeGreaterThanOrEqual(8);
@@ -282,16 +224,15 @@ describe("the corpus keeps up with the check registry", () => {
 });
 
 /**
- * Ungated, because a `preserving` entry that changes behaviour is a false negative in the property
- * the whole file exists to argue, and the shape is cheaper to state on a two-line fixture than to
- * wait for a route to grow it.
+ * Ungated, because a `preserving` entry that changes behaviour is a false negative in the property the
+ * whole file exists to argue.
  */
 describe("a preserving mutation preserves what the route does", () => {
   it("leaves a directive prologue alone when merging comma expressions", () => {
     const merge = MUTATIONS.find((m) => m.id === "merge-comma-expressions")!;
     const result = merge.apply("api.v1.a.tsx", '"use client";\nfoo();\nbar();\n');
-    // The first two assertions carry the test. Without them `?? ""` let it pass when the mutation
-    // did not apply at all, and it would still have passed had the mutation deleted the directive.
+    // The first two assertions carry the test: without them it passed when the mutation did not apply
+    // at all, and would have passed had the mutation deleted the directive.
     expect(result).toBeDefined();
     expect(result?.source).toContain('"use client";');
     expect(result?.source).not.toContain('"use client",');
@@ -302,10 +243,9 @@ describe("a preserving mutation preserves what the route does", () => {
 const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
 
 /**
- * Each entry rescans the whole tree, so the suite's default per-test timeout is far too short. Set
- * here rather than left to a `--testTimeout` flag: the flag only helps someone who already knows to
- * pass it, and without it the corpus fails as a timeout, which reads as a broken harness rather
- * than a slow one.
+ * Each entry rescans the whole tree. Set here rather than left to a `--testTimeout` flag, which only
+ * helps someone who already knows to pass it, and without which the corpus fails as a timeout and
+ * reads as a broken harness rather than a slow one.
  */
 const ENTRY_TIMEOUT_MS = 120_000;
 
@@ -314,29 +254,16 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
   let baseline: Measurement | null = null;
 
   // In a hook rather than the suite body, which Vitest runs during collection where no test timeout
-  // applies and a throw has no test name to attach to. The baseline is the single most expensive
-  // step in the file, so it is the one that must be inside something that can be timed out and
-  // reported. `beforeAll` takes its own timeout.
+  // applies and a throw has no test name to attach to. The baseline is the most expensive step here.
   beforeAll(() => {
     files = readTree(ROUTES);
     baseline = measure(files);
   }, ENTRY_TIMEOUT_MS);
 
   /**
-   * The corpus's own population, against the scanner's.
-   *
-   * The whole-body entries wrap what `entryBodies` finds, and that helper read two of the four
-   * export forms `scan.ts` reads. It missed `export const { action, loader } = builder(...)`,
-   * `const { action } = builder(...); export { action };` and `export const action = route.action`,
-   * which is 36 of the tree's entry points: the corpus was testing less than its entry count
-   * implied, and no assertion could notice, because a mutation that reaches fewer routes lowers the
-   * score rather than raising it. Same failure mode as the `suppress-every-check` omission above,
-   * so the answer is the same: assert the population rather than wait for a verdict to move.
-   *
-   * `admin.tsx` is the one documented exclusion. Its handler is a concise arrow
-   * (`async ({ user }) => typedjson({ user })`) with no block for a block wrapper to wrap, which is
-   * a limit of the rewrite rather than a gap in the enumeration. It is named rather than counted so
-   * a second one cannot appear silently.
+   * The one documented exclusion from the population assertion below. `admin.tsx`'s handler is a
+   * concise arrow with no block for a block wrapper to wrap, which is a limit of the rewrite rather
+   * than a gap in the enumeration. Named rather than counted so a second one cannot appear silently.
    */
   const CONCISE_ARROW_BODIES = new Set(["admin.tsx"]);
 
@@ -362,9 +289,9 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
   it("has a baseline worth mutating", () => {
     expect(baseline).not.toBeNull();
     expect(baseline!.entryPoints).toBeGreaterThan(300);
-    // The falls assertions compare over the routes measured in both runs and pin that population
-    // to `baseline.measured`, so the baseline itself has to be big enough that a broken scan
-    // cannot produce a tiny population the mirror trivially holds over.
+    // The falls assertions pin their population to `baseline.measured`, so the baseline itself has to
+    // be big enough that a broken scan cannot produce a tiny population the mirror trivially holds
+    // over.
     expect(baseline!.measured).toBeGreaterThan(300);
     expect(baseline!.global).not.toBeNull();
     console.log(
@@ -374,24 +301,9 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
   });
 
   /**
-   * How much a mutation must reach before its result means anything. A mutation that silently
-   * matched nothing would otherwise "pass" by leaving the tree alone, which is the exact failure
-   * mode that let earlier rounds believe a shape was defended.
-   *
-   * Sites, not only files, and sites are what the threshold is really on. A file count says a
-   * rewrite touched a file, not that it reached anything inside it: eleven entries reported 172
-   * files while landing in a position that mattered for 26 of the tree's 260 catch clauses, because
-   * the splice went after statements that had already returned. `prependToEveryCatch` now splices
-   * at the head of the clause, so all 260 count, and this threshold is what would notice if a later
-   * change quietly took that back.
-   *
-   * The guard the design asked for, verdict movement, cannot be used, though not for the reason an
-   * earlier version of this comment gave. Plenty of defended entries move verdicts hard:
-   * `delete-every-catch` takes the tree from 19 to 8 and `dead-throw-after-switch` to 10. The
-   * narrower true reason is that the IDEAL defended shape is one the scanner is blind to, and those
-   * move nothing at all: `dead-if-false` and the ten entries beside it are defended precisely
-   * because the tree comes out identical. Requiring movement would fail exactly the entries that
-   * work best. Site count is the reachable version of the same intent.
+   * How much a mutation must reach before its result means anything, since one that silently matched
+   * nothing would otherwise pass by leaving the tree alone. On sites and not only files, and why
+   * verdict movement cannot be the guard instead: README, "The mutation harness".
    */
   const MINIMUM_FILES_TOUCHED = 20;
   const MINIMUM_SITES_TOUCHED = 40;
@@ -406,11 +318,9 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
 
       const after = measure(mutated);
 
-      // A mutation that stops the tree parsing, or that hides a route from the scanner, has not
-      // tested the property: whatever the score does afterwards is measuring a different tree. The
-      // route guard is exact rather than tolerant, because a route the mutated scan cannot see is
-      // one `risesIn` and `commonMean` both skip, and a rewrite that makes a route unscannable is
-      // itself a finding.
+      // A mutation that stops the tree parsing, or hides a route from the scanner, has not tested the
+      // property. Exact rather than tolerant, because a route the mutated scan cannot see is one both
+      // `risesIn` and `commonMean` skip.
       expect(after.parseFailures).toBe(baseline!.parseFailures);
       expect(after.entryPoints).toBe(baseline!.entryPoints);
       expect([...baseline!.perEntry.keys()].filter((f) => !after.perEntry.has(f))).toEqual([]);
@@ -446,32 +356,23 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
       // and not who is in the denominator.
       expect(common.after).toBeLessThanOrEqual(common.before + 1e-9);
 
-      // Per route, for the preserving half of the corpus. This is the property as stated: an edit
-      // that does not change what a route does must not make that route look better, whatever it
-      // does to the tree's mean. The deleting half is exempt on purpose: a route whose only failing
-      // check was error-classification really does leave the denominator when its catch goes, which
-      // the design chose over crediting a route for deleting its error handling, and the global
-      // figure above is where that trade is held to account.
+      // Per route, for the preserving half. The deleting half is exempt on purpose: a route whose only
+      // failing check was `error-classification` really does leave the denominator when its catch
+      // goes, and the global figure above is where that trade is held to account.
       if (mutation.kind === "preserving") {
         expect(rises.map((r) => `${r.fileName} ${r.from}->${r.to}`)).toEqual([]);
 
-        // The mirror direction. A preserving edit must not make any route look WORSE either: a
-        // fall here is a false accusation, the direction that gets the tool switched off, and it
-        // went unasserted for three rounds while 19 entries regressed 104 routes. Together with
-        // the rises assertion and the entry-point guards above, this pins per-route score
-        // EQUALITY for a preserving entry. The comparison population is pinned to the whole
-        // measured baseline first, so a silently shrunken population cannot pass vacuously.
+        // The mirror direction, which with the rises assertion and the entry-point guards above pins
+        // per-route score EQUALITY for a preserving entry. Population pinned first, so a silently
+        // shrunken one cannot pass vacuously.
         expect(compared).toBe(baseline!.measured);
         if (mutation.lowers === undefined) {
           expect(falls.map((f) => `${f.fileName} ${f.from}->${f.to}`)).toEqual([]);
         } else {
-          // An exempted entry must still be falling, or the exemption is stale and has to be
-          // removed deliberately rather than sitting as cover for the next defect.
+          // An exempted entry must still be falling, or the exemption is stale cover for the next
+          // defect.
           expect(falls.length).toBeGreaterThan(0);
-          // And the falls must have exactly the measured residual shape the exemption was
-          // granted for: `error-classification` moving pass -> not-applicable, every other
-          // check's status unchanged, nothing anywhere moving to fail. Anything else is a new
-          // defect hiding under the exemption.
+          // And each fall must have exactly the residual shape the exemption was granted for.
           for (const fall of falls) {
             const before = checkStatuses(fall.before);
             const now = checkStatuses(fall.after);

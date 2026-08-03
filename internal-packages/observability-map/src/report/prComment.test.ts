@@ -422,10 +422,8 @@ describe("renderPrComment", () => {
 });
 
 /**
- * The comment is edited in place across pushes, so on its own it says nothing about which push it
- * reflects. Every comment the job posts carries the head sha as a link to the pull request's compare
- * range, and the commit arrives as data so these renderers stay pure and a local run without it
- * still renders.
+ * The comment is edited in place across pushes, so every comment the job posts carries the head sha as
+ * a link to the compare range. The commit arrives as data, so these renderers stay pure.
  */
 describe("the commit stamp", () => {
   const COMMIT = {

@@ -5,54 +5,25 @@ import { CHECKS } from "./checks/index.js";
 import { MUTATIONS } from "./mutations.js";
 
 /**
- * Every test name a docstring in `src/` claims to be covered by must exist.
- *
- * The rule this enforces has been asked for six times in prose and broken six times, most recently
- * by a docstring naming `content-is-not-a-comment`, a test that was never written. Prose cannot
- * enforce itself, so this does.
- *
- * What is checked, precisely, because a checker that overstates its reach is the same defect again:
- *
- * - every backticked kebab-case token in a `src/` comment, e.g. `empty-instanceof-if`. Those are
- *   never valid JavaScript identifiers, so in this package they are always a check id, a mutation
- *   corpus id, a test name, or one of the handful of domain words in `NOT_A_TEST_NAME` below.
- * - a backticked glob, `dead-*`, which must match at least one corpus id by prefix.
- * - every backticked prose phrase of `MINIMUM_TITLE_WORDS` words or more that contains no code
- *   punctuation, e.g. `jsx text is content, not a comment`. That is what a test title looks like
- *   and what a code sample does not.
- *
- * What is NOT checked, and each of these is a place a bad reference can still hide:
- *
- * - a reference written without backticks.
- * - a test title of fewer than `MINIMUM_TITLE_WORDS` words. `throw e` and `new URL` are code, and
- *   telling a short title from short code needs more than punctuation.
- * - a comment with no node after it. `commentText` collects leading ranges only, so a comment on
- *   the last line of a block or at the end of a file is never scanned at all. Every docstring in
- *   this package precedes a declaration, which is why the collector was written that way, and it
- *   is a coverage hole rather than a design choice.
- * - a `.test.ts` file, or `mutations.ts`. Tests live in `src/` for colocation, but a docstring in a
- *   test or in the mutation corpus helper is exempted from this scan by name, the same as it was
- *   when both lived outside `src/` in a separate `test/` directory.
- *
- * The kebab half is the half that has actually failed.
+ * Every test name a docstring in `src/` claims to be covered by must exist. The rule was asked for six
+ * times in prose and broken six times, so prose does not enforce itself. Exactly what is and is not
+ * checked, and the coverage holes that leaves: README, "Tests, timeouts and CI".
  */
 
 const SRC = resolve(__dirname);
 const TESTS = resolve(__dirname);
-/** Excluded from the `files` scan below: every `.test.ts` is a test rather than a source, and
- * `mutations.ts` is the mutation-corpus helper, not production source. Both live in `src/` now for
- * colocation, so the exclusion has to be by name rather than by directory. */
+/** Excluded from the `files` scan below. Both live in `src/` for colocation, so the exclusion has to
+ * be by name rather than by directory. */
 const MUTATIONS_HELPER = resolve(SRC, "mutations.ts");
 
-/** Kebab-case tokens that are domain vocabulary rather than a test or corpus name. Anything added
- * here is a deliberate statement that the token names no test, and shows up in review as such. */
+/** Kebab-case tokens that are domain vocabulary rather than a test or corpus name. Anything added here
+ * is a deliberate statement that the token names no test, and shows up in review as such. */
 const NOT_A_TEST_NAME = new Set([
   // A `CheckStatus` value.
   "not-applicable",
   // The directive spelling that was retired, named in `suppression.ts` to say it is not honoured.
   "obs-map-disable-next-line",
-  // The worked example of a mistyped check id in `suppression.ts`. A misspelling of a check id is
-  // the thing being described, so it names no test by construction.
+  // The worked example of a mistyped check id, which names no test by construction.
   "eror-classification",
   // A route path segment quoted in `sensitivity.ts`, part of the vocabulary that file is about.
   "session-duration",
@@ -73,8 +44,8 @@ function walkFiles(dir: string, suffix: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Comment text with jsdoc line prefixes removed, so a backticked phrase that wrapped across two
- * lines reads as one phrase rather than one with a stray asterisk in it. */
+/** Comment text with jsdoc line prefixes removed, so a backticked phrase that wrapped across two lines
+ * reads as one phrase rather than one with a stray asterisk in it. */
 function commentText(file: string): string {
   const source = readFileSync(file, "utf8");
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
@@ -183,8 +154,7 @@ describe("docstrings in src name things that exist", () => {
   });
 
   // The checker has to be able to fail, or it is decoration. These run the same predicates over an
-  // invented docstring rather than over `src/`, so the guarantee does not rest on `src/` currently
-  // happening to contain a bad reference.
+  // invented docstring, so the guarantee does not rest on `src/` happening to contain a bad reference.
   it("would reject a docstring naming a test that does not exist", () => {
     const invented = "see `content-is-not-a-comment` for the proof";
     const token = /`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`/.exec(invented)![1]!;

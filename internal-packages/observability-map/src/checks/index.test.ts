@@ -162,11 +162,8 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
-  // I6. NARROW_TRY_STATEMENTS is an absolute count over the try block alone (guardsParse still
-  // required), not a ratio against the enclosing body, so it holds the exact boundary regardless of
-  // how big or small the rest of the function is: two statements binds the parsed result and still
-  // passes, a third means the try has started to cover the handler and fails, even though both
-  // guard the same parse.
+  // The exact boundary, held regardless of how big the rest of the function is: two statements binds
+  // the parsed result and passes, a third means the try has started to cover the handler.
   it("passes a parse guard that binds its result in exactly two statements", () => {
     const r = run(
       "error-classification",
@@ -370,11 +367,8 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
-  // A6. isParseGuard compared the clause against ep.statementCount, the loader and the action and
-  // every one-hop helper summed together, rather than the statements of the body the clause is
-  // actually in. So an unrelated sibling handler or a fat helper in the same file diluted the
-  // denominator and relabelled the same broad swallow as a narrow parse guard. Byte-identical
-  // action, verdict must not move.
+  // Against the entry-point statement count, a sibling handler or a fat helper in the same file
+  // diluted the denominator and relabelled the same broad swallow as a narrow parse guard.
   it("gives the same verdict to a byte-identical swallow whether or not an unrelated sibling and helper share the file", () => {
     const action = `import { otlpExporter } from "~/v3/otlpExporter.server";
        export async function action({ request }) {
@@ -424,12 +418,8 @@ describe("error-classification", () => {
     expect(withSiblingAndHelper.status).toBe("fail");
   });
 
-  // I6. Moving the denominator from the entry point to the enclosing body (A6) closed
-  // cross-body dilution but not same-body dilution: the rule was still a ratio, "unrelated
-  // statements dilute", wherever the unrelated statements live. Padding the SAME action with 11
-  // inert statements after the try relabelled the identical broad swallow from fail to pass.
-  // isParseGuard is now an absolute count over the try block alone (NARROW_TRY_STATEMENTS),
-  // which nothing outside the try can dilute, in the same body or another.
+  // Same-body dilution, which moving the denominator to the enclosing body did not close: as a
+  // ratio, padding the SAME action with 11 inert statements took the identical swallow to pass.
   it("gives the same verdict to a byte-identical swallow whether or not it is padded with inert statements in the same body", () => {
     const action = `import { otlpExporter } from "~/v3/otlpExporter.server";
        export async function action({ request }) {
@@ -507,11 +497,8 @@ describe("error-classification", () => {
     expect(r.status).toBe("not-applicable");
   });
 
-  // A7 as revised twice. A per-item error boundary inside a `.map()` callback is still not judged
-  // as the route's own catch, so it never sets `catches` and never speaks for the route's
-  // `tryStatementCount`. This catch SWALLOWS what it caught, and nothing the route owns decides,
-  // so the route still fails: judging refused catches on their evidence must not stop failing the
-  // relocated swallow, which is the anti-laundering half of the rule.
+  // The anti-laundering half of the boundary rule: judging refused catches on their evidence must
+  // not stop failing a swallow relocated behind one.
   it("fails a route whose only catch is inside a Promise.all(items.map(...)) callback", () => {
     const source = `import { prisma } from "~/db.server";
        export async function action({ request }) {
@@ -581,12 +568,9 @@ describe("error-classification", () => {
     expect(r.detail).toContain("its only catches sit in iteration callbacks");
   });
 
-  // The refused-swallow arm is deliberately not conditioned on the route owning no catches. An
-  // own inert catch is what `wrap-body-in-rethrow`, a preserving corpus entry, adds to every
-  // route: were the arm gated on `catches.length === 0`, wrapping a per-item-swallow route in
-  // try/rethrow would read "every catch rethrows" and lift the fail to not-applicable, a rise
-  // that existed in the pre-evidence code and was masked only by the affected routes scoring 0 on
-  // every other check.
+  // Why the refused-swallow arm is not conditioned on the route owning no catches: an own inert catch
+  // is exactly what `wrap-body-in-rethrow` adds to every route, and the gate would lift this fail to
+  // not-applicable.
   it("fails a per-item swallow even when the route owns an inert rethrow catch", () => {
     const r = run(
       "error-classification",
@@ -707,11 +691,9 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
-  // I3. "Takes one way out regardless of what was thrown" is false of a clause that throws for
-  // some errors, and the strengthened `rethrows` makes such a clause a swallow by this check's
-  // definition: it decides nothing about the error, but it does not send everything the same way
-  // either. 16 clauses in the tree flipped `rethrows` this round and every one was eligible for the
-  // false wording. Whether `fail` is the right verdict for them is a separate question, parked.
+  // "Takes one way out regardless of what was thrown" is false of a clause that throws for some
+  // errors, and 16 clauses in the tree were eligible for the wording. Whether `fail` is the right
+  // verdict for them at all is a separate question, parked.
   it("does not accuse a clause that throws of taking one way out", () => {
     const r = run(
       "error-classification",
@@ -741,13 +723,10 @@ describe("error-classification", () => {
     expect(r.detail).toContain("one way out");
   });
 
-  // I4. A route that owns a real classifying catch must never be told it owns none. `canRaise` does
-  // not list destructuring, and `const { a } = undefined` throws, so the owned catch dropped out of
-  // `reachable`; with the refused-swallow arm ordered off `reachable` the route was then accused of
-  // owning nothing that decides, which was simply false. The arm now reads own deciding catches
-  // through `guardMayRaise`, so the accusation is withheld and the route sits out exactly as it did
-  // before the arm existed. Asserted on `status`: an earlier version of this test asserted the
-  // absence of a detail string no arm ever emits, which could not fail.
+  // `canRaise` does not list destructuring, and `const { a } = undefined` throws, so an owned
+  // classifying catch drops out of `reachable`; the refused-swallow arm reads `guardMayRaise` instead.
+  // Asserted on `status`, since an earlier version asserted the absence of a detail string no arm
+  // emits, which could not fail.
   it("does not accuse a route that owns a catch of owning none", () => {
     const r = run(
       "error-classification",
@@ -970,11 +949,8 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
-  // The verdict end of the walk's guaranteed-execution entries, one pair per entered construct.
-  // The evidence end is `the walk enters exactly the positions guaranteed to execute` in
-  // scan.test.ts; these hold the wrapped and unwrapped spellings to the same verdict, modeled on
-  // the switch pair above. Before the entries existed, every wrapper here turned a passing
-  // deciding clause into a fail with a detail line accusing it of ignoring the error.
+  // The verdict end of the walk's guaranteed-execution entries, one pair per entered construct. The
+  // evidence end is `the walk enters exactly the positions guaranteed to execute` in scan.test.ts.
   const CLAUSE_WRAPPED = (clauseBody: string) => `import { prisma } from "~/db.server";
      export async function loader() {
        try {
@@ -1750,11 +1726,8 @@ describe("auth-boundary: the guard accept-list", () => {
     expect(r.detail).toContain("no auth guard in the body");
   });
 
-  // The two live shapes that made the non-throwing variants worth crediting. Both act on the
-  // answer, which is why they are on the list; a route that calls one and ignores it is the
-  // residual, stated on `GUARDS`.
-  // Round C ruling 2. getUser and getUserId answer with null instead of throwing, so being called
-  // is not evidence of a boundary. They are credited only when the body reads the answer.
+  // `getUser` and `getUserId` answer with null instead of throwing, so being called is not evidence
+  // of a boundary: they are credited only when the body reads the answer.
   it("does not pass a route that resolves the caller and ignores the answer", () => {
     const r = run(
       "auth-boundary",
@@ -1834,9 +1807,8 @@ describe("auth-boundary: the guard accept-list", () => {
 });
 
 /**
- * Per-export attribution. Every input `auth-boundary` reads used to be entry-point-wide, so one
- * guarded export spoke for the whole file. Each `it` here goes green on the entry-point-wide
- * version of exactly one of those inputs, which is why they are separate cases rather than one.
+ * Per-export attribution. Each `it` here goes green on the entry-point-wide version of exactly one of
+ * the three inputs, which is why they are separate cases rather than one.
  */
 describe("auth-boundary: a guard credits only the export that calls it", () => {
   const TOKENS = `import { requireUserId } from "~/services/session.server";
@@ -1954,12 +1926,8 @@ describe("auth-boundary: a guard credits only the export that calls it", () => {
     expect(r.status).toBe("pass");
   });
 
-  /**
-   * The damper on the attribution, and the reason it is not simply "accuse every unguarded export".
-   * `auth.github.ts` and `auth.google.ts` are this shape: per export the loader is unguarded, and
-   * an entry-point-wide triviality rule calls the file non-trivial because the ACTION is not. Both
-   * routes went pass to fail on the real tree until `isTrivialExport` existed.
-   */
+  /** The damper on the attribution: `auth.github.ts` and `auth.google.ts` went pass to fail on the
+   * real tree until `isTrivialExport` existed. */
   it("reports not-applicable for a redirect-stub loader beside a guarded action", () => {
     const r = run(
       "auth-boundary",
@@ -1979,12 +1947,8 @@ describe("auth-boundary: a guard credits only the export that calls it", () => {
     expect(r.detail).toBe("guarded in the body");
   });
 
-  /**
-   * The per-export excuse must read the export's own body and not the file's text. It read
-   * `ep.source` first, and `log-caller-scope-userid` in the mutation corpus, which prepends
-   * `logger.error(...)` to every body, put the word `logger` in this file and turned the untouched
-   * loader from excused into accused. A five-minute corpus run is the wrong place to catch that.
-   */
+  /** The per-export excuse must read the export's own body and not the file's text, or
+   * `log-caller-scope-userid` puts the word `logger` in this file and accuses the untouched loader. */
   it("does not un-excuse a redirect-stub loader because the file mentions a logger", () => {
     const r = run(
       "auth-boundary",

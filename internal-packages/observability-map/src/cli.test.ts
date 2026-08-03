@@ -4,12 +4,9 @@ import { join } from "node:path";
 import { main, type Io } from "./cli.js";
 
 /**
- * A routes tree of this package's own making. These tests used to run against
- * `apps/webapp/app/routes` and assert that `/api/v1/token` exists and that `api.v1.runs.ts` is line
- * 2 of the output, which is an assertion about the webapp's contents rather than about this CLI.
- * A webapp-only pull request renaming a route broke them, and `pr_checks.yml` did not run this
- * suite for such a pull request, so the break landed on whoever pushed next. The one deliberate
- * real-tree test lives in `integration.test.ts` and asserts only invariants that survive churn.
+ * A routes tree of this package's own making. Run against `apps/webapp/app/routes`, these asserted the
+ * webapp's contents rather than this CLI, and a route rename broke them for whoever pushed next. The
+ * one deliberate real-tree test lives in `integration.test.ts`.
  */
 const ROUTES = mkdtempSync(join(tmpdir(), "obs-map-fixture-routes-"));
 

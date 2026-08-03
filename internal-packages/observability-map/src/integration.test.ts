@@ -14,43 +14,21 @@ import { buildReport } from "./score.js";
 import { SCORED_CHECK_IDS } from "./checks/index.js";
 
 /**
- * This file's deliberate coupling to `apps/webapp/app/routes`. It is not the suite's only one, and
- * saying it was is what let the paths filter be written for this file alone:
- * `webappSymbols.test.ts` walks all of `apps/webapp/app`, `packages/plugins/src` and
- * `internal-packages/rbac/src`, and `mutationCorpus.test.ts` scans the route tree behind an env
- * gate. Everything else, including the CLI tests, runs against a fixture tree of this package's own
- * making.
+ * This file's deliberate coupling to `apps/webapp/app/routes`, and not the suite's only one:
+ * `webappSymbols.test.ts` walks all of `apps/webapp/app` and two more trees, and
+ * `mutationCorpus.test.ts` scans the route tree behind an env gate.
  *
- * The coupling is acceptable because nothing here names a route or a count: the scan must not
- * crash, the entry point count must sit inside a wide band, and parse failures must be zero. Those
- * survive routes being added, renamed and deleted, and they are the only things a fixture tree
- * cannot tell us, since a fixture only contains shapes somebody thought to write down.
- *
- * What runs this for a webapp pull request is `.github/workflows/unit-tests-observability-map.yml`,
- * called from `pr_checks.yml` behind an `obsmap` paths filter covering the whole of
- * `apps/webapp/app` plus the report workflow, and listed in the `all-checks` aggregate so it
- * actually gates. The filter is wider than this file's own coupling because the suite's is:
- * `webappSymbols.test.ts` walks all of `apps/webapp/app`, and the describes below read
- * `observability-map.yml`. A pull request touching this PACKAGE, or `packages/plugins/src` or
- * `internal-packages/rbac/src`, reaches the same test by the other road: `internal` already matches
- * `internal-packages/**` and `packages/**`, and `unit-tests-internal.yml` runs `turbo run test
- * --filter "@internal/*"` over this package too. So every direction is gated and none is gated
- * twice; the `obsmap` filter used to name the package as well, which ran this suite twice on every
- * PR touching it.
- *
- * Two shapes were tried and rejected on the way here. Widening `pr_checks.yml`'s `internal` filter
- * to the route paths ran all eighteen internal packages, twelve shards with postgres, clickhouse,
- * redis and electric, to protect this one test. Putting the job in `observability-map.yml`
- * instead was targeted but gated nothing, because `all-checks` needs an explicit list of jobs and
- * cannot see another workflow.
+ * The coupling is acceptable because nothing here names a route or a count: the scan must not crash,
+ * the entry point count must sit inside a wide band, and parse failures must be zero. Those are the
+ * only things a fixture tree cannot tell us, since a fixture only contains shapes somebody thought to
+ * write down. How the whole suite is gated in CI: README, "Tests, timeouts and CI".
  */
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 
 /**
- * Every `.ts`/`.tsx` file under the tree, at any depth. Deliberately not the scanner's walk, which
- * looks at flat files and at one `route.ts`/`route.tsx` per directory: this used to be a verbatim
- * copy of that walk, which made `entryPoints.length < countCandidates()` a tautology that could
- * not fail for any route shape both of them missed.
+ * Every `.ts`/`.tsx` file under the tree, at any depth. Deliberately not the scanner's walk: as a copy
+ * of it, `entryPoints.length < countCandidates()` was a tautology that could not fail for any route
+ * shape both of them missed.
  */
 function countRouteModuleFiles(dir: string): number {
   let count = 0;
@@ -65,25 +43,22 @@ function countRouteModuleFiles(dir: string): number {
 }
 
 beforeAll(() => {
-  // A hard failure rather than the `if (!existsSync(ROUTES)) return;` these tests opened with: if
-  // this package moves relative to apps/webapp, the real-tree coverage must disappear loudly.
+  // A hard failure rather than a silent skip: if this package moves relative to apps/webapp, the
+  // real-tree coverage must disappear loudly.
   if (!existsSync(ROUTES)) {
     throw new Error(`the webapp routes directory is missing: ${ROUTES}`);
   }
 });
 
-// B7. The build emits ESM (`module: ESNext`, and `cli.ts` uses `import.meta`) while `main` and
-// `types` advertised it to a package.json with no module type. On node 24 that loads with a
-// MODULE_TYPELESS_PACKAGE_JSON warning and a reparse rather than the throw older nodes give, which
-// is a warning about an artifact this package tells other packages to import.
+// The build emits ESM while `main` and `types` advertised it to a package.json with no module type,
+// which on node 24 loads with a MODULE_TYPELESS_PACKAGE_JSON warning and a reparse.
 describe("the package it advertises", () => {
   const manifest = JSON.parse(
     readFileSync(resolve(__dirname, "../package.json"), "utf8")
   ) as Record<string, string>;
 
-  // Asserted flat rather than behind an `if (!advertised) return`, which is the silent skip this
-  // round removed from the tests below: the decision was to keep the entry point and declare the
-  // module type, so dropping the entry point later should have to edit this, not slip past it.
+  // Asserted flat rather than behind a skip, so dropping the entry point later has to edit this
+  // rather than slip past it.
   it("declares the module type its build emits alongside the entry point it advertises", () => {
     expect(manifest.main).toBe("./dist/src/index.js");
     expect(manifest.types).toBe("./dist/src/index.d.ts");
@@ -99,8 +74,8 @@ function read(path: string): string {
   return readFileSync(path, "utf8");
 }
 
-/** Comment lines dropped, for an assertion about what the YAML says rather than what its prose
- * happens to mention. */
+/** Comment lines dropped, so an assertion is about what the YAML says rather than what its prose
+ * mentions. */
 const withoutComments = (text: string) => text.replace(/^\s*#.*$/gm, "");
 
 /** One job's block, from its key to the next key at job indent. */
@@ -117,21 +92,10 @@ const gate = (name: string) => job(name).split("    steps:")[0]!;
 const steps = (block: string) => block.split(/^ {6}- name: /m).slice(1);
 
 /**
- * The one thing the docstring checker cannot reach. It walks `src/` only, so workflow prose is
- * unpoliced, and the C1 defect was exactly that: two steps disagreeing about what a missing
- * `/tmp/existing-comment-id` meant, under a comment claiming they agreed. The render step read it
- * as "a comment exists" and emitted the resolved state, the upsert step read it as "no id" and
- * POSTed, so a transient lookup failure either added a second marker comment beside the stale one
- * or announced that findings were gone on a pull request that never had any.
- *
- * The sentinel pair those two shared is gone with the lookup, which moved into the `changes` job so
- * the report job's own gate could read it. What replaces it is structural rather than agreed: the
- * report job does not start unless the lookup finished cleanly, and the id it then uses is one job
- * output that both steps read, so there is nothing left for two readers to disagree about.
- *
- * These are text checks over the workflow, not a parse of its semantics, so they catch the wiring
- * coming apart and nothing about whether GitHub agrees. Named as such rather than sold as coverage
- * of the file.
+ * The one thing the docstring checker cannot reach, since it walks `src/` only. What the C1 defect was
+ * and what replaced it: README, "Tests, timeouts and CI". These are text checks over the workflow
+ * rather than a parse of its semantics, so they catch the wiring coming apart and nothing about
+ * whether GitHub agrees.
  */
 describe("the report workflow's one source of the comment id", () => {
   it("does not start the report job at all unless the lookup finished cleanly", () => {
@@ -148,8 +112,8 @@ describe("the report workflow's one source of the comment id", () => {
     ).toEqual([]);
   });
 
-  // The lookup is what lets the report job be gated, so it has to happen before it, in the job that
-  // an unrelated pull request pays for anyway.
+  // The lookup is what lets the report job be gated, so it happens in the cheap job an unrelated pull
+  // request pays for anyway.
   it("looks the comment up in the cheap job and not again in the report job", () => {
     expect(job("changes")).toContain("issues/${PR_NUMBER}/comments");
     expect(job("changes")).toContain("pull-requests: read");
@@ -166,17 +130,10 @@ describe("the report workflow's one source of the comment id", () => {
 });
 
 /**
- * Round F. The workflow used to carry a `paths:` filter, and GitHub evaluates one of those per
- * workflow, so a pull request whose diff stopped matching did not start the workflow at all: the
- * resolved state could not fire and a comment from an earlier push stood for ever showing findings
- * that were no longer in the diff. Confirmed on a throwaway pull request whose only route change was
- * reverted, and the case that matters is worse, because a pull request touching a route and other
- * files whose author reverts only the route change still has a diff, still does not match, and still
- * has the stale comment.
- *
- * So the workflow runs on every pull request and the gating is internal. What that has to preserve
- * is the cost: the scans stay gated on the paths, and a pull request with nothing relevant and no
- * comment does not start the report job.
+ * The workflow runs on every pull request with the gating internal, because GitHub evaluates one
+ * `paths:` filter per workflow and a pull request whose diff stopped matching never started it at all,
+ * leaving an earlier push's comment standing for ever. See README, "CI". What that has to preserve is
+ * the cost, which is what these assert.
  */
 describe("the report workflow reconciles a comment the paths no longer reach", () => {
   it("runs on every pull request rather than only on the paths it watches", () => {
@@ -204,8 +161,7 @@ describe("the report workflow reconciles a comment the paths no longer reach", (
     expect(render).toMatch(/SCANNED" != "true" \]; then\s+emit --resolved/);
   });
 
-  // Change 2. The comment is edited in place across pushes, so it has to say which push it reflects.
-  // The renderer takes the sha and the URL as data; building the URL is the workflow's job because
+  // The renderer takes the sha and the URL as data; building the URL is the workflow's job, because
   // the workflow is what has the two shas.
   it("forwards the head sha and a compare URL for the pull request's range", () => {
     const render = steps(job("report")).find((step) => step.startsWith("📝 Render comment"))!;
@@ -219,17 +175,8 @@ describe("the report workflow reconciles a comment the paths no longer reach", (
 });
 
 /**
- * Both scan steps used to capture the scanner's stdout with a shell redirect, into files the
- * renderer then `JSON.parse`s. Anything else reaching stdout therefore corrupted the report:
- * `pnpm --filter` takes its recursive path, and some versions of pnpm announce
- * `Scope: N of M workspace projects` on it. A single line of that in head.json fails the parse,
- * and the workflow degrades to the stale-report comment on every run, quietly and permanently.
- *
- * It does not reproduce on the 10.33.2 the workflow pins, which was checked. What is asserted here
- * is the shape that cannot have the bug at all rather than the version that happens not to: the
- * scanner writes its own file through `--out`, so stdout carries log output and nothing else.
- * The same is not yet true of the render step, which has no `--out` to reach for; a banner there
- * puts a stray line in a markdown comment instead of breaking a parse, so it is left alone.
+ * Asserts the shape that cannot have the stdout-capture bug rather than the pnpm version that happens
+ * not to. Why, and why the render step is left alone: README, "Tests, timeouts and CI".
  */
 describe("the report workflow's two scan steps", () => {
   it("let the scanner write its own report rather than capturing stdout", () => {
@@ -248,13 +195,8 @@ describe("the report workflow's two scan steps", () => {
 });
 
 /**
- * The gating half of the same problem. A test job that nothing waits for is decoration, and the
- * first attempt at this was exactly that: a job inside `observability-map.yml`, which reads well
- * and gates nothing, because `pr_checks.yml`'s `all-checks` aggregate needs an explicit list of
- * jobs and cannot see another workflow.
- *
- * Text checks again, over two workflow files. They catch the wiring coming apart, not whether
- * GitHub agrees, which only a pull request can answer.
+ * The gating half of the same problem: a test job that nothing waits for is decoration. Text checks
+ * again, over two workflow files.
  */
 describe("the package's tests are wired into the gate", () => {
   const PR_CHECKS = resolve(WORKFLOWS, "pr_checks.yml");
@@ -267,11 +209,8 @@ describe("the package's tests are wired into the gate", () => {
     expect(read(REUSABLE)).toContain("workflow_call");
   });
 
-  // Round 5. The filter watched `apps/webapp/app/routes/**` while the suite reads more than that,
-  // so a rename outside the routes folder matched only `webapp`, ran no job that runs this suite,
-  // and broke the build for whoever pushed next. Asserted as the whole set the suite reads and no
-  // other filter covers, rather than as the one path that prompted the filter, because the routes
-  // entry looked complete right up until it wasn't.
+  // Asserted as the whole set the suite reads and no other filter covers, rather than as the one path
+  // that prompted the filter, because the routes entry looked complete right up until it wasn't.
   it("watches every webapp path the internal filter misses, not just the routes folder", () => {
     const filter = read(PR_CHECKS).split("            obsmap:")[1]!.split("            cli:")[0]!;
     // webappSymbols.test.ts walks all of apps/webapp/app, not just routes.
@@ -280,8 +219,8 @@ describe("the package's tests are wired into the gate", () => {
     expect(filter).toContain("'.github/workflows/observability-map.yml'");
   });
 
-  // The other two trees webappSymbols.test.ts reads. They belong to `internal`, not here, and this
-  // pins the reason so the obvious-looking addition has to argue with a test first.
+  // The other two trees `webappSymbols.test.ts` reads belong to `internal`, so this pins the reason
+  // and the obvious-looking addition has to argue with a test first.
   it("leaves the two non-webapp roots it reads to the internal filter", () => {
     const text = read(PR_CHECKS);
     const obsmap = text.split("            obsmap:")[1]!.split("            cli:")[0]!;
@@ -293,10 +232,8 @@ describe("the package's tests are wired into the gate", () => {
     expect(internal).toContain("'internal-packages/**'");
   });
 
-  // Round E item 6. `internal` matches `internal-packages/**` and `unit-tests-internal.yml` runs
-  // `turbo run test --filter "@internal/*"`, so naming this package here as well ran the suite
-  // twice on every pull request touching it. Asserted rather than left to the next reader, because
-  // the duplicate looks like the obviously right entry to add back.
+  // Naming this package here as well ran the suite twice on every pull request touching it. Asserted
+  // rather than left to the next reader, because the duplicate looks like the right entry to add back.
   it("leaves the package's own paths to the internal filter, so the suite runs once", () => {
     const text = read(PR_CHECKS);
     const obsmap = text.split("            obsmap:")[1]!.split("            cli:")[0]!;
@@ -319,17 +256,15 @@ describe("the package's tests are wired into the gate", () => {
     expect(read(REPORT)).not.toContain("run test");
   });
 
-  // Round E item 5. The corpus measures the tool's resistance to laundering, which only an edit to
-  // the tool can weaken, so it does not belong on every route pull request at four and a half
-  // minutes a run. The nightly is the other half of that trade and is asserted with it: dropping
-  // the schedule would leave tree drift uncovered rather than covered late.
+  // The nightly is the other half of the trade and is asserted with it: dropping the schedule would
+  // leave tree drift uncovered rather than covered late.
   it("runs the corpus on the package's own paths and on a schedule, not on every route PR", () => {
     const text = read(REPORT);
     const corpus = text.split("  mutation-corpus:")[1]!.split("    steps:")[0]!;
     expect(corpus).toContain("needs.changes.outputs.package == 'true'");
 
-    // The corpus filter alone, which the report's own gate now sits beside: the two are separate
-    // filter entries, and this one has to stay off the route tree.
+    // The corpus filter alone, a separate entry from the report's own gate beside it, and this one
+    // has to stay off the route tree.
     const filter = text.split("            package:")[1]!.split("            routes:")[0]!;
     expect(filter).toContain("'internal-packages/observability-map/**'");
     expect(filter).not.toContain("apps/webapp/app/routes");
@@ -338,11 +273,9 @@ describe("the package's tests are wired into the gate", () => {
     expect(text).toContain("cron:");
   });
 
-  // Round E item 4. Two reviewers read the README's "merge base" against the workflow's base.sha
-  // and reported the workflow. The checkout is a pull_request default, so the tree scanned is
-  // GitHub's test merge commit and base.sha is one of its parents, which makes base.sha the right
-  // base and the old wording the bug. Pinned so the wording cannot drift back without the workflow
-  // moving with it.
+  // Two reviewers read the README's old "merge base" wording against the workflow's base.sha and
+  // reported the workflow; the wording was the bug. Pinned so it cannot drift back without the
+  // workflow moving with it.
   it("describes the base the report workflow actually scans against", () => {
     expect(read(REPORT)).toContain("github.event.pull_request.base.sha");
     const readme = readFileSync(resolve(__dirname, "../README.md"), "utf8");
@@ -353,24 +286,9 @@ describe("the package's tests are wired into the gate", () => {
 });
 
 /**
- * The third road into this suite, after the two workflows above: `turbo run test`, which is what
- * `pnpm run test` and `pnpm run test:internal` reach it by.
- *
- * Turbo keys a task's cache on the package's own files. This suite's real inputs are mostly not
- * its own files, they are `apps/webapp/app`, `packages/plugins/src`, `internal-packages/rbac/src`
- * and the workflow files read above, so turbo happily replayed a pass recorded before a route
- * changed. Measured rather than argued: a route file with a syntax error in it makes
- * `parses every route file and produces a report inside a wide band` fail under vitest, and the
- * same tree came back FULL TURBO in 301ms with the failure cached away as a success.
- *
- * So the task is uncacheable, and this asserts that, because the config is one line and reads like
- * a performance oversight to anyone who does not know what the suite reads.
- *
- * What this does not assert is the rejected alternative. `inputs` can name `../../apps/webapp/...`
- * and does bust the cache, but it replaces turbo 1.x's default file set instead of adding to it,
- * so it drops the package's own files from the hash unless every one of them is listed too; that
- * was measured the same way, by editing `vitest.config.ts` and getting FULL TURBO back. The
- * reasoning lives in `turbo.json` next to the config it explains.
+ * The third road into this suite, `turbo run test`. Asserts the task is uncacheable, because the
+ * config is one line and reads like a performance oversight to anyone who does not know what the suite
+ * reads. Measurement and the rejected `inputs` alternative: README, "Tests, timeouts and CI".
  */
 describe("the third road in, turbo", () => {
   it("keeps its test task out of the turbo cache", () => {
@@ -384,9 +302,7 @@ describe("the third road in, turbo", () => {
 });
 
 describe("counting candidates independently of the scanner", () => {
-  // The counter is only worth having if it disagrees with the scanner somewhere. It does: the
-  // scanner attributes nothing to a nested file that is not `route.ts`/`route.tsx`, and the
-  // counter counts every module file at every depth.
+  // The counter is only worth having if it disagrees with the scanner somewhere, and it does.
   it("counts a nested non-route file the scanner does not attribute to any route", () => {
     const dir = mkdtempSync(join(tmpdir(), "obs-map-count-"));
     mkdirSync(join(dir, "components"));
@@ -403,28 +319,10 @@ describe("counting candidates independently of the scanner", () => {
 });
 
 /**
- * Timeout for the two real-tree tests, which do not fit the suite's 10s default: the first runs a
- * ts.Program per route file for the parse diagnostics and walks the tree a second time to count
- * candidates, the second scans the tree twice and re-scans every source with the suppression
- * directive prepended.
- *
- * It is a hang detector and nothing else. Neither test asserts anything about how long the scan
- * takes, so a number tight enough to be a performance budget would only be a way to fail on a busy
- * runner, and a performance budget that flakes gets the whole suite marked unreliable.
- *
- * The old 30s and 60s were chosen on an idle machine and the 30s one does flake. Measured on an
- * 8-core box, this file alone at load average 0.9: 6.3-6.4s for the scan, 10.8-11.2s for the sweep.
- * Twenty-four runs of it as two batches of twelve concurrent copies on those same 8 cores:
- * 24.2-34.0s for the scan and 27.6-39.7s for the sweep, with one of the first twelve dying on
- * "Test timed out in 30000ms". That contention is not hypothetical:
- * `.github/workflows/unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"` as
- * twelve concurrent shard processes on one runner, and this file executes inside one of them.
- *
- * The local reproduction is deliberately harsher than CI, which is why it is the thing to size
- * against: twelve processes over 8 cores is 1.5 per core where the 32-vCPU runner is 0.375. 120s is
- * 3x the worst contended run measured and about 11x the idle sweep. 60s was the other candidate and
- * is not enough on those numbers: the sweep already reached 39.7s, which is 1.5x, and a margin that
- * thin on a machine nobody controls is how the 30s got here.
+ * Timeout for the two real-tree tests, which do not fit the suite's 10s default. A hang detector and
+ * nothing else: neither test asserts anything about how long a scan takes, so a number tight enough to
+ * be a performance budget would only be a way to fail on a busy runner. The contention measurements
+ * behind 120s, and why 60s is not enough: README, "Tests, timeouts and CI".
  */
 const TREE_SCAN_TIMEOUT = 120_000;
 
@@ -446,11 +344,8 @@ describe("scanning the real webapp routes", () => {
     TREE_SCAN_TIMEOUT
   );
 
-  /**
-   * The per-export split against the entry-point-wide union it came from, on every real route.
-   * `scan.test.ts` pins the same property on fixtures; this is the version that sees the shapes
-   * nobody thought to write down, and the two representations only stay honest while both hold.
-   */
+  /** The per-export split against the union it came from, on every real route. `scan.test.ts` pins the
+   * same property on fixtures; this is the version that sees the shapes nobody wrote down. */
   it(
     "every callee name is attributed to an export that exists",
     () => {
@@ -477,10 +372,8 @@ describe("scanning the real webapp routes", () => {
     TREE_SCAN_TIMEOUT
   );
 
-  // A1, exhaustive: every scored check suppressed on every real route, zero behavioural change.
-  // The old measured-from-visible logic took this global from 17 to 33 and measured from 412 to
-  // 176, because every entry whose only applicable checks were suppressed dropped out of the
-  // mean. Measured must not move: every entry point that had something applicable still does.
+  // Every scored check suppressed on every real route. The old measured-from-visible logic took the
+  // global from 17 to 33 and measured from 412 to 176, so `measured` must not move either.
   it(
     "suppressing every scored check on every real route does not raise the global",
     () => {

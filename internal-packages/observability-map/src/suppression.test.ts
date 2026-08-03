@@ -118,12 +118,8 @@ describe("suppressedChecks", () => {
     expect(m.size).toBe(0);
   });
 
-  // I3. A standalone `ts.createScanner` has no parser state, so it still granted two suppressions
-  // nobody wrote: it never rescans a template as a continuation after a `${...}` substitution, so
-  // text after the `}` reads as ordinary code and a `//` in it is a real comment to the scanner;
-  // and a scanner created in `LanguageVariant.Standard` has no JSX context, so a `//` inside JSX
-  // text reads as a line comment mid-URL. Reading comments off the actual parsed tree closes both:
-  // a template's literal segments and a JSX text node are real nodes, never trivia.
+  // A standalone `ts.createScanner` has no parser state, so it granted two suppressions nobody wrote:
+  // it never rescans a template as a continuation after a substitution, and it has no JSX context.
   it("does not suppress from a directive after a template substitution", () => {
     const m = suppressedChecks(
       "const msg = `${name} // obs-map-disable error-classification -- via substitution`;\n" +
@@ -142,11 +138,9 @@ describe("suppressedChecks", () => {
     expect(m.size).toBe(0);
   });
 
-  // S4. The case above passes without any JSX handling at all, because the comment-range lexers
-  // only find a comment at the exact offset they are asked about and the `//` there is mid-text.
-  // These are the shapes that actually needed the fix: JSX text that BEGINS with a comment marker,
-  // which is what the lexers see when they are pointed at the start of a JsxText node. Removing
-  // `ts.isJsxText` from `isClaimedContent` makes all four fail and nothing else in the suite.
+  // The case above passes without any JSX handling, because the lexers only find a comment at the
+  // exact offset they are asked about. These four are the shapes that needed the fix, JSX text that
+  // BEGINS with a marker, and removing `ts.isJsxText` fails all four and nothing else in the suite.
   describe("jsx text is content, not a comment", () => {
     const page = (body: string) => `const name = "x";
        export default function Page() {

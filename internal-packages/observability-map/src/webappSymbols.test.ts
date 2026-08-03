@@ -12,39 +12,17 @@ import {
 } from "./sensitivity.js";
 
 /**
- * Every name and every path segment the tool matches on must exist in the codebase it is pointed
- * at.
+ * Every name and every path segment the tool matches on must exist in the codebase it is pointed at.
+ * Half of `SENSITIVE_SYMBOLS` named nothing before this test, and the guard list has the same failure
+ * mode with a worse consequence: a guard name resolving nowhere makes a route that can never pass.
  *
- * This is the test the last round did not have, and the cost of not having it was measured: half of
- * `SENSITIVE_SYMBOLS` named nothing. `Set.has` is exact, so `setImpersonation`, `createJWT`,
- * `signJWT` and `updateEnvVars` matched no route in the tree, while `startImpersonation`, the real
- * escalation, was absent from the list. Nothing failed, nothing was reported, and the symbol half
- * of the classifier was quietly doing almost nothing. `auth-boundary`'s guard list has the same
- * failure mode with a worse consequence, since a guard name that resolves to nothing turns into a
- * route that can never pass rather than a route that can never fail.
+ * Checked: every guard name and sensitive symbol is DECLARED under one of `ROOTS`, as a function,
+ * class, interface, type, enum, variable or member name; members count because several guards are
+ * reached through an object and `calleeName` records the property. And every sensitive path segment
+ * appears as a segment of a real route file name.
  *
- * What is checked:
- *
- * - every guard name and every sensitive symbol is DECLARED somewhere under one of `ROOTS`. A
- *   declaration is a function, class, interface, type, enum or variable name, or a member name on a
- *   class, interface or object literal. Members count because several guards are reached through an
- *   object: `rbac.authenticateSession`, `authenticator.isAuthenticated`, and `calleeName` in
- *   `scan.ts` records the property for a member call, so that is the form the check sees.
- * - every sensitive path segment appears as a segment of a real route file name.
- *
- * What is NOT checked, and each is a place a wrong entry can still hide:
- *
- * - that the declaration found is the one meant. `authenticateAdmin` is a local helper inside
- *   `admin.api.v1.platform-notifications.ts`; a second route declaring its own no-op function of
- *   that name would be credited by `auth-boundary`. Names cannot carry that guarantee, and the
- *   alternative, a module-resolving import graph, is a different kind of analysis from anything
- *   else in this package.
- * - that a guard actually guards. `resolveAuthenticatedEnv` declares fine and authenticates
- *   nothing, which is why it is not on the list; keeping it off is a hand-read judgement this test
- *   cannot make.
- * - anything outside `ROOTS`. A guard declared only by a dependency is listed in
- *   `EXTERNAL_GUARDS` and not resolved at all; see the comment there for why that is a list
- *   rather than a path into `node_modules`.
+ * Not checked, each a place a wrong entry can hide: that the declaration found is the one meant, that
+ * a guard actually guards, and anything outside `ROOTS`.
  */
 
 const REPO = resolve(__dirname, "../../..");
@@ -62,19 +40,10 @@ const ROOTS = [
 ];
 
 /**
- * Guard names declared by a dependency rather than by us, and therefore deliberately unchecked.
- *
- * Both are methods on remix-auth's `Authenticator`, reached as `authenticator.authenticate(...)`
- * and `authenticator.isAuthenticated(...)`; the whole login surface is built on them. An earlier
- * version of this test resolved them by reading
- * `apps/webapp/node_modules/remix-auth/build/authenticator.d.ts` directly. That is a path into an
- * installed tree: a hoisting change, a version bump that moves `build/`, or a fresh clone with a
- * different install layout turns a real assertion into a confusing environmental failure, and a
- * test that fails for environmental reasons teaches people to ignore it.
- *
- * So they are listed instead, which is a smaller claim honestly made. The test still fails if a
- * guard name is neither declared in first-party source nor on this list, so a name that resolves
- * nowhere cannot be added silently; what it no longer does is prove these two exist.
+ * Guard names declared by a dependency rather than by us, and therefore deliberately unchecked. Both
+ * are remix-auth's, and resolving them meant reading a path inside `apps/webapp/node_modules`, which
+ * an install-layout change turns into a confusing environmental failure. Listing them is a smaller
+ * claim honestly made: the test still fails on a name that is neither first-party nor listed.
  */
 const EXTERNAL_GUARDS = new Set(["authenticate", "isAuthenticated"]);
 

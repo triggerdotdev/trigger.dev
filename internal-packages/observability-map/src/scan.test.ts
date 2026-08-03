@@ -494,8 +494,7 @@ describe("scanFile: parse failures", () => {
     ).toThrow(ParseFailureError);
   });
 
-  // B8. The detection used to read `sf.parseDiagnostics`, an internal property. These are the
-  // shapes that prove the public route through `ts.Program` still sees a malformed file.
+  // The shapes that prove the public route through `ts.Program` still sees a malformed file.
   it("throws on an unclosed jsx element in a tsx route", () => {
     expect(() =>
       scanFile(
@@ -528,9 +527,8 @@ describe("scanFile: parse failures", () => {
     }
   });
 
-  // The change from `sf.parseDiagnostics` to a program-backed lookup is invisible to every test
-  // above: both spellings find the same malformed files today. What a compiler upgrade can break
-  // is the private one, and only a source-level guard can fail for that.
+  // Both spellings find the same malformed files today, so the tests above cannot tell them apart.
+  // What a compiler upgrade can break is the private one, and only a source-level guard fails for it.
   it("reads its diagnostics through public typescript api rather than a private field", () => {
     const source = readFileSync(resolve(__dirname, "./scan.ts"), "utf8");
     expect(source).not.toContain("parseDiagnostics");
@@ -658,9 +656,8 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 
-  // A4. `rethrows` used to be set by any `ThrowStatement` in the clause, reachable or not, so a
-  // `throw e;` appended after a `return` flipped a swallowing catch from rethrows: false to true
-  // with no behavioural change, which read as inert instead of a swallow.
+  // `rethrows` was once set by any `ThrowStatement` at all, so a `throw e;` appended after a `return`
+  // flipped a swallowing catch to inert with no behavioural change.
   it("does not set rethrows for a throw that is dead code after a return", () => {
     const ep = scanFile(
       "dead-throw.ts",
@@ -679,11 +676,8 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 
-  // C2. `reachableStatements` only handled dead code from statement ordering (A4), not a
-  // statically-false condition, and `catchClauseEvidence`'s walk descended into every function
-  // body unconditionally, so a throw or an error test merely REGISTERED in a callback the clause
-  // constructs (never executed as part of the clause's own synchronous handling) was credited to
-  // it. All four shapes below must leave a plain swallow (`catch (e) { return null; }`) inert.
+  // Dead code from a statically-false condition, and a throw merely REGISTERED in a callback the
+  // clause constructs. All four must leave a plain swallow inert.
   describe("dead and deferred code inside a catch does not count as evidence", () => {
     const swallow = (mutation: string) => `
       export async function loader() {
@@ -701,13 +695,9 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
     });
 
-    // Eleven shapes that put a `throw` somewhere it can never run, all of them found by review
-    // rather than by this suite. An earlier round recognised the first two by folding the literal
-    // `false` and lost to the other nine. None of them is named in the rule now: a throw counts
-    // when it is unconditional, and every one of these is guarded by something. There is no claim
-    // that the list is complete, and a twelfth family arrived the round after it was written, see
-    // `dead throw written after something that already exited`. `dead-*` in the mutation corpus
-    // runs the same list over the whole route tree.
+    // Eleven shapes that put a `throw` somewhere it can never run, none of them named in the rule: a
+    // throw counts when it is unconditional. No claim the list is complete, and a twelfth family
+    // arrived the round after, see `dead throw written after something that already exited`.
     const DEAD_SHAPES: Array<[string, string]> = [
       ["if (false)", "if (false) { throw e; }"],
       ["while (false)", "while (false) { throw e; }"],
@@ -742,31 +732,25 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
     });
 
-    // Extra input beyond the brief's four, exercising the same "merely registered" mechanism with
-    // a different callback-taking call, to check the fix is not scoped to `.push` specifically.
+    // The same "merely registered" mechanism under a different callback-taking call, so the fix is
+    // not scoped to `.push`.
     it("does not set rethrows for a throw registered in a setTimeout callback", () => {
       const ep = scanFile("x.ts", swallow("setTimeout(() => { throw e; }, 0);"));
       expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
     });
 
-    // Positive control: a do/while runs its body at least once regardless of the trailing
-    // condition, so a throw in one is genuinely unconditional and must still register. This checks
-    // the while(false) fix was not implemented broadly enough to swallow a real rethrow too.
+    // Positive control: a do/while runs its body at least once, so a throw in one is genuinely
+    // unconditional and the while(false) fix must not have swallowed it too.
     it("still sets rethrows for a throw in a do/while, which runs its body once regardless", () => {
       const ep = scanFile("x.ts", swallow("do { throw e; } while (false);"));
       expect(ep!.catches[0]!.rethrows).toBe(true);
     });
   });
 
-  // The mirror of the family above. Each dead spelling earns nothing, and it must also COST
-  // nothing: a plain containment read was true of the dead statement itself, so prepending one raised the
-  // `exited` flag and blinded the walk to the real classification below it, turning a pass into a
-  // swallow verdict on 78 real routes. `containsLiveExit` folds the literal guard and sees no live
-  // exit, so the deciding statements keep their credit. The spellings are the CORPUS spellings
-  // from `dead-*` in `mutations.ts`, not the `DEAD_SHAPES` table's: that table's inner-try twin is
-  // `try { doThing(); } catch { throw e; }`, which is NOT provably dead (`doThing` may throw and
-  // the rethrow then runs), so conservatively raising the flag after it is correct and it gets no
-  // twin here.
+  // The mirror of the family above: each dead spelling earns nothing and must also COST nothing,
+  // since a containment read of the dead statement raised `exited` and blinded the walk to the real
+  // classification below it, on 78 real routes. The spellings are the CORPUS ones from `dead-*`, not
+  // the `DEAD_SHAPES` table's, whose inner-try twin is not provably dead and gets no twin here.
   describe("dead and deferred code prepended to a deciding catch does not blind it", () => {
     const deciding = (mutation: string) => `
       export async function loader() {
@@ -806,17 +790,15 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // The composed shape: the dead if wrapped in a bare block, which the walk enters. The block's
-    // own live-exit read has to fold too, or entering it re-raises the flag the fold lowered.
+    // The dead if wrapped in a bare block, which the walk enters: the block's own live-exit read has
+    // to fold too, or entering it re-raises the flag the fold lowered.
     it("keeps branches true past a dead throw in a block around an if (false)", () => {
       const ep = scanFile("x.ts", deciding("{ if (false) { throw e; } }"));
       expect(ep!.catches[0]!.branches).toBe(true);
     });
 
-    // The returns half. A dead `return null;` must not veto the rethrow: `containsReturn` saw the
-    // return token inside `if (false)` and turned a rethrow-only clause into a swallow verdict,
-    // which regressed 11 real routes from not-applicable to fail. `dead-if-false-return` in the
-    // mutation corpus is the tree-scale version.
+    // The returns half: a dead `return null;` must not veto the rethrow, which regressed 11 real
+    // routes from not-applicable to fail. `dead-if-false-return` is the tree-scale version.
     it("still sets rethrows past a dead return in an if (false) arm", () => {
       const ep = scanFile(
         "x.ts",
@@ -831,8 +813,8 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]!.rethrows).toBe(true);
     });
 
-    // Negative controls: the fold only withholds blindness, it must never withhold refusal.
-    // An always-true guard really can run its throw, so the error test after it stays dead.
+    // Negative controls: the fold withholds blindness and never refusal, so an always-true guard's
+    // throw still kills the error test after it.
     it("still refuses an error test after an always-true spelling that throws", () => {
       const ep = scanFile(
         "x.ts",
@@ -847,9 +829,8 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]!.branches).toBe(false);
     });
 
-    // The fall-through slice: `case 1` matches and runs on into `case 2`, so the return is live
-    // and vetoes the rethrow. Misreading the slice as dead would blind the returns veto, which is
-    // the direction that hands out credit.
+    // `case 1` matches and runs on into `case 2`, so the return is live and vetoes the rethrow.
+    // Misreading the slice as dead blinds the veto, which is the direction that hands out credit.
     it("reads a switch fall-through onto a live return as live", () => {
       const ep = scanFile(
         "x.ts",
@@ -865,13 +846,10 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
-  // The walk may enter a construct exactly where the entered statements are guaranteed to execute
-  // whenever the clause body runs. Before these entries existed, relocating a clause's own
-  // statements inside `if (true)`, a switch default, an if/else or a try/finally put the branch
-  // evidence out of reach while the returns veto still saw the return, so a deciding clause read
-  // as a swallow: 83 real routes regressed per corpus entry. Each identity pair here holds the
-  // wrapped and unwrapped spellings to the same evidence; `checks/index.test.ts` holds them to the
-  // same verdict.
+  // The walk enters a construct exactly where the entered statements are guaranteed to execute.
+  // Without these entries, relocating a clause's own statements inside a wrapper put the branch
+  // evidence out of reach while the returns veto still saw the return: 83 real routes per corpus
+  // entry. Each pair holds the wrapped and unwrapped spellings to the same evidence.
   describe("the walk enters exactly the positions guaranteed to execute", () => {
     const clauseEvidence = (body: string) => {
       const ep = scanFile(
@@ -960,11 +938,9 @@ describe("scanFile: catch clause evidence", () => {
       expect(evidence.rethrows).toBe(false);
     });
 
-    // A finally that leaves itself by `break` or `continue` cancels the try's completion the same
-    // way a finally return does, so a throw in that tryBlock never escapes the clause. Crediting
-    // it made `do { try { throw e; } finally { break; } } while (false);` a no-op that minted
-    // rethrows, and its classifier-hosting variant minted branches on 80 real routes;
-    // `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale twin.
+    // A finally leaving itself by `break` cancels the try's completion the same way a finally return
+    // does, so a throw in that tryBlock never escapes. Crediting it minted branches on 80 real
+    // routes; `dead-throw-in-cancelled-try` is the tree-scale twin.
     it("reads a throw a finally break discards as no rethrow", () => {
       const evidence = clauseEvidence(
         "do { try { throw e; } finally { break; } } while (false);\nlogger.error(e);"
@@ -1020,17 +996,10 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
-  // S1. The other end of the same problem. `reachableStatements` used to cut the statement list
-  // only on a BARE `return`/`throw`, while the walk descended into blocks and `do` bodies, so a
-  // `throw e;` written after a nested construct that had already returned was still read as the
-  // clause rethrowing. Every one of these takes a swallow from `fail` to `not-applicable`, worth 50
-  // points a route, and they are semantics-preserving because the throw cannot run.
-  //
-  // Two rules answer them together. `definitelyExits` sees through the block, the `do` and the
-  // `if`/`else`, the `switch` and the `try`/`finally`; the `if (true)` form needs constant folding
-  // that this file deliberately does not do, and is answered instead by `rethrows` requiring the
-  // clause to contain no reachable `return` at all. `dead-throw-after-*` in the mutation corpus
-  // runs all six over the whole route tree.
+  // The other end of the same problem: cutting the statement list only on a BARE `return`/`throw`
+  // left a `throw e;` after a nested construct that had already returned reading as a rethrow, worth
+  // 50 points a route. Two rules answer them together, `definitelyExits` seeing through the wrappers
+  // and `rethrows` requiring no reachable `return`. `dead-throw-after-*` is the tree-scale family.
   describe("dead throw written after something that already exited", () => {
     const exiting = (wrapped: string) => `
       export async function loader() {
@@ -1059,24 +1028,13 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // The same wrappers on the branches side, plus three the rethrow list has no use for. An error
-    // test written after a statement that could already have left the clause is dead code and must
-    // not read as the clause deciding anything.
+    // The same wrappers on the branches side, plus three the rethrow list has no use for. This asks a
+    // weaker question than `definitelyExits` does, and on purpose: "could this have exited", not
+    // "must it have", which is why a labelled block, a `for...of` and a `while` are all on the list.
     //
-    // This asks a weaker question than `definitelyExits` does, and on purpose: "could this have
-    // exited", not "must it have". That is why `if (true)`, a labelled block, a `for...of` and a
-    // `while` are all on the list even though none of them is guaranteed to run its body. The flag
-    // is read through `containsLiveExit`, which folds LITERAL guards only, so every wrapper here
-    // still counts: `if (true)` descends its then-arm and finds the return, and a loop guarded by
-    // an identifier keeps the plain containment answer. What the fold withholds is the provably
-    // dead statement raising the flag itself, which is the twin family in `dead and deferred code
-    // prepended to a deciding catch does not blind it`.
-    //
-    // The ordering is the whole trick and it is easy to get backwards. The flag is raised at the
-    // END of each statement, after that statement's own branch check. Raising it first makes every
-    // deciding statement refuse itself, because `if (e instanceof X) return y` contains an exit by
-    // definition; that variant was measured against the pre-round-C tree and it takes it from 15 to 6, accusing 78
-    // routes. This one leaves the real-tree report and all 240 clauses' evidence byte-identical.
+    // The ordering is the whole trick and it is easy to get backwards. The flag is raised at the END
+    // of each statement, after that statement's own branch check, or every deciding statement refuses
+    // itself: measured at 78 routes accused.
     const BRANCH_EXITED: Array<[string, string]> = [
       ...EXITED,
       ["a labelled block", "outer: { return null; }"],
@@ -1100,10 +1058,8 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // The precision this gives up, pinned so it is a decision and not a surprise: a conditional
-    // exit before the error test also stops the credit, because the walk cannot tell a guard that
-    // usually falls through from one that always leaves. No clause in the route tree is this shape,
-    // which is why the report is byte-identical, but one could be written tomorrow.
+    // The precision this gives up, pinned so it is a decision and not a surprise: a conditional exit
+    // before the error test also stops the credit. No clause in the tree is this shape today.
     it("does not credit an error test written after a conditional return", () => {
       const ep = scanFile(
         "x.ts",
@@ -1132,8 +1088,7 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches[0]!.branches).toBe(true);
     });
 
-    // Positive control: nothing before the throw exits, so the throw is real and the clause has no
-    // other way out.
+    // Positive control: nothing before the throw exits, so the clause has no other way out.
     it("still sets rethrows when nothing before the throw returns", () => {
       const ep = scanFile("x.ts", exiting("logger.error(e);"));
       expect(ep!.catches[0]!.rethrows).toBe(true);
@@ -1153,13 +1108,10 @@ describe("scanFile: catch clause evidence", () => {
     });
   });
 
-  // S3. `definitelyExits` counted a bare `break` and a bare `continue` wherever it found one, and
-  // both of those target the nearest enclosing construct of their kind rather than the statement
-  // list the question is about. A `switch` whose clauses all break falls through to the statement
-  // written after it, so cutting that statement as unreachable accused a route of swallowing an
-  // error it rethrows, with a detail line saying it "takes one way out regardless of what was
-  // thrown" about a clause that takes the same way out it arrived by. This is the false-accusation
-  // direction, so both halves are pinned: what must now stay reachable, and what must still be cut.
+  // A bare `break` or `continue` targets the nearest enclosing construct of its kind rather than the
+  // list the question is about, so counting one wherever it appeared accused a route of swallowing an
+  // error it rethrows. The false-accusation direction, so both halves are pinned: what must stay
+  // reachable, and what must still be cut.
   describe("break and continue inside the construct they target", () => {
     const clause = (body: string) => `
       export async function loader() {
@@ -1236,11 +1188,9 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // A `continue` in a switch clause targets the enclosing loop, not the switch, so it is
-    // inherited through the clause rather than dropped with the `break`. Dropping it would leave
-    // the throw below reachable, and it is not: the continue goes to the `do`'s condition.
-    // The labelled jumps beside it leave the `for` entirely, so they are exits wherever they are
-    // written. The bare `break` is the control that separates the three.
+    // A `continue` in a switch clause targets the enclosing loop, so it is inherited rather than
+    // dropped with the `break`. The labelled jumps beside it leave the `for` entirely, and the bare
+    // `break` is the control that separates the three.
     const IN_LOOP: Array<[string, boolean]> = [
       ["break outer", false],
       ["continue outer", false],
@@ -1268,11 +1218,9 @@ describe("scanFile: catch clause evidence", () => {
     }
   });
 
-  // S2. A clause whose try block cannot throw is unreachable, so it is not error handling and
-  // nothing should be read off it. Crediting one was the largest hole ever found here: prepending
-  // this to a body takes the real tree from 19 to 44 and raises 224 routes, because the routes
-  // that catch nothing sat at `not-applicable` and a dead clause moved every one of them to `pass`.
-  // `dead-classifying-try` in the mutation corpus is the tree-scale version.
+  // A clause whose try block cannot throw is not error handling. Crediting one was the largest hole
+  // ever found here: 19 to 44 on the real tree and 224 routes raised. `dead-classifying-try` is the
+  // tree-scale version.
   describe("a catch over a try block that cannot throw", () => {
     const guarding = (guarded: string) => `
       export async function loader({ request }) {
@@ -1299,8 +1247,8 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // Positive controls, one per reason `canRaise` recognises, so the predicate is not passing the
-    // cases above by being false for everything.
+    // One per reason `canRaise` recognises, so the predicate is not passing the cases above by being
+    // false for everything.
     const LIVE: Array<[string, string]> = [
       ["a call", "doThing();"],
       ["a construction", "new Thing();"],
@@ -1434,9 +1382,8 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    // The `throw e` here is guarded by an `if`, so it is not on the clause's straight-line path and
-    // does not read as a rethrow. The `if` itself does: it reads the binding and one arm throws, so
-    // the clause decides. The verdict the checks care about is unchanged.
+    // The `throw e` is guarded by an `if`, so it is not on the straight-line path and does not read as
+    // a rethrow. The `if` itself decides, so the verdict the checks care about is unchanged.
     expect(ep!.catches[0]!.rethrows).toBe(false);
     expect(ep!.catches[0]!.branches).toBe(true);
   });
@@ -1486,13 +1433,9 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches).toEqual([]);
   });
 
-  // A7 / C1. The first fix stopped at ANY function-like node, purely lexical, which correctly
-  // excludes a per-item `.map()` boundary but also deletes the route's own catch when the whole
-  // body is wrapped in a single-shot callback: `trace(async () => { ...whole body... })`,
-  // `mutateWithFallback({ pgMutation: async (t) => {...} })`, `new ReadableStream({ start: async (c)
-  // => {...} })`. All three invoke their callback exactly once, as the route's own continuation.
-  // The real distinction is per-item iteration versus everything else, so only a callback passed to
-  // `map`/`forEach`/`filter`/`reduce`/`reduceRight`/`flatMap`/`some`/`every` is a boundary now.
+  // Stopping at ANY function-like node excluded a per-item `.map()` boundary correctly and also
+  // deleted the route's own catch whenever the body was wrapped in a single-shot callback. The real
+  // distinction is per-item iteration versus everything else.
   describe("inline single-shot wrappers are attributed to the route", () => {
     it("attributes a catch wrapped in trace(async () => {...})", () => {
       const ep = scanFile(
@@ -1620,9 +1563,8 @@ describe("scanFile: catch clause evidence", () => {
       expect(ep!.catches).toEqual([]);
     });
 
-    // A refused catch keeps its evidence, built by the same machinery as an own catch, so
-    // `error-classification` can judge what it does rather than where it sits. Both flavours are
-    // pinned: the deciding per-item catch and the inert one.
+    // A refused catch keeps its evidence, so `error-classification` can judge what it does rather
+    // than where it sits. Both flavours are pinned, the deciding per-item catch and the inert one.
     it("populates evidence for a refused per-item catch that decides", () => {
       const ep = scanFile(
         "x.ts",
@@ -1884,9 +1826,8 @@ describe("scanFile: per-catch evidence", () => {
       `
     );
     expect(ep!.catches).toHaveLength(2);
-    // `if (e instanceof Response) throw e;` branches (it reads the binding and one arm throws) and
-    // does not rethrow (the throw is guarded, so it is not on the clause's own path). The action's
-    // catch does neither. What this test is for is that the two clauses stay separate.
+    // The loader's clause branches and does not rethrow; the action's does neither. What this test is
+    // for is that the two clauses stay separate.
     expect(ep!.catches.filter((c) => !c.rethrows && c.branches)).toHaveLength(1);
     expect(ep!.catches.filter((c) => !c.rethrows && !c.branches)).toHaveLength(1);
   });
@@ -2162,9 +2103,8 @@ describe("scanFile: branches requires the if/switch condition to examine the err
   });
 });
 
-// A3. `referencesBinding` matched any identifier with the binding's text, including a property
-// name, an object literal key and a name re-declared in a nested scope. So a clause that never
-// really inspects the error still counted as deciding on it.
+// `referencesBinding` once matched any identifier with the binding's text, including a property name,
+// an object literal key and a name re-declared in a nested scope.
 describe("scanFile: branches requires a genuine read of the binding, not a lookalike", () => {
   it("does not set branches for an `if` that only reads a same-named property", () => {
     const ep = scanFile(
@@ -2261,12 +2201,9 @@ describe("scanFile: branches requires a genuine read of the binding, not a looka
   });
 });
 
-// I5. The shadow check only fired inside `referencesBinding`'s own top-down search from an
-// if/switch's condition, so it only caught shadowing NESTED inside that condition, exactly what
-// the tests above exercise. A shadowing scope that instead WRAPS the if (a for-of loop, a nested
-// catch with the same name) was invisible, because nothing walked up from the if to notice it.
-// catchClauseEvidence now tracks shadowing as it descends, the same way `inCallback` tracks a
-// callback boundary: once a scope re-declares the binding, everything nested inside stays shadowed.
+// The shadow check once only caught shadowing NESTED inside the condition, so a scope that WRAPS the
+// if was invisible. `catchClauseEvidence` tracks shadowing as it descends instead: once a scope
+// re-declares the binding, everything nested inside stays shadowed.
 describe("scanFile: a binding shadowed by an enclosing scope, not just a nested one", () => {
   const swallow = (mutation: string) => `
     export async function loader() {
@@ -2348,8 +2285,7 @@ describe("scanFile: a binding shadowed by an enclosing scope, not just a nested 
   });
 
   // Two shapes that read the real binding and are still not credited, for reasons that are not
-  // shadowing. Both are precision the straight-line rule gives up on purpose, and both are
-  // recorded here so a later reader can tell a deliberate limit from a bug.
+  // shadowing: precision the straight-line rule gives up on purpose.
   it("does not credit an if whose arm does not take the error anywhere", () => {
     const ep = scanFile("x.ts", swallow("if (error instanceof Error) { doThing(); }"));
     expect(ep!.catches[0]!.branches).toBe(false);
@@ -2364,11 +2300,9 @@ describe("scanFile: a binding shadowed by an enclosing scope, not just a nested 
   });
 });
 
-// S3. The ternary path checked only that the condition tested the error, never that the two arms
-// went anywhere different, while the `if`/`switch` path had checked exactly that since the round
-// before. Rewriting `return X;` as `return e instanceof Error ? (X) : (X)` was therefore worth 50
-// points a route for a change that decides nothing, and it is semantics-preserving.
-// `same-arms-ternary` in the mutation corpus is the tree-scale version.
+// The ternary path once checked only that the condition tested the error, so rewriting `return X;` as
+// `return e instanceof Error ? (X) : (X)` was worth 50 points a route for a change that decides
+// nothing. `same-arms-ternary` is the tree-scale version.
 describe("a ternary on the error has to send its arms somewhere different", () => {
   const returning = (value: string) => `
     export async function loader() {
@@ -2403,12 +2337,9 @@ describe("a ternary on the error has to send its arms somewhere different", () =
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 
-  // S6. The same three cases on the throw path, which read none of them. The throw arm of the
-  // shared branch check was unreachable, because the walk sets `rethrows` and cuts the path first,
-  // so a thrown ternary was never offered to `selectsAnErrorPath` and every one of these clauses
-  // read as inert. Reading it in the throw arm, before the path is cut, uses the same predicate,
-  // so the arm test arrives with it. `wrap-body-in-same-arms-throw-ternary` is the tree-scale
-  // version of the refusal.
+  // The same three cases on the throw path, which read none of them: the walk sets `rethrows` and
+  // cuts the path first, so a thrown ternary was never offered to `selectsAnErrorPath`.
+  // `wrap-body-in-same-arms-throw-ternary` is the tree-scale version of the refusal.
   const throwing = (value: string) => `
     export async function loader() {
       try {
@@ -2470,14 +2401,9 @@ describe("a ternary on the error has to send its arms somewhere different", () =
   });
 });
 
-// The liveness gap in the branch predicate. `selectsADistinctPath` asked a plain containment
-// question, so an arm holding an exit that can never run read as an arm that takes the error
-// somewhere. `catch (e) { if (e instanceof Error) { if (false) { return null; } } return json(x,
-// { status: 500 }); }` is the same swallow as the clause without the `if`, and it was worth 50
-// points a route. The same eleven dead spellings had already been folded out of
-// `catchClauseEvidence`'s `exited` flag by `containsLiveExit`, and this predicate beside it kept
-// the containment read. `dead-armed-instanceof-if` in the mutation corpus is the tree-scale
-// version: global 19 -> 27 and 80 routes raised, before the fix.
+// The liveness gap in the branch predicate: under a plain containment read, an arm holding an exit
+// that can never run read as an arm that takes the error somewhere, worth 50 points a route.
+// `dead-armed-instanceof-if` is the tree-scale version, global 19 to 27 and 80 routes raised.
 describe("an arm whose only exit is dead decides nothing", () => {
   const swallow = (mutation: string) => `
     export async function loader() {
@@ -2517,20 +2443,11 @@ describe("an arm whose only exit is dead decides nothing", () => {
     });
   }
 
-  // The positive controls. The fold is subtractive against containment, so anything it cannot
-  // prove dead reads exactly as it did, including a guard whose truth is not decidable from the
-  // token alone. Without these the fix could be "always false" and the four cases above would
-  // still pass.
-  //
-  // `an arm guarded by a condition that does not fold` is also the pin on the alternative that was
-  // measured and rejected: asking the arm to `definitelyExits` rather than to hold a live exit.
-  // That is the "guaranteed" reading, it refuses all four shapes above, and it accuses
-  // `admin.api.v1.orgs.$organizationId.environments.staging.ts` on the real tree, taking the global
-  // from 19 to 18. That clause recognises Prisma's P2002, re-reads the conflicting row and returns
-  // `{ status: "updated" }`, rethrowing everything else: a textbook classification whose arm
-  // happens to fall through to the rethrow when the re-read finds nothing. Accusing it of taking
-  // one way out regardless of what was thrown is simply false, and a new false accusation is the
-  // direction that gets the tool switched off.
+  // Positive controls: without these the fix could be "always false" and the four cases above would
+  // still pass. `an arm guarded by a condition that does not fold` is also the pin on the rejected
+  // alternative, asking the arm to `definitelyExits` rather than to hold a live exit, which refuses
+  // all four shapes above and falsely accuses a real classifying clause in
+  // `admin.api.v1.orgs.$organizationId.environments.staging.ts`, taking the global from 19 to 18.
   const LIVE_ARMS: Array<[string, string]> = [
     ["a plain returning arm", "if (error instanceof Error) { return badRequest(); }"],
     [
@@ -2552,11 +2469,9 @@ describe("an arm whose only exit is dead decides nothing", () => {
   }
 });
 
-// C4a. `export const { action, loader } = createActionApiRoute(...)` produced no entry point at
-// all: `scanFile` skipped a non-identifier binding name at the export site, so the route was
-// absent from the denominator rather than parsed, failed or unmeasured. The two-step spelling
-// already worked, because `collectLocalDeclarations` reads the binding pattern and the export
-// clause resolves through it, so exactly half the shape was wired.
+// `export const { action, loader } = createActionApiRoute(...)` produced no entry point at all, so
+// the route was absent from the denominator rather than parsed, failed or unmeasured. The two-step
+// spelling already worked, so exactly half the shape was wired.
 describe("scanFile: a destructured export declaration", () => {
   const BUILDER = `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";`;
 

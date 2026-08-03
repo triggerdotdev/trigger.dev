@@ -321,20 +321,14 @@ ${BUSY_AND_FAILING}`
     expect(after.measured).toBe(2);
   });
 
-  // M9. A prior version of this test asserted suppressed.score <= plain.score for a check that was
-  // passing, which the pre-existing per-entry Math.min cap already guarantees on its own: removing
-  // a passing (maximal) result from a ratio can only lower or hold it, at every level, with or
-  // without A1's fix, so the assertion passed unchanged against the pre-fix code and proved
-  // nothing about the aggregate mechanism A1 actually changed. Deleted rather than kept as
-  // decoration; "does not raise the score" for a failing suppression is exercised, with real
-  // discriminating power, by the two tests above.
+  // A test suppressing a PASSING check used to sit here and was deleted rather than kept as
+  // decoration: the per-entry cap guarantees it on its own, so it passed against the pre-fix code.
 });
 
 /**
- * The invariant, both ways round. The README states one direction, removing error handling must
- * lower the score, and that alone could not see the free-points path: adding a catch that only
- * rethrows changes nothing about how the route behaves, and used to move it from not-applicable to
- * pass, worth 50 points a route and 27 points across the tree.
+ * The invariant both ways round. Removing error handling must lower the score, and that direction
+ * alone could not see the free-points path: adding a catch that only rethrows used to move a route
+ * from not-applicable to pass, worth 27 points across the tree.
  */
 describe("no-op error handling must not pay", () => {
   const BODY = `const rows = await prisma.thing.findMany();
@@ -563,16 +557,10 @@ export async function action() {
 });
 
 /**
- * `contextGap` and `auditGap` are the same arithmetic `checkContributions` already does for every
- * check, written out again by hand for two named ids: `map(find).filter(status)` for the context
- * figure, `filter(some)` for the audit one, and a third spelling of "passed" for each. Three
- * implementations of "applicable, and how many of those passed", and nothing said they had to
- * agree, on the two figures the report puts in front of a reader as headline numbers.
- *
- * Pinned rather than shared. Collapsing them would mean the gap figures reading their check's row
- * out of `checkContributions`, which is a fine refactor and a wider blast radius than the property
- * is worth: what matters is that they cannot disagree, and an assertion says that without moving
- * any code the renderers read.
+ * `contextGap` and `auditGap` are the arithmetic `checkContributions` already does, written out again
+ * by hand for two named ids, on the two figures the report puts in front of a reader as headlines.
+ * Pinned rather than shared: what matters is that three spellings of "applicable, and how many
+ * passed" cannot disagree, and an assertion says that without moving code the renderers read.
  */
 describe("the hand-rolled gap figures agree with the per-check contributions", () => {
   const SOURCE = `import { prisma } from "~/db.server";
