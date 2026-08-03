@@ -121,8 +121,9 @@ function createSchema(
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await requireUserId(request);
-  const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+  const user = await requireUser(request);
+  const showThemeSwitcher =
+    user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
   return json({ showThemeSwitcher });
 }
 
@@ -132,22 +133,24 @@ export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
-    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+    const user = await requireUser(request);
+    const showThemeSwitcher =
+      user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }
-    const user = await requireUser(request);
     const theme = normalizeThemePreference(formData.get("theme"));
     await updateThemePreference({ user, theme });
     return json({ success: true });
   }
 
   if (formData.get("action") === "update-contrast") {
-    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+    const user = await requireUser(request);
+    const showThemeSwitcher =
+      user.admin || (await flag({ key: "hasThemeSwitcher", defaultValue: false }));
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }
-    const user = await requireUser(request);
     const contrast = normalizeThemeContrast(formData.get("contrast"));
     await updateContrastPreference({ user, contrast });
     return json({ success: true });

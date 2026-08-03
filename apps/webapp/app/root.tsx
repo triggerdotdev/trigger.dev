@@ -80,10 +80,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const user = await getUser(request);
   // Theme switching is feature-flagged; while off, everyone stays on the
-  // classic theme even if a preference was saved earlier. Cached: the root
-  // loader runs on every document request and client navigation.
+  // classic theme even if a preference was saved earlier. Admins always get
+  // the switcher so the team can dogfood before the flag flips. Cached: the
+  // root loader runs on every document request and client navigation.
   const showThemeSwitcher = user
-    ? await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false })
+    ? user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }))
     : false;
   // Logged-out pages (login, invites) always render the branded Classic look.
   const themePreference: ThemePreference = showThemeSwitcher
