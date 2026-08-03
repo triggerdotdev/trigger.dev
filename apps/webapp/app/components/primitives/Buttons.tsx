@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { AgentDotMatrix, AgentMonoLogo } from "./AgentDotMatrix";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -119,17 +119,19 @@ const theme = {
   // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
   // softened trigger-green border.
   "ask-ai": {
-    // Hover fills with a pale brand-green tint; ink flips DARK — dark ink on
-    // the pale green is ~13:1 (white would be ~1.4:1 even on the full green).
+    // Light hover fills with a pale brand-green tint and the ink flips DARK —
+    // dark ink on the pale green is ~13:1 (white would be ~1.4:1 even on the
+    // full green). Dark themes hover like the other grey buttons: a slight
+    // lift, ink stays bright.
     textColor:
-      "text-text-bright transition group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
+      "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
     // The trigger-green /25 border washes out on white, so the light theme
     // darkens it (the unified success token clears 3:1 on white).
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-[#e4ffe8] group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-charcoal-800 group-hover/button:border-charcoal-800/60",
-    icon: "text-text-bright group-hover/button:text-charcoal-800",
+      "border-text-dimmed/40 text-text-dimmed dark:group-hover/button:text-text-bright dark:group-hover/button:border-text-dimmed light:group-hover/button:text-charcoal-800 light:group-hover/button:border-charcoal-800/60",
+    icon: "text-text-bright light:group-hover/button:text-charcoal-800",
   },
 };
 
