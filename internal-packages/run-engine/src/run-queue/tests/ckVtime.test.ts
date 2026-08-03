@@ -1273,4 +1273,140 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       }
     }
   );
+
+  // Cold start: the flag is turned on over a backlog that was queued while it was
+  // off, so every variant is in ckIndex and none is in :ckVtime. Pass 1 can only
+  // see registered variants, so the cohort pass 2 happens to register on the first
+  // call is the only cohort pass 1 ever serves; while that cohort keeps the batch
+  // full, pass 2 never runs again and the rest of the backlog is unreachable until
+  // the cohort drains. A variant that gets no further enqueues and no nacks has no
+  // other route into the fair order, so the bound below is the whole guarantee.
+  //
+  // The same shape covers a mixed deploy (an instance with the flag still off
+  // enqueues through the non-vtime command) and a :ckVtime that expired while
+  // ckIndex survived.
+  describe("cold start over an unregistered backlog", () => {
+    type ColdStartShape = {
+      variants: number;
+      perVariant: number;
+      maxCount: number;
+      scanWindowMultiplier?: number;
+      // Calls the coldest variant (newest head, so last in the age order pass 2
+      // walks) may wait before its first serve.
+      bound: number;
+    };
+
+    // Enqueues the backlog with the flag OFF, then reopens the same keyspace with
+    // it ON and drains, recording the call each variant was first served on.
+    async function runColdStart(redisContainer: any, shape: ColdStartShape) {
+      const t0 = Date.now() - 500_000;
+      const cks = Array.from(
+        { length: shape.variants },
+        (_, k) => `ck${String(k).padStart(2, "0")}`
+      );
+
+      const before = createQueue(redisContainer, null);
+      try {
+        for (let i = 0; i < shape.perVariant; i++) {
+          for (let k = 0; k < cks.length; k++) {
+            await before.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `${cks[k]}-${i}`,
+                concurrencyKey: cks[k],
+                // 1s of head-age spacing per variant, so ck00 is oldest and the
+                // age order never reshuffles as heads advance by 1ms per serve.
+                timestamp: t0 + k * 1_000 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+      } finally {
+        await before.quit();
+      }
+
+      const after = createQueue(redisContainer, {
+        ...(shape.scanWindowMultiplier === undefined
+          ? {}
+          : { scanWindowMultiplier: shape.scanWindowMultiplier }),
+      });
+      try {
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName(cks[0]!));
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(variantName(cks[0]!));
+        // The premise: the whole backlog is in the age index and nothing is in the
+        // fair order.
+        expect(await after.redis.zcard(ckIndexKey)).toBe(shape.variants);
+        expect(await after.redis.zcard(ckVtimeKey)).toBe(0);
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const total = shape.variants * shape.perVariant;
+        const firstServeCall = new Map<string, number>();
+        let served = 0;
+
+        for (let call = 0; call < total + 10 && served < total; call++) {
+          const messages = await after.testDequeueFromMasterQueue(
+            shard,
+            authenticatedEnvDev.id,
+            shape.maxCount
+          );
+          for (const m of messages) {
+            const ck = m.message.concurrencyKey!;
+            if (!firstServeCall.has(ck)) firstServeCall.set(ck, call);
+            served++;
+            // Ack immediately so env concurrency never gates a serve: the only
+            // thing under test is reachability.
+            await after.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        return { firstServeCall, served, total, coldest: cks[cks.length - 1]! };
+      } finally {
+        await after.quit();
+      }
+    }
+
+    // Bounds are the measured value, not headroom: the harness has no wall-clock
+    // wait and no randomness. The pre-fix figure in each comment is what the same
+    // shape did when pass 2 was gated on dequeuedCount < actualMaxCount.
+    const shapes: [string, ColdStartShape][] = [
+      // Registered cohort (5) smaller than the backlog (8), both inside the
+      // pass-1 window (15) and the pass-2 scan window (15). Pre-fix: call 12.
+      ["8 variants, batch 5", { variants: 8, perVariant: 12, maxCount: 5, bound: 1 }],
+      // Backlog exactly fills the pass-1 window (12), so discovery has to land in
+      // more than one call. Pre-fix: call 16.
+      ["12 variants, batch 4", { variants: 12, perVariant: 8, maxCount: 4, bound: 2 }],
+      // scanWindowMultiplier 1 puts the pass-1 window (5) below the backlog, so
+      // the window read can no longer tell which variants are already registered
+      // and discovery falls back to the NX. Pre-fix: call 12.
+      [
+        "15 variants, batch 5, narrow fair window",
+        { variants: 15, perVariant: 6, maxCount: 5, scanWindowMultiplier: 1, bound: 2 },
+      ],
+    ];
+
+    for (const [name, shape] of shapes) {
+      redisTest(
+        `${name}: the coldest variant is served within ${shape.bound + 1} calls`,
+        async ({ redisContainer }) => {
+          const { firstServeCall, served, total, coldest } = await runColdStart(
+            redisContainer,
+            shape
+          );
+
+          // Work conservation: the backlog still drains completely.
+          expect(served).toBe(total);
+          expect(firstServeCall.size).toBe(shape.variants);
+
+          expect(
+            firstServeCall.get(coldest),
+            `coldest variant ${coldest} first served on call ${firstServeCall.get(coldest)}`
+          ).toBeLessThanOrEqual(shape.bound);
+        }
+      );
+    }
+  });
 });
