@@ -1360,7 +1360,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         points,
         total: worst,
         formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
-        totalClassName: worst >= 60_000 ? "system-mono-label text-warning" : undefined,
+        totalClassName: worst >= 60_000 ? "text-warning" : undefined,
       };
     },
   },
@@ -1387,7 +1387,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         points,
         total: pct,
         formatTotal: (v) => `${v}% of current period`,
-        totalClassName: pct > 0 ? "system-mono-label text-warning" : undefined,
+        totalClassName: pct > 0 ? "text-warning" : undefined,
       };
     },
   },
