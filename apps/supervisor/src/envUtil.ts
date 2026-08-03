@@ -123,11 +123,10 @@ export const Tolerations = z.string().transform((val, ctx) => {
 
       const value = keyValue.slice(eqIdx + 1).trim();
       if (!value) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Invalid toleration format (empty value): "${entry}". Drop the "=" to tolerate any value of "${key}".`,
-        });
-        return z.NEVER;
+        logger.warn(
+          'Toleration has an empty value, so it matches only a taint whose value is also empty. Drop the "=" to tolerate any value of this key.',
+          { entry, key }
+        );
       }
 
       if (!isLabelValue(value)) {

@@ -120,12 +120,10 @@ describe("Tolerations", () => {
     ]);
   });
 
-  it("should reject an empty value, and point at the Exists form instead", () => {
-    const result = Tolerations.safeParse("dedicated=:NoSchedule");
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe(
-      'Invalid toleration format (empty value): "dedicated=:NoSchedule". Drop the "=" to tolerate any value of "dedicated".'
-    );
+  it("should keep an empty value as an exact match for a valueless taint", () => {
+    expect(Tolerations.parse("dedicated=:NoSchedule")).toEqual([
+      { key: "dedicated", operator: "Equal", value: "", effect: "NoSchedule" },
+    ]);
 
     expect(Tolerations.parse("dedicated:NoSchedule")).toEqual([
       { key: "dedicated", operator: "Exists", effect: "NoSchedule" },
