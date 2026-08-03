@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
 import { Button } from "~/components/primitives/Buttons";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -193,7 +193,7 @@ export function AgentChart({
       <div className={cn(AGENT_CHART_PLOT_CLASS)}>
         {state.status === "loading" ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-text-dimmed">
-            <Spinner className="size-3" />
+            <AgentSpinner size={12} />
             Running query…
           </div>
         ) : state.status === "error" ? (

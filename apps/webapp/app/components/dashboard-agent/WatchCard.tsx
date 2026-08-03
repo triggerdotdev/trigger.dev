@@ -32,7 +32,7 @@ import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Input } from "~/components/primitives/Input";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { ChatSystemBlock } from "./chat-layout";
 import {
@@ -66,7 +66,7 @@ const VARIANT_LABEL: Record<WatchKind, string> = {
 
 /** The in-flight glyph on the submit button. Hoisted so it keeps its identity. */
 function ButtonSpinner() {
-  return <Spinner className="size-3.5" />;
+  return <AgentSpinner size={14} />;
 }
 
 /** One choice in an inline picker. Selected is the accent; the rest are quiet. */

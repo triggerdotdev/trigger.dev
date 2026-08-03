@@ -10,7 +10,7 @@
  */
 import { CheckCircleIcon, ClockIcon, NoSymbolIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "../../agent-badges";
@@ -35,7 +35,7 @@ function StatusIcon({ status }: { status: WatchStatus }) {
   switch (status) {
     case "active":
       // Same choice as an executing run: a spinner is the "still going" state.
-      return <Spinner className="size-3.5 shrink-0" />;
+      return <AgentSpinner size={14} />;
     case "fired":
       return <CheckCircleIcon className={className} />;
     case "expired":

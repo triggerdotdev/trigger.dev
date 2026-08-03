@@ -1,3 +1,4 @@
+import { AgentDotMatrix } from "~/components/primitives/AgentDotMatrix";
 import { cn } from "~/utils/cn";
 
 type CustomColor = {
@@ -75,4 +76,14 @@ export function ButtonSpinner() {
 
 export function SpinnerWhite({ className }: { className?: string }) {
   return <Spinner className={className} color="white" />;
+}
+
+/**
+ * The dashboard agent's own spinner: the animated dot-matrix logo in the mono
+ * palette. Use it wherever the AGENT is the one working — chat progress, pending
+ * tools, thinking markers — so agent activity reads as the agent, not as generic
+ * loading. `size` is the logo's pixel size (the matrix does not scale from CSS).
+ */
+export function AgentSpinner({ size = 16 }: { size?: number }) {
+  return <AgentDotMatrix size={size} active palette="mono" restColor="#ffffff" decorative />;
 }

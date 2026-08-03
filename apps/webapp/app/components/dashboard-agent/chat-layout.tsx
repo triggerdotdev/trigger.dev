@@ -55,7 +55,7 @@
 import type { Ref } from "react";
 import { createContext, Suspense, useContext } from "react";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
-import { Spinner } from "~/components/primitives/Spinner";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
 /** The transcript's horizontal inset. Owned by `ChatTurn`. */
@@ -220,7 +220,9 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
   return (
     <div className={cn(insetClass, "flex items-start text-sm text-text-dimmed", ROW_GAP)}>
       {/* text-sm line box is 20px, the spinner 12px: 4px centres it on line one. */}
-      <Spinner className="mt-1 size-3 shrink-0" />
+      <span className="mt-1 shrink-0">
+        <AgentSpinner size={12} />
+      </span>
       {children}
     </div>
   );
@@ -242,7 +244,9 @@ export function ChatPendingTool({ label }: { label: string }) {
   // stay, while in-flight work is transient — the same register as ChatProgress.
   return (
     <div className={cn(insetClass, "flex min-w-0 items-center text-xs text-text-dimmed", CHIP_GAP)}>
-      <Spinner className="size-3 shrink-0" />
+      <span className="shrink-0">
+        <AgentSpinner size={12} />
+      </span>
       <span className="truncate">{label}</span>
     </div>
   );
