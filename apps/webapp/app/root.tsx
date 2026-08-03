@@ -28,7 +28,7 @@ import {
   normalizeThemePreference,
   type ThemePreference,
 } from "~/utils/themePreference";
-import { flag } from "~/v3/featureFlags.server";
+import { cachedFlag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -80,9 +80,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const user = await getUser(request);
   // Theme switching is feature-flagged; while off, everyone stays on the
-  // classic theme even if a preference was saved earlier.
+  // classic theme even if a preference was saved earlier. Cached: the root
+  // loader runs on every document request and client navigation.
   const showThemeSwitcher = user
-    ? await flag({ key: "hasThemeSwitcher", defaultValue: false })
+    ? await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false })
     : false;
   // Logged-out pages (login, invites) always render the branded Classic look.
   const themePreference: ThemePreference = showThemeSwitcher

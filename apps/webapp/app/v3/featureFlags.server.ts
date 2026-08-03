@@ -55,6 +55,28 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   return flag;
 }
 
+const cachedFlagStore = new Map<string, { value: unknown; expiresAt: number }>();
+
+/**
+ * flag() behind a short process-level TTL cache, for global flags read on hot
+ * paths (e.g. the root loader) where a database round-trip per request is too
+ * expensive. Flips propagate within ttlMs per process. Not for org- or
+ * user-scoped decisions.
+ */
+export async function cachedFlag<T extends FeatureFlagKey>(
+  opts: FlagsOptions<T> & { defaultValue: z.infer<(typeof FeatureFlagCatalog)[T]> },
+  ttlMs = 30_000
+): Promise<z.infer<(typeof FeatureFlagCatalog)[T]>> {
+  const hit = cachedFlagStore.get(opts.key);
+  if (hit && hit.expiresAt > Date.now()) {
+    return hit.value as z.infer<(typeof FeatureFlagCatalog)[T]>;
+  }
+
+  const value = await flag(opts);
+  cachedFlagStore.set(opts.key, { value, expiresAt: Date.now() + ttlMs });
+  return value;
+}
+
 export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {
   return async function setFlag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T> & { value: z.infer<(typeof FeatureFlagCatalog)[T]> }
