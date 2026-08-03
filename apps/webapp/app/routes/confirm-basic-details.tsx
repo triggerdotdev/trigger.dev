@@ -316,7 +316,10 @@ export default function Page() {
                 </InputGroup>
               ) : (
                 <>
-                  <input {...getInputProps(confirmEmail, { type: "hidden", value: false })} value={user.email} />
+                  <input
+                    {...getInputProps(confirmEmail, { type: "hidden", value: false })}
+                    value={user.email}
+                  />
                 </>
               )}
 

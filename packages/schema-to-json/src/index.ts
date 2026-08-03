@@ -43,7 +43,17 @@ export function schemaToJsonSchema(
 ): ConversionResult | undefined {
   const parser = schema as any;
 
-  // Check if schema has a built-in toJsonSchema method (e.g., ArkType, Zod 4)
+  if (isZodSchema(parser)) {
+    const jsonSchema = convertZodSchema(parser, options);
+
+    if (jsonSchema) {
+      return {
+        jsonSchema: jsonSchema,
+      };
+    }
+  }
+
+  // Check if schema has a built-in toJsonSchema method (e.g., ArkType)
   if (typeof parser.toJsonSchema === "function") {
     try {
       const jsonSchema = parser.toJsonSchema();
@@ -53,16 +63,6 @@ export function schemaToJsonSchema(
       };
     } catch (_error) {
       // If toJsonSchema fails, continue to other checks
-    }
-  }
-
-  if (isZodSchema(parser)) {
-    const jsonSchema = convertZodSchema(parser, options);
-
-    if (jsonSchema) {
-      return {
-        jsonSchema: jsonSchema,
-      };
     }
   }
 
