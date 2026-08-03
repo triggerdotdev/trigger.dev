@@ -17,6 +17,8 @@ import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath, v3ScheduleParams, v3SchedulePath } from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
+import { scheduleAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -174,6 +176,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
     }
   }
+};
+
+// Tell the dashboard agent which schedule this is, whether it's enabled, and
+// whether its newest run just failed — all from this loader's own payload.
+export const handle: Handle = {
+  agentPageContext: (data) => scheduleAgentPageContext(data),
 };
 
 export default function Page() {

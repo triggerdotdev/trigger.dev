@@ -64,6 +64,8 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -149,6 +151,12 @@ export const action = dashboardAction(
     return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
 );
+
+// Tell the dashboard agent it's on the regions page. A region is either listed or
+// not, so there's no health state to report.
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("regions"),
+};
 
 export default function Page() {
   const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();

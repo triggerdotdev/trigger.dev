@@ -42,6 +42,8 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
+import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),
@@ -154,6 +156,12 @@ export const action = dashboardAction(
     );
   }
 );
+
+// Same mapper as the list: with one action in the payload it reports that action,
+// its status and how many of its runs failed.
+export const handle: Handle = {
+  agentPageContext: (data) => bulkActionsAgentPageContext(data),
+};
 
 export default function Page() {
   const { bulkAction, autoReloadPollIntervalMs, canAbort } = useTypedLoaderData<typeof loader>();

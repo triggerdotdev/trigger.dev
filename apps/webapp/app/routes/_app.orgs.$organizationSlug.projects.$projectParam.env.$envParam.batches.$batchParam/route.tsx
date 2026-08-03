@@ -24,6 +24,8 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
+import { batchAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const BatchParamSchema = EnvironmentParamSchema.extend({
   batchParam: z.string(),
@@ -66,6 +68,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
+};
+
+// Tell the dashboard agent which batch this is, its status and how many of its runs
+// failed.
+export const handle: Handle = {
+  agentPageContext: (data) => batchAgentPageContext(data),
 };
 
 export default function Page() {

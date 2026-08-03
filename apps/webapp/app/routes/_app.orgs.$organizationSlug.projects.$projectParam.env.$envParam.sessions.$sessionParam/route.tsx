@@ -66,10 +66,18 @@ import { type SessionStatus } from "~/services/sessionsRepository/sessionsReposi
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
 import { EnvironmentParamSchema, v3RunPath, v3RunsPath, v3SessionsPath } from "~/utils/pathBuilder";
+import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
 });
+
+// Same mapper as the list: with one session in the payload it names that session
+// and how its current run ended.
+export const handle: Handle = {
+  agentPageContext: (data) => sessionsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: `Session | Trigger.dev` }];

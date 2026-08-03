@@ -77,6 +77,8 @@ import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
+import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({
@@ -184,6 +186,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // route; this action only services the purchase flow above.
   return json({ ok: false, error: "Unsupported action" } as const, { status: 400 });
 }
+
+// Tell the dashboard agent it's on the branches page, and whether the branch quota
+// is already spent.
+export const handle: Handle = {
+  agentPageContext: (data) => branchesAgentPageContext(data),
+};
 
 export default function Page() {
   const {

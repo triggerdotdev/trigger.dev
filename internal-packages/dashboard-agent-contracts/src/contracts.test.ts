@@ -104,9 +104,59 @@ describe("client data", () => {
   });
 
   it("parses the list page kinds, which carry no identity of their own", () => {
-    for (const kind of ["runs", "errors", "queues", "deployments"] as const) {
+    for (const kind of [
+      "runs",
+      "errors",
+      "queues",
+      "deployments",
+      "tasks",
+      "batches",
+      "test",
+      "alerts",
+      "apikeys",
+      "envvars",
+      "concurrency",
+      "regions",
+      "settings",
+      "waitpoints",
+      "bulkactions",
+      "branches",
+      "logs",
+      "limits",
+      "query",
+      "dashboards",
+      "agents",
+      "playground",
+      "prompts",
+      "models",
+      "sessions",
+    ] as const) {
       expect(agentPageSchema.safeParse({ kind }).success, kind).toBe(true);
     }
+  });
+
+  it("keeps every section field optional, so a thin loader still classifies", () => {
+    // The detail pages: same kind as their section, plus the identity the page has.
+    expect(agentPageSchema.safeParse({ kind: "sessions", sessionId: "sess_1" }).success).toBe(true);
+    expect(agentPageSchema.safeParse({ kind: "waitpoints", tokenId: "wp_1" }).success).toBe(true);
+    expect(agentPageSchema.safeParse({ kind: "prompts", slug: "summarise" }).success).toBe(true);
+  });
+
+  it("requires the identity a detail kind is named after", () => {
+    expect(agentPageSchema.safeParse({ kind: "task" }).success).toBe(false);
+    expect(agentPageSchema.safeParse({ kind: "task", taskId: "process-order" }).success).toBe(true);
+
+    expect(agentPageSchema.safeParse({ kind: "batch" }).success).toBe(false);
+    expect(agentPageSchema.safeParse({ kind: "batch", batchId: "batch_1" }).success).toBe(true);
+
+    // A schedule is always about a task, so both ids are required.
+    expect(agentPageSchema.safeParse({ kind: "schedule", scheduleId: "sched_1" }).success).toBe(
+      false
+    );
+    expect(
+      agentPageSchema.safeParse({ kind: "schedule", scheduleId: "sched_1", taskId: "nightly" })
+        .success
+    ).toBe(true);
   });
 
   it("keeps the deployment status optional", () => {
@@ -126,7 +176,7 @@ describe("client data", () => {
       dashboardAgentClientDataSchema.safeParse({
         userId: "user_1",
         organizationId: "org_1",
-        pageContext: { page: { kind: "schedules" }, signals: [] },
+        pageContext: { page: { kind: "sprockets" }, signals: [] },
       }).success
     ).toBe(false);
   });

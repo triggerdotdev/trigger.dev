@@ -48,6 +48,14 @@ import {
   EnvironmentParamSchema,
   organizationBillingPath,
 } from "~/utils/pathBuilder";
+import { limitsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent which quotas this environment has already spent, so the
+// panel can name the limit the user just hit.
+export const handle: Handle = {
+  agentPageContext: (data) => limitsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

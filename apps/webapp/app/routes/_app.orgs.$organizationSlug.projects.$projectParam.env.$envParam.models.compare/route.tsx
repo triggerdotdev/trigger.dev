@@ -28,6 +28,13 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { EnvironmentParamSchema, v3ModelsPath } from "~/utils/pathBuilder";
 import { formatModelCost } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// The comparison names no single model, so it reports the section.
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Compare Models | Trigger.dev" }];

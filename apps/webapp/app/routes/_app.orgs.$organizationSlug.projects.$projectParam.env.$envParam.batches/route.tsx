@@ -56,6 +56,14 @@ import {
 } from "~/db.server";
 import { EnvironmentParamSchema, v3BatchPath, v3BatchRunsPath } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { batchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's looking at the batches list, and name the newest
+// batch when that one didn't come out clean.
+export const handle: Handle = {
+  agentPageContext: (data) => batchesAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [

@@ -16,23 +16,60 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 
+/**
+ * The identity a page kind carries, when it carries one. Pages with nothing but
+ * a kind (the section pages) fall through to the kind on its own.
+ */
+function pageSubject(page: AgentPageContext["page"]): string | undefined {
+  switch (page.kind) {
+    case "run":
+      return `${page.runId} · ${page.status}`;
+    case "queue":
+      return page.name;
+    case "error":
+      return page.fingerprint;
+    case "deployment":
+      return page.version;
+    case "task":
+      return page.taskId;
+    case "schedule":
+      return `${page.scheduleId} · ${page.taskId}`;
+    case "batch":
+      return page.batchId;
+    case "test":
+      return page.taskId;
+    case "waitpoints":
+      return page.tokenId;
+    case "bulkactions":
+      return page.bulkActionId;
+    case "dashboards":
+      return page.title;
+    case "agents":
+    case "playground":
+      return page.agentId;
+    case "prompts":
+      return page.slug;
+    case "models":
+      return page.modelId;
+    case "sessions":
+      return page.sessionId;
+    case "other":
+      return page.path;
+    default:
+      return undefined;
+  }
+}
+
 /** One line describing the page the chips were derived from. */
 function contextLine(context: AgentPageContext): string {
   const { page, signals } = context;
+  const subject = pageSubject(page);
   const where =
-    page.kind === "run"
-      ? `run ${page.runId} · ${page.status}`
-      : page.kind === "runs"
-        ? "runs list"
-        : page.kind === "queue"
-          ? `queue ${page.name}`
-          : page.kind === "error"
-            ? `error ${page.fingerprint}`
-            : page.kind === "deployment"
-              ? `deployment ${page.version}`
-              : page.kind === "other"
-                ? page.path
-                : `${page.kind} list`;
+    page.kind === "other"
+      ? (subject ?? page.kind)
+      : subject
+        ? `${page.kind} ${subject}`
+        : page.kind;
   const why = signals.length > 0 ? signals.map((s) => s.kind).join(", ") : "no signals";
   return `${where} — ${why}`;
 }

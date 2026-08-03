@@ -33,10 +33,17 @@ import {
   formatTokenCount,
 } from "~/utils/modelFormatters";
 import { EnvironmentParamSchema, v3ModelComparePath, v3ModelsPath } from "~/utils/pathBuilder";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),
 });
+
+// Same mapper as the registry: with one model in the payload it names that model.
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Model Detail | Trigger.dev" }];

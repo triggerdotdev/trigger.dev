@@ -24,6 +24,13 @@ import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server"
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Tell the dashboard agent it's in the playground, with no agent picked yet.
+export const handle: Handle = {
+  agentPageContext: (data) => playgroundAgentPageContext(data),
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];

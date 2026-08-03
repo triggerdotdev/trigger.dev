@@ -48,6 +48,14 @@ import {
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+// Name the agent. Everything else on this page — activity, runs, sessions — is
+// deferred.
+export const handle: Handle = {
+  agentPageContext: (data) => agentsAgentPageContext(data),
+};
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
