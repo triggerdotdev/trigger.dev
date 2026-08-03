@@ -1,11 +1,15 @@
 name: 🗺️ Observability Map
 
 on:
+  # No paths filter, deliberately. GitHub evaluates one per workflow, so a pull request whose diff
+  # stops matching does not start the workflow at all: the resolved state cannot fire and a comment
+  # from an earlier push stands for ever showing findings that are no longer in the diff. Verified on
+  # a throwaway pull request whose only route change was reverted, and the realistic case is worse
+  # than that empty diff, because a pull request touching a route and other files, whose author
+  # reverts the route change and keeps the rest, still has a non-empty diff that no longer matches.
+  # The gating moved into the jobs below instead, where it can read whether a comment exists.
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - "apps/webapp/app/routes/**"
-      - "internal-packages/observability-map/**"
   # The corpus job below is gated to this package's own paths, so a scheduled run is what still
   # scans the tree as it drifts. Nightly rather than per route pull request: a new route can make a
   # known laundering shape start paying, but that is a property of the tree accumulating, not of any
@@ -22,17 +26,34 @@ permissions:
   contents: read
 
 jobs:
-  # The workflow's paths filter is the union of what the two jobs below want, because GitHub
-  # evaluates it once per workflow. This narrows it again for the corpus job alone.
+  # The whole cost of a pull request that touches nothing this workflow watches: a checkout, a paths
+  # filter and one comment lookup. Everything expensive is gated on this job's outputs, and the
+  # lookup is here rather than in the report job so that gate can read it and the report job need
+  # never start.
   changes:
-    name: 🔍 Which paths moved
+    name: 🔍 What moved
     # Only the pull request path reads this job's output. On a schedule the action has no base to
     # diff, warns that `before` is missing and reports the files in the last commit on main, which
     # nothing then consults. Skipping it there keeps the nightly off a job it does not need.
     if: github.event_name == 'pull_request'
     runs-on: warp-ubuntu-latest-x64-2x
+    permissions:
+      contents: read
+      # Reading the pull request's comments, to find one an earlier push left. Read only: the write
+      # stays on the report job, which is the only job that posts.
+      pull-requests: read
     outputs:
+      # The corpus job's gate. Narrower than the report's on purpose: what the corpus measures is
+      # the tool's resistance to laundering, which only an edit to the tool can weaken.
       package: ${{ steps.filter.outputs.package }}
+      # The report job's gate, the union: a route change moves the report as well.
+      report: ${{ steps.filter.outputs.package == 'true' || steps.filter.outputs.routes == 'true' }}
+      # The id of a marker comment an earlier push left, empty if there is none, and the one source
+      # both the render and upsert steps read it from.
+      comment: ${{ steps.comment.outputs.id }}
+      # Set only by a lookup that finished cleanly, so anything else, retries exhausted or the step
+      # dying somewhere unforeseen, reads as "do not touch this pull request's comments".
+      lookup: ${{ steps.comment.outputs.ok }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -45,6 +66,54 @@ jobs:
             package:
               - 'internal-packages/observability-map/**'
               - '.github/workflows/observability-map.yml'
+            routes:
+              - 'apps/webapp/app/routes/**'
+
+      # Looked up here because the report job's gate needs it: with the watched paths unmoved, a
+      # pull request that already has a comment gets a resolved state rather than being left with
+      # findings that no longer exist, and one that does not gets no job at all.
+      #
+      # On a failure that outlasts the retries this reports nothing, and the report job's gate reads
+      # that as "post nothing this run". Guessing is worse than silence: this step is the only thing
+      # that knows which comment to PATCH, so a guess of "no comment exists" POSTs, which either
+      # adds a second marker comment beside the stale one or says "the findings an earlier push
+      # reported are gone" on a pull request that never had findings. Worst case now is no comment
+      # this run, which the next push fixes.
+      - name: 🔍 Look for a comment from an earlier push
+        id: comment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          found=""
+          ok=""
+          for attempt in 1 2 3; do
+            if found=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+              --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
+              ok=1
+              break
+            fi
+            echo "comment lookup attempt ${attempt} failed" >&2
+            sleep $((attempt * 5))
+          done
+
+          if [ -z "$ok" ]; then
+            echo "comment lookup failed after 3 attempts; this run posts nothing" >&2
+            exit 0
+          fi
+
+          # --paginate runs the jq once per page, so a marker comment on more than one page yields
+          # one id per page. Unhandled, that puts a newline in the PATCH url and the step dies under
+          # continue-on-error. The oldest wins: it is the one the upsert has been updating.
+          count=$(printf '%s\n' "$found" | grep -c '[0-9]' || true)
+          if [ "$count" -gt 1 ]; then
+            echo "warning: ${count} marker comments on this pull request; updating the oldest" >&2
+          fi
+          {
+            echo "id=$(printf '%s\n' "$found" | awk 'NF { print $1; exit }')"
+            echo "ok=ok"
+          } >> "$GITHUB_OUTPUT"
 
   # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
   # asserting the score does not rise. Roughly four and a half minutes for 45 entries, which is why
@@ -114,6 +183,7 @@ jobs:
   # workflow the all-checks aggregate can see, so a job in this file would report a result nobody
   # is required to wait for. See unit-tests-observability-map.yml and the obsmap filter.
   report:
+    needs: changes
     runs-on: warp-ubuntu-latest-x64-4x
     # Only this job comments, so only this job gets the write.
     permissions:
@@ -122,9 +192,25 @@ jobs:
     # Fork PRs get a read-only token, so the comment cannot post. Skipping the job beats a red x.
     # The event test is what keeps this job off the nightly, which has no pull request to comment on
     # and only exists for the corpus job above.
+    #
+    # The two output tests are what the workflow-level paths filter used to do, plus the thing it
+    # could not do. The report has to run when the watched paths moved, and ALSO when they did not
+    # but a marker comment is already on the pull request, because that comment is the one showing
+    # findings that have left the diff. Reconciling it needs no scan, so the steps below are gated
+    # again on the same output.
+    #
+    # `needs` carries an implicit success() and that is wanted here: a `changes` job that failed
+    # knows neither which paths moved nor whether a comment exists, and a report job that ran anyway
+    # could only guess. Same reason the lookup test is positive rather than a check for a failure
+    # sentinel: retries exhausted, or the lookup step dying anywhere unforeseen, both leave the
+    # output unset and both mean the same thing, so neither can be read as "no comment exists" by
+    # one step and "a comment exists" by another. That disagreement is what the sentinel pair this
+    # replaces got wrong once already.
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.changes.outputs.lookup == 'ok' &&
+      (needs.changes.outputs.report == 'true' || needs.changes.outputs.comment != '')
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -163,7 +249,13 @@ jobs:
       # `-s` keeps the partial dance honest now the redirect no longer creates the file: a scanner
       # that exits 0 without writing takes the else branch and the stale-report comment, instead of
       # failing the `mv` and turning the job red.
+      #
+      # Gated: this is the expensive half, and the reconcile run has nothing to compare. The steps
+      # above it are not gated because the renderer is TypeScript in this repo, so reconciling still
+      # needs the checkout and the install. That is the cost of the reconcile run and it is paid only
+      # by a pull request that has a comment and no longer matches the paths.
       - name: 🔎 Scan head
+        if: needs.changes.outputs.report == 'true'
         run: |
           if pnpm --filter @internal/observability-map exec tsx src/cli.ts \
             --out=/tmp/head.json.partial && [ -s /tmp/head.json.partial ]; then
@@ -180,6 +272,7 @@ jobs:
       # request's own work. A merge base would leave the intervening base-branch commits in the head
       # tree and out of the base tree, and blame the pull request for all of them.
       - name: 🔎 Scan base with the head's scanner
+        if: needs.changes.outputs.report == 'true'
         run: |
           if git worktree add /tmp/base-tree ${{ github.event.pull_request.base.sha }} \
             && pnpm --filter @internal/observability-map exec tsx src/cli.ts \
@@ -191,59 +284,26 @@ jobs:
             echo "base scan failed or the worktree could not be added; falling back to no base" >&2
           fi
 
-      # Looked up before the render step because the render decision needs it: with no delta to
-      # report, a pull request that already has a comment gets a resolved state rather than being
-      # left with findings that no longer exist, and one that does not gets nothing at all. The
-      # upsert step reuses the id rather than asking twice.
-      #
-      # On a failure that outlasts the retries, both steps below do nothing. Guessing is worse than
-      # silence here: this step is the only thing that knows which comment to PATCH, so a guess of
-      # "a comment exists" still reaches an upsert with no id to patch, which POSTs. That either
-      # adds a second marker comment beside the stale one, or says "the findings an earlier push
-      # reported are gone" on a pull request that never had findings. Worst case now is no comment
-      # this run, which the next push fixes.
-      - name: 🔍 Look for a comment from an earlier push
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          rm -f /tmp/existing-comment-id /tmp/comment-lookup-failed
-          found=""
-          ok=""
-          for attempt in 1 2 3; do
-            if found=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-              --jq '[.[] | select(.body | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
-              ok=1
-              break
-            fi
-            echo "comment lookup attempt ${attempt} failed" >&2
-            sleep $((attempt * 5))
-          done
-
-          if [ -z "$ok" ]; then
-            touch /tmp/comment-lookup-failed
-            echo "comment lookup failed after 3 attempts; this run posts nothing" >&2
-            exit 0
-          fi
-
-          # --paginate runs the jq once per page, so a marker comment on more than one page yields
-          # one id per page. Unhandled, that puts a newline in the PATCH url and the step dies under
-          # continue-on-error. The oldest wins: it is the one the upsert has been updating.
-          count=$(printf '%s\n' "$found" | grep -c '[0-9]' || true)
-          if [ "$count" -gt 1 ]; then
-            echo "warning: ${count} marker comments on this pull request; updating the oldest" >&2
-          fi
-          printf '%s\n' "$found" | awk 'NF { print $1; exit }' > /tmp/existing-comment-id
-
       # continue-on-error for the same reason as the scan: a rendering bug must not turn the job
       # red. An empty /tmp/comment.md means there is nothing to post, which is a decision
       # prCommentCli makes, not this shell.
+      #
+      # Both shas are forwarded so every comment this job posts says which commit it was rendered
+      # for, which a sticky comment edited in place across pushes otherwise never tells you. They go
+      # through the CLI as data: the renderer builds no URL and reads no environment.
       - name: 📝 Render comment
         continue-on-error: true
+        env:
+          SCANNED: ${{ needs.changes.outputs.report }}
+          EXISTING_COMMENT: ${{ needs.changes.outputs.comment }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
         run: |
           rm -f /tmp/comment.md
-          render() { pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts "$@"; }
+          render() {
+            pnpm --filter @internal/observability-map exec tsx src/report/prCommentCli.ts \
+              --commit-sha="$HEAD_SHA" --commit-url="$COMPARE_URL" "$@"
+          }
 
           # Every write goes through this, so a renderer that exits non-zero never leaves a 0-byte
           # comment.md for the upsert to skip in silence.
@@ -256,8 +316,12 @@ jobs:
             return 1
           }
 
-          if [ -f /tmp/comment-lookup-failed ]; then
-            echo "the comment lookup failed, so this run posts nothing" >&2
+          # Nothing this workflow watches moved, so nothing was scanned and there is no delta to
+          # compute. The job's gate only lets that case through when a comment from an earlier push
+          # is on the pull request, so there is exactly one thing left to say: what it shows is not
+          # in this diff any more.
+          if [ "$SCANNED" != "true" ]; then
+            emit --resolved || echo "could not render the resolved comment" >&2
             exit 0
           fi
 
@@ -272,7 +336,7 @@ jobs:
           fi
 
           flags=()
-          if [ -s /tmp/existing-comment-id ]; then
+          if [ -n "$EXISTING_COMMENT" ]; then
             flags=(--existing-comment)
           fi
 
@@ -283,28 +347,23 @@ jobs:
 
       # continue-on-error for the same reason: a transient gh api failure (rate limit, network)
       # must not fail the job either. Worst case, the PR gets no comment this run.
+      #
+      # The id comes from the same job output the render step read, so the two cannot disagree about
+      # whether a comment exists. A lookup that did not finish cleanly never reaches either of them:
+      # the job's gate stops it.
       - name: 💬 Upsert PR comment
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXISTING_COMMENT: ${{ needs.changes.outputs.comment }}
         run: |
-          # The same sentinel the render step reads, so the two cannot disagree about what a failed
-          # lookup means. Without it this step reads a missing id as "no comment exists" and POSTs.
-          if [ -f /tmp/comment-lookup-failed ]; then
-            echo "the comment lookup failed, so this run posts nothing"
-            exit 0
-          fi
           if [ ! -s /tmp/comment.md ]; then
             echo "nothing to post: this pull request does not move the report"
             exit 0
           fi
-          existing=""
-          if [ -f /tmp/existing-comment-id ]; then
-            existing=$(cat /tmp/existing-comment-id)
-          fi
-          if [ -n "$existing" ]; then
-            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -F body=@/tmp/comment.md
+          if [ -n "$EXISTING_COMMENT" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_COMMENT}" -F body=@/tmp/comment.md
           else
             gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@/tmp/comment.md
           fi

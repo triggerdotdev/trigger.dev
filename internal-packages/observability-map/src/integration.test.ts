@@ -91,6 +91,31 @@ describe("the package it advertises", () => {
   });
 });
 
+const WORKFLOWS = resolve(__dirname, "../../../.github/workflows");
+const REPORT = resolve(WORKFLOWS, "observability-map.yml");
+
+function read(path: string): string {
+  if (!existsSync(path)) throw new Error(`workflow is missing: ${path}`);
+  return readFileSync(path, "utf8");
+}
+
+/** Comment lines dropped, for an assertion about what the YAML says rather than what its prose
+ * happens to mention. */
+const withoutComments = (text: string) => text.replace(/^\s*#.*$/gm, "");
+
+/** One job's block, from its key to the next key at job indent. */
+function job(name: string): string {
+  const parts = read(REPORT).split(new RegExp(`^ {2}${name}:$`, "m"));
+  expect(parts).toHaveLength(2);
+  return parts[1]!.split(/^ {2}[a-z][a-z-]*:$/m)[0]!;
+}
+
+/** A job's condition and everything else it declares before its steps. */
+const gate = (name: string) => job(name).split("    steps:")[0]!;
+
+/** Step bodies, split on the `- name:` lines, which is all the structure this needs. */
+const steps = (block: string) => block.split(/^ {6}- name: /m).slice(1);
+
 /**
  * The one thing the docstring checker cannot reach. It walks `src/` only, so workflow prose is
  * unpoliced, and the C1 defect was exactly that: two steps disagreeing about what a missing
@@ -99,29 +124,97 @@ describe("the package it advertises", () => {
  * POSTed, so a transient lookup failure either added a second marker comment beside the stale one
  * or announced that findings were gone on a pull request that never had any.
  *
- * This is a text check over the workflow, not a parse of its semantics, so it catches one shape of
- * that class and no other. Named as such rather than sold as coverage of the file.
+ * The sentinel pair those two shared is gone with the lookup, which moved into the `changes` job so
+ * the report job's own gate could read it. What replaces it is structural rather than agreed: the
+ * report job does not start unless the lookup finished cleanly, and the id it then uses is one job
+ * output that both steps read, so there is nothing left for two readers to disagree about.
+ *
+ * These are text checks over the workflow, not a parse of its semantics, so they catch the wiring
+ * coming apart and nothing about whether GitHub agrees. Named as such rather than sold as coverage
+ * of the file.
  */
-describe("the report workflow's two readers of the comment lookup", () => {
-  const WORKFLOW = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
+describe("the report workflow's one source of the comment id", () => {
+  it("does not start the report job at all unless the lookup finished cleanly", () => {
+    expect(gate("report")).toContain("needs.changes.outputs.lookup == 'ok'");
+  });
 
-  /** Step bodies, split on the `- name:` lines, which is all the structure this needs. */
-  function steps(): string[] {
-    if (!existsSync(WORKFLOW)) throw new Error(`the report workflow is missing: ${WORKFLOW}`);
-    const text = readFileSync(WORKFLOW, "utf8");
-    return text.split(/^ {6}- name: /m).slice(1);
-  }
-
-  it("both honour the same sentinel, so a failed lookup cannot mean two things", () => {
-    const readers = steps().filter((step) => step.includes("/tmp/existing-comment-id"));
+  it("gives the render and the upsert step the same output to read", () => {
+    const readers = steps(job("report")).filter((step) => step.includes("EXISTING_COMMENT"));
     expect(readers.length).toBeGreaterThanOrEqual(2);
-    expect(readers.filter((step) => !step.includes("/tmp/comment-lookup-failed"))).toEqual([]);
+    expect(
+      readers.filter(
+        (step) => !step.includes("EXISTING_COMMENT: ${{ needs.changes.outputs.comment }}")
+      )
+    ).toEqual([]);
+  });
+
+  // The lookup is what lets the report job be gated, so it has to happen before it, in the job that
+  // an unrelated pull request pays for anyway.
+  it("looks the comment up in the cheap job and not again in the report job", () => {
+    expect(job("changes")).toContain("issues/${PR_NUMBER}/comments");
+    expect(job("changes")).toContain("pull-requests: read");
+    expect(job("report")).not.toContain("--paginate");
   });
 
   it("takes one id from a lookup that paginates rather than passing every line on", () => {
-    const lookup = steps().find((step) => step.includes('startswith("<!-- observability-map'))!;
+    const lookup = steps(job("changes")).find((step) =>
+      step.includes('startswith("<!-- observability-map')
+    )!;
     expect(lookup).toBeDefined();
     expect(lookup).toContain("exit }'");
+  });
+});
+
+/**
+ * Round F. The workflow used to carry a `paths:` filter, and GitHub evaluates one of those per
+ * workflow, so a pull request whose diff stopped matching did not start the workflow at all: the
+ * resolved state could not fire and a comment from an earlier push stood for ever showing findings
+ * that were no longer in the diff. Confirmed on a throwaway pull request whose only route change was
+ * reverted, and the case that matters is worse, because a pull request touching a route and other
+ * files whose author reverts only the route change still has a diff, still does not match, and still
+ * has the stale comment.
+ *
+ * So the workflow runs on every pull request and the gating is internal. What that has to preserve
+ * is the cost: the scans stay gated on the paths, and a pull request with nothing relevant and no
+ * comment does not start the report job.
+ */
+describe("the report workflow reconciles a comment the paths no longer reach", () => {
+  it("runs on every pull request rather than only on the paths it watches", () => {
+    const trigger = withoutComments(read(REPORT).split("\non:\n")[1]!.split("\nconcurrency:")[0]!);
+    expect(trigger).toContain("pull_request:");
+    expect(trigger).not.toContain("paths:");
+  });
+
+  it("starts the report job when the paths moved or when a comment already exists", () => {
+    expect(gate("report")).toContain("needs.changes.outputs.report == 'true'");
+    expect(gate("report")).toContain("needs.changes.outputs.comment != ''");
+  });
+
+  it("scans nothing on the run that only has a comment to reconcile", () => {
+    const scans = steps(job("report")).filter((step) => step.startsWith("🔎 Scan"));
+    expect(scans).toHaveLength(2);
+    for (const scan of scans) {
+      expect(scan.split("run:")[0]).toContain("if: needs.changes.outputs.report == 'true'");
+    }
+  });
+
+  it("renders the resolved state on that run instead of a report it did not produce", () => {
+    const render = steps(job("report")).find((step) => step.startsWith("📝 Render comment"))!;
+    expect(render).toContain("SCANNED: ${{ needs.changes.outputs.report }}");
+    expect(render).toMatch(/SCANNED" != "true" \]; then\s+emit --resolved/);
+  });
+
+  // Change 2. The comment is edited in place across pushes, so it has to say which push it reflects.
+  // The renderer takes the sha and the URL as data; building the URL is the workflow's job because
+  // the workflow is what has the two shas.
+  it("forwards the head sha and a compare URL for the pull request's range", () => {
+    const render = steps(job("report")).find((step) => step.startsWith("📝 Render comment"))!;
+    expect(render).toContain("HEAD_SHA: ${{ github.event.pull_request.head.sha }}");
+    expect(render).toContain(
+      "/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+    );
+    expect(render).toContain('--commit-sha="$HEAD_SHA"');
+    expect(render).toContain('--commit-url="$COMPARE_URL"');
   });
 });
 
@@ -139,13 +232,8 @@ describe("the report workflow's two readers of the comment lookup", () => {
  * puts a stray line in a markdown comment instead of breaking a parse, so it is left alone.
  */
 describe("the report workflow's two scan steps", () => {
-  const WORKFLOW = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
-
   it("let the scanner write its own report rather than capturing stdout", () => {
-    const scans = readFileSync(WORKFLOW, "utf8")
-      .split(/^ {6}- name: /m)
-      .slice(1)
-      .filter((step) => step.startsWith("🔎 Scan"));
+    const scans = steps(read(REPORT)).filter((step) => step.startsWith("🔎 Scan"));
     expect(scans).toHaveLength(2);
 
     for (const step of scans) {
@@ -169,16 +257,8 @@ describe("the report workflow's two scan steps", () => {
  * GitHub agrees, which only a pull request can answer.
  */
 describe("the package's tests are wired into the gate", () => {
-  const PR_CHECKS = resolve(__dirname, "../../../.github/workflows/pr_checks.yml");
-  const REUSABLE = resolve(
-    __dirname,
-    "../../../.github/workflows/unit-tests-observability-map.yml"
-  );
-
-  function read(path: string): string {
-    if (!existsSync(path)) throw new Error(`workflow is missing: ${path}`);
-    return readFileSync(path, "utf8");
-  }
+  const PR_CHECKS = resolve(WORKFLOWS, "pr_checks.yml");
+  const REUSABLE = resolve(WORKFLOWS, "unit-tests-observability-map.yml");
 
   it("calls the reusable workflow from pr_checks behind a filter of its own", () => {
     const text = read(PR_CHECKS);
@@ -236,14 +316,8 @@ describe("the package's tests are wired into the gate", () => {
   });
 
   it("does not also run the same suite in the report workflow", () => {
-    const reportWorkflow = readFileSync(
-      resolve(__dirname, "../../../.github/workflows/observability-map.yml"),
-      "utf8"
-    );
-    expect(reportWorkflow).not.toContain("run test");
+    expect(read(REPORT)).not.toContain("run test");
   });
-
-  const REPORT = resolve(__dirname, "../../../.github/workflows/observability-map.yml");
 
   // Round E item 5. The corpus measures the tool's resistance to laundering, which only an edit to
   // the tool can weaken, so it does not belong on every route pull request at four and a half
@@ -254,7 +328,9 @@ describe("the package's tests are wired into the gate", () => {
     const corpus = text.split("  mutation-corpus:")[1]!.split("    steps:")[0]!;
     expect(corpus).toContain("needs.changes.outputs.package == 'true'");
 
-    const filter = text.split("            package:")[1]!.split("  #")[0]!;
+    // The corpus filter alone, which the report's own gate now sits beside: the two are separate
+    // filter entries, and this one has to stay off the route tree.
+    const filter = text.split("            package:")[1]!.split("            routes:")[0]!;
     expect(filter).toContain("'internal-packages/observability-map/**'");
     expect(filter).not.toContain("apps/webapp/app/routes");
 

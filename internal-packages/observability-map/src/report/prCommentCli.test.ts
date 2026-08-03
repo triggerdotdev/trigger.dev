@@ -87,6 +87,72 @@ describe("prCommentCli", () => {
     expect(r.out).toContain("The scan failed for this run");
   });
 
+  // The reconcile path. A pull request whose diff stops matching the paths the workflow watches
+  // scans nothing, so there are no reports to compare and no delta to compute, and the comment an
+  // earlier push left still shows findings that have gone. This is how the workflow says so.
+  it("prints the resolved comment for --resolved without reading any file", () => {
+    const r = run("--resolved");
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")[0]).toBe("<!-- observability-map-report -->");
+    expect(r.out).toContain("Nothing in this pull request moves the report any more.");
+    expect(r.out).not.toContain("FIX FIRST");
+  });
+
+  describe("the commit the comment is rendered for", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    const url = "https://github.com/triggerdotdev/trigger.dev/compare/1111111...2222222";
+    const stamp = `As of [\`0123456\`](${url}).`;
+
+    it("stamps the report comment from the two commit flags", () => {
+      const r = run(headPath, basePath, `--commit-sha=${sha}`, `--commit-url=${url}`);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(stamp);
+    });
+
+    it("stamps the resolved comment the reconcile path posts", () => {
+      const r = run("--resolved", `--commit-sha=${sha}`, `--commit-url=${url}`);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(stamp);
+    });
+
+    it("stamps the resolved comment the delta path posts when the delta has gone", () => {
+      const r = run(
+        unchangedPath,
+        unchangedPath,
+        "--existing-comment",
+        `--commit-sha=${sha}`,
+        `--commit-url=${url}`
+      );
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(stamp);
+    });
+
+    it("stamps the stale-report comment", () => {
+      const r = run("--scan-failed", `--commit-sha=${sha}`, `--commit-url=${url}`);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(stamp);
+    });
+
+    // Half a pair can only come from an edit to the workflow, and a comment quietly missing the
+    // line it was supposed to gain is the failure nobody would ever notice.
+    it("exits 1 rather than dropping the stamp when only one of the two flags is given", () => {
+      for (const half of [`--commit-sha=${sha}`, `--commit-url=${url}`]) {
+        const r = run(headPath, basePath, half);
+        expect(r.code).toBe(1);
+        expect(r.err).toContain("have to be given together");
+        expect(r.out).toBe("");
+      }
+    });
+
+    // What an unset workflow expression interpolates to. Both empty is the local run.
+    it("reads an empty flag value as no commit context rather than as half a pair", () => {
+      const r = run(headPath, basePath, "--commit-sha=", "--commit-url=");
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("FIX FIRST");
+      expect(r.out).not.toContain("As of [");
+    });
+  });
+
   it("treats '-' as no base", () => {
     const r = run(headPath, "-");
     expect(r.code).toBe(0);

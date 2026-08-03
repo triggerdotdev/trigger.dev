@@ -1,4 +1,9 @@
-import { hasDelta, renderPrComment } from "./prComment.js";
+import {
+  hasDelta,
+  renderPrComment,
+  renderResolvedComment,
+  renderScanFailedComment,
+} from "./prComment.js";
 import { renderTerminal } from "./terminal.js";
 import { buildReport } from "../score.js";
 import { scanFile } from "../scan.js";
@@ -413,6 +418,56 @@ describe("renderPrComment", () => {
     const out = renderPrComment(head, null);
     expect(out).toContain("Report only, nothing here gates the merge.");
     expect(out).toContain("internal-packages/observability-map/README.md");
+  });
+});
+
+/**
+ * The comment is edited in place across pushes, so on its own it says nothing about which push it
+ * reflects. Every comment the job posts carries the head sha as a link to the pull request's compare
+ * range, and the commit arrives as data so these renderers stay pure and a local run without it
+ * still renders.
+ */
+describe("the commit stamp", () => {
+  const COMMIT = {
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    url: "https://github.com/triggerdotdev/trigger.dev/compare/1111111...2222222",
+  };
+  const STAMP =
+    "As of [`0123456`](https://github.com/triggerdotdev/trigger.dev/compare/1111111...2222222).";
+  const head = () => buildReport([scanFile("api.v1.a.ts", brokenSource)!], []);
+
+  it("stamps the report comment under the heading, before anything the report says", () => {
+    const lines = renderPrComment(head(), null, COMMIT).split("\n");
+    expect(lines[2]).toBe("## Observability map");
+    expect(lines[4]).toBe(STAMP);
+  });
+
+  it("stamps the resolved comment, which is the one a stale report gets replaced with", () => {
+    const lines = renderResolvedComment(COMMIT).split("\n");
+    expect(lines[4]).toBe(STAMP);
+    expect(lines.join("\n")).toContain("Nothing in this pull request moves the report any more.");
+  });
+
+  it("stamps the stale-report comment", () => {
+    expect(renderScanFailedComment(COMMIT).split("\n")[4]).toBe(STAMP);
+  });
+
+  it("shortens the sha to seven characters for the link text, not the target", () => {
+    expect(renderPrComment(head(), null, COMMIT)).toContain("[`0123456`](");
+    expect(renderPrComment(head(), null, COMMIT)).not.toContain("[`01234567`]");
+  });
+
+  // The optional half. Unit tests and a local CLI run have no commit context, and rendering has to
+  // work without one rather than printing a link to nowhere.
+  it("renders every comment without a stamp when there is no commit context", () => {
+    for (const out of [
+      renderPrComment(head(), null),
+      renderResolvedComment(),
+      renderScanFailedComment(),
+    ]) {
+      expect(out).not.toContain("As of [");
+      expect(out.split("\n")[2]).toBe("## Observability map");
+    }
   });
 });
 

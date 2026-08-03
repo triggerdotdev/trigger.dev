@@ -12,6 +12,29 @@ import {
 /** First line of every comment this job posts, so the upsert step can find its own comment again. */
 export const MARKER = "<!-- observability-map-report -->";
 
+/**
+ * The commit a comment was rendered for. Data rather than something the renderers read for
+ * themselves: they stay pure, and a unit test or a local CLI run with no commit context renders the
+ * same comment without the line.
+ */
+export type CommitContext = {
+  /** The head sha, full. Shortened for the link text here rather than by the caller. */
+  sha: string;
+  /** Compare URL for the pull request's range, base to head. */
+  url: string;
+};
+
+const SHORT_SHA_LENGTH = 7;
+
+/**
+ * Directly under the heading and before anything the report says, because the comment is sticky:
+ * it is edited in place across pushes, so the first question about it is which push it reflects.
+ */
+function commitLines(commit: CommitContext | undefined): string[] {
+  if (!commit) return [];
+  return [`As of [\`${commit.sha.slice(0, SHORT_SHA_LENGTH)}\`](${commit.url}).`, ""];
+}
+
 const MAX_CHANGED_ROWS = 15;
 
 /**
@@ -272,12 +295,13 @@ export function hasDelta(head: MapReport, base: MapReport | null): boolean {
  * What replaces a comment whose findings a later push fixed. Going silent would leave the earlier
  * comment standing with findings that no longer exist, which is worse than a redundant comment.
  */
-export function renderResolvedComment(): string {
+export function renderResolvedComment(commit?: CommitContext): string {
   return [
     MARKER,
     "",
     "## Observability map",
     "",
+    ...commitLines(commit),
     "Nothing in this pull request moves the report any more. The findings an earlier push " +
       "reported are gone.",
     "",
@@ -291,12 +315,13 @@ export function renderResolvedComment(): string {
  * a job that must never block a pull request, and the alternative to that was swallowing the
  * failure so the only signal was a comment that never appeared.
  */
-export function renderScanFailedComment(): string {
+export function renderScanFailedComment(commit?: CommitContext): string {
   return [
     MARKER,
     "",
     "## Observability map",
     "",
+    ...commitLines(commit),
     "The scan failed for this run, so there is no report. Anything above is from an earlier push " +
       "and is stale. The workflow log has the error.",
     "",
@@ -309,8 +334,20 @@ export function renderScanFailedComment(): string {
  * Pure function, no I/O: `head` and `base` are already-built reports. Matches entries across the
  * two by `fileName`, the same identifier `renderJson` carries.
  */
-export function renderPrComment(head: MapReport, base: MapReport | null): string {
-  const lines = [MARKER, "", "## Observability map", "", scoreLine(head, base), ""];
+export function renderPrComment(
+  head: MapReport,
+  base: MapReport | null,
+  commit?: CommitContext
+): string {
+  const lines = [
+    MARKER,
+    "",
+    "## Observability map",
+    "",
+    ...commitLines(commit),
+    scoreLine(head, base),
+    "",
+  ];
 
   lines.push(...whatChangedSection(head, base), "");
   lines.push(...fixFirstSection(head), "");

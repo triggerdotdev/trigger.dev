@@ -29,9 +29,20 @@ prefix matches more than one route rather than silently taking the first`).
 ## CI
 
 A PR that touches `apps/webapp/app/routes` or this package gets a sticky comment scanning head
-against the tip of the base branch, with the score, what changed, and the current fix list. It is
-report-only: nothing here fails the build or blocks a merge, and the gate stays deferred until a
+against the tip of the base branch, with the score, what changed, and the current fix list. Every
+comment names the head commit it was rendered for, as a link to the PR's compare range, because the
+comment is edited in place across pushes and otherwise says nothing about which push it reflects. It
+is report-only: nothing here fails the build or blocks a merge, and the gate stays deferred until a
 later phase decides to add one. See `.github/workflows/observability-map.yml`.
+
+The workflow itself runs on every PR, and the paths above are a gate inside it rather than a `paths:`
+filter on the trigger. GitHub evaluates one of those per workflow, so a PR whose diff stops matching
+does not start the workflow at all, and the comment an earlier push left then stands for ever showing
+findings that are no longer in the diff. The case that matters is not a PR reverted to nothing: it is
+one touching a route and other files whose author reverts the route change and keeps the rest, which
+still has a diff and still does not match. So a PR with a comment and nothing left to compare gets
+the comment reconciled to its resolved state without scanning anything, and a PR with neither pays
+for one cheap job that reads the paths and looks for a comment.
 
 This paragraph used to say "merge base", and two reviewers read that against
 `github.event.pull_request.base.sha` and reported the workflow as the thing that was wrong. It is
