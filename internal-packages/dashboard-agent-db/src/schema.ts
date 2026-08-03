@@ -9,7 +9,13 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type {
+  WatchObservedOutcome,
+  WatchResolution,
+  WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 
 /**
  * All dashboard-agent tables live in a dedicated Postgres schema. In cloud this
@@ -46,7 +52,9 @@ export const chats = dashboardAgentSchema.table(
     // Project/env context + model choice + page snapshot. Flexible by design.
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
-    // When the user last had this chat in front of them. NULL means never read.
+    // When the user last had this chat in front of them. NULL means never read,
+    // so everything in it counts as unread — the launcher's dot compares watch
+    // wakes against this.
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
@@ -182,6 +190,140 @@ export const investigations = dashboardAgentSchema.table(
   ]
 );
 
+/** `active` is the only non-terminal status; the other three are immutable. */
+export type WatchStatus = "active" | "fired" | "expired" | "cancelled";
+/**
+ * `not_required` while active and for every cancelled outcome — only fired/expired
+ * notify. `delivering` is the in-flight claim: one deliverer at a time, so two
+ * concurrent invocations can't both wake the chat (see `claimWatchDelivery`).
+ */
+export type WatchDeliveryStatus = "not_required" | "pending" | "delivering" | "delivered";
+/**
+ * `scheduling_failed` is the one cancellation the system issues on its own: the
+ * first tick could not be scheduled, so nothing would ever check this watch.
+ * Silent like every other cancellation — no resolution, no wake.
+ */
+export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted" | "scheduling_failed";
+
+/**
+ * The persisted spec adds a server-set `since` to the caller's spec. It's the
+ * watch's creation time (ISO), used by `error_recurrence` so a recurrence check
+ * can't match errors that predate the watch. Stored inside the JSONB rather than
+ * as a column because it's part of the check's input, not watch lifecycle state.
+ */
+export type PersistedWatchSpec = WatchSpec & { since?: string };
+
+/**
+ * One row per watch — "tell me when X happens", checked by a periodic task.
+ *
+ * The initiating identity (`organizationId` / `projectId` / `environmentId` /
+ * `userId`) is a **snapshot taken at creation and never updated**: a watch fires
+ * with exactly the access its creator had, so a later membership change can only
+ * cancel it (`cancel_reason = 'access_revoked'`), never silently widen its scope.
+ * These are main-DB ids, FK-free (cross-db).
+ *
+ * `identity` is the caller-computed dedup key for the watched thing (e.g. the run
+ * id or queue being watched) — its own column so the "already watching this"
+ * lookup is a plain indexed query instead of a JSONB dig.
+ *
+ * Status/delivery transitions are guarded in the query layer with
+ * `WHERE status = 'active' … RETURNING`, not by DB constraints, so a concurrent
+ * fire/expire/cancel resolves to exactly one winner.
+ */
+export const watches = dashboardAgentSchema.table(
+  "watches",
+  {
+    id: text("id").primaryKey(), // = watchId (`watch_…`)
+    chatId: text("chat_id").notNull(), // = chats.id
+    // Dedup key component: what is being watched, as a string.
+    identity: text("identity").notNull(),
+    spec: jsonb("spec").$type<PersistedWatchSpec>().notNull(),
+    status: text("status").$type<WatchStatus>().notNull().default("active"),
+    deliveryStatus: text("delivery_status")
+      .$type<WatchDeliveryStatus>()
+      .notNull()
+      .default("not_required"),
+    cancelReason: text("cancel_reason").$type<WatchCancelReason>(),
+    /**
+     * HOW the watch ended, in the model's own three values — `condition_met`,
+     * `window_completed`, `condition_impossible`. `status` above stays as the
+     * two-value transport encoding (§7.5) so persisted wake ids and dedup keys
+     * remain valid; this column is the meaning. NULL while active and on every
+     * cancellation (a cancelled watch has no resolution).
+     */
+    resolution: text("resolution").$type<WatchResolution>(),
+    /**
+     * WHAT the resolving check observed — the run's final status, the depth, the
+     * recurrence count. Written in the SAME statement as `resolution` and
+     * `lastResult`, so delivery never re-reads the source to reconstruct what
+     * happened (§7.5) and a retry cannot rebuild a different headline.
+     */
+    observedOutcome: jsonb("observed_outcome").$type<WatchObservedOutcome>(),
+    /**
+     * The one resolution ACTION the user consented to at creation (§6): after an
+     * attention outcome, the wake turn may open an investigation without asking.
+     * A flag on the row, not part of the spec and never part of `identity` — two
+     * watches on the same thing are the same watch whatever they do afterwards.
+     * Default false: the agent may only set it when the user asked for it.
+     */
+    investigateOnAttention: boolean("investigate_on_attention").notNull().default(false),
+    // Immutable initiating identity — snapshot at creation.
+    organizationId: text("organization_id").notNull(),
+    projectId: text("project_id").notNull(),
+    /**
+     * The project's EXTERNAL ref (`proj_…`) — the same identifier the `trigger://`
+     * scheme and the investigations table use. Carried on the row because a wake
+     * has to scope an investigation exactly as a turn would, and the agent can't
+     * translate an internal project id (it has no access to the main database).
+     * Nullable: rows created before this column simply don't carry it.
+     */
+    projectRef: text("project_ref"),
+    environmentId: text("environment_id").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    firedAt: timestamp("fired_at", { withTimezone: true }),
+    // When the current deliverer claimed the wake. A claim older than the
+    // delivery grace is treated as abandoned and may be re-claimed.
+    deliveryClaimedAt: timestamp("delivery_claimed_at", { withTimezone: true }),
+    // WHICH deliverer holds the claim — the fencing token. Written fresh on every
+    // claim (including a stale takeover), and required by the release / delivered
+    // marks, so a deliverer that comes back from the dead can't release or complete
+    // the claim that replaced its own.
+    deliveryClaimId: text("delivery_claim_id"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    // The last check's output; on fire/expire it's the payload the notification uses.
+    lastResult: jsonb("last_result").$type<Record<string, unknown>>(),
+    // Ticks so far. Check idempotency keys are `watch:{id}:tick:{n}`.
+    tickCount: integer("tick_count").notNull().default(0),
+  },
+  (t) => [
+    index("watches_chat_idx").on(t.chatId),
+    // Guardrails + dedup: "the active watches in this chat" (max 3, and is this
+    // thing already watched). Partial so terminal rows never bloat the hot path.
+    //
+    // UNIQUE is the actual dedup guarantee: a read-then-insert check can't be
+    // race-proof under READ COMMITTED (two transactions both see no duplicate and
+    // both insert), so the constraint has to live in the DB. Partial on `active`
+    // because re-watching the same thing after a watch fired must be allowed.
+    // Leading `chat_id` means this also serves the "active watches of this chat"
+    // lookup, so no separate non-unique partial index is needed.
+    uniqueIndex("watches_chat_active_identity_key")
+      .on(t.chatId, t.projectId, t.environmentId, t.identity)
+      .where(sql`${t.status} = 'active'`),
+    // Sweep: active watches due to be checked / past their expiry.
+    index("watches_status_expires_idx").on(t.status, t.expiresAt),
+    // The other half of the sweep: resolved watches whose wake is still owed —
+    // never claimed, or claimed by a deliverer that died mid-flight. Partial,
+    // because "owed" is a handful of rows at any moment.
+    index("watches_pending_delivery_idx")
+      .on(t.firedAt, t.lastCheckedAt)
+      .where(sql`${t.deliveryStatus} in ('pending', 'delivering')`),
+  ]
+);
+
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
 export type ChatSession = typeof chatSessions.$inferSelect;
@@ -190,3 +332,5 @@ export type ChatTurnEval = typeof chatTurnEvals.$inferSelect;
 export type NewChatTurnEval = typeof chatTurnEvals.$inferInsert;
 export type Investigation = typeof investigations.$inferSelect;
 export type NewInvestigation = typeof investigations.$inferInsert;
+export type Watch = typeof watches.$inferSelect;
+export type NewWatch = typeof watches.$inferInsert;

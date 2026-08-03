@@ -1,16 +1,27 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
+  appendChatMessage,
+  cancelWatch,
   chatExists,
+  countUnreadWatchWakes,
   countUserMessages,
   createChat,
   getChatMessages,
   getSession,
+  getWatch,
   listChatIdsWithOpenInvestigations,
+  listChatIdsWithUnreadWakes,
   listChats,
+  listUnreadWatchWakes,
+  markChatRead,
   renameChat,
   setChatPinned,
-  softDeleteChat,
 } from "@internal/dashboard-agent-db";
+import {
+  VIEW_BLOCK_VERSION,
+  watchDraftSchema,
+  type WatchDraft,
+} from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -18,6 +29,18 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import {
+  watchConfirmationBlockBody,
+  watchOneShotBlockBody,
+  watchSubjectLabel,
+} from "~/components/dashboard-agent/watch-presentation";
+import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
+import {
+  authorizeWatchEnvironmentById,
+  createDashboardAgentWatch,
+  deleteChatWithWatches,
+  listActiveWatchesForChats,
+} from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentApiOrigin,
   isDashboardAgentConfigured,
@@ -43,7 +66,18 @@ const ENV_NAME_BY_TYPE: Record<string, string> = {
 };
 
 const ActionBody = z.object({
-  intent: z.enum(["start", "create", "token", "rename", "pin", "delete", "resolve"]),
+  intent: z.enum([
+    "start",
+    "create",
+    "token",
+    "rename",
+    "pin",
+    "delete",
+    "read",
+    "resolve",
+    "watch-cancel",
+    "watch-create",
+  ]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
   // The first user message (JSON UIMessage), for `create`.
@@ -53,10 +87,17 @@ const ActionBody = z.object({
   pinned: z.enum(["true", "false"]).optional(),
   // A `trigger://` URI, for `resolve`.
   uri: z.string().optional(),
+  // The watch to cancel, for `watch-cancel`.
+  watchId: z.string().min(1).optional(),
+  // The configured card, for `watch-create`: a JSON `WatchDraft`.
+  draft: z.string().optional(),
 });
 
 // History list, or — with ?chatId= — the stored transcript + session for resume,
-// or — with ?quota=1 — how many messages the user has sent, for the Free-plan cap.
+// or — with ?unread=1 — just the unread wake count plus the capped list of those
+// wakes (the launcher's dot and the wake toast poll it while the panel is closed,
+// so it must stay cheap), or — with ?quota=1 — how many messages the user has
+// sent, for the Free-plan cap.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -77,6 +118,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
   const searchParams = new URL(request.url).searchParams;
+
+  if (searchParams.get("unread") === "1") {
+    // The count drives the dot, the capped list drives one toast per wake.
+    const [unreadWakes, wakes] = await Promise.all([
+      countUnreadWatchWakes(dashboardAgentDb, {
+        organizationId: project.organizationId,
+        userId,
+      }),
+      listUnreadWatchWakes(dashboardAgentDb, {
+        organizationId: project.organizationId,
+        userId,
+      }),
+    ]);
+    return json({ unreadWakes, wakes });
+  }
 
   // How many messages the user has sent, for the Free-plan cap. `chatId` is the
   // chat the panel has open: its messages are excluded here and counted from the
@@ -105,20 +161,45 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // Which chats are mid-investigation — one query for ALL the listed chats,
-  // because the history list must not fan out a query per row.
-  const investigatingChatIds = await listChatIdsWithOpenInvestigations(dashboardAgentDb, {
-    organizationId: project.organizationId,
-    userId,
-  });
+  // Active-watch chips for the list, which chats woke unseen, and which are
+  // mid-investigation — one query each for ALL the listed chats, because the
+  // history list must not fan out a query per row.
+  const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
+    listActiveWatchesForChats({
+      chatIds: chats.map((chat) => chat.id),
+      organizationId: project.organizationId,
+      userId,
+    }),
+    countUnreadWatchWakes(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
+    listChatIdsWithUnreadWakes(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
+    listChatIdsWithOpenInvestigations(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
+  ]);
 
   return json({
-    chats: chats.map((chat) => ({
-      ...chat,
-      // A row marker in the history list: the chat has something running in it.
-      // Derived here so the list doesn't re-derive per render.
-      hasOpenInvestigation: investigatingChatIds.has(chat.id),
-    })),
+    chats: chats.map((chat) => {
+      const watches = watchesByChat[chat.id] ?? [];
+      return {
+        ...chat,
+        watches,
+        hasUnreadWake: unreadChatIds.has(chat.id),
+        // Both are row markers in the history list: the chat has something
+        // running in it. Derived here so the list doesn't re-derive per render.
+        // The list now carries fired/expired watches too (the wake banner needs
+        // their kind), so "something is running" means active specifically.
+        hasActiveWatch: watches.some((watch) => watch.status === "active"),
+        hasOpenInvestigation: investigatingChatIds.has(chat.id),
+      };
+    }),
+    unreadWakes,
   });
 };
 
@@ -267,6 +348,148 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
   }
 
+  // The configuration card's submit path (§7.6). The card is a deterministic UI
+  // block, not a chat turn: nothing is written until this action runs, and what it
+  // writes is the ONE thing the transcript keeps — a confirmation (a watch is
+  // running) or a one-shot result (the immediate check already answered).
+  //
+  // This is an ADAPTER (§7.3), so it authorizes and hands `createDashboardAgentWatch`
+  // an already-authorized context. The environment comes from the URL the user is
+  // on, resolved through the same re-authorization a background tick passes — never
+  // from the request body, and never from the chat's stored context.
+  if (parsed.data.intent === "watch-create") {
+    let draft: WatchDraft;
+    try {
+      const result = watchDraftSchema.safeParse(JSON.parse(parsed.data.draft ?? ""));
+      if (!result.success) {
+        return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
+      }
+      draft = result.data;
+    } catch {
+      return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
+    }
+
+    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+
+    const environment = await authorizeWatchEnvironmentById({
+      userId,
+      environmentId: runtimeEnv.id,
+    });
+    if (!environment) {
+      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+    }
+
+    // A watch is chat-bound (§7.3), so a card submitted from a fresh panel needs a
+    // chat to belong to. Created here, with no first message and no agent run: the
+    // confirmation block below is the whole conversation until the user types.
+    let targetChatId = parsed.data.chatId;
+    if (targetChatId) {
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId: targetChatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
+      }
+    } else {
+      targetChatId = generateFriendlyId("chat");
+      await createChat(dashboardAgentDb, {
+        id: targetChatId,
+        organizationId: project.organizationId,
+        userId,
+        title: `Watch ${watchSubjectLabel(draft.spec)}`,
+      });
+    }
+
+    const result = await createDashboardAgentWatch({
+      environment,
+      userId,
+      chatId: targetChatId,
+      spec: draft.spec,
+      investigateOnAttention: draft.followUp.investigateOnAttention,
+    });
+
+    // Validation, cap and network errors stay inside the ephemeral card and
+    // persist nothing (§2.2 step 5) — so this returns before any append.
+    if (!result.ok) {
+      const status =
+        result.code === "limit_reached" || result.code === "duplicate"
+          ? 409
+          : result.code === "invalid_target" || result.code === "chat_not_found"
+            ? 404
+            : result.code === "not_configured"
+              ? 501
+              : 500;
+      return json(
+        {
+          error: result.error,
+          code: result.code,
+          ...(result.existingId ? { existingId: result.existingId } : {}),
+        },
+        { status }
+      );
+    }
+
+    // The external subscription is an EXTRA (§6): it is attached after the watch
+    // exists and its refusal never fails the creation — the in-dashboard signal
+    // always works, and the confirmation simply doesn't claim an email.
+    let notifiedExternally = false;
+    if (result.watching && draft.followUp.notifyExternally) {
+      const subscribed = await subscribeUserToWatchAlerts({ userId, environment });
+      notifiedExternally = subscribed.ok;
+    }
+
+    const body = result.watching
+      ? watchConfirmationBlockBody({
+          spec: draft.spec,
+          watchId: result.watchId,
+          unavailable: result.unavailable,
+          followUp: {
+            investigateOnAttention: draft.followUp.investigateOnAttention,
+            notifyExternally: notifiedExternally,
+          },
+        })
+      : watchOneShotBlockBody({
+          spec: draft.spec,
+          result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
+        });
+
+    // The block goes through the same envelope + `ViewBlocks` machinery every
+    // other card uses. `id` is the watch (or the identity, for a one-shot), so a
+    // retried submit replaces the block rather than stacking a second one.
+    const message = {
+      id: `watch-card:${result.watching ? result.watchId : result.identity}`,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "data-view" as const,
+          data: {
+            blocks: [
+              {
+                ...body,
+                revision: 0,
+                version: VIEW_BLOCK_VERSION,
+                id: `watch:${result.watching ? result.watchId : result.identity}`,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    await appendChatMessage(dashboardAgentDb, { chatId: targetChatId, userId, message });
+
+    return json({
+      chatId: targetChatId,
+      watching: result.watching,
+      watchId: result.watching ? result.watchId : null,
+      message,
+    });
+  }
+
   const { intent, chatId } = parsed.data;
   if (!chatId) return json({ error: "chatId is required" }, { status: 400 });
 
@@ -341,9 +564,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ ok: true });
     }
 
+    // The user has this chat in front of them, so its watch wakes are seen. The
+    // update is owner-scoped, so a chatId the caller doesn't own is a no-op.
+    case "read": {
+      await markChatRead(dashboardAgentDb, { chatId, userId });
+      return json({ ok: true });
+    }
+
     case "delete": {
-      // The org scope lives here: `softDeleteChat` is owner-scoped but takes no
-      // org, so a chat from another org in the URL must 404 before it.
+      // The org scope lives here: `deleteChatWithWatches` is owner-scoped but
+      // takes no org, so a chat from another org in the URL must 404 before it.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -353,7 +583,38 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
-      await softDeleteChat(dashboardAgentDb, { chatId, userId });
+      // A deleted chat has nowhere to deliver a watch outcome, so the delete and
+      // the watch cancellations land in one transaction.
+      const { cancelledWatches } = await deleteChatWithWatches({ chatId, userId });
+      return json({ ok: true, cancelledWatches });
+    }
+
+    // Stop watching, from the chip's ×. Ownership goes through the chat: the watch
+    // must belong to the chat named in the request, and that chat must belong to
+    // this user in this org — so a watch id alone can never cancel someone else's
+    // watch.
+    case "watch-cancel": {
+      const watchId = parsed.data.watchId;
+      if (!watchId) return json({ error: "watchId is required" }, { status: 400 });
+
+      const watch = await getWatch(dashboardAgentDb, { id: watchId });
+      if (!watch || watch.chatId !== chatId) {
+        return json({ error: "Watch not found" }, { status: 404 });
+      }
+
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found" }, { status: 404 });
+      }
+
+      // A watch that already fired or expired keeps its outcome — `cancelWatch`
+      // only touches an active row, so this is a no-op then, not an error.
+      await cancelWatch(dashboardAgentDb, { id: watchId, reason: "user" });
       return json({ ok: true });
     }
   }

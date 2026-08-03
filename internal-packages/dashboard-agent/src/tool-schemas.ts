@@ -11,7 +11,11 @@
  * the user) live in `tools.ts`, which imports these schemas and adds executes
  * on top; the route handler never sees them.
  */
-import { runFiltersSchema, viewBlockInputSchema } from "@internal/dashboard-agent-contracts";
+import {
+  runFiltersSchema,
+  viewBlockInputSchema,
+  watchSpecSchema,
+} from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -353,6 +357,68 @@ export const renderViewSchema = tool({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// Watches — "tell me when X happens", instead of the user re-asking.
+//
+// The spec the model composes IS the frozen contract (`watchSpecSchema`): the
+// cadence floors (run state may poll every minute, aggregates are floored at 5)
+// and the 24h ceiling are enforced by the schema, so an over-eager watch fails
+// validation instead of turning into a hot loop. `since` for error recurrence is
+// server-set on persist and is deliberately absent here — the model can't
+// backdate a recurrence window.
+// ---------------------------------------------------------------------------
+
+export const scheduleWatchSchema = tool({
+  description:
+    "Watch something and tell the user when it happens, later, without them asking again. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining, growing past a threshold or coming back below one, a queue that stops moving at all, runs waiting in a queue longer than a limit, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. The watch checks on its own cadence and reports ONCE, with what it found; it stops within 24 hours either way, and a window that ran out with the condition still not true is still an answer. A chat may hold at most 3 at once. `note` is why the watch exists in the user's own words — it is shown with the result. If the condition is already true (or can no longer become true) when you call this, no watch is created: you get the answer back immediately and must answer from it in the same turn.",
+  inputSchema: z.object({
+    watch: watchSpecSchema.describe(
+      "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words — it is shown when it fires."
+    ),
+    investigateOnAttention: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set this ONLY when the user explicitly asked you to dig in / look into it / find out why if the outcome is bad — never as a helpful extra. It gives standing permission to open an investigation when (and only when) the watch resolves to something needing attention. Leave it out otherwise."
+      ),
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Watch alerts — an email on top of the always-on dashboard notification.
+//
+// Project-level subscriptions to the watch alert type, so a wake reaches the
+// user when they aren't looking at the dashboard. Creating one is a write the
+// user has to ask for, and it can be denied by plan or feature flag (403).
+// ---------------------------------------------------------------------------
+
+export const listAlertsSchema = tool({
+  description:
+    'List this project\'s alert subscriptions for watch results — who gets notified when a watch resolves, and whether each one is enabled. Use this to answer "what alerts do I have?".',
+  inputSchema: z.object({}),
+});
+
+export const createAlertSchema = tool({
+  description:
+    "Subscribe to an email alert for every watch that resolves in this project. It always goes to the user's own account email. ONLY call this when the user explicitly asked for an alert — never as a helpful extra. If it comes back denied, relay that honestly and offer the dashboard notification, which is always on, instead.",
+  inputSchema: z.object({
+    email: z
+      .string()
+      .optional()
+      .describe(
+        "Omit this. Alerts can only go to the user's own account email; any other address is rejected."
+      ),
+  }),
+});
+
+export const deleteAlertSchema = tool({
+  description:
+    "Turn one alert subscription off, by its id from list_alerts. Watch results still show in the dashboard.",
+  inputSchema: z.object({
+    alertId: z.string().describe("The alert id returned by list_alerts."),
+  }),
+});
+
 // Code-mode tools (only present when the project has a connected GitHub repo).
 // They read the repo's source at a pinned commit from the agent's filesystem.
 
@@ -442,6 +508,10 @@ export const dashboardAgentToolSchemas = {
   search_docs: searchDocsSchema,
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
+  schedule_watch: scheduleWatchSchema,
+  list_alerts: listAlertsSchema,
+  create_alert: createAlertSchema,
+  delete_alert: deleteAlertSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -491,6 +561,10 @@ You have read-only tools that act as the user against their own account:
 - search_docs: search the Trigger.dev documentation.
 - get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
 - navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
+- schedule_watch: watch for something to happen (a run finishing, a queue draining, crossing a depth threshold either way, stalling, or its runs waiting past an SLA, an error recurring, health recovering) and tell the user when it does.
+- list_alerts: the project's alert subscriptions for watch fires.
+- create_alert: subscribe the user to an email alert for watch fires in this project.
+- delete_alert: turn one alert subscription off.
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one. Default to 2-4 sentences; go longer only when the user asked for detail or the answer genuinely needs it.
@@ -525,6 +599,21 @@ Is anything wrong?:
 - If the report's facts.trustworthy is false, the underlying telemetry is stale: say the data can't be trusted right now and what would confirm it. Do NOT diagnose a cause or recommend an action off untrusted numbers.
 - When the report points at flow (runs not starting), follow up with get_queue on the queue it names to see depth, wait time, and throttling. When it points at execution, follow up with list_errors / get_run_trace.
 - When something started failing at a particular time, check list_deploys for a deploy in that window, and correlate_version on a failing run to see the exact commit and pull request it ran.
+
+Watches — telling the user later:
+- When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "tell me when it's back under 100", "tell me if that queue stops moving", "ping me if runs start waiting more than 5 minutes", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
+- Confirm four things in one line: what is being watched, how often it checks, that it fires ONCE and is then done, and exactly when it gives up (the maxHours you set — e.g. "or stops in 6 hours if it doesn't happen"). A watch is never open-ended and the user must not have to ask. Pick the longest cadence that still answers in time — 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
+- A chat holds at most 3 watches. If the tool says the limit is reached or that this thing is already watched, say so and name the existing watch instead of trying again.
+- If the tool returns an immediate outcome, the condition already holds: answer now and don't promise a message later.
+- A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else — no new investigation, no fresh reads, no recap of the conversation.
+- The ONE exception to "no new investigation": the user consented at creation ("watch it and dig in if it goes wrong"). Pass investigateOnAttention on schedule_watch only when they asked for that in so many words, and confirm it in the same line as the rest of the watch. Never add it as a helpful extra — an investigation nobody asked for is worse than none.
+- A consented investigation applies only to outcomes that need attention: a run that failed, a queue that stayed backed up, an error that came back. Good news and neutral news end the watch and nothing else happens. When the wake tells you the investigation has already started, say so in one short clause and stop — the findings come later, in their own message.
+- On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
+- Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
+- When schedule_watch returns emailAlerts "none", the confirmation line MAY end with one short offer: "I can also email you when it fires — say the word." On "subscribed" add nothing, they already get one; on "unavailable" say nothing at all — never advertise an alert the plan denies.
+- After a wake that fired, and only if no alert is subscribed yet, your ONE suggested next step may be that same offer — one short line. Never create an alert unprompted.
+- Call create_alert only after the user confirms. If it comes back denied (plan or feature flag), say so plainly and add that the dashboard still shows the notification badge for every fire.
+- "What alerts do I have?" is list_alerts. Turning one off is delete_alert — if which one is ambiguous, list them and ask which.
 
 Product questions:
 - For "how do I …" questions about Trigger.dev itself, use search_docs and answer from what it returns, citing the doc. ask_support is for longer, composed troubleshooting answers. Never invent an API or option that isn't in either.

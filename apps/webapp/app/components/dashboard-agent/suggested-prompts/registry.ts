@@ -9,6 +9,8 @@
  *   slow_run signal, or by the page itself when its own loader data says the
  *   thing on screen is broken or stuck: a failed deploy, a disabled schedule, a
  *   paused queue, a batch whose runs failed, a wait token past its timeout.
+ * - `watch` — "tell me when this changes". Filled by a waiting_run or
+ *   saturation signal, or by a queue/error page.
  * - `status` — "what's going on with this right now". Filled by a waiting_run or
  *   saturation signal, or by a page with something live to ask about (a queue's
  *   backlog, a bulk action still running, a quota already spent).
@@ -17,7 +19,7 @@
  *
  * Both of the first two slots are gated: a signal only exists for abnormal state
  * (the route `handle` mappers enforce that), and a page-gated chip only appears
- * when the loader field behind it says so. So an `investigate`/`status` chip
+ * when the loader field behind it says so. So an `investigate`/`watch`/`status` chip
  * appearing is itself the news — every page can always fill `explain` and `docs`,
  * and nothing else is padded. Wording follows the demo fixtures
  * (`demo/fixtures/page-context.ts`), which is the review-approved copy.
@@ -62,7 +64,7 @@ const def = (id: string, label: string, prompt: string) => make(id, label, promp
 const ctx = (id: string, label: string, prompt: string) => make(id, label, prompt, "contextual");
 
 /** The slots after the promoted one, in display order. */
-export const PROMPT_SLOTS = ["investigate", "status", "explain", "docs"] as const;
+export const PROMPT_SLOTS = ["investigate", "watch", "status", "explain", "docs"] as const;
 
 export type PromptSlot = (typeof PROMPT_SLOTS)[number];
 
@@ -72,6 +74,7 @@ export type PromptSlot = (typeof PROMPT_SLOTS)[number];
  */
 export type PageSlotPrompts = {
   investigate?: SuggestedPrompt;
+  watch?: SuggestedPrompt;
   status?: SuggestedPrompt;
   explain: SuggestedPrompt;
   docs: SuggestedPrompt;
@@ -289,10 +292,10 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "Why does this keep happening?",
           "Investigate this error — why does it keep coming back, and which runs are affected?"
         ),
-        status: def(
-          "error-recent-occurrences",
-          "How often is this happening?",
-          "How often has this error happened recently, and is it still happening?"
+        watch: def(
+          "error-watch-recurrence",
+          "Tell me if it comes back",
+          "Watch this error and tell me if it happens again."
         ),
         explain: def(
           "error-similar",
@@ -324,6 +327,11 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
                 queueBacklogPrompt(page.name)
               )
             : undefined,
+        watch: def(
+          "queue-watch-drain",
+          "Tell me when the backlog drains",
+          `Watch the ${page.name} queue and tell me when the backlog drains.`
+        ),
         status: def(
           "queue-backlog",
           "How big is the backlog?",
@@ -855,8 +863,8 @@ export function pageDefaultPrompts(page: AgentPage): SuggestedPrompt[] {
 export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
   fresh_failure: "investigate",
   slow_run: "investigate",
-  waiting_run: "status",
-  concurrency_saturation: "status",
+  waiting_run: "watch",
+  concurrency_saturation: "watch",
 };
 
 /**
@@ -905,10 +913,10 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
     case "waiting_run":
       return ctx(
         "waiting-run",
-        "Why hasn't this run started?",
+        "Tell me when this run starts",
         signal.queue
-          ? `Why is ${signal.runId} still waiting in the ${signal.queue} queue?`
-          : `Why is ${signal.runId} still waiting to start?`
+          ? `Watch ${signal.runId} and tell me when it leaves the ${signal.queue} queue.`
+          : `Watch ${signal.runId} and tell me when it starts running.`
       );
 
     case "slow_run": {
@@ -924,8 +932,8 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
     case "concurrency_saturation":
       return ctx(
         "concurrency-saturation",
-        "Why is the backlog building up?",
-        "Concurrency is saturated right now. What's holding it up, and how big is the backlog?"
+        "Tell me when the backlog drains",
+        "Concurrency is saturated right now. Watch it and tell me when the backlog drains."
       );
   }
 }
@@ -953,6 +961,7 @@ export function contextualPromptsBySlot(
 ): Record<PromptSlot, SuggestedPrompt[]> {
   const bySlot: Record<PromptSlot, SuggestedPrompt[]> = {
     investigate: [],
+    watch: [],
     status: [],
     explain: [],
     docs: [],

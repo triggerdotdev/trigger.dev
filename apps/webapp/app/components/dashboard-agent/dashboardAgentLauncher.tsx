@@ -1,3 +1,4 @@
+import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { createContext, useContext } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -25,6 +26,18 @@ type DashboardAgentContextValue = {
    * that's already open (so an in-progress conversation is never hijacked).
    */
   openWith: (text: string) => void;
+  /**
+   * Open the panel with a watch CARD pre-filled — the universal `Watch…` entry
+   * (§2.1). Deliberately not `openWith`: a card is not a message. Nothing is
+   * posted to the transcript and nothing is persisted until the card is
+   * submitted, so an abandoned card leaves no trace.
+   */
+  openWithWatch: (spec: WatchSpec) => void;
+  /**
+   * Watch wakes the user hasn't seen. Polled only while the panel is closed —
+   * with it open the chat itself is the notification, so this stays at 0.
+   */
+  unreadWakes: number;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -43,12 +56,14 @@ export function DashboardAgentLauncher() {
     return null;
   }
 
-  const { open, setOpen } = agent;
+  const { open, setOpen, unreadWakes } = agent;
   // The open panel has its own Close button and Esc — a second toggle in the
   // page header would just be noise.
   if (open) {
     return null;
   }
+
+  const hasUnread = unreadWakes > 0;
 
   return (
     <SimpleTooltip
@@ -62,9 +77,21 @@ export function DashboardAgentLauncher() {
         </span>
       }
       button={
-        <Button variant="ask-ai/small" aria-label="Ask AI" onClick={() => setOpen(true)}>
-          Ask AI
-        </Button>
+        <span className="relative inline-flex shrink-0">
+          <Button
+            variant="ask-ai/small"
+            aria-label={hasUnread ? "Ask AI, unread updates" : "Ask AI"}
+            onClick={() => setOpen(true)}
+          >
+            Ask AI
+          </Button>
+          {hasUnread && (
+            <span
+              // Ringed so the dot reads on the header background as well as the button.
+              className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed"
+            />
+          )}
+        </span>
       }
     />
   );

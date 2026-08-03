@@ -6,6 +6,8 @@ import {
   safeParseTriggerUri,
   suggestedPromptSchema,
   viewBlockSchema,
+  watchIdentity,
+  watchSpecSchema,
   SUGGESTED_PROMPT_CAP,
   type Evidence,
 } from "@internal/dashboard-agent-contracts";
@@ -59,12 +61,15 @@ describe("demo ids", () => {
     }
   });
 
-  it("namespaces investigation, hypothesis and prompt ids", () => {
+  it("namespaces investigation, hypothesis, watch and prompt ids", () => {
     for (const investigation of Object.values(fixtures.demoInvestigations)) {
       expect(investigation.investigationId.startsWith(DEMO_ID_PREFIX)).toBe(true);
       for (const hypothesis of investigation.hypotheses) {
         expect(hypothesis.id.startsWith(DEMO_ID_PREFIX)).toBe(true);
       }
+    }
+    for (const watch of fixtures.demoWatches.row) {
+      expect(watch.id.startsWith(DEMO_ID_PREFIX)).toBe(true);
     }
     for (const prompts of Object.values(fixtures.demoPromptSets)) {
       for (const prompt of prompts) {
@@ -196,6 +201,33 @@ describe("investigation fixtures", () => {
   });
 });
 
+describe("watch fixtures", () => {
+  it("validates every spec against the contracts schema", () => {
+    for (const watch of fixtures.demoWatches.row) {
+      const result = watchSpecSchema.safeParse(watch.spec);
+      expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+    }
+  });
+
+  it("derives the chip identity from the spec", () => {
+    for (const watch of fixtures.demoWatches.row) {
+      expect(watch.identity).toBe(watchIdentity(watch.spec));
+    }
+  });
+
+  it("covers every watch status and offers cancel only while active", () => {
+    const statuses = new Set(fixtures.demoWatches.row.map((watch) => watch.status));
+    expect(statuses).toEqual(new Set(["active", "fired", "expired", "cancelled"]));
+    for (const watch of fixtures.demoWatches.row) {
+      expect(watch.cancellable).toBe(watch.status === "active");
+    }
+  });
+
+  it("has an expiry narration that admits it could not verify", () => {
+    expect(fixtures.demoWatchNarration.expiryUnverified).toContain("couldn't verify");
+  });
+});
+
 describe("intent fixtures", () => {
   it("validates every intent and marks propose_fix non-executable", () => {
     for (const demoIntent of Object.values(fixtures.demoIntents)) {
@@ -275,7 +307,9 @@ describe("chart fixtures", () => {
 describe("demo coverage", () => {
   it("covers every v1 flow", () => {
     const flows = new Set(demoChats.map((chat) => chat.flow));
-    expect(flows).toEqual(new Set(["investigate", "navigation", "prompts", "reports", "base"]));
+    expect(flows).toEqual(
+      new Set(["investigate", "navigation", "prompts", "watch", "reports", "base"])
+    );
   });
 
   it("covers the base panel states", () => {

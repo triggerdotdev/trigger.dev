@@ -1,6 +1,7 @@
 import {
   BookOpenIcon,
   ChartBarIcon,
+  EyeIcon,
   MagnifyingGlassIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
@@ -21,7 +22,7 @@ import {
  *
  * - `promoted` / `investigate` — something to do about a problem, so they get
  *   the indigo primary the rest of the app uses for the main action.
- * - `status` — "what's going on right now", a neutral query: secondary.
+ * - `watch` — "tell me when this changes", a standing offer: secondary.
  * - `explain` — the evergreen question, the quietest of the set: tertiary.
  * - `docs` — a documentation question, so it gets the docs variant, the same
  *   style every "read the docs" button in the dashboard has.
@@ -32,6 +33,7 @@ export const PROMPT_SLOT_BUTTON: Record<
 > = {
   promoted: { variant: "primary/medium", icon: SparklesIcon },
   investigate: { variant: "primary/medium", icon: MagnifyingGlassIcon },
+  watch: { variant: "secondary/medium", icon: EyeIcon },
   status: { variant: "secondary/medium", icon: ChartBarIcon },
   explain: { variant: "tertiary/medium", icon: QuestionMarkCircleIcon },
   docs: { variant: "docs/medium", icon: BookOpenIcon },

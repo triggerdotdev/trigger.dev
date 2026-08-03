@@ -394,6 +394,346 @@ describe("dashboardAgent (mock harness)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Watch wakes — an action, not a turn
+// ---------------------------------------------------------------------------
+
+describe("watch wake narration", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  const WAKE = {
+    type: "watch.fired" as const,
+    id: "watch:watch_1:fired",
+    watchId: "watch_1",
+    identity: "backlog_drain:task/send-receipt",
+    spec: {
+      kind: "backlog_drain",
+      queue: "task/send-receipt",
+      checkEveryMinutes: 5,
+      maxHours: 2,
+      note: "tell me when the backlog drains",
+    },
+    facts: { pending: 0, peakPending: 412, drainedAt: "2026-01-01T12:40:00.000Z" },
+  };
+
+  it("narrates the wake once and persists it, and a redelivered wake narrates nothing", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+      },
+    });
+
+    const first = await harness.sendAction(WAKE);
+    expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
+
+    // The streamed message carries the SAME id the read-model copy is persisted
+    // under — the panel merges live stream and loaded history by message id, so
+    // two ids for one narration would render it twice.
+    const startChunk = first.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "start"
+    ) as { messageId?: string } | undefined;
+    expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
+
+    // An action is not a turn: no turn persistence ran, but the narration is in
+    // the display read-model under an id derived from the action.
+    expect(calls.persistTurn).toHaveLength(0);
+    expect(calls.persistMessages).toHaveLength(1);
+    const persisted = (calls.persistMessages[0] as { messages: UIMessage[] }).messages;
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
+
+    // Same action id again (the watcher retried after appending): deduped.
+    const second = await harness.sendAction(WAKE);
+    expect(collectText(second.chunks)).toBe("");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
+  /**
+   * A model that records the prompt it was asked with, so the wake's framing can
+   * be asserted directly. The narration IS the prompt's job — what it must never
+   * say is as load-bearing as what it must.
+   */
+  function recordingModel(text: string) {
+    const prompts: unknown[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        return { stream: simulateReadableStream({ chunks: textStep(text) }) };
+      },
+      doGenerate: async () => ({
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: USAGE,
+        warnings: [],
+      }),
+    });
+    return { model, prompts };
+  }
+
+  function wakeText(prompts: unknown[]): string {
+    return JSON.stringify(prompts);
+  }
+
+  // §4.2 / §7.7: the narration speaks the resolution model, and a completed
+  // window is an ANSWER — never "the watch expired with nothing to say".
+  it("frames a completed window as the answer the user asked for", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("The backlog still hasn't drained — 42 pending.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_window",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired" as const,
+      id: "watch:watch_1:expired",
+      resolution: "window_completed" as const,
+      observed: { kind: "backlog_drain", verified: true, depth: 42 },
+      facts: { verified: true, reason: "not_met_by_expiry", depth: 42 },
+    });
+
+    const prompt = wakeText(prompts);
+    expect(prompt).toContain("window_completed");
+    expect(prompt).toContain("this is the answer the user asked for");
+    expect(prompt).toContain("reports once");
+    // The wire encoding is transport, not vocabulary (§7.5).
+    expect(prompt).not.toContain("the watch ended without firing");
+  });
+
+  it("hands the observed outcome to the narration, not just the resolution", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("Run run_abc123 failed after 4.2s.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_failed",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction({
+      ...WAKE,
+      identity: "run_finished:run_abc123",
+      spec: { ...WAKE.spec, kind: "run_finished", runId: "run_abc123" },
+      resolution: "condition_met" as const,
+      observed: {
+        kind: "run_finished",
+        verified: true,
+        finalStatus: "COMPLETED_WITH_ERRORS",
+        durationMs: 4200,
+      },
+      facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
+    });
+
+    const prompt = wakeText(prompts);
+    expect(prompt).toContain("What the final check observed");
+    expect(prompt).toContain("COMPLETED_WITH_ERRORS");
+  });
+
+  // A wake from a watcher that predates the resolution model still narrates: the
+  // resolution is reconstructed from the transport rather than lost.
+  it("falls back to the transport encoding when a wake carries no resolution", async () => {
+    const { store } = fakeStore();
+    const { model, prompts } = recordingModel("That can't happen any more.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_legacy",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired" as const,
+      id: "watch:watch_1:expired",
+      facts: { reason: "terminal_unsatisfied" },
+    });
+
+    expect(wakeText(prompts)).toContain("condition_impossible");
+  });
+
+  // -------------------------------------------------------------------------
+  // Watch → Investigate: the one relaxation of "never a new investigation
+  // unprompted" (§6). Consent is given at creation and applies to the ATTENTION
+  // outcomes only — the contracts mapping decides which those are.
+  // -------------------------------------------------------------------------
+
+  // A wake needs the project's external ref to scope the investigation exactly
+  // as a turn would; the watcher puts it in the wake's metadata.
+  const WAKE_CLIENT_DATA = {
+    ...CLIENT_DATA,
+    projectRef: "proj_abc",
+    environmentId: "env_abc",
+  };
+
+  const FAILED_RUN_WAKE = {
+    ...WAKE,
+    identity: "run_finished:run_abc123",
+    spec: { ...WAKE.spec, kind: "run_finished", runId: "run_abc123" },
+    resolution: "condition_met" as const,
+    observed: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 4200,
+    },
+    facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
+  };
+
+  it("opens the pre-approved investigation on an attention outcome, in the same wake turn", async () => {
+    const { store, calls } = fakeStore();
+    const { model, prompts } = recordingModel(
+      "Run run_abc123 failed — I've started looking into why."
+    );
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_investigate",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+
+    // The wake still lands first and says the investigation has started.
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(wakeText(prompts)).toContain("ALREADY been started");
+
+    // And the investigation exists: opened, not concluded — the wake has no
+    // token to read with, so the findings come later in their own message.
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    const opened = calls.upsertInvestigationRevision[0] as {
+      chatId: string;
+      projectRef: string;
+      environmentRef: string;
+      state: { outcome: string; runId?: string };
+    };
+    expect(opened.chatId).toBe("chat_wake_investigate");
+    expect(opened.projectRef).toBe("proj_abc");
+    expect(opened.environmentRef).toBe("env_abc");
+    expect(opened.state.outcome).toBe("in_progress");
+    expect(opened.state.runId).toBe("run_abc123");
+  });
+
+  // Consent is for bad news. A drained queue is the good kind, so the same flag
+  // starts nothing — the category comes from the contracts mapping, never from
+  // the flag or the resolution alone.
+  it("starts nothing on a positive outcome, consent or not", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_positive",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained.")]));
+      },
+    });
+
+    await harness.sendAction({
+      ...WAKE,
+      resolution: "condition_met" as const,
+      observed: { kind: "backlog_drain", verified: true, depth: 0 },
+      investigateOnAttention: true,
+    });
+
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+  });
+
+  it("starts nothing on an attention outcome without consent", async () => {
+    const { store, calls } = fakeStore();
+    const { model, prompts } = recordingModel("Run run_abc123 failed after 4.2s.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_no_consent",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(FAILED_RUN_WAKE);
+
+    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    // …and the wake is never framed as having started one.
+    expect(wakeText(prompts)).not.toContain("ALREADY been started");
+  });
+
+  // Binding independence (§6): scheduling the investigation never delays,
+  // retries or invalidates the wake. The watcher has already marked the delivery
+  // by the time the agent runs, so the only thing this can break is the turn —
+  // and it must not.
+  it("delivers the wake even when opening the investigation fails", async () => {
+    const { store, calls } = fakeStore();
+    const failing: DashboardAgentStore = {
+      ...store,
+      upsertInvestigationRevision: async () => {
+        throw new Error("investigations are down");
+      },
+    };
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_inv_fails",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, failing);
+        set(dashboardAgentModelKey, mockModel([textStep("Run run_abc123 failed.")]));
+      },
+    });
+
+    const wake = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+
+    expect(collectText(wake.chunks)).toBe("Run run_abc123 failed.");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
+  it("a different outcome on the same watch is a different wake", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_two",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("first"), textStep("second")]));
+      },
+    });
+
+    await harness.sendAction(WAKE);
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired",
+      id: "watch:watch_2:expired",
+      watchId: "watch_2",
+      facts: { verified: false, reason: "unverified_at_expiry" },
+    });
+
+    expect(calls.persistMessages).toHaveLength(2);
+    const latest = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
+    expect(latest.map((m) => m.id)).toEqual([
+      "wake:watch:watch_1:fired",
+      "wake:watch:watch_2:expired",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Replayed tool-input sanitizing
 // ---------------------------------------------------------------------------
 
@@ -548,6 +888,8 @@ describe("buildDashboardAgentTools", () => {
       [
         "ask_support",
         "correlate_version",
+        "create_alert",
+        "delete_alert",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -556,6 +898,7 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
+        "list_alerts",
         "list_deploys",
         "list_environments",
         "list_errors",
@@ -565,6 +908,7 @@ describe("buildDashboardAgentTools", () => {
         "navigate_to",
         "run_query",
         "render_view",
+        "schedule_watch",
         "search_docs",
       ].sort()
     );
@@ -974,7 +1318,11 @@ describe("buildDashboardAgentTools", () => {
 
     const grounded = await renderInvestigation(tools, concludedWithSource);
     const actions = grounded.blocks[0].capabilities.actions;
-    expect(actions.map((a: { kind: string }) => a.kind)).toEqual(["show_code", "view_similar"]);
+    expect(actions.map((a: { kind: string }) => a.kind)).toEqual([
+      "show_code",
+      "watch_recurrence",
+      "view_similar",
+    ]);
     expect(actions[0].intent.kind).toBe("ask");
     // The ask is a propose-a-change request, not another explanation: a fenced
     // diff, the minimal change, anchored path:line@sha, with the dirty caveat.
@@ -984,11 +1332,39 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/minimal change/i);
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
-    // The follow-up that navigates points at the canonical error URI.
+
+    // "Watch for a repeat" is a HANDOFF, not a question: it carries the kind and
+    // the subject, so the Watch card can be pre-filled without another LLM turn.
     expect(actions[1].intent).toEqual({
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "c4b4a797397a9c43",
+        checkEveryMinutes: 15,
+        maxHours: 24,
+        note: `A repeat of: ${concludedWithSource.title}`,
+      },
+    });
+
+    // The follow-up that navigates points at the canonical error URI.
+    expect(actions[2].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     });
+  });
+
+  // The handoff needs a subject a recurrence watch can be built on. A concluded
+  // card that cites no error group has none, so the action is left off rather
+  // than offering a button that can't pre-fill anything.
+  it("offers no repeat watch when the card cites no error group", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, concludedState);
+    const kinds = (output.blocks[0].capabilities?.actions ?? []).map(
+      (a: { kind: string }) => a.kind
+    );
+    expect(kinds).not.toContain("watch_recurrence");
   });
 
   it("offers no actions while an investigation is still in progress", async () => {
@@ -998,7 +1374,9 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].capabilities).toBeUndefined();
   });
 
-  it("offers a keep-digging follow-up, and never Show code, on an inconclusive card", async () => {
+  // An inconclusive card has no cause to watch for a repeat OF, so the handoff
+  // stays off it — "keep digging" is the follow-up that fits.
+  it("offers a keep-digging follow-up, and never Show code or a repeat watch, on an inconclusive card", async () => {
     await seedWorkspace();
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({
@@ -1186,6 +1564,179 @@ describe("buildDashboardAgentTools", () => {
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
   });
 
+  // -------------------------------------------------------------------------
+  // schedule_watch: the one tool that schedules future work
+  // -------------------------------------------------------------------------
+
+  const WATCH_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    chatId: "chat_1",
+  };
+
+  const RUN_WATCH = {
+    kind: "run_finished" as const,
+    runId: "run_a1",
+    checkEveryMinutes: 1 as const,
+    maxHours: 2,
+    note: "tell me when the receipt run finishes",
+  };
+
+  // Runs schedule_watch against a stubbed global fetch and hands back both the
+  // tool's result and the request the host would have received.
+  async function scheduleWatch(
+    response: { status?: number; body: unknown },
+    input: unknown = { watch: RUN_WATCH },
+    ctx: Record<string, unknown> = WATCH_CTX
+  ) {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(response.body), {
+        status: response.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const scheduleTool = tools.schedule_watch as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await scheduleTool.execute(scheduleTool.inputSchema.parse(input), {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("schedule_watch posts the spec and the chat id as the user, and reports the created watch", async () => {
+    const { result, requests } = await scheduleWatch({
+      body: {
+        watchId: "watch_1",
+        identity: "run_finished:run_a1",
+        status: "active",
+        expiresAt: "2026-01-01T14:00:00.000Z",
+        emailAlerts: "none",
+      },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/watches");
+    expect(requests[0]?.init?.method).toBe("POST");
+    // The delegated user token — a watch is created with exactly the access of
+    // the user who asked for it.
+    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer uat_token"
+    );
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      spec: RUN_WATCH,
+      chatId: "chat_1",
+    });
+
+    expect(result).toMatchObject({
+      watchId: "watch_1",
+      identity: "run_finished:run_a1",
+      status: "active",
+      expiresAt: "2026-01-01T14:00:00.000Z",
+      checkEveryMinutes: 1,
+      watching: true,
+      // What the model needs to decide whether to offer an email alert.
+      emailAlerts: "none",
+    });
+  });
+
+  it("schedule_watch passes the alert state through, and defaults to none when the host omits it", async () => {
+    for (const state of ["subscribed", "unavailable"] as const) {
+      const { result } = await scheduleWatch({
+        body: { watchId: "watch_1", status: "active", emailAlerts: state },
+      });
+      expect(result.emailAlerts).toBe(state);
+    }
+
+    // An older host that doesn't send the field must not read as "already
+    // subscribed" — the offer is the safe default.
+    const legacy = await scheduleWatch({ body: { watchId: "watch_1", status: "active" } });
+    expect(legacy.result.emailAlerts).toBe("none");
+  });
+
+  it("schedule_watch surfaces the limit and the duplicate as friendly text, naming the existing watch", async () => {
+    const limit = await scheduleWatch({
+      status: 400,
+      body: { error: "too many", code: "limit_reached" },
+    });
+    expect(limit.result.error).toContain("3 active watches");
+
+    const duplicate = await scheduleWatch({
+      status: 409,
+      body: { error: "already watching", code: "duplicate", existingId: "watch_existing" },
+    });
+    expect(duplicate.result.error).toContain("watch_existing");
+    expect(duplicate.result.error).toContain("already being watched");
+  });
+
+  // §2.2/§4.1: the host answered the request outright and created no watch, so
+  // the tool result is a ONE-SHOT the model must answer from in this turn.
+  it("schedule_watch reports a one-shot outcome instead of a running watch", async () => {
+    const { result } = await scheduleWatch({
+      body: {
+        watching: false,
+        identity: "run_finished:run_abc",
+        immediate: { result: "satisfied", facts: { status: "COMPLETED" } },
+      },
+    });
+    expect(result.watching).toBe(false);
+    expect(result.outcome).toBe("already_true");
+    expect(result.immediate).toEqual({ result: "satisfied", facts: { status: "COMPLETED" } });
+    // No watch id: there is nothing to cancel, and nothing will wake later.
+    expect(result.watchId).toBeUndefined();
+
+    const impossible = await scheduleWatch({
+      body: {
+        watching: false,
+        identity: "run_finished:run_abc",
+        immediate: { result: "terminal_unsatisfied", facts: {} },
+      },
+    });
+    expect(impossible.result.outcome).toBe("no_longer_possible");
+  });
+
+  it("schedule_watch says so when the first check couldn't run", async () => {
+    const { result } = await scheduleWatch({
+      body: { watching: true, watchId: "watch_1", status: "active", unavailable: true },
+    });
+    expect(result.watching).toBe(true);
+    expect(result.firstCheck).toBe("unavailable");
+    expect(result.checked).toBe(false);
+  });
+
+  it("schedule_watch fails closed with no chat and rejects a cadence the contract floors", async () => {
+    const noChat = await scheduleWatch({ body: {} }, { watch: RUN_WATCH }, {
+      userActorToken: "uat_token",
+      apiOrigin: "http://localhost:3030",
+    } as Record<string, unknown>);
+    expect(typeof noChat.result.error).toBe("string");
+    expect(noChat.requests).toHaveLength(0);
+
+    // Aggregate conditions are floored at 5 minutes by the contract's schema, so
+    // an over-eager watch never reaches the host.
+    await expect(
+      scheduleWatch(
+        { body: {} },
+        {
+          watch: {
+            kind: "backlog_drain",
+            queue: "task/x",
+            checkEveryMinutes: 1,
+            maxHours: 1,
+            note: "n",
+          },
+        }
+      )
+    ).rejects.toThrow();
+  });
+
   // The env-JWT exchange is a webapp request plus DB work, so it is paid for once
   // per tool set (= once per turn) no matter how many env-scoped tools run.
   const ENV_CTX = {
@@ -1363,5 +1914,151 @@ describe("buildDashboardAgentTools", () => {
 
     expect(first.page).toEqual({ kind: "queue", name: "email" });
     expect(second.page).toEqual({ kind: "run", runId: "run_2" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Watch alert tools — project-level subscriptions, as the user
+// ---------------------------------------------------------------------------
+
+describe("watch alert tools", () => {
+  const ALERT_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    projectRef: "proj_abc",
+    environmentName: "prod",
+    chatId: "chat_alerts",
+  };
+
+  // Runs one alert tool against a stubbed global fetch, handing back the tool's
+  // result and the request the webapp would have received.
+  async function callAlertTool(
+    name: string,
+    input: unknown,
+    response: { status?: number; body: unknown },
+    ctx: Record<string, unknown> = ALERT_CTX
+  ) {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(response.body), {
+        status: response.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const tool = tools[name] as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await tool.execute(tool.inputSchema.parse(input), {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("list_alerts reads the project's subscriptions as the user", async () => {
+    const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
+    const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(
+      "http://localhost:3030/api/v1/dashboard-agent/alerts?chatId=chat_alerts"
+    );
+    expect(requests[0]?.init?.method).toBe("GET");
+    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer uat_token"
+    );
+    expect(result).toEqual({ alerts });
+  });
+
+  it("create_alert posts the email channel and reports the created alert", async () => {
+    const { result, requests } = await callAlertTool(
+      "create_alert",
+      { email: "someone@example.com" },
+      { body: { ok: true, alert: { id: "alert_2", type: "EMAIL" } } }
+    );
+
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
+    expect(requests[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
+      channel: "email",
+      email: "someone@example.com",
+    });
+    expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
+
+    // No email given: the host defaults to the user's account email, so the body
+    // carries only the chat scope and the channel.
+    const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
+    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
+      channel: "email",
+    });
+  });
+
+  it("create_alert relays a 403 with the reason the host gave", async () => {
+    const noEmailSetup = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", reason: "email_alerts_not_configured" } }
+    );
+    expect(noEmailSetup.result.error).toContain("isn't set up on this instance");
+    expect(noEmailSetup.result.error).toContain("dashboard");
+
+    const flag = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", reason: "dashboard_agent_disabled" } }
+    );
+    expect(flag.result.error).toContain("aren't enabled here");
+  });
+
+  it("create_alert relays the address refusal verbatim", async () => {
+    const refused = await callAlertTool(
+      "create_alert",
+      { email: "someone@else.com" },
+      {
+        status: 400,
+        body: {
+          code: "email_not_allowed",
+          error: "Alerts can only be sent to your own account email.",
+        },
+      }
+    );
+    expect(refused.result.error).toBe("Alerts can only be sent to your own account email.");
+  });
+
+  it("delete_alert deletes by id and surfaces a failure as text", async () => {
+    const { result, requests } = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_1" },
+      { body: { ok: true } }
+    );
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts/alert_1");
+    expect(requests[0]?.init?.method).toBe("DELETE");
+    expect(result).toEqual({ deleted: true, alertId: "alert_1" });
+
+    const missing = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_gone" },
+      { status: 404, body: { error: "No such alert." } }
+    );
+    expect(missing.result.error).toBe("No such alert.");
+  });
+
+  it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
+    for (const [name, input] of [
+      ["list_alerts", {}],
+      ["create_alert", {}],
+      ["delete_alert", { alertId: "alert_1" }],
+    ] as const) {
+      const { result, requests } = await callAlertTool(name, input, { body: {} }, {});
+      expect(typeof result.error).toBe("string");
+      expect(requests).toHaveLength(0);
+    }
   });
 });

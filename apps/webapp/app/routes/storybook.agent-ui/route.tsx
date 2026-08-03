@@ -21,6 +21,7 @@ import {
   DemoIntentBubble,
   DemoInvestigationCard,
   DemoReportCard,
+  DemoWatchChips,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
 import { ChatProgress, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
@@ -36,6 +37,29 @@ import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
+import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
+import { WatchCard } from "~/components/dashboard-agent/WatchCard";
+import {
+  watchDraftFor,
+  withAgeMinutes,
+  withFollowUp,
+  withThreshold,
+  withVariant,
+} from "~/components/dashboard-agent/watch-card";
+import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
+import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
+import {
+  watchConfirmationBlockBody,
+  watchOneShotBlockBody,
+} from "~/components/dashboard-agent/watch-presentation";
+import {
+  errorWatchRecommendation,
+  healthWatchRecommendation,
+  queueWatchRecommendation,
+  runWatchRecommendation,
+} from "~/components/dashboard-agent/watch-recommendations";
+import { WatchResultBlock } from "~/components/dashboard-agent/WatchResultBlock";
+import { watchWakeToastTitle, type WatchWake } from "~/components/dashboard-agent/WatchWakeToast";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
@@ -456,7 +480,7 @@ function Missing({ what }: { what: string }) {
 // The state map. Keyed by `sectionId`, so the manifest drives what renders.
 // ---------------------------------------------------------------------------
 
-const { demoInvestigations, demoIntents, demoPageContexts } = demoFixtures;
+const { demoInvestigations, demoIntents, demoWatches, demoPageContexts } = demoFixtures;
 
 // A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
 // production — the point of the state is the styling of the top slot.
@@ -551,6 +575,255 @@ function investigationBlock(
     investigation,
     ...(capabilities ? { capabilities } : {}),
   };
+}
+
+/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
+function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
+  return {
+    id: watch.id,
+    identity: watch.identity,
+    status: watch.status,
+    kind: watch.spec.kind,
+    note: watch.spec.note,
+    checkEveryMinutes: watch.spec.checkEveryMinutes,
+    expiresAt: watch.expiresAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Watch card fixtures. The card is pure — draft in, callbacks out — so every
+// state here is a fixed draft plus a `noop` onChange: nothing on this page
+// edits, and nothing is submitted. The drafts come from the same
+// recommendation helpers the real Watch… action uses, so what the gallery shows
+// is the condition each object actually proposes.
+// ---------------------------------------------------------------------------
+
+const queueWatchDraft = watchDraftFor(queueWatchRecommendation("email-sends"));
+
+// A run watch with the "investigate if it turns out badly" opt-in already set,
+// so the expanded state shows a checked box rather than two empty ones.
+const runWatchDraft = withFollowUp(watchDraftFor(runWatchRecommendation("run_a1b2c3d4e5")), {
+  investigateOnAttention: true,
+});
+
+// A threshold the schema refuses. No `error` prop: the point of the state is the
+// card's OWN validation path (`watchDraftError`), which blocks the submit before
+// anything reaches the server.
+const invalidThresholdDraft = withThreshold(
+  withVariant(queueWatchDraft, "queue_depth_above"),
+  Number.NaN
+);
+
+// The queue pack (TRI-12890). One draft per condition, each shown expanded so the
+// review is of the picker plus that condition's ONE parameter — and the stall
+// variant proves the case with no parameter at all.
+const queueBelowDraft = withThreshold(withVariant(queueWatchDraft, "queue_depth_below"), 100);
+const queueStalledDraft = withVariant(queueWatchDraft, "queue_stalled");
+const queueAgeDraft = withAgeMinutes(withVariant(queueWatchDraft, "queue_oldest_age"), 5);
+
+// The contextual recommendation: on a queue whose oldest run is already waiting
+// past the page's warning threshold, the card OPENS on the age SLA instead of the
+// drain. Compact, because that is what the user sees first.
+const lateQueueDraft = watchDraftFor(
+  queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS })
+);
+
+/** The envelope a host-emitted `watch_result` block carries into the transcript. */
+const WATCH_BLOCK_ENVELOPE = {
+  id: "watch:watch_demo",
+  revision: 0,
+  version: VIEW_BLOCK_VERSION,
+} as const;
+
+const watchConfirmationBlock = {
+  ...watchConfirmationBlockBody({
+    spec: queueWatchRecommendation("email-sends"),
+    watchId: "watch_demo",
+    followUp: { investigateOnAttention: true, notifyExternally: true },
+  }),
+  ...WATCH_BLOCK_ENVELOPE,
+};
+
+const watchSatisfiedBlock = {
+  ...watchOneShotBlockBody({
+    spec: runWatchRecommendation("run_a1b2c3d4e5"),
+    result: "satisfied",
+  }),
+  ...WATCH_BLOCK_ENVELOPE,
+};
+
+const watchImpossibleBlock = {
+  ...watchOneShotBlockBody({
+    spec: runWatchRecommendation("run_a1b2c3d4e5"),
+    result: "terminal_unsatisfied",
+  }),
+  ...WATCH_BLOCK_ENVELOPE,
+};
+
+/**
+ * The toast is a sonner portal, so it can't be rendered inline in a section —
+ * what the gallery can show is the thing worth reviewing: the headline the
+ * presenter produces, fact first, with the note the toast puts under it.
+ */
+const toastWakes: WatchWake[] = [
+  {
+    watchId: "watch_queue",
+    chatId: "chat_demo",
+    outcome: "fired",
+    note: "tell me when the email-sends backlog clears",
+    kind: "backlog_drain",
+    identity: "backlog_drain:email-sends",
+    resolution: "condition_met",
+    observedOutcome: { kind: "backlog_drain", verified: true, depth: 0 },
+  },
+  {
+    watchId: "watch_run_failed",
+    chatId: "chat_demo",
+    outcome: "fired",
+    note: "ping me when the nightly backfill finishes",
+    kind: "run_finished",
+    identity: "run_finished:run_a1b2c3d4e5",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 812_000,
+    },
+  },
+];
+
+function WakeToastHeadlines({ wakes }: { wakes: WatchWake[] }) {
+  return (
+    <div className={cn(PANEL_FRAME, "space-y-3 p-3")}>
+      {wakes.map((wake) => (
+        <div key={wake.watchId} className="space-y-0.5">
+          <p className="text-[10px] uppercase tracking-wide text-text-faint">{wake.kind}</p>
+          <p className="text-sm text-text-bright">{watchWakeToastTitle(wake)}</p>
+          <p className="text-xs text-text-dimmed">{wake.note}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Wake fixtures, written here rather than pulled from the demo conversations: a
+// wake is a message *id* plus the watch it names, and no demo chat carries one.
+// ---------------------------------------------------------------------------
+
+/** A wake narration, in the shape the panel merges live stream and history into. */
+function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
+  return {
+    id: `wake:watch:${watchId}:${outcome}`,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+  };
+}
+
+// One watch per presentation category, plus the pair that proves the point of
+// the resolution model: the SAME `condition_met` on the same kind, presented as
+// a success and as a failure, decided only by the observed final status.
+const wakeWatches: WakeWatch[] = [
+  {
+    id: "watch_health",
+    kind: "health_recovery",
+    note: "prod health back to normal",
+    identity: "health_recovery:health",
+    resolution: "condition_met",
+    observedOutcome: { kind: "health_recovery", verified: true, severity: "ok" },
+  },
+  {
+    id: "watch_error",
+    kind: "error_recurrence",
+    note: "tell me if that TypeError comes back",
+    identity: "error_recurrence:a1b2c3d4e5f6",
+    resolution: "condition_met",
+    observedOutcome: { kind: "error_recurrence", verified: true, countSince: 6 },
+  },
+  {
+    id: "watch_run",
+    kind: "run_finished",
+    note: "ping me when the nightly backfill finishes",
+    identity: "run_finished:run_a1b2c3d4e5",
+    resolution: "window_completed",
+    observedOutcome: { kind: "run_finished", verified: true, finalStatus: null, durationMs: null },
+  },
+  {
+    id: "watch_run_failed",
+    kind: "run_finished",
+    note: "ping me when the nightly backfill finishes",
+    identity: "run_finished:run_a1b2c3d4e5",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 812_000,
+    },
+  },
+  {
+    id: "watch_queue_gone",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "condition_impossible",
+    observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
+  },
+  // The queue pack (TRI-12890): the numbers in these headlines come from the
+  // frozen observation, so the banner is complete without the narration.
+  {
+    id: "watch_queue_below",
+    kind: "queue_depth_below",
+    note: "tell me when email-sends is back under 100",
+    identity: "queue_depth_below:email-sends:100",
+    resolution: "condition_met",
+    observedOutcome: { kind: "queue_depth_below", verified: true, depth: 42, threshold: 100 },
+  },
+  {
+    id: "watch_queue_stalled",
+    kind: "queue_stalled",
+    note: "tell me if email-sends stops moving",
+    identity: "queue_stalled:email-sends",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "queue_stalled",
+      verified: true,
+      depth: 42,
+      notDecreasingStreak: 3,
+      ticks: 3,
+    },
+  },
+  {
+    id: "watch_queue_age",
+    kind: "queue_oldest_age",
+    note: "tell me if runs wait longer than 5 minutes",
+    identity: "queue_oldest_age:email-sends:5",
+    resolution: "condition_met",
+    observedOutcome: {
+      kind: "queue_oldest_age",
+      verified: true,
+      ageMs: 12 * 60_000,
+      thresholdMinutes: 5,
+    },
+  },
+  {
+    id: "watch_unverified",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "window_completed",
+    observedOutcome: { kind: "backlog_drain", verified: false, depth: null },
+  },
+];
+
+/** One wake through the production renderer, with the watches the panel would have. */
+function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
+  return (
+    <div className={PANEL_FRAME}>
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
+    </div>
+  );
 }
 
 /**
@@ -795,6 +1068,192 @@ const STATES: Record<string, React.ReactNode> = {
   ),
   "chart-empty": <EmptyChartCard />,
 
+  // --- Watch chips --------------------------------------------------------
+  "watches-active": <DemoWatchChips watches={[demoWatches.runFinished]} onCancel={noop} />,
+  "watches-fired": <DemoWatchChips watches={[demoWatches.errorRecurrence]} />,
+  "watches-expired": <DemoWatchChips watches={[demoWatches.healthRecovery]} />,
+  "watches-cancelled": <DemoWatchChips watches={[demoWatches.cancelled]} />,
+  "watches-all-states": <DemoWatchChips watches={demoWatches.row} onCancel={noop} />,
+  // The real panel component, fed the same fixtures through the shape its loader
+  // hands over — so its labels (derived from the watch identity) and the demo
+  // chips above can be compared side by side.
+  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
+
+  // --- Watch card ---------------------------------------------------------
+  "watch-card-compact": (
+    <WatchCard draft={queueWatchDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
+  ),
+  // Customize expands the same block in place — never a second surface.
+  "watch-card-expanded": (
+    <WatchCard
+      draft={runWatchDraft}
+      onChange={noop}
+      onSubmit={noop}
+      onCancel={noop}
+      defaultExpanded
+    />
+  ),
+  // Expanded so the field the message is about is on screen with it.
+  "watch-card-validation-error": (
+    <WatchCard
+      draft={invalidThresholdDraft}
+      onChange={noop}
+      onSubmit={noop}
+      onCancel={noop}
+      defaultExpanded
+    />
+  ),
+  // The submit is in flight: the card stays put, disabled, so nothing moves.
+  "watch-card-pending": (
+    <WatchCard
+      draft={watchDraftFor(errorWatchRecommendation("a1b2c3d4e5f6"))}
+      onChange={noop}
+      onSubmit={noop}
+      onCancel={noop}
+      pending
+    />
+  ),
+  // A refusal from the server. It stays inside the card, and the draft survives.
+  "watch-card-create-failure": (
+    <WatchCard
+      draft={watchDraftFor(healthWatchRecommendation("crit"))}
+      onChange={noop}
+      onSubmit={noop}
+      onCancel={noop}
+      error="This chat already has 3 active watches. Cancel one first."
+    />
+  ),
+  // What a submitted card leaves in the transcript, built by the same presenter
+  // the host freezes into the block — so the gallery shows the real wording.
+  "watch-card-confirmation": <WatchResultBlock block={watchConfirmationBlock} />,
+  "watch-card-one-shot-satisfied": <WatchResultBlock block={watchSatisfiedBlock} />,
+  "watch-card-one-shot-impossible": <WatchResultBlock block={watchImpossibleBlock} />,
+  "watch-card-toast-headline": <WakeToastHeadlines wakes={toastWakes} />,
+  // The queue pack's three conditions, expanded: the picker now holds the whole
+  // queue family, and each condition brings at most one field.
+  "watch-card-queue-below": (
+    <WatchCard draft={queueBelowDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  "watch-card-queue-stalled": (
+    <WatchCard draft={queueStalledDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  "watch-card-queue-age": (
+    <WatchCard draft={queueAgeDraft} onChange={noop} onSubmit={noop} defaultExpanded />
+  ),
+  // Opened from a queue that is already late: the recommendation itself changed.
+  "watch-card-queue-age-recommended": (
+    <WatchCard draft={lateQueueDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
+  ),
+
+  // --- Wake banners -------------------------------------------------------
+  "wake-positive": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_health",
+        "fired",
+        "Production is back to normal: the failure rate has been under 1% for the last 15 minutes and the queue has drained. Nothing left for me to watch here."
+      )}
+    />
+  ),
+  "wake-attention": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_error",
+        "fired",
+        "That TypeError is back — 6 runs of process-order failed with it in the last 10 minutes, all on version 20260620.2. Same empty-items payload as before."
+      )}
+    />
+  ),
+  // The answer the resolution model insists is an answer: the window ran out
+  // with the condition still not true, and that is what the user asked to know.
+  "wake-window-completed": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_run",
+        "expired",
+        "The nightly backfill is still running after two hours — it hasn't failed, it just hasn't landed. Ask me again if you want another window on it."
+      )}
+    />
+  ),
+  // Same kind, same `condition_met`, opposite presentation. The icon follows the
+  // outcome, never the resolution.
+  "wake-attention-failed-run": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_run_failed",
+        "fired",
+        "The nightly backfill finished, but with errors: 13m 32s in, it ended as COMPLETED_WITH_ERRORS. Worth looking at the last attempt's trace."
+      )}
+    />
+  ),
+  "wake-neutral-impossible": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_gone",
+        "expired",
+        "The email-sends queue was deleted, so there is nothing left to drain. I've stopped watching."
+      )}
+    />
+  ),
+  "wake-unverified": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_unverified",
+        "expired",
+        "The window ran out while I couldn't read the queue depth, so I can't tell you whether it drained. The last reading I do have was 42 pending, an hour ago."
+      )}
+    />
+  ),
+  // The queue pack's wakes. All three read the same presenter, so the number in
+  // each headline is the one the resolving check froze.
+  "wake-queue-below": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_below",
+        "fired",
+        "email-sends is back under 100 — 42 pending now, down from 780 twenty minutes ago. Throughput has been steady since the extra workers came up."
+      )}
+    />
+  ),
+  "wake-queue-stalled": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_stalled",
+        "fired",
+        "email-sends hasn't moved in three checks: 42 pending the whole time, nothing started. Concurrency is at its limit with every slot held by a run that's still executing."
+      )}
+    />
+  ),
+  "wake-queue-age": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_queue_age",
+        "fired",
+        "The oldest run in email-sends has been waiting 12 minutes, past the 5 you set. The queue itself is small — 8 pending — so this is a concurrency limit, not a flood."
+      )}
+    />
+  ),
+  // No watches in hand (an older chat, or a watch already swept away): the
+  // banner still fires, without claiming an outcome it can't know.
+  "wake-unknown-watch": (
+    <WakeHarness
+      message={wakeMessage(
+        "watch_gone",
+        "fired",
+        "The condition you asked me to watch for just happened. Here's what the check found."
+      )}
+    />
+  ),
+
   // --- Blank-state hero ---------------------------------------------------
   "hero-panel": <HeroHarness context={demoPageContexts.other} />,
   "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
@@ -824,6 +1283,7 @@ const STATES: Record<string, React.ReactNode> = {
     <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
   ),
   "intent-navigate-run": <DemoIntentBubble intent={demoIntents.navigateToRun} onIntercept={noop} />,
+  "intent-watch": <DemoIntentBubble intent={demoIntents.watch} onIntercept={noop} />,
   "intent-ask": <DemoIntentBubble intent={demoIntents.ask} onIntercept={noop} />,
   "intent-rejected-propose-fix": (
     <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />

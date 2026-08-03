@@ -16,10 +16,12 @@ import {
   type DashboardAgentSession,
 } from "./DashboardAgentChat";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { WatchCard } from "./WatchCard";
+import { watchDraftFor } from "./watch-card";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt, WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 import { AgentPanelColumn } from "./panel-layout";
@@ -81,8 +83,11 @@ type ActiveChat = {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  openChatRequest,
   newChatSeq,
   promotedPrompt,
+  watchRequest,
+  onChatRead,
   isFullscreen = false,
   onToggleFullscreen,
 }: {
@@ -94,11 +99,19 @@ export function DashboardAgentPanel({
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
   // repeat requests with the same text.
   requestedMessage?: { text: string; seq: number };
+  // A specific chat to show, from outside the panel (a wake toast). `seq`
+  // distinguishes repeat requests for the same chat.
+  openChatRequest?: { chatId: string; seq: number };
   // Bumped by the contextual ⌘J while the panel is open — each change starts a
   // new chat.
   newChatSeq?: number;
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
+  // A watch card asked for by a `Watch…` entry. `seq` distinguishes repeats.
+  watchRequest?: { spec: WatchSpec; seq: number };
+  // The chat in front of the user changed, so its watch wakes are seen — clears
+  // the launcher's unread dot.
+  onChatRead?: (chatId: string) => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -160,10 +173,15 @@ export function DashboardAgentPanel({
     );
   }, []);
 
-  // The list is reloaded from several places at once (on open, and on every
-  // settled turn), so a single in-flight request is shared instead of stacking:
+  // The list is reloaded from several places at once (open, every settled turn, a
+  // watch change), so a single in-flight request is shared instead of stacking:
   // callers that arrive while one is running await that one and see its result.
   const historyInFlight = useRef<Promise<void> | null>(null);
+
+  // Chats read since the last reload. The read POST and the reload it triggers
+  // can land out of order, so the next list is masked with what we know was
+  // read; the ids are then dropped, so a later wake in the same chat still shows.
+  const justRead = useRef<Set<string>>(new Set());
 
   const loadHistory = useCallback(async () => {
     if (historyInFlight.current) return historyInFlight.current;
@@ -172,7 +190,13 @@ export function DashboardAgentPanel({
         const res = await fetch(actionPath);
         if (!res.ok) throw new Error(`History request failed (${res.status})`);
         const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
-        setChats(data.chats ?? []);
+        const read = justRead.current;
+        justRead.current = new Set();
+        setChats(
+          (data.chats ?? []).map((chat) =>
+            read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat
+          )
+        );
       } catch (error) {
         console.error("Dashboard agent: failed to load chat history", error);
         toast.error("We couldn't load your previous chats. Try again in a moment.");
@@ -308,6 +332,21 @@ export function DashboardAgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChat, storageKey, loadHistory]);
 
+  // A chat asked for from outside: a wake toast is about one conversation, so it
+  // opens that one. Runs after the mount-time restore, and `openChat` invalidates
+  // any request already in flight, so the asked-for chat is the one that lands.
+  const handledOpenChatSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!openChatRequest || handledOpenChatSeq.current === openChatRequest.seq) return;
+    handledOpenChatSeq.current = openChatRequest.seq;
+    // Already the visible transcript — nothing to load, and reloading it would
+    // drop a turn in flight.
+    if (openChatRequest.chatId === active?.chatId) return;
+    void openChat(openChatRequest.chatId);
+    // `active` is read, not tracked: a later change must not re-run the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openChatRequest, openChat]);
+
   // Persist the active chat and the page it's being used on — navigating with
   // the panel open keeps the chat, so the stored path follows along.
   useEffect(() => {
@@ -321,6 +360,27 @@ export function DashboardAgentPanel({
       /* ignore */
     }
   }, [active?.chatId, storageKey, location.pathname]);
+
+  // A chat becoming the visible transcript is the user reading it — mark it read
+  // so the launcher's dot clears. Fires on open and on every chat switch; a draft
+  // has nothing to read.
+  useEffect(() => {
+    if (!active?.chatId) return;
+    const chatId = active.chatId;
+    onChatRead?.(chatId);
+    // Clear the row's highlight now rather than waiting for the next history
+    // reload, so reopening the dropdown after reading doesn't show it as unread.
+    justRead.current.add(chatId);
+    setChats((previous) =>
+      previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
+    );
+    // Read it again on the way out, so a wake that landed while the chat was in
+    // front of the user doesn't come back as unread when the panel closes.
+    return () => {
+      onChatRead?.(chatId);
+      justRead.current.add(chatId);
+    };
+  }, [active?.chatId, onChatRead]);
 
   // Text handed in by `openWith`. With no chat open we start one and send it
   // straight away (the launcher's caller already knows what to ask); with a chat
@@ -344,6 +404,104 @@ export function DashboardAgentPanel({
       void createChat(requestedMessage.text);
     }
   }, [requestedMessage, loading, active, createChat]);
+
+  // ---------------------------------------------------------------------
+  // The watch card (§2.2). Everything here is EPHEMERAL until `submitWatch`
+  // succeeds: the draft, the pending flag and the error all live in the panel,
+  // and dropping the card drops all three without touching the transcript.
+  // ---------------------------------------------------------------------
+  const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
+  const [watchPending, setWatchPending] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  // The block the server appended, handed to the open chat so it appears now
+  // rather than on the next open. `seq` makes each append distinct.
+  const [appendedMessage, setAppendedMessage] = useState<
+    { message: UIMessage; seq: number } | undefined
+  >(undefined);
+
+  const handledWatchSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
+    handledWatchSeq.current = watchRequest.seq;
+    setWatchError(null);
+    setWatchPending(false);
+    setWatchDraft(watchDraftFor(watchRequest.spec));
+  }, [watchRequest]);
+
+  // A card offering a watch (an investigation's recurrence action, the health
+  // report's recovery offer) opens the SAME card, pre-filled — never a posted
+  // request, so an offer the user walks away from leaves no trace.
+  const openWatchCard = useCallback((spec: WatchSpec) => {
+    setWatchError(null);
+    setWatchPending(false);
+    setWatchDraft(watchDraftFor(spec));
+  }, []);
+
+  const dismissWatchCard = useCallback(() => {
+    setWatchDraft(null);
+    setWatchError(null);
+    setWatchPending(false);
+  }, []);
+
+  const submitWatch = useCallback(async () => {
+    if (!watchDraft) return;
+    setWatchPending(true);
+    setWatchError(null);
+    try {
+      const body = new FormData();
+      body.set("intent", "watch-create");
+      body.set("draft", JSON.stringify(watchDraft));
+      // No chat open: the server creates one and returns its id. A watch is
+      // chat-bound, so there is nowhere else for it to live.
+      if (active?.chatId) body.set("chatId", active.chatId);
+
+      const res = await fetch(actionPath, { method: "POST", body });
+      const data = (await res.json()) as {
+        chatId?: string;
+        message?: UIMessage;
+        error?: string;
+      };
+      if (!res.ok || !data.chatId || !data.message) {
+        // Validation, cap and network failures stay in the card and persist
+        // nothing — the user fixes the draft in place.
+        setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
+        return;
+      }
+
+      if (active?.chatId === data.chatId) {
+        setAppendedMessage((current) => ({
+          message: data.message!,
+          seq: (current?.seq ?? 0) + 1,
+        }));
+      } else {
+        // A chat that did not exist a moment ago: mount it on what the server
+        // wrote. No session — nothing is streaming, the block is the whole chat.
+        setActive({ chatId: data.chatId, messages: [data.message], session: null });
+      }
+      // The card BECOMES the persisted block, so it goes the moment that block
+      // is in the transcript (§2.2 step 3/4).
+      setWatchDraft(null);
+      void loadHistory();
+    } catch (error) {
+      console.error("Dashboard agent: failed to create watch", error);
+      setWatchError("We couldn't start that watch. Try again in a moment.");
+    } finally {
+      setWatchPending(false);
+    }
+  }, [watchDraft, active?.chatId, actionPath, loadHistory]);
+
+  const watchCard = watchDraft ? (
+    <div className="px-3 pb-2">
+      <WatchCard
+        draft={watchDraft}
+        onChange={setWatchDraft}
+        onSubmit={() => void submitWatch()}
+        onCancel={dismissWatchCard}
+        pending={watchPending}
+        error={watchError}
+      />
+    </div>
+  ) : null;
 
   const newChat = useCallback(() => {
     // Invalidate any in-flight open/create so its result can't replace the draft.
@@ -388,11 +546,48 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
+  // Stop watching, from the chip's ×. The chip goes immediately (the cancel is a
+  // single guarded UPDATE and hardly ever fails), and the reload right after
+  // restores the truth either way.
+  const cancelWatch = useCallback(
+    async (watchId: string) => {
+      const chatId = active?.chatId;
+      if (!chatId) return;
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, watches: (chat.watches ?? []).filter((watch) => watch.id !== watchId) }
+            : chat
+        )
+      );
+      const body = new FormData();
+      body.set("intent", "watch-cancel");
+      body.set("chatId", chatId);
+      body.set("watchId", watchId);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        if (!res.ok) throw new Error(`Watch cancel failed (${res.status})`);
+      } catch (error) {
+        console.error("Dashboard agent: failed to cancel watch", error);
+        toast.error("We couldn't stop that watch. Try again in a moment.");
+      }
+      void loadHistory();
+    },
+    [actionPath, active?.chatId, loadHistory, toast]
+  );
+
   // The header names what you're looking at. Titles come from the history list
   // (the agent writes one when the first turn settles), so a brand-new chat has
   // none yet and falls back to "Chat".
   const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
   const headerTitle = active ? (activeChat?.title ?? "Chat") : "New chat";
+
+  // The watches ride along on the history list (one query for every chat), so
+  // they refresh whenever it does: on open, when a turn settles, and after a
+  // watch is created or cancelled. The FULL list goes down — the chips filter
+  // to active themselves (a chip is an offer to cancel), while the wake banner
+  // needs the kind of a watch that has already fired.
+  const chatWatches = activeChat?.watches ?? [];
 
   return (
     <div
@@ -445,7 +640,12 @@ export function DashboardAgentPanel({
             environmentSlug={environment.slug}
             currentPage={currentPage}
             promotedPrompt={promotedPrompt}
+            watches={chatWatches}
             pagePaths={pagePaths}
+            watchCard={watchCard}
+            appendedMessage={appendedMessage}
+            onWatchIntent={openWatchCard}
+            onCancelWatch={cancelWatch}
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
           />
@@ -457,6 +657,7 @@ export function DashboardAgentPanel({
             currentPage={currentPage}
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
+            watchCard={watchCard}
           />
         )}
       </AgentPanelColumn>

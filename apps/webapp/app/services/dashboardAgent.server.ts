@@ -40,8 +40,8 @@ export function dashboardAgentApiOrigin(): string {
 //
 // `environmentId` scopes the token to the environment the turn is being taken
 // in, resolved here from the URL against the user's own session. Endpoints that
-// bind something to one environment read it off the token, so the agent can't
-// name a different one in a request body.
+// bind something to one environment (watches, watch alerts) read it off the
+// token, so the agent can't name a different one in a request body.
 export function mintDashboardAgentUserActorToken(
   userId: string,
   opts: { environmentId?: string } = {}

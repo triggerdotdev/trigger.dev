@@ -23,6 +23,9 @@ export type GalleryGroup =
   | "investigation"
   | "report"
   | "chart"
+  | "watches"
+  | "watch-card"
+  | "wakes"
   | "hero"
   | "prompts"
   | "intents"
@@ -50,6 +53,9 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "investigation", label: "Investigation card" },
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
+  { group: "watches", label: "Watch chips" },
+  { group: "watch-card", label: "Watch card" },
+  { group: "wakes", label: "Wake banners" },
   { group: "hero", label: "Blank-state hero" },
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
@@ -224,6 +230,88 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
 
+  // --- Watch chips ---------------------------------------------------------
+  { sectionId: "watches-active", title: "Active — cancellable", group: "watches" },
+  { sectionId: "watches-fired", title: "Fired", group: "watches" },
+  { sectionId: "watches-expired", title: "Expired", group: "watches" },
+  { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
+  { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
+  { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
+
+  // --- Watch card ----------------------------------------------------------
+  // The configuration card and the two blocks a submitted card leaves behind.
+  // The card is ephemeral (it never enters the transcript), so the states here
+  // are the whole of what a user can see of it.
+  {
+    sectionId: "watch-card-compact",
+    title: "Compact — the recommendation",
+    group: "watch-card",
+  },
+  { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
+  { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
+  { sectionId: "watch-card-pending", title: "Pending create", group: "watch-card" },
+  { sectionId: "watch-card-create-failure", title: "Create failure", group: "watch-card" },
+  { sectionId: "watch-card-confirmation", title: "Confirmation block", group: "watch-card" },
+  {
+    sectionId: "watch-card-one-shot-satisfied",
+    title: "One-shot result — already true",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-one-shot-impossible",
+    title: "One-shot result — can't happen now",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-toast-headline",
+    title: "Wake toast headline (fact first)",
+    group: "watch-card",
+  },
+  // The queue pack (TRI-12890): the three conditions that live one tap deeper,
+  // each with its ONE contextual parameter.
+  {
+    sectionId: "watch-card-queue-below",
+    title: "Customize — back below a threshold",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-stalled",
+    title: "Customize — stopped moving (no parameter)",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-age",
+    title: "Customize — runs waiting past an SLA",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-queue-age-recommended",
+    title: "Compact — age SLA recommended on a late queue",
+    group: "watch-card",
+  },
+
+  // --- Wake banners --------------------------------------------------------
+  // A wake narration through the production renderer: the banner plus the prose
+  // the agent wrote, as the panel shows them.
+  { sectionId: "wake-positive", title: "Positive", group: "wakes" },
+  { sectionId: "wake-attention", title: "Attention", group: "wakes" },
+  {
+    sectionId: "wake-attention-failed-run",
+    title: "Attention — a run that finished badly",
+    group: "wakes",
+  },
+  { sectionId: "wake-window-completed", title: "Window completed", group: "wakes" },
+  { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
+  { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
+  {
+    sectionId: "wake-unknown-watch",
+    title: "Fired, watch not in hand — kind-agnostic",
+    group: "wakes",
+  },
+  { sectionId: "wake-queue-below", title: "Queue back below its threshold", group: "wakes" },
+  { sectionId: "wake-queue-stalled", title: "Queue stopped moving", group: "wakes" },
+  { sectionId: "wake-queue-age", title: "Runs waiting past the SLA", group: "wakes" },
+
   // --- Blank-state hero -----------------------------------------------------
   // The new-chat state, with the composer inside the hero. Both widths it ships
   // at: the 380px side panel and the fullscreen takeover's centred column.
@@ -292,6 +380,7 @@ export const MANIFEST: GallerySection[] = [
     group: "intents",
   },
   { sectionId: "intent-navigate-run", title: "Navigate — one run", group: "intents" },
+  { sectionId: "intent-watch", title: "Watch started", group: "intents" },
   { sectionId: "intent-ask", title: "Ask — follow-up handed back", group: "intents" },
   {
     sectionId: "intent-rejected-propose-fix",

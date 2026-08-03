@@ -4,6 +4,7 @@
  */
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
+import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
 export const agentIntentSchema = z.discriminatedUnion("kind", [
@@ -15,6 +16,8 @@ export const agentIntentSchema = z.discriminatedUnion("kind", [
   }),
   /** Hand a follow-up question back into the conversation. */
   z.object({ kind: z.literal("ask"), prompt: z.string() }),
+  /** Start watching a condition. */
+  z.object({ kind: z.literal("watch"), spec: watchSpecSchema }),
   /**
    * RESERVED — DO NOT EMIT OR EXECUTE IN M0–M7.
    *

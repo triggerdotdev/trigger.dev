@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import type { AgentIntent, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,6 +16,7 @@ import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
+import { WatchChips, type WatchChip } from "./WatchChips";
 
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
@@ -59,7 +60,12 @@ export function DashboardAgentChat({
   streaming,
   prefill,
   promotedPrompt,
+  watches,
   pagePaths,
+  watchCard,
+  appendedMessage,
+  onWatchIntent,
+  onCancelWatch,
   onTurnSettled,
   onActivityChange,
 }: {
@@ -87,9 +93,27 @@ export function DashboardAgentChat({
   // The product-controlled promoted chip, from the feature flag. Only used for
   // the suggested prompts on an empty chat.
   promotedPrompt?: SuggestedPrompt;
+  // This chat's active watches, from the panel's history load.
+  watches: WatchChip[];
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
-  /** A turn settled — tell the panel to refresh its history list. */
+  /** The ephemeral watch card, when one is open. Sits above the composer. */
+  watchCard?: React.ReactNode;
+  /**
+   * A message the SERVER appended outside a turn — the watch card's confirmation
+   * or one-shot result. It is already durable in the store; this puts it in the
+   * live transcript now instead of on the next open. `seq` makes each append
+   * distinct, so the effect applies it exactly once.
+   */
+  appendedMessage?: { message: UIMessage; seq: number };
+  /**
+   * A card offered a watch. Every `watch` intent means the same thing — open the
+   * configuration card pre-filled with this spec — so the user reviews and
+   * submits it, and nothing is posted or persisted if they don't (§2.2).
+   */
+  onWatchIntent?: (spec: WatchSpec) => void;
+  onCancelWatch: (watchId: string) => void;
+  /** A watch was created — tell the panel to re-read the chips. */
   onTurnSettled: () => void;
   /**
    * Whether a turn is in flight, for the History list's row marker. Only this
@@ -165,6 +189,7 @@ export function DashboardAgentChat({
 
   const {
     messages: rawMessages,
+    setMessages,
     sendMessage,
     status,
     stop: aiStop,
@@ -198,6 +223,20 @@ export function DashboardAgentChat({
   // through long tool calls, where the agent is busy but silent.
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
+
+  // A server-appended block (the watch card's outcome) joins the live transcript
+  // in place. Applied once per `seq`: the append is already persisted, so
+  // replaying it would show the same confirmation twice.
+  const appendedSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!appendedMessage || appendedSeq.current === appendedMessage.seq) return;
+    appendedSeq.current = appendedMessage.seq;
+    setMessages((current) =>
+      current.some((message) => message.id === appendedMessage.message.id)
+        ? current
+        : [...current, appendedMessage.message]
+    );
+  }, [appendedMessage, setMessages]);
 
   // Cold start: trigger the first turn by sending the pending message once.
   const sentFirst = useRef(false);
@@ -263,8 +302,14 @@ export function DashboardAgentChat({
   );
 
   // What a card's action does. An `ask` goes back into the conversation as the
-  // user's own question, so the click is visible in the transcript rather than
-  // happening silently.
+  // user's own question.
+  //
+  // A `watch` does NOT: it opens the configuration card pre-filled with the spec
+  // the card offered. Every watch intent is treated this way, whatever offered it
+  // — so the user always sees what they are about to start, can change the window
+  // or the condition first, and an offer they walk away from leaves no trace. It
+  // used to post a visible "Watch this for me…" request and let the agent answer
+  // with schedule_watch; the card replaces that turn with 0 LLM.
   //
   // `propose_fix` is reserved and must never be executed.
   const handleIntent = useCallback(
@@ -273,6 +318,9 @@ export function DashboardAgentChat({
         case "ask":
           submit(intent.prompt);
           return;
+        case "watch":
+          onWatchIntent?.(intent.spec);
+          return;
         case "navigate":
           void goTo(intent);
           return;
@@ -280,7 +328,7 @@ export function DashboardAgentChat({
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, goTo]
+    [submit, goTo, onWatchIntent]
   );
 
   // The `navigate_to` tool answers with an intent and the agent then narrates it
@@ -324,6 +372,15 @@ export function DashboardAgentChat({
 
   return (
     <>
+      {/* What this chat is watching, at the top of the panel: a watch outcome
+          arrives in the transcript unprompted, so the chips are what explain
+          where those messages will come from. */}
+      {/* Chips are an offer to cancel, so only live watches get one; the full
+          list still flows to the messages for the wake banner's tone. */}
+      <WatchChips
+        watches={watches.filter((watch) => watch.status === "active")}
+        onCancel={onCancelWatch}
+      />
       {/* A cold-start chat mounts with no messages and a first message about to
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}
@@ -344,9 +401,11 @@ export function DashboardAgentChat({
           onDismissError={clearError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
+          watches={watches}
           resolveUri={resolveUri}
         />
       )}
+      {watchCard}
       {/* The Free plan's message cap occupies the composer slot: at the cap the
           composer is replaced by the upgrade block (a composer you can't send
           from is worse than none), and under it the composer is followed by the

@@ -11,14 +11,16 @@
  *
  * 1. Only what the production renderer handles survives: `text`, `reasoning`,
  *    `tool-render_view` (real cards), `tool-get_report` (the report card) and
- *    `source-url`. Investigation cards, intent bubbles and prompt rows have no
- *    stored representation yet, so those beats become assistant
+ *    `source-url`. Investigation cards, watch chips, intent bubbles and prompt
+ *    rows have no stored representation yet, so those beats become assistant
  *    text — and where a card carried the diagnosis, a real `diagnosis` view
  *    block carries it instead.
  * 2. A landed tool call renders NOTHING. Completed `tool-*` parts are still
  *    stored — they are what the answer was grounded on, and cards read them —
  *    but no prose may point at one, because there is no row on screen to point
  *    at. Only a failed call keeps a row, so a failure can still be seen.
+ *    Likewise: a wake narration is an assistant message whose id is
+ *    `wake:watch:{watchId}:{fired|expired}` — the id is what draws the banner.
  * 3. Chats that exist only to show a transient UI state (streaming text, a tool
  *    mid-call, an unsent draft) are not ported: a stored transcript can't be
  *    mid-flight, and storing one would render as a turn that never finishes.
@@ -134,6 +136,19 @@ function user(slug: string, text: string): SeedMessage {
 
 function assistant(slug: string, parts: unknown[]): SeedMessage {
   return { id: messageId(slug), role: "assistant", parts };
+}
+
+/**
+ * A wake narration: an assistant turn the watch started, not the user.
+ *
+ * The panel spots one by its message id — `wake:watch:{watchId}:{fired|expired}`,
+ * the same id the agent's `narrateWatchWake` writes — and draws the banner from
+ * that, so the parts are ordinary prose. The seeder creates no watch rows, so the
+ * banner takes its kind-agnostic wording ("Watch update — condition met") rather
+ * than colouring by watch kind.
+ */
+function wake(watchId: string, outcome: "fired" | "expired", parts: unknown[]): SeedMessage {
+  return { id: `wake:watch:${watchId}:${outcome}`, role: "assistant", parts };
 }
 
 function text(value: string) {
@@ -577,6 +592,65 @@ Deployment: \`${deploymentUri}\`.`
           `I can't change your project — I only read. Here's what needs changing and where: in \`${w.sourcePath}:18\`, raise \`minTimeoutInMs\` to 30s with a factor of 2 so the three attempts stop sharing one rate-limit window, and cap \`${w.queue}\` at 20 concurrency from the queue's settings page. The second one takes effect immediately, without a deploy. I'll walk through either if you want the diff.`
         ),
         sourceUrl(queueLink, `Queue ${w.queue}`),
+      ]),
+    ],
+  });
+
+  // --- Watch (narration only — the chips are panel chrome) ----------------
+
+  chats.push({
+    slug: "watch-created-and-wake",
+    title: "Tell me when the retry finishes",
+    minutesAgo: 7,
+    messages: [
+      user("watch", "Tell me when the retry finishes."),
+      assistant("watch", [
+        text(
+          `Watching \`${w.failedRunId}\` — I'll check every minute for up to 2 hours and tell you the moment it settles, whichever way it goes. I only speak once per watch, so it won't repeat itself.`
+        ),
+      ]),
+      wake(`watch_seed_${w.failedRunId}_finished`, "fired", [
+        text(
+          `**The retry finished.** \`${w.failedRunId}\` completed successfully 4 minutes ago, on attempt 2 — the provider accepted the request once the delay pushed it out of the rate-limit window.
+
+That's this watch done. The rest of the ${w.firstFailureClock} burst is still queued behind \`${w.queue}\`'s concurrency limit, and the rate-limit error is worth watching for the next 12 hours in case the fix didn't take — say the word for either.`
+        ),
+        sourceUrl(runLink(w.failedRunId), `Run ${w.failedRunId}`),
+      ]),
+    ],
+  });
+
+  chats.push({
+    slug: "watch-fired-and-expired",
+    title: "Watch the error and the backlog",
+    minutesAgo: 40,
+    messages: [
+      user(
+        "watch-end",
+        `Watch two things for me: that 429 coming back, and \`${w.backlogQueue}\` draining.`
+      ),
+      assistant("watch-end", [
+        text(
+          `Both armed. The error watch covers fingerprint \`${w.errorFingerprint}\` on \`${w.taskId}\` for the next 12 hours; the backlog watch covers \`${w.backlogQueue}\` for 6. Each one speaks once — when its condition is met, or when its window runs out with nothing to report.`
+        ),
+      ]),
+      wake(`watch_seed_${w.errorFingerprint}_recurrence`, "fired", [
+        text(
+          `**The 429 is back.** \`${w.taskId}\` failed with the same fingerprint 9 minutes ago, so the retry change hasn't taken — the attempts are still landing inside one rate-limit window.
+
+That's the error watch spent. Cap \`${w.queue}\` at 20 concurrency if you want the burst to stop before the next deploy.`
+        ),
+        sourceUrl(failedRunsLink, `Failed ${w.taskId} runs`),
+        sourceUrl(queueLink, `Queue ${w.queue}`),
+      ]),
+      wake("watch_seed_backlog_drain", "expired", [
+        text(
+          `**Six hours are up and \`${w.backlogQueue}\` never fully drained.** It's down from ${w.pending.toLocaleString(
+            "en-US"
+          )} to 610 pending, so it is clearing — just slower than the window I was given, which is why I have no answer rather than bad news.
+
+Ask again if you want another 6 hours.`
+        ),
       ]),
     ],
   });

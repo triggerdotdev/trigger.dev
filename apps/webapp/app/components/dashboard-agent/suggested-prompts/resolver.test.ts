@@ -27,7 +27,7 @@ const docsId = (key: keyof typeof demoPageContexts) =>
 
 describe("resolveSuggestedPrompts", () => {
   it("fills all five slots when the page has a promoted chip, signals and defaults", () => {
-    // Error page: investigate + status + explain + docs defaults, plus a fresh
+    // Error page: investigate + watch + explain + docs defaults, plus a fresh
     // failure signal that takes the investigate slot.
     const prompts = resolveSuggestedPrompts(demoPageContexts.error, { promoted, now: NOW });
 
@@ -35,7 +35,7 @@ describe("resolveSuggestedPrompts", () => {
     expect(ids(prompts)).toEqual([
       promoted.id,
       "sp:fresh-failure",
-      "sp:error-recent-occurrences",
+      "sp:error-watch-recurrence",
       "sp:error-similar",
       docsId("error"),
     ]);
@@ -48,14 +48,14 @@ describe("resolveSuggestedPrompts", () => {
     expect(prompts).toHaveLength(4);
     expect(ids(prompts)).toEqual([
       "sp:fresh-failure",
-      "sp:error-recent-occurrences",
+      "sp:error-watch-recurrence",
       "sp:error-similar",
       docsId("error"),
     ]);
   });
 
-  it("shows explain + docs only when no investigate or status applies", () => {
-    // A deployment page has no failure to dig into and nothing live to report.
+  it("shows explain + docs only when no investigate or watch applies", () => {
+    // A deployment page has no failure to dig into and nothing to watch.
     const prompts = resolveSuggestedPrompts(demoPageContexts.deployment, { now: NOW });
 
     expect(ids(prompts)).toEqual(ids(pageDefaultPrompts(demoPageContexts.deployment.page)));
@@ -83,8 +83,8 @@ describe("resolveSuggestedPrompts", () => {
     }
   });
 
-  it("orders promoted, then investigate, then status, then explain", () => {
-    // Queue page: saturation fills status, the fresh failure fills investigate.
+  it("orders promoted, then investigate, then watch, then explain", () => {
+    // Queue page: saturation fills watch, the fresh failure fills investigate.
     const context = {
       ...demoPageContexts.queue,
       signals: [...demoPageContexts.queue.signals, demoFreshFailureSignal],
@@ -95,7 +95,7 @@ describe("resolveSuggestedPrompts", () => {
     expect(ids(prompts)).toEqual([
       promoted.id,
       "sp:fresh-failure",
-      // waiting_run beats concurrency_saturation for the status slot.
+      // waiting_run beats concurrency_saturation for the watch slot.
       "sp:waiting-run",
       "sp:queue-state",
       docsId("queue"),
@@ -136,10 +136,10 @@ describe("resolveSuggestedPrompts", () => {
     const full = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW });
     const dismissed = resolveSuggestedPrompts(demoPageContexts.error, {
       now: NOW,
-      dismissedIds: ["sp:error-recent-occurrences"],
+      dismissedIds: ["sp:error-watch-recurrence"],
     });
 
-    expect(ids(dismissed)).not.toContain("sp:error-recent-occurrences");
+    expect(ids(dismissed)).not.toContain("sp:error-watch-recurrence");
     expect(dismissed).toHaveLength(full.length - 1);
     // Docs is still last.
     expect(dismissed.at(-1)?.id).toBe(docsId("error"));
@@ -179,7 +179,7 @@ describe("resolveSuggestedPrompts", () => {
   it("words the waiting-run and slow-run chips for their slots", () => {
     const waiting = resolveSuggestedPrompts(demoPageContexts.waitingRun, { now: NOW });
     const waitingChip = waiting.find((p) => p.id === "sp:waiting-run");
-    expect(waitingChip?.label).toBe("Why hasn't this run started?");
+    expect(waitingChip?.label).toBe("Tell me when this run starts");
     expect(waitingChip?.prompt).toContain("queue");
 
     const slow = resolveSuggestedPrompts(demoPageContexts.slowRun, { now: NOW });

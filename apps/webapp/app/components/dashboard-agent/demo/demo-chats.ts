@@ -36,6 +36,8 @@ import {
   demoPageContexts,
   demoPromptSets,
   demoShowCodeMarkdown,
+  demoWatchNarration,
+  demoWatches,
   failedToolPart,
   pendingToolPart,
   reasoningPart,
@@ -47,10 +49,11 @@ import {
   userMessage,
   type DemoIntent,
   type DemoInvestigation,
+  type DemoWatch,
 } from "./fixtures";
 
 /** The flows the playbook is organised by. */
-export type DemoFlow = "investigate" | "navigation" | "prompts" | "reports" | "base";
+export type DemoFlow = "investigate" | "navigation" | "prompts" | "watch" | "reports" | "base";
 
 export type DemoItem =
   /** Real messages, rendered by the production message renderer. */
@@ -59,6 +62,7 @@ export type DemoItem =
   | { kind: "report"; report: ReportViewModel; sourceUri?: string }
   | { kind: "chart"; title?: string }
   | { kind: "intent"; intent: DemoIntent }
+  | { kind: "watches"; watches: DemoWatch[] }
   | {
       kind: "prompts";
       prompts: SuggestedPrompt[];
@@ -94,6 +98,8 @@ export type DemoChat = {
   draft?: string;
   /** Context banner for this chat. Defaults to the panel's real one. */
   banner?: { projectSlug: string; environmentSlug: string; currentPage: string };
+  /** Watch chips shown under the banner, as the panel header would. */
+  headerWatches?: DemoWatch[];
   /** Marks the transcript as replayed from the store rather than live. */
   resumed?: boolean;
   lastMessageAt: string;
@@ -515,6 +521,102 @@ const promptsPageAware: DemoChat = {
 };
 
 // ---------------------------------------------------------------------------
+// Watch
+// ---------------------------------------------------------------------------
+
+const watchCreatedAndWake: DemoChat = {
+  id: demoId("watch-created-and-wake"),
+  title: "Tell me when the backlog drains",
+  flow: "watch",
+  summary:
+    "The full watch arc: created from a conversation with the cadence stated out loud, shown as a chip, speaking unprompted when it fires, then offering the next watch worth having.",
+  banner: { ...PROD_BANNER, currentPage: "Run detail" },
+  headerWatches: demoWatches.activeRow,
+  lastMessageAt: "2026-07-27T10:19:30.000Z",
+  items: [
+    {
+      kind: "messages",
+      messages: [userMessage("watch-q", "Tell me when the retry finishes.")],
+    },
+    { kind: "intent", intent: demoIntents.watch },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-created", [
+          textPart(
+            `Watching \`${DEMO_WORLD.failedRunId}\` — I'll check every minute for up to 2 hours and tell you the moment it settles, whichever way it goes. You'll also see it as a chip at the top of the panel until then, and you can cancel it from there. I only speak once per watch, so it won't repeat itself.`
+          ),
+        ]),
+      ],
+    },
+    { kind: "watches", watches: demoWatches.activeRow },
+    {
+      kind: "note",
+      text: "Everything below arrived on its own, minutes later — no user turn in between.",
+    },
+    {
+      kind: "messages",
+      messages: [assistantMessage("watch-wake", [textPart(demoWatchNarration.wake)])],
+    },
+    { kind: "watches", watches: [demoWatches.errorRecurrence] },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-next", [
+          textPart(
+            `Two things you might want next: the 40 remaining runs from the 09:02 burst are still queued behind \`${DEMO_WORLD.queue}\`'s concurrency limit, and the rate-limit error itself is worth a watch for the next 12 hours in case the fix didn't take. Say the word for either.`
+          ),
+        ]),
+      ],
+    },
+  ],
+};
+
+const watchExpiryAndCancel: DemoChat = {
+  id: demoId("watch-expiry-and-cancel"),
+  title: "Watch for that error recurring",
+  flow: "watch",
+  summary:
+    "Three endings: expired having verified nothing happened, expired unable to verify at all, and cancelled from the chip.",
+  banner: { ...PROD_BANNER, currentPage: "Queues" },
+  headerWatches: demoWatches.row,
+  lastMessageAt: "2026-07-27T15:02:00.000Z",
+  items: [
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-row-intro", [
+          textPart(
+            `Four watches from this conversation, in every state they can end in. One is still live on \`${DEMO_WORLD.failedRunId}\`; the rest have finished, and each one said so exactly once — below, in the order they spoke.`
+          ),
+        ]),
+      ],
+    },
+    { kind: "watches", watches: demoWatches.row },
+    {
+      kind: "messages",
+      messages: [assistantMessage("watch-expiry", [textPart(demoWatchNarration.expiry)])],
+    },
+    {
+      kind: "note",
+      text: "The variant that matters most: the watch could not check its condition, and says so instead of implying an answer.",
+    },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-expiry-unverified", [
+          textPart(demoWatchNarration.expiryUnverified),
+        ]),
+      ],
+    },
+    {
+      kind: "messages",
+      messages: [assistantMessage("watch-cancelled", [textPart(demoWatchNarration.cancelled)])],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------
 
@@ -902,6 +1004,8 @@ export const demoChats: DemoChat[] = [
   navigateFilteredRuns,
   navigateRejectedIntent,
   promptsPageAware,
+  watchCreatedAndWake,
+  watchExpiryAndCancel,
   reportHealthy,
   reportDegraded,
   docsAnswer,

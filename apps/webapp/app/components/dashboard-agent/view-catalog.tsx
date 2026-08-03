@@ -4,6 +4,7 @@ import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
 import { blockKey, latestRevisionBlocks } from "./view-blocks";
+import { WatchResultBlock } from "./WatchResultBlock";
 
 // The render registry for the dashboard agent's view catalog — our small
 // "generative UI" layer. The agent emits a `render_view` tool call whose output
@@ -67,6 +68,10 @@ export function ViewBlocks({
                 onIntent={onIntent}
               />
             );
+          // Host-emitted only (the watch card's submit path) — the model has no
+          // way to produce one, so a confirmation can never be fabricated.
+          case "watch_result":
+            return <WatchResultBlock key={key} block={block} />;
           case "report":
             return (
               <ReportView

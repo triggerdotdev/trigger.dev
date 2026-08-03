@@ -16,10 +16,12 @@ import {
   ChatText,
   ChatTranscript,
   ChatTurn,
+  ChatWakeSlot,
 } from "./chat-layout";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
+import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 export type { TurnActivity };
 
@@ -38,6 +40,13 @@ export type DashboardAgentMessagesProps = {
   resolveUri?: (uri: string) => ResolvedUri | null;
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
+  /**
+   * The chat's watches, when the host has them. A wake message names the watch
+   * it came from, so this is what lets its banner say *what* was being watched
+   * and colour the outcome by kind. Without it a wake still gets a banner, in
+   * kind-agnostic wording.
+   */
+  watches?: WakeWatch[];
 };
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step"
@@ -75,8 +84,25 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
 function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   const spec = viewSpecFor(part);
   if (spec) return spec.blocks;
+  const hostBlocks = hostViewBlocks(part);
+  if (hostBlocks) return hostBlocks;
   const report = reportBlockFromToolPart(part);
   return report ? [report] : null;
+}
+
+/**
+ * Blocks the HOST wrote, with no tool behind them.
+ *
+ * The watch card's confirmation and its one-shot result are deterministic facts
+ * the webapp decided (§2.2) — there is no model turn and no tool call to hang
+ * them off, so they travel as a plain `data-view` part and render through exactly
+ * the same `ViewBlocks` catalog as everything else. Same envelope, same
+ * latest-wins, one renderer.
+ */
+function hostViewBlocks(part: UIMessage["parts"][number]): unknown[] | null {
+  const p = part as { type: string; data?: { blocks?: unknown[] } };
+  if (p.type !== "data-view") return null;
+  return Array.isArray(p.data?.blocks) ? p.data!.blocks! : null;
 }
 
 type InvestigationRef = { id: string; revision: number };
@@ -226,18 +252,21 @@ function userText(message: UIMessage): string {
 
 // Renders one message as one turn. A user turn is the accent bubble; assistant
 // parts go through the panel's own renderer, and a card-producing part
-// (render_view / get_report) becomes a catalog card instead of a tool row.
+// (render_view / get_report) becomes a catalog card instead of a tool row. A
+// wake — an assistant turn nobody asked for — keeps the same body under a banner.
 const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
   investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
 }) {
@@ -299,6 +328,24 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i));
   }
 
+  // A wake narration is identified by the message id the agent wrote it under,
+  // so nothing about the parts has to change: same prose, with a banner above it
+  // saying the watch — not the user — started this turn.
+  const wake = wakeRefFromMessageId(message.id);
+  if (wake) {
+    return (
+      <ChatTurn>
+        <ChatWakeSlot
+          banner={
+            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
+          }
+        >
+          {body}
+        </ChatWakeSlot>
+      </ChatTurn>
+    );
+  }
+
   return <ChatTurn>{body}</ChatTurn>;
 });
 
@@ -316,6 +363,7 @@ export function DashboardAgentTurns({
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
 }: DashboardAgentMessagesProps) {
   // Strip once, up front: the winners map keys occurrences by part index, so
   // it must be computed on the exact parts the turns will render.
@@ -342,6 +390,7 @@ export function DashboardAgentTurns({
           onIntent={onIntent}
           resolveUri={resolveUri}
           pagePaths={pagePaths}
+          watches={watches}
           investigationWinners={investigationWinners}
         />
       ))}

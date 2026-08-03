@@ -24,6 +24,7 @@ export function DashboardAgentDraft({
   currentPage,
   pageContext,
   promotedPrompt,
+  watchCard,
 }: {
   onSubmit: (text: string) => void;
   projectSlug: string;
@@ -33,6 +34,8 @@ export function DashboardAgentDraft({
   pageContext?: AgentPageContext;
   // The product-controlled promoted chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
+  /** The ephemeral watch card, when one is open. Sits above the composer. */
+  watchCard?: React.ReactNode;
 }) {
   const [input, setInput] = useState("");
 
@@ -68,22 +71,28 @@ export function DashboardAgentDraft({
       pageContext={pageContext}
       promoted={promotedPrompt}
       composer={
-        <DashboardAgentComposer
-          layout="hero"
-          value={input}
-          onChange={setInput}
-          onSubmit={() => submit(input)}
-          onStop={() => {}}
-          isStreaming={false}
-          placeholderSuggestion={placeholderSuggestion}
-          context={
-            <DashboardAgentContextBanner
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              currentPage={currentPage}
-            />
-          }
-        />
+        // The card rides in the composer slot, directly above the field — the
+        // same place a chat puts it, so an ephemeral card reads the same in the
+        // blank state as it does mid-conversation.
+        <div className="flex w-full flex-col gap-3">
+          {watchCard}
+          <DashboardAgentComposer
+            layout="hero"
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submit(input)}
+            onStop={() => {}}
+            isStreaming={false}
+            placeholderSuggestion={placeholderSuggestion}
+            context={
+              <DashboardAgentContextBanner
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                currentPage={currentPage}
+              />
+            }
+          />
+        </div>
       }
     />
   );
