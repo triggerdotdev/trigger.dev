@@ -1,83 +1,29 @@
-import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
+import {
+  type DashboardPreferences,
+  type FavoritePage,
+  parseDashboardPreferences,
+  SideMenuPreferences,
+} from "~/utils/dashboardPreferences";
 
-const FavoritePage = z.object({
-  /** Stable id, generated client-side when the page is favorited. */
-  id: z.string(),
-  /** App-relative URL including any search params (filters, tabs). */
-  url: z.string(),
-  /** Display label shown in the side menu; user-renamable. */
-  label: z.string(),
-  /** Key into the favorite page icon registry. */
-  icon: z.string().optional(),
-});
-
-export type FavoritePage = z.infer<typeof FavoritePage>;
-
-const SideMenuPreferences = z.object({
-  isCollapsed: z.boolean().default(false),
-  /** Expanded side menu width in px, set by the resize handle. */
-  width: z.number().optional(),
-  // Map for section collapsed states - keys are section identifiers
-  collapsedSections: z.record(z.string(), z.boolean()).optional(),
-  /** Organization-specific settings */
-  organizations: z
-    .record(
-      z.string(),
-      z.object({
-        orderedItems: z.record(z.string(), z.array(z.string())),
-      })
-    )
-    .optional(),
-  /** Pages the user favorited, in display order. */
-  favorites: z.array(FavoritePage).optional(),
-  /** Custom top-to-bottom order of side menu sections (section ids). */
-  sectionOrder: z.array(z.string()).optional(),
-  /** Per-item visibility overrides (item id -> hidden). Items absent fall back to their default. */
-  hiddenItems: z.record(z.string(), z.boolean()).optional(),
-  /** Custom item order within a section (section id -> item ids). */
-  sectionItemOrder: z.record(z.string(), z.array(z.string())).optional(),
-});
-
-export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
+export type {
+  DashboardPreferences,
+  FavoritePage,
+  SideMenuPreferences,
+} from "~/utils/dashboardPreferences";
 
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
-const DashboardPreferences = z.object({
-  version: z.literal("1"),
-  currentProjectId: z.string().optional(),
-  projects: z.record(
-    z.string(),
-    z.object({
-      currentEnvironment: z.object({ id: z.string() }),
-    })
-  ),
-  sideMenu: SideMenuPreferences.optional(),
-});
-
-export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
+import { type ThemePreference } from "~/utils/themePreference";
+export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
-  if (!data) {
-    return {
-      version: "1",
-      projects: {},
-    };
-  }
-
-  const result = DashboardPreferences.safeParse(data);
-  if (!result.success) {
-    logger.error("Failed to parse DashboardPreferences", { data, error: result.error });
-    return {
-      version: "1",
-      projects: {},
-    };
-  }
-
-  return result.data;
+  return parseDashboardPreferences(data, (error) => {
+    logger.error("Failed to parse DashboardPreferences", { data, error });
+  });
 }
 
 /**
@@ -169,6 +115,67 @@ export async function updateCurrentProjectEnvironmentId({
       },
     };
   });
+}
+
+export async function updateThemePreference({
+  user,
+  theme,
+}: {
+  user: UserFromSession;
+  theme: ThemePreference;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences.theme === theme) {
+    return;
+  }
+
+  // Narrow jsonb_set write: a full-blob update from the session snapshot can
+  // race with other preference writes and drop unrelated fields.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{theme}',
+      to_jsonb(${theme}::text)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+export async function updateContrastPreference({
+  user,
+  contrast,
+}: {
+  user: UserFromSession;
+  contrast: number;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences.contrast === contrast) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{contrast}',
+      to_jsonb(${contrast}::int)
+    )
+    WHERE id = ${user.id}
+  `;
 }
 
 export async function clearCurrentProject({ user }: { user: UserFromSession }) {

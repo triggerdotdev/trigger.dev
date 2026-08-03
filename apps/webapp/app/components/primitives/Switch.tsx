@@ -36,7 +36,7 @@ const variations = {
   "secondary/small": {
     container: cn(
       small.container,
-      "border border-border-bright hover:border-border-brighter bg-secondary hover:bg-surface-control"
+      "border border-border-bright/50 shadow-xs bg-secondary hover:bg-background-raised"
     ),
     root: cn(
       small.root,
@@ -98,7 +98,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
-            "pointer-events-none block rounded-full bg-charcoal-200 transition group-data-[state=checked]:bg-text-bright"
+            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
           )}
         />
       </div>

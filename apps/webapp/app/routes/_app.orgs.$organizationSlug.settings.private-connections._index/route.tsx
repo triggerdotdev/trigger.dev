@@ -1,4 +1,9 @@
-import { ClipboardDocumentIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  ClipboardDocumentIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -21,6 +26,7 @@ import { logger } from "~/services/logger.server";
 import { deletePrivateLink, getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  docsPath,
   OrganizationParamsSchema,
   organizationPath,
   v3PrivateConnectionsPath,
@@ -108,17 +114,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 const STATUS_COLORS: Record<PrivateLinkConnectionStatus, string> = {
-  PENDING: "bg-amber-500/20 text-amber-400",
-  PROVISIONING: "bg-blue-500/20 text-blue-400",
-  ACTIVE: "bg-emerald-500/20 text-emerald-400",
-  ERROR: "bg-rose-500/20 text-rose-400",
-  DELETING: "bg-surface-control-active/20 text-text-dimmed",
+  PENDING: "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
+  PROVISIONING: "bg-blue-500/10 text-blue-600 dark:text-blue-400 system:text-blue-500",
+  ACTIVE: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 system:text-emerald-600",
+  ERROR: "bg-rose-500/10 text-rose-600 dark:text-rose-400 system:text-error",
+  DELETING: "bg-charcoal-500/10 text-text-dimmed",
 };
 
 function StatusBadge({ status }: { status: PrivateLinkConnectionStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
+      className={`contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
     >
       {status}
     </span>
@@ -177,6 +183,13 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Private Connections" />
         <PageAccessories>
+          <LinkButton
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("private-networking/overview")}
+          >
+            Private connection docs
+          </LinkButton>
           {hasPrivateNetworking && canAdd && (
             <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
               Add Connection
@@ -278,6 +291,14 @@ export default function Page() {
                     </div>
                   </div>
                 ))}
+
+                {canAdd && (
+                  <div className="flex justify-center pt-2">
+                    <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
+                      Add Connection
+                    </LinkButton>
+                  </div>
+                )}
 
                 {!canAdd && (
                   <Paragraph variant="extra-small" className="text-text-dimmed">

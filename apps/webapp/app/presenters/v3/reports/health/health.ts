@@ -32,7 +32,6 @@ import { applyFlowPolicy, buildFlowRead, FLOW_UNMEASURED, interpretFlow } from "
 import { interpretLiveness } from "./liveness";
 // Registers the "health" message catalog (side effect) so the renderer resolves this report's
 // codes. Kept here — the health report's entry module — so loading it always registers its prose.
-import "./health-messages";
 
 // Re-exported so the data layer + tests keep a single import path (`./health`).
 export { HEALTH_THRESHOLDS, isPendingIncreasing, type HealthInput } from "./health-core";

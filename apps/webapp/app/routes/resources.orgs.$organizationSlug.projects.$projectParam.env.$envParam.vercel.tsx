@@ -27,7 +27,7 @@ import {
   SettingsAlertRow,
   SettingsRow,
 } from "~/components/primitives/SettingsLayout";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -597,7 +597,7 @@ function VercelSettingsRows({
               tooltip={canManageVercel ? undefined : noPermissionTooltip}
               LeadingIcon={
                 isLoadingProjects
-                  ? () => <SpinnerWhite className="size-4" />
+                  ? () => <Spinner color="blue" className="size-4" />
                   : () => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />
               }
             >
@@ -1014,7 +1014,7 @@ function ConnectedVercelProjectForm({
                     ? undefined
                     : "You don't have permission to manage the Vercel integration"
                 }
-                LeadingIcon={isDisablingAutoAssign ? SpinnerWhite : undefined}
+                LeadingIcon={isDisablingAutoAssign ? Spinner : undefined}
                 onClick={() =>
                   disableAutoAssignFetcher.submit(
                     { action: "disable-auto-assign" },
@@ -1043,7 +1043,7 @@ function ConnectedVercelProjectForm({
                 ? undefined
                 : "You don't have permission to manage the Vercel integration"
             }
-            LeadingIcon={isConfigLoading ? SpinnerWhite : undefined}
+            LeadingIcon={isConfigLoading ? Spinner : undefined}
             onClick={(event) => {
               if (shouldPromptClearOnSave) {
                 event.preventDefault();
@@ -1157,7 +1157,7 @@ function VercelSettingsPanel({
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading Vercel settings...</span>
       </div>
     );

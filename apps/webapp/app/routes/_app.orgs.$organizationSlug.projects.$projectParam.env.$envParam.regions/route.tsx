@@ -321,6 +321,7 @@ export default function Page() {
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>
                       <TableCellMenu
+                        className="suggest-region-cell"
                         alignment="right"
                         isSticky
                         visibleButtons={

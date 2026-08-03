@@ -8,7 +8,7 @@
  * metrics / evidence — meaning lives here, numbers stay facts.
  */
 
-import { registerReportMessages, type ReportMessages } from "../report-messages";
+import { type ReportMessages } from "../report-messages";
 import { type ReasonCode, type Severity } from "../report-view-model";
 
 /** Metric id -> expanded display label. */
@@ -175,5 +175,3 @@ export const healthMessages: ReportMessages = {
   statementMessage,
   actionMessage: (code) => ACTIONS[code] ?? code,
 };
-
-registerReportMessages("health", healthMessages);

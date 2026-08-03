@@ -15,6 +15,7 @@ import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 
@@ -23,9 +24,9 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 // so pages render instantly; loaders only supply live counts and identifiers.
 
 export const QUEUE_METRIC_COLORS = {
-  running: "var(--color-queues)",
-  limit: "#4D525B",
-  queued: "var(--color-queues)",
+  running: "var(--color-queues-chart)",
+  limit: "var(--color-queues-chart-ref)",
+  queued: "var(--color-queues-chart)",
   p50: "#22D3EE",
   p95: "#F59E0B",
   p99: "#EF4444",
@@ -33,8 +34,6 @@ export const QUEUE_METRIC_COLORS = {
   ckKeys: "#34D399",
   ckWait: "#F59E0B",
 };
-
-export const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 export type QueueMetricIds = {
   organizationId: string;
@@ -55,6 +54,8 @@ export function useQueueMetric(
     defaultPeriod?: string;
     /** Poll ClickHouse on this cadence (ms). Omit to use the query's default interval. */
     refreshIntervalMs?: number;
+    /** Floor for the bucket width, for series too sparse to read at the range's natural width. */
+    minBucketSeconds?: number;
   }
 ) {
   return useMetricResourceQuery(query, {
@@ -63,6 +64,7 @@ export function useQueueMetric(
     defaultPeriod: opts.defaultPeriod ?? QUEUE_METRICS_DEFAULT_PERIOD,
     queues: [opts.queueName],
     fillGaps: opts.fillGaps,
+    minBucketSeconds: opts.minBucketSeconds,
     refreshIntervalMs: opts.refreshIntervalMs,
   });
 }
@@ -121,6 +123,14 @@ type QueueMetricChartProps = {
   /** Reports whether the chart has data to plot (false once it settles on the "no activity" state),
    * so a wrapping card can hide the legend to match. */
   onHasDataChange?: (hasData: boolean) => void;
+  /** Floor for the bucket width, for series too sparse to read at the range's natural width. */
+  minBucketSeconds?: number;
+  /**
+   * Column whose value counts the samples behind the plotted series. Where it is zero the metric
+   * has nothing to report, so every series breaks there instead of reading as a real zero. Keep it
+   * out of `series` — it is read for this test only, never drawn.
+   */
+  sampleCountColumn?: string;
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -137,6 +147,8 @@ export function QueueMetricChart({
   carryBackfill,
   thresholdStroke,
   onHasDataChange,
+  minBucketSeconds,
+  sampleCountColumn,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -144,15 +156,17 @@ export function QueueMetricChart({
     queueName,
     fillGaps,
     defaultPeriod,
+    minBucketSeconds,
   });
 
   const data = useMemo(() => {
     const points = rows
       .map((r) => {
-        const point: { bucket: number } & Record<string, number> = {
+        const point: { bucket: number } & Record<string, number | null> = {
           bucket: clickhouseTimeToMs(r.t),
         };
-        for (const s of series) point[s.key] = toNumber(r[s.key]);
+        const hasSamples = sampleCountColumn ? toNumber(r[sampleCountColumn]) > 0 : true;
+        for (const s of series) point[s.key] = hasSamples ? toNumber(r[s.key]) : null;
         return point;
       })
       .filter((p) => Number.isFinite(p.bucket));
@@ -161,7 +175,7 @@ export function QueueMetricChart({
     // value and carry it back over the earlier buckets so the line doesn't start at a false 0.
     if (carryBackfill?.length) {
       for (const key of carryBackfill) {
-        const first = points.findIndex((p) => p[key] > 0);
+        const first = points.findIndex((p) => toNumber(p[key]) > 0);
         if (first > 0) {
           const value = points[first]![key]!;
           for (let i = 0; i < first; i++) points[i]![key] = value;
@@ -169,7 +183,7 @@ export function QueueMetricChart({
       }
     }
     return points;
-  }, [rows, series, carryBackfill]);
+  }, [rows, series, carryBackfill, sampleCountColumn]);
 
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
@@ -206,9 +220,14 @@ export function QueueMetricChart({
 
   // Report data presence so a wrapping card can hide its legend when the chart settles on the
   // "no activity" state. Only report once loaded, so the legend stays put while loading.
+  const hasPlottedData = useMemo(
+    () => data.some((point) => series.some((s) => point[s.key] != null)),
+    [data, series]
+  );
+
   useEffect(() => {
-    if (!showLoading) onHasDataChange?.(!failed && data.length > 0);
-  }, [showLoading, failed, data.length, onHasDataChange]);
+    if (!showLoading) onHasDataChange?.(!failed && hasPlottedData);
+  }, [showLoading, failed, hasPlottedData, onHasDataChange]);
 
   return (
     <Chart.Root

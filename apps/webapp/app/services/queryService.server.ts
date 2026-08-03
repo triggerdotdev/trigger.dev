@@ -9,8 +9,8 @@ import {
 import type { CustomerQuerySource } from "@trigger.dev/database";
 import {
   calculateTimeBucketInterval,
+  intervalToSeconds,
   type TableSchema,
-  type TimeBucketInterval,
   type WhereClauseCondition,
 } from "@internal/tsql";
 import { z } from "zod";
@@ -135,15 +135,6 @@ export function isQueryConcurrencyRejection(error: unknown): boolean {
   );
 }
 
-const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
-  SECOND: 1,
-  MINUTE: 60,
-  HOUR: 3_600,
-  DAY: 86_400,
-  WEEK: 604_800,
-  MONTH: 2_592_000,
-};
-
 function floorToSeconds(date: Date, alignSeconds: number): Date {
   const ms = alignSeconds * 1000;
   return new Date(Math.floor(date.getTime() / ms) * ms);
@@ -167,16 +158,21 @@ function resolveQueryClientType(schema: TableSchema | undefined): ClientType {
  * rollup's granularity. The rollup has identical logical columns, so only the physical
  * table (and therefore rows read) changes.
  */
-function resolveRollup(schema: TableSchema, timeRange: { from: Date; to: Date }): TableSchema {
+function resolveRollup(
+  schema: TableSchema,
+  timeRange: { from: Date; to: Date },
+  minBucketSeconds?: number
+): TableSchema {
   if (!schema.rollups || schema.rollups.length === 0) {
     return schema;
   }
   const interval = calculateTimeBucketInterval(
     timeRange.from,
     timeRange.to,
-    schema.timeBucketThresholds
+    schema.timeBucketThresholds,
+    minBucketSeconds
   );
-  const intervalSeconds = interval.value * INTERVAL_UNIT_SECONDS[interval.unit];
+  const intervalSeconds = intervalToSeconds(interval);
   const best = [...schema.rollups]
     .sort((a, b) => b.minIntervalSeconds - a.minIntervalSeconds)
     .find((r) => r.minIntervalSeconds <= intervalSeconds);
@@ -374,7 +370,9 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     );
     // Serve coarse-bucket queries from the table's rollup when one qualifies.
     const effectiveSchemas = matchedSchema?.rollups
-      ? querySchemas.map((s) => (s === matchedSchema ? resolveRollup(s, timeRange) : s))
+      ? querySchemas.map((s) =>
+          s === matchedSchema ? resolveRollup(s, timeRange, baseOptions.minBucketSeconds) : s
+        )
       : querySchemas;
 
     const queryCacheSettings: ClickHouseSettings = matchedSchema?.queryCache

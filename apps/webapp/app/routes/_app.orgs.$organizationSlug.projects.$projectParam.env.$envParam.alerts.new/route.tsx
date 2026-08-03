@@ -487,7 +487,7 @@ export default function Page() {
               cancelButton={
                 <LinkButton
                   to={v3ProjectAlertsPath(organization, project, environment)}
-                  variant="tertiary/medium"
+                  variant="secondary/medium"
                 >
                   Cancel
                 </LinkButton>

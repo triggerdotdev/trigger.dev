@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon } from "@heroicons/react/20/solid";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import { EllipsisHorizontalIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Link } from "@remix-run/react";
 import * as React from "react";
@@ -279,20 +279,29 @@ const popoverVerticalEllipseVariants = {
       "size-6 rounded border border-border-bright bg-secondary text-text-bright hover:bg-surface-control hover:border-border-brighter",
     icon: "size-4",
   },
+  // No box/background — the icon inherits the trigger's text color, so callers
+  // can drive brightening from a parent hover (e.g. a section header).
+  ghost: {
+    trigger: "p-1 text-text-faint hover:text-text-bright",
+    icon: "size-4",
+  },
 } as const;
 
 type PopoverVerticalEllipseVariant = keyof typeof popoverVerticalEllipseVariants;
 
-function PopoverVerticalEllipseTrigger({
+function PopoverEllipseTrigger({
   isOpen,
   variant = "minimal",
+  orientation = "vertical",
   className,
   ...props
 }: {
   isOpen?: boolean;
   variant?: PopoverVerticalEllipseVariant;
+  orientation?: "vertical" | "horizontal";
 } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const styles = popoverVerticalEllipseVariants[variant];
+  const Icon = orientation === "horizontal" ? EllipsisHorizontalIcon : EllipsisVerticalIcon;
   return (
     <PopoverTrigger
       {...props}
@@ -302,10 +311,13 @@ function PopoverVerticalEllipseTrigger({
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn(styles.icon, "transition")} />
+      <Icon className={cn(styles.icon, "transition")} />
     </PopoverTrigger>
   );
 }
+
+// Back-compat alias: the trigger now supports both orientations.
+const PopoverVerticalEllipseTrigger = PopoverEllipseTrigger;
 
 export {
   Popover,
@@ -314,6 +326,7 @@ export {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverEllipseTrigger,
   PopoverSideMenuTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,

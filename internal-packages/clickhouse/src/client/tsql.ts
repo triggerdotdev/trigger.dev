@@ -115,6 +115,11 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    */
   fillGaps?: boolean;
   /**
+   * Floor for the `timeBucket()` interval, in seconds. Widens buckets past what the range
+   * would pick, for series whose samples are too sparse to read at that width.
+   */
+  minBucketSeconds?: number;
+  /**
    * Set when `query` was written by whoever made the request rather than by us.
    * A rejection of their SQL is then their mistake, not a bug on our side.
    */
@@ -204,6 +209,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       whereClauseFallback: options.whereClauseFallback,
       timeRange: options.timeRange,
       fillGaps: options.fillGaps,
+      minBucketSeconds: options.minBucketSeconds,
     });
 
     generatedSql = sql;

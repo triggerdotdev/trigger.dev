@@ -58,6 +58,8 @@ export default defineConfig({
       "@fingerprintjs/fingerprintjs-pro-react",
       "@fingerprintjs/fingerprintjs-pro",
       "@fingerprintjs/fingerprintjs-pro-spa",
+      "recharts",
+      /^victory-vendor/,
     ],
     optimizeDeps: {
       include: ["cron-parser"],

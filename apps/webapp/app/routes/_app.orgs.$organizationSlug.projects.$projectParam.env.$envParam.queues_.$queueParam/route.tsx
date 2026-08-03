@@ -25,7 +25,6 @@ import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncConte
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   QUEUE_METRIC_COLORS as COLORS,
-  QUEUE_METRICS_DEFAULT_PERIOD,
   QueueMetricChartCard as QueueDetailChartCard,
   type QueueMetricIds as Ids,
   type QueueMetricTimeRange as TimeRangeParams,
@@ -58,7 +57,6 @@ import type {
   ConcurrencyKeyRow,
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
@@ -70,6 +68,13 @@ import {
   QueueOverrideConcurrencyButton,
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
+import {
+  clampQueueMetricsPeriod,
+  queueMetricsPeriodFromRequest,
+  resolveQueueMetricsPeriod,
+  useRememberQueueMetricsPeriod,
+} from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
 import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
@@ -124,6 +129,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const queue = retrieve.queue;
   const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
 
+  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
+
   const [ckBreakdown, oldestQueuedAt] = await Promise.all([
     engine.concurrencyKeyBreakdown(environment, fullName, { limit: CK_LIVE_LIMIT }),
     // Enqueue time of the oldest run still waiting in the queue right now (any queue, keyed or
@@ -152,6 +159,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
+    defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
+    maxPeriodDays,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -200,6 +209,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 const CK_LIVE_LIMIT = 50;
 
+/**
+ * Bucket floor for the charts in a synced group. The event-driven series (scheduling delay,
+ * throttling) need it: their samples only exist when something started or was held back, so at the
+ * 10-second width a short range picks, most buckets hold nothing and the line reads as a run of
+ * zeros. The gauges beside them take the same floor because the shared hover crosshair is a
+ * recharts ReferenceLine on a category x-axis, so it only draws where the hovered bucket
+ * timestamp exists in the other chart's own data — mixing widths in one group silently drops it.
+ */
+const SYNCED_CHART_MIN_BUCKET_SECONDS = 60;
+
 // Whole-queue oldest wait right now: for keyed queues the per-key breakdown carries the oldest
 // enqueue time per key, so the queue's oldest is the max wait across keys; otherwise fall back to
 // the queue's oldest message directly. Returns null when nothing is waiting.
@@ -228,19 +247,23 @@ export default function Page() {
     loadedAt,
     backPath,
     ids,
+    defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
-  const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
-    period: value("period") ?? null,
+    period: resolveQueueMetricsPeriod({
+      period: value("period"),
+      from: value("from"),
+      to: value("to"),
+      defaultPeriod,
+      maxPeriodDays,
+    }),
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  useRememberQueueMetricsPeriod(value("period"));
 
   // The Concurrency keys tab exists only for queues with key activity: live keys in the
   // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
@@ -313,7 +336,8 @@ export default function Page() {
               />
             ) : null}
             <TimeFilter
-              defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+              period={timeRange.period ?? undefined}
+              defaultPeriod={defaultPeriod}
               labelName="Period"
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
@@ -437,6 +461,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -463,6 +488,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -482,6 +508,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -498,8 +525,10 @@ function OverviewCharts({
           info="How long runs wait before they start."
           showLegend
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99,\n  sum(wait_ms_count) AS samples\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -521,6 +550,7 @@ function OverviewCharts({
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1010,6 +1040,7 @@ function KeyDrilldown({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1023,6 +1054,8 @@ function KeyDrilldown({
           title={`Key ${keyName}: throughput`}
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1031,7 +1064,10 @@ function KeyDrilldown({
         <QueueDetailChartCard
           title={`Key ${keyName}: mean scheduling delay`}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait, sum(wait_ms_count) AS samples\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1214,7 +1250,7 @@ function ConcurrencyBlock({
               <span
                 className={cn(
                   "text-xs tabular-nums",
-                  atLimit ? "text-warning" : "text-text-dimmed"
+                  atLimit ? "system-mono-label text-warning" : "text-text-dimmed"
                 )}
               >
                 {/* Separator so the limit and the percentage don't read as one number
@@ -1225,7 +1261,7 @@ function ConcurrencyBlock({
             )}
           </div>
           {limit !== null && limit > 0 && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal-750">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-charcoal-750">
               <div
                 className={cn("h-full rounded-full", atLimit ? "bg-warning" : "bg-queues")}
                 style={{ width: `${pct}%` }}

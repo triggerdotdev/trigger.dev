@@ -1,0 +1,3486 @@
+diff --git a/.changeset/report-health.md b/.changeset/report-health.md
+new file mode 100644
+index 00000000000..92dc9d6588f
+--- /dev/null
++++ b/.changeset/report-health.md
+@@ -0,0 +1,8 @@
++---
++"@trigger.dev/core": patch
++"trigger.dev": patch
++---
++
++Add the `get_report` MCP tool, a `trigger report` CLI command, and `GET /api/v1/reports/:key`, starting with the `health` report: a deterministic verdict on whether work is flowing, whether the runs that start are healthy, and whether telemetry is fresh — rendered as text with unicode sparklines (coloured in a terminal). Also adds a `report` MCP prompt, surfaced as a slash command in hosts that support prompts.
++
++Also: `trigger mcp` now always starts the server — the install wizard is gated behind `trigger mcp --install`. A TTY previously launched the wizard, so MCP hosts spawning the server over a PTY timed out.
+diff --git a/apps/webapp/app/presenters/v3/reports/ReportPresenter.server.ts b/apps/webapp/app/presenters/v3/reports/ReportPresenter.server.ts
+new file mode 100644
+index 00000000000..1393fd611df
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/ReportPresenter.server.ts
+@@ -0,0 +1,49 @@
++/**
++ * Thin orchestrator: load -> interpret -> return the generic ReportViewModel. No SQL or render
++ * here — data access lives in each report's `load`, meaning in `interpret`, presentation in the
++ * renderers, and the catalog of reports in `report-registry.ts`.
++ *
++ * `call` takes a resolved AuthenticatedEnvironment and is transport-independent (Seam B, §7):
++ * any future surface (MCP Resource, etc.) is just another caller of this same method.
++ */
++
++import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
++import { REPORT_REGISTRY } from "./report-registry";
++import { type ReportViewModel } from "./report-view-model";
++
++const DEFAULT_PERIOD = "1h";
++
++/**
++ * Single-flight: collapse concurrent identical requests (same report/env/period) into one
++ * computation. A report fires up to ~9 ClickHouse queries and MCP/CLI clients easily call it
++ * several times at once — without this, N callers each launch the full query set and pile onto
++ * the per-project query-concurrency limit. Keyed per (key, env, period); entry drops on settle.
++ */
++const inFlight = new Map<string, Promise<ReportViewModel | undefined>>();
++
++export class ReportPresenter {
++  async call({
++    environment,
++    key,
++    period = DEFAULT_PERIOD,
++  }: {
++    environment: AuthenticatedEnvironment;
++    key: string;
++    period?: string;
++  }): Promise<ReportViewModel | undefined> {
++    const loader = REPORT_REGISTRY[key];
++    if (!loader) return undefined;
++
++    const flightKey = `${key} ${environment.id} ${period}`;
++    const existing = inFlight.get(flightKey);
++    if (existing) return existing;
++
++    const promise = (async () => {
++      const input = await loader.load(environment, period);
++      return loader.interpret(input);
++    })().finally(() => inFlight.delete(flightKey));
++
++    inFlight.set(flightKey, promise);
++    return promise;
++  }
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/health/execution.ts b/apps/webapp/app/presenters/v3/reports/health/execution.ts
+new file mode 100644
+index 00000000000..12d19cef603
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/execution.ts
+@@ -0,0 +1,55 @@
++/**
++ * EXECUTION analyzer: "are the runs that DO start completing OK?" — failures + durations only.
++ * Its "read:" line answers whether the flow problem is a code problem.
++ */
++
++import { isOk, maxSeverity, type Finding, type Metric } from "../report-view-model";
++import { HEALTH_THRESHOLDS, metricById, type HealthInput } from "./health-core";
++
++export const EXECUTION_METRIC_IDS = ["failures", "dur_p95"];
++
++export function interpretExecution(metrics: Metric[], input: HealthInput): Finding {
++  const exec = EXECUTION_METRIC_IDS.map((id) => metricById(metrics, id));
++  const severity = maxSeverity(...exec.map((m) => m.severity));
++  const failures = metricById(metrics, "failures");
++
++  if (isOk(severity)) {
++    return { type: "execution", severity, reason: "healthy", metricIds: EXECUTION_METRIC_IDS };
++  }
++
++  const reason = !isOk(failures.severity) ? "failures_up" : "slow_runs";
++  const recommendation =
++    reason === "failures_up"
++      ? { code: "review_failing_tasks", link: "runs_failed" }
++      : { code: "review_slow_runs", link: "runs" };
++
++  // Lazy attribution when it owns >= minShare of failures.
++  let attribution: Finding["attribution"];
++  const fb = input.failureBreakdown;
++  if (fb && fb.share >= HEALTH_THRESHOLDS.attribution.minShare) {
++    attribution = { dim: "task", key: fb.task, share: fb.share, of: "failures" };
++  }
++
++  return {
++    type: "execution",
++    severity,
++    reason,
++    metricIds: EXECUTION_METRIC_IDS,
++    recommendation,
++    attribution,
++  };
++}
++
++/** Flow causes that provably CAN'T be user code, so a healthy execution reads "not a code problem".
++ *  dequeue_stall is platform-side (capacity free but nothing dequeuing). Trigger spike/surge are
++ *  excluded: a code path fanning out task.trigger can BE the cause, so we only state the runs that
++ *  execute are fine — never the global "not a code problem". */
++const NOT_A_CODE_PROBLEM_CAUSES = new Set(["dequeue_stall"]);
++
++export function buildExecutionRead(execution: Finding, flow: Finding): string {
++  if (execution.reason === "unknown") return "data_stale";
++  if (isOk(execution.severity)) {
++    return NOT_A_CODE_PROBLEM_CAUSES.has(flow.reason) ? "not_a_code_problem" : "runs_are_fine";
++  }
++  return "failures_elevated";
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/health/flow.ts b/apps/webapp/app/presenters/v3/reports/health/flow.ts
+new file mode 100644
+index 00000000000..a531a4aeb11
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/flow.ts
+@@ -0,0 +1,304 @@
++/**
++ * FLOW analyzer: "is work flowing, and if not, WHY?" Diagnosed by a CAUSE TREE — `flow.reason`
++ * names why work is backing up (env_limit_saturation, dequeue_stall, …), selected from flow's
++ * evidence, falling back to v1 symptom reasons when no discriminator fires. Evidence quantities
++ * carry no severity of their own — they only select the cause.
++ */
++
++import {
++  anomalyWindow,
++  isOk,
++  maxSeverity,
++  type Exclusion,
++  type Finding,
++  type Metric,
++  type Observation,
++  type Recommendation,
++  type Severity,
++} from "../report-view-model";
++import {
++  HEALTH_THRESHOLDS,
++  isPendingIncreasing,
++  mean,
++  metricById,
++  type HealthInput,
++} from "./health-core";
++
++export const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
++
++/** One row of the declarative cause table — everything a cause defines about itself. */
++type CauseSpec = {
++  reason: string;
++  metricIds: string[]; // real metric rows, causal order
++  drivingMetricId: string; // series for the anomaly window
++  annotationCode?: string; // set on the driving metric
++  exclusions: Exclusion[]; // ruled-out causes ("not your code")
++  observations: Observation[]; // supporting facts ("runs are completing at ~X/min")
++  recommendation: Recommendation;
++  usesAttribution: boolean; // append the worst-queue attribution line
++};
++
++export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
++  const t = HEALTH_THRESHOLDS.flowCause;
++  const ev = input.flowEvidence;
++  const flowMetrics = FLOW_METRIC_IDS.map((id) => metricById(metrics, id));
++  const severity = maxSeverity(...flowMetrics.map((m) => m.severity));
++
++  if (isOk(severity)) {
++    return { type: "flow", severity, reason: "healthy", metricIds: FLOW_METRIC_IDS };
++  }
++
++  // Discriminators (evidence only, no own severity).
++  const pendingIncreasing = isPendingIncreasing(input.pending.series);
++  const latencyElevated = !isOk(metricById(metrics, "start_latency_p95").severity);
++  // Concurrency causes need real running-capacity evidence — without it runningShare is a
++  // meaningless 0 and would falsely select dequeue_stall on the snapshot path (#1).
++  const hasConcurrencyEvidence = ev.envLimit > 0 && ev.runningSeries.length > 0;
++  const runningShare = hasConcurrencyEvidence ? mean(ev.runningSeries) / ev.envLimit : 1;
++  const pinnedShare = hasConcurrencyEvidence
++    ? ev.runningSeries.filter((r) => r >= t.pinnedLevel * ev.envLimit).length /
++      ev.runningSeries.length
++    : 0;
++  const pinned = pinnedShare >= t.pinnedShare;
++  const hasTriggerBaseline = input.throughput.normalTriggeredPerMin > 0;
++  const triggeredMult = hasTriggerBaseline
++    ? input.throughput.triggeredPerMin / input.throughput.normalTriggeredPerMin
++    : 0;
++  // No baseline: a multiplier can't be computed, so an absolute rate selects "new volume".
++  const triggerSurge = !hasTriggerBaseline && input.throughput.triggeredPerMin >= t.surgePerMin;
++
++  const donePerMin = input.throughput.donePerMin;
++  const net = donePerMin - input.throughput.triggeredPerMin;
++  // Exclusions must be PROVEN, not assumed. "not your code" needs healthy execution; "limits
++  // aren't the bottleneck" needs no env-pin AND no queue throttling; the workers/spike ones
++  // state a measured fact (rate) rather than a global "everything's fine" claim.
++  const executionHealthy =
++    isOk(metricById(metrics, "failures").severity) && isOk(metricById(metrics, "dur_p95").severity);
++  const queueThrottled = ev.throttledShare >= t.throttledShare;
++  const configHealthy = !pinned && !queueThrottled;
++  // A trigger spike/surge is only the CAUSE of a backup when work is actually piling up:
++  // completions falling behind (net < 0) AND the backlog trending up. Without this a spike that
++  // drains fine would still be blamed while its read says "queue fills faster than it drains".
++  const triggerBacklog = net < 0 && pendingIncreasing;
++
++  // First discriminator that fires wins (fixed priority). dequeue_stall is a last-resort
++  // "it's on our side" cause — so a known config bottleneck (queue throttling) must rule it
++  // out first, else throttled-but-idle-capacity is misread as a platform stall (#1).
++  let spec: CauseSpec;
++  if (
++    hasConcurrencyEvidence &&
++    !queueThrottled &&
++    runningShare < t.stallRunningShare &&
++    pendingIncreasing &&
++    latencyElevated
++  ) {
++    spec = {
++      reason: "dequeue_stall",
++      metricIds: ["concurrency", "pending", "start_latency_p95"],
++      drivingMetricId: "concurrency",
++      annotationCode: "idle_share",
++      exclusions: [
++        ...(executionHealthy ? [{ code: "not_your_code" }] : []),
++        ...(configHealthy ? [{ code: "not_your_config" }] : []),
++      ],
++      observations: [],
++      recommendation: { code: "check_platform_status", link: "status" },
++      usesAttribution: false,
++    };
++  } else if (pinned && pendingIncreasing) {
++    spec = {
++      reason: "env_limit_saturation",
++      metricIds: ["concurrency", "pending", "start_latency_p95"],
++      drivingMetricId: "concurrency",
++      annotationCode: "pinned_minutes",
++      exclusions: [],
++      // States a measured fact (runs ARE completing at {rate}/min) — evidence the workers aren't
++      // dead. An observation, not an exclusion: it doesn't claim it's the limit, nor "keeps pace".
++      observations:
++        donePerMin > 0 ? [{ code: "not_workers_platform", evidence: { donePerMin } }] : [],
++      recommendation: { code: "raise_env_limit", link: "concurrency" },
++      usesAttribution: true,
++    };
++  } else if (ev.throttledShare >= t.throttledShare && !pinned) {
++    spec = {
++      reason: "queue_limit_throttling",
++      metricIds: ["throttled", "pending"],
++      drivingMetricId: "throttled",
++      annotationCode: "throttled_minutes",
++      // Justified: we're in the not-pinned branch, so the env limit isn't the bottleneck.
++      exclusions: [{ code: "not_env_limit" }],
++      observations: [],
++      recommendation: { code: "raise_queue_limit", link: "queue" },
++      usesAttribution: true,
++    };
++  } else if (triggeredMult >= t.spikeMult && triggerBacklog) {
++    spec = {
++      reason: "trigger_spike",
++      metricIds: ["triggered", "pending", "start_latency_p95"],
++      drivingMetricId: "triggered",
++      annotationCode: "spike_mult",
++      exclusions: [],
++      // Only the proven fact — the runs that DO start execute fine. An observation, NOT the
++      // exclusion "not your code": healthy execution doesn't prove the code isn't the one
++      // triggering the flood (e.g. a deploy that fans out task.trigger in a loop).
++      observations: executionHealthy ? [{ code: "execution_healthy" }] : [],
++      recommendation: { code: "review_trigger_source", link: "runs" },
++      usesAttribution: false,
++    };
++  } else if (triggerSurge && triggerBacklog) {
++    spec = {
++      reason: "trigger_surge",
++      metricIds: ["triggered", "pending", "start_latency_p95"],
++      drivingMetricId: "triggered",
++      annotationCode: "surge_rate",
++      exclusions: [],
++      // Same as a spike: only the proven fact, without ruling out the trigger-producing code.
++      observations: executionHealthy ? [{ code: "execution_healthy" }] : [],
++      recommendation: { code: "review_trigger_source", link: "runs" },
++      usesAttribution: false,
++    };
++  } else {
++    // Fallback — v1 symptom reasons by dominant metric.
++    return fallbackFlow(flowMetrics, severity);
++  }
++
++  return assembleFlowCause(spec, metrics, input, severity);
++}
++
++/** Build a flow Finding from a cause spec: annotation, anomaly window, attribution, evidence. */
++function assembleFlowCause(
++  spec: CauseSpec,
++  metrics: Metric[],
++  input: HealthInput,
++  severity: Severity
++): Finding {
++  const t = HEALTH_THRESHOLDS;
++  const driving = metricById(metrics, spec.drivingMetricId);
++
++  // Anomaly window from the driving series. env_limit_saturation breaches ABOVE
++  // (concurrency pinned at the limit); dequeue_stall breaches BELOW (capacity idle).
++  // NOTE: runningSeries is at native env_metrics resolution (not resampled), so the "(last N
++  // min)" figure assumes those buckets are uniform and cover the resolved window. env_metrics
++  // are emitted on a fixed cadence, so that holds; a gappy/partial window could skew the minutes.
++  let aw: Finding["anomalyWindow"];
++  if (spec.reason === "env_limit_saturation" || spec.reason === "dequeue_stall") {
++    const below = spec.reason === "dequeue_stall";
++    const threshold = below
++      ? t.flowCause.stallRunningShare * input.flowEvidence.envLimit
++      : t.flowCause.pinnedLevel * input.flowEvidence.envLimit;
++    aw = anomalyWindow(input.flowEvidence.runningSeries, threshold, input.windowMinutes, { below });
++  }
++
++  // Annotation on the driving metric (a fact, not an invented number).
++  if (spec.annotationCode) {
++    const value =
++      spec.annotationCode === "pinned_minutes"
++        ? (aw?.minutes ?? 0)
++        : spec.annotationCode === "idle_share"
++          ? // mean running over the window ("N running of {limit}").
++            Math.round(mean(input.flowEvidence.runningSeries))
++          : spec.annotationCode === "spike_mult"
++            ? Math.round(
++                input.throughput.normalTriggeredPerMin > 0
++                  ? input.throughput.triggeredPerMin / input.throughput.normalTriggeredPerMin
++                  : 0
++              )
++            : spec.annotationCode === "throttled_minutes"
++              ? Math.round(input.flowEvidence.throttledShare * input.windowMinutes)
++              : spec.annotationCode === "surge_rate"
++                ? Math.round(input.throughput.triggeredPerMin)
++                : Math.round(driving.value);
++    driving.annotation = { code: spec.annotationCode, value };
++  }
++
++  // Attribution — only when a queue owns >= minShare of the problem.
++  let attribution: Finding["attribution"];
++  const wq = input.flowEvidence.worstQueue;
++  if (spec.usesAttribution && wq && wq.share >= t.attribution.minShare) {
++    attribution = { dim: "queue", key: wq.name, share: wq.share, of: "pending" };
++  }
++
++  // Append "nothing dead-lettered" ONLY on a measured zero (dlqDelta === 0); null means
++  // unmeasured (snapshot path) — no observation without evidence. It's a supporting fact, not a
++  // ruled-out cause, so it joins observations.
++  const observations =
++    input.flowEvidence.dlqDelta === 0
++      ? [...spec.observations, { code: "nothing_dead_lettered", evidence: { dlq: 0 } }]
++      : spec.observations;
++
++  return {
++    type: "flow",
++    severity,
++    reason: spec.reason,
++    metricIds: spec.metricIds,
++    recommendation: spec.recommendation,
++    anomalyWindow: aw,
++    attribution,
++    exclusions: spec.exclusions,
++    observations,
++  };
++}
++
++/** v1 symptom fallback when no cause discriminator fires. */
++function fallbackFlow(flowMetrics: Metric[], severity: Severity): Finding {
++  const firstOff = flowMetrics.find((m) => !isOk(m.severity));
++  const reason =
++    firstOff?.id === "start_latency_p95"
++      ? "start_latency"
++      : firstOff?.id === "pending"
++        ? "backlog"
++        : firstOff?.id === "throughput"
++          ? "throughput_lag"
++          : "degraded";
++  const recommendation =
++    reason === "start_latency"
++      ? { code: "review_start_latency", link: "queue_latency" }
++      : reason === "backlog"
++        ? { code: "check_queue_health", link: "queues" }
++        : reason === "throughput_lag"
++          ? { code: "check_worker_availability", link: "queues" }
++          : undefined;
++  return {
++    type: "flow",
++    severity,
++    reason,
++    metricIds: FLOW_METRIC_IDS,
++    recommendation,
++  };
++}
++
++// ---------------------------------------------------------------------------
++// Flow severity policy + the causal "read:" line.
++// ---------------------------------------------------------------------------
++
++export function applyFlowPolicy(
++  flow: Finding,
++  execution: Finding,
++  isDrainable: boolean,
++  telemetryStale: boolean
++): Finding {
++  if (flow.severity !== "crit") return flow;
++  // Downgrade a drainable crit to warn only when execution is fine and telemetry isn't stale.
++  // Unknown/lagging freshness must NOT block this (it's not a signal that anything's wrong).
++  const severity: Severity =
++    isOk(execution.severity) && !telemetryStale && isDrainable ? "warn" : "crit";
++  return { ...flow, severity };
++}
++
++const CAUSE_READS: Record<string, string> = {
++  dequeue_stall: "capacity_free_not_dequeuing",
++  env_limit_saturation: "saturation_chain",
++  queue_limit_throttling: "queue_throttle_chain",
++  trigger_spike: "spike_chain",
++  trigger_surge: "surge_chain",
++};
++
++export function buildFlowRead(flow: Finding, executionOk: boolean, livenessFresh: boolean): string {
++  if (flow.reason === "unknown") return "data_stale"; // stale-guarded — no causal read
++  if (isOk(flow.severity)) return "starting_normally";
++  if (CAUSE_READS[flow.reason]) return CAUSE_READS[flow.reason];
++  // fallback symptoms (v1 logic)
++  if (executionOk && livenessFresh) return "lag_while_triggering_normal";
++  if (!executionOk) return "lag_and_failures";
++  return "degraded_generic";
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/health/health-core.ts b/apps/webapp/app/presenters/v3/reports/health/health-core.ts
+new file mode 100644
+index 00000000000..78fb1d9fbef
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/health-core.ts
+@@ -0,0 +1,271 @@
++/**
++ * Health report FOUNDATION shared by the three analyzers (flow / execution / liveness):
++ * the input shape, tunable thresholds, small helpers, and `buildMetrics` (numbers +
++ * per-metric severity). No verdict logic here — that lives in the per-analyzer modules.
++ */
++
++import { classifySeverity, delta, type Metric, type Severity } from "../report-view-model";
++
++export type HealthInput = {
++  scope: string;
++  period: string;
++  baselineLabel: string;
++  generatedAt: string;
++  /** live window length in minutes — for anomaly-window / annotation math. */
++  windowMinutes: number;
++  /** provenance; drives caveat text, not logic. */
++  flowSource: "snapshot+runs" | "queue_metrics_v1";
++  /**
++   * now = live env-level depth; normal = 7d baseline (omitted on the snapshot path, which has
++   * no real 7d pending baseline — so we never mislabel a live-window average as "7d normal");
++   * series measured (v2) or estimated (v1).
++   */
++  pending: { now: number; normal?: number; series: number[]; estimated: boolean };
++  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
++  throughput: { donePerMin: number; triggeredPerMin: number; normalTriggeredPerMin: number };
++  failures: { rate: number; normalRate: number; series: number[] };
++  duration: { p95Ms: number; normalP95Ms: number };
++  /** Age of the freshest telemetry (ms). null = no signal to assess -> freshness unknown. */
++  liveness: { telemetryAgeMs: number | null };
++  /**
++   * Flow's cause-tree discriminators (no own severity) — from env_metrics rows + one
++   * queue_metrics GROUP BY. Empty-ish when unavailable (cause tree falls back to v1).
++   */
++  flowEvidence: {
++    runningSeries: number[];
++    envLimit: number;
++    throttledShare: number;
++    worstQueue: { name: string; share: number } | null;
++    /** runs dead-lettered in the window: 0 = measured none, null = unmeasured (snapshot). */
++    dlqDelta: number | null;
++  };
++  /** Lazy — loaded only when execution degrades (attribution line). */
++  failureBreakdown?: { task: string; share: number; region?: string };
++};
++
++/** Tunable defaults — first-guess; tune against prod once wired. */
++export const HEALTH_THRESHOLDS = {
++  // `floor` = absolute warn/crit used when there's no usable baseline (normal 0/undefined),
++  // so a spike from a zero baseline (e.g. a never-failing env) isn't classified healthy.
++  startLatency: { warnMult: 3, critMult: 10, floor: { warn: 30_000, crit: 120_000 } },
++  pending: { warnMult: 2, critMult: 10, floor: { warn: 500, crit: 5_000 } },
++  failures: {
++    warnMult: 2,
++    critMult: 4,
++    floorRate: 0.005,
++    floor: { warn: 0.02, crit: 0.05 },
++  },
++  duration: { warnMult: 1.5, critMult: 3, floor: { warn: 60_000, crit: 600_000 } },
++  liveness: { freshMs: 60_000, staleMs: 300_000 },
++  flowPolicy: { drainCritMinutes: 60 },
++  flowCause: {
++    stallRunningShare: 0.3, // dequeue_stall: running/limit below this while pending grows
++    pinnedLevel: 0.95, // a bucket counts as "pinned" when running >= 95% of limit
++    pinnedShare: 0.5, // env_limit_saturation: >= half the window's buckets pinned
++    throttledShare: 0.25, // queue_limit_throttling: >= a quarter of the window throttled
++    spikeMult: 3, // trigger_spike: triggered/min >= 3x the 7d-normal rate
++    // trigger_surge: with NO usable baseline (normal 0), a multiplier is meaningless, so an
++    // absolute floor picks the "new volume" cause instead of dropping to the v1 fallback.
++    surgePerMin: 100,
++  },
++  attribution: { minShare: 0.5 }, // name a queue/task/region only when it owns >= half the problem
++};
++
++// ---------------------------------------------------------------------------
++// Helpers.
++// ---------------------------------------------------------------------------
++
++export const mean = (xs: number[]) =>
++  xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
++
++/** Deterministic "trending up": mean of the last third vs the first third (direction only). */
++export function isPendingIncreasing(series: number[]): boolean {
++  if (series.length < 2) return false;
++  const third = Math.max(1, Math.floor(series.length / 3));
++  return mean(series.slice(-third)) > mean(series.slice(0, third));
++}
++
++function multiplierSeverity(
++  value: number,
++  normal: number | undefined,
++  warnMult: number,
++  critMult: number,
++  floor?: { warn: number; crit: number }
++): Severity {
++  if (normal === undefined || !Number.isFinite(normal) || normal === 0) {
++    // No usable baseline: fall back to an absolute floor so a spike isn't a false green.
++    return floor ? classifySeverity(value, floor) : "ok";
++  }
++  return classifySeverity(value / normal, { warn: warnMult, crit: critMult });
++}
++
++/** Look up a metric by id; throws if absent (buildMetrics guarantees the standard set exists). */
++export function metricById(metrics: Metric[], id: string): Metric {
++  const m = metrics.find((x) => x.id === id);
++  if (!m) throw new Error(`health: missing metric ${id}`);
++  return m;
++}
++
++// ---------------------------------------------------------------------------
++// buildMetrics: numbers + per-metric severity. The standard six carry severity; the
++// flow-evidence metrics (concurrency, throttled, triggered) are evidence only (severity ok)
++// and exist so a cause's metricIds resolve.
++// ---------------------------------------------------------------------------
++
++export function buildMetrics(input: HealthInput): Metric[] {
++  const t = HEALTH_THRESHOLDS;
++  const ev = input.flowEvidence;
++
++  const startLatency: Metric = {
++    id: "start_latency_p95",
++    value: input.startLatency.p95Ms,
++    unit: "ms",
++    aggregation: "p95",
++    normal: input.startLatency.normalP95Ms,
++    delta: delta(input.startLatency.p95Ms, input.startLatency.normalP95Ms),
++    series: { points: input.startLatency.series, kind: "measured" },
++    severity: multiplierSeverity(
++      input.startLatency.p95Ms,
++      input.startLatency.normalP95Ms,
++      t.startLatency.warnMult,
++      t.startLatency.critMult,
++      t.startLatency.floor
++    ),
++  };
++
++  const pending: Metric = {
++    id: "pending",
++    value: input.pending.now,
++    unit: "count",
++    normal: input.pending.normal,
++    delta: delta(input.pending.now, input.pending.normal),
++    series: {
++      points: input.pending.series,
++      kind: input.pending.estimated ? "estimated" : "measured",
++    },
++    severity: multiplierSeverity(
++      input.pending.now,
++      input.pending.normal,
++      t.pending.warnMult,
++      t.pending.critMult,
++      t.pending.floor
++    ),
++  };
++
++  const net = input.throughput.donePerMin - input.throughput.triggeredPerMin;
++  const throughput: Metric = {
++    id: "throughput",
++    value: net,
++    unit: "perMin",
++    aggregation: "rate",
++    breakdown: { done: input.throughput.donePerMin, triggered: input.throughput.triggeredPerMin },
++    severity: net < 0 && isPendingIncreasing(input.pending.series) ? "warn" : "ok",
++  };
++
++  const failureSeverity: Severity =
++    input.failures.rate < t.failures.floorRate
++      ? "ok"
++      : multiplierSeverity(
++          input.failures.rate,
++          input.failures.normalRate,
++          t.failures.warnMult,
++          t.failures.critMult,
++          t.failures.floor
++        );
++  const failures: Metric = {
++    id: "failures",
++    value: input.failures.rate,
++    unit: "ratio",
++    aggregation: "ratio",
++    normal: input.failures.normalRate,
++    delta: delta(input.failures.rate, input.failures.normalRate),
++    series: { points: input.failures.series, kind: "measured" },
++    severity: failureSeverity,
++  };
++
++  const durP95: Metric = {
++    id: "dur_p95",
++    value: input.duration.p95Ms,
++    unit: "ms",
++    aggregation: "p95",
++    normal: input.duration.normalP95Ms,
++    delta: delta(input.duration.p95Ms, input.duration.normalP95Ms),
++    severity: multiplierSeverity(
++      input.duration.p95Ms,
++      input.duration.normalP95Ms,
++      t.duration.warnMult,
++      t.duration.critMult,
++      t.duration.floor
++    ),
++  };
++
++  const ageMs = input.liveness.telemetryAgeMs;
++  const livenessSeverity: Severity =
++    ageMs === null // no signal at all (brand-new/quiet env) — genuinely unknown, so NEUTRAL (ok):
++      ? "ok" //         a fine-but-idle env must not surface as a yellow verdict, and it never
++      : //              trust-guards. "lagging" (below) IS a real warn; "unknown" is not.
++        ageMs > t.liveness.staleMs
++        ? "crit"
++        : ageMs > t.liveness.freshMs
++          ? "warn"
++          : "ok";
++  const liveness: Metric = {
++    id: "liveness",
++    // No signal -> value 0 is a placeholder, NOT a real "0ms fresh". `availability: "unknown"`
++    // says so, so a structured consumer never reads the 0 as freshness (the finding reason
++    // also carries "freshness_unknown"). A finite number keeps the JSON VM valid (no Infinity).
++    value: ageMs ?? 0,
++    availability: ageMs === null ? "unknown" : "measured",
++    unit: "ms",
++    severity: livenessSeverity,
++  };
++
++  // Flow-evidence metrics (severity ok — evidence, not a verdict).
++  const concurrency: Metric = {
++    id: "concurrency",
++    value: ev.runningSeries.length > 0 ? ev.runningSeries[ev.runningSeries.length - 1] : 0,
++    unit: "count",
++    breakdown: { limit: ev.envLimit },
++    series: { points: ev.runningSeries, kind: "measured" },
++    severity: "ok",
++  };
++  const throttled: Metric = {
++    id: "throttled",
++    value: ev.throttledShare,
++    unit: "ratio",
++    severity: "ok",
++  };
++  const triggered: Metric = {
++    id: "triggered",
++    value: input.throughput.triggeredPerMin,
++    unit: "perMin",
++    normal: input.throughput.normalTriggeredPerMin,
++    delta: delta(input.throughput.triggeredPerMin, input.throughput.normalTriggeredPerMin),
++    severity: "ok",
++  };
++
++  return [
++    startLatency,
++    pending,
++    throughput,
++    failures,
++    durP95,
++    liveness,
++    concurrency,
++    throttled,
++    triggered,
++  ];
++}
++
++// ---------------------------------------------------------------------------
++// Drain computation — shared by the flow policy (flow.ts) and the footer (health.ts).
++// ---------------------------------------------------------------------------
++
++export function computeDrain(input: HealthInput): { drainMinutes: number; isDrainable: boolean } {
++  const donePerMin = input.throughput.donePerMin;
++  const drainMinutes = donePerMin === 0 ? Number.POSITIVE_INFINITY : input.pending.now / donePerMin;
++  return {
++    drainMinutes,
++    isDrainable: drainMinutes < HEALTH_THRESHOLDS.flowPolicy.drainCritMinutes,
++  };
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/health/health-data.ts b/apps/webapp/app/presenters/v3/reports/health/health-data.ts
+new file mode 100644
+index 00000000000..8b79d5c3a21
+Binary files /dev/null and b/apps/webapp/app/presenters/v3/reports/health/health-data.ts differ
+diff --git a/apps/webapp/app/presenters/v3/reports/health/health-messages.ts b/apps/webapp/app/presenters/v3/reports/health/health-messages.ts
+new file mode 100644
+index 00000000000..888b2b54b73
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/health-messages.ts
+@@ -0,0 +1,170 @@
++/**
++ * The `health` report's PROSE — the single place its codes resolve to strings. Registered
++ * under the "health" title so the generic renderer can look it up by `vm.title` without ever
++ * importing health vocabulary. A future report (Cost, Regression) ships its own catalog the
++ * same way; `report-messages.ts` stays report-agnostic infrastructure.
++ *
++ * Some strings carry {tokens} (e.g. {age}, {rate}) the renderer fills from the finding's
++ * metrics / evidence — meaning lives here, numbers stay facts.
++ */
++
++import { registerReportMessages, type ReportMessages } from "../report-messages";
++import { type ReasonCode, type Severity } from "../report-view-model";
++
++/** Metric id -> expanded display label. */
++const METRIC_LABELS: Record<string, string> = {
++  start_latency_p95: "start latency",
++  pending: "pending",
++  throughput: "throughput",
++  failures: "failures",
++  dur_p95: "p95 dur",
++  liveness: "liveness",
++  concurrency: "concurrency",
++  throttled: "throttled",
++  triggered: "triggered",
++};
++
++/**
++ * Finding headline — keyed by `${findingType}/${reason}`. Degraded = the cause,
++ * healthy = reassurance. `@expanded` variants show a healthy finding expanded
++ * (e.g. execution while flow is degraded).
++ */
++const FINDING_REASONS: Record<string, string> = {
++  // flow — causes
++  "flow/env_limit_saturation": "at your env concurrency limit",
++  "flow/dequeue_stall": "capacity is free but nothing is dequeuing",
++  "flow/queue_limit_throttling": "a queue is throttling at its own limit",
++  "flow/trigger_spike": "a trigger spike is backing up the queue",
++  "flow/trigger_surge": "a surge of new triggers is backing up the queue",
++  // flow — fallback symptoms (v1)
++  "flow/start_latency": "runs are slow to start",
++  "flow/backlog": "backlog is growing",
++  "flow/throughput_lag": "completion is falling behind triggers",
++  "flow/degraded": "flow is degraded",
++  // flow — healthy (collapsed)
++  "flow/healthy": "starting normally",
++  // execution
++  "execution/failures_up": "runs are failing more than usual",
++  "execution/slow_runs": "runs are slower than usual",
++  "execution/degraded": "execution is degraded",
++  "execution/unknown": "execution can't be assessed — the telemetry is stale",
++  "flow/unknown": "flow can't be assessed — the telemetry is stale",
++  "execution/healthy": "completing normally", // collapsed
++  "execution/healthy@expanded": "the runs that DO start are fine",
++  // liveness = telemetry freshness ({age} filled by the renderer)
++  "liveness/fresh": "fresh — telemetry current, updated {age} ago",
++  "liveness/lagging": "lagging — telemetry last updated {age} ago",
++  "liveness/stale": "stale — no telemetry in {age}",
++  "liveness/freshness_unknown": "freshness unknown — no telemetry signal to check",
++};
++
++/** The "read:" causal-chain line — keyed by code. */
++const READS: Record<string, string> = {
++  // cause chains
++  saturation_chain: "limit saturated → incoming work exceeds capacity → backlog grows",
++  capacity_free_not_dequeuing: "capacity is free but work isn't being picked up — on our side",
++  queue_throttle_chain: "queue at its limit → its runs wait → backlog grows",
++  spike_chain: "triggers jumped {mult}× → queue fills faster than it drains",
++  surge_chain: "new triggers arriving with no prior baseline → queue fills faster than it drains",
++  // fallback symptoms (v1)
++  starting_normally: "runs are starting on time",
++  lag_while_triggering_normal: "triggering normally, but starts lag → work is backing up",
++  lag_and_failures: "runs are lagging AND failing — check the code path",
++  degraded_generic: "flow is degraded",
++  not_a_code_problem: "NOT a code problem",
++  runs_are_fine: "runs are completing normally",
++  failures_elevated: "failures are elevated — check the code path",
++  data_stale: "data is stale — the verdict cannot be trusted",
++};
++
++/** Exclusion (ruled-out cause) — rendered under `read:`. {tokens} filled from evidence. */
++const EXCLUSIONS: Record<string, string> = {
++  not_env_limit: "env concurrency limit is not the bottleneck",
++  not_your_code: "not your code — failures and durations normal",
++  not_your_config: "not your config — limits aren't the bottleneck",
++};
++
++/** Observation (supporting fact, not a ruled-out cause) — rendered under `read:` after exclusions. */
++const OBSERVATIONS: Record<string, string> = {
++  not_workers_platform: "runs are completing at ~{rate}/min",
++  execution_healthy: "runs that start are completing normally",
++  nothing_dead_lettered: "nothing dead-lettered",
++};
++
++/** Metric annotation shown on a cause line INSTEAD of "(normal ~x)". {tokens} filled by the renderer. */
++const ANNOTATIONS: Record<string, string> = {
++  pinned_minutes: "pinned {value} of last {window} min",
++  idle_share: "idle — {value} running of {limit}",
++  throttled_minutes: "throttled {value} of last {window} min",
++  spike_mult: "{value}× the normal rate",
++  surge_rate: "{value}/min, no prior baseline",
++};
++
++/** Headline statement — keyed by `${findingType}/${severity}`. */
++const STATEMENTS: Record<string, string> = {
++  "flow/ok": "Flow healthy",
++  "flow/warn": "Flow slowing",
++  "flow/crit": "Flow stalled",
++  "execution/ok": "Execution healthy",
++  "execution/warn": "Execution degraded",
++  "execution/crit": "Execution failing",
++  "liveness/ok": "data fresh",
++  "liveness/warn": "data lagging",
++  "liveness/crit": "data stale",
++};
++
++/** Recommendation / footer codes -> calm, jargon-free action text. */
++const ACTIONS: Record<string, string> = {
++  // Review = open concrete data · Check = system state · Raise = a settings change
++  review_start_latency: "Review start latency",
++  review_failing_tasks: "Review failing tasks",
++  review_slow_runs: "Review slow runs",
++  review_trigger_source: "Review what's triggering the spike",
++  check_queue_health: "Check queue health",
++  check_worker_availability: "Check worker availability",
++  check_control_plane: "Check control plane",
++  check_platform_status: "Check status.trigger.dev — no action needed on yours",
++  raise_env_limit: "Raise the env concurrency limit",
++  raise_queue_limit: "Raise the queue's concurrency limit",
++  do_nothing_drains: "or do nothing — backlog drains in ~{value} min once triggers ease",
++  region_failover: "region move? ask your agent — depends on your failover setup",
++  nothing_to_do: "nothing to do",
++};
++
++function findingReason(
++  findingType: string,
++  reason: ReasonCode,
++  opts?: { expanded?: boolean }
++): string {
++  if (opts?.expanded) {
++    const expanded = FINDING_REASONS[`${findingType}/${reason}@expanded`];
++    if (expanded) return expanded;
++  }
++  return FINDING_REASONS[`${findingType}/${reason}`] ?? reason;
++}
++
++function statementMessage(findingType: string, severity: Severity, reason?: ReasonCode): string {
++  // Stale telemetry makes a CH-derived verdict untrustworthy — say so, don't show a severity.
++  if (reason === "unknown") {
++    const label = findingType.charAt(0).toUpperCase() + findingType.slice(1);
++    return `${label} unknown — data stale`;
++  }
++  // No freshness signal is NOT "data lagging" (a real severity) — it's genuinely unknown.
++  if (findingType === "liveness" && reason === "freshness_unknown") {
++    return "data freshness unknown";
++  }
++  return STATEMENTS[`${findingType}/${severity}`] ?? `${findingType} ${severity}`;
++}
++
++export const healthMessages: ReportMessages = {
++  metricLabel: (id) => METRIC_LABELS[id] ?? id,
++  findingReason,
++  readMessage: (code) => READS[code] ?? code,
++  exclusionMessage: (code) => EXCLUSIONS[code] ?? code,
++  observationMessage: (code) => OBSERVATIONS[code] ?? code,
++  annotationMessage: (code) => ANNOTATIONS[code] ?? code,
++  statementMessage,
++  actionMessage: (code) => ACTIONS[code] ?? code,
++};
++
++registerReportMessages("health", healthMessages);
+diff --git a/apps/webapp/app/presenters/v3/reports/health/health.ts b/apps/webapp/app/presenters/v3/reports/health/health.ts
+new file mode 100644
+index 00000000000..08beae3894c
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/health.ts
+@@ -0,0 +1,268 @@
++/**
++ * The `health` report — ORCHESTRATOR + public entry. Two layers:
++ *   `assessHealth()`      data -> HealthAssessment (all health reasoning)
++ *   `toReportViewModel()` HealthAssessment -> generic ReportViewModel (pure packaging)
++ * `interpret()` is the thin composition of the two.
++ *
++ * The reasoning is split into three independent analyzers, each returning a Finding:
++ *   flow.ts · execution.ts · liveness.ts   (foundation in health-core.ts)
++ * This module only wires them: build metrics -> run the three -> flow policy -> stale guard
++ * -> reads -> summary/footer. PURE — no IO/clock/LLM/formatting.
++ */
++
++import {
++  isOk,
++  maxSeverity,
++  type Finding,
++  type FooterEntry,
++  type Metric,
++  type ReportViewModel,
++  type Severity,
++  type SummaryStatement,
++} from "../report-view-model";
++import { buildMetrics, computeDrain, HEALTH_THRESHOLDS, type HealthInput } from "./health-core";
++import { buildExecutionRead, interpretExecution } from "./execution";
++import { applyFlowPolicy, buildFlowRead, interpretFlow } from "./flow";
++import { interpretLiveness } from "./liveness";
++// Registers the "health" message catalog (side effect) so the renderer resolves this report's
++// codes. Kept here — the health report's entry module — so loading it always registers its prose.
++import "./health-messages";
++
++// Re-exported so the data layer + tests keep a single import path (`./health`).
++export { HEALTH_THRESHOLDS, isPendingIncreasing, type HealthInput } from "./health-core";
++
++// ---------------------------------------------------------------------------
++// Stale-telemetry trust guard. When telemetry is genuinely stale, both flow and execution are
++// CH-derived and untrustworthy: mark them unknown and strip everything that would advise action
++// off stale data (recommendation, attribution, exclusions, observations, hedge, anomaly window).
++// ---------------------------------------------------------------------------
++
++function applyStaleGuard(
++  flow: Finding,
++  execution: Finding,
++  telemetryStale: boolean
++): { flow: Finding; execution: Finding; treatedCrit: boolean } {
++  if (!telemetryStale) return { flow, execution, treatedCrit: false };
++  // Force crit so severity is consistent across summary / section glyph / JSON, and strip the
++  // ACTIONABLE causal fields so no surface advises off stale data. Raw metrics/evidence stay in
++  // the VM for diagnostics, flagged informational-only by `facts.trustworthy: false`.
++  const untrust = (f: Finding): Finding => ({
++    ...f,
++    severity: "crit",
++    reason: "unknown",
++    recommendation: undefined,
++    attribution: undefined,
++    exclusions: undefined,
++    observations: undefined,
++    hedge: undefined,
++    anomalyWindow: undefined,
++  });
++  return { flow: untrust(flow), execution: untrust(execution), treatedCrit: true };
++}
++
++// ---------------------------------------------------------------------------
++// Summary.
++// ---------------------------------------------------------------------------
++
++function aggregateSummary(
++  flow: Finding,
++  execution: Finding,
++  liveness: Finding,
++  executionTreatedCrit: boolean
++): { severity: Severity; statements: SummaryStatement[] } {
++  const executionSummarySeverity: Severity = executionTreatedCrit ? "crit" : execution.severity;
++  const severity = maxSeverity(flow.severity, executionSummarySeverity, liveness.severity);
++  const statements: SummaryStatement[] = [
++    {
++      findingType: "flow",
++      severity: flow.severity,
++      reason: flow.reason === "unknown" ? "unknown" : undefined,
++    },
++    {
++      findingType: "execution",
++      severity: executionSummarySeverity,
++      reason: execution.reason === "unknown" ? "unknown" : undefined,
++    },
++    {
++      findingType: "liveness",
++      severity: liveness.severity,
++      reason: liveness.reason === "freshness_unknown" ? "freshness_unknown" : undefined,
++    },
++  ];
++  return { severity, statements };
++}
++
++// ---------------------------------------------------------------------------
++// Footer (dominant action + do-nothing option) + links.
++// ---------------------------------------------------------------------------
++
++const SEV_RANK: Record<Severity, number> = { ok: 0, warn: 1, crit: 2 };
++
++function dominantFinding(findings: Finding[]): Finding | undefined {
++  let best: Finding | undefined;
++  for (const f of findings) {
++    if (!f.recommendation) continue;
++    if (!best || SEV_RANK[f.severity] > SEV_RANK[best.severity]) best = f;
++  }
++  return best;
++}
++
++function buildFooter(
++  findings: Finding[],
++  drain: { drainMinutes: number; isDrainable: boolean },
++  telemetryStale: boolean
++): FooterEntry[] {
++  // Stale telemetry: the only trustworthy action is to check the pipeline itself.
++  if (telemetryStale) {
++    const liveness = findings.find((f) => f.type === "liveness");
++    return liveness?.recommendation
++      ? [{ code: liveness.recommendation.code, link: liveness.recommendation.link }]
++      : [{ code: "nothing_to_do" }];
++  }
++
++  const dominant = dominantFinding(findings);
++  if (!dominant?.recommendation) return [{ code: "nothing_to_do" }];
++
++  const footer: FooterEntry[] = [
++    { code: dominant.recommendation.code, link: dominant.recommendation.link },
++  ];
++
++  // Second entry: do-nothing when the backlog drains, or the region-move hedge for a
++  // dequeue stall (the one place it stays plausible).
++  if (dominant.type === "flow") {
++    if (drain.isDrainable && Number.isFinite(drain.drainMinutes)) {
++      footer.push({ code: "do_nothing_drains", value: Math.round(drain.drainMinutes * 10) / 10 });
++    } else if (dominant.reason === "dequeue_stall") {
++      footer.push({ code: "region_failover" });
++    }
++  }
++  return footer;
++}
++
++function collectLinks(findings: Finding[]): ReportViewModel["links"] {
++  const keys = new Set<string>();
++  for (const finding of findings) {
++    if (finding.recommendation?.link) keys.add(finding.recommendation.link);
++    if (finding.hedge?.link) keys.add(finding.hedge.link);
++  }
++  return [...keys].map((key) => ({ key, label: key, url: "" }));
++}
++
++// ---------------------------------------------------------------------------
++// Domain layer: HealthAssessment — the health verdict (flow / execution / liveness findings,
++// their causes + recommendations, and the derived state). All health semantics live here; it
++// knows nothing about how a report is presented. `toReportViewModel` maps it into the generic,
++// report-agnostic ReportViewModel — so the VM stays reusable for future reports (each has its
++// own <domain>Assessment + mapper; the renderer/VM primitives are shared).
++// ---------------------------------------------------------------------------
++
++export type HealthAssessment = {
++  /** header, carried through from the input. */
++  scope: string;
++  period: string;
++  baselineLabel: string;
++  generatedAt: string;
++  windowMinutes: number;
++  /** finalized findings (post-policy, post-stale-guard, with reads built). */
++  flow: Finding;
++  execution: Finding;
++  liveness: Finding;
++  metrics: Metric[];
++  /** derived domain state the presentation layer needs (footer / summary / trust). */
++  drain: { drainMinutes: number; isDrainable: boolean };
++  telemetryStale: boolean;
++  executionTreatedCrit: boolean;
++  /** structured payload for agents (already carries the trust marker). */
++  facts: Record<string, unknown>;
++};
++
++/** Data -> domain verdict. Pure: no IO/clock/LLM/formatting — just health reasoning. */
++export function assessHealth(input: HealthInput): HealthAssessment {
++  const metrics = buildMetrics(input);
++  const drain = computeDrain(input);
++
++  let flow = interpretFlow(metrics, input);
++  const executionRaw = interpretExecution(metrics, input);
++  const liveness = interpretLiveness(metrics, input);
++
++  // Telemetry freshness as an explicit state so "unknown" (no signal) is never conflated with
++  // "lagging" (a real severity). Only GENUINE staleness trust-guards the CH-derived verdicts.
++  const ageMs = input.liveness.telemetryAgeMs;
++  const telemetryStale = ageMs !== null && ageMs > HEALTH_THRESHOLDS.liveness.staleMs;
++
++  flow = applyFlowPolicy(flow, executionRaw, drain.isDrainable, telemetryStale);
++
++  // Stale telemetry: flow AND execution are untrustworthy -> mark both unknown and strip their
++  // actions/attribution/exclusions so nothing advises off stale data.
++  const guarded = applyStaleGuard(flow, executionRaw, telemetryStale);
++  flow = guarded.flow;
++  const execution = guarded.execution;
++
++  // interpretFlow mutates the shared metrics array (e.g. sets concurrency.annotation "pinned 40
++  // of last 60 min") BEFORE the guard runs. The renderers hide it for an unknown finding, but
++  // format=json would still leak that stale-derived narrative — so strip metric annotations too
++  // (the twin of the stripped anomaly window). Raw values stay, flagged by facts.trustworthy.
++  if (telemetryStale) {
++    for (const m of metrics) m.annotation = undefined;
++  }
++
++  // Reads built last, from the finalized findings.
++  flow.read = buildFlowRead(flow, isOk(execution.severity), !telemetryStale);
++  execution.read = buildExecutionRead(execution, flow);
++
++  return {
++    scope: input.scope,
++    period: input.period,
++    baselineLabel: input.baselineLabel,
++    generatedAt: input.generatedAt,
++    windowMinutes: input.windowMinutes,
++    flow,
++    execution,
++    liveness,
++    metrics,
++    drain,
++    telemetryStale,
++    executionTreatedCrit: guarded.treatedCrit,
++    facts: {
++      // Trust marker for structured consumers. The metrics/evidence stay (useful for pipeline
++      // diagnostics), but when telemetry is stale they're informational-only: an agent must not
++      // act on them (e.g. raise concurrency off a stale backlog). The human renderer is already
++      // guarded via the "unknown" finding; this is the same guarantee for JSON.
++      trustworthy: !telemetryStale,
++      staleReason: telemetryStale ? "telemetry_stale" : undefined,
++      flowSource: input.flowSource,
++      pendingEstimated: input.pending.estimated,
++      throughput: input.throughput,
++      flowEvidence: input.flowEvidence,
++    },
++  };
++}
++
++// ---------------------------------------------------------------------------
++// Presentation mapping: HealthAssessment -> generic ReportViewModel. Pure packaging only —
++// no health reasoning here (summary/footer/links are derived from the findings).
++// ---------------------------------------------------------------------------
++
++function toReportViewModel(a: HealthAssessment): ReportViewModel {
++  const findings = [a.flow, a.execution, a.liveness];
++  return {
++    title: "health",
++    scope: a.scope,
++    period: a.period,
++    baselineLabel: a.baselineLabel,
++    generatedAt: a.generatedAt,
++    windowMinutes: a.windowMinutes,
++    summary: aggregateSummary(a.flow, a.execution, a.liveness, a.executionTreatedCrit),
++    findings,
++    metrics: a.metrics,
++    facts: a.facts,
++    links: collectLinks(findings),
++    // Stale telemetry -> footer points at the control plane, not a CH-derived action.
++    footer: buildFooter(findings, a.drain, a.telemetryStale),
++  };
++}
++
++/** Public entry: data -> generic report. Thin composition of the domain + presentation layers. */
++export function interpret(input: HealthInput): ReportViewModel {
++  return toReportViewModel(assessHealth(input));
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/health/liveness.ts b/apps/webapp/app/presenters/v3/reports/health/liveness.ts
+new file mode 100644
+index 00000000000..4c3e313fdaa
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/health/liveness.ts
+@@ -0,0 +1,27 @@
++/**
++ * LIVENESS analyzer: telemetry FRESHNESS (age of the freshest signal), NOT "last completion".
++ * A null age is genuinely unknown (neutral), never a warning; only real staleness is crit.
++ */
++
++import { type Finding, type Metric } from "../report-view-model";
++import { metricById, type HealthInput } from "./health-core";
++
++export function interpretLiveness(metrics: Metric[], input: HealthInput): Finding {
++  const liveness = metricById(metrics, "liveness");
++  const unknown = input.liveness.telemetryAgeMs === null;
++  const reason = unknown
++    ? "freshness_unknown"
++    : liveness.severity === "ok"
++      ? "fresh"
++      : liveness.severity === "warn"
++        ? "lagging"
++        : "stale";
++  return {
++    type: "liveness",
++    severity: liveness.severity,
++    reason,
++    metricIds: ["liveness"],
++    recommendation:
++      liveness.severity === "crit" ? { code: "check_control_plane", link: "status" } : undefined,
++  };
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/renderMarkdown.ts b/apps/webapp/app/presenters/v3/reports/renderMarkdown.ts
+new file mode 100644
+index 00000000000..0eb82ab47f6
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/renderMarkdown.ts
+@@ -0,0 +1,522 @@
++/**
++ * GENERIC renderer: ReportViewModel -> monospace markdown. Severity-driven disclosure:
++ * a degraded finding expands into evidence in causal order; a healthy finding collapses
++ * to one `✓` line. Owns ALL presentation (formatting, glyphs, sparklines, spacing, {token}
++ * substitution) and resolves the VM's codes -> strings via the report's registered message
++ * catalog, looked up by `vm.title` — so it holds NO report vocabulary itself.
++ *
++ * Knows NOTHING about health — walks summary -> findings -> metrics generically.
++ */
++
++import { reportMessages, type ReportMessages } from "./report-messages";
++import {
++  type Finding,
++  type FooterEntry,
++  type Metric,
++  type ReportViewModel,
++  type Severity,
++  type Unit,
++} from "./report-view-model";
++
++const BARS = "▁▂▃▄▅▆▇█";
++const MINUS = "−"; // U+2212
++
++const SEVERITY_GLYPH: Record<Severity, string> = { ok: "✓", warn: "⚠", crit: "✕" };
++
++/**
++ * A NEUTRAL marker for a state that's genuinely unknown, not good/bad — e.g. liveness with no
++ * telemetry signal. It doesn't affect the aggregate severity (that stays driven by real findings),
++ * but it must not read as a confident green "✓", so it gets its own glyph.
++ */
++const NEUTRAL_GLYPH = "○";
++
++/**
++ * Markdown-only status colour. Chat hosts render neither ANSI nor HTML, so swapping
++ * the glyphs for traffic-light circles is the one colour cue they get — one emoji per
++ * marker (neutral -> white). ANSI keeps the crisp ✓/⚠/✕/○, so this applies ONLY on markdown.
++ */
++const MARKDOWN_STATUS_EMOJI: Record<string, string> = {
++  "✓": "🟢",
++  "⚠": "🟡",
++  "✕": "🔴",
++  "○": "⚪",
++};
++
++function toMarkdownEmoji(text: string): string {
++  return text.replace(/[✓⚠✕○]/g, (g) => MARKDOWN_STATUS_EMOJI[g] ?? g);
++}
++
++/** Glyph for a finding/statement: neutral for a genuinely-unknown freshness, else severity-driven. */
++function statusGlyph(severity: Severity, reason?: string): string {
++  return reason === "freshness_unknown" ? NEUTRAL_GLYPH : SEVERITY_GLYPH[severity];
++}
++
++/** Evidence lines (metric rows + attribution) shown for a degraded section. */
++const EVIDENCE_CAP = 4;
++
++/** Column where the header's scope·period·baseline starts (mirrors the mockup). */
++const HEADER_COL = 22;
++
++/** Gap between aligned columns in an evidence block. */
++const COL_GAP = 3;
++
++/** Section labels pad to this so their glyph/content aligns vertically. */
++const SECTION_LABEL_WIDTH = 9; // "EXECUTION"
++const SECTION_GAP = 3;
++
++/** Section label padded so every section's ✓ / cause text starts at the same column. */
++function sectionLabel(type: string): string {
++  return `${type.toUpperCase().padEnd(SECTION_LABEL_WIDTH)}${" ".repeat(SECTION_GAP)}`;
++}
++
++// ---------------------------------------------------------------------------
++// Formatters.
++// ---------------------------------------------------------------------------
++
++/** All sparklines render at this fixed width so they align in a column. */
++const SPARK_WIDTH = 8;
++
++/** Resample to exactly `width` points (bucket-average) so every sparkline aligns. */
++function resampleToWidth(points: number[], width: number): number[] {
++  if (points.length === 0) return [];
++  if (points.length === width) return points;
++  if (points.length < width) {
++    // stretch: nearest-sample up to width (keeps shape).
++    return Array.from({ length: width }, (_, i) => points[Math.floor((i * points.length) / width)]);
++  }
++  const out: number[] = [];
++  const stride = points.length / width;
++  for (let i = 0; i < width; i++) {
++    const slice = points.slice(
++      Math.floor(i * stride),
++      Math.max(Math.floor((i + 1) * stride), Math.floor(i * stride) + 1)
++    );
++    out.push(slice.reduce((a, b) => a + b, 0) / slice.length);
++  }
++  return out;
++}
++
++export function sparklineFromSeries(points: number[]): string {
++  if (points.length === 0) return "";
++  const p = resampleToWidth(points, SPARK_WIDTH);
++  const min = Math.min(...p);
++  const max = Math.max(...p);
++  if (max === min) return BARS[0].repeat(SPARK_WIDTH);
++  return p.map((v) => BARS[Math.round(((v - min) / (max - min)) * (BARS.length - 1))]).join("");
++}
++
++function fmtCount(n: number): string {
++  return Math.round(n).toLocaleString("en-US");
++}
++
++function fmtDuration(ms: number): string {
++  if (ms < 1000) return `${Math.round(ms)}ms`;
++  const s = ms / 1000;
++  if (s < 60) return Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
++  const m = s / 60;
++  return Number.isInteger(m) ? `${m}m` : `${m.toFixed(1)}m`;
++}
++
++function fmtPct(ratio: number): string {
++  return `${(ratio * 100).toFixed(1)}%`;
++}
++
++function fmtRate(n: number): string {
++  return `${fmtCount(n)}/min`;
++}
++
++function fmtSignedRate(net: number): string {
++  const sign = net < 0 ? MINUS : net > 0 ? "+" : "";
++  return `${sign}${fmtCount(Math.abs(net))}/min`;
++}
++
++function fmtValue(value: number, unit: Unit): string {
++  switch (unit) {
++    case "ms":
++      return fmtDuration(value);
++    case "count":
++      return fmtCount(value);
++    case "ratio":
++      return fmtPct(value);
++    case "perMin":
++      return fmtRate(value);
++  }
++}
++
++function fill(template: string, tokens: Record<string, string | number | undefined>): string {
++  return template.replace(/\{(\w+)\}/g, (_, k) => {
++    const v = tokens[k];
++    return v === undefined ? `{${k}}` : String(v);
++  });
++}
++
++function metricById(metrics: Metric[], id: string): Metric | undefined {
++  return metrics.find((m) => m.id === id);
++}
++
++// ---------------------------------------------------------------------------
++// Metric line (expanded evidence).
++// ---------------------------------------------------------------------------
++
++function deltaSegment(metric: Metric): string {
++  if (metric.severity === "ok" || !metric.delta || metric.delta.dir === "flat") return "";
++  const arrow = metric.delta.dir === "up" ? "↑" : "↓";
++  // "up" shows the multiplier when we have it ("↑ 16×"). "down" is arrow-only: a
++  // drop rounds to 0×/1×, meaningless — the arrow already says "below normal".
++  if (metric.delta.dir === "down") return arrow;
++  return metric.delta.mult === undefined ? arrow : `${arrow} ${metric.delta.mult}×`;
++}
++
++function annotationSegment(metric: Metric, vm: ReportViewModel): string {
++  if (!metric.annotation) return "";
++  const value = String(metric.annotation.value ?? "");
++  return fill(reportMessages(vm.title).annotationMessage(metric.annotation.code), {
++    value,
++    window: vm.windowMinutes,
++    limit: metric.breakdown?.limit ?? "",
++  });
++}
++
++function metricValueText(metric: Metric, msg: ReportMessages): string {
++  // concurrency etc. carry a limit -> "running/limit".
++  if (metric.unit === "count" && metric.breakdown?.limit !== undefined) {
++    return `${fmtCount(metric.value)}/${fmtCount(metric.breakdown.limit)}`;
++  }
++  // composite throughput -> "done vs triggered -> net".
++  if (metric.unit === "perMin" && metric.breakdown?.done !== undefined) {
++    const { done, triggered } = metric.breakdown;
++    return `${fmtRate(done)} done  vs  ${fmtRate(triggered)} triggered  →  net ${fmtSignedRate(metric.value)}`;
++  }
++  const showAgg =
++    metric.aggregation === "p95" && !msg.metricLabel(metric.id).toLowerCase().startsWith("p95");
++  return showAgg
++    ? `p95 ${fmtValue(metric.value, metric.unit)}`
++    : fmtValue(metric.value, metric.unit);
++}
++
++/** Column widths for a section's evidence block, so value/delta/spark align down the page. */
++type Cols = { label: number; value: number; delta: number };
++
++function isComposite(metric: Metric): boolean {
++  return metric.unit === "perMin" && metric.breakdown?.done !== undefined;
++}
++
++function computeColumns(rows: Metric[], vm: ReportViewModel, extraLabels: string[]): Cols {
++  const msg = reportMessages(vm.title);
++  const labelLens = [
++    ...rows.map((m) => msg.metricLabel(m.id).length),
++    ...extraLabels.map((l) => l.length),
++  ];
++  const valueLens = rows.filter((m) => !isComposite(m)).map((m) => metricValueText(m, msg).length);
++  const deltaLens = rows
++    .filter((m) => !isComposite(m) && !annotationSegment(m, vm))
++    .map((m) => deltaSegment(m).length);
++  return {
++    label: Math.max(0, ...labelLens),
++    value: Math.max(0, ...valueLens),
++    delta: Math.max(0, ...deltaLens),
++  };
++}
++
++function renderMetricRow(metric: Metric, cols: Cols, vm: ReportViewModel): string {
++  const msg = reportMessages(vm.title);
++  const gap = " ".repeat(COL_GAP);
++  const label = msg.metricLabel(metric.id).padEnd(cols.label);
++  const value = metricValueText(metric, msg);
++
++  // composite throughput: label + value only (its own grammar).
++  if (isComposite(metric)) return `  ${label}${gap}${value}`;
++
++  const spark =
++    metric.series && metric.series.points.length > 0
++      ? sparklineFromSeries(metric.series.points)
++      : "";
++  const annotation = annotationSegment(metric, vm);
++  const delta = annotation ? "" : deltaSegment(metric); // cause line carries an annotation, not a delta
++  const trailing = annotation
++    ? annotation
++    : metric.normal !== undefined
++      ? `(normal ~${fmtValue(metric.normal, metric.unit)})`
++      : metric.series?.kind === "estimated"
++        ? "(estimated)" // proxy trend (e.g. snapshot backlog) — flag it so it isn't read as measured
++        : "";
++
++  // Fixed columns: label · value · delta · SPARK · trailing. The fixed-width spark
++  // column keeps every spark and the trailing (normal / annotation) aligned.
++  let line = `  ${label}${gap}${value.padEnd(cols.value)}`;
++  if (cols.delta > 0) line += `${gap}${delta.padEnd(cols.delta)}`;
++  line += `${gap}${(spark || "").padEnd(SPARK_WIDTH)}`;
++  if (trailing) line += `${gap}${trailing}`;
++  return line.replace(/\s+$/, "");
++}
++
++// ---------------------------------------------------------------------------
++// Compact facts (collapsed / semi-expanded healthy sections).
++// ---------------------------------------------------------------------------
++
++function compactFact(metric: Metric): string | undefined {
++  switch (metric.id) {
++    case "pending":
++      return `pending ${fmtCount(metric.value)}${metric.normal !== undefined ? ` (normal ~${fmtCount(metric.normal)})` : ""}`;
++    case "start_latency_p95":
++      return `starts p95 ${fmtDuration(metric.value)}`;
++    case "failures":
++      return `failures ${fmtPct(metric.value)}${metric.normal !== undefined ? ` (normal ~${fmtPct(metric.normal)})` : ""}`;
++    case "dur_p95":
++      return metric.severity === "ok"
++        ? "durations normal"
++        : `durations p95 ${fmtDuration(metric.value)}`;
++    default:
++      return undefined; // throughput / evidence metrics get no collapsed fact
++  }
++}
++
++/** Reassuring facts read consequence-first: depth/failures before latency/duration. */
++const COMPACT_ORDER = ["pending", "failures", "start_latency_p95", "dur_p95"];
++
++function compactFacts(finding: Finding, metrics: Metric[]): string {
++  return finding.metricIds
++    .map((id) => metricById(metrics, id))
++    .filter((m): m is Metric => m !== undefined)
++    .slice()
++    .sort((a, b) => COMPACT_ORDER.indexOf(a.id) - COMPACT_ORDER.indexOf(b.id))
++    .map(compactFact)
++    .filter((s): s is string => s !== undefined)
++    .join(" · ");
++}
++
++// ---------------------------------------------------------------------------
++// Read / exclusion / attribution / window.
++// ---------------------------------------------------------------------------
++
++function readTokens(_finding: Finding, metrics: Metric[]): Record<string, string | number> {
++  const triggered = metricById(metrics, "triggered");
++  return {
++    mult: triggered?.delta?.mult ?? "",
++  };
++}
++
++function windowSuffix(finding: Finding): string {
++  const aw = finding.anomalyWindow;
++  if (!aw) return "";
++  return aw.touchesEnd ? ` (last ${aw.minutes} min)` : ` (${aw.minutes} min window)`;
++}
++
++function attributionLine(finding: Finding, cols: Cols): string | undefined {
++  const a = finding.attribution;
++  if (!a) return undefined;
++  const label = `worst ${a.dim}`.padEnd(cols.label);
++  return `  ${label}${" ".repeat(COL_GAP)}${a.key} — ${Math.round(a.share * 100)}% of ${a.of}`;
++}
++
++// ---------------------------------------------------------------------------
++// Sections.
++// ---------------------------------------------------------------------------
++
++function renderDegradedSection(finding: Finding, vm: ReportViewModel): string[] {
++  const msg = reportMessages(vm.title);
++  const rows = finding.metricIds
++    .map((id) => metricById(vm.metrics, id))
++    .filter((m): m is Metric => m !== undefined);
++
++  const extraLabels = finding.attribution ? [`worst ${finding.attribution.dim}`] : [];
++  const cols = computeColumns(rows, vm, extraLabels);
++
++  const evidence: string[] = rows.map((m) => renderMetricRow(m, cols, vm));
++  const attr = attributionLine(finding, cols);
++  if (attr) evidence.push(attr);
++
++  // One blank line between evidence rows so the block breathes.
++  const spaced = evidence.slice(0, EVIDENCE_CAP).flatMap((l, i) => (i === 0 ? [l] : ["", l]));
++
++  const lines = [
++    // Lead with the glyph so the cause text lines up with the healthy sections' "✓ …".
++    `${sectionLabel(finding.type)}${SEVERITY_GLYPH[finding.severity]} ${msg.findingReason(finding.type, finding.reason)}${windowSuffix(finding)}`,
++    "", // blank line between the header and its evidence (matches the section/footer spacing)
++    ...spaced,
++  ];
++
++  if (finding.read) {
++    lines.push(
++      "",
++      `  read: ${fill(msg.readMessage(finding.read), readTokens(finding, vm.metrics))}`
++    );
++    // Exclusions ("not your code") first, then supporting observations ("runs completing at ~X/min").
++    for (const excl of finding.exclusions ?? []) {
++      lines.push(
++        `        ${fill(msg.exclusionMessage(excl.code), { rate: fmtCount(excl.evidence?.donePerMin ?? 0) })}`
++      );
++    }
++    for (const obs of finding.observations ?? []) {
++      lines.push(
++        `        ${fill(msg.observationMessage(obs.code), { rate: fmtCount(obs.evidence?.donePerMin ?? 0) })}`
++      );
++    }
++  }
++  return lines;
++}
++
++function renderHealthyExecutionExpanded(finding: Finding, vm: ReportViewModel): string[] {
++  const msg = reportMessages(vm.title);
++  const lines = [
++    `${sectionLabel(finding.type)}${SEVERITY_GLYPH.ok} ${msg.findingReason(finding.type, finding.reason, { expanded: true })}`,
++    "", // blank line between the header and its facts (matches the section/footer spacing)
++    `  ${compactFacts(finding, vm.metrics)}`,
++  ];
++  if (finding.read) lines.push(`  read: ${msg.readMessage(finding.read)}`);
++  return lines;
++}
++
++function renderCollapsedSection(finding: Finding, vm: ReportViewModel): string[] {
++  const msg = reportMessages(vm.title);
++  const headline = `${sectionLabel(finding.type)}${SEVERITY_GLYPH.ok} ${msg.findingReason(finding.type, finding.reason)}`;
++  const facts = compactFacts(finding, vm.metrics);
++  // Healthy sections stay on one line; the facts are short.
++  return facts ? [`${headline} — ${facts}`] : [headline];
++}
++
++function renderLivenessLine(finding: Finding, metrics: Metric[], msg: ReportMessages): string {
++  const metric = metricById(metrics, finding.metricIds[0]);
++  const ageMs = metric?.value;
++  const age = ageMs !== undefined && Number.isFinite(ageMs) ? fmtDuration(ageMs) : "unknown";
++  const reason = msg.findingReason(finding.type, finding.reason).replace("{age}", age);
++  return `${sectionLabel(finding.type)}${statusGlyph(finding.severity, finding.reason)} ${reason}`;
++}
++
++function renderFooter(footer: FooterEntry[], msg: ReportMessages): string[] {
++  return footer.map((entry, i) => {
++    const text = fill(msg.actionMessage(entry.code), { value: entry.value, min: entry.value });
++    return i === 0 ? `→ ${text}` : `  ${text}`;
++  });
++}
++
++// ---------------------------------------------------------------------------
++// Top-level render.
++// ---------------------------------------------------------------------------
++
++/**
++ * The plain monochrome layout (✓/⚠/✕) shared by every surface. Colour renderers paint
++ * THIS via `paintReport`; markdown swaps the glyphs for emoji. Internal so the three
++ * public renderers can't drift.
++ */
++function renderReportPlain(vm: ReportViewModel): string {
++  const msg = reportMessages(vm.title);
++  const lines: string[] = [];
++
++  // header: "/report <title>" padded to a column, then scope · period · baseline.
++  const left = `/report ${vm.title}`;
++  const right = [vm.scope, vm.period, vm.baselineLabel].filter(Boolean).join(" · ");
++  lines.push(`${left.padEnd(HEADER_COL)}${right}`, "");
++
++  // Each statement carries its OWN glyph — one leading glyph would read as if it
++  // applied only to the first statement (e.g. "✕ Flow healthy"). Per-statement is clear.
++  const verdict = vm.summary.statements
++    .map(
++      (s) =>
++        `${statusGlyph(s.severity, s.reason)} ${msg.statementMessage(s.findingType, s.severity, s.reason)}`
++    )
++    .join("  ·  ");
++  lines.push(verdict, "");
++
++  const flowDegraded = vm.findings.some((f) => f.type === "flow" && f.severity !== "ok");
++
++  for (const finding of vm.findings) {
++    if (finding.type === "liveness") {
++      lines.push(renderLivenessLine(finding, vm.metrics, msg), "");
++    } else if (finding.reason === "unknown") {
++      // stale-data guard: no ✓ or facts computed from a silent feed. The guard forces crit,
++      // so the glyph reads from severity (consistent with the summary + JSON).
++      lines.push(
++        `${sectionLabel(finding.type)}${SEVERITY_GLYPH[finding.severity]} ${msg.findingReason(finding.type, finding.reason)}`,
++        ""
++      );
++    } else if (finding.severity !== "ok") {
++      lines.push(...renderDegradedSection(finding, vm), "");
++    } else if (finding.type === "execution" && flowDegraded) {
++      lines.push(...renderHealthyExecutionExpanded(finding, vm), "");
++    } else {
++      lines.push(...renderCollapsedSection(finding, vm), "");
++    }
++  }
++
++  lines.push(...renderFooter(vm.footer, msg));
++
++  return lines.join("\n").replace(/\n+$/, "\n");
++}
++
++/**
++ * Markdown surface (agents / chat). The plain layout with severity glyphs swapped for
++ * status emoji — the only decoration markdown gets.
++ */
++export function renderReportMarkdown(vm: ReportViewModel): string {
++  return toMarkdownEmoji(renderReportPlain(vm));
++}
++
++// ---------------------------------------------------------------------------
++// ANSI colour renderer (terminal, e.g. `trigger report`). Colourises the SAME
++// plain layout as a post-pass via `paintReport`, so terminal output can't drift.
++// ---------------------------------------------------------------------------
++
++const SPARK_LOW = "▁▂▃▄▅";
++const SPARK_HIGH = "▆▇█";
++
++/** A surface's colour functions. `low`/`high` paint the two sparkline tones. */
++type Paint = {
++  escape: (s: string) => string;
++  green: (s: string) => string;
++  amber: (s: string) => string;
++  red: (s: string) => string;
++  grey: (s: string) => string;
++  low: (s: string) => string;
++  high: (s: string) => string;
++};
++
++function paintSpark(run: string, p: Paint): string {
++  return [...run]
++    .map((ch) => (SPARK_HIGH.includes(ch) ? p.high(ch) : SPARK_LOW.includes(ch) ? p.low(ch) : ch))
++    .join("");
++}
++
++/** Colourise the plain report by role. Detection reads the RAW line; wrapping the escaped line. */
++function paintReport(text: string, p: Paint): string {
++  return text
++    .split("\n")
++    .map((raw, i) => {
++      const line = p.escape(raw);
++      // header: grey the right column (scope · period · baseline).
++      if (i === 0) {
++        return line.replace(/^(\/report \S+\s{2,})(.+)$/, (_, a, b) => a + p.grey(b));
++      }
++      // whole-line secondary: read: chain, its exclusion lines, do-nothing footer.
++      if (/^\s*read:/.test(raw) || /^\s{6,}\S/.test(raw)) return p.grey(line);
++      if (/^\s{2}(or do nothing|open |Check status)/.test(raw)) return p.grey(line);
++
++      let l = line;
++      l = l.replace(/[▁▂▃▄▅▆▇█]+/g, (m) => paintSpark(m, p)); // two-tone sparkline
++      l = l
++        .replace(/✓/g, p.green("✓"))
++        .replace(/⚠/g, p.amber("⚠"))
++        .replace(/✕/g, p.red("✕"))
++        .replace(/○/g, p.grey("○")); // neutral (unknown) marker
++      l = l.replace(/↑ ?\d+×|↑/g, (m) => p.amber(m)).replace(/↓ ?\d+×|↓/g, (m) => p.green(m));
++      l = l.replace(/\(last \d+ min\)|\(\d+ min window\)/g, (m) => p.amber(m)); // anomaly window
++      l = l.replace(/\(normal ~[^)]*\)|\(estimated\)/g, (m) => p.grey(m)); // baseline/estimate is context
++      l = l.replace(/^(\s+worst \w+\s+)(.+?)( — )/, (_, a, k, b) => a + p.green(k) + b); // attribution key (may contain spaces)
++      return l;
++    })
++    .join("\n");
++}
++
++const ANSI_PAINT: Paint = {
++  escape: (s) => s,
++  green: (s) => `\x1b[32m${s}\x1b[0m`,
++  amber: (s) => `\x1b[33m${s}\x1b[0m`,
++  red: (s) => `\x1b[31m${s}\x1b[0m`,
++  grey: (s) => `\x1b[90m${s}\x1b[0m`,
++  low: (s) => `\x1b[32m${s}\x1b[0m`,
++  high: (s) => `\x1b[33m${s}\x1b[0m`,
++};
++
++export function renderReportAnsi(vm: ReportViewModel): string {
++  return paintReport(renderReportPlain(vm), ANSI_PAINT);
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/report-messages.ts b/apps/webapp/app/presenters/v3/reports/report-messages.ts
+new file mode 100644
+index 00000000000..2d90ea016ed
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/report-messages.ts
+@@ -0,0 +1,39 @@
++/**
++ * Report-agnostic message infrastructure. Prose lives in each report's OWN catalog (e.g.
++ * `health/health-messages.ts`); this file only defines the resolver surface + a registry so the
++ * generic renderer can turn a VM's codes into strings by looking the catalog up via `vm.title`.
++ * No report vocabulary here — that would re-couple the renderer to a specific report.
++ */
++
++import { type ReasonCode, type Severity } from "./report-view-model";
++
++/**
++ * The resolver surface a report provides. Every renderer resolves a VM's codes through this;
++ * strings may carry {tokens} (e.g. {age}, {rate}) that the renderer fills from evidence.
++ */
++export type ReportMessages = {
++  metricLabel(id: string): string;
++  findingReason(findingType: string, reason: ReasonCode, opts?: { expanded?: boolean }): string;
++  readMessage(code: ReasonCode): string;
++  exclusionMessage(code: ReasonCode): string;
++  observationMessage(code: ReasonCode): string;
++  annotationMessage(code: ReasonCode): string;
++  statementMessage(findingType: string, severity: Severity, reason?: ReasonCode): string;
++  actionMessage(code: ReasonCode): string;
++};
++
++const catalogs = new Map<string, ReportMessages>();
++
++/** Register a report's catalog under its title (e.g. "health"). Called for its side effect. */
++export function registerReportMessages(title: string, messages: ReportMessages): void {
++  catalogs.set(title, messages);
++}
++
++/** Look up a report's catalog by `vm.title`. Throws if the report never registered one. */
++export function reportMessages(title: string): ReportMessages {
++  const messages = catalogs.get(title);
++  if (!messages) {
++    throw new Error(`report-messages: no catalog registered for report "${title}"`);
++  }
++  return messages;
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/report-registry.ts b/apps/webapp/app/presenters/v3/reports/report-registry.ts
+new file mode 100644
+index 00000000000..a0209dcfeda
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/report-registry.ts
+@@ -0,0 +1,37 @@
++/**
++ * The report catalog: which reports exist and how each loads + interprets its data. Keyed by
++ * report name so cost/regression/errors drop in later as new `{ load, interpret }` entries with
++ * no changes to the VM, renderers, route, tool, or presenter.
++ *
++ * Deliberately separate from `ReportPresenter` — the presenter only orchestrates (look up a
++ * loader by key, run it, single-flight); knowing WHICH reports exist is a distinct concern.
++ */
++
++import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
++import { interpret as interpretHealth } from "./health/health";
++import { loadHealthInput } from "./health/health-data";
++import { type ReportViewModel } from "./report-view-model";
++
++export type ReportLoader<TInput> = {
++  load: (env: AuthenticatedEnvironment, period: string) => Promise<TInput>;
++  interpret: (input: TInput) => ReportViewModel;
++};
++
++function defineReport<TInput>(loader: ReportLoader<TInput>): ReportLoader<unknown> {
++  return loader as ReportLoader<unknown>;
++}
++
++export const REPORT_REGISTRY: Record<string, ReportLoader<unknown>> = {
++  health: defineReport({
++    load: (env, period) => loadHealthInput(env, period),
++    interpret: interpretHealth,
++  }),
++};
++
++export const REPORT_KEYS = Object.keys(REPORT_REGISTRY);
++
++export function isReportKey(key: string): boolean {
++  // Object.hasOwn, not `in`: `in` matches prototype keys ("toString", "__proto__"),
++  // which would pass the route guard and then 500 in the loader.
++  return Object.hasOwn(REPORT_REGISTRY, key);
++}
+diff --git a/apps/webapp/app/presenters/v3/reports/report-view-model.ts b/apps/webapp/app/presenters/v3/reports/report-view-model.ts
+new file mode 100644
+index 00000000000..95ede3a24ca
+--- /dev/null
++++ b/apps/webapp/app/presenters/v3/reports/report-view-model.ts
+@@ -0,0 +1,226 @@
++/**
++ * Generic, render-agnostic contract for a Report. Semantic, not a UI tree: numbers +
++ * what they mean (codes, severities, units, series), never formatted strings or layout.
++ * Every renderer consumes this and owns presentation. Reasons are codes;
++ * `report-messages.ts` resolves them -> strings, so phrasing lives in one place.
++ *
++ * No React/DOM/IO. Report-agnostic — `health` is just one interpreter that emits it.
++ */
++
++export type Severity = "ok" | "warn" | "crit";
++
++export type Unit = "ms" | "count" | "ratio" | "perMin";
++
++/** A code resolved to a human string by `report-messages.ts`. */
++export type ReasonCode = string;
++
++/** A key into `ReportViewModel.links`, so a recommendation can point at a URL. */
++export type LinkKey = string;
++
++export type Delta = {
++  dir: "up" | "down" | "flat";
++  /** rounded value/normal multiplier; renderer decides whether to print "6×". */
++  mult?: number;
++};
++
++export type MetricSeries = {
++  points: number[];
++  /** "estimated" = a proxy (e.g. pending backlog), shown informational-only. */
++  kind: "measured" | "estimated";
++};
++
++export type Metric = {
++  /** CODE, e.g. "start_latency_p95" — messages map -> label "start latency". */
++  id: string;
++  value: number;
++  unit: Unit;
++  aggregation?: "p95" | "rate" | "ratio" | "count";
++  /** baseline; renderer formats "(normal ~7s)". */
++  normal?: number;
++  delta?: Delta;
++  series?: MetricSeries;
++  /** named sub-values for composite metrics (e.g. throughput { done, triggered }). */
++  breakdown?: Record<string, number>;
++  /** shown on a cause line INSTEAD of "(normal ~x)", e.g. "pinned 40 of last 60 min". */
++  annotation?: { code: ReasonCode; value?: number };
++  /**
++   * Whether `value` is a real measurement. "unknown" = there was no signal, so `value` is a
++   * placeholder (e.g. liveness age 0) that a structured consumer must NOT read as a real 0 —
++   * the finding's reason carries the "unknown" meaning. Absent = measured (the common case).
++   */
++  availability?: "measured" | "unknown";
++  severity: Severity;
++};
++
++export type Recommendation = {
++  code: ReasonCode;
++  link?: LinkKey;
++};
++
++/** A footer line: an action, or the "do nothing" option (carries value). */
++export type FooterEntry = {
++  code: ReasonCode;
++  link?: LinkKey;
++  /** a computed fact (e.g. drainMinutes), never invented. */
++  value?: number;
++};
++
++/** A ruled-out cause + its evidence, e.g. "not your code" (never emitted without evidence). */
++export type Exclusion = {
++  code: ReasonCode;
++  evidence?: Record<string, number>;
++};
++
++/**
++ * A supporting fact backing the verdict — a measured observation, NOT a ruled-out cause,
++ * e.g. "runs are completing at ~820/min". Kept separate from `Exclusion` so the two aren't
++ * conflated (an exclusion answers "what it ISN'T"; an observation states "what IS true").
++ */
++export type Observation = {
++  code: ReasonCode;
++  evidence?: Record<string, number>;
++};
++
++export type Finding = {
++  /** "flow" | "execution" | "liveness" | future "infrastructure" | "billing" */
++  type: string;
++  severity: Severity;
++  /** CODE for the state/cause, e.g. "env_limit_saturation" | "healthy". */
++  reason: ReasonCode;
++  /** CODE for the "read:" line. Built last, may span findings. */
++  read?: ReasonCode;
++  /** metric ids this finding covers, in causal order when degraded. */
++  metricIds: string[];
++  /** ONE primary action. */
++  recommendation?: Recommendation;
++  /** optional parenthetical — same shape as recommendation. */
++  hedge?: Recommendation;
++  /** contiguous breach window of the driving metric -> "(last 40 min)". */
++  anomalyWindow?: { minutes: number; touchesEnd: boolean };
++  /**
++   * which dimension/key owns the problem, only when share >= threshold. `of` is the
++   * denominator label the renderer prints (e.g. "pending" for flow, "failures" for execution)
++   * — so it never mislabels a failures share as "% of pending".
++   */
++  attribution?: { dim: string; key: string; share: number; of: string };
++  /** ruled-out causes + evidence — rendered under the `read:` line ("not your code …"). */
++  exclusions?: Exclusion[];
++  /** supporting facts + evidence — rendered under the `read:` line after the exclusions. */
++  observations?: Observation[];
++};
++
++export type SummaryStatement = {
++  findingType: string;
++  severity: Severity;
++  /**
++   * Normally the statement renders from (findingType, severity). Exceptions carry a reason:
++   * stale telemetry marks flow AND execution "unknown" -> "Flow/Execution unknown — data stale";
++   * liveness with no signal is "freshness_unknown" -> "data freshness unknown".
++   */
++  reason?: ReasonCode;
++};
++
++export type ReportLink = {
++  key: LinkKey;
++  label: string;
++  url: string;
++};
++
++/** a.k.a. ReportDocument — report-agnostic, render-agnostic. */
++export type ReportViewModel = {
++  /** "health" | "cost" | … */
++  title: string;
++  /** "prod" */
++  scope: string;
++  /** "last 1h" */
++  period: string;
++  /** "vs your 7d normal" */
++  baselineLabel?: string;
++  /** ISO string — passed in, never read from the clock inside interpret. */
++  generatedAt: string;
++  /** live window length in minutes — lets the renderer say "of last 60 min". */
++  windowMinutes: number;
++
++  summary: {
++    severity: Severity;
++    statements: SummaryStatement[];
++  };
++  findings: Finding[];
++  metrics: Metric[];
++  /** dense structured payload for agents. */
++  facts: Record<string, unknown>;
++  links: ReportLink[];
++  /** dominant finding's action + optional "do nothing" option. Max two entries. */
++  footer: FooterEntry[];
++};
++
++// ---------------------------------------------------------------------------
++// Interpret-side helpers (produce VM fields, no prose, no IO).
++// ---------------------------------------------------------------------------
++
++/** Direction + rounded multiplier of `value` against a `normal` baseline. */
++export function delta(value: number, normal: number | undefined): Delta {
++  if (normal === undefined || !Number.isFinite(normal) || normal === 0) {
++    return { dir: "flat" };
++  }
++  const diff = value - normal;
++  const dir = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
++  return { dir, mult: Math.round(value / normal) };
++}
++
++/** Severity of a scalar `x` against ascending warn/crit thresholds. */
++export function classifySeverity(x: number, t: { warn: number; crit: number }): Severity {
++  if (x >= t.crit) return "crit";
++  if (x >= t.warn) return "warn";
++  return "ok";
++}
++
++const SEVERITY_RANK: Record<Severity, number> = { ok: 0, warn: 1, crit: 2 };
++
++export function maxSeverity(...severities: Severity[]): Severity {
++  return severities.reduce<Severity>(
++    (acc, s) => (SEVERITY_RANK[s] > SEVERITY_RANK[acc] ? s : acc),
++    "ok"
++  );
++}
++
++export function isOk(severity: Severity): boolean {
++  return severity === "ok";
++}
++
++/**
++ * Trailing contiguous run of buckets that breach `threshold`, in minutes over
++ * `windowMinutes`. Default breach is at/over threshold (ABOVE, e.g. concurrency
++ * pinned at the limit); `below: true` counts at/under (BELOW, e.g. running capacity
++ * idle under a stall floor). `touchesEnd` = the run reaches the latest bucket
++ * ("(last 40 min)" vs mid-window "(14–16h)"). Undefined when nothing breaches.
++ */
++export function anomalyWindow(
++  series: number[],
++  threshold: number,
++  windowMinutes: number,
++  options?: { below?: boolean }
++): { minutes: number; touchesEnd: boolean } | undefined {
++  if (series.length === 0) return undefined;
++  const perBucket = windowMinutes / series.length;
++  const breaches = options?.below ? (v: number) => v <= threshold : (v: number) => v >= threshold;
++
++  // longest breaching run + whether any run touches the end.
++  let longest = 0;
++  let current = 0;
++  let touchesEnd = false;
++  for (let i = 0; i < series.length; i++) {
++    if (breaches(series[i])) {
++      current++;
++      longest = Math.max(longest, current);
++      if (i === series.length - 1) touchesEnd = true;
++    } else {
++      current = 0;
++    }
++  }
++  if (longest === 0) return undefined;
++  // If the run reaches the latest bucket, use the TRAILING length so "(last X min)" is
++  // accurate — a longer mid-window run must not inflate it.
++  const runBuckets = touchesEnd ? current : longest;
++  return { minutes: Math.round(runBuckets * perBucket), touchesEnd };
++}
+diff --git a/apps/webapp/app/routes/api.v1.reports.$key.ts b/apps/webapp/app/routes/api.v1.reports.$key.ts
+new file mode 100644
+index 00000000000..bcb504458cf
+--- /dev/null
++++ b/apps/webapp/app/routes/api.v1.reports.$key.ts
+@@ -0,0 +1,93 @@
++import { json } from "@remix-run/server-runtime";
++import { z } from "zod";
++import { ReportPresenter } from "~/presenters/v3/reports/ReportPresenter.server";
++import { isReportKey, REPORT_KEYS } from "~/presenters/v3/reports/report-registry";
++import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
++import { logger } from "~/services/logger.server";
++import { createLoaderApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
++
++const ParamsSchema = z.object({
++  key: z.string(),
++});
++
++/**
++ * The query tables the reports read. Authorize per-table (like api.v1.query.ts) rather than
++ * the permissive `{ type: "query", id: "all" }`: a JWT must be scoped to every table a report
++ * touches, so a token scoped to only some tables can't fetch a report that reads others. This
++ * is the union across reports; `health` reads all three.
++ */
++const REPORT_QUERY_TABLES = ["runs", "env_metrics", "queue_metrics"] as const;
++
++/** Canonical shorthand ("1h" / "30m" / "7d") with an upper bound, so the public API rejects
++ *  garbage and absurd ranges (e.g. "999999999d") itself rather than relying on downstream clip. */
++const UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
++const MAX_PERIOD_MS = 90 * UNIT_MS.d;
++const PeriodSchema = z
++  .string()
++  .regex(/^[1-9]\d*[smhdw]$/, "period must be a shorthand like '1h', '30m', or '7d'")
++  .refine(
++    (p) => Number(p.slice(0, -1)) * UNIT_MS[p.slice(-1)] <= MAX_PERIOD_MS,
++    "period is too large (max 90d)"
++  );
++
++const SearchParamsSchema = z.object({
++  period: PeriodSchema.optional(),
++  // markdown (default) for CLI/MCP · json (the raw VM) for web · ansi for a colour terminal.
++  format: z.enum(["markdown", "json", "ansi"]).default("markdown"),
++});
++
++export const loader = createLoaderApiRoute(
++  {
++    params: ParamsSchema,
++    searchParams: SearchParamsSchema,
++    // The MCP `get_report` tool calls this with a scoped JWT (read:query), so JWT auth
++    // must be allowed — same as api.v1.query.ts.
++    allowJWT: true,
++    findResource: async () => 1, // dummy — report key validated in the handler
++    authorization: {
++      action: "read",
++      // Per-table, not `id: "all"`: a JWT must be scoped to every query table the report reads.
++      resource: () => everyResource(REPORT_QUERY_TABLES.map((id) => ({ type: "query", id }))),
++    },
++  },
++  async ({ params, searchParams, authentication }) => {
++    if (!isReportKey(params.key)) {
++      return json(
++        { error: `Unknown report "${params.key}". Available: ${REPORT_KEYS.join(", ")}.` },
++        { status: 404 }
++      );
++    }
++
++    try {
++      const presenter = new ReportPresenter();
++      const vm = await presenter.call({
++        environment: authentication.environment,
++        key: params.key,
++        period: searchParams.period,
++      });
++
++      if (!vm) {
++        return json({ error: `Unknown report "${params.key}".` }, { status: 404 });
++      }
++
++      if (searchParams.format === "json") {
++        return json(vm, { status: 200 });
++      }
++
++      if (searchParams.format === "ansi") {
++        return new Response(renderReportAnsi(vm), {
++          status: 200,
++          headers: { "Content-Type": "text/plain; charset=utf-8" },
++        });
++      }
++
++      return new Response(renderReportMarkdown(vm), {
++        status: 200,
++        headers: { "Content-Type": "text/markdown; charset=utf-8" },
++      });
++    } catch (error) {
++      logger.error("Failed to render report", { error, key: params.key });
++      return json({ error: "Something went wrong, please try again." }, { status: 500 });
++    }
++  }
++);
+diff --git a/apps/webapp/app/services/queryService.server.ts b/apps/webapp/app/services/queryService.server.ts
+index 70af40ec89f..fb1bf11a72e 100644
+--- a/apps/webapp/app/services/queryService.server.ts
++++ b/apps/webapp/app/services/queryService.server.ts
+@@ -115,6 +115,18 @@ export type ExecuteQueryResult<T> =
+     }
+   | { success: false; error: Error };
+ 
++/** Own-property flag tagged on the transient "query concurrency exceeded" rejection (retryable). */
++const QUERY_CONCURRENCY_REJECTION_FLAG = "__queryConcurrencyRejection";
++
++/** True for the transient concurrency-limit rejection — a stable signal callers can retry on. */
++export function isQueryConcurrencyRejection(error: unknown): boolean {
++  return (
++    typeof error === "object" &&
++    error !== null &&
++    (error as Record<string, unknown>)[QUERY_CONCURRENCY_REJECTION_FLAG] === true
++  );
++}
++
+ const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
+   SECOND: 1,
+   MINUTE: 60,
+@@ -204,7 +216,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
+       acquireResult.reason === "key_limit"
+         ? `You've exceeded your query concurrency of ${orgLimit} for this project. Please try again later.`
+         : "We're experiencing a lot of queries at the moment. Please try again later.";
+-    return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
++    const error = new QueryError(errorMessage, { query: options.query });
++    // Stable marker so callers can retry on a transient concurrency rejection without
++    // matching the message text (which is free to change).
++    Object.assign(error, { [QUERY_CONCURRENCY_REJECTION_FLAG]: true });
++    return { success: false, error };
+   }
+ 
+   // Detect which table the query targets to determine the time column
+diff --git a/apps/webapp/test/reportHealth.test.ts b/apps/webapp/test/reportHealth.test.ts
+new file mode 100644
+index 00000000000..22f940ffbdd
+--- /dev/null
++++ b/apps/webapp/test/reportHealth.test.ts
+@@ -0,0 +1,511 @@
++import { describe, expect, it } from "vitest";
++import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
++import {
++  interpret,
++  isPendingIncreasing,
++  type HealthInput,
++} from "~/presenters/v3/reports/health/health";
++
++/** Golden A — degraded: env concurrency-limit saturation, backlog drains. */
++const INPUT_A: HealthInput = {
++  scope: "prod",
++  period: "last 1h",
++  baselineLabel: "vs your 7d normal",
++  generatedAt: "2026-07-20T12:00:00.000Z",
++  windowMinutes: 60,
++  flowSource: "queue_metrics_v1",
++  pending: { now: 1910, normal: 120, series: [120, 300, 700, 1200, 1600, 1910], estimated: false },
++  startLatency: {
++    p95Ms: 42000,
++    normalP95Ms: 7000,
++    series: [7000, 12000, 20000, 30000, 38000, 42000],
++  },
++  throughput: { donePerMin: 820, triggeredPerMin: 1150, normalTriggeredPerMin: 1100 },
++  failures: { rate: 0.013, normalRate: 0.011, series: [0.011, 0.011, 0.012, 0.013] },
++  duration: { p95Ms: 1200, normalP95Ms: 1180 },
++  liveness: { telemetryAgeMs: 4000 },
++  flowEvidence: {
++    runningSeries: [60, 80, 90, 100, 100, 100, 100, 100, 100],
++    envLimit: 100,
++    throttledShare: 0.1,
++    worstQueue: { name: "email-sends", share: 0.82 },
++    dlqDelta: 0,
++  },
++};
++
++/** Golden B — everything healthy. */
++const INPUT_B: HealthInput = {
++  scope: "prod",
++  period: "last 1h",
++  baselineLabel: "vs your 7d normal",
++  generatedAt: "2026-07-20T12:00:00.000Z",
++  windowMinutes: 60,
++  flowSource: "queue_metrics_v1",
++  pending: { now: 84, normal: 120, series: [110, 96, 88, 90, 84], estimated: false },
++  startLatency: { p95Ms: 6000, normalP95Ms: 7000, series: [6500, 6200, 6000, 5900, 6000] },
++  throughput: { donePerMin: 1000, triggeredPerMin: 1000, normalTriggeredPerMin: 1000 },
++  failures: { rate: 0.009, normalRate: 0.011, series: [0.01, 0.009, 0.009] },
++  duration: { p95Ms: 1100, normalP95Ms: 1180 },
++  liveness: { telemetryAgeMs: 2000 },
++  flowEvidence: {
++    runningSeries: [40, 45, 50, 48, 44],
++    envLimit: 100,
++    throttledShare: 0,
++    worstQueue: null,
++    dlqDelta: 0,
++  },
++};
++
++describe("health cause tree (Golden A — env limit saturation)", () => {
++  const vm = interpret(INPUT_A);
++  const flow = vm.findings.find((f) => f.type === "flow")!;
++
++  it("selects the env-limit-saturation cause + evidence", () => {
++    expect(flow.reason).toBe("env_limit_saturation");
++    expect(flow.severity).toBe("warn"); // crit raw, warn by the drainable policy
++    expect(flow.anomalyWindow).toEqual({ minutes: 40, touchesEnd: true });
++    expect(flow.attribution).toEqual({
++      dim: "queue",
++      key: "email-sends",
++      share: 0.82,
++      of: "pending",
++    });
++    expect(flow.exclusions).toEqual([]); // env-limit saturation rules nothing out...
++    expect(flow.observations).toEqual([
++      // ...it states supporting facts instead.
++      { code: "not_workers_platform", evidence: { donePerMin: 820 } },
++      { code: "nothing_dead_lettered", evidence: { dlq: 0 } },
++    ]);
++    expect(flow.read).toBe("saturation_chain");
++    const concurrency = vm.metrics.find((m) => m.id === "concurrency")!;
++    expect(concurrency.annotation).toEqual({ code: "pinned_minutes", value: 40 });
++  });
++
++  it("footer = raise limit + do-nothing (drains)", () => {
++    expect(vm.footer).toEqual([
++      { code: "raise_env_limit", link: "concurrency" },
++      { code: "do_nothing_drains", value: 2.3 },
++    ]);
++  });
++
++  it("renders", () => {
++    expect(renderReportMarkdown(vm)).toMatchInlineSnapshot(`
++      "/report health        prod · last 1h · vs your 7d normal
++
++      🟡 Flow slowing  ·  🟢 Execution healthy  ·  🟢 data fresh
++
++      FLOW        🟡 at your env concurrency limit (last 40 min)
++
++        concurrency     100/100           ▁▅▆█████   pinned 40 of last 60 min
++
++        pending         1,910     ↑ 16×   ▁▁▂▃▅▅▇█   (normal ~120)
++
++        start latency   p95 42s   ↑ 6×    ▁▁▂▄▆▆▇█   (normal ~7s)
++
++        worst queue     email-sends — 82% of pending
++
++        read: limit saturated → incoming work exceeds capacity → backlog grows
++              runs are completing at ~820/min
++              nothing dead-lettered
++
++      EXECUTION   🟢 the runs that DO start are fine
++
++        failures 1.3% (normal ~1.1%) · durations normal
++        read: runs are completing normally
++
++      LIVENESS    🟢 fresh — telemetry current, updated 4s ago
++
++      → Raise the env concurrency limit
++        or do nothing — backlog drains in ~2.3 min once triggers ease"
++    `);
++  });
++});
++
++describe("health (Golden B — healthy)", () => {
++  const vm = interpret(INPUT_B);
++
++  it("all findings healthy, footer nothing-to-do", () => {
++    expect(vm.summary.severity).toBe("ok");
++    expect(vm.findings.map((f) => f.severity)).toEqual(["ok", "ok", "ok"]);
++    expect(vm.footer).toEqual([{ code: "nothing_to_do" }]);
++  });
++
++  it("renders", () => {
++    expect(renderReportMarkdown(vm)).toMatchInlineSnapshot(`
++      "/report health        prod · last 1h · vs your 7d normal
++
++      🟢 Flow healthy  ·  🟢 Execution healthy  ·  🟢 data fresh
++
++      FLOW        🟢 starting normally — pending 84 (normal ~120) · starts p95 6s
++
++      EXECUTION   🟢 completing normally — failures 0.9% (normal ~1.1%) · durations normal
++
++      LIVENESS    🟢 fresh — telemetry current, updated 2s ago
++
++      → nothing to do"
++    `);
++  });
++});
++
++describe("snapshot fallback path flags the estimated backlog trend", () => {
++  // No queue-metrics evidence -> the backlog series is an estimate (finished-vs-triggered proxy).
++  const snapshot: HealthInput = {
++    ...INPUT_B,
++    flowSource: "snapshot+runs",
++    pending: { now: 6000, series: [1000, 3000, 6000], estimated: true }, // normal omitted on snapshot
++    flowEvidence: {
++      runningSeries: [],
++      envLimit: 0,
++      throttledShare: 0,
++      worstQueue: null,
++      dlqDelta: null,
++    },
++  };
++
++  it("renders an (estimated) caveat on the proxy series, not a bare sparkline", () => {
++    const vm = interpret(snapshot);
++    expect(vm.findings.find((f) => f.type === "flow")!.reason).toBe("backlog");
++    const md = renderReportMarkdown(vm);
++    expect(md).toContain("(estimated)"); // the human surface signals the trend is a proxy
++  });
++});
++
++describe("liveness trust guard (telemetry freshness)", () => {
++  it("stale telemetry forces execution unknown + crit summary + control-plane footer", () => {
++    const stale: HealthInput = { ...INPUT_A, liveness: { telemetryAgeMs: 600_000 } };
++    const vm = interpret(stale);
++    const execution = vm.findings.find((f) => f.type === "execution")!;
++    expect(execution.reason).toBe("unknown");
++    expect(execution.read).toBe("data_stale");
++    expect(vm.summary.severity).toBe("crit");
++    // #6: footer points at the pipeline, not "raise the env limit" off stale data.
++    expect(vm.footer).toEqual([{ code: "check_control_plane", link: "status" }]);
++  });
++
++  it("no freshness signal is 'unknown', NOT stale — it does not trust-guard execution", () => {
++    const unknown: HealthInput = {
++      ...INPUT_A,
++      // healthy execution so we can see the guard did NOT fire.
++      failures: { rate: 0.009, normalRate: 0.011, series: [0.009] },
++      liveness: { telemetryAgeMs: null },
++    };
++    const vm = interpret(unknown);
++    const execution = vm.findings.find((f) => f.type === "execution")!;
++    const liveness = vm.findings.find((f) => f.type === "liveness")!;
++    expect(liveness.reason).toBe("freshness_unknown");
++    expect(liveness.severity).toBe("ok"); // no signal is NEUTRAL, not a warning
++    expect(execution.reason).not.toBe("unknown");
++  });
++
++  it("a healthy but idle env (no telemetry signal) reads overall green, not yellow", () => {
++    // Golden B is all-healthy; drop its telemetry signal -> the verdict must stay ok, since
++    // "freshness unknown" is neutral and must not drag a fine env into a yellow report.
++    const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
++    expect(vm.summary.severity).toBe("ok");
++    expect(vm.findings.find((f) => f.type === "liveness")!.reason).toBe("freshness_unknown");
++    // ...but the marker is NEUTRAL (⚪), not a confident green — the state is genuinely unknown.
++    const md = renderReportMarkdown(vm);
++    expect(md).toContain("⚪");
++    expect(md).not.toContain("🟡");
++  });
++});
++
++describe("isPendingIncreasing", () => {
++  it("detects a positive trend", () => {
++    expect(isPendingIncreasing([120, 300, 700, 1200, 1600, 1910])).toBe(true);
++    expect(isPendingIncreasing([110, 96, 88, 90, 84])).toBe(false);
++  });
++});
++
++/**
++ * Fixed-priority cause tree: the first discriminator that fires wins. Each case starts
++ * from Golden A and overrides ONLY flow evidence so the intended discriminator matches
++ * (Golden A itself covers env_limit_saturation).
++ */
++describe("flow cause tree — cause selection per discriminator", () => {
++  const withFlow = (
++    flowEvidence: Partial<HealthInput["flowEvidence"]>,
++    throughput?: Partial<HealthInput["throughput"]>
++  ): HealthInput => ({
++    ...INPUT_A,
++    throughput: { ...INPUT_A.throughput, ...throughput },
++    flowEvidence: { ...INPUT_A.flowEvidence, ...flowEvidence },
++  });
++
++  const flowReason = (input: HealthInput) =>
++    interpret(input).findings.find((f) => f.type === "flow")!.reason;
++
++  it("env_limit_saturation — concurrency pinned at the env limit", () => {
++    expect(flowReason(INPUT_A)).toBe("env_limit_saturation");
++  });
++
++  it("dequeue_stall — capacity idle while the backlog grows", () => {
++    // running far below the limit (0.1) with a rising backlog + elevated latency.
++    expect(flowReason(withFlow({ runningSeries: Array(9).fill(10) }))).toBe("dequeue_stall");
++  });
++
++  it("queue_limit_throttling — throttled, but the env limit is not the bottleneck", () => {
++    expect(flowReason(withFlow({ runningSeries: Array(9).fill(50), throttledShare: 0.5 }))).toBe(
++      "queue_limit_throttling"
++    );
++  });
++
++  it("selects queue throttling over dequeue stall when both shapes match", () => {
++    // low running (would look like a stall) BUT the queue is throttling — the known config
++    // bottleneck must win, not "it's on our side".
++    expect(flowReason(withFlow({ runningSeries: Array(9).fill(10), throttledShare: 0.5 }))).toBe(
++      "queue_limit_throttling"
++    );
++  });
++
++  it("trigger_spike — triggers >= 3x the normal rate", () => {
++    expect(
++      flowReason(
++        withFlow(
++          { runningSeries: Array(9).fill(50), throttledShare: 0 },
++          { triggeredPerMin: 3300, normalTriggeredPerMin: 1100 }
++        )
++      )
++    ).toBe("trigger_spike");
++  });
++
++  it("trigger_surge — new volume with no baseline (multiplier can't be computed)", () => {
++    // normal 0 makes a multiplier meaningless, so an absolute rate selects "new volume"
++    // instead of dropping to the v1 fallback (a spike from a zero baseline was invisible before).
++    const input = withFlow(
++      { runningSeries: Array(9).fill(50), throttledShare: 0 },
++      { triggeredPerMin: 5000, normalTriggeredPerMin: 0 }
++    );
++    expect(flowReason(input)).toBe("trigger_surge");
++    const triggered = interpret(input).metrics.find((m) => m.id === "triggered")!;
++    expect(triggered.annotation).toEqual({ code: "surge_rate", value: 5000 });
++  });
++
++  it("does not select trigger_spike when completions keep pace and pending falls", () => {
++    // 3× the normal trigger rate, but the backlog is draining (net >= 0, pending falling) — so the
++    // spike is NOT the cause of degradation (elevated latency is). Blaming it would contradict
++    // its own "queue fills faster than it drains" read.
++    const input: HealthInput = {
++      ...INPUT_A,
++      pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
++      throughput: { donePerMin: 3300, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
++      flowEvidence: {
++        ...INPUT_A.flowEvidence,
++        runningSeries: Array(9).fill(50),
++        throttledShare: 0,
++      },
++    };
++    expect(flowReason(input)).not.toBe("trigger_spike");
++    expect(flowReason(input)).toBe("start_latency"); // falls through to the v1 symptom
++  });
++
++  it("does not select trigger_surge when new volume is draining", () => {
++    // No baseline + high volume, but completions outpace triggers and the backlog falls — not a backup.
++    const input: HealthInput = {
++      ...INPUT_A,
++      pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
++      throughput: { donePerMin: 6000, triggeredPerMin: 5000, normalTriggeredPerMin: 0 },
++      flowEvidence: {
++        ...INPUT_A.flowEvidence,
++        runningSeries: Array(9).fill(50),
++        throttledShare: 0,
++      },
++    };
++    expect(flowReason(input)).not.toBe("trigger_surge");
++  });
++
++  it("fallback — degraded with no discriminator -> v1 symptom (start latency)", () => {
++    expect(flowReason(withFlow({ runningSeries: Array(9).fill(50), throttledShare: 0 }))).toBe(
++      "start_latency"
++    );
++  });
++});
++
++describe("env_limit_saturation read does not claim a start lag that isn't there", () => {
++  // Pinned concurrency + rising backlog, but start latency is still healthy — saturation can grow
++  // a backlog before p95 latency crosses its threshold, so the read must not assert "starts lag".
++  const input: HealthInput = {
++    ...INPUT_A,
++    startLatency: { p95Ms: 6000, normalP95Ms: 7000, series: [6000, 6100, 6000, 5900, 6000] },
++    flowEvidence: { ...INPUT_A.flowEvidence, runningSeries: Array(9).fill(100) },
++  };
++  const vm = interpret(input);
++  const flow = vm.findings.find((f) => f.type === "flow")!;
++
++  it("still selects env_limit_saturation with a latency-free read", () => {
++    expect(flow.reason).toBe("env_limit_saturation");
++    expect(flow.read).toBe("saturation_chain");
++    expect(vm.metrics.find((m) => m.id === "start_latency_p95")!.severity).toBe("ok");
++    const md = renderReportMarkdown(vm);
++    expect(md).toContain("incoming work exceeds capacity");
++    expect(md).not.toContain("starts lag");
++  });
++});
++
++describe("trigger spike does not exonerate user code", () => {
++  const spike = interpret({
++    ...INPUT_A,
++    throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
++    flowEvidence: { ...INPUT_A.flowEvidence, runningSeries: Array(9).fill(50), throttledShare: 0 },
++  });
++
++  it("reports execution is healthy but never claims 'NOT a code problem'", () => {
++    expect(spike.findings.find((f) => f.type === "flow")!.reason).toBe("trigger_spike");
++    const md = renderReportMarkdown(spike);
++    expect(md).toContain("runs that start are completing normally"); // flow exclusion (proven fact)
++    expect(md).not.toContain("NOT a code problem"); // a code path may BE flooding the queue
++  });
++
++  it("dequeue_stall (platform-side) still reads 'NOT a code problem'", () => {
++    const stall = interpret({
++      ...INPUT_A,
++      flowEvidence: { ...INPUT_A.flowEvidence, runningSeries: Array(9).fill(10) },
++    });
++    expect(stall.findings.find((f) => f.type === "flow")!.reason).toBe("dequeue_stall");
++    expect(renderReportMarkdown(stall)).toContain("NOT a code problem");
++  });
++});
++
++describe("ANSI render (terminal)", () => {
++  const ansi = renderReportAnsi(interpret(INPUT_A));
++
++  it("uses glyphs + ANSI colour, never the markdown status emoji", () => {
++    expect(ansi).toMatch(/\x1b\[\d+m/); // an ANSI SGR colour code
++    expect(ansi).toMatch(/[✓⚠✕]/); // severity glyphs (not emoji)
++    expect(ansi).not.toMatch(/[🟢🟡🔴]/u); // emoji are the markdown surface only
++  });
++});
++
++describe("exclusions are proven, not assumed", () => {
++  const withFlow = (
++    flowEvidence: Partial<HealthInput["flowEvidence"]>,
++    over: Partial<HealthInput> = {}
++  ): HealthInput => ({
++    ...INPUT_A,
++    ...over,
++    flowEvidence: { ...INPUT_A.flowEvidence, ...flowEvidence },
++  });
++  const exclusionCodes = (input: HealthInput) =>
++    (interpret(input).findings.find((f) => f.type === "flow")!.exclusions ?? []).map((e) => e.code);
++  const observationCodes = (input: HealthInput) =>
++    (interpret(input).findings.find((f) => f.type === "flow")!.observations ?? []).map(
++      (o) => o.code
++    );
++
++  it("dequeue_stall claims not-your-code AND not-your-config (both proven: healthy exec, no pin, no throttle)", () => {
++    // dequeue_stall only fires with no env-pin and no throttling, so "limits aren't the
++    // bottleneck" is genuinely proven here (a throttled shape selects queue_limit_throttling).
++    const codes = exclusionCodes(withFlow({ runningSeries: Array(9).fill(10) }));
++    expect(codes).toContain("not_your_code");
++    expect(codes).toContain("not_your_config");
++  });
++
++  it("trigger_spike observes healthy execution without ruling out user code", () => {
++    // Backing-up spike (net < 0, pending rising) with healthy execution -> "execution_healthy" as
++    // an OBSERVATION, NOT the exclusion "not_your_code": a code path fanning out task.trigger could
++    // BE the cause of the spike, so it must not be ruled out.
++    const healthyInput = withFlow(
++      { runningSeries: Array(9).fill(50), throttledShare: 0 },
++      { throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 } }
++    );
++    expect(observationCodes(healthyInput)).toContain("execution_healthy");
++    expect(exclusionCodes(healthyInput)).not.toContain("not_your_code");
++
++    // Execution failing -> can't even observe that execution is healthy.
++    const degradedInput = withFlow(
++      { runningSeries: Array(9).fill(50), throttledShare: 0 },
++      {
++        throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
++        failures: { rate: 0.2, normalRate: 0.01, series: [0.2] },
++      }
++    );
++    expect(observationCodes(degradedInput)).not.toContain("execution_healthy");
++  });
++});
++
++describe("stale-telemetry trust guard covers flow (not just execution)", () => {
++  const stale = interpret({ ...INPUT_A, liveness: { telemetryAgeMs: 600_000 } });
++  const flow = stale.findings.find((f) => f.type === "flow")!;
++  const execution = stale.findings.find((f) => f.type === "execution")!;
++
++  it("marks flow unknown + crit and strips its action / attribution / exclusions / anomaly window", () => {
++    expect(flow.reason).toBe("unknown");
++    expect(flow.severity).toBe("crit"); // consistent across summary / section glyph / JSON
++    expect(flow.recommendation).toBeUndefined();
++    expect(flow.attribution).toBeUndefined();
++    expect(flow.exclusions).toBeUndefined();
++    expect(flow.observations).toBeUndefined();
++    expect(flow.anomalyWindow).toBeUndefined(); // no stale causal evidence left in the VM
++  });
++
++  it("marks execution unknown + crit too", () => {
++    expect(execution.reason).toBe("unknown");
++    expect(execution.severity).toBe("crit");
++  });
++
++  it("strips stale-derived metric annotations so format=json can't leak them", () => {
++    // Golden A sets concurrency.annotation ("pinned 40 of last 60 min") before the guard runs;
++    // a stale feed must not surface that narrative on the raw JSON metrics.
++    expect(stale.metrics.every((m) => m.annotation === undefined)).toBe(true);
++  });
++
++  it("renders both sections red as unknown, with no stale causal verdict", () => {
++    // The unknown headline already says "data stale"; there's no `read:` line to render (it would
++    // just repeat that), and no stale causal evidence (anomaly window) survives.
++    const md = renderReportMarkdown(stale);
++    expect(md).toContain("🔴 Flow unknown — data stale");
++    expect(md).toContain("🔴 flow can't be assessed");
++    expect(md).not.toContain("(last 40 min)"); // anomaly window gone
++  });
++
++  it("drops the CH-derived link from the VM when telemetry is stale", () => {
++    // flow's "concurrency" link is gone; only liveness' control-plane link may remain.
++    expect(stale.links.map((l) => l.key)).not.toContain("concurrency");
++  });
++
++  it("flags the structured facts informational-only so an agent won't act on stale numbers", () => {
++    expect(stale.facts).toMatchObject({ trustworthy: false, staleReason: "telemetry_stale" });
++    // fresh input is trustworthy.
++    expect(interpret(INPUT_A).facts).toMatchObject({ trustworthy: true });
++  });
++});
++
++describe("freshness unknown is distinct from lagging", () => {
++  it("renders 'data freshness unknown' in the summary, not 'data lagging'", () => {
++    const md = renderReportMarkdown(interpret({ ...INPUT_A, liveness: { telemetryAgeMs: null } }));
++    expect(md).toContain("data freshness unknown");
++    expect(md).not.toContain("data lagging");
++  });
++
++  it("does not change the flow severity policy (drainable crit still downgrades to warn)", () => {
++    const fresh = interpret(INPUT_A).findings.find((f) => f.type === "flow")!;
++    const unknown = interpret({ ...INPUT_A, liveness: { telemetryAgeMs: null } }).findings.find(
++      (f) => f.type === "flow"
++    )!;
++    expect(unknown.severity).toBe(fresh.severity); // warn, unaffected by unknown freshness
++  });
++
++  it("marks the liveness metric availability 'unknown' so value 0 isn't read as fresh", () => {
++    const unknown = interpret({ ...INPUT_A, liveness: { telemetryAgeMs: null } });
++    const metric = unknown.metrics.find((m) => m.id === "liveness")!;
++    expect(metric.availability).toBe("unknown");
++    expect(interpret(INPUT_A).metrics.find((m) => m.id === "liveness")!.availability).toBe(
++      "measured"
++    );
++  });
++});
++
++describe("zero baseline is not a false green (absolute floors)", () => {
++  it("pending spiking from a 0 baseline is not healthy", () => {
++    const vm = interpret({
++      ...INPUT_B,
++      pending: { now: 6000, normal: 0, series: [0, 100, 6000], estimated: false },
++    });
++    expect(vm.findings.find((f) => f.type === "flow")!.severity).not.toBe("ok");
++  });
++
++  it("failures spiking from a 0% baseline is not healthy", () => {
++    const vm = interpret({ ...INPUT_B, failures: { rate: 0.1, normalRate: 0, series: [0.1] } });
++    expect(vm.findings.find((f) => f.type === "execution")!.severity).not.toBe("ok");
++  });
++});
+diff --git a/apps/webapp/test/reportHealthData.test.ts b/apps/webapp/test/reportHealthData.test.ts
+new file mode 100644
+index 00000000000..ae29f7a3700
+--- /dev/null
++++ b/apps/webapp/test/reportHealthData.test.ts
+@@ -0,0 +1,242 @@
++import { describe, expect, it } from "vitest";
++import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
++import {
++  type HealthDeps,
++  type HealthQueryRunner,
++  loadHealthInput,
++} from "~/presenters/v3/reports/health/health-data";
++
++/**
++ * Exercises `loadHealthInput`'s ORCHESTRATION through its query seam (`HealthDeps`):
++ * source selection, snapshot fallback (empty + throw), dlq parsing, window-from-timeRange.
++ * The runner is injected at the IO boundary — SQL/TRQL translation and CH aggregation are
++ * tested by the query service and the `@internal/clickhouse` MV tests.
++ */
++
++const NOW = new Date("2026-07-22T12:00:00.000Z");
++
++const fakeEnv = {
++  id: "env_1",
++  slug: "prod",
++  organization: { id: "org_1" },
++  project: { id: "proj_1" },
++} as unknown as AuthenticatedEnvironment;
++
++type Rows = Record<string, unknown>[];
++
++/** Canned rows per query kind; the resolved timeRange is keyed off the period (7d = baseline). */
++function makeDeps(opts: {
++  runs: Rows;
++  runsSeries?: Rows;
++  envSeries?: Rows;
++  envScalar?: Rows;
++  dlqTotal?: Rows;
++  worst?: Rows;
++  liveWindowMin?: number;
++  pendingNow?: number;
++  throwOnEnv?: boolean;
++  redisThrows?: boolean;
++}): HealthDeps {
++  const rangeFor = (period: string) => {
++    const min = period === "7d" ? 7 * 1440 : (opts.liveWindowMin ?? 60);
++    return { from: new Date(NOW.getTime() - min * 60_000), to: NOW };
++  };
++  const runQuery: HealthQueryRunner = async (_env, query, period) => {
++    const timeRange = rangeFor(period);
++    const wrap = (rows: Rows = []) => ({ rows, timeRange });
++    const isEnv = query.includes("FROM env_metrics");
++    if (isEnv && opts.throwOnEnv) throw new Error("env_metrics unavailable");
++    if (query.includes("dlq_total")) return wrap(opts.dlqTotal);
++    if (isEnv && query.includes("timeBucket")) return wrap(opts.envSeries);
++    if (isEnv) return wrap(opts.envScalar ?? [{}]);
++    if (query.includes("FROM queue_metrics")) return wrap(opts.worst);
++    if (query.includes("task_identifier")) return wrap([]);
++    if (query.includes("FROM runs") && query.includes("timeBucket")) return wrap(opts.runsSeries);
++    return wrap(opts.runs); // runs scalar (live + baseline)
++  };
++  const lengthOfEnvQueue = opts.redisThrows
++    ? async () => {
++        throw new Error("redis unavailable");
++      }
++    : async () => opts.pendingNow ?? 0;
++  return { runQuery, lengthOfEnvQueue };
++}
++
++const RUNS_SCALAR: Rows = [
++  {
++    start_latency_p95: 7000,
++    dur_p95: 1000,
++    failures: 1,
++    completed: 100,
++    triggered: 120,
++    last_activity: "2026-07-22 11:59:58",
++  },
++];
++
++describe("loadHealthInput — orchestration (query seam)", () => {
++  it("measured path: queue_metrics source, real pending, parsed dlq, window from timeRange", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        envSeries: [
++          { t: "a", queued: 100, running: 50, throttled: 0, wait_p95: 5000 },
++          { t: "b", queued: 300, running: 60, throttled: 1, wait_p95: 9000 },
++        ],
++        envScalar: [{ wait_p95: 9000, avg_queued: 200, env_limit: 100 }],
++        dlqTotal: [{ dlq_total: 0 }],
++        worst: [
++          { name: "email-sends", latest_queued: 82 },
++          { name: "other", latest_queued: 18 },
++        ],
++        pendingNow: 1910,
++        liveWindowMin: 60,
++      })
++    );
++
++    expect(input.flowSource).toBe("queue_metrics_v1");
++    expect(input.pending.estimated).toBe(false);
++    expect(input.pending.now).toBe(1910);
++    expect(input.flowEvidence.dlqDelta).toBe(0);
++    expect(input.flowEvidence.worstQueue).toEqual({ name: "email-sends", share: 0.82 });
++    expect(input.windowMinutes).toBe(60);
++    expect(input.throughput.triggeredPerMin).toBeCloseTo(120 / 60);
++  });
++
++  it("dlq best-effort query returns nothing -> dlqDelta is null (unmeasured, no false 'nothing dead-lettered')", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        envSeries: [{ t: "a", queued: 10, running: 5, throttled: 0, wait_p95: 100 }],
++        envScalar: [{ wait_p95: 100, avg_queued: 8, env_limit: 100 }],
++        dlqTotal: [],
++      })
++    );
++
++    expect(input.flowSource).toBe("queue_metrics_v1");
++    expect(input.flowEvidence.dlqDelta).toBeNull();
++  });
++
++  it("no measured env rows -> snapshot fallback (estimated backlog)", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
++        envSeries: [], // pipeline hasn't populated env_metrics for this env yet
++      })
++    );
++
++    expect(input.flowSource).toBe("snapshot+runs");
++    expect(input.pending.estimated).toBe(true);
++  });
++
++  it("env_metrics query throws -> snapshot fallback, never a 500 (bug-2 guard)", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
++        throwOnEnv: true,
++      })
++    );
++
++    expect(input.flowSource).toBe("snapshot+runs");
++    expect(input.pending.estimated).toBe(true);
++  });
++
++  it("windowMinutes comes from the resolved (clipped) timeRange, not the period string", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        envSeries: [{ t: "a", queued: 10, running: 5, throttled: 0, wait_p95: 100 }],
++        envScalar: [{ wait_p95: 100, avg_queued: 8, env_limit: 100 }],
++        dlqTotal: [{ dlq_total: 3 }],
++        liveWindowMin: 45,
++      })
++    );
++
++    expect(input.windowMinutes).toBe(45);
++    expect(input.flowEvidence.dlqDelta).toBe(3);
++  });
++
++  it("telemetry age is measured from the newest ROW, not the query window end (= NOW)", async () => {
++    const OLD = "2026-07-22 11:00:00"; // 60 min before NOW, though the query window ends at NOW
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: [{ ...RUNS_SCALAR[0], last_activity: OLD }],
++        envSeries: [{ t: "a", queued: 10, running: 5, throttled: 0, wait_p95: 100 }],
++        envScalar: [{ wait_p95: 100, avg_queued: 8, env_limit: 100, last_bucket: OLD }],
++      })
++    );
++    // ~60 min from the row timestamp, NOT ~0 from timeRange.to
++    expect(input.liveness.telemetryAgeMs).toBeGreaterThan(50 * 60_000);
++  });
++
++  it("terminal runs (failed/canceled) do not accumulate as snapshot backlog", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        // every triggered run also FINISHED this bucket (some failed) -> proxy stays flat at 0
++        runsSeries: [
++          {
++            t: "a",
++            triggered: 50,
++            completed: 30,
++            finished: 50,
++            start_latency_p95: 1000,
++            failures: 20,
++          },
++          {
++            t: "b",
++            triggered: 40,
++            completed: 25,
++            finished: 40,
++            start_latency_p95: 1000,
++            failures: 15,
++          },
++        ],
++        envSeries: [], // force the snapshot path
++      })
++    );
++    expect(input.flowSource).toBe("snapshot+runs");
++    expect(Math.max(...input.pending.series)).toBe(0);
++  });
++
++  it("Redis rejection falls back to the latest measured queued, not a confident 0", async () => {
++    const input = await loadHealthInput(
++      fakeEnv,
++      "1h",
++      NOW,
++      makeDeps({
++        runs: RUNS_SCALAR,
++        envSeries: [
++          { t: "a", queued: 10, running: 5, throttled: 0, wait_p95: 100 },
++          { t: "b", queued: 900, running: 5, throttled: 0, wait_p95: 100 },
++        ],
++        envScalar: [{ wait_p95: 100, avg_queued: 8, env_limit: 100 }],
++        redisThrows: true,
++      })
++    );
++    expect(input.flowSource).toBe("queue_metrics_v1");
++    expect(input.pending.now).toBe(900);
++  });
++});
+diff --git a/packages/cli-v3/src/apiClient.ts b/packages/cli-v3/src/apiClient.ts
+index d01062440e9..bebb090debf 100644
+--- a/packages/cli-v3/src/apiClient.ts
++++ b/packages/cli-v3/src/apiClient.ts
+@@ -368,6 +368,49 @@ export class CliApiClient {
+     );
+   }
+ 
++  /**
++   * Fetch a server-rendered report (text + sparkline). Thin pass-through. `format`:
++   * "markdown" (agents/chat) or "ansi" (terminal). Uses this client's env API key.
++   */
++  async getReport(
++    key: string,
++    options?: { period?: string; format?: "markdown" | "ansi" }
++  ): Promise<string> {
++    if (!this.accessToken) {
++      throw new Error("getReport: No access token");
++    }
++
++    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
++    if (options?.period) {
++      searchParams.set("period", options.period);
++    }
++
++    const response = await fetch(
++      `${this.apiURL}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
++      {
++        method: "GET",
++        headers: this.getHeaders(),
++      }
++    );
++
++    if (!response.ok) {
++      let bodySnippet = "";
++      try {
++        const text = (await response.text()).trim();
++        bodySnippet = text.length > 500 ? `${text.slice(0, 500)}…` : text;
++      } catch {
++        // best-effort; ignore
++      }
++      throw new Error(
++        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
++          bodySnippet ? ` — ${bodySnippet}` : ""
++        }`
++      );
++    }
++
++    return response.text();
++  }
++
+   async importEnvVars(
+     projectRef: string,
+     slug: string,
+diff --git a/packages/cli-v3/src/cli/index.ts b/packages/cli-v3/src/cli/index.ts
+index e9012296553..fc3958fb1d6 100644
+--- a/packages/cli-v3/src/cli/index.ts
++++ b/packages/cli-v3/src/cli/index.ts
+@@ -14,6 +14,7 @@ import { configureUpdateCommand } from "../commands/update.js";
+ import { configureWhoamiCommand } from "../commands/whoami.js";
+ import { configureMintTokenCommand } from "../commands/mint-token.js";
+ import { configureMcpCommand } from "../commands/mcp.js";
++import { configureReportCommand } from "../commands/report.js";
+ import { COMMAND_NAME } from "../consts.js";
+ import { VERSION } from "../version.js";
+ import { installExitHandler } from "./common.js";
+@@ -42,6 +43,7 @@ configureUpdateCommand(program);
+ configurePreviewCommand(program);
+ configureAnalyzeCommand(program);
+ configureMcpCommand(program);
++configureReportCommand(program);
+ configureInstallMcpCommand(program);
+ configureSkillsCommand(program);
+ 
+diff --git a/packages/cli-v3/src/commands/mcp.ts b/packages/cli-v3/src/commands/mcp.ts
+index 7f94e40a3af..cc5d951eb24 100644
+--- a/packages/cli-v3/src/commands/mcp.ts
++++ b/packages/cli-v3/src/commands/mcp.ts
+@@ -10,6 +10,7 @@ import { serverMetadata } from "../mcp/config.js";
+ import { McpContext } from "../mcp/context.js";
+ import { toMcpContextOptions } from "../mcp/contextOptions.js";
+ import { FileLogger } from "../mcp/logger.js";
++import { registerPrompts } from "../mcp/prompts.js";
+ import { registerTools } from "../mcp/tools.js";
+ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+ import { logger } from "../utilities/logger.js";
+@@ -21,6 +22,7 @@ const McpCommandOptions = CommonCommandOptions.extend({
+   logFile: z.string().optional(),
+   devOnly: z.boolean().default(false),
+   readonly: z.boolean().default(false),
++  install: z.boolean().default(false),
+ });
+ 
+ export type McpCommandOptions = z.infer<typeof McpCommandOptions>;
+@@ -40,6 +42,10 @@ export function configureMcpCommand(program: Command) {
+         "Run in read-only mode. Write tools (deploy, trigger_task, cancel_run) are hidden from the AI."
+       )
+       .option("--log-file <log file>", "The file to log to")
++      .option(
++        "--install",
++        "Run the interactive install wizard instead of starting the server. Bare `mcp` always starts the server (so clients that spawn it over a PTY don't get stuck in the wizard)."
++      )
+   ).action(async (options) => {
+     wrapCommandAction("mcp", McpCommandOptions, options, async (opts) => {
+       await mcpCommand(opts);
+@@ -48,7 +54,11 @@ export function configureMcpCommand(program: Command) {
+ }
+ 
+ export async function mcpCommand(options: McpCommandOptions) {
+-  if (process.stdout.isTTY) {
++  // The install wizard runs ONLY when explicitly requested (`trigger mcp --install`).
++  // Bare `trigger mcp` always starts the server — MCP hosts (e.g. Claude Code) spawn it
++  // over a PTY, so `process.stdout.isTTY` is true even though no human is there; gating
++  // the wizard on isTTY made the server never start and the client time out.
++  if (options.install) {
+     await printStandloneInitialBanner(true, options.profile);
+ 
+     intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
+@@ -98,6 +108,7 @@ export async function mcpCommand(options: McpCommandOptions) {
+   const context = new McpContext(server, toMcpContextOptions(options, fileLogger));
+ 
+   registerTools(context);
++  registerPrompts(context);
+ 
+   await server.connect(transport);
+ }
+diff --git a/packages/cli-v3/src/commands/report.ts b/packages/cli-v3/src/commands/report.ts
+new file mode 100644
+index 00000000000..9fb46ac8801
+--- /dev/null
++++ b/packages/cli-v3/src/commands/report.ts
+@@ -0,0 +1,111 @@
++import { tryCatch } from "@trigger.dev/core/utils";
++import type { Command } from "commander";
++import { z } from "zod";
++import {
++  CommonCommandOptions,
++  commonOptions,
++  handleTelemetry,
++  wrapCommandAction,
++} from "../cli/common.js";
++import { loadConfig } from "../config.js";
++import { ReportPeriodSchema } from "../mcp/schemas.js";
++import { getProjectClient } from "../utilities/session.js";
++import { login } from "./login.js";
++
++const ReportOptions = CommonCommandOptions.extend({
++  config: z.string().optional(),
++  projectRef: z.string().optional(),
++  env: z.enum(["dev", "staging", "prod", "preview", "production"]).default("prod"),
++  branch: z.string().optional(),
++  period: ReportPeriodSchema.optional(),
++});
++
++type ReportOptions = z.infer<typeof ReportOptions>;
++
++export function configureReportCommand(program: Command) {
++  return commonOptions(
++    program
++      .command("report")
++      .description(
++        "Print an interpreted report for an environment. Currently: 'health' — is work flowing, is it your code, is the telemetry fresh."
++      )
++      .argument("[key]", "The report to render", "health")
++      .option("-c, --config <config file>", "The name of the config file")
++      .option(
++        "-p, --project-ref <project ref>",
++        "The project ref. Required if there is no config file"
++      )
++      .option("-e, --env <env>", "The environment (dev, staging, prod, preview)", "prod")
++      .option("-b, --branch <branch>", "The preview branch when using --env preview")
++      .option("--period <period>", "Time window, e.g. 1h (default), 24h, 7d")
++  ).action(async (key, options) => {
++    await handleTelemetry(async () => {
++      await reportCommand(key, options);
++    });
++  });
++}
++
++async function reportCommand(key: string, options: unknown) {
++  return await wrapCommandAction("report", ReportOptions, options, async (opts: ReportOptions) => {
++    await _reportCommand(key, opts);
++  });
++}
++
++async function _reportCommand(key: string, options: ReportOptions) {
++  // Clean output: no banner, just the report (so it can be piped).
++  const authorization = await login({
++    embedded: true,
++    defaultApiUrl: options.apiUrl,
++    profile: options.profile,
++    silent: true,
++  });
++
++  if (!authorization.ok) {
++    throw new Error(`You must login first. Use the \`login\` CLI command.`);
++  }
++
++  const resolvedConfig = await loadConfig({
++    overrides: { project: options.projectRef },
++    configFile: options.config,
++  });
++
++  const env = options.env === "production" ? "prod" : options.env;
++  if (env === "preview" && !options.branch) {
++    throw new Error("Missing branch for the preview environment.");
++  }
++
++  const projectClient = await getProjectClient({
++    accessToken: authorization.auth.accessToken,
++    apiUrl: authorization.auth.apiUrl,
++    projectRef: resolvedConfig.project,
++    env,
++    branch: options.branch,
++    profile: options.profile,
++  });
++
++  if (!projectClient) {
++    throw new Error("Failed to get project client");
++  }
++
++  // Colour in a real terminal; plain markdown when piped. NO_COLOR / FORCE_COLOR follow the
++  // de-facto supports-color spec: NO_COLOR (any value) OR FORCE_COLOR=0 disables outright;
++  // FORCE_COLOR set to anything else force-enables. Both win over isTTY (true even for
++  // PTY-spawned agents — the mcp trap).
++  const forceColor = process.env.FORCE_COLOR;
++  const disabled = "NO_COLOR" in process.env || forceColor === "0";
++  const useColor = disabled
++    ? false
++    : forceColor !== undefined
++      ? true
++      : Boolean(process.stdout.isTTY);
++  const format = useColor ? "ansi" : "markdown";
++  const [error, report] = await tryCatch(
++    projectClient.client.getReport(key, { period: options.period, format })
++  );
++
++  if (error) {
++    throw error;
++  }
++
++  process.stdout.write(report.endsWith("\n") ? report : `${report}\n`);
++}
+diff --git a/packages/cli-v3/src/mcp/config.ts b/packages/cli-v3/src/mcp/config.ts
+index 31b5c6ec4dd..227b0c5506e 100644
+--- a/packages/cli-v3/src/mcp/config.ts
++++ b/packages/cli-v3/src/mcp/config.ts
+@@ -136,6 +136,12 @@ export const toolsMetadata = {
+     description:
+       "Execute a single widget query from a built-in dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+   },
++  get_report: {
++    name: "get_report",
++    title: "Get Report",
++    description:
++      "Render an interpreted report (an answered question, not a raw panel) as text + sparklines. The server computes the verdict deterministically. Currently: 'health' — whether work is flowing, whether the runs that start are healthy, and whether the telemetry is fresh, with a headline verdict and a suggested next action.",
++  },
+   whoami: {
+     name: "whoami",
+     title: "Who Am I",
+diff --git a/packages/cli-v3/src/mcp/prompts.ts b/packages/cli-v3/src/mcp/prompts.ts
+new file mode 100644
+index 00000000000..6beb6398eae
+--- /dev/null
++++ b/packages/cli-v3/src/mcp/prompts.ts
+@@ -0,0 +1,64 @@
++import { completable } from "@modelcontextprotocol/sdk/server/completable.js";
++import { z } from "zod";
++import type { McpContext } from "./context.js";
++import { GetReportInput } from "./schemas.js";
++
++// Derived from the tool's schema so completion can't drift from what get_report accepts.
++// `environment` has a `.default(...)`, so read its enum through `removeDefault()`.
++const REPORT_KEYS = GetReportInput.shape.key.options;
++const ENVIRONMENTS = GetReportInput.shape.environment.removeDefault().options;
++
++/**
++ * MCP prompts surface as slash commands in hosts that support them (Claude Code renders
++ * this as /mcp__trigger__report), so `/report health` is a real command — no per-project
++ * files needed.
++ */
++export function registerPrompts(context: McpContext) {
++  context.server.registerPrompt(
++    "report",
++    {
++      title: "Report",
++      description:
++        "Render an interpreted report for an environment. Currently: 'health' — is work flowing, is it your code, is the data fresh.",
++      argsSchema: {
++        key: completable(z.string().optional(), (value) =>
++          REPORT_KEYS.filter((k) => k.startsWith(value ?? ""))
++        ),
++        environment: completable(z.string().optional(), (value) =>
++          ENVIRONMENTS.filter((e) => e.startsWith(value ?? ""))
++        ),
++        // Plain string on purpose: MCP prompt args must be simple string schemas (the SDK
++        // introspects them as such), and this only forwards into get_report, which validates
++        // the period with the shared ReportPeriodSchema. Don't swap in a refined schema here.
++        period: z.string().optional(),
++      },
++    },
++    async ({ key, environment, period }) => {
++      const reportKey = key || "health";
++      const env = environment || (context.options.devOnly ? "dev" : "prod");
++
++      const args = [`key: "${reportKey}"`, `environment: "${env}"`];
++      if (period) {
++        args.push(`period: "${period}"`);
++      }
++
++      return {
++        messages: [
++          {
++            role: "user" as const,
++            content: {
++              type: "text" as const,
++              text: `Fetch the ${reportKey} report by calling the get_report tool with { ${args.join(
++                ", "
++              )} } (add projectRef if this workspace has more than one Trigger.dev project).
++
++Show the returned report to the user EXACTLY as-is, inside a fenced code block: it is monospace-aligned with unicode sparklines, so do not paraphrase, reformat, translate, or trim whitespace.
++
++After the block, add at most two sentences of your own — and only if the report's recommended action intersects with something you know about this project (for example, where the relevant configuration lives). Otherwise add nothing.`,
++            },
++          },
++        ],
++      };
++    }
++  );
++}
+diff --git a/packages/cli-v3/src/mcp/schemas.ts b/packages/cli-v3/src/mcp/schemas.ts
+index 01aa9577cb3..64a03438028 100644
+--- a/packages/cli-v3/src/mcp/schemas.ts
++++ b/packages/cli-v3/src/mcp/schemas.ts
+@@ -271,6 +271,50 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
+ 
+ export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+ 
++/**
++ * Shared period validation for the report surfaces (MCP tool + `trigger report` CLI), so they
++ * reject garbage/absurd ranges consistently client-side instead of only at the HTTP API. The
++ * webapp route (`api.v1.reports.$key.ts`) mirrors this regex + bound as the authoritative
++ * security boundary — it can't import from the CLI, so the two are kept intentionally in sync.
++ */
++const PERIOD_UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
++const MAX_PERIOD_MS = 90 * 864e5; // 90d
++export const ReportPeriodSchema = z
++  .string()
++  .regex(/^[1-9]\d*[smhdw]$/, "period must be a shorthand like '1h', '30m', or '7d'")
++  .refine(
++    // The regex guarantees the last char is a known unit; `?? 0` just satisfies the type checker.
++    (p) => Number(p.slice(0, -1)) * (PERIOD_UNIT_MS[p.slice(-1)] ?? 0) <= MAX_PERIOD_MS,
++    "period is too large (max 90d)"
++  );
++
++// `environment` inherits CommonProjectsInput's `.default("dev")` — intentional: the MCP server
++// is dev-centric (often `--dev-only`), so an unspecified env reports on dev. The `trigger report`
++// CLI defaults to prod instead (a manual prod check). Agents should pass `environment` explicitly.
++export const GetReportInput = CommonProjectsInput.pick({
++  projectRef: true,
++  configPath: true,
++  environment: true,
++  branch: true,
++}).extend({
++  key: z
++    .enum(["health"])
++    .describe(
++      "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
++    ),
++  period: ReportPeriodSchema.optional().describe(
++    "Time period shorthand for the live window, e.g. '1h' (default), '7d'."
++  ),
++  color: z
++    .boolean()
++    .optional()
++    .describe(
++      "Return the report as ANSI-coloured text instead of markdown. Only renders in hosts that display ANSI in tool output."
++    ),
++});
++
++export type GetReportInput = z.output<typeof GetReportInput>;
++
+ export const RunDashboardQueryInput = CommonProjectsInput.extend({
+   dashboardKey: z
+     .string()
+diff --git a/packages/cli-v3/src/mcp/tools.ts b/packages/cli-v3/src/mcp/tools.ts
+index 1fe7be6256a..8fa9eabf6f8 100644
+--- a/packages/cli-v3/src/mcp/tools.ts
++++ b/packages/cli-v3/src/mcp/tools.ts
+@@ -12,6 +12,7 @@ import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./to
+ import { listPreviewBranchesTool } from "./tools/previewBranches.js";
+ import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
+ import { getQuerySchemaTool, queryTool } from "./tools/query.js";
++import { getReportTool } from "./tools/report.js";
+ import {
+   cancelRunTool,
+   getRunDetailsTool,
+@@ -89,6 +90,7 @@ export function registerTools(context: McpContext) {
+     startAgentChatTool,
+     sendAgentMessageTool,
+     closeAgentChatTool,
++    getReportTool,
+   ];
+ 
+   for (const tool of tools) {
+@@ -112,7 +114,9 @@ export function registerTools(context: McpContext) {
+       },
+       async (input, extra) => {
+         try {
+-          return tool.handler(input, { ...extra, ctx: context });
++          // await so a rejected async handler (e.g. a network failure in get_report) is caught
++          // here and wrapped, not surfaced as an unhandled rejection.
++          return await tool.handler(input, { ...extra, ctx: context });
+         } catch (error) {
+           return respondWithError(error);
+         }
+diff --git a/packages/cli-v3/src/mcp/tools/report.ts b/packages/cli-v3/src/mcp/tools/report.ts
+new file mode 100644
+index 00000000000..d24847f64da
+--- /dev/null
++++ b/packages/cli-v3/src/mcp/tools/report.ts
+@@ -0,0 +1,45 @@
++import { toolsMetadata } from "../config.js";
++import { GetReportInput } from "../schemas.js";
++import { respondWithError, toolHandler } from "../utils.js";
++
++/**
++ * `get_report` fetches a server-rendered report (verdict + text + sparklines). Plain
++ * markdown by default, or ANSI when `color` is set (for hosts that display escapes in
++ * tool output). Read-only; the handler enforces devOnly.
++ */
++export const getReportTool = {
++  name: toolsMetadata.get_report.name,
++  title: toolsMetadata.get_report.title,
++  description: toolsMetadata.get_report.description,
++  inputSchema: GetReportInput.shape,
++  handler: toolHandler(GetReportInput.shape, async (input, { ctx }) => {
++    ctx.logger?.log("calling get_report", { input });
++
++    if (ctx.options.devOnly && input.environment !== "dev") {
++      return respondWithError(
++        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
++      );
++    }
++
++    const projectRef = await ctx.getProjectRef({
++      projectRef: input.projectRef,
++      cwd: input.configPath,
++    });
++
++    const apiClient = await ctx.getApiClient({
++      projectRef,
++      environment: input.environment,
++      scopes: ["read:query"],
++      branch: input.branch,
++    });
++
++    const text = await apiClient.getReport(input.key, {
++      period: input.period,
++      format: input.color ? "ansi" : "markdown",
++    });
++
++    return {
++      content: [{ type: "text" as const, text }],
++    };
++  }),
++};
+diff --git a/packages/core/src/v3/apiClient/index.ts b/packages/core/src/v3/apiClient/index.ts
+index deda5d01f9a..2e2b60d1d37 100644
+--- a/packages/core/src/v3/apiClient/index.ts
++++ b/packages/core/src/v3/apiClient/index.ts
+@@ -1938,6 +1938,39 @@ export class ApiClient {
+     );
+   }
+ 
++  /**
++   * Fetch a server-rendered report (text + sparkline). Thin pass-through — the string
++   * is ready to display. `format`: "markdown" (default, agents/chat) or "ansi" (terminal).
++   */
++  async getReport(
++    key: string,
++    options?: { period?: string; format?: "markdown" | "ansi" }
++  ): Promise<string> {
++    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
++    if (options?.period) {
++      searchParams.set("period", options.period);
++    }
++
++    const response = await fetch(
++      `${this.baseUrl}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
++      {
++        method: "GET",
++        headers: this.#getHeaders(false),
++      }
++    );
++
++    if (!response.ok) {
++      const bodySnippet = await readBodySnippet(response);
++      throw new Error(
++        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
++          bodySnippet ? ` — ${bodySnippet}` : ""
++        }`
++      );
++    }
++
++    return response.text();
++  }
++
+   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
+     const headers: Record<string, string> = {
+       "Content-Type": "application/json",
+@@ -2415,6 +2448,22 @@ function sleep(ms: number): Promise<void> {
+   return new Promise((resolve) => setTimeout(resolve, ms));
+ }
+ 
++/**
++ * Best-effort read of a (likely error) response body for inclusion in a thrown Error.
++ * Never throws, and truncates so we don't dump a huge HTML page into an error message.
++ */
++async function readBodySnippet(response: Response, maxLength = 500): Promise<string> {
++  try {
++    const text = (await response.text()).trim();
++    if (!text) {
++      return "";
++    }
++    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
++  } catch {
++    return "";
++  }
++}
++
+ /**
+  * Safely cancels a ReadableStream, handling the case where it might be locked.
+  *

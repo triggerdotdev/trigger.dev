@@ -12,21 +12,21 @@ const inputBase =
 const variants = {
   large: {
     container:
-      "px-1 w-full h-10 rounded-[3px] border border-background-bright bg-background-hover hover:border-border-bright hover:bg-secondary",
+      "px-1 w-full h-10 rounded-[3px] border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-2 text-sm",
     iconSize: "size-4 ml-1",
     accessory: "pr-1",
   },
   medium: {
     container:
-      "px-1 h-8 w-full rounded border border-background-bright bg-background-hover hover:border-border-bright hover:bg-secondary",
+      "px-1 h-8 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1.5 rounded text-sm",
     iconSize: "size-4 ml-0.5",
     accessory: "pr-1",
   },
   small: {
     container:
-      "px-1 h-6 w-full rounded border border-background-bright bg-background-hover hover:border-border-bright hover:bg-secondary",
+      "px-1 h-6 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
@@ -39,7 +39,7 @@ const variants = {
   },
   "secondary-small": {
     container:
-      "px-1 h-6 w-full rounded border border-border-bright hover:border-border-brighter bg-grid-dimmed hover:bg-secondary",
+      "px-1 h-6 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",

@@ -11,6 +11,7 @@ export const FEATURE_FLAG = {
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
+  hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
   internalApiOriginEnabled: "internalApiOriginEnabled",
@@ -25,6 +26,9 @@ export const FEATURE_FLAG = {
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
+  // System-wide kill switch for additional (scoped) environment API-key lookup.
+  // Defaults off; enable during rollout once the new lookup path is trusted.
+  additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -46,6 +50,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
+  // Gates the Interface theme setting in /account. Off by default.
+  [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
@@ -80,6 +86,10 @@ export const FeatureFlagCatalog = {
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
+  // Strict z.boolean() (not z.coerce.boolean()): coercion turns the string
+  // "false" into true, which would silently enable this kill switch the wrong
+  // way if written as a string. Cold/absent resolves to the safe `false`.
+  [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -98,6 +108,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.taskEventRepository,
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
+  // System-wide only — an org must not be able to override the rollout switch.
+  FEATURE_FLAG.additionalApiKeyLookupEnabled,
 ];
 
 // Create a Zod schema from the existing catalog

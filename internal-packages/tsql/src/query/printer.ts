@@ -624,7 +624,8 @@ export class ClickHousePrinter {
     const interval = calculateTimeBucketInterval(
       timeRange.from,
       timeRange.to,
-      tableSchema.timeBucketThresholds
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
     );
     const bucketSql = `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
 
@@ -3551,7 +3552,8 @@ export class ClickHousePrinter {
     const interval = calculateTimeBucketInterval(
       timeRange.from,
       timeRange.to,
-      tableSchema.timeBucketThresholds
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
     );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)

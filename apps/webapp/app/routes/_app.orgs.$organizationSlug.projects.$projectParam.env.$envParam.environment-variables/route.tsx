@@ -910,7 +910,7 @@ function DeleteEnvironmentVariableButton({
         fullWidth
         textAlignLeft
         LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
+        leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
         className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : ""}
