@@ -242,7 +242,7 @@ const MachineOverrideValues = z.object({
 });
 type MachineOverrideValues = z.infer<typeof MachineOverrideValues>;
 
-const MachineOverrides = z.record(MachinePresetName, MachineOverrideValues.partial());
+const MachineOverrides = z.partialRecord(MachinePresetName, MachineOverrideValues.partial());
 type MachineOverrides = z.infer<typeof MachineOverrides>;
 
 const MachinePresetOverrides = z.object({
