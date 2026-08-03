@@ -120,6 +120,12 @@ describe("Tolerations", () => {
     ]);
   });
 
+  it("should keep an empty value as an exact match for a valueless taint", () => {
+    expect(Tolerations.parse("dedicated=:NoSchedule")).toEqual([
+      { key: "dedicated", operator: "Equal", value: "", effect: "NoSchedule" },
+    ]);
+  });
+
   it("should parse an empty string as no tolerations", () => {
     expect(Tolerations.parse("")).toEqual([]);
     expect(Tolerations.parse("  ")).toEqual([]);
