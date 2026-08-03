@@ -15,6 +15,10 @@ export const loader = createLoaderApiRoute(
     }),
     searchParams: SearchParamsSchema,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+    authorization: {
+      action: "read",
+      resource: () => ({ type: "queues" }),
+    },
   },
   async ({ params, searchParams, authentication }) => {
     const input: RetrieveQueueParam =

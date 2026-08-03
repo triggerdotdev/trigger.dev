@@ -744,13 +744,16 @@ describe("API", () => {
     });
   });
 
-  // v3 batches use a collection-level resource { type: "tasks" } with
-  // no id — items are validated per-row when streamed. So id-specific
-  // scopes (write:tasks:foo) shouldn't grant blanket access; only
-  // type-level write:tasks (or admin/write:all) should.
-  describe("Trigger task — batch v3 (api.v3.batches) collection-level", () => {
+  // v3 batch creation accepts an optional declaration of the distinct task
+  // identifiers that will be streamed. New clients send it so selected-task
+  // credentials can authorize the batch before its shell is created. Older
+  // clients omit it and retain the collection-level, fail-closed behavior.
+  describe("Trigger task — batch v3 (api.v3.batches)", () => {
     const path = "/api/v3/batches";
-    const buildBody = () => ({ runCount: 1 });
+    const buildBody = (taskIdentifiers?: string[]) => ({
+      runCount: taskIdentifiers?.length ?? 1,
+      taskIdentifiers,
+    });
 
     it("missing auth: 401", async () => {
       const server = getTestServer();
@@ -777,6 +780,67 @@ describe("API", () => {
       });
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + declared taskA: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + a mixed declaration: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA", "taskB"])),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + no declaration: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).toBe(403);
     });
 
     it("JWT with read:tasks: 403", async () => {
@@ -913,7 +977,7 @@ describe("API", () => {
       expect(res.status).toBe(403);
     });
 
-    it("filter[taskIdentifier]=task_a,task_b + JWT read:tasks:task_a → passes (array match)", async () => {
+    it("filter[taskIdentifier]=task_a,task_b + JWT read:tasks:task_a → 403 (requires every task)", async () => {
       const server = getTestServer();
       const seed = await seedTestEnvironment(server.prisma);
       const jwt = await generateJWT({
@@ -928,11 +992,9 @@ describe("API", () => {
       const res = await get("?filter%5BtaskIdentifier%5D=task_a%2Ctask_b", {
         Authorization: `Bearer ${jwt}`,
       });
-      // Resource array is [{type:"runs"}, {type:"tasks",id:"task_a"}, {type:"tasks",id:"task_b"}].
-      // The scope read:tasks:task_a matches the second element → access granted.
-      // Handler may 500 (ClickHouse unreachable in tests) but auth passed.
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(403);
+      // A task-scoped JWT must authorize every requested task so including an
+      // unauthorized task in a multi-task filter cannot expose its runs.
+      expect(res.status).toBe(403);
     });
 
     it("filter[taskIdentifier]=task_a + JWT read:tasks:task_z → 403 (no array match)", async () => {
@@ -2473,13 +2535,14 @@ describe("API", () => {
         expect(res.status).not.toBe(403);
       });
 
-      it("read:tasks (type-only) on no-filter list: 403 (filter is sessions, not tasks)", async () => {
-        // No filter → resource is `{ type: "sessions" }` only. read:tasks
-        // doesn't match the sessions type, so 403 — explicit narrowing.
+      it("read:tasks (type-only) on no-filter list: auth passes", async () => {
+        // Preserve the legacy behavior where a type-level task scope grants
+        // access to an unfiltered list while task ID scopes require a filter.
         const seed = await seedTestEnvironment(getTestServer().prisma);
         const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks"]);
         const res = await fetchWithJwt(jwt);
-        expect(res.status).toBe(403);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
       });
 
       it("write:tasks:foo (wrong action) on filter=foo: 403", async () => {
