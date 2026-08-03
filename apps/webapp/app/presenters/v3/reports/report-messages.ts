@@ -5,6 +5,7 @@
  * No report vocabulary here — that would re-couple the renderer to a specific report.
  */
 
+import { REPORT_REGISTRY } from "./report-registry";
 import { type ReasonCode, type Severity } from "./report-view-model";
 
 /**
@@ -22,16 +23,14 @@ export type ReportMessages = {
   actionMessage(code: ReasonCode): string;
 };
 
-const catalogs = new Map<string, ReportMessages>();
-
-/** Register a report's catalog under its title (e.g. "health"). Called for its side effect. */
-export function registerReportMessages(title: string, messages: ReportMessages): void {
-  catalogs.set(title, messages);
-}
-
-/** Look up a report's catalog by `vm.title`. Throws if the report never registered one. */
+/**
+ * Look up a report's catalog by `vm.title`. Catalogs live as values on the
+ * report registry entries — there is deliberately no register-at-import-time
+ * step: a side-effect registration is exactly what the production bundle
+ * tree-shakes away under `"sideEffects": false`.
+ */
 export function reportMessages(title: string): ReportMessages {
-  const messages = catalogs.get(title);
+  const messages = REPORT_REGISTRY[title]?.messages;
   if (!messages) {
     throw new Error(`report-messages: no catalog registered for report "${title}"`);
   }
