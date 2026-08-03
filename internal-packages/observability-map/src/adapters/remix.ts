@@ -9,12 +9,8 @@ export type Family =
   | "other";
 
 /**
- * The name that carries routing meaning for a given `fileName`.
- *
- * Flat routes (`api.v1.runs.$runId.ts`) are already that name. Directory routes
- * (`_app.orgs.$slug/route.tsx`) hold their module in a fixed `route.ts`/`route.tsx` file, so the
- * directory segment before the slash is the meaningful name and `route.tsx` itself is not a path
- * segment.
+ * The name that carries routing meaning for a given `fileName`. A directory route holds its module in
+ * a fixed `route.ts`/`route.tsx`, so the segment before the slash is the meaningful name.
  */
 function routeName(fileName: string): string {
   const slashIndex = fileName.indexOf("/");

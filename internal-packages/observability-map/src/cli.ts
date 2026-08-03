@@ -15,10 +15,8 @@ import { renderJson } from "./report/json.js";
 const DEFAULT_ROUTES = "apps/webapp/app/routes";
 
 /**
- * Walks up from this file looking for `pnpm-workspace.yaml`, so the routes directory resolves
- * correctly whether `map` is run from the repo root or from the package directory (where
- * `pnpm --filter` puts you). Resolving `DEFAULT_ROUTES` against `process.cwd()` instead would only
- * work from the repo root.
+ * Walks up looking for `pnpm-workspace.yaml`, so the routes directory resolves whether `map` runs from
+ * the repo root or from the package directory, where `pnpm --filter` puts you.
  */
 function findRepoRoot(startDir: string): string {
   let dir = startDir;
@@ -40,10 +38,8 @@ const processIo: Io = {
 };
 
 /**
- * Entry points matching what the user typed, by file name or by route path, exact first.
- *
- * Route paths matter because they are what the report prints: `map /api/v1/token` used to exit 1
- * because only the file name was matched, so the identifier on screen was not one you could paste
+ * Entry points matching what the user typed, by file name or by route path, exact first. Route paths
+ * matter because they are what the report prints, so the identifier on screen is one you can paste
  * back in.
  */
 function findMatches(entryPoints: EntryPoint[], target: string): EntryPoint[] {
@@ -130,15 +126,14 @@ export function main(argv: string[], io: Io = processIo): number {
   }
 
   const report = buildReport(entryPoints, parseFailures);
-  // JSON only. `renderTerminal` puts these lines in the report body, so warning here as well
-  // printed each one twice in a terminal run. Stderr is what the JSON path has instead, since a
-  // warning on stdout would be inside the document a caller parses.
+  // JSON only: `renderTerminal` already puts these lines in the report body, and a warning on stdout
+  // would be inside the document a caller parses.
   if (asJson) for (const line of unknownSuppressionLines(report)) io.err(`${line}\n`);
   io.out(asJson ? renderJson(report) : renderTerminal(report));
   io.out("\n");
   if (!noWrite) {
-    // `--out` exists so a test can point the write somewhere disposable. Without it the only way
-    // to exercise the write path was to let the tests create and delete a file in the repo root.
+    // `--out` exists so a test can point the write somewhere disposable rather than creating and
+    // deleting a file in the repo root.
     const outFlag = flagValue(args, "--out");
     const outPath =
       outFlag === null

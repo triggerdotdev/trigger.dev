@@ -1,41 +1,16 @@
 import ts from "typescript";
 
 /**
- * Source-to-source mutations for the tree-scale corpus in `mutationCorpus.test.ts`.
- *
- * Every mutation here is a *text* rewrite driven by AST positions, never a reprint. A reprint would
- * change formatting everywhere and make a failure impossible to read; splicing at node positions
- * leaves the rest of the file byte-identical, so a corpus failure can be diffed down to the one
- * construct that moved.
- *
- * Two kinds of entry live in the corpus and they are labelled `preserving` and `deleting`:
- *
- * - `preserving`: the rewrite does not change what the route does. Dead code that can never run,
- *   a wrapper that runs the same statements once, a comment, a merge of adjacent `const`s. The
- *   property under test is the one the tool claims: no such edit may raise the score.
- * - `deleting`: the rewrite removes error handling or logging. The route is worse afterwards, so
- *   the score must not rise either, for a different and simpler reason.
- *
- * Within `preserving` there are two directions, and for a long time the corpus only had one of
- * them. A subtractive rewrite takes real signal away or moves it about: delete the catches, wrap
- * the body, merge the statements. An ADDITIVE rewrite puts fake signal in: a classifying catch over
- * a try that cannot throw, a test whose two arms are the same, a rethrow that can never run. The
- * additive direction is the one someone reaches for when a CI comment nags them, and it is where
- * the two largest holes ever found here lived. `ADDITIVE_IDS` lists the entries that cover it, and
- * `mutationCorpus.test.ts` asserts the class is not empty so it cannot quietly go away again.
- *
- * Neither kind is ever executed. "Semantics-preserving" here means preserving the observable
- * behaviour of the route as written, which is what the scanner claims to measure; it is not a
- * claim that the mutated tree compiles against its real types.
+ * Source-to-source mutations for the tree-scale corpus in `mutationCorpus.test.ts`. Why they are text
+ * rewrites rather than reprints, what `preserving` and `deleting` mean, and why the additive direction
+ * is tracked separately in `ADDITIVE_IDS`: README, "The mutation harness".
  */
 
 export type MutationKind = "preserving" | "deleting";
 
 /**
- * The result of rewriting one file: the new source, and how many places in it the rewrite actually
- * landed. `sites` is what the corpus's anti-vacuity guard reads. A file count says nothing about
- * whether the rewrite reached anything, and a mutation that quietly matched two constructs in a
- * file would otherwise look identical to one that matched forty.
+ * The new source, and how many places in it the rewrite landed. `sites` is what the anti-vacuity guard
+ * reads, because a file count says nothing about whether the rewrite reached anything inside the file.
  */
 export type MutationResult = { source: string; sites: number };
 
@@ -45,13 +20,9 @@ export type Mutation = {
   /** What the rewrite does, in one line, for the corpus table in the report. */
   what: string;
   /**
-   * Set only on a `preserving` entry that is EXPECTED to lower some routes' scores, with the
-   * one-line reason on the entry itself. The mirror assertion in `mutationCorpus.test.ts` requires
-   * falls to be empty for every preserving entry without this field, and for an entry with it,
-   * requires falls to be nonzero and every fall to be exactly `error-classification` moving pass
-   * to not-applicable with nothing moving to fail. Deliberately a per-entry field rather than a
-   * set or a skip list: an exemption is a decision with a reason, enforced in both directions, and
-   * it must not be a place entries get filed so the suite stays green.
+   * Set only on a `preserving` entry EXPECTED to lower some routes' scores, with the reason on the
+   * entry. A per-entry field rather than a skip list, so an exemption is a decision with a reason
+   * enforced in both directions and not a place entries get filed to keep the suite green.
    */
   lowers?: string;
   /** The mutated file, or null when this file has nothing for the mutation to touch. */
@@ -71,11 +42,8 @@ function parse(fileName: string, source: string): ts.SourceFile {
 }
 
 /**
- * Splice edits into `source`, right to left so earlier offsets stay valid.
- *
- * An edit that falls inside an earlier edit's range is dropped rather than applied: a mutation that
- * deletes a catch clause and one that rewrites a statement inside that clause would otherwise
- * produce overlapping splices. Dropping the inner one is what "the outer rewrite won" means.
+ * Splice edits into `source`, right to left so earlier offsets stay valid. An edit inside an earlier
+ * edit's range is dropped, which is what "the outer rewrite won" means.
  */
 function applyEdits(source: string, edits: Edit[]): MutationResult | null {
   if (edits.length === 0) return null;
@@ -141,12 +109,9 @@ function propertyNameOf(property: ts.ObjectLiteralElementLike): string | null {
 }
 
 /**
- * Handler functions on a builder's object argument, in the two shapes the route builders use:
- * `handler` at the top level and `methods.POST.handler`.
- *
- * Deliberately a copy of the same shapes `src/scan.ts` recognises rather than an import of them.
- * The harness has to be able to disagree with the scanner about where a route body is; sharing the
- * scanner's own notion would let a bug in that notion hide a laundering shape from the corpus.
+ * Handler functions on a builder's object argument, in the two shapes the route builders use.
+ * Deliberately a copy of the shapes `src/scan.ts` recognises rather than an import: the harness has to
+ * be able to disagree with the scanner about where a route body is.
  */
 function collectNamedHandlers(object: ts.ObjectLiteralExpression, out: EntryFunction[]): void {
   for (const property of object.properties) {
@@ -180,12 +145,9 @@ function rootCall(call: ts.CallExpression): ts.CallExpression {
 }
 
 /**
- * The handler functions an export's initializer resolves to.
- *
- * `locals` is consulted for the two indirect spellings, both of which `scan.ts` resolves and
- * neither of which this reached: `export const action = route.action` beside
- * `const route = createActionApiRoute(...)`, which is 7 of the tree's API routes, and
- * `export const action = handleThing` naming a local. `seen` stops `const a = b; const b = a`.
+ * The handler functions an export's initializer resolves to. `locals` is consulted for the two indirect
+ * spellings, `export const action = route.action` and `export const action = handleThing`; `seen` stops
+ * `const a = b; const b = a`.
  */
 function fromInitializer(
   expr: ts.Expression,
@@ -260,22 +222,12 @@ function localDeclarations(sf: ts.SourceFile): LocalDeclarations {
 }
 
 /**
- * Block bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps.
+ * Block bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps. Reads
+ * the same four export forms `scan.ts` reads, and `wraps a body in every non-delegating entry point the
+ * scanner finds` pins that so the harness cannot lag the scanner again.
  *
- * Reads the same four export forms `scan.ts` reads: an exported function declaration, an exported
- * `const`, an exported object binding pattern, and a named export clause resolved back through a
- * local. It read only the first two, which is the shape of every API route in the tree
- * (`const { action, loader } = createActionApiRoute(...); export { action, loader };` and the
- * direct `export const { action } = ...`), so `wrapEveryBody` and the other whole-body entries
- * silently skipped 36 of the 427 entry points while reporting a file count that suggested
- * otherwise. `mutationCorpus.test.ts` pins the population now ("wraps a body in every
- * non-delegating entry point the scanner finds"), so the harness cannot lag the scanner here again
- * without going red.
- *
- * This is NOT a retreat from the deliberate independence `collectNamedHandlers` documents. That
- * independence is about disagreeing over where a HANDLER sits inside a builder's argument, which is
- * a judgement the corpus has to be able to make for itself. Which exports exist is not a judgement,
- * and the harness was simply behind.
+ * Not a retreat from the independence `collectNamedHandlers` keeps: that is about where a HANDLER sits
+ * inside a builder's argument, which is a judgement. Which exports exist is not.
  */
 function entryBodies(sf: ts.SourceFile): ts.Block[] {
   const functions: EntryFunction[] = [];
@@ -352,15 +304,10 @@ function bindingNameOf(clause: ts.CatchClause): string | null {
 }
 
 /**
- * Splice a statement in at the HEAD of every catch clause that names its binding. `snippet`
- * receives the binding name.
- *
- * The head, not the tail, and that is the whole point of the helper. Appending put the shape after
- * whatever the clause already did, and 234 of the tree's 260 clauses end in a `return` or a
- * `throw`, so in those the spliced shape was dead by ordering before the rule under test ever
- * looked at it: eleven corpus entries reported touching 172 files while exercising 26 clauses. At
- * the head every clause is reachable, so every clause exercises the rule. The shapes spliced this
- * way are dead wherever they sit, so moving them does not make the rewrite any less preserving.
+ * Splice a statement in at the HEAD of every catch clause that names its binding, which is the whole
+ * point of the helper: 234 of the tree's 260 clauses end in a `return` or a `throw`, so an appended
+ * shape was dead by ordering before the rule under test looked at it. See README, "The mutation
+ * harness".
  */
 function prependToEveryCatch(
   id: string,
@@ -385,9 +332,8 @@ function prependToEveryCatch(
   };
 }
 
-/** Whether a statement list ends in a way that makes anything spliced in after it dead. Used only
- * to keep the dead-throw mutations honest: appending `throw e;` after statements that might fall
- * through would change what the route does, and this corpus is not allowed to do that. */
+/** Whether a statement list ends in a way that makes anything spliced in after it dead. Appending
+ * `throw e;` after statements that might fall through would change what the route does. */
 function endsInAnExit(statements: readonly ts.Statement[]): boolean {
   const last = statements[statements.length - 1];
   return last !== undefined && (ts.isReturnStatement(last) || ts.isThrowStatement(last));
@@ -418,19 +364,14 @@ function containsLooseJump(node: ts.Node): boolean {
 }
 
 /**
- * Wrap every catch clause's body in a construct that definitely exits, then write `throw e;` after
- * it. The throw can never run, and before `definitelyExits` learned to see through the wrapper each
- * of these read as the clause rethrowing, which is `not-applicable` instead of `fail` and worth 50
- * points a route.
+ * Wrap every catch clause's body in a construct that definitely exits, then write `throw e;` after it.
+ * Applied only to a clause already ending in a `return` or a `throw`, so the appended throw really is
+ * unreachable, and never to one holding a loose `break` or `continue`, which a `do` or a `switch` would
+ * capture.
  *
- * Only applied to a clause whose statements already end in a `return` or a `throw`, so the appended
- * throw really is unreachable, and never to one holding a loose `break` or `continue`, which a `do`
- * or a `switch` would capture.
- *
- * `dead-throw-after-switch-break` guards the opposite direction of the same rule. A `break` in a
- * switch clause is no longer read as leaving the statement list the switch sits in, and the cheap
- * way to write that is "a clause holding a break does not exit", which would take this whole family
- * back: the clause here returns AND breaks, and the return is what has to win.
+ * `dead-throw-after-switch-break` guards the opposite direction: the cheap way to stop reading a
+ * switch clause's `break` as an exit is "a clause holding a break does not exit", which would take this
+ * whole family back, since the clause here returns AND breaks and the return has to win.
  */
 function deadThrowAfter(id: string, what: string, wrap: (body: string) => string): Mutation {
   return {
@@ -525,10 +466,8 @@ function logStatementEdits(sf: ts.SourceFile): Edit[] {
 }
 
 /**
- * Remove the catch clause from every `try`. With a `finally` present the clause alone goes and the
- * `try`/`finally` stands; without one the whole `try` collapses to the bare block it guarded, which
- * is still a legal statement. Point edits either way, so a nested rewrite inside the clause is
- * simply dropped by `applyEdits` rather than colliding.
+ * Remove the catch clause from every `try`. With a `finally` the clause alone goes; without one the
+ * whole `try` collapses to the bare block it guarded, which is still a legal statement.
  */
 function catchDeletionEdits(sf: ts.SourceFile): Edit[] {
   const edits: Edit[] = [];
@@ -547,17 +486,15 @@ function catchDeletionEdits(sf: ts.SourceFile): Edit[] {
 // -- the corpus -------------------------------------------------------------------------------
 
 /**
- * Every laundering shape found by a reviewer on this branch, plus the five extra dead-code shapes
- * and two extra iteration receivers found while writing this file. Each entry is a whole-tree
- * rewrite; `mutationCorpus.test.ts` asserts the global score does not rise for any of them.
+ * Every laundering shape found on this branch. Each entry is a whole-tree rewrite;
+ * `mutationCorpus.test.ts` asserts the global score does not rise for any of them.
  */
 export const MUTATIONS: Mutation[] = [
   prependToEveryFile(
     "suppress-every-check",
     "prepend an obs-map-disable directive for every check to every file",
-    // Every check, which this said it was and was not: `auth-scope` was added a round after the
-    // entry was written and never added here, so the "a suppression cannot raise a score"
-    // invariant went untested at tree scale for the 19 routes it applies to.
+    // Every registered check, which `suppresses every registered check in the exhaustive sweep`
+    // holds: `auth-scope` was once missing here and nothing noticed.
     [
       "// obs-map-disable error-classification -- mutation corpus",
       "// obs-map-disable request-context -- mutation corpus",
@@ -636,11 +573,9 @@ export const MUTATIONS: Mutation[] = [
     "try {",
     "} catch (obsMapMutationError) { throw obsMapMutationError; }"
   ),
-  // The A/B partner of the entry above: the only difference is the ternary. `error-classification`
-  // asks whether ANY reachable catch decides, so one deciding clause bought at zero cost would take
-  // every route in the tree to a pass. That is what the same-arms rule in `selectsAnErrorPath`
-  // refuses, and this is the tree-scale proof of it on the throw path, which was untested while
-  // the throw path could not credit a ternary at all.
+  // The A/B partner of the entry above, differing only in the ternary. One deciding clause bought at
+  // zero cost would take every route in the tree to a pass, which is what the same-arms rule in
+  // `selectsAnErrorPath` refuses; this is the tree-scale proof of it on the throw path.
   wrapEveryBody(
     "wrap-body-in-same-arms-throw-ternary",
     "wrap every route body in try { ... } catch (e) { throw e instanceof Error ? e : e }",
@@ -674,10 +609,9 @@ export const MUTATIONS: Mutation[] = [
     "moves every catch behind the iteration boundary; refused deciding catches cap at " +
       "not-applicable, so a pass legitimately becomes n/a (mechanism C ruling)"
   ),
-  // Round D item 3. `auth-scope` fired on any property at all whose value was a caller id, wherever
-  // it sat, so one dead statement at the head of a body cleared it. These are the two halves: the
-  // wrong property name, and the right property name in an object nothing is handed. Both raised
-  // `settings.sso` and `settings.team`, the only two findings the check has ever produced.
+  // `auth-scope` once fired on any property at all whose value was a caller id, so one dead statement
+  // cleared it. These are the two halves: the wrong property name, and the right name in an object
+  // nothing is handed.
   wrapEveryBody(
     "dead-caller-scope-object",
     "prepend a dead object holding the caller id under an arbitrary key to every route body",
@@ -690,20 +624,18 @@ export const MUTATIONS: Mutation[] = [
     "const obsMapDeadUserId = { userId: user.id };",
     ""
   ),
-  // Round E item 3. The two entries above both prepend a DEAD object, which the handed-to-a-call
-  // condition refuses on its own, so neither of them would notice a future edit widening that
-  // condition. This one is live: the object really is handed to a real call, and the only thing
-  // refusing it is the callee constraint. It is also the cheaper shape to write, since a log line
-  // survives review in a way `const obsMapDeadUserId = ...` does not.
+  // The two entries above prepend a DEAD object, which the handed-to-a-call condition refuses on its
+  // own, so neither would notice a future edit widening that condition. This one is live and only the
+  // callee constraint refuses it. It is also the shape that survives review.
   wrapEveryBody(
     "log-caller-scope-userid",
     "prepend a logger call handed the caller id under userId to every route body",
     'logger.error("obs-map", { userId: user.id });',
     ""
   ),
-  // C1a. `auth-boundary` matched `/^(require|authenticate)/`, so any callee at all beginning
-  // `require` cleared a sensitive route. These two prepend the shapes that paid: an invented guard
-  // and a real helper whose name merely contains "Authenticated" while it does a lookup by id.
+  // `auth-boundary` once matched `/^(require|authenticate)/`, so any callee beginning `require`
+  // cleared a sensitive route. These two prepend the shapes that paid: an invented guard, and a real
+  // helper whose name merely contains "Authenticated" while it does a lookup by id.
   wrapEveryBody(
     "fake-require-guard",
     "prepend an invented requireObsMapValidRequest() call to every route body",
@@ -809,11 +741,9 @@ export const MUTATIONS: Mutation[] = [
     "splice if (1 === 2) { throw e; } into every catch",
     (e) => `if (1 === 2) { throw ${e}; }`
   ),
-  // The returns half of the dead-prepend family. The eleven entries above put a dead THROW in;
-  // this one puts a dead RETURN in, which used to veto `rethrows` through the containment read
-  // and turn a rethrow-only clause into a swallow verdict on 11 real routes. Same blinding class
-  // as `dead-if-false`, so like that entry it is not additive: it fakes no signal, it used to
-  // destroy real signal.
+  // The returns half of the dead-prepend family: a dead RETURN, which used to veto `rethrows` through
+  // the containment read and turn a rethrow-only clause into a swallow verdict on 11 real routes. Not
+  // additive, since it destroys real signal rather than faking any.
   prependToEveryCatch(
     "dead-if-false-return",
     "preserving",
@@ -832,10 +762,8 @@ export const MUTATIONS: Mutation[] = [
     "splice if (e instanceof Error) { } into every catch",
     (e) => `if (${e} instanceof Error) { }`
   ),
-  // The if/else arm walk merges per-arm evidence by INTERSECTION, so a real classifier sitting in
-  // one arm only earns nothing: one arm running is a condition, not a guarantee. This is the entry
-  // that goes red the day someone "simplifies" the intersection to a union, at which point every
-  // clause in the tree earns a branch from a dead arm. Additive: it plants fake signal.
+  // Goes red the day someone simplifies the arm walk's INTERSECTION to a union, at which point every
+  // clause in the tree earns a branch from a dead arm. Additive.
   prependToEveryCatch(
     "dead-classifier-one-arm",
     "preserving",
@@ -843,41 +771,27 @@ export const MUTATIONS: Mutation[] = [
     (e) =>
       `if (false) { if (${e} instanceof Error) { return new Response(null, { status: 400 }); } } else { 0; }`
   ),
-  // The sibling of `empty-instanceof-if`. That entry's arm is empty; this one's arm holds an exit
-  // that can never run, which is the same no-op written so that a containment read cannot tell the
-  // difference. `selectsADistinctPath` asked a plain containment question, true of
-  // `if (false) { return null; }`, so the test read as a real classification decision and turned a
-  // swallowing catch into a passing one: 80 routes and the tree from 19 to 27 when measured.
-  // Additive: it plants fake signal. `catchClauseEvidence`'s own `exited` flag had already been
-  // moved onto `containsLiveExit` for exactly this reason and the branch predicate beside it was
-  // left behind, which is why the shape is spelled with the corpus's own `if (false)` and not
-  // something exotic.
+  // The sibling of `empty-instanceof-if`, with an arm holding an exit that can never run: the same
+  // no-op written so a containment read cannot tell the difference. Worth 80 routes and the tree from
+  // 19 to 27 when measured. Additive.
   prependToEveryCatch(
     "dead-armed-instanceof-if",
     "preserving",
     "splice if (e instanceof Error) { if (false) { return null; } } into every catch",
     (e) => `if (${e} instanceof Error) { if (false) { return null; } }`
   ),
-  // The sibling the entry above does NOT close, found while closing it and filed here rather than
-  // fixed. Moving the ARM's exit read onto `containsLiveExit` folds a dead arm; it does not fold a
-  // dead CONDITION, and a condition that both references the caught binding and is provably false
-  // reaches the same grant. `literalTruth` cannot see it: `&&` and `||` are documented there as
-  // always null, deliberately, so `e instanceof Error && false` is an undecidable guard to every
-  // fold in the file. Closing it means widening that fold, which is a different rule with its own
-  // measurement, so this runs as a `KNOWN_GAPS` expected failure instead of sitting unrecorded.
+  // The sibling the entry above does NOT close: folding a dead ARM does not fold a dead CONDITION, and
+  // `literalTruth` treats `&&` as always null on purpose. Runs as a `KNOWN_GAPS` expected failure.
   prependToEveryCatch(
     "dead-conjunction-instanceof-if",
     "preserving",
     "splice if (e instanceof Error && false) { return null; } into every catch",
     (e) => `if (${e} instanceof Error && false) { return null; }`
   ),
-  // A finally that leaves itself by `break` cancels the try's completion, so nothing hosted in
-  // that tryBlock ever escapes the clause: the whole statement is a no-op. The walk's
-  // catchless-try entry credited it anyway, minting a branch from the hosted classifier on 80
-  // routes and 8 global points when measured. Additive: it plants fake signal. The classifier is
-  // guarded (`if (e instanceof Error)`) rather than a bare `throw e` so `definitelyExits` cannot
-  // read the statement as an unconditional exit; the bare spelling trips a separate, pre-existing
-  // over-cut in `definitelyExits`'s try/finally case that this entry is not about.
+  // A finally leaving itself by `break` cancels the try's completion, so the whole statement is a
+  // no-op the walk's catchless-try entry once credited: 80 routes and 8 global points. Additive. The
+  // classifier is guarded rather than a bare `throw e`, so `definitelyExits` cannot read the statement
+  // as an unconditional exit and trip a separate over-cut this entry is not about.
   prependToEveryCatch(
     "dead-throw-in-cancelled-try",
     "preserving",
@@ -886,8 +800,7 @@ export const MUTATIONS: Mutation[] = [
       `do { try { if (${e} instanceof Error) { throw ${e}; } } finally { break; } } while (false);`
   ),
 
-  // The additive class. Everything above either takes signal away or moves it about; these put in
-  // signal that is not real, which is the direction the corpus was blind to.
+  // The additive class: signal that is not real, which is the direction the corpus was blind to.
   {
     id: "dead-classifying-try",
     kind: "preserving",
@@ -1014,10 +927,8 @@ export const MUTATIONS: Mutation[] = [
     },
   },
 
-  // The no-pass ceiling on refused (iteration-callback) catches, at tree scale. A two-element
-  // array literal iterates, so the boundary rule refuses this catch; it decides and cannot run
-  // its deciding arm (JSON.parse("0") never throws). Under any future rule that CREDITS refused
-  // catches, the ~261 catchless routes rise from not-applicable to pass and this entry goes red.
+  // The no-pass ceiling on refused catches, at tree scale: under any future rule that CREDITS them,
+  // the 261 catchless routes rise from not-applicable to pass and this entry goes red.
   wrapEveryBody(
     "dead-deciding-map",
     "prepend a dead deciding per-item catch inside a two-element .map to every route body",
@@ -1064,8 +975,8 @@ export const MUTATIONS: Mutation[] = [
           const previous = statements[i - 1]!;
           const current = statements[i]!;
           if (!ts.isExpressionStatement(previous) || !ts.isExpressionStatement(current)) continue;
-          // A directive prologue is an ExpressionStatement, and `"use client", foo();` is no longer
-          // a directive. That is a behaviour change, which this entry claims not to make.
+          // `"use client", foo();` is no longer a directive, which is a behaviour change this entry
+          // claims not to make.
           if (ts.isStringLiteral(previous.expression)) continue;
           if (source[previous.end - 1] !== ";") continue;
           edits.push({ start: previous.end - 1, end: current.getStart(), text: ", " });
@@ -1098,8 +1009,8 @@ export const MUTATIONS: Mutation[] = [
 
 /**
  * The entries that add fake signal rather than removing or restructuring real signal. Named so
- * `mutationCorpus.test.ts` can assert the class exists: the corpus went three rounds with this half
- * of the property untested, and an empty list here is exactly that state coming back.
+ * `mutationCorpus.test.ts` can assert the class exists: an empty list here is the corpus going back to
+ * the three rounds it spent with this half of the property untested.
  */
 export const ADDITIVE_IDS = [
   "dead-classifying-try",

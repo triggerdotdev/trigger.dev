@@ -9,70 +9,34 @@ export type CheckResult = {
 /**
  * One catch clause in a loader/action body, or in a same-file helper the body calls. Per clause
  * rather than per entry point, so a narrow parse guard sitting beside a broad handler catch stays
- * legible instead of collapsing into one boolean.
+ * legible. Every field's exact rule and its measured reasoning: README, "Catch evidence, per
+ * clause".
  */
 export type CatchEvidence = {
-  /**
-   * Throwing is the clause's only way out. Two conditions: a `throw` is reached on the clause's
-   * guaranteed path (the positions certain to execute whenever the clause runs: its own
-   * statements, a bare nested block's, a `do` body's, a catchless `try`'s tryBlock, a
-   * single-default `switch`'s clause, an `if (true)` then-arm, and both arms of an `if`/`else`
-   * together, cut at the first statement that definitely exits, see `catchClauseEvidence` and
-   * `definitelyExits`), and the clause contains no live `return` anywhere. A throw guarded by a
-   * condition the walk cannot fold, a loop, a nested caught `try`, a finally block or a callback
-   * does not count, and neither does one written after something that has already returned.
-   */
+  /** Throwing is the clause's only way out: a throw on the clause's guaranteed path (see
+   * `catchClauseEvidence`) and no live `return` anywhere. */
   rethrows: boolean;
-  /** A `throw` is reached on that same guaranteed path, whether or not it is the only way out.
-   * `rethrows` is this AND no reachable `return`. Kept separately so a verdict can say what is true
-   * of a clause that both throws and returns. */
+  /** A throw is reached on that path, whether or not it is the only way out. Kept apart from
+   * `rethrows` so a verdict can say what is true of a clause that both throws and returns. */
   throws: boolean;
-  /**
-   * The clause picks what to do from what it caught, on that same guaranteed path: an `if` or
-   * `switch` whose condition references the caught error binding AND at least one of whose arms
-   * returns or throws, or a conditional that is the whole value of a `return`/`throw`.
-   * `if (retries > 0)` does not count, `if (e instanceof Error) { }` does not count, and a
-   * bindingless `catch { ... }` cannot count at all. An `instanceof` used only to word a message,
-   * `json({ error: e instanceof Error ? e.message : String(e) })`, does not count either: every
-   * error still leaves by the same path.
-   */
+  /** The clause picks what to do from what it caught, on that same guaranteed path. */
   branches: boolean;
-  /**
-   * The guarded region parses something: `JSON.parse`, `request.json()`, a zod `parse`/`safeParse`,
-   * a `decode`, or a `new URL`/`URLSearchParams`/`RegExp`. Those three constructors are read here
-   * because a `new` expression is not a call, so the call-callee scan that feeds this check never
-   * sees them; other constructors do not count, or every `new SomePresenter()` in a try would excuse
-   * its catch.
-   */
+  /** The guarded region parses something. Includes `new URL`/`URLSearchParams`/`RegExp`, which the
+   * call-callee scan cannot see because a `new` expression is not a call. */
   guardsParse: boolean;
-  /**
-   * The guarded region does something that could raise at all: a call, a construction, an `await`,
-   * a member access, a `throw`, an iteration, an `instanceof`. False means `try { 0; }` and little
-   * else: any call counts, including one that cannot throw, so `try { String(0); }` reads as true.
-   * See `canRaise` in `scan.ts` for both directions of that, including the destructuring
-   * declaration it misses.
-   */
+  /** The guarded region does anything that could raise. Any call counts, including one that cannot
+   * throw, so `try { String(0); }` is true here: `dead-classifying-try-with-call`. */
   guardCanRaise: boolean;
   /**
-   * The containment twin of `guardCanRaise`: false only when the guarded region provably cannot
-   * raise, i.e. every statement is an expression over a bare literal, which is `try { 0; }` and
-   * nothing else. Everything `canRaise`'s whitelist misses (a destructuring declaration, a
-   * temporal-dead-zone read) stays true here, so `guardCanRaise` implies `guardMayRaise`. What the
-   * refused-callback arm of `error-classification` reads: a route whose own classifying catch
-   * `canRaise` cannot see must never be told nothing it owns decides
-   * (`does not accuse a route that owns a catch of owning none`), while the provably dead
-   * `try { 0; }` clause still blocks nothing (`still fails a per-item swallow beside a deciding
-   * catch over a dead guard`).
+   * The containment twin of `guardCanRaise`: false only for the provably inert `try { 0; }`, so
+   * can-raise implies may-raise. Read by the refused-callback arm of `error-classification`, where
+   * a `canRaise` miss would otherwise accuse a route that owns a real classifying catch
+   * (`does not accuse a route that owns a catch of owning none`).
    */
   guardMayRaise: boolean;
-  /**
-   * Everything the guarded region waits for is one of those parses. What separates
-   * `try { const body = await request.json(); } catch { 400 }` from
-   * `try { const body = await request.json(); return await handleEverything(body); } catch { 500 }`,
-   * which the statement count reads as the same size. Synchronous work is not counted here: the
-   * calls that prepare a parse's input are synchronous, and the swallows this has to catch wait on
-   * a service.
-   */
+  /** Everything the guarded region waits for is one of those parses. Synchronous work is not
+   * counted: preparing a parse's input is synchronous, and the swallows this separates out wait on
+   * a service. */
   awaitsOnlyParse: boolean;
   /** Statements in the guarded try block, counted as `statementCount` counts them. */
   tryStatementCount: number;
@@ -88,6 +52,10 @@ export type LogCall = {
   inCatch: boolean;
 };
 
+/**
+ * Body-scoped evidence for one route module. Which fields are per export and why, and what "the
+ * body" means: README, "How the scanner reads a route".
+ */
 export type EntryPoint = {
   fileName: string;
   source: string;
@@ -96,56 +64,28 @@ export type EntryPoint = {
   /** Callee name when `loader`/`action` is assigned from a call, e.g. a route builder. */
   loaderInitializerCallee: string | null;
   actionInitializerCallee: string | null;
-  /**
-   * Top-level keys of the object literals passed to that call, e.g. `["params", "authorization"]`.
-   * Empty when the export has no initializer call, and empty when the call takes no object
-   * literal, so an empty array is "nothing declared here" rather than "no builder".
-   */
+  /** Top-level keys of the object literals passed to that call. Empty means "nothing declared
+   * here" rather than "no builder". */
   loaderBuilderOptions: string[];
   actionBuilderOptions: string[];
   /**
-   * The route declares a loader or an action, and the scan resolved neither a handler function nor
-   * a builder call for any of them: `export { action } from "./handler.server"`,
-   * `export const action = handleWebhook`. Nothing about the request handling is in this file, so
-   * every check reports not-applicable and `buildReport` counts the entry point separately from
-   * the ones nothing happened to apply to. Those are different facts: a redirect stub genuinely has
-   * nothing to instrument, a delegating route has work the scanner cannot see.
-   *
-   * A route that delegates one export and writes the other in the file is NOT delegating by this
+   * The route declares a loader or an action and the scan resolved neither a handler function nor a
+   * builder call for any of them, so nothing about the request handling is in this file. A route
+   * that delegates ONE export and writes the other in the file is not delegating by this
    * definition, and is judged on the half that is visible.
    */
   delegating: boolean;
-  /**
-   * Whether THIS export's handler assigns the caller's own id to an object-literal property, the
-   * `where: { members: { some: { userId: authentication.userId } } }` and
-   * `presenter.call({ userId: user.id })` shapes. Read by `auth-scope` as evidence that the handler
-   * narrowed its work to whoever is asking. See `CALLER_ID_PATH` and `scopesByCallerIn` in
-   * `scan.ts`.
-   *
-   * Split per export because the exposure is per export: a loader that narrows itself to the caller
-   * says nothing about the action beside it. Property assignments only, so a value read into a
-   * local first (`const userId = user.id; ... { userId }`) is not seen.
-   */
+  /** Whether THIS export's handler assigns the caller's own id to an object-literal property.
+   * Property assignments only, so a value read into a local first is not seen. */
   loaderScopesByCaller: boolean;
   actionScopesByCaller: boolean;
   /**
-   * Callees whose answer THIS export's handlers demonstrably looked at: the call's result was bound
-   * to a local and some `if`, `while`, `switch` or conditional in the same handlers reads that
-   * local. `const user = await getUser(request); if (!user) return redirect("/login");` puts
-   * `getUser` here; a call whose result is dropped, or bound and never tested, does not appear.
+   * Callees whose answer THIS export's handlers demonstrably looked at: bound to a local, and that
+   * local read by some condition. No entry-point-wide version exists on purpose, so no check can
+   * let a loader's reading of `getUser` speak for the action beside it.
    *
-   * Read by `auth-boundary` for the guards that answer with null instead of throwing, where being
-   * called is not evidence that the route acted on the answer.
-   *
-   * Split per export for the same reason `loaderScopesByCaller` is, and there is no entry-point-wide
-   * version on purpose: a loader that reads what `getUser` returned says nothing about the action
-   * beside it, so the union is not a fact any check should be able to reach for.
-   *
-   * Deliberately coarse. It does not check that the test guards anything, that the local is the one
-   * tested rather than a same-named one in another scope, or that the branch exits: a route
-   * that writes `if (!user) { logger.warn("anonymous"); }` and carries on is credited. It separates
-   * "looked at the answer" from "ignored it", which is the distinction the check needs, and not
-   * "acted correctly on the answer", which it cannot see.
+   * Deliberately coarse: it does not check that the test guards anything, so a route writing
+   * `if (!user) { logger.warn("anonymous"); }` and carrying on is credited.
    */
   loaderCheckedCallees: string[];
   actionCheckedCallees: string[];
@@ -153,39 +93,21 @@ export type EntryPoint = {
   importedNames: string[];
   /**
    * Names of functions called inside the loader/action bodies, or in a same-file helper they call.
-   *
-   * Entry-point-wide, and read only by the questions that are themselves entry-point-wide:
-   * `sensitivity.ts` asks what the file touches, `triviality.ts` counts how much the file does,
-   * `audit-trail` asks whether the file records anything. A question about ONE export's exposure
-   * must read `loaderCalleeNames`/`actionCalleeNames` instead. `auth-boundary` read this and
+   * Entry-point-wide, and read only by the questions that are themselves entry-point-wide. A
+   * question about ONE export's exposure must read the pair below: `auth-boundary` read this and
    * credited a file whose loader called a guard for an action that called none.
    */
   calleeNames: string[];
-  /**
-   * The same callee names attributed to the export whose handlers made the call. A handler serving
-   * both exports (`const { loader, action } = createActionApiRoute({ handler })`) contributes to
-   * both, and a same-file helper contributes to whichever exports reach it.
-   *
-   * Every name here appears in `calleeNames` and every name in `calleeNames` appears in at least one
-   * of these, because all three are filled from one push in `scanFile`. `scan.test.ts` pins that
-   * ("every callee name is attributed to an export that exists") and `integration.test.ts` pins it
-   * again across the real route tree, so the split cannot drift away from the union it came from.
-   */
+  /** The same names attributed to the export whose handlers made the call. A handler serving both
+   * exports contributes to both. */
   loaderCalleeNames: string[];
   actionCalleeNames: string[];
-  /**
-   * The same calls as `loaderCalleeNames`/`actionCalleeNames`, each as its whole dotted path
-   * (`prisma.organization.findFirst` rather than `findFirst`). Read by the per-export triviality
-   * rule, which has to know that a three-statement body reaches the datastore; the bare name that
-   * `auth-boundary` matches guards against throws that receiver away.
-   */
+  /** The same calls as whole dotted paths (`prisma.organization.findFirst`), which the per-export
+   * triviality rule needs to know a short body reaches the datastore. */
   loaderCalleeTexts: string[];
   actionCalleeTexts: string[];
-  /**
-   * Whether a `try` appears in the loader/action bodies, or in a same-file helper they call. Note
-   * that this says a `try`, not a catch: a `try`/`finally` sets it while `catches` stays empty and
-   * every catch-shaped field stays false. Read `catches.length` to ask whether anything is caught.
-   */
+  /** Whether a `try` appears in those bodies. A `try`/`finally` sets this while `catches` stays
+   * empty, so ask `catches.length` whether anything is caught. */
   hasTryCatch: boolean;
   /** The same fact for one export's handlers alone. Read by the per-export triviality rule. */
   loaderHasTryCatch: boolean;
@@ -193,30 +115,18 @@ export type EntryPoint = {
   /** One entry per catch clause in those bodies, in source order. */
   catches: CatchEvidence[];
   /**
-   * Catch clauses the scan found but refused to attribute to the route, because they sit inside a
-   * per-item iteration callback. Still refused for attribution: they never join `catches`, never
-   * speak for the route's `tryStatementCount`, and never reach a pass. Kept WITH their evidence,
-   * built by the same `catchClauseEvidence` machinery as an own catch, so `error-classification`
-   * can judge what a refused catch does rather than where it sits: a refused swallow fails the
-   * route (`fails a per-item swallow even when the route owns an inert rethrow catch`), a refused
-   * catch that decides or rethrows caps at not-applicable (`sits out a route whose only catch is a
-   * deciding per-item boundary`). The count the old field carried is `.length`.
+   * Catch clauses the scan refused to attribute to the route because they sit inside a per-item
+   * iteration callback. Never join `catches`, never speak for `tryStatementCount`, never reach a
+   * pass. Kept WITH their evidence so `error-classification` can judge what a refused catch does
+   * rather than where it sits.
    */
   callbackCatches: CatchEvidence[];
   /** Calls to a `logger.*` or `log.*` callee in those bodies, in source order. */
   logCalls: LogCall[];
-  /**
-   * Statement count across loader/action bodies, used by the triviality rule. Includes the
-   * statements of functions written inline in those bodies, so wrapping a body in a callback does
-   * not shrink it. A body that delegates to a same-file helper counts that helper's statements too,
-   * one hop only: work in a helper's own helpers, or in an imported module, is not counted.
-   */
+  /** Statement count across loader/action bodies, used by the triviality rule. */
   statementCount: number;
-  /**
-   * The same count for one export's handlers alone, counted by the same walk. A handler serving both
-   * exports is counted once in `statementCount` and once in each of these, so the two do not sum to
-   * the entry point's total and must not be used as though they did.
-   */
+  /** The same count for one export's handlers alone. A handler serving both exports is counted in
+   * each, so these do not sum to `statementCount`. */
   loaderStatementCount: number;
   actionStatementCount: number;
 };

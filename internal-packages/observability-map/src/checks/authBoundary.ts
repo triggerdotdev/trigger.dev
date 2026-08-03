@@ -7,31 +7,14 @@ import { BUILDERS } from "./errorClassification.js";
 const ID = "auth-boundary";
 
 /**
- * The guard helpers this webapp actually has, matched against the calling export's own
- * `loaderCalleeNames`/`actionCalleeNames`, each scoped to that export's handlers and following one
- * hop into a same-file helper. A guard the route only imports and never calls does not count, and
- * neither does one the OTHER export calls.
+ * The guard helpers this webapp actually has, matched against the calling export's own callee names.
+ * A guard the route only imports and never calls does not count, and neither does one the OTHER
+ * export calls.
  *
- * A name list rather than the three patterns it replaces, because all three over-matched and this
- * is the one check where a false pass hides a security gap:
- *
- * - `/^(require|authenticate)/` passed any callee at all beginning `require`. Live in the tree:
- *   `requireSsoEntitlement`, a plan check, cleared `_app.orgs.$organizationSlug.settings.sso`. A
- *   local `requireValidParams(request)` would do the same for any route someone writes next.
- * - `/Authenticated/` passed `resolveAuthenticatedEnv`, used by ten routes, which is
- *   `findFirst({ where: { id: environmentId } })` in
- *   `internal-packages/run-engine/src/engine/controlPlaneResolver.ts`: it hydrates an environment
- *   record, it authenticates nothing. The docstring that put it here asserted the opposite. It also
- *   passed `commitAuthenticatedSession`, a cookie write, on six routes.
- * - `/^verify.*(Hash|Hmac|Signature|Webhook|Callback|Token)/` was sound on the tree, and is kept as
- *   three names for the same reason as the rest.
- *
- * Every name resolves to a declaration in the webapp or in the packages it authenticates through;
- * `webappSymbols.test.ts` fails if one stops doing so. What that test cannot check is that a
- * declaration with the right name is the guard we meant: `authenticateAdmin` and
- * `authenticatePlainRequest` are local helpers inside a single route file, so a second route
- * declaring its own no-op `authenticateAdmin` would be credited. That is a narrower hole than a
- * five-character prefix and it is the reason the list is names rather than patterns.
+ * Names rather than the three patterns it replaces, all of which over-matched: README, "Sensitivity,
+ * and the names the tool matches on". `webappSymbols.test.ts` fails if a name stops resolving, but
+ * cannot check that a declaration with the right name is the guard we meant, which is the residual
+ * the two local helpers below carry.
  */
 export const GUARDS = new Set([
   // Session and PAT identity, `apps/webapp/app/services/session.server.ts` and friends.
@@ -59,20 +42,16 @@ export const GUARDS = new Set([
   "authenticateUserActor",
   "authenticateAuthorizeSession",
   "authenticateAuthorizeBearer",
-  // remix-auth, reached as `authenticator.authenticate(...)` / `authenticator.isAuthenticated(...)`.
-  // The login surface is sensitive under `sensitivity.ts` and cannot require an already
-  // authenticated caller, so establishing identity from the credential presented is what a guard
-  // means there.
+  // remix-auth, reached as `authenticator.authenticate(...)`. The login surface is sensitive and
+  // cannot require an already authenticated caller, so establishing identity from the credential
+  // presented is what a guard means there.
   "authenticate",
   "isAuthenticated",
   // Local helpers, each declared inside the one route that uses it.
   "authenticateAdmin",
   "authenticatePlainRequest",
-  // Proof of possession: a callback URL carrying an HMAC is authenticated by checking that HMAC,
-  // and a login-surface second factor is authenticated by checking the code presented.
-  // `login.mfa`'s action is the second half of a login, so like `authenticate` above it establishes
-  // identity from the credential rather than requiring an already authenticated caller. It reached
-  // this list when per-export attribution stopped its loader's `isAuthenticated` speaking for it.
+  // Proof of possession: an HMAC on a callback URL, or a login-surface second factor. Same
+  // reasoning as `authenticate` above for the two `login.mfa` names.
   "verifyHttpCallbackHash",
   "verifyWebhook",
   "verifyUserActorToken",
@@ -81,38 +60,22 @@ export const GUARDS = new Set([
 ]);
 
 /**
- * Guards that answer with null instead of throwing. Calling one is not evidence of a boundary,
- * because the route is free to ignore the answer, so these are only credited when THAT EXPORT's
- * handlers demonstrably read what they returned (`EntryPoint.loaderCheckedCallees`).
- *
- * The distinction is the whole reason this set is separate from `GUARDS`. `requireUserId` redirects
- * on its own, so calling it IS the boundary; `getUserId` hands back `string | null` and a route
- * that drops it has no boundary at all. Both routes in the sensitive cohort that use one read the
- * answer, `invite-accept.tsx` refusing an invite addressed to another email and `login._index`
- * sending an already-authenticated caller away, and this rule is what makes that a measured fact
- * rather than something a hand-read established once.
- *
- * What it still cannot see is whether the test that reads the answer guards anything. See
- * `EntryPoint.loaderCheckedCallees` for the exact shape of that residual.
+ * Guards that answer with null instead of throwing, so calling one is not itself a boundary: these
+ * are credited only when THAT EXPORT's handlers read what they returned
+ * (`EntryPoint.loaderCheckedCallees`, which also carries the residual, that the test reading the
+ * answer need not guard anything).
  */
 export const SOFT_GUARDS = new Set(["getUser", "getUserId"]);
 
 type GuardedExport = { name: ExportName; guarded: boolean; how: string; export: RouteExport };
 
 /**
- * The exports this file declares, each with its own verdict.
+ * The exports this file declares, each with its own verdict. Per export because the exposure is per
+ * export, and every input here used to be entry-point-wide, which is a false PASS on the one check
+ * where that hides a security gap.
  *
- * Per export, because the exposure is per export, and this is the same defect `auth-scope` was
- * fixed for one round earlier. Every input here was entry-point-wide: `calleeNames` is the union of
- * both bodies, `checkedCallees` was too, and `usesBuilder` was an OR over the two initializer
- * callees. So a file whose loader called `requireUser` and whose action called nothing read as
- * "guarded in the body", and a file whose loader was `createLoaderApiRoute(...)` credited its
- * hand-written action with the builder's authentication. Three inputs, one bug, and it is a false
- * PASS on the one check where that hides a security gap.
- *
- * `routeExports` lists only the exports the file actually declares, so an export that calls nothing
- * at all is judged rather than skipped: an empty body is exactly the unguarded case. It is shared
- * with `auth-scope`, which grew its own copy of the same `[loader, action]` literal.
+ * `routeExports` lists only the exports the file declares, so an export that calls nothing at all is
+ * judged rather than skipped: an empty body is exactly the unguarded case.
  */
 function guardedExports(ep: EntryPoint): GuardedExport[] {
   return routeExports(ep).map((e) => {
@@ -133,29 +96,10 @@ function guardedExports(ep: EntryPoint): GuardedExport[] {
 /**
  * Whether a route that handles credentials, tokens or money checks who is asking.
  *
- * A fail here is an accusation, and it is only supportable when the body is the place a guard
- * would have to be. That holds when the route does its privileged work in the open: reads the
- * request, queries the datastore, mints the token. It does not hold for a trivial body, so those
- * are reported not-applicable rather than failed.
- *
- * The reasoning is the triviality rule's own definition rather than a convenience. A trivial body
- * has three statements or fewer, three calls or fewer, no try/catch, no builder, and no mention of
- * prisma, redis, fetch or the engine anywhere in its source. It therefore cannot contain a visible
- * privileged operation. Either it does nothing privileged at all, like the `/orgs/:slug/billing`
- * redirect stub, or the privileged work sits behind an import, like `clearImpersonation`, which
- * authenticates and writes an audit row in `app/models/admin.server.ts`. In the second case the
- * guard is in the same unopened file as the work. Absence of evidence, and reporting it as a
- * finding puts a wrong answer at the top of the fix list.
- *
- * This is not the rule `request-context` uses, deliberately. There the thing being looked for, a
- * field on a log call inside a catch, would be in the body if it existed at all, because the catch
- * is in the body. Absence of a log is evidence. Here the thing being looked for guards work that
- * is not in the body either, so its absence proves nothing. The test that separates them: would
- * this evidence necessarily be visible in the body if it existed?
- *
- * The design also matched `importedNames`. Across the 67 sensitive entry points that widening
- * changes nothing, every route with a `require*` import calls it from the body too, so the
- * file-wide half only ever stood to hand out a pass for a dead import. It is gone.
+ * A fail here is an accusation, so it is only made when the body is the place a guard would have to
+ * be. A trivial body cannot contain a visible privileged operation, so any guard is behind the same
+ * import as the work and its absence proves nothing. That is the applicability rule in README, "When
+ * a check declines to judge", and it is deliberately not the rule `request-context` uses.
  */
 export const authBoundary = {
   id: ID,
@@ -167,9 +111,8 @@ export const authBoundary = {
     // Never empty: `scanFile` returns null unless the file declares a loader or an action.
     const exports = guardedExports(ep);
     const guarded = exports.filter((e) => e.guarded);
-    // Triviality excuses per export, matching the attribution: the reasoning below is about one
-    // body being the place a guard would have to be, and reading it entry-point-wide let a busy
-    // action make a redirect-stub loader answerable for a guard it has nothing to guard.
+    // Triviality excuses per export, matching the attribution: read entry-point-wide, a busy action
+    // made a redirect-stub loader answerable for a guard it has nothing to guard.
     const accused = exports.filter((e) => !e.guarded && !isTrivialExport(e.export));
     if (accused.length > 0) {
       return {

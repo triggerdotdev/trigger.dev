@@ -5,29 +5,15 @@ import { isTrivial } from "../triviality.js";
 const ID = "audit-trail";
 
 /**
- * Calls that write a record of who did something.
+ * Calls that write a record of who did something. All three reach
+ * `prisma.impersonationAuditLog.create` in `models/admin.server.ts`, which nothing here matches
+ * directly, because `calleeNames` records `create` for a member call and no route writes the row
+ * itself. Matched against `importedNames` too, so an import counts.
  *
- * This list named nothing at all until it was checked. `auditLog`, `recordAudit` and
- * `writeAuditEvent` are exported nowhere in apps/webapp, packages/core or internal-packages,
- * so the pass branch below could never fire, every applicable route failed, and both renderers
- * printed "No audit helper exists in the webapp" while `models/admin.server.ts` was writing
- * `prisma.impersonationAuditLog.create({ action, adminId, targetId, ipAddress })` on two paths.
- * The rot went unnoticed because `webappSymbols.test.ts` covered every other name list in the
- * package and not this one. It covers this one now.
- *
- * All three names below reach that write: `redirectWithImpersonation` writes the START row,
- * `clearImpersonation` writes the STOP row, and `startImpersonation` returns one or the other.
- *
- * Two of them are also in `SENSITIVE_SYMBOLS`, which is worth saying out loud because it looks like
- * the circularity the sensitivity list was cleaned up to remove. It is not quite the same shape:
- * `requireAdminApiRequest` was a pure mitigation counted as a hazard, whereas impersonation
- * genuinely is the hazard AND genuinely writes the record. The consequence is real all the same, so
- * here it is: a route made sensitive only by one of these calls cannot fail this check, because the
- * call that put it in the cohort is the call that satisfies it.
- *
- * Matched against `importedNames` and `calleeNames`, so an import of one counts. Nothing matches
- * the underlying `prisma.impersonationAuditLog.create` path directly: `calleeNames` records
- * `create` for a member call, and no route in the tree writes the row itself.
+ * Two of these are also in `SENSITIVE_SYMBOLS`, so a route made sensitive only by one of them cannot
+ * fail this check: the call that put it in the cohort is the call that satisfies it. That is not the
+ * circularity the sensitivity list was cleaned up to remove, since impersonation genuinely is the
+ * hazard AND genuinely writes the record, but the consequence is real either way.
  */
 export const AUDIT_SYMBOLS = [
   "redirectWithImpersonation",
@@ -36,19 +22,13 @@ export const AUDIT_SYMBOLS = [
 ];
 
 /**
- * Whether a sensitive mutation leaves a record of who did it.
+ * Whether a sensitive mutation leaves a record of who did it. Applicability follows the same rule as
+ * every other check, which it did not before: gating on sensitivity and `hasAction` alone had this
+ * check accusing `resources.impersonation.ts` over an audit write behind the very import
+ * `auth-boundary` declined to judge it for.
  *
- * Applicability follows the same rule as every other check, which it did not before: would this
- * evidence necessarily be visible in the body if it existed? It gated on sensitivity and
- * `hasAction` alone, so on `resources.impersonation.ts`, a four-statement body, `auth-boundary`
- * declined to judge because any guard would be behind the import while this check accused the route
- * over an audit write behind that same import. Two checks, opposite verdicts, one fact.
- *
- * So a trivial body is not-applicable here too. A delegating one is handled centrally by
- * `scoreEntry`, which answers for every check before any of them runs, so there is no test for it
- * here. The order matters and mirrors
- * `auth-boundary`: a known audit call is read BEFORE the triviality exemption, because presence is
- * evidence even where absence is not.
+ * The order below matters and mirrors `auth-boundary`: a known audit call is read BEFORE the
+ * triviality exemption, because presence is evidence even where absence is not.
  */
 export const auditTrail = {
   id: ID,

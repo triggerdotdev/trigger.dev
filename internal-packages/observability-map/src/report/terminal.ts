@@ -10,31 +10,15 @@ const gauge = (score: number | null) => {
   return `${"▰".repeat(filled)}${"▱".repeat(10 - filled)} ${String(score).padStart(3)}`;
 };
 
-/**
- * Failing checks that actually feed `score`. `audit-trail` is deliberately excluded here: it is
- * excluded from the score for the same reason (see `score.ts`), and every sensitive mutation fails
- * it today, so folding it in would flood this list with the same finding repeated 46 times instead
- * of the fixable, route-specific gaps the list exists to surface. That gap is reported once, as
- * `AUDIT`, below.
- */
+/** Failing checks that feed `score`, so never `audit-trail`: every sensitive mutation fails that
+ * today, and it is reported once as the `AUDIT` line instead. */
 export const scoredFailures = (e: ScoredEntry) =>
   e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail");
 
 /**
- * An entry whose only finding is `request-context`. 401 of 412 entry points fail that check, so
- * listing each one turns the fix list into a single house-style finding repeated, which is the
- * reason `audit-trail` is kept out of the list too. Collapsed into the `CONTEXT` figure instead.
- * An entry that fails something else as well stays in the list with all of its findings, so a
- * route like `/account/tokens` still shows the request-context gap alongside the rest.
- */
-/**
- * The routes the FIX FIRST list is drawn from, worst first: sensitive before not, then by score,
- * then by name. Exported because `prComment.ts` renders the same list with different bullets and
- * had a byte-identical copy of this filter and sort, in a file that already imports
- * `scoredFailures` and `contextOnly` from here.
- *
- * `contextOnly` routes are left out because `request-context` fails almost everything, so a list
- * headed by three of them tells a reader nothing they cannot read off the gap figure.
+ * The routes the FIX FIRST list is drawn from, worst first: sensitive before not, then by score, then
+ * by name. Exported because `prComment.ts` renders the same list with different bullets and had a
+ * byte-identical copy of this filter and sort.
  */
 export const fixFirst = (entries: ScoredEntry[]): ScoredEntry[] =>
   entries
@@ -46,15 +30,17 @@ export const fixFirst = (entries: ScoredEntry[]): ScoredEntry[] =>
         a.fileName.localeCompare(b.fileName)
     );
 
+/** An entry whose only finding is `request-context`, which fails almost everything, so it is
+ * collapsed into the `CONTEXT` figure rather than listed. An entry that fails something else as well
+ * keeps all of its findings and stays in the list. */
 export const contextOnly = (e: ScoredEntry) => {
   const failures = scoredFailures(e);
   return failures.length === 1 && failures[0]!.id === "request-context";
 };
 
 /**
- * The UNKNOWN SUPPRESSION lines, one per file, shared with `prComment.ts`. Empty when every
- * directive named a real check. A typo suppresses nothing, so without this the author reads the
- * finding as acknowledged and the tool goes on reporting it with no hint why.
+ * The UNKNOWN SUPPRESSION lines, one per file, shared with `prComment.ts`. A typo suppresses nothing,
+ * so without this the author reads the finding as acknowledged and the tool goes on reporting it.
  */
 export function unknownSuppressionLine(fileName: string, ids: string[]): string {
   return (
@@ -70,20 +56,10 @@ export function unknownSuppressionLines(report: MapReport): string[] {
 }
 
 /**
- * The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when
- * there is nothing to report, i.e. no sensitive mutation exists.
- *
- * One shape for every count, and no branch on the count, because the branch is what carried the
- * bug. A zero used to print "No audit helper exists in the webapp", which is false: the helper
- * exists and `AUDIT_SYMBOLS` names it, `apps/webapp/app/models/admin.server.ts` writes
- * `prisma.impersonationAuditLog.create(...)`, and `webappSymbols.test.ts` proves those symbols
- * resolve. The count was already correct, so the sentence was the only wrong thing and it is gone
- * rather than reworded. A zero here means nothing reached the helper, which is what
- * "0 of N record an actor" already says.
- *
- * The full-tree scan reads 3 of 49 today, so the zero branch is not taken and nobody sees it. It is
- * one `--routes=<dir>` away from being taken, and one reshaped impersonation route away on the full
- * tree, which is why removing it beats leaving it unreachable.
+ * The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when no
+ * sensitive mutation exists. One shape for every count and no branch on the count, because the branch
+ * is what carried the bug: a zero used to print "No audit helper exists in the webapp", which is
+ * false. "0 of N record an actor" already says what a zero means.
  */
 export function auditLine(report: MapReport): string | null {
   const { sensitiveMutations, withAudit } = report.auditGap;
@@ -110,13 +86,9 @@ export function contextLine(report: MapReport): string | null {
 }
 
 /**
- * The DELEGATED lines, shared with `prComment.ts`. Empty when every route's body is in its own
- * file. Worded as a shortfall rather than a note: these routes left the denominator and no check
- * looked at any of them.
- *
- * `limit` caps how many file names are named, for the caller that has a size limit to respect. The
- * count in front of the list is always the full one, so a capped line still reports the real
- * shortfall and only shortens the evidence. The terminal passes no limit and prints them all.
+ * The DELEGATED lines, shared with `prComment.ts`. Worded as a shortfall rather than a note: these
+ * routes left the denominator and no check looked at any of them. `limit` shortens the evidence for a
+ * caller with a size limit; the count in front of the list is always the full one.
  */
 export function delegatedLines(report: MapReport, limit = Infinity): string[] {
   if (report.delegating.length === 0) return [];
@@ -131,10 +103,8 @@ export function delegatedLines(report: MapReport, limit = Infinity): string[] {
   ];
 }
 
-/**
- * The CHECKS block: what the composite is made of. `sole` is the figure that says most, since an
- * entry only one scored check applies to scores 0 or 100 on that one boolean.
- */
+/** The CHECKS block: what the composite is made of. `sole` is the figure that says most, since an
+ * entry only one scored check applies to scores 0 or 100 on that one boolean. */
 export function checkContributionLines(report: MapReport): string[] {
   if (report.checkContributions.every((c) => c.applicable === 0)) return [];
   const width = Math.max(...report.checkContributions.map((c) => c.id.length));
@@ -235,8 +205,8 @@ export function renderTerminal(report: MapReport): string {
   }
 
   lines.push("");
-  // Not one flattering number: an entry with nothing applicable is not the same as an entry that
-  // passed, and lumping them together counted routes as solid for doing nothing.
+  // Two figures rather than one, because lumping "nothing applicable" in with "passed" counted routes
+  // as solid for doing nothing.
   const clean = report.entries.filter((e) => e.measured && scoredFailures(e).length === 0).length;
   lines.push(
     `no findings: ${clean} passed every applicable check, ${report.unmeasured} had none to apply`

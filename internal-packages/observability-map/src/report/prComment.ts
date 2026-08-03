@@ -13,9 +13,8 @@ import {
 export const MARKER = "<!-- observability-map-report -->";
 
 /**
- * The commit a comment was rendered for. Data rather than something the renderers read for
- * themselves: they stay pure, and a unit test or a local CLI run with no commit context renders the
- * same comment without the line.
+ * The commit a comment was rendered for. Data rather than something the renderers read for themselves,
+ * so they stay pure and a run with no commit context renders the same comment without the line.
  */
 export type CommitContext = {
   /** The head sha, full. Shortened for the link text here rather than by the caller. */
@@ -26,10 +25,8 @@ export type CommitContext = {
 
 const SHORT_SHA_LENGTH = 7;
 
-/**
- * Directly under the heading and before anything the report says, because the comment is sticky:
- * it is edited in place across pushes, so the first question about it is which push it reflects.
- */
+/** Directly under the heading, because the comment is edited in place across pushes and the first
+ * question about it is which push it reflects. */
 function commitLines(commit: CommitContext | undefined): string[] {
   if (!commit) return [];
   return [`As of [\`${commit.sha.slice(0, SHORT_SHA_LENGTH)}\`](${commit.url}).`, ""];
@@ -37,31 +34,19 @@ function commitLines(commit: CommitContext | undefined): string[] {
 
 const MAX_CHANGED_ROWS = 15;
 
-/**
- * A mistyped directive applied tree wide renders one line per file: 87,938 characters against
- * GitHub's 65,536 limit, a 422, and the workflow's error tolerance swallowing it. The cap is what
- * stops the whole comment being lost to the section warning about a typo.
- */
+/** A mistyped directive applied tree wide rendered 87,938 characters against GitHub's 65,536 limit,
+ * so the whole comment was lost to the section warning about a typo. */
 const MAX_UNKNOWN_SUPPRESSION_LINES = 10;
 
 /**
- * The same failure in the other section that grows with the size of the tree. `delegating` holds
- * one file name per route whose body lives elsewhere, joined into a single line, and a codemod that
- * moves route bodies into `.server.ts` modules is both the refactor this feature exists to notice
- * and the one that makes the list tree-sized. The cap was claimed here before it was written: the
- * note above used to open "every other section of this comment is bounded by construction", which
- * was not true of this one.
- *
- * Fifteen matches the changed-entries table rather than the ten above, because a delegating file
- * name is one comma-separated item rather than a line naming every known check. The bound that
- * matters is the section's worst case: the longest route file name in the tree is 130 characters,
- * so fifteen of those plus separators is under 2kB against GitHub's 65,536.
+ * The same failure in the other section that grows with the tree, since a codemod moving route bodies
+ * into `.server.ts` modules is both the refactor this feature exists to notice and the one that makes
+ * the list tree-sized. Fifteen rather than the ten above because a file name is one comma-separated
+ * item: the longest in the tree is 130 characters, so fifteen of those is under 2kB.
  */
 const MAX_DELEGATED_ROUTES = 15;
 
-// Scored checks only, same exclusion terminal.ts's scoredFailures makes: audit-trail fails almost
-// every sensitive mutation today, so listing it per route would nag with something unfixable
-// instead of surfacing the route-specific gaps this column exists for.
+// Scored checks only, the same exclusion `scoredFailures` makes.
 const failingIds = (e: ScoredEntry) => scoredFailures(e).map((c) => c.id);
 
 function scoreLine(head: MapReport, base: MapReport | null): string {
@@ -87,10 +72,9 @@ function scoreLine(head: MapReport, base: MapReport | null): string {
 const NOT_MEASURED = "not measured";
 
 /**
- * `score` is 100 for an entry no scored check applied to, a placeholder the score itself excludes
- * from every mean. Rendering that 100 as a figure turned a route refactored down to a trivial body
- * into a 67-point improvement, and a trivial route gaining real work into the PR's worst
- * regression. So the cell says what the terminal gauge says for a null mean instead.
+ * `score` is a placeholder 100 for an entry no scored check applied to. Rendering that as a figure
+ * turned a route refactored down to a trivial body into a 67-point improvement, and a trivial route
+ * gaining real work into the PR's worst regression.
  */
 const scoreCell = (e: ScoredEntry): number | string => (e.measured ? e.score : NOT_MEASURED);
 
@@ -105,22 +89,13 @@ type ChangedRow = {
   baseScore: number | string;
   headScore: number | string;
   nowFailing: string[];
-  /**
-   * Ids this pull request newly suppressed on the entry. Rendered on the route cell, because a
-   * suppression added to a check that was passing drops the score by round A's cap and produces a
-   * row with an empty "now failing" column, which is indistinguishable from a real regression:
-   * `_app.@.orgs.$organizationSlug.$.tsx` renders 67 to 50 that way. The score movement is honest,
-   * the row without this note was not.
-   */
+  /** Ids this pull request newly suppressed. Rendered on the route cell, because a suppression added
+   * to a passing check drops the score by the cap and produces a row with an empty "now failing"
+   * column, indistinguishable from a real regression. */
   suppressed: string[];
-  /**
-   * How much the entry got worse, used to sort the table. A new entry has no base score to
-   * subtract from, so it is scored against a perfect 100: a new entry landing at 60 sorts the
-   * same as an existing one that dropped 40 points, which is the ordering "what needs fixing
-   * first" implies. Zero whenever either side is unmeasured, because there is no arithmetic to do
-   * between a figure and an absence; such a row is in the table to disclose the transition, not to
-   * claim a size for it.
-   */
+  /** How much the entry got worse, used to sort the table. A new entry is scored against a perfect
+   * 100, so one landing at 60 sorts with an existing one that dropped 40. Zero whenever either side
+   * is unmeasured, since there is no arithmetic to do between a figure and an absence. */
   drop: number;
 };
 
@@ -132,9 +107,8 @@ function changedRows(head: MapReport, base: MapReport): { rows: ChangedRow[]; re
   for (const h of head.entries) {
     const b = baseByFile.get(h.fileName);
     if (!b) {
-      // A new entry that passes every check it was measured against has nothing to fix, which is
-      // what `drop: 0` means everywhere else in this table. A new entry nothing applied to is a
-      // different statement and still gets a row, since its 100 is a placeholder rather than a pass.
+      // A new entry passing every check it was measured against has nothing to fix. One nothing
+      // applied to still gets a row, since its 100 is a placeholder rather than a pass.
       if (h.measured && h.score === 100 && h.suppressed.length === 0) continue;
       rows.push({
         routePath: h.routePath,
@@ -147,10 +121,9 @@ function changedRows(head: MapReport, base: MapReport): { rows: ChangedRow[]; re
       });
       continue;
     }
-    // Measured state and the suppression set are both part of what changed. A measured-to-
-    // unmeasured transition can leave the score at its placeholder value, and suppressing a check
-    // that was already failing moves no score at all, so skipping on the number alone hid both. A
-    // pull request whose whole purpose is to silence findings has to produce a row.
+    // Measured state and the suppression set are both part of what changed: a measured-to-unmeasured
+    // transition can leave the score at its placeholder, and suppressing an already-failing check
+    // moves no score at all, so skipping on the number alone hid both.
     const suppressed = newlySuppressed(h, b);
     const suppressionChanged = suppressed.length > 0 || h.suppressed.length !== b.suppressed.length;
     if (b.measured === h.measured && b.score === h.score && !suppressionChanged) continue;
@@ -236,35 +209,11 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 /**
  * Whether this pull request moves the report at all, so the job can stay quiet when it does not.
  *
- * The rule this has to satisfy is that it must be true whenever `renderPrComment` would say
- * something different, because anything it misses is a change the pull request silently does not
- * report. So it covers every figure the comment renders, not only the score: the global, the
- * per-entry score, measured state and suppression set, an entry added or removed, a check failing
- * at head that did not at base, the parse failure count, the unknown suppression warnings, and the
- * audit and context gaps.
- *
- * `delegating` and `checkContributions` are compared outright rather than through the per-entry
- * loop. Both are rendered, and both can move while every entry keeps its score: a check going from
- * applicable-and-passing to not-applicable leaves an entry at 100 and changes what the CHECKS block
- * says about it.
- *
- * The per-entry suppression set and the two gaps are the half that was missing, and it ran the
- * dangerous way. Suppressing an already-failing check moves no score, no measured flag and no new
- * failure, so a pull request whose entire purpose was to silence findings posted nothing, while a
- * mistyped directive did post because the unknown warnings were compared. `audit-trail` going from
- * fail to pass, the first audit record in the webapp, was in the same hole, and so was the CONTEXT
- * figure moving behind a suppression, since that figure reads pre-suppression data.
- *
- * The terms overlap on purpose, and what is defended is that their union is complete rather than
- * that each one is load bearing. Four are individually reachable, each with a test that fails when
- * only that term is removed: the parse failure count, the unknown suppression warnings, the audit
- * gap and the context gap. The global, the removed-entry check and the per-entry score are each
- * shadowed by another term today, and are kept because which term shadows which depends on the
- * shape of the change rather than on anything stable.
- *
- * `MapReport.suppressions` is the one term deliberately left out. Its two totals are summed from
- * the very per-entry `suppressed` arrays the loop below compares one by one, so it cannot move
- * without the loop moving. That is arithmetic rather than a happy overlap.
+ * This has to be true whenever `renderPrComment` would say something different, because anything it
+ * misses is a change the pull request silently does not report. The terms overlap on purpose, and
+ * what is defended is that their union is complete rather than that each one is load bearing.
+ * `MapReport.suppressions` is the one term deliberately left out, because its totals are summed from
+ * the very per-entry arrays the loop below compares. See README, "Reporting".
  */
 export function hasDelta(head: MapReport, base: MapReport | null): boolean {
   if (!base) return true;
@@ -291,10 +240,8 @@ export function hasDelta(head: MapReport, base: MapReport | null): boolean {
   return false;
 }
 
-/**
- * What replaces a comment whose findings a later push fixed. Going silent would leave the earlier
- * comment standing with findings that no longer exist, which is worse than a redundant comment.
- */
+/** What replaces a comment whose findings a later push fixed. Going silent leaves the earlier comment
+ * standing with findings that no longer exist. */
 export function renderResolvedComment(commit?: CommitContext): string {
   return [
     MARKER,
@@ -311,9 +258,9 @@ export function renderResolvedComment(commit?: CommitContext): string {
 }
 
 /**
- * What the job posts when the head scan did not produce a report. The alternative was a red x on
- * a job that must never block a pull request, and the alternative to that was swallowing the
- * failure so the only signal was a comment that never appeared.
+ * What the job posts when the head scan did not produce a report. The alternatives were a red x on a
+ * job that must never block a pull request, or swallowing the failure so the only signal was a comment
+ * that never appeared.
  */
 export function renderScanFailedComment(commit?: CommitContext): string {
   return [
@@ -330,10 +277,7 @@ export function renderScanFailedComment(commit?: CommitContext): string {
   ].join("\n");
 }
 
-/**
- * Pure function, no I/O: `head` and `base` are already-built reports. Matches entries across the
- * two by `fileName`, the same identifier `renderJson` carries.
- */
+/** Pure function, no I/O: `head` and `base` are already-built reports, matched by `fileName`. */
 export function renderPrComment(
   head: MapReport,
   base: MapReport | null,

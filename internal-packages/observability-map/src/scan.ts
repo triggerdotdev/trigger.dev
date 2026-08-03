@@ -73,55 +73,32 @@ function propertyPath(expr: ts.Expression): string | null {
 }
 
 /**
- * Expressions that are the caller's own id, in the spellings the route tree uses:
- * `userId: authentication.userId` under the API builders, `userId: user.id` under the dashboard
- * builders, and the `authenticationResult` and `sessionAuth` variants. Read by `auth-scope` as
- * evidence that the handler narrowed its query to whoever is asking.
- *
- * Anchored at both ends. The root has to be one of the auth bindings a builder hands the handler,
- * and the last segment has to be an identity field, so `user.name` is not a scope and neither is
- * `run.userId`, which is a resource's owner rather than the caller.
+ * Expressions that are the caller's own id, in the spellings the route tree uses. Anchored at both
+ * ends: the root is one of the auth bindings a builder hands the handler and the last segment is an
+ * identity field, so `user.name` is not a scope and neither is `run.userId`, which is a resource's
+ * owner rather than the caller.
  */
 const CALLER_ID_PATH =
   /^(authentication|authenticationResult|auth|sessionAuth|user)(\.[A-Za-z0-9_$]+)*\.(userId|id|actor)$/;
 
 /**
- * Property names that mean the value is being used to say WHOSE, rather than merely carrying the
- * caller's id around. Read off the tree: of the ten names that take a caller-id value in
- * `apps/webapp/app/routes`, these are the tenant and identity fields, and `sub`, `value` and
- * `consumerId` are the three that are not. `anything: user.id` is what a mutation writes, and it
- * does not match.
+ * Property names that mean the value says WHOSE rather than merely carrying the caller's id around.
+ * Read off the tree: of the ten names taking a caller-id value, `sub`, `value` and `consumerId` are
+ * the three left out.
  */
 const CALLER_ID_FIELD =
   /^(id|userId|user|memberId|orgMemberId|createdBy|createdByUserId|environmentId|runtimeEnvironmentId|organizationId|orgId|projectId)$/;
 
 /**
- * Callees that are handed the caller's id and cannot narrow a read with it: the log line and the
- * response body. Both take the very `{ userId: user.id }` object a query filter takes, so crediting
- * them let one log statement clear `auth-scope` for a whole export. That is cheaper than the
- * actor-argument residual `checks/authScope.ts` discloses, and it lands on the one check whose
- * purpose is catching cross-org exposure.
- *
- * The shape is already in the tree rather than hypothetical: `engine.v1.dev.runs...attempts.start`
- * writes `logger.error("...", { environmentId: authentication.environment.id })` beside the
- * `runStore.findRun` that earns that export its credit honestly. Loggers account for 13 of the
- * caller-id sites under `apps/webapp/app/routes` and the two response serializers for 2 more.
- *
- * A denylist of sinks rather than an allowlist of query callees, and that is a measurement rather
- * than a preference. 72 distinct callees are handed a caller id across the route tree, running from
- * `prisma.project.findFirst` through `presenter.call` and `new DeleteProjectService().call` to bare
- * `regenerateApiKey` and `resolveOrganizationForApiUser`. No name pattern separates those from
- * `sendToPlain`, so an allowlist would accuse whichever route named its helper next, and a wrong
- * accusation is the failure this check cannot afford. Refusing the sinks that are known not to
- * scope shrinks the residual without pretending to close it: `someHelper({ userId: user.id })` that
- * ignores its argument still credits, which needs types the scanner does not have.
+ * Callees handed the caller's id that cannot narrow a read with it: the log line and the response
+ * body. A denylist of sinks rather than an allowlist of query callees, which is a measurement and not
+ * a preference. See README, "What auth-scope reads as scoping".
  */
 const NON_SCOPING_CALLEE = /(^|\.)console\.[A-Za-z_$][\w$]*$|^(json|typedjson|defer)$/;
 
 /**
  * Whether a callee could plausibly narrow a read with the object it is handed. A callee with no
- * readable name of its own is credited: refusing it would ACCUSE the route, and under-crediting the
- * constraint beats accusing a route that is fine.
+ * readable name of its own is credited, because refusing it would ACCUSE the route.
  */
 function couldScopeAQuery(callee: ts.Expression): boolean {
   const text = calleeText(callee);
@@ -131,19 +108,12 @@ function couldScopeAQuery(callee: ts.Expression): boolean {
 
 /**
  * Whether the object literal holding this property is handed to a call that could scope a query,
- * through any depth of nesting: `findMany({ where: { members: { some: { userId } } } })` is, and
- * `const unused = { userId };` is not. Arrays count, so `{ OR: [{ userId }] }` still reaches its
- * call.
+ * through any depth of nesting. Arrays count, so `{ OR: [{ userId }] }` still reaches its call.
  *
- * Two things are refused. A filter built and dropped, which is the dead-object shape
- * `dead-caller-scope-object` and `dead-caller-scope-userid` cover. And a filter handed to a callee
- * that provably cannot read with it, which is `NON_SCOPING_CALLEE` and which the corpus entry
- * `log-caller-scope-userid` covers at tree scale.
- *
- * What this does NOT refuse is a filter handed to a named call that ignores it:
- * `String({ userId: user.id });` reads as scoping, the same way `try { String(0); }` reads as error
- * handling, and for the same reason. Knowing whether an arbitrary callee uses the argument needs
- * types the scanner does not have.
+ * Refuses a filter built and dropped (`dead-caller-scope-object`, `dead-caller-scope-userid`) and
+ * one handed to a `NON_SCOPING_CALLEE` (`log-caller-scope-userid`). Does NOT refuse a filter handed
+ * to a named call that ignores it: `String({ userId: user.id })` reads as scoping, the same way
+ * `try { String(0); }` reads as error handling.
  */
 function isHandedToAScopingCall(property: ts.PropertyAssignment): boolean {
   let node: ts.Node = property;
@@ -164,32 +134,13 @@ function isHandedToAScopingCall(property: ts.PropertyAssignment): boolean {
 }
 
 /**
- * Whether any handler in `fns` assigns the caller's own id to an object-literal property, the
- * `where: { members: { some: { userId: authentication.userId } } }` and
- * `presenter.call({ userId: user.id })` shapes.
+ * Whether any handler in `fns` assigns the caller's own id to an object-literal property. Three
+ * conditions, all load bearing: README, "What auth-scope reads as scoping".
  *
- * Per export rather than per entry point, and that is the whole point of computing it here instead
- * of in the main body walk. A file whose loader narrows itself to the caller and whose action does
- * not is not a scoped route, and the entry-point-wide version said it was: it passed
- * `_app.orgs.$organizationSlug.settings.team/route.tsx`, whose loader calls
- * `TeamPresenter.call({ userId: user.id })` while its action resolves the target org from the URL
- * slug and gates only on `ability.can`.
- *
- * Nested functions are walked, since a filter built inside a callback still filters. Same-file
- * helpers are NOT followed, unlike the main walk: a route that computes its filter in a helper is
- * reported as unscoped. Nothing in the tree does.
- *
- * Three conditions, and the first version of this had only the middle one, which made the whole
- * check free to defeat. Prepending `const __unused = { anything: user.id };` to every body raised
- * `settings.sso` and `settings.team`, the only two findings `auth-scope` has ever produced and both
- * confirmed cross-org exposures, because any property at all taking a caller id counted wherever it
- * sat. `dead-caller-scope-object` and `dead-caller-scope-userid` in the mutation corpus are the two
- * halves of that shape.
- *
- * So the property NAME has to be an identity field, and the object it sits in has to be handed to a
- * call that could scope a query. The third condition is what stops `logger.error("create failed",
- * { userId: user.id })`, written anywhere in a builder-wrapped handler, clearing the check for that
- * export. See `isHandedToAScopingCall` for what that does and does not refuse.
+ * Per export rather than per entry point, which is why it is computed here rather than in the main
+ * body walk. Nested functions are walked, since a filter built inside a callback still filters.
+ * Same-file helpers are NOT followed, unlike the main walk, so a route computing its filter in a
+ * helper is reported as unscoped. Nothing in the tree does.
  */
 function scopesByCallerIn(fns: Iterable<EntryFunction>): boolean {
   let found = false;
@@ -270,8 +221,7 @@ const PARSE_CALLEE = /(^|\.)(parse|safeParse|parseAsync|safeParseAsync|decode)$|
 
 /**
  * Constructors that parse untrusted input and throw when it is malformed. Deliberately short: any
- * constructor at all would mean `new BranchesPresenter()` or `new Set(...)` excuses a catch that
- * guards ordinary work, which was true of 77 try blocks in the route tree.
+ * constructor at all excuses a catch guarding ordinary work, which was true of 77 try blocks.
  */
 const PARSE_CONSTRUCTORS = new Set(["URL", "URLSearchParams", "RegExp"]);
 
@@ -285,13 +235,9 @@ function isParseCall(node: ts.Node): boolean {
 }
 
 /**
- * Body reads: the thing a parse guard waits for before it parses. `request.json()` is in
- * `PARSE_CALLEE` already because it reads and parses in one call, and these are the same operation
- * with the parse written separately, `const raw = await request.text(); new RegExp(raw);`.
- *
- * Only consulted for `awaitsOnlyParse`, never for `guardsParse`, which is what bounds it: a body
- * read on its own still does not make a try block a parse guard, so the widest this list can do is
- * let a block that already parses also read the thing it parses.
+ * Body reads: what a parse guard waits for before it parses, when the parse is written separately
+ * from the read. Only consulted for `awaitsOnlyParse`, never for `guardsParse`, which bounds it: a
+ * body read on its own does not make a try block a parse guard.
  */
 const BODY_READ_METHODS = new Set(["text", "formData", "arrayBuffer", "blob", "bytes"]);
 
@@ -302,14 +248,9 @@ function isBodyRead(node: ts.Node): boolean {
 }
 
 /**
- * Syntax that can raise. Everything a try block might do that produces something for a catch clause
- * to catch: a call, a construction, a tagged template, an `await` or `yield` (the awaited promise
- * rejects), a member access (the base may be null or undefined), a `throw`, an iteration (the
- * iterator protocol raises on a non-iterable), and `instanceof`/`in` (a TypeError on a non-object
- * right side).
- *
- * See `guardedWork` for what is NOT on this list and why that is a disclosed residual rather than
- * an oversight.
+ * Syntax that can raise, i.e. anything a try block might do that produces something for a catch
+ * clause to catch. A whitelist, so it also misses real raising code; `guardedWork` has both
+ * directions of that residual.
  */
 function canRaise(node: ts.Node): boolean {
   return (
@@ -330,45 +271,17 @@ function canRaise(node: ts.Node): boolean {
 }
 
 /**
- * What the guarded region does, in the three terms `error-classification` needs.
+ * What the guarded region does, in the three terms `error-classification` needs. Each term's rule
+ * and measurement: README, "Catch evidence, per clause".
  *
- * `guardsParse` is whether anything in it parses at all. A `new URL(x)` counts and has to be read
- * as a `ts.isNewExpression` here, because the call-callee scan that builds `calleeNames` never sees
- * it.
- *
- * `awaitsOnlyParse` is whether everything the block waits for is a parse or a read of the body it
- * parses. Awaiting is the signal, not calling: the calls that prepare a parse's input are ordinary
- * synchronous string work (`matchPattern.startsWith("(?i)")`, `.slice(4)` before a `new RegExp`),
- * and refusing those refuses four of the tree's clearest guards, while the swallow this has to
- * catch reaches a service: `try { const body = await request.json(); return await
- * handleEverything(body); }`.
- *
- * `canRaise` is whether the block does anything at all that could reach the clause. A clause whose
- * try block cannot raise is not error handling, and reading one as classification paid 50 points a
- * route to anyone willing to prepend `try { 0; } catch (e) { if (e instanceof Error) { return
- * json(x, { status: 400 }); } throw e; }` to a body: on the real tree that took the global from 15
- * to 42 and raised 224 routes when it was measured, before round C moved the baseline to 19. More
- * than every other shape found on this branch put together, and still true at today's figures, which
- * `dead-classifying-try-with-call` shows live at 19 to 44. `dead-classifying-try` in the mutation
- * corpus is the refused version.
- *
- * What this refuses is `try { 0; }` and nothing cleverer. `canRaise` accepts ANY call, member
- * access or `in`, and none of those has to be able to throw, so one inert call defeats the rule:
- * `try { String(0); } catch (e) { if (e instanceof Error) { return json(x, { status: 400 }); } throw
- * e; }` reads as classification and takes the tree from 19 to 44, exactly as `try { 0; }` did.
- * `dead-classifying-try-with-call` in the mutation corpus is that shape, running as an expected
- * failure. Telling a call that can throw from one that cannot needs types the scanner does not have,
- * so the rule closes the shape found rather than the family it belongs to. Read the docstrings that
- * point here as "refuses `try { 0; }`", never as "an unreachable catch cannot be credited".
- *
- * The list also misses things that CAN raise, which is the safe direction, and the misses matter
- * because a real clause can be dropped by one: a destructuring declaration (`const { a } = undefined`
- * throws), a temporal-dead-zone read (`try { const x = later; }`), a coercion that raises
- * (`try { const x = 1 + someSymbol; }`) and a `delete` on a frozen object all read as unable to
- * raise.
+ * Two residuals in opposite directions, both live. `guardCanRaise` refuses `try { 0; }` and nothing
+ * cleverer, because `canRaise` accepts any call at all, so `try { String(0); }` reads as
+ * classification and takes the tree from 19 to 44: `dead-classifying-try-with-call`, the corpus's
+ * expected failure. And `canRaise` misses code that CAN raise, a destructuring declaration and a
+ * temporal-dead-zone read among them, which is why `guardMayRaise` exists beside it.
  *
  * Nested function bodies are skipped throughout: a callback written inside the try is not work the
- * try is guarding on this pass through. A `throw` inside one is not either, which is deliberate.
+ * try is guarding on this pass through, and a `throw` inside one is not either.
  */
 function guardedWork(tryBlock: ts.Block): {
   guardsParse: boolean;
@@ -406,11 +319,8 @@ function containsInstanceOf(node: ts.Node): boolean {
 }
 
 /**
- * Whether a binding name pattern declares `target`, recursively: a plain `error`, a destructured
- * `{ error }` (shorthand) or `{ code: error }` (renamed), an array pattern `[error]`, and any of
- * those nested inside another. A destructured parameter or declaration re-declares the name just as
- * completely as a plain one does, so a shadow check that only recognised `ts.isIdentifier` missed
- * every destructured shape, function parameters and variable declarations alike.
+ * Whether a binding name pattern declares `target`, recursively, including every destructured shape:
+ * a shadow check that only recognised `ts.isIdentifier` missed all of them.
  */
 function bindingDeclares(name: ts.BindingName, target: string): boolean {
   if (ts.isIdentifier(name)) return name.text === target;
@@ -438,14 +348,10 @@ function declaresInScope(statements: readonly ts.Statement[], name: string): boo
 }
 
 /**
- * Whether `node` contains a genuine read of the given catch binding, e.g. `e` in `e instanceof X`
- * or `error.code`. An identifier only counts when it is a real reference. Two shapes share the
- * binding's text without reading it: the property side of a member expression (`fallback.error`)
- * and an object literal key (`{ error: true }`), both excluded by checking which side of the
- * parent node the identifier sits on. A name re-declared in a nested scope, as a function or catch
- * parameter (including a destructured one) or as a var/let/const/function/class in a block, refers
- * to that declaration instead, so the walk stops at the boundary that re-declares it rather than
- * crediting the outer binding.
+ * Whether `node` contains a genuine read of the given catch binding. Two shapes share the binding's
+ * text without reading it, the property side of a member expression and an object literal key, and a
+ * name re-declared in a nested scope refers to that declaration instead, so the walk stops at the
+ * boundary that re-declares it.
  */
 function referencesBinding(node: ts.Node, bindingName: string): boolean {
   if (ts.isIdentifier(node) && node.text === bindingName) {
@@ -484,24 +390,16 @@ function normalizedText(node: ts.Node): string {
 }
 
 /**
- * Whether a conditional expression tests the error to pick what the clause does, rather than to
- * word what it says. The caller only offers it the whole value of a `return`/`throw`, so
- * `return e instanceof Response ? e : json({}, { status: 500 })` reaches here and
- * `return json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })` does not.
- * The second is message formatting: every error leaves by the same path.
+ * Whether a conditional expression tests the error to pick what the clause does, rather than to word
+ * what it says. The caller only offers it the whole value of a `return`/`throw`, so
+ * `return json({ error: e instanceof Error ? e.message : String(e) })` does not reach here: that is
+ * message formatting and every error leaves by the same path.
  *
- * Goes through `referencesBinding`, the same predicate the `if`/`switch` check uses, rather than
- * accepting any `instanceof` in the condition: an `instanceof` that never reads the caught binding
- * is not a decision made on the error, and a bindingless catch has nothing here to reference.
- *
- * The two arms also have to differ, which is the same requirement `selectsADistinctPath` makes of
- * an `if`. `return e instanceof Error ? (X) : (X)` is a test whose outcome is the same either way,
- * and it was worth 50 points a route; `same-arms-ternary` in the mutation corpus is the tree-scale
- * version, and `scan.test.ts` has the unit case. The throw path is held to the same rule by
- * `wrap-body-in-same-arms-throw-ternary`, which would take every route in the tree to a pass if it
- * were not. Parentheses and whitespace are stripped
- * before the comparison, so the shape has to differ in something a reader would call a difference.
- * The residual both branch tests share is stated once, on `selectsADistinctPath`.
+ * The two arms have to differ, the same requirement `selectsADistinctPath` makes of an `if`, with
+ * parentheses and whitespace stripped. `same-arms-ternary` and
+ * `wrap-body-in-same-arms-throw-ternary` are the tree-scale versions, the second of which would take
+ * every route in the tree to a pass. The residual both branch tests share is on
+ * `selectsADistinctPath`.
  */
 function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string | null): boolean {
   if (bindingName === null) return false;
@@ -512,8 +410,8 @@ function selectsAnErrorPath(node: ts.ConditionalExpression, bindingName: string 
 
 /**
  * Which bare (unlabelled) jumps, at this point in the recursion, leave the statement list the
- * question is being asked about. A bare jump targets the nearest enclosing construct of its kind,
- * so descending past one of those targets changes the answer for the jumps it captures.
+ * question is being asked about. A bare jump targets the nearest enclosing construct of its kind, so
+ * descending past one of those changes the answer for the jumps it captures.
  */
 type BareJumps = { break: boolean; continue: boolean };
 
@@ -521,41 +419,25 @@ type BareJumps = { break: boolean; continue: boolean };
  * encloses the list. */
 const ESCAPES: BareJumps = { break: true, continue: true };
 
-/** A `do` body, asked about from the list the `do` sits in. `break` ends the loop and `continue`
- * goes to the condition, and both of those reach the statement written after the `do`. */
+/** A `do` body, asked about from the list the `do` sits in. Both jumps reach the statement written
+ * after the `do`, so neither leaves that list. */
 const IN_DO_BODY: BareJumps = { break: false, continue: false };
 
 /**
  * A statement that leaves the statement list it sits in on every path through itself, so anything
- * after it in the same list never runs.
- *
- * Recognises a nested construct, not only a bare `return`/`throw`/`break`/`continue`. Recognising
- * only the bare form is what let a dead `throw error;` count as a rethrow when the statement before
- * it was a block, a `do` body or an `if`/`else` that returned; `dead-throw-after-*` in the mutation
- * corpus is that family, and `scan.test.ts` has one case per construct.
+ * after it in the same list never runs. Recognises a nested construct and not only the bare jump
+ * forms, which is what stopped a dead `throw error;` counting as a rethrow (`dead-throw-after-*`).
  *
  * A bare `break` or `continue` only counts where it actually leaves the list, which is what `jumps`
- * carries. A `break` inside a switch clause targets the switch, so a switch whose clauses all break
- * falls through to the statement after it and does NOT exit; reading that break as an exit accused
- * `catch (e) { switch (e.code) { ... break; } throw e; }` of swallowing a rethrown error, which is
- * both a false verdict and a detail line that says the opposite of what the route does. A `continue`
- * inside a switch clause targets an enclosing loop instead, which the switch cannot be, so it is
- * inherited rather than dropped: dropping it would stop
- * `do { switch (x) { default: continue; } throw e; } while (c)` cutting a throw that really is dead.
- * `break and continue inside the construct they target` in `scan.test.ts` holds both halves.
+ * carries: a `break` in a switch clause targets the switch, a `continue` targets an enclosing loop
+ * that the switch cannot be. `break and continue inside the construct they target` holds both
+ * halves. A labelled jump always counts, since nothing between the list and the jump can carry the
+ * label.
  *
- * A labelled `break`/`continue` always counts. Its target has to enclose the statement list, since
- * nothing between the list and the jump can carry the label: `definitelyExits` answers false for a
- * labelled statement, so the recursion never descends through one.
- *
- * A sound under-approximation. `if` without an `else` (unless its guard is the literal `true`
- * keyword, the one condition this function folds), a labelled statement (a `break` to the label
- * escapes it) and every other loop form answer false, because none of them is guaranteed to run its
- * body. That extends to a `do` that never falls through, `do { continue; } while (true)`, which is
- * false for the same reason `while (true) { }` always was: separating it from
- * `do { continue; } while (c)` means folding a LOOP condition, which this function still does not
- * do. Saying false when the truth is true only leaves a later statement in the list, which
- * is the direction that withholds evidence rather than inventing it.
+ * A sound under-approximation: everything not listed answers false, including a `do` that never
+ * falls through, since separating that from `do { continue; } while (c)` means folding a loop
+ * condition. Saying false when the truth is true only leaves a later statement in the list, which
+ * withholds evidence rather than inventing it.
  */
 function definitelyExits(statement: ts.Statement, jumps: BareJumps = ESCAPES): boolean {
   if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
@@ -567,12 +449,9 @@ function definitelyExits(statement: ts.Statement, jumps: BareJumps = ESCAPES): b
   // A `do` body runs before its condition is ever read.
   if (ts.isDoStatement(statement)) return definitelyExits(statement.statement, IN_DO_BODY);
   if (ts.isIfStatement(statement)) {
-    // A guard that is exactly the `true` keyword always takes its then-arm, so the statement
-    // definitely exits iff that arm does, with or without an else. Keyword-exact, same spelling
-    // rule as the walk's `if (true)` entry and for the same reason: this GRANTS a reachability
-    // cut, and a wrong grant pays. `cuts a dead trailing statement after an if true that exits`
-    // is the pin; `dead-throw-after-if-true` and `dead-branch-after-if-true` in the mutation
-    // corpus are the tree-scale versions.
+    // Keyword-exact, the same spelling rule as the walk's `if (true)` entry and for the same
+    // reason: this GRANTS a reachability cut and a wrong grant pays.
+    // `cuts a dead trailing statement after an if true that exits` is the pin.
     if (unwrap(statement.expression).kind === ts.SyntaxKind.TrueKeyword) {
       return definitelyExits(statement.thenStatement, jumps);
     }
@@ -614,19 +493,14 @@ function reachableStatements(statements: readonly ts.Statement[]): readonly ts.S
 }
 
 /**
- * Whether the tree rooted at `node` contains a `break` or `continue` that would leave it, i.e. a
- * jump no construct INSIDE `node` captures. What the catch walk asks of a finally block before
- * entering the tryBlock beside it: a finally that completes abruptly cancels the try's completion,
- * so a throw in that tryBlock never leaves the clause and crediting it minted evidence
- * (`reads a throw a finally break discards as no rethrow` and its continue and switch-hosted
- * siblings pin the refusal; `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale
- * shape, 80 routes when measured).
+ * Whether the tree rooted at `node` contains a `break` or `continue` that would leave it. What the
+ * catch walk asks of a finally block before entering the tryBlock beside it, since a finally that
+ * completes abruptly cancels the try's completion (`dead-throw-in-cancelled-try`).
  *
- * A containment read, not a liveness one, on purpose: the caller is deciding whether to GRANT
- * credit and a wrong grant pays, so a jump that only may run still refuses
- * (`refuses the tryBlock when the finally only may break`). Two over-approximations in the same
- * direction: a labelled jump always counts, even when its label sits inside `node`, and a `return`
- * is not looked for here because the returns veto already reads it off the whole statement.
+ * A containment read and not a liveness one, on purpose: the caller is deciding whether to GRANT
+ * credit, so a jump that only may run still refuses
+ * (`refuses the tryBlock when the finally only may break`). A `return` is not looked for here
+ * because the returns veto already reads it off the whole statement.
  */
 function containsEscapingJump(node: ts.Node, jumps: BareJumps = ESCAPES): boolean {
   if (ts.isFunctionLike(node)) return false;
@@ -651,17 +525,14 @@ function containsEscapingJump(node: ts.Node, jumps: BareJumps = ESCAPES): boolea
 }
 
 /**
- * Literal truthiness of a guard expression: true, false, or null when not decidable from the
- * token alone. Only literal tokens fold; an identifier, call, bigint, `&&`, `||` or a template
- * literal with substitutions is always null, so a live guard can never be read as dead. The
- * always-true side is pinned by `still refuses an error test after an always-true spelling that
- * throws` and the fall-through slice by `reads a switch fall-through onto a live return as live`.
+ * Literal truthiness of a guard expression: true, false, or null when not decidable from the token
+ * alone. An identifier, call, bigint, `&&`, `||` or a template with substitutions is always null, so
+ * a live guard can never be read as dead. That is deliberate and it is what leaves
+ * `dead-conjunction-instanceof-if` open. Pinned by `still refuses an error test after an always-true
+ * spelling that throws`.
  */
 function literalTruth(expr: ts.Expression): boolean | null {
   const target = unwrap(expr);
-  // The five bare-literal kinds are `literalValue`'s list, not a second copy of it: this was the
-  // same five node-kind tests written out three lines above the function that already had them,
-  // differing only in returning the truthiness rather than the value.
   const literal = literalValue(target);
   if (literal !== undefined) return Boolean(literal);
   if (ts.isPrefixUnaryExpression(target) && target.operator === ts.SyntaxKind.ExclamationToken) {
@@ -704,25 +575,13 @@ function tryBlockMayThrow(block: ts.Block): boolean {
 }
 
 /**
- * Whether the tree rooted at `root` contains a node `hit` accepts that a provably-untaken branch
- * does not already rule out. A plain containment walk, minus the hits it can prove never run:
- * `if (false) { throw e; }` contains a throw and can never run one.
+ * Whether the tree rooted at `root` contains a node `hit` accepts that a provably-untaken branch does
+ * not already rule out. Strictly subtractive against a plain containment read, which is what lets its
+ * two callers read it for opposite purposes: see README, "Two folds, pointing opposite ways".
  *
- * Folds literal guards only, so wherever `literalTruth` cannot decide, every hit the plain walk
- * would have found is still found. That makes this strictly subtractive against containment, which
- * is what lets both of its callers read it for opposite purposes:
- *
- * - `catchClauseEvidence`'s `exited` flag, where a hit BLINDS the walk to whatever follows.
- *   Containment blinded it on a dead statement, so prepending one to a deciding clause turned its
- *   pass into a swallow verdict on 78 real routes. Subtracting dead hits only ever un-blinds.
- * - `selectsADistinctPath`, where a hit GRANTS a branch. Containment granted one for an arm whose
- *   only exit was dead, which is `dead-armed-instanceof-if` in the mutation corpus, measured at 80
- *   routes and the tree from 19 to 27. Subtracting dead hits only ever withholds.
- *
- * The `exited` half is pinned by the mirror twins under `dead and deferred code prepended to a
- * deciding catch does not blind it` (recovered) and the `BRANCH_EXITED` family (refusing). The
- * `selectsADistinctPath` half is pinned by `an arm whose only exit is dead decides nothing` and its
- * siblings, plus the corpus entry.
+ * The `exited` half is pinned by `dead and deferred code prepended to a deciding catch does not blind
+ * it` and the `BRANCH_EXITED` family; the `selectsADistinctPath` half by `an arm whose only exit is
+ * dead decides nothing` and `dead-armed-instanceof-if`.
  */
 function containsLiveWhere(root: ts.Node, hit: (n: ts.Node) => boolean): boolean {
   const walk = (node: ts.Node): boolean => {
@@ -772,13 +631,11 @@ function containsLiveWhere(root: ts.Node, hit: (n: ts.Node) => boolean): boolean
       return clauses.slice(matched).some((c) => c.statements.some(walk));
     }
     if (ts.isTryStatement(node)) {
-      // A finally that always completes abruptly (a return, a throw, or a jump out of the block)
-      // supersedes the try's and the catch's completion: an exit written in either never leaves
-      // the statement, so only the finally's own statements stay live. Folded only when
-      // `definitelyExits` can prove it; a conditional jump keeps the containment answer, the
-      // direction that refuses credit rather than inventing it. Without this fold the
-      // `dead-throw-in-cancelled-try` prepend blinded the walk to every real classification below
-      // it (`keeps the classification after a finally-break no-op`).
+      // A finally that always completes abruptly supersedes the try's and the catch's completion, so
+      // only its own statements stay live. Folded only where `definitelyExits` can prove it; a
+      // conditional jump keeps the containment answer, which refuses credit rather than inventing
+      // it. Without this the `dead-throw-in-cancelled-try` prepend blinded the walk to every real
+      // classification below it (`keeps the classification after a finally-break no-op`).
       if (node.finallyBlock !== undefined && definitelyExits(node.finallyBlock)) {
         return walk(node.finallyBlock);
       }
@@ -804,31 +661,18 @@ function containsLiveReturn(node: ts.Node): boolean {
 
 /**
  * Whether an `if`/`switch` sends at least one arm somewhere the others do not go, by returning or
- * throwing from inside it. `if (e instanceof Error) { }` and `if (e instanceof Error) { log(e); }`
- * both fail this: every error still leaves the clause by the same path afterwards, so the test
- * changed the wording and not the outcome. The empty-body form was the cheapest no-op in the tool,
- * worth 50 points a route; `empty-instanceof-if` in the mutation corpus is the tree-scale version.
+ * throwing from inside it. `if (e instanceof Error) { }` fails this, since every error still leaves
+ * by the same path afterwards (`empty-instanceof-if`). Two textually identical arms do not count,
+ * the same comparison `selectsAnErrorPath` makes of a ternary.
  *
- * An `if`/`else` whose two arms are textually identical does not count, the same comparison
- * `selectsAnErrorPath` makes of a ternary's arms.
- *
- * The exit an arm is credited for has to be a LIVE one, `containsLiveExit` and never a plain
- * containment read. `if (e instanceof Error) { if (false) { return null; } }` contains an exit that
- * can never run, so under containment it read as a real decision and took a swallowing catch to a
- * pass for the price of a mechanical edit: 80 routes and the tree from 19 to 27 when measured. The
- * same liveness rule had already been put on `catchClauseEvidence`'s `exited` flag, for the same
- * eleven dead spellings, and this predicate beside it kept the containment read. `an arm whose only
- * exit is dead decides nothing` and its siblings are the unit pins; `dead-armed-instanceof-if` in
- * the mutation corpus is the tree-scale version. Being subtractive against containment, the fold
- * can only ever withhold a branch, never invent one, so a live arm reads exactly as it did.
+ * The exit an arm is credited for has to be a LIVE one, never a plain containment read
+ * (`an arm whose only exit is dead decides nothing`, `dead-armed-instanceof-if`).
  *
  * The residual both branch tests share, stated here once for both: two arms that produce the same
- * outcome by different spellings still read as a real decision.
- * `if (e instanceof Error) { return json(x); } return Response.json(x);` counts and decides
- * nothing, and so does the `if` with no `else` whose arm returns what the statement after it
- * returns. Telling those apart needs the produced values compared for meaning rather than for text,
- * which is a different kind of analysis from anything else in this file. The textual comparison is
- * the cheapest thing that catches the copy-paste form, which is the one a mutation produces.
+ * outcome by different spellings still read as a real decision, e.g.
+ * `if (e instanceof Error) { return json(x); } return Response.json(x);`. Telling those apart needs
+ * the produced values compared for meaning rather than for text, which is a different kind of
+ * analysis from anything else in this file.
  */
 function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): boolean {
   if (ts.isIfStatement(statement)) {
@@ -839,95 +683,39 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
     }
     return containsLiveExit(statement.thenStatement);
   }
-  // Per clause statement rather than over the whole switch, so a live exit in any clause counts
-  // whatever the discriminant is. Reading the switch as one node would hand `containsLiveWhere`'s
-  // discriminant fold a `switch (e.code)` it cannot decide, which changes nothing, and a
-  // `switch (1)` it can, which is not this predicate's business: an unreachable CLAUSE is caught
-  // by the same fold one level down, and the statement is only reached at all when its condition
-  // references the caught binding.
+  // Per clause statement rather than over the whole switch: reading the switch as one node would
+  // hand `containsLiveWhere`'s discriminant fold a `switch (1)` it can decide, which is not this
+  // predicate's business, since an unreachable CLAUSE is caught by the same fold one level down.
   return statement.caseBlock.clauses.some((clause) => clause.statements.some(containsLiveExit));
 }
 
 /**
  * What a catch clause does with the error, beyond the fact that it caught one.
  *
- * Both answers are read off the clause's own guaranteed path. The governing rule: the walk may
- * enter a construct exactly where the entered statements are guaranteed to execute whenever the
- * clause body runs, so no credit can ever come from code a semantics-preserving edit could have
- * added dead. Entered on those terms: a bare nested block, a `do` body, the tryBlock of a `try`
- * that has NO catch clause and whose finally (if any) contains no jump out of itself (a finally
- * that completes abruptly cancels the try's completion, so nothing in that tryBlock ever escapes
- * the clause; `reads a throw a finally break discards as no rethrow` and
- * `dead-throw-in-cancelled-try` in the mutation corpus hold it), the sole clause of a
- * single-DefaultClause `switch`, the then-arm of an
- * `if` whose condition is exactly the literal `true` keyword, and both arms of an `if`/`else` with
- * per-arm states merged by intersection (evidence in both arms is unconditional; evidence in one
- * is not). Each entry is pinned by `reads a clause wrapped in a single-default switch as the bare
- * clause` and its sibling identity pairs.
- *
- * NOT entered, deliberately: a bare `if` without an else (except the literal-true case), loops
- * other than `do` (a body that may run zero times), labelled statements, function-like nodes (the
- * iteration-callback boundary is `walkBody`'s attribution rule and this walk never crosses any
- * function boundary), nested catch clauses, finally blocks, and the tryBlock of a `try` WITH a
- * catch clause, where a throw is intercepted by the nested catch rather than escaping the clause.
- * A `throw` or a test in any of those positions does not count.
- *
- * That is the whole dead-code defence, and it replaces the list of statically-false shapes an
- * earlier round kept extending. The list was losing: `if (false)` and `while (false)` were
- * recognised, and `for (;false;)`, `if (true) {} else`, `switch (1) { case 2: }`, `try {} catch`,
- * `for (const x of [])`, `for (const k in {})`, `if ("")`, `if (!true)` and `if (1 === 2)` were not,
- * each worth 50 points a route. Asking for the throw to be unconditional refuses all eleven without
- * naming any of them. `dead-*` in the mutation corpus is the tree-scale proof, one entry per shape.
- *
- * `rethrows` asks for one thing more: that the clause contains no `return` at all. The claim it
- * feeds is that the clause passes the error through unchanged, which is only true when throwing is
- * the ONLY way out. Without it a `throw error;` written after a statement that already exited read
- * as a rethrow, in seven spellings: after a bare block, a `do` body, an `if (true)`, an `if`/`else`
- * where both arms return, a `switch` with a returning default, and a `try`/`finally` that returns.
- * `definitelyExits` handles every one of those, including the `if (true)` spelling since it folds
- * the literal `true` keyword, and the no-return rule holds the rest of the line. `dead-throw-after-*`
- * in the mutation corpus covers them.
+ * Both answers are read off the clause's own guaranteed path: the walk enters a construct exactly
+ * where the entered statements are guaranteed to execute whenever the clause body runs, so no credit
+ * can ever come from code a semantics-preserving edit could have added dead. Which constructs are
+ * entered and which are refused, and the eleven dead spellings this replaced: README, "The dead-code
+ * defence". `dead-*` in the mutation corpus is the tree-scale proof, one entry per shape.
  *
  * The cost is real, in both rules. `catch (e) { if (transient) throw e; return null; }` no longer
- * reads as a rethrow, so it reads as a swallow and fails rather than sitting out, and neither does
- * `catch (e) { if (e instanceof Response) return e; throw e; }`, which passes on its branch instead.
- * That is the direction to be wrong in, since the reverse hands out points.
+ * reads as a rethrow, so it fails rather than sitting out. That is the direction to be wrong in.
  */
 function catchClauseEvidence(clause: ts.CatchClause): {
   rethrows: boolean;
   throws: boolean;
   branches: boolean;
 } {
-  // `rethrows`, `branches` and `exited` travel in a state record so a walk can be run against an
-  // isolated copy (the if/else arm walks) as well as the shared root. `returns` stays a single
-  // shared flag: it is a clause-wide veto, never per-arm evidence.
+  // The state record travels so an if/else arm can be walked against an isolated copy. `returns`
+  // stays a single shared flag, because it is a clause-wide veto and never per-arm evidence.
   //
-  // On `exited`: set once a statement the walk has already passed could have left the clause. An
-  // error test
-  // after one of those is dead code, so it decides nothing. Raised at the END of each statement,
-  // after that statement's own branch check: a deciding statement contains an exit by definition,
-  // so raising it first makes every such statement refuse itself, which was measured at 78 routes
-  // losing their pass and the tree dropping from 15 to 6, measured before round C moved the baseline
-  // to 19. This ordering leaves the real-tree report
-  // and all 240 clauses' evidence byte-identical. The tests are the cases in `dead throw written
-  // after something that already exited`.
+  // `exited` is raised at the END of each statement, after that statement's own branch check: a
+  // deciding statement contains an exit by definition, so raising it first makes every such
+  // statement refuse itself, measured at 78 routes losing their pass.
   //
-  // Raised off `containsLiveExit`, never a plain containment read. Containment is true of
-  // `if (false) { throw e; }` itself, so a provably dead statement raised the flag and blinded the
-  // walk to the real classification below it: prepending one to a deciding clause turned its pass
-  // into a swallow verdict on 78 real routes, the same false accusation for all eleven dead
-  // spellings. The liveness fold only ever withholds this blindness; where `literalTruth` cannot
-  // decide, the containment answer stands and refusal is intact. The recovered half is `dead and
-  // deferred code prepended to a deciding catch does not blind it`; the refusing half is the
-  // `BRANCH_EXITED` list plus `still refuses an error test after an always-true spelling that
-  // throws`.
-  //
-  // `vetoReturns` is whether this walk's statements may feed the `returns` veto. True everywhere
-  // except the if/else arm walks: `returns` is read at the PARENT level, as a live containment
-  // read over the whole statement, so an arm walk re-reading its own statements adds nothing for
-  // a live guard and adds a false veto for a folded-dead arm (the walk enters both arms; the fold
-  // has already excluded the dead one from the parent read). `dead-classifier-one-arm` in the
-  // mutation corpus is the tree-scale shape this protects.
+  // `vetoReturns` is false only in the arm walks. `returns` is read at the PARENT level over the
+  // whole statement, so an arm walk re-reading its own statements adds a false veto for a
+  // folded-dead arm (`dead-classifier-one-arm`).
   type ClauseState = {
     rethrows: boolean;
     branches: boolean;
@@ -939,20 +727,16 @@ function catchClauseEvidence(clause: ts.CatchClause): {
   const bindingName = catchBindingName(clause);
 
   const walk = (statements: readonly ts.Statement[], state: ClauseState) => {
-    // A block that re-declares the binding name means an `if` below it referencing that name is
-    // referencing the shadowing declaration, not this clause's error. Nothing in such a block can
-    // speak for the clause, so the whole list is skipped for branch purposes.
+    // A block re-declaring the binding name means an `if` below it references the shadowing
+    // declaration, not this clause's error, so the whole list is skipped for branch purposes.
     const shadowed = bindingName !== null && declaresInScope(statements, bindingName);
 
     for (const statement of reachableStatements(statements)) {
       if (ts.isThrowStatement(statement)) {
         state.rethrows = true;
         // Read the branch check here, before the path is cut. A thrown ternary picks WHICH error
-        // leaves, which is a classification, and reading it only at the shared check below meant
-        // the throw arm of that condition was unreachable: this arm always continued first. So
-        // `throw e instanceof Response ? e : new ServerError(e)` read as inert while the same
-        // clause written with `return` passed. `selectsAnErrorPath` is the same predicate either
-        // way, so the same-arms rule applies and `throw e instanceof Error ? e : e;` is refused.
+        // leaves, which is a classification, and the shared check below is unreachable from this arm
+        // because it always continues first.
         if (
           bindingName !== null &&
           !shadowed &&
@@ -973,37 +757,26 @@ function catchClauseEvidence(clause: ts.CatchClause): {
         continue;
       }
       // A `do` body runs before its condition is ever read, so it is on the straight-line path
-      // whatever the condition says. The only loop form that is; `definitelyExits` agrees.
+      // whatever the condition says. The only loop form that is.
       if (ts.isDoStatement(statement)) {
         const body = statement.statement;
         walk(ts.isBlock(body) ? body.statements : [body], state);
         if (containsLiveExit(statement)) state.exited = true;
         continue;
       }
-      // The three handlers below share one template: walk the inner list with the SAME shared
-      // state, then read `returns` and `exited` off the whole statement and continue. The explicit
-      // `containsLiveReturn` read is load-bearing: the `continue` skips the shared read below, and
-      // `try { throw e; } finally { return null; }` genuinely swallows (the finally return eats
-      // the throw), so the veto must still see the finally block the walk does not enter. `reads a
-      // try whose finally returns as swallowing, not rethrowing` is the pin.
+      // The three handlers below share one template: walk the inner list with the SAME shared state,
+      // then read `returns` and `exited` off the whole statement and continue. The explicit
+      // `containsLiveReturn` read is load-bearing, because the `continue` skips the shared read below
+      // and `try { throw e; } finally { return null; }` genuinely swallows (`reads a try whose
+      // finally returns as swallowing, not rethrowing`).
       //
-      // A `try` WITHOUT a catch clause: its tryBlock always runs when the clause body does, and a
-      // throw there escapes the clause, so rethrow credit is genuine — unless the finally can
-      // complete abruptly. A `finally` holding a `return` is covered by the explicit
-      // `containsLiveReturn` read below; a `finally` holding a `break` or `continue` that leaves
-      // it cancels the try's completion the same way, so the throw never escapes and the tryBlock
-      // must not be entered (`reads a throw a finally break discards as no rethrow`, its continue
-      // and switch-hosted siblings, and `refuses the tryBlock when the finally only may break`;
-      // `dead-throw-in-cancelled-try` in the mutation corpus is the tree-scale shape). The refusal
-      // is a containment read and entry requires its absence, because entry GRANTS credit; the
-      // matching liveness fold in `containsLiveWhere` then keeps the refused statement from
-      // blinding what follows it (`keeps the classification after a finally-break no-op`). The
-      // finallyBlock itself is NOT walked (classification living only in a finally block is
-      // under-credited; the tree has no such clause). A `try` WITH a catch clause is not entered
-      // at all: a throw in that tryBlock is intercepted by the nested catch, so crediting it would
-      // launder a returnless swallow into not-applicable. `does not read the tryBlock of a caught
-      // try as this clause's rethrow` is the pin, and the nested clause is judged separately as
-      // its own `ep.catches` entry.
+      // A catchless `try` is entered only when its finally cannot complete abruptly, since a finally
+      // that does cancels the try's completion and the throw never escapes the clause
+      // (`reads a throw a finally break discards as no rethrow`, `dead-throw-in-cancelled-try`). The
+      // finallyBlock itself is NOT walked, so classification living only there is under-credited. A
+      // `try` WITH a catch clause is not entered at all, since a throw in its tryBlock is
+      // intercepted by the nested catch, which is judged separately as its own `ep.catches` entry
+      // (`does not read the tryBlock of a caught try as this clause's rethrow`).
       if (
         ts.isTryStatement(statement) &&
         statement.catchClause === undefined &&
@@ -1014,13 +787,10 @@ function catchClauseEvidence(clause: ts.CatchClause): {
         if (containsLiveExit(statement)) state.exited = true;
         continue;
       }
-      // A `switch` whose caseBlock is exactly one DefaultClause: that clause's statements always
-      // run, as a bare list. A bare `break` in it neither rethrows, branches nor raises `exited`
-      // (`containsLiveExit` does not count breaks), and `reachableStatements` cuts anything after
-      // a top-level `break`, which is correct: after a break, nothing in the clause list runs.
-      // Any other switch shape is not entered and falls through to the branch gate below exactly
-      // as before, so a real `switch (e.code) { case ...: }` keeps its top-level credit. `reads a
-      // clause wrapped in a single-default switch as the bare clause` is the pin.
+      // A `switch` whose caseBlock is exactly one DefaultClause: those statements always run, as a
+      // bare list. Any other switch shape falls through to the branch gate below, so a real
+      // `switch (e.code)` keeps its top-level credit. `reads a clause wrapped in a single-default
+      // switch as the bare clause` is the pin.
       if (ts.isSwitchStatement(statement)) {
         const clauses = statement.caseBlock.clauses;
         const only = clauses.length === 1 ? clauses[0] : undefined;
@@ -1031,12 +801,10 @@ function catchClauseEvidence(clause: ts.CatchClause): {
           continue;
         }
       }
-      // An `if` whose condition (after `unwrap()`) is exactly the `true` keyword: the then-arm
-      // always runs; the else-arm never does and is NEVER walked (`reads a dead else arm under if
-      // true as contributing nothing` is the pin). Keyword-exact on purpose: `!!1`, `1` and
-      // `!false` are deliberately not entry tickets, because entry GRANTS credit and a wrong grant
-      // pays, where `literalTruth`'s wider folding only withholds blindness. This asymmetry is
-      // deliberate; do not unify the two folds. Takes precedence over the if/else arm walk below.
+      // An `if` whose condition is exactly the `true` keyword: the then-arm always runs, the else-arm
+      // is NEVER walked (`reads a dead else arm under if true as contributing nothing`).
+      // Keyword-exact on purpose, because entry GRANTS credit where `literalTruth`'s wider folding
+      // only withholds blindness. Do not unify the two folds. Takes precedence over the arm walk.
       if (
         ts.isIfStatement(statement) &&
         unwrap(statement.expression).kind === ts.SyntaxKind.TrueKeyword
@@ -1048,12 +816,10 @@ function catchClauseEvidence(clause: ts.CatchClause): {
         continue;
       }
       // Any other reachable statement that could return means throwing is not the only way out.
-      // Read here rather than over the whole clause so a `return` the walk has already cut as dead
-      // does not count, which is what a `do { throw e; } while (false); return null;` produces.
-      // The LIVE read, not the containment one: `if (false) { return null; }` holds a return that
-      // can never run, and vetoing the rethrow on it regressed a rethrow-only clause from
-      // not-applicable to fail on 11 real routes. `still sets rethrows past a dead return in an
-      // if (false) arm` is the pin.
+      // Read per statement rather than over the whole clause, so a `return` the walk has already cut
+      // as dead does not count, and read LIVE rather than by containment, since vetoing on
+      // `if (false) { return null; }` regressed a rethrow-only clause from not-applicable to fail on
+      // 11 real routes (`still sets rethrows past a dead return in an if (false) arm`).
       if (state.vetoReturns && containsLiveReturn(statement)) returns = true;
 
       if (bindingName !== null && !shadowed && !state.exited) {
@@ -1071,15 +837,10 @@ function catchClauseEvidence(clause: ts.CatchClause): {
         }
       }
 
-      // An `if` WITH an else (its condition not the literal `true` keyword, which the handler
-      // above already took): one arm always runs, so evidence present in BOTH arms is
-      // unconditional and evidence in one arm only is conditional and earns nothing. Each arm is
-      // walked against an isolated state and the results merge into the parent by INTERSECTION.
-      // Union is the laundering direction: `if (false) { <classifier> } else { 0; }` must earn
-      // nothing, which `dead-classifier-one-arm` in the mutation corpus and `does not credit a
-      // classifier that sits in one arm only` pin. `returns` is never intersected and never
-      // per-arm: the shared read above already vetoed off the whole statement, over-approximate
-      // across the live arms, because narrowing a veto per-arm is the unsafe direction.
+      // An `if` WITH an else: one arm always runs, so evidence in BOTH arms is unconditional and
+      // evidence in one arm only earns nothing. The arms merge by INTERSECTION, because union is the
+      // laundering direction (`dead-classifier-one-arm`, `does not credit a classifier that sits in
+      // one arm only`). `returns` is never intersected, since narrowing a veto per arm is unsafe.
       if (ts.isIfStatement(statement) && statement.elseStatement !== undefined) {
         const armWalk = (arm: ts.Statement): ClauseState => {
           const armState: ClauseState = {
@@ -1111,14 +872,9 @@ function catchClauseEvidence(clause: ts.CatchClause): {
 
 /**
  * Method names that invoke their callback once per element, never once as a whole. The structural
- * signal that separates a per-item boundary (`items.map((item) => { try {...} })`, a fresh catch
- * for every element) from a route's own body expressed through one more layer of function nesting
- * (`trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`,
- * `new ReadableStream({ start: async (c) => {...} })`), all of which invoke their callback exactly
- * once.
- *
- * A name list, because nothing in a syntactic scan can tell `users.map` from `Result.map`. The
- * consequence is written down where it matters, on `isIterationCallback`.
+ * signal that separates a per-item boundary from a route's own body expressed through one more layer
+ * of function nesting (`trace(async () => {...})` and friends, which run their callback exactly
+ * once). A name list, because nothing in a syntactic scan can tell `users.map` from `Result.map`.
  */
 const ITERATION_METHODS = new Set([
   "map",
@@ -1139,33 +895,13 @@ function isAtMostSingletonArray(expr: ts.Expression): boolean {
 }
 
 /**
- * Whether the function-like `node` is the callback argument of a per-item iteration, e.g. the arrow
- * function in `items.map((item) => ...)`.
+ * Whether the function-like `node` is the callback argument of a per-item iteration. Both directions
+ * of being wrong, and what makes the name list survivable: README, "The iteration-callback boundary".
  *
- * Being wrong here is asymmetric. Calling a per-item callback the route's own continuation
- * mis-attributes a per-element catch to the route, which was the bug the boundary was added for.
- * Calling the route's own continuation a per-item callback hides the route's catch, and
- * `error-classification` used to read a route with no catch as not-applicable, which is 50 points
- * more than the swallow it was hiding. So the second direction paid, and `[0].map(async () => {
- * whole body })` collected it.
- *
- * Two things changed. A receiver that is an array literal of one element or none is refused here,
- * because it cannot iterate. And the direction that used to pay no longer pays: `walkBody` keeps
- * the catches it refuses, evidence and all, and `error-classification` fails a route with a
- * refused swallow when nothing the route owns decides, while a refused catch that decides caps at
- * not-applicable and never a pass. That is what makes the name list survivable, and it is why
- * `Result.map(...)`, which no name list can tell from `users.map(...)`, is a corpus entry that
- * passes rather than a hole: relocating a swallow behind the boundary still fails, and relocating
- * a decision earns at most the route's exit from the denominator.
- *
- * The other direction still costs points and the earlier version of this comment said otherwise.
- * A per-item callback under a callee the name list does not know, `pMap(items, cb)` or
- * `Array.prototype.map.call(items, cb)`, is attributed to the route, so a per-element catch that
- * decides can carry the route to `pass`. No mutation of a real route produces it: the reviewer
- * tried `Array.prototype.map.call` over the tree and it moved nothing, because a route has to
- * already be iterating for the shape to exist. It is a wrong verdict waiting for a route to be
- * written that way, not a laundering path, and it is why this list is worth extending when a new
- * iteration helper shows up in the tree.
+ * The residual a reader here needs: a per-item callback under a callee this list does not know,
+ * `pMap(items, cb)`, is attributed to the route, so a per-element catch that decides can carry it to
+ * a pass. That is a wrong verdict waiting for a route to be written that way rather than a laundering
+ * path, and it is why the list is worth extending when a new iteration helper shows up in the tree.
  */
 function isIterationCallback(node: ts.Node): boolean {
   const parent = node.parent;
@@ -1203,11 +939,9 @@ function collectMethodHandlers(methods: ts.ObjectLiteralExpression, out: EntryFu
 }
 
 /**
- * The handler on an object argument, in the two shapes the route builders use: `handler` at the
- * top level of the config (`createSSELoader({ handler })`) and `methods.POST.handler`. Matching by
- * name at any depth would pick up an unrelated config callback that happens to be called
- * `handler`, as well as the sibling lambdas (`findResource`, `authorization.resource`) that are
- * not the entry-point body.
+ * The handler on an object argument, in the two shapes the route builders use: `handler` at the top
+ * level of the config and `methods.POST.handler`. Matching by name at any depth would pick up the
+ * sibling lambdas (`findResource`, `authorization.resource`) that are not the entry-point body.
  */
 function collectNamedHandlers(object: ts.ObjectLiteralExpression, out: EntryFunction[]): void {
   for (const property of object.properties) {
@@ -1250,8 +984,7 @@ function collectHandlerFunctions(call: ts.CallExpression, out: EntryFunction[]):
 }
 
 /** Literals a builder option can be given that mean it was not given: `apiBuilder.server.ts` gates
- * every one of these behind `if (option)`. Written out because `authorization: undefined` reads as
- * a declared gate to anything counting keys, and declaring one is what `auth-scope` credits. */
+ * every option behind `if (option)`, and declaring one is what `auth-scope` credits. */
 function isDeclaredValue(property: ts.ObjectLiteralElementLike): boolean {
   if (!ts.isPropertyAssignment(property)) return true;
   const value = unwrap(property.initializer);
@@ -1260,10 +993,9 @@ function isDeclaredValue(property: ts.ObjectLiteralElementLike): boolean {
 }
 
 /**
- * Top-level property names of every object-literal argument to the root call, e.g. `params`,
- * `authorization`, `method`. Only the root call and only the top level: `authorization` on
- * `createMultiMethodApiRoute` is declared once beside `methods` rather than per method
- * (`apiBuilder.server.ts`), so nothing here needs to descend.
+ * Top-level property names of every object-literal argument to the root call. Only the top level,
+ * because `authorization` on `createMultiMethodApiRoute` is declared once beside `methods` rather
+ * than per method (`apiBuilder.server.ts`).
  */
 function collectOptionKeys(call: ts.CallExpression): string[] {
   const keys: string[] = [];
@@ -1526,23 +1258,15 @@ function collectLocalFunctions(sf: ts.SourceFile): Map<string, EntryFunction> {
   return functions;
 }
 
-/**
- * Compiler options for the throwaway program below. `noLib` and `noResolve` keep it from going to
- * disk: nothing here needs a type, only the syntax the parser already produced.
- */
+/** `noLib` and `noResolve` keep the throwaway program below off the disk: nothing here needs a type,
+ * only the syntax the parser already produced. */
 const SYNTAX_ONLY_OPTIONS: ts.CompilerOptions = { noLib: true, noResolve: true, allowJs: true };
 
 /**
- * Syntactic diagnostics for an already-parsed source file, through `ts.Program` rather than off
- * the diagnostics array the parser hangs on the source file, which is internal and which the
- * compiler is free to rename. The whole parse-failure discipline rests on this, and an undetected
- * parse failure shrinks the denominator and inflates the score, so it must not be the kind of
- * thing a compiler upgrade can switch off silently.
- *
- * The host hands the program the `sf` we already have, so this does not parse the source a second
- * time. The cost is the program machinery around it, and it is not free: a full scan of the real
- * route tree went from about 850ms to about 1450ms, measured over five runs of each. A slower
- * scan of a tool that runs once a pull request is the cheaper of the two prices.
+ * Syntactic diagnostics for an already-parsed source file, through `ts.Program` rather than off the
+ * internal diagnostics array the parser hangs on the source file, which a compiler upgrade could
+ * rename out from under us. The host hands the program the `sf` we already have, so nothing is parsed
+ * twice. Costs and reasoning: README, "Tests, timeouts and CI".
  */
 function syntacticDiagnostics(sf: ts.SourceFile): readonly ts.Diagnostic[] {
   const host: ts.CompilerHost = {
@@ -1640,12 +1364,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
           continue;
         }
         // `export const { action, loader } = createActionApiRoute(...)`. Skipping a non-identifier
-        // binding name here produced no entry point at all for this shape: not a parse failure and
-        // not unmeasured, simply absent from the denominator. The two-step spelling
-        // (`const { action } = builder(...); export { action };`) already resolved, because
-        // `collectLocalDeclarations` reads the binding pattern and the export clause looks the name
-        // up there, so only the direct form was missing. The exported name is the ELEMENT name, so
-        // `{ loader: action }` exports an action and `{ action: internal }` exports neither.
+        // binding name here left this shape absent from the denominator entirely, neither a parse
+        // failure nor unmeasured. The exported name is the ELEMENT name, so `{ loader: action }`
+        // exports an action and `{ action: internal }` exports neither.
         if (!ts.isObjectBindingPattern(decl.name)) continue;
         for (const element of decl.name.elements) {
           if (!ts.isIdentifier(element.name)) continue;
@@ -1689,20 +1410,16 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   };
 
   const localFunctions = collectLocalFunctions(sf);
-  // A body that delegates to a same-file helper does the work in that helper, so the helper's
-  // statements, try/catch and callees belong to the entry point. One hop only: a helper's own
-  // helpers are not followed, and the visited set stops a cycle and any double counting.
-  //
-  // The helper's callees belong to whichever EXPORTS reach it, too, which is what `helperOwners`
-  // carries. A helper called from both halves of the file is owned by both; the union is taken on
-  // the second discovery rather than dropped, because `visited` has already queued it by then.
+  // One hop into a same-file helper, whose statements, try/catch and callees belong to the entry
+  // point. `visited` stops a cycle and any double counting; `helperOwners` carries which EXPORTS
+  // reach the helper, taking the union on a second discovery because `visited` has already queued it.
   const visited = new Set<EntryFunction>(target.functions);
   const helpers: EntryFunction[] = [];
   const helperOwners = new Map<EntryFunction, Set<ExportName>>();
 
   const walkBody = (fn: EntryFunction, followHelpers: boolean, owners: ReadonlySet<ExportName>) => {
-    // One push site feeds the entry-point-wide list and each owning export's list, so
-    // `calleeNames` and the per-export lists cannot drift apart. See `EntryPoint.loaderCalleeNames`.
+    // One push site feeds the entry-point-wide list and each owning export's list, so they cannot
+    // drift apart. See `EntryPoint.loaderCalleeNames`.
     const sinks: BodyFacts[] = [wholeEntry];
     for (const owner of owners) sinks.push(byExport[owner]);
     const collectTested = (node: ts.Node) => {
@@ -1716,26 +1433,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     addStatements(countFunctionStatements(fn));
 
     if (!fn.body) return;
-    // `inCallback` is true once the walk has entered a per-item iteration callback
-    // (`items.map((item) => { ... })`), never reset back to false: nesting deeper inside one is
-    // still inside it. `calleeNames` and `logCalls` keep descending regardless. A try/catch does
-    // not: a per-item catch is not part of this body's own statement list, and `countStatement`
-    // already stops at a nested function boundary, so counting it here let `tryStatementCount`
-    // exceed the entry point's whole `statementCount` and judged a per-item error boundary as
-    // though it were the route's own. What is refused is kept in `callbackCatches` with its
-    // evidence instead of dropped, so `error-classification` can fail a refused swallow and sit
-    // out a refused catch that decides, without ever crediting either as the route's own.
-    //
-    // Only an iteration callback is a boundary, not every function-like node: a route's own body
-    // wrapped in `trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`
-    // or `new ReadableStream({ start: async (c) => {...} })` still runs exactly once, as the route's
-    // own continuation one layer of nesting away, and its catch is the route's own error handling.
-    //
-    // A nested function's statements count towards `statementCount` too, whichever kind it is.
-    // They are work the route does, and leaving them out let `trace("x", async () => { whole body
-    // })` collapse a route to one statement, which is inside the triviality rule's limit: the route
-    // then read as trivial and every check reported not-applicable for it. `wrap-body-in-trace` in
-    // the mutation corpus is that shape.
+    // `inCallback` is true once the walk has entered a per-item iteration callback and is never reset,
+    // since nesting deeper inside one is still inside it. `calleeNames`, `logCalls` and the statement
+    // count keep descending regardless; a catch does not, and is kept in `callbackCatches` with its
+    // evidence rather than dropped. Only an iteration callback is a boundary, not every function-like
+    // node. See README, "The iteration-callback boundary".
     const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
       if (ts.isFunctionLike(node)) {
         if (isEntryFunction(node)) addStatements(countFunctionStatements(node));
@@ -1747,8 +1449,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         for (const sink of sinks) sink.hasTryCatch = true;
         if (node.catchClause) {
           // Built the same way for a refused catch as for an own one, so the dead-code defence
-          // and the walk's guaranteed-execution rules apply to both. Which list it lands in is
-          // walkBody's attribution decision alone.
+          // applies to both. Which list it lands in is this walk's attribution decision alone.
           const tryStatementCount = countStatements(node.tryBlock.statements);
           const clause = catchClauseEvidence(node.catchClause);
           (inCallback ? callbackCatches : catches).push({
@@ -1875,14 +1576,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 const SOURCE_FILE = /\.tsx?$/;
 
 /**
- * Whether a file name is one the scanner reads at all.
- *
- * Exported because three other places ask the same question and each had written its own copy:
- * `mutationCorpus.test.ts` materializes exactly the files `scanDirectory` reads, and
- * `integration.test.ts` and `webappSymbols.test.ts` walk trees of their own. The corpus's
- * anti-vacuity thresholds count files and sites the scanner never saw if those predicates drift,
- * and `integration.test.ts`'s `entryPoints.length < countRouteModuleFiles(ROUTES)` stops meaning
- * anything if its denominator counts files the scanner skips.
+ * Whether a file name is one the scanner reads at all. Exported because three test files ask the same
+ * question and each had written its own copy, and a predicate that drifts makes the corpus's
+ * anti-vacuity thresholds count files the scan never saw.
  */
 export function isScannableFile(fileName: string): boolean {
   return SOURCE_FILE.test(fileName) && !fileName.endsWith(".d.ts");
@@ -1893,14 +1589,8 @@ export type RouteModuleFile = { absolutePath: string; relativeName: string };
 
 /**
  * The route modules under `dir`: every scannable flat file, plus the `route.ts`/`route.tsx` of each
- * immediate subdirectory.
- *
- * Exported so `mutationCorpus.test.ts` can materialize exactly this set rather than re-deriving it.
- * Its `readTree` was a verbatim copy of the walk below; the FILE half of that copy was later
- * replaced by a call to `isScannableFile` while the DIRECTORY half stayed duplicated, which is the
- * usual way this package's duplicates half-die. A corpus that enumerates a different tree from the
- * scanner reports file and site counts for files the scan never reads, and those counts are the
- * only thing standing between a mutation that reaches nothing and a green test.
+ * immediate subdirectory. Exported so `mutationCorpus.test.ts` materializes exactly this set rather
+ * than re-deriving it, for the same reason as `isScannableFile` above.
  */
 export function routeModuleFiles(dir: string): RouteModuleFile[] {
   const files: RouteModuleFile[] = [];

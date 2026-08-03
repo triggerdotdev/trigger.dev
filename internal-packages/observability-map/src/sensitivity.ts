@@ -3,16 +3,9 @@ import { routePathOf } from "./adapters/remix.js";
 
 /**
  * Symbols whose presence says the route does something risky: minting or revoking a credential,
- * escalating to another user, destroying a tenant. Calling a guard is not one of them:
- * `requireAdminApiRequest` was on this list and made 34 of the 67 sensitive entry points sensitive
- * purely because they were guarded, which `auth-boundary` then passed them for. A mitigation
- * cannot be the hazard, and this list feeds the fix list's primary sort key.
- *
- * Half of this list used to name nothing. `Set.has` is exact, so `setImpersonation`, `createJWT`,
- * `signJWT` and `updateEnvVars`, none of which are exported anywhere in `apps/webapp/app`, matched
- * no route at all, while the real escalation `startImpersonation` was absent. Every name here now
- * resolves to a declaration in the webapp, and `webappSymbols.test.ts` fails if one stops
- * doing so.
+ * escalating to another user, destroying a tenant. Calling a guard is never one of them, because a
+ * mitigation cannot be the hazard, and `webappSymbols.test.ts` fails if a name stops resolving in the
+ * webapp. Both rules and what they cost: README, "Sensitivity, and the names the tool matches on".
  */
 export const SENSITIVE_SYMBOLS = [
   // Escalation: acting as another user.
@@ -44,39 +37,23 @@ export const SENSITIVE_SYMBOLS = [
 ];
 
 /**
- * Segments in `SENSITIVE_SEGMENTS` that match no route in the tree today. Kept because they are
- * ordinary words for the thing they name, so a route called one of them would be sensitive the day
- * it lands, and separated because the rest of the vocabulary is read off the tree and
- * `webappSymbols.test.ts` holds it to that. Adding a word here is a deliberate statement that
- * it names nothing yet, and shows up in review as one.
+ * Segments in `SENSITIVE_SEGMENTS` that match no route in the tree today, kept apart because
+ * `webappSymbols.test.ts` holds the rest of the vocabulary to naming something. Adding a word here is
+ * a deliberate statement that it names nothing yet, and shows up in review as one.
  */
 export const ANTICIPATED_SEGMENTS = ["payment", "invoices", "secrets"];
 
 /**
- * Whole path segments only, so "authorship" does not match "auth".
+ * Whole path segments only, so "authorship" does not match "auth". Every entry exists in
+ * `apps/webapp/app/routes` today and `webappSymbols.test.ts` fails if one stops appearing.
  *
- * Every entry is a segment that exists in `apps/webapp/app/routes` today; the vocabulary was read
- * off the tree rather than invented, and `webappSymbols.test.ts` fails if a segment stops
- * appearing in a route name. Two consequences of that rule are worth stating rather than leaving
- * to be rediscovered: there is no `transfer` segment because the webapp has no org or project
- * transfer route, and org/project deletion is reached through `DeleteOrganizationService` above
- * rather than through a segment, because the four routes that delete are named `orgs` and
- * `projects` and `settings`.
- *
- * Two segments were measured and left out.
- *
- * `logout` is one route, and both questions the cohort exists to ask are meaningless on it:
- * `logout.tsx` destroys the caller's own session, so there is no other party's credential to guard
- * and no actor to record beyond the one already leaving. Including it produced one permanent
- * `auth-boundary` failure that no change to the route could clear.
- *
- * `sessions` is the bigger one. It reads as the auth session surface and is not: every `sessions`
- * route in this tree is the realtime agent-session product,
- * `_app...env.$envParam.sessions._index/route.tsx` renders `SessionsTable`, and
- * `api.v1.sessions.$session.close.ts` closes an agent session. Sixteen route files carry the
- * segment. The genuine session-management surface is `session-duration`, which is here, and the
- * credential minting inside those routes is caught by `mintSessionToken` in the symbol list above,
- * which is why `api.v1.sessions.ts` is in the cohort and its fifteen siblings are not.
+ * Two absences worth knowing rather than rediscovering. `logout` is left out because
+ * `logout.tsx` destroys the caller's own session, so there is no other party's credential to guard and
+ * no actor to record, and including it produced one permanent `auth-boundary` failure nothing could
+ * clear. `sessions` is left out because every `sessions` route in this tree is the realtime
+ * agent-session product rather than the auth surface, sixteen files of it; the genuine
+ * session-management surface is `session-duration` below, and the credential minting inside those
+ * routes is caught by `mintSessionToken` above.
  */
 export const SENSITIVE_SEGMENTS = [
   // Credentials, tokens and money: the original vocabulary.
@@ -118,14 +95,12 @@ export const SENSITIVE_SEGMENTS = [
 ];
 
 /**
- * A route-name segment with Remix's layout markers taken off, so the segment vocabulary can be
- * written the way a reader would say it. A trailing underscore opts a route out of its parent
- * layout (`resources.impersonation_.view-as.ts`) and changes nothing about what the route does.
+ * A route-name segment with Remix's layout markers taken off. A trailing underscore opts a route out
+ * of its parent layout and changes nothing about what the route does.
  */
 export function normalizeSegment(segment: string): string {
-  // Trimmed by hand rather than with /_+$/, which backtracks polynomially on a run of underscores
-  // and trips CodeQL. Nothing here is attacker-controlled (the input is a filename read off disk),
-  // so this is about not spending a reviewer's attention on the alert.
+  // Trimmed by hand rather than with /_+$/, which backtracks polynomially and trips CodeQL. Nothing
+  // here is attacker-controlled, so this is about not spending a reviewer's attention on the alert.
   let end = segment.length;
   while (end > 0 && segment[end - 1] === "_") end--;
   return segment.slice(0, end);
@@ -136,25 +111,23 @@ export type Sensitivity = { sensitive: boolean; reasons: string[] };
 export function classifySensitivity(ep: EntryPoint): Sensitivity {
   const reasons: string[] = [];
 
-  // importedNames is file-wide; calleeNames is scoped to the loader/action body. A sensitive
-  // symbol called only at module scope is caught here only if it is also imported.
+  // `importedNames` is file-wide and `calleeNames` is body-scoped, so a sensitive symbol called only
+  // at module scope is caught here only if it is also imported.
   const symbols = new Set([...ep.importedNames, ...ep.calleeNames]);
   for (const s of SENSITIVE_SYMBOLS) {
     if (symbols.has(s)) reasons.push(`calls ${s}`);
   }
 
-  // `routePathOf` turns both flat routes (`api.v1.envvars.ts`) and directory routes
-  // (`billing/route.tsx`) into real `/`-separated path segments, so this matches whole segments in
-  // either shape rather than splitting the raw fileName on ".".
+  // `routePathOf` normalises both flat and directory routes to `/`-separated segments, so this
+  // matches whole segments in either shape rather than splitting the raw fileName on ".".
   const segments = routePathOf(ep.fileName)
     .split("/")
     .filter((s) => s.length > 0)
     .map(normalizeSegment);
   for (const [i, seg] of segments.entries()) {
     if (!SENSITIVE_SEGMENTS.includes(seg)) continue;
-    // A waitpoint token is a handle for resuming a run, not a credential. Seven of the eight
-    // `tokens` matches in the tree were waitpoint routes, so the segment on its own was mostly
-    // finding the wrong thing.
+    // A waitpoint token is a handle for resuming a run rather than a credential, and seven of the
+    // eight `tokens` matches in the tree were waitpoint routes.
     if ((seg === "token" || seg === "tokens") && segments[i - 1] === "waitpoints") continue;
     reasons.push(`path segment "${seg}"`);
   }

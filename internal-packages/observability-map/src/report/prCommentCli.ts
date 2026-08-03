@@ -18,8 +18,8 @@ const processIo: Io = {
   err: (s) => process.stderr.write(s),
 };
 
-/** Reads and parses one report file, raising a message naming the file rather than letting an
- * unreadable path or malformed JSON surface as a stack trace. */
+/** Raises a message naming the file rather than letting an unreadable path or malformed JSON surface
+ * as a stack trace. */
 function readReport(path: string, label: string): MapReport {
   let raw: string;
   try {
@@ -34,8 +34,8 @@ function readReport(path: string, label: string): MapReport {
   }
 }
 
-/** An `--opt=value` argument, last one winning. An empty value reads as absent, since that is what
- * an unset workflow expression interpolates to. */
+/** An `--opt=value` argument, last one winning. An empty value reads as absent, since that is what an
+ * unset workflow expression interpolates to. */
 function flag(args: string[], name: string): string | undefined {
   const prefix = `--${name}=`;
   const values = args.filter((a) => a.startsWith(prefix)).map((a) => a.slice(prefix.length));
@@ -43,9 +43,8 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 /**
- * The commit the caller says this comment is for. Half a pair is rejected rather than dropped: it
- * can only come from an edit to the workflow that passes one and not the other, and a comment
- * silently missing the line it was supposed to gain is the failure nobody would notice.
+ * The commit the caller says this comment is for. Half a pair is rejected rather than dropped, since a
+ * comment silently missing the line it was supposed to gain is the failure nobody would notice.
  */
 function commitFrom(args: string[]): CommitContext | undefined {
   const sha = flag(args, "commit-sha");
@@ -56,21 +55,13 @@ function commitFrom(args: string[]): CommitContext | undefined {
 }
 
 /**
- * `-` or a missing second arg means no base: the CI job falls back to this when the base scan
- * itself failed, so the comment still renders rather than the job going red.
+ * `-` or a missing second arg means no base, which is what the CI job falls back to when the base scan
+ * failed, so the comment still renders rather than the job going red.
  *
- * Empty output means "post nothing". The job only comments when the pull request moves the report,
- * and `--existing-comment` is how the workflow says a comment from an earlier push is already on
- * the pull request: with the delta gone, that comment is replaced with a resolved state rather
- * than left standing with findings that no longer exist.
- *
- * `--scan-failed` takes no report and prints the stale-report comment, for the case where the head
- * scan produced nothing to read. `--resolved` takes no report either and prints the resolved state
- * outright, for the case where the workflow knows there is nothing to compare: the paths the report
- * watches did not move in this pull request at all, so nothing was scanned, and the comment an
- * earlier push left has to stop showing findings that are no longer in the diff.
- *
- * `--commit-sha` and `--commit-url` are the commit every comment above is rendered as of.
+ * Empty output means "post nothing". `--existing-comment` is how the workflow says a comment from an
+ * earlier push is already there, so with the delta gone that comment is replaced with a resolved state
+ * rather than left standing. `--scan-failed` and `--resolved` take no report at all, for a head scan
+ * that produced nothing to read and for a run where the watched paths did not move.
  */
 export function main(argv: string[], io: Io = processIo): number {
   const args = argv.slice(2);
