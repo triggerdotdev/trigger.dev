@@ -421,6 +421,535 @@ Read these before trusting a specific verdict.
 - **The score is a mean of means over a heuristic.** Read the fix list, the two headline figures and
   the CHECKS block. Watching the single number for small movements will mislead you.
 
+## How the scanner reads a route
+
+`scan.ts` produces one `EntryPoint` per route module, carrying only body-scoped evidence. Three
+rules decide what "the body" means, and every finding in this tool rests on them.
+
+**One hop, same file only.** A loader that delegates to a helper declared in the same file has that
+helper's statements, try/catch and callees counted as its own. A helper's own helpers are not
+followed, the visited set stops a cycle, and nothing imported from another module is ever opened.
+
+**Nested functions count as work.** A statement inside a callback written in the body is still a
+statement the route runs. Leaving them out let `trace("x", async () => { whole body })` collapse a
+route to one statement, which is inside the triviality limit, so every check reported
+not-applicable for it. `wrap-body-in-trace` in the corpus is that shape.
+
+**Per export, not per file.** Six fields come in `loaderX`/`actionX` pairs, and the union is only
+offered where the question itself is file-wide. This split is the fix for a whole family of false
+passes, all the same shape: a file whose loader called `requireUser` and whose action called
+nothing read as "guarded in the body", and a file whose loader was `createLoaderApiRoute(...)`
+credited its hand-written action with the builder's authentication. `routeExports.ts` is the one
+enumeration both per-export checks read, because `auth-scope` and `auth-boundary` each grew their
+own `[loader, action]` literal and only one of them got each fix.
+
+`calleeNames` is the union and stays entry-point wide because the three questions that read it are:
+`sensitivity.ts` asks what the file touches, `triviality.ts` asks how much the file does,
+`audit-trail` asks whether the file records anything. There is deliberately no entry-point-wide
+`checkedCallees`, so no check can reach for a union that would say a loader's reading of `getUser`
+speaks for the action beside it.
+
+The split cannot drift from the union it came from: one push site in `scanFile` fills the whole-entry
+list and each owning export's list, `scan.test.ts` pins the property on fixtures and
+`integration.test.ts` pins it again over the real tree (`every callee name is attributed to an
+export that exists`).
+
+Two fields exist because the bare callee name is not enough. `calleeName` keeps only the last
+segment, so `prisma.organization.findFirst` arrives as `findFirst` with the receiver that says what
+is being called gone; `calleeTexts` keeps the whole dotted path, which is how the per-export
+triviality rule knows a three-statement body reaches the datastore. `auth-boundary` matches the bare
+name on purpose, so a guard call cannot be hidden by its receiver.
+
+### Catch evidence, per clause
+
+`CatchEvidence` is one record per catch clause rather than a set of booleans per entry point,
+because 39 routes have more than one catch and 17 mix a narrow parse guard with a broad handler.
+Under the old aggregate booleans a single well-behaved catch spoke for the swallow next to it.
+
+- `rethrows`: throwing is the clause's only way out, i.e. a throw is reached on the clause's
+  guaranteed path AND the clause contains no live `return` anywhere.
+- `throws`: a throw is reached on that path, whether or not it is the only way out. Kept separately
+  so a verdict can say what is true of a clause that both throws and returns. The detail line "takes
+  one way out regardless of what was thrown" is only true of a clause that never throws, and saying
+  it of a clause that does was a false accusation on 16 clauses in the tree.
+- `branches`: the clause picks what to do from what it caught. An `if` or `switch` whose condition
+  references the caught binding and at least one of whose arms returns or throws, or a conditional
+  that is the whole value of a `return`/`throw`. `if (retries > 0)` does not count,
+  `if (e instanceof Error) { }` does not count, a bindingless `catch { }` cannot count at all, and an
+  `instanceof` used only to word a message does not count either, because every error still leaves by
+  the same path.
+- `guardsParse`: the guarded region parses something. `JSON.parse`, `request.json()`, a zod
+  `parse`/`safeParse`, a `decode`, or a `new URL`/`URLSearchParams`/`RegExp`. Those three
+  constructors are read as `ts.isNewExpression` because a `new` expression is not a call and the
+  call-callee scan never sees them. Any constructor at all would mean `new BranchesPresenter()`
+  excuses a catch guarding ordinary work, which was true of 77 try blocks in the tree.
+- `guardCanRaise`: the region does anything that could reach the clause. False means `try { 0; }` and
+  little else, because any call counts, including one that cannot throw.
+- `guardMayRaise`: the containment twin, false only when the region provably cannot raise. Everything
+  `canRaise`'s whitelist misses stays true here, so `guardCanRaise` implies `guardMayRaise`.
+- `awaitsOnlyParse`: everything the region waits for is one of those parses, or a read of the body it
+  parses.
+- `tryStatementCount`: statements in the guarded block, counted as `statementCount` counts them.
+
+`canRaise` is a whitelist and it misses real raising code, which is the safe direction but does
+matter: a destructuring declaration (`const { a } = undefined` throws), a temporal-dead-zone read, a
+coercion that raises, and a `delete` on a frozen object all read as unable to raise. That is why the
+refused-swallow arm of `error-classification` reads the route's own deciding catches through
+`guardMayRaise` and never through `guardCanRaise`. Ordering it off can-raise accused a route that
+owns a real classifying catch of owning none, which was flatly untrue (`does not accuse a route that
+owns a catch of owning none`).
+
+"Does this route catch anything" is `catches.length`, never `hasTryCatch`. A `try`/`finally` with no
+catch leaves `hasTryCatch` true and `catches` empty: nothing is swallowed there, the error propagates
+once the cleanup has run, and reading the old flag as a catch put
+`admin.api.v1.runs-replication.status.ts` at the top of the first rendered fix list.
+
+## The dead-code defence
+
+Both of the catch-clause answers are read off the clause's guaranteed path. The governing rule: the
+walk may enter a construct exactly where the entered statements are guaranteed to execute whenever
+the clause body runs, so no credit can ever come from code a semantics-preserving edit could have
+added dead.
+
+Entered on those terms: a bare nested block, a `do` body, the tryBlock of a `try` that has no catch
+clause and whose finally contains no jump out of itself, the sole clause of a single-default
+`switch`, the then-arm of an `if` whose condition is exactly the literal `true` keyword, and both
+arms of an `if`/`else` with per-arm states merged by intersection.
+
+Not entered, deliberately: a bare `if` without an else, loops other than `do`, labelled statements,
+function-like nodes, nested catch clauses, finally blocks, and the tryBlock of a `try` that has a
+catch clause, where a throw is intercepted by the nested catch rather than escaping.
+
+That rule replaced a list of statically-false shapes an earlier round kept extending, and the list
+was losing. `if (false)` and `while (false)` were recognised; `for (;false;)`, `if (true) {} else`,
+`switch (1) { case 2: }`, `try {} catch`, `for (const x of [])`, `for (const k in {})`, `if ("")`,
+`if (!true)` and `if (1 === 2)` were not, each worth 50 points a route. Asking for the throw to be
+unconditional refuses all eleven without naming any of them. `dead-*` in the corpus is the
+tree-scale proof, one entry per shape.
+
+`rethrows` asks for one thing more: no `return` anywhere in the clause. Without it a `throw error;`
+written after a statement that already exited read as a rethrow, in seven spellings.
+`dead-throw-after-*` in the corpus covers them. The cost is real and worth stating:
+`catch (e) { if (transient) throw e; return null; }` no longer reads as a rethrow, so it fails rather
+than sitting out. That is the direction to be wrong in, since the reverse hands out points.
+
+### Two folds, pointing opposite ways
+
+There are two literal folds in `scan.ts` and unifying them would be a bug.
+
+`containsLiveWhere` folds any literal guard `literalTruth` can decide, and it is strictly
+subtractive against a plain containment read: wherever the truth cannot be decided, every hit
+containment would have found is still found. That is what lets its two callers read it for opposite
+purposes. In `catchClauseEvidence`'s `exited` flag a hit BLINDS the walk to whatever follows, and
+containment blinded it on a provably dead statement, so prepending one to a deciding clause turned
+its pass into a swallow verdict on 78 real routes. In `selectsADistinctPath` a hit GRANTS a branch,
+and containment granted one for an arm whose only exit was dead: `dead-armed-instanceof-if`, measured
+at 80 routes and the tree from 19 to 27. Subtracting dead hits only ever un-blinds in the first case
+and only ever withholds in the second.
+
+The walk's own entry tickets fold nothing but the literal `true` keyword. `!!1`, `1` and `!false` are
+deliberately not entry tickets, because entry GRANTS credit and a wrong grant pays, where
+`literalTruth`'s wider folding only ever withholds blindness. Do not unify the two.
+
+`literalTruth` treats `&&`, `||`, an identifier, a call, a bigint and a template with substitutions
+as undecidable on purpose, so a live guard can never be read as dead. The cost of that is
+`dead-conjunction-instanceof-if`, a corpus expected failure: `e instanceof Error && false` both
+references the caught binding and can never be true, and no fold in the file can see it. Widening the
+fold is a different rule with its own measurement.
+
+The `exited` flag is raised at the END of each statement, after that statement's own branch check. A
+deciding statement contains an exit by definition, so raising it first makes every such statement
+refuse itself, measured at 78 routes losing their pass. This ordering leaves the real-tree report and
+all 240 clauses' evidence byte-identical.
+
+### A finally that cancels the try
+
+A finally block that completes abruptly supersedes the try's and the catch's completion, so an exit
+written in either never leaves the statement. Two places read that, in opposite directions.
+
+`catchClauseEvidence` refuses to enter a catchless try whose finally holds a jump out of itself,
+because entry grants rethrow credit and the throw would never escape the clause. The refusal is a
+containment read, and it is over-approximate on purpose: a jump that only may run still refuses
+(`refuses the tryBlock when the finally only may break`). `dead-throw-in-cancelled-try` in the corpus
+is the tree-scale shape, worth 80 routes and 8 global points when measured.
+
+`containsLiveWhere` then folds the same statement to its finally's own statements, so a refused
+statement cannot blind the walk to the real classification below it (`keeps the classification after
+a finally-break no-op`). A finally holding a `return` is covered by the explicit `containsLiveReturn`
+read instead, because `try { throw e; } finally { return null; }` genuinely swallows.
+
+### The residual both branch tests share
+
+Two arms that produce the same outcome by different spellings still read as a real decision.
+`if (e instanceof Error) { return json(x); } return Response.json(x);` counts and decides nothing,
+and so does the `if` with no `else` whose arm returns what the statement after it returns. Telling
+those apart needs the produced values compared for meaning rather than for text, which is a
+different kind of analysis from anything else in the file. The textual comparison is the cheapest
+thing that catches the copy-paste form, which is the one a mutation produces.
+
+## Parse guards, and the narrow-try count
+
+A catch clause counts as a parse guard, rather than as the route's error handling, when the try block
+parses, waits for nothing except that parse, and is short. All three conditions are load bearing and
+two of them are corrections.
+
+`awaitsOnlyParse` is what a statement count cannot express.
+`try { const body = await request.json(); return await handleEverything(body); } catch { 500 }` is
+two statements, one of them a parse, and the whole handler inside it: the count reads it as narrow
+and it is the `otel.v1.logs.ts` swallow written compactly. Asking what the block waits for separates
+them, and unlike the count it does not care how the statements are punctuated or how deeply the work
+is nested. Awaiting is the signal rather than calling, because the calls that prepare a parse's input
+are ordinary synchronous string work (`matchPattern.slice(4)` before a `new RegExp`), and requiring
+every CALL to be a parse refuses four of the tree's clearest guards.
+
+Two residuals follow from awaiting being the signal, both in the round A fix 3 report. A block that
+does its non-parse work synchronously still reads as a guard. And `guardedWork` looks for a
+`ts.AwaitExpression`, which `for await (...)` and `await using` are not. Neither occurs in the tree
+and neither is reachable by rewriting a real route, since both need work that is not there to begin
+with.
+
+`NARROW_TRY_STATEMENTS` is 2, so the guarded operation can bind its result
+(`const stripped = ...; new RegExp(stripped);`) and a third statement means the try has started to
+cover the handler. The idiom it was hand-read against: 55 of 427 entry points, 11 of the failures at
+the time, all eleven the deliberate `try { body = await request.json() } catch { 400 }` shape.
+
+It is an absolute count and not a ratio against the enclosing body, because a ratio is diluted by
+anything else in the same body: padding the action with unrelated statements after the try relabelled
+the same broad swallow as a narrow guard, moving the denominator without touching the clause.
+`inert-statements-after-try` in the corpus is that shape.
+
+What the count is not is unpaddable, which an earlier docstring and a commit subject both claimed.
+`countStatement` counts declarators and comma operands rather than semicolons, so
+`const a = f(), b = g(), c = h();` is three and `a(), b(), c()` is three; that is what
+`merge-declarations` and `merge-comma-expressions` check. A third way nobody has written down would
+work, which is why the count is no longer the only condition and no longer the load-bearing one.
+
+Two rejected alternatives, both measured. Requiring the clause to answer with a 4xx credits, on its
+own, 11 clauses guarding four to thirty statements, the widest swallows in the tree, including
+`admin.api.v1.workers.ts`, whose 28-statement try answers every failure with a 400 carrying the
+internal error message; added on top of the rest it costs three routes their pass, all three narrow
+guards computing a fallback value rather than answering a request. And a narrow guard is not a way to
+qualify as classification on its own: reading all eleven entry points that limb would clear found six
+real swallows, including a silent run cancellation and two credential paths reporting a database
+failure to the browser as a 400 with an internal message in it.
+
+## The iteration-callback boundary
+
+`items.map((item) => { try {...} })` is a fresh catch per element, so its clause is not the route's
+own error handling. `trace(async () => {...})`, `mutateWithFallback({ pgMutation: ... })` and
+`new ReadableStream({ start: ... })` all invoke their callback exactly once, so theirs is. The
+structural signal is the method name, which is a list of eight, because nothing in a syntactic scan
+can tell `users.map` from `Result.map`.
+
+Being wrong here is asymmetric, and the direction that used to pay no longer does. A refused catch is
+kept WITH its evidence, built by the same machinery as an own catch, and judged on what it does
+rather than on where it sits. A refused swallow fails the route whenever nothing the route owns
+decides, and that arm is deliberately not conditioned on the route owning no catches, so an own inert
+rethrow catch cannot lift a refused swallow out of the verdict. A route whose only catches are refused
+and none of them swallows sits out at not-applicable and never passes, which is what keeps a prepended
+dead deciding `.map` from minting a pass on the 261 catchless routes. `dead-deciding-map` holds that
+at tree scale.
+
+That is what makes the name list survivable. `Result.map(...)` is a corpus entry that passes rather
+than a hole: relocating a swallow behind the boundary still fails
+(`still fails a swallow wrapped in a non-array receiver's .map(...)`), and relocating a decision earns
+at most the route's exit from the denominator. A receiver that is an array literal of one element or
+none is refused outright, since it cannot iterate.
+
+The other direction still costs precision. A per-item callback under a callee the list does not know,
+`pMap(items, cb)` or `Array.prototype.map.call(items, cb)`, is attributed to the route, so a
+per-element catch that decides can carry it to a pass. No mutation of a real route produces it: a
+route has to already be iterating for the shape to exist. It is a wrong verdict waiting for a route
+to be written that way rather than a laundering path, and it is why the list is worth extending when a
+new iteration helper shows up in the tree.
+
+## What auth-scope reads as scoping
+
+Three conditions, and the first version had only the middle one, which made the check free to defeat.
+Prepending `const __unused = { anything: user.id };` to every body raised `settings.sso` and
+`settings.team`, the only two findings `auth-scope` has ever produced and both confirmed cross-org
+exposures. `dead-caller-scope-object` and `dead-caller-scope-userid` are the two halves of that
+shape.
+
+- The value has to be the caller's own id, anchored at both ends: the root is one of the auth
+  bindings a builder hands the handler and the last segment is an identity field, so `user.name` is
+  not a scope and neither is `run.userId`, which is a resource's owner.
+- The property NAME has to be an identity field. Of the ten names that take a caller-id value in the
+  route tree, `sub`, `value` and `consumerId` are the three that are not, and `anything: user.id` is
+  what a mutation writes.
+- The object has to be handed, through any depth of nesting, to a call that could narrow a read with
+  it. Arrays count, so `{ OR: [{ userId }] }` still reaches its call.
+
+The third condition is a denylist of sinks rather than an allowlist of query callees, and that is a
+measurement. 72 distinct callees are handed a caller id across the route tree, running from
+`prisma.project.findFirst` through `presenter.call` and `new DeleteProjectService().call` to bare
+`regenerateApiKey`. No name pattern separates those from `sendToPlain`, so an allowlist would accuse
+whichever route named its helper next, and a wrong accusation is the failure this check cannot
+afford. The sinks refused are the log line and the response body, both of which take the very
+`{ userId: user.id }` object a query filter takes: loggers account for 13 of the caller-id sites and
+the two response serializers for 2 more. The shape is already in the tree rather than hypothetical,
+in `engine.v1.dev.runs...attempts.start`, which logs `{ environmentId: ... }` beside the
+`runStore.findRun` that earns its credit honestly. `log-caller-scope-userid` covers it at tree scale.
+
+A callee with no readable name of its own is credited, because refusing it would ACCUSE the route,
+and under-crediting beats accusing a route that is fine. `String({ userId: user.id })` therefore
+reads as scoping, the same way `try { String(0); }` reads as error handling and for the same reason.
+
+`authorization: undefined`, `null` and `false` are read as not declared, because
+`apiBuilder.server.ts` gates every option behind `if (option)` and declaring one is what the check
+credits.
+
+## Triviality, in detail
+
+Trivial means a body of three statements or fewer, three or fewer calls, no try/catch, no builder
+wrapping it, and nothing in the calls or the hint text naming a datastore or a service.
+
+Both limits are 3 because both real shapes need three: parse the params, build a path, redirect, or
+an environment guard and two returns. Allowing a fourth call admits
+`_app.orgs.$organizationSlug.settings/route.tsx`, which awaits two service calls; allowing a fourth
+statement admits the routes that authenticate and then hand off to a presenter, which have real work
+behind them; allowing a fifth admits an admin route that calls a service and hand-rolls its own error
+responses.
+
+The rule is deliberately reluctant, because a route wrongly called trivial is exempted and never
+shows up in the report again. So `calleeNames` descends into the callee of every call at any depth
+while `statementCount` stops at a nested function, which means the call count still catches bodies
+the statement count reads as short. A builder means the config passed to it (`findResource`,
+`authorization`) is work the scanner never walks, so the visible body is not the whole route. And a
+try/catch is exactly what `error-classification` reads, so a body with one has an error path worth
+reporting on however short it is.
+
+One rule, two views, so the entry-point-wide answer and a single export's answer cannot drift. The
+per-export view exists because a per-export verdict judged against a file-wide triviality rule
+accuses the wrong half of a file: `auth.github.ts` is
+`export let loader = () => redirect("/login")` beside an action that calls
+`authenticator.authenticate`, and the file-wide rule called it non-trivial because the ACTION is not,
+so `auth-boundary` accused a one-line redirect stub of missing an auth guard. `checks/index.test.ts`
+pins both directions (`reports not-applicable for a redirect-stub loader beside a guarded action` and
+`fails an export whose own body does real work unguarded`).
+
+The two views differ in one term and the difference was measured both ways. The entry-point-wide view
+matches the side-effect hints against the whole file, so an import of `prisma` disqualifies it even
+when the query sits somewhere the scanner does not walk. A per-export view matches that export's own
+callee PATHS instead. Reading the file's text into one export's verdict is the per-file-for-per-export
+substitution the rule exists to damp, and it is defeatable: `log-caller-scope-userid` prepends a
+`logger.error(...)` to every body, which with the term file-wide put the word `logger` in
+`auth.github.ts` and turned its untouched one-line redirect loader from excused into accused. Emptying
+the term instead is not the answer either: `calleeNames` keeps only a call's last segment, so
+`prisma.orgMember.findMany` reads as `findMany` and a three-statement body that queries the datastore
+matches no hint at all, which took five existing `auth-boundary` fixtures from `fail` to
+`not-applicable`. The callee paths are body-scoped like the first option wants and name the receiver
+like the second needs.
+
+## Reading the directive out of the source
+
+The suppression directive is read from a real parsed `ts.SourceFile`, and then filtered against the
+spans the parser has already claimed as content. Both halves are needed.
+
+Parsing rather than scanning is what stops a template literal with a substitution being rescanned as
+ordinary code after `${x}`, and what makes JSX text a node at all. Filtering by span is what stops
+the two comment-range lexers reading the start of such a node as a comment anyway, which they do
+because `getLeadingCommentRanges` and `getTrailingCommentRanges` are raw lexers over source text from
+an offset and consult no parse tree. A JSX text node that BEGINS with `//` or `/*` is the shape that
+reached the real tree, in `resources.branches.create.tsx`'s `<InlineCode>//</InlineCode>`.
+
+The filter is on the range's start offset falling inside a claimed span, not on the gap between a
+token's full start and its start. A gap filter was tried and rejected: it loses a same-line trailing
+comment and a comment inside a JSX expression container, both of which are real. Both lexers are
+called at every token boundary, because which one returns a given comment depends on whether it
+shares a line with the token before it.
+
+Leaf tokens are walked through `.getChildren()` rather than `ts.forEachChild`, which skips bare
+punctuation and keyword tokens. A comment can sit directly before one of those with nothing else
+following it, the last line inside a block.
+
+The mutation corpus does not cover any of this and cannot: a suppression can only lower an entry's
+score, because `scoreEntry` caps it at the pre-suppression ratio, so suppression bugs are invisible
+to a harness that watches for the score rising. They need ordinary unit tests, which is what
+`suppression.test.ts` is: `jsx text is content, not a comment` is the four cases that fail without
+the JSX filter, and the positive control beside it, `still reads a directive from a comment in a JSX
+expression container`, is what stops the filter being widened until it eats real comments.
+
+## The mutation harness
+
+Every mutation is a TEXT rewrite driven by AST positions, never a reprint. A reprint would change
+formatting everywhere and make a failure impossible to read; splicing at node positions leaves the
+rest of the file byte-identical, so a corpus failure can be diffed down to the one construct that
+moved. Overlapping edits are dropped inner-first, which is what "the outer rewrite won" means.
+
+Neither kind of entry is ever executed. Semantics-preserving here means preserving the observable
+behaviour of the route as written, which is what the scanner claims to measure. It is not a claim
+that the mutated tree compiles against its real types.
+
+**Splices go at the HEAD of a catch clause, not the tail.** 234 of the tree's 260 clauses end in a
+`return` or a `throw`, so an appended shape was dead by ordering before the rule under test ever
+looked at it: eleven entries reported touching 172 files while exercising 26 clauses. At the head
+every clause is reachable. The shapes spliced this way are dead wherever they sit, so moving them
+does not make the rewrite any less preserving.
+
+**The harness's population is asserted against the scanner's.** `entryBodies` read two of the four
+export forms `scan.ts` reads, missing `export const { action, loader } = builder(...)`,
+`const { action } = builder(...); export { action };` and `export const action = route.action`, which
+is 36 of the tree's entry points. No assertion could notice, because a mutation reaching fewer routes
+lowers the score rather than raising it. `wraps a body in every non-delegating entry point the scanner
+finds` pins it now, with `admin.tsx` the one named exclusion: its handler is a concise arrow with no
+block for a block wrapper to wrap.
+
+The same failure mode is why the registry assertion and the additive-class assertion are ungated
+while everything else in the file needs `OBS_MAP_MUTATION_CORPUS=1`. `auth-scope` was added a round
+after `suppress-every-check` was written and never added to its directive list, so the suppression
+invariant went untested at tree scale for 19 routes while the entry's description said "every
+check". Omitting a check from a sweep leaves its failures in place, which lowers the score, so the
+corpus cannot catch its own omission by failing.
+
+**The corpus deliberately disagrees with the scanner about where a handler sits.** `mutations.ts`
+keeps its own copy of the builder handler shapes rather than importing them, because sharing the
+scanner's notion would let a bug in that notion hide a laundering shape. Which exports exist is not
+a judgement, though, and there the harness was simply behind, which is the distinction above.
+
+**The anti-vacuity threshold is on sites, not only files.** A file count says a rewrite touched a
+file, not that it reached anything inside it. The guard the design asked for, verdict movement,
+cannot be used, and not for the reason an earlier note gave: plenty of defended entries move verdicts
+hard (`delete-every-catch` takes the tree from 19 to 8), but the IDEAL defended shape is one the
+scanner is blind to, and `dead-if-false` and the ten entries beside it are defended precisely because
+the tree comes out identical. Requiring movement would fail exactly the entries that work best.
+
+**A `lowers` exemption is a per-entry field with a reason, not a skip list.** An exempted entry must
+still be falling, or the exemption is stale, and its falls must have exactly the measured residual
+shape it was granted for: `error-classification` moving pass to not-applicable, every other check
+unchanged, nothing moving to fail. Exactly two entries carry one, both non-array-receiver iteration
+wrappers.
+
+**A `KNOWN_GAPS` entry runs as `it.fails`,** so closing the hole later turns the file red until the
+entry is moved out deliberately. Two are open: `dead-classifying-try-with-call`, the shape
+`dead-classifying-try` only looked like it closed, and `dead-conjunction-instanceof-if`, the sibling
+the arm-liveness fix does not close. Both are described above.
+`dead-branch-after-if-true` used to be listed on a measurement that was wrong; raising the exit flag
+after each statement's branch check rather than before is byte-identical on the real tree and closes
+the shape, so the `if (true)` family needed no condition folding after all.
+
+## Reporting
+
+The score's own arithmetic has three rules that the report is built to keep honest.
+
+Every denominator reads `rawChecks`, pre-suppression. `checks` is the display view. Suppressing the
+one `request-context` or `audit-trail` finding on an entry must not shrink the gap denominators and
+raise the printed percentage, on the same screen as a claim that suppression cannot do that. An
+entry's score is capped by what it would have scored unsuppressed, which is how 33 became 50 became
+100 before the cap existed.
+
+`score` is 100 for an entry no scored check applied to, and that is a placeholder rather than a
+verdict. Rendering it as a figure turned a route refactored down to a trivial body into a 67-point
+improvement, and a trivial route gaining real work into the PR's worst regression, so the PR
+comment's cell says "not measured" instead. `globalWithout` recomputes from `rawChecks` minus the
+suppression cap, because lowering both figures by the same rule would leave the difference between
+them saying something about suppressions rather than about the check.
+
+`hasDelta` has to be true whenever `renderPrComment` would say something different, because anything
+it misses is a change the pull request silently does not report. So it covers every figure the
+comment renders: the global, the per-entry score, measured state and suppression set, an entry added
+or removed, a check failing at head that did not at base, the parse failure count, the unknown
+suppression warnings, the audit and context gaps, `delegating` and `checkContributions`. The
+per-entry suppression set and the two gaps are the half that was missing, and it ran the dangerous
+way: suppressing an already-failing check moves no score, no measured flag and no new failure, so a
+pull request whose entire purpose was silencing findings posted nothing. What is defended is that the
+union of the terms is complete rather than that each term is load bearing. Four are individually
+reachable with a test each; the global, the removed-entry check and the per-entry score are shadowed
+by another term today and are kept because which term shadows which depends on the shape of the
+change. `MapReport.suppressions` is the one term deliberately left out, because its totals are summed
+from the very per-entry arrays the loop compares.
+
+Two sections of the PR comment grow with the tree and both are capped, because GitHub's comment limit
+is 65,536 characters and a 422 loses the whole comment to the section warning about a typo. A
+mistyped directive applied tree wide rendered 87,938 characters. The delegated list is capped at
+fifteen rather than ten because a file name is one comma-separated item rather than a line naming
+every known check, and the longest route file name in the tree is 130 characters.
+
+The `AUDIT` line has one shape for every count and no branch on the count, because the branch carried
+the bug: a zero used to print "No audit helper exists in the webapp", which is false. The count was
+already correct, so the sentence was the only wrong thing.
+
+A suppression whose id names no check is carried through to both renderers rather than dropped,
+because dropping it silently is what made a typo look like an acknowledgement.
+
+## Tests, timeouts and CI
+
+`docstringReferences.test.ts` enforces that every test name a docstring in `src/` claims to be
+covered by exists. The rule was asked for six times in prose and broken six times, most recently by a
+docstring naming a test that was never written, so prose does not enforce itself. What is checked:
+every backticked kebab-case token, every backticked glob against the corpus ids by prefix, and every
+backticked prose phrase of five words or more with no code punctuation. What is not: a reference
+written without backticks, a title of fewer than five words, a comment with no node after it
+(leading ranges only, so a comment on the last line of a block is never scanned), and a `.test.ts`
+file or `mutations.ts`, both exempted by name. The kebab half is the half that has actually failed.
+Three negative controls run the same predicates over an invented docstring, so the guarantee does not
+rest on `src/` currently happening to contain a bad reference.
+
+The real-tree tests are gated by `TREE_SCAN_TIMEOUT`, which is a hang detector and nothing else.
+Neither test asserts anything about how long a scan takes, so a number tight enough to be a
+performance budget would only be a way to fail on a busy runner, and a performance budget that flakes
+gets the whole suite marked unreliable. The old 30s was chosen on an idle machine and does flake.
+Measured on an 8-core box, this file alone at load average 0.9: 6.3s to 6.4s for the scan, 10.8s to
+11.2s for the sweep. Twenty-four runs as two batches of twelve concurrent copies on those same 8
+cores: 24.2s to 34.0s for the scan and 27.6s to 39.7s for the sweep, with one of the first twelve
+dying on a 30s timeout. That contention is not hypothetical: `unit-tests-internal.yml` runs twelve
+concurrent shard processes on one runner. The local reproduction is harsher than CI on purpose,
+twelve processes over 8 cores against the 32-vCPU runner's 0.375 per core, so 120s is 3x the worst
+contended run measured. 60s was the other candidate and is not enough on those numbers.
+
+Parse failures come from a `ts.Program`, not from the diagnostics array the parser hangs on the
+source file, which is internal and which the compiler is free to rename. An undetected parse failure
+shrinks the denominator and inflates the score, so it must not be the kind of thing a compiler
+upgrade can switch off silently. The host hands the program the source file we already have, so
+nothing is parsed twice; the cost is the program machinery, and a full scan of the real tree went
+from about 850ms to about 1450ms over five runs of each.
+
+The suite's turbo task is uncacheable. Its real inputs are mostly not its own files, they are
+`apps/webapp/app`, `packages/plugins/src`, `internal-packages/rbac/src` and the workflow files, so
+turbo replayed a pass recorded before a route changed: a route file with a syntax error in it fails
+under vitest and came back FULL TURBO in 301ms with the failure cached as a success. `inputs` naming
+`../../apps/webapp/...` does bust the cache but replaces turbo 1.x's default file set instead of
+adding to it, which drops the package's own files from the hash. The reasoning lives in `turbo.json`
+beside the config it explains.
+
+Three roads reach this suite and all three are asserted. `pr_checks.yml` calls
+`unit-tests-observability-map.yml` behind an `obsmap` paths filter and lists it in the `all-checks`
+aggregate, without which a test job gates nothing: the first attempt put the job inside
+`observability-map.yml`, which reads well and gates nothing, because `all-checks` needs an explicit
+list of jobs and cannot see another workflow. The filter watches all of `apps/webapp/app` plus the
+report workflow, because the suite reads more than the routes folder and a rename outside it matched
+only `webapp`, ran no job, and broke the build for whoever pushed next. It deliberately does NOT name
+this package or the two non-webapp roots: `internal` already matches `internal-packages/**` and
+`packages/**` and `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, so naming
+them here ran the suite twice on every PR touching the package. Widening `internal` to the route
+paths instead was tried and rejected, since it runs all eighteen internal packages with postgres,
+clickhouse, redis and electric to protect one test.
+
+The report workflow's own text is asserted from `integration.test.ts`, because it is the one thing the
+docstring checker cannot reach and the C1 defect was exactly that: two steps disagreeing about what a
+missing comment id meant, under a comment claiming they agreed. The render step read it as "a comment
+exists" and emitted the resolved state, the upsert step read it as "no id" and POSTed, so a transient
+lookup failure either added a second marker comment beside the stale one or announced findings were
+gone on a pull request that never had any. The sentinel pair those two shared is gone: the lookup
+moved into the cheap `changes` job so the report job's gate could read it, the report job does not
+start unless the lookup finished cleanly, and the id both steps use is one job output. Those are text
+checks over the workflow rather than a parse of its semantics, so they catch the wiring coming apart
+and nothing about whether GitHub agrees.
+
+Both scan steps write their own file through `--out` rather than capturing stdout with a shell
+redirect. `pnpm --filter` takes its recursive path and some versions announce
+`Scope: N of M workspace projects` on it; a single line of that in head.json fails the renderer's
+`JSON.parse` and the workflow degrades to the stale-report comment on every run, quietly and
+permanently. It does not reproduce on the pinned 10.33.2, which was checked, and what is asserted is
+the shape that cannot have the bug rather than the version that happens not to. The render step has
+no `--out` to reach for, and a banner there puts a stray line in a markdown comment instead of
+breaking a parse, so it is left alone.
+
+The corpus runs on the package's own paths and on a schedule rather than on every route pull request.
+It measures the tool's resistance to laundering, which only an edit to the tool can weaken, and it
+costs four and a half minutes. The nightly is the other half of that trade: dropping the schedule
+would leave tree drift uncovered rather than covered late.
+
 ## Layout
 
 `scan.ts` walks the routes directory and produces an `EntryPoint` per module, carrying only
