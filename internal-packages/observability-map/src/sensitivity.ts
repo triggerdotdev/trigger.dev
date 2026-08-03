@@ -122,7 +122,7 @@ export const SENSITIVE_SEGMENTS = [
  * written the way a reader would say it. A trailing underscore opts a route out of its parent
  * layout (`resources.impersonation_.view-as.ts`) and changes nothing about what the route does.
  */
-function normalizeSegment(segment: string): string {
+export function normalizeSegment(segment: string): string {
   // Trimmed by hand rather than with /_+$/, which backtracks polynomially on a run of underscores
   // and trips CodeQL. Nothing here is attacker-controlled (the input is a filename read off disk),
   // so this is about not spending a reviewer's attention on the alert.

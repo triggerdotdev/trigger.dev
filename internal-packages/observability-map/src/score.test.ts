@@ -561,3 +561,69 @@ export async function action() {
     expect(after.unmeasured).toBe(0);
   });
 });
+
+/**
+ * `contextGap` and `auditGap` are the same arithmetic `checkContributions` already does for every
+ * check, written out again by hand for two named ids: `map(find).filter(status)` for the context
+ * figure, `filter(some)` for the audit one, and a third spelling of "passed" for each. Three
+ * implementations of "applicable, and how many of those passed", and nothing said they had to
+ * agree, on the two figures the report puts in front of a reader as headline numbers.
+ *
+ * Pinned rather than shared. Collapsing them would mean the gap figures reading their check's row
+ * out of `checkContributions`, which is a fine refactor and a wider blast radius than the property
+ * is worth: what matters is that they cannot disagree, and an assertion says that without moving
+ * any code the renderers read.
+ */
+describe("the hand-rolled gap figures agree with the per-check contributions", () => {
+  const SOURCE = `import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
+export async function action({ params }) {
+  try {
+    return await prisma.apiKey.create({ data: { orgId: params.orgId } });
+  } catch (e) {
+    logger.error("failed", { orgId: params.orgId });
+    return null;
+  }
+}`;
+
+  // A sensitive mutation that DOES record an audit event, so `withAudit` is not simply
+  // `sensitiveMutations`. Without it the audit assertion held whatever the numerator counted.
+  const AUDITED = `import { prisma } from "~/db.server";
+import { startImpersonation } from "~/models/admin.server";
+export async function action({ request, params }) {
+  const session = await startImpersonation(request, params.userId);
+  await prisma.apiKey.create({ data: { orgId: params.orgId } });
+  return redirect("/", { headers: session });
+}`;
+
+  const report = buildReport(
+    [
+      scanFile("api.v1.orgs.$orgId.apikeys.ts", SOURCE)!,
+      scanFile("api.v1.tokens.ts", SOURCE)!,
+      scanFile("resources.impersonation.ts", AUDITED)!,
+      scanFile("healthcheck.ts", `export const loader = () => new Response("ok");`)!,
+    ],
+    []
+  );
+
+  const contribution = (id: string) => report.checkContributions.find((c) => c.id === id)!;
+
+  it("reports the same request-context denominator and numerator", () => {
+    expect(report.contextGap.applicable).toBe(contribution("request-context").applicable);
+    expect(report.contextGap.naming).toBe(contribution("request-context").passed);
+  });
+
+  it("reports the same audit-trail denominator and numerator", () => {
+    expect(report.auditGap.sensitiveMutations).toBe(contribution("audit-trail").applicable);
+    expect(report.auditGap.withAudit).toBe(contribution("audit-trail").passed);
+  });
+
+  // A denominator of zero would make both assertions above hold vacuously.
+  // Both assertions above hold vacuously on a zero denominator, and the audit one holds vacuously
+  // whenever every applicable route fails, since the two counts coincide.
+  it("measured something for both of them, with the audit numerator strictly between", () => {
+    expect(report.contextGap.applicable).toBeGreaterThan(0);
+    expect(report.auditGap.withAudit).toBeGreaterThan(0);
+    expect(report.auditGap.withAudit).toBeLessThan(report.auditGap.sensitiveMutations);
+  });
+});

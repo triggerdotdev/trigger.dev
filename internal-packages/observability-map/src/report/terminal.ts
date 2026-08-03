@@ -27,6 +27,25 @@ export const scoredFailures = (e: ScoredEntry) =>
  * An entry that fails something else as well stays in the list with all of its findings, so a
  * route like `/account/tokens` still shows the request-context gap alongside the rest.
  */
+/**
+ * The routes the FIX FIRST list is drawn from, worst first: sensitive before not, then by score,
+ * then by name. Exported because `prComment.ts` renders the same list with different bullets and
+ * had a byte-identical copy of this filter and sort, in a file that already imports
+ * `scoredFailures` and `contextOnly` from here.
+ *
+ * `contextOnly` routes are left out because `request-context` fails almost everything, so a list
+ * headed by three of them tells a reader nothing they cannot read off the gap figure.
+ */
+export const fixFirst = (entries: ScoredEntry[]): ScoredEntry[] =>
+  entries
+    .filter((e) => scoredFailures(e).length > 0 && !contextOnly(e))
+    .sort(
+      (a, b) =>
+        Number(b.sensitive) - Number(a.sensitive) ||
+        a.score - b.score ||
+        a.fileName.localeCompare(b.fileName)
+    );
+
 export const contextOnly = (e: ScoredEntry) => {
   const failures = scoredFailures(e);
   return failures.length === 1 && failures[0]!.id === "request-context";
@@ -197,14 +216,7 @@ export function renderTerminal(report: MapReport): string {
     );
   }
 
-  const worst = report.entries
-    .filter((e) => scoredFailures(e).length > 0 && !contextOnly(e))
-    .sort(
-      (a, b) =>
-        Number(b.sensitive) - Number(a.sensitive) ||
-        a.score - b.score ||
-        a.fileName.localeCompare(b.fileName)
-    );
+  const worst = fixFirst(report.entries);
 
   lines.push("");
   lines.push("FIX FIRST");

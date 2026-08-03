@@ -1,10 +1,9 @@
 import type { MapReport, ScoredEntry } from "../score.js";
-import { SCORED_CHECK_IDS } from "../checks/index.js";
 import {
   auditLine,
   checkContributionLines,
   contextLine,
-  contextOnly,
+  fixFirst,
   delegatedLines,
   scoredFailures,
   unknownSuppressionLines,
@@ -40,8 +39,7 @@ const MAX_DELEGATED_ROUTES = 15;
 // Scored checks only, same exclusion terminal.ts's scoredFailures makes: audit-trail fails almost
 // every sensitive mutation today, so listing it per route would nag with something unfixable
 // instead of surfacing the route-specific gaps this column exists for.
-const failingIds = (e: ScoredEntry) =>
-  e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail").map((c) => c.id);
+const failingIds = (e: ScoredEntry) => scoredFailures(e).map((c) => c.id);
 
 function scoreLine(head: MapReport, base: MapReport | null): string {
   const headline =
@@ -197,14 +195,7 @@ function whatChangedSection(head: MapReport, base: MapReport | null): string[] {
 
 function fixFirstSection(head: MapReport): string[] {
   const lines = ["FIX FIRST"];
-  const worst = head.entries
-    .filter((e) => scoredFailures(e).length > 0 && !contextOnly(e))
-    .sort(
-      (a, b) =>
-        Number(b.sensitive) - Number(a.sensitive) ||
-        a.score - b.score ||
-        a.fileName.localeCompare(b.fileName)
-    );
+  const worst = fixFirst(head.entries);
 
   for (const e of worst.slice(0, 3)) {
     const marks = e.sensitive ? " (sensitive)" : "";

@@ -3,7 +3,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { AUDIT_SYMBOLS } from "./checks/auditTrail.js";
 import { GUARDS, SOFT_GUARDS } from "./checks/authBoundary.js";
-import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "./sensitivity.js";
+import { isScannableFile } from "./scan.js";
+import {
+  ANTICIPATED_SEGMENTS,
+  normalizeSegment,
+  SENSITIVE_SEGMENTS,
+  SENSITIVE_SYMBOLS,
+} from "./sensitivity.js";
 
 /**
  * Every name and every path segment the tool matches on must exist in the codebase it is pointed
@@ -82,7 +88,7 @@ function walkFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) walkFiles(path, out);
-    else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) out.push(path);
+    else if (isScannableFile(entry.name)) out.push(path);
   }
   return out;
 }
@@ -137,7 +143,10 @@ function routeSegments(): Set<string> {
   const segments = new Set<string>();
   for (const entry of readdirSync(ROUTES, { withFileTypes: true })) {
     for (const part of entry.name.replace(/\.tsx?$/, "").split(".")) {
-      segments.add(part.replace(/_+$/, ""));
+      // `sensitivity.ts`'s own normalizer. This validates the vocabulary that file matches on, so
+      // a segment has to be trimmed here exactly as it is trimmed there; the local `/_+$/` was
+      // also the regex `normalizeSegment`'s own comment says not to use.
+      segments.add(normalizeSegment(part));
     }
   }
   return segments;
