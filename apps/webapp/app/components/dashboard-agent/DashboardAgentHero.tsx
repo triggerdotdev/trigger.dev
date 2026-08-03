@@ -38,8 +38,8 @@ export function DashboardAgentHero({
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="flex w-full max-w-2xl flex-col items-center gap-5">
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <SparklesIcon className="size-7 text-indigo-500" />
-          <Header1 className="flex items-center gap-1.5">
+          <Header1 className="flex items-center gap-2">
+            <SparklesIcon className="size-6 text-indigo-500" />
             Ask Trigger
             <BetaBadge />
           </Header1>
