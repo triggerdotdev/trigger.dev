@@ -55,7 +55,8 @@ interface DefaultEventsMap {
 
 /**
  * checkpointDeleteRequests counts the delete requests this supervisor makes, and every reason it
- * decides not to: `sent`, `disabled`, `not_terminal`, `no_claims`, `no_project_ref`, `http_error`.
+ * decides not to: `sent`, `disabled`, `no_client`, `not_applicable`, `not_terminal`, `no_claims`,
+ * `no_project_ref`, `http_error`.
  * Without the negative outcomes, "no deletes are happening" is indistinguishable from the feature
  * being switched off - and with no lifecycle expiry, that difference is leaked storage.
  */
@@ -248,8 +249,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     attemptStatus: string,
     claims: WorkloadDeploymentTokenClaims | undefined
   ): Promise<void> {
-    if (!env.DELETE_CHECKPOINTS_ON_COMPLETION || !this.checkpointClient || this.snapshotService) {
+    if (!env.DELETE_CHECKPOINTS_ON_COMPLETION) {
       checkpointDeleteRequests.inc({ result: "disabled" });
+      return;
+    }
+
+    if (!this.checkpointClient) {
+      checkpointDeleteRequests.inc({ result: "no_client" });
+      return;
+    }
+
+    if (this.snapshotService) {
+      checkpointDeleteRequests.inc({ result: "not_applicable" });
       return;
     }
 
