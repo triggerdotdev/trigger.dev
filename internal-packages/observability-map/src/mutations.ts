@@ -179,18 +179,44 @@ function rootCall(call: ts.CallExpression): ts.CallExpression {
   }
 }
 
-function fromInitializer(expr: ts.Expression, out: EntryFunction[]): void {
+/**
+ * The handler functions an export's initializer resolves to.
+ *
+ * `locals` is consulted for the two indirect spellings, both of which `scan.ts` resolves and
+ * neither of which this reached: `export const action = route.action` beside
+ * `const route = createActionApiRoute(...)`, which is 7 of the tree's API routes, and
+ * `export const action = handleThing` naming a local. `seen` stops `const a = b; const b = a`.
+ */
+function fromInitializer(
+  expr: ts.Expression,
+  out: EntryFunction[],
+  locals: LocalDeclarations,
+  seen: Set<string> = new Set()
+): void {
   const target = unwrap(expr);
   if (isEntryFunction(target)) {
     out.push(target);
     return;
   }
-  if (!ts.isCallExpression(target)) return;
-  for (const arg of rootCall(target).arguments) {
-    const unwrapped = unwrap(arg);
-    if (isEntryFunction(unwrapped)) out.push(unwrapped);
-    else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
+  if (ts.isCallExpression(target)) {
+    for (const arg of rootCall(target).arguments) {
+      const unwrapped = unwrap(arg);
+      if (isEntryFunction(unwrapped)) out.push(unwrapped);
+      else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
+    }
+    return;
   }
+  // `route.action`, and any longer chain, is resolved from whatever declared its root identifier.
+  let root: ts.Expression = target;
+  while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) {
+    root = unwrap(root.expression);
+  }
+  if (!ts.isIdentifier(root) || seen.has(root.text)) return;
+  const declaration = locals.get(root.text);
+  if (declaration === undefined) return;
+  seen.add(root.text);
+  if (ts.isFunctionDeclaration(declaration)) out.push(declaration);
+  else fromInitializer(declaration, out, locals, seen);
 }
 
 const ENTRY_NAMES = new Set(["loader", "action"]);
@@ -202,23 +228,109 @@ function isExported(node: ts.Node): boolean {
   );
 }
 
-/** Block bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps. */
-function entryBodies(sf: ts.SourceFile): ts.Block[] {
-  const functions: EntryFunction[] = [];
+/**
+ * Top-level declarations by binding name, so a named export clause (`export { action }`) resolves
+ * back to the initializer it came from. Object binding patterns are read element by element, which
+ * is what makes `const { action, loader } = createActionApiRoute(...)` resolvable.
+ */
+type LocalDeclarations = Map<string, ts.Expression | ts.FunctionDeclaration>;
+
+function localDeclarations(sf: ts.SourceFile): LocalDeclarations {
+  const locals: LocalDeclarations = new Map();
   for (const statement of sf.statements) {
-    if (!isExported(statement)) continue;
     if (ts.isFunctionDeclaration(statement) && statement.name) {
-      if (ENTRY_NAMES.has(statement.name.text)) functions.push(statement);
+      locals.set(statement.name.text, statement);
       continue;
     }
     if (!ts.isVariableStatement(statement)) continue;
     for (const decl of statement.declarationList.declarations) {
-      if (!decl.initializer || !ts.isIdentifier(decl.name)) continue;
-      if (ENTRY_NAMES.has(decl.name.text)) fromInitializer(decl.initializer, functions);
+      if (!decl.initializer) continue;
+      if (ts.isIdentifier(decl.name)) {
+        locals.set(decl.name.text, decl.initializer);
+        continue;
+      }
+      if (ts.isObjectBindingPattern(decl.name)) {
+        for (const element of decl.name.elements) {
+          if (ts.isIdentifier(element.name)) locals.set(element.name.text, decl.initializer);
+        }
+      }
     }
   }
+  return locals;
+}
+
+/**
+ * Block bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps.
+ *
+ * Reads the same four export forms `scan.ts` reads: an exported function declaration, an exported
+ * `const`, an exported object binding pattern, and a named export clause resolved back through a
+ * local. It read only the first two, which is the shape of every API route in the tree
+ * (`const { action, loader } = createActionApiRoute(...); export { action, loader };` and the
+ * direct `export const { action } = ...`), so `wrapEveryBody` and the other whole-body entries
+ * silently skipped 36 of the 427 entry points while reporting a file count that suggested
+ * otherwise. `mutationCorpus.test.ts` pins the population now ("wraps a body in every
+ * non-delegating entry point the scanner finds"), so the harness cannot lag the scanner here again
+ * without going red.
+ *
+ * This is NOT a retreat from the deliberate independence `collectNamedHandlers` documents. That
+ * independence is about disagreeing over where a HANDLER sits inside a builder's argument, which is
+ * a judgement the corpus has to be able to make for itself. Which exports exist is not a judgement,
+ * and the harness was simply behind.
+ */
+function entryBodies(sf: ts.SourceFile): ts.Block[] {
+  const functions: EntryFunction[] = [];
+  const locals = localDeclarations(sf);
+  const fromLocal = (name: string) => {
+    const decl = locals.get(name);
+    if (decl === undefined) return;
+    if (ts.isFunctionDeclaration(decl)) functions.push(decl);
+    else fromInitializer(decl, functions, locals);
+  };
+
+  for (const statement of sf.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && isExported(statement)) {
+      if (ENTRY_NAMES.has(statement.name.text)) functions.push(statement);
+      continue;
+    }
+
+    if (ts.isVariableStatement(statement) && isExported(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (!decl.initializer) continue;
+        if (ts.isIdentifier(decl.name)) {
+          if (ENTRY_NAMES.has(decl.name.text)) fromInitializer(decl.initializer, functions, locals);
+          continue;
+        }
+        if (!ts.isObjectBindingPattern(decl.name)) continue;
+        for (const element of decl.name.elements) {
+          if (ts.isIdentifier(element.name) && ENTRY_NAMES.has(element.name.text)) {
+            fromInitializer(decl.initializer, functions, locals);
+          }
+        }
+      }
+      continue;
+    }
+
+    // A re-export (`export { loader } from "./x"`) has no local binding to resolve, and a namespace
+    // clause cannot name a loader or an action.
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause &&
+      !statement.moduleSpecifier &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const element of statement.exportClause.elements) {
+        if (!ENTRY_NAMES.has(element.name.text)) continue;
+        fromLocal(element.propertyName?.text ?? element.name.text);
+      }
+    }
+  }
+
+  // One handler can serve both exports, and both reach it by their own road: the loader and the
+  // action of `const { loader, action } = createActionApiRoute({ handler })` resolve to the same
+  // node. Wrapping it twice would splice the same text in twice at the same offset, because
+  // `applyEdits` treats two zero-width inserts at one position as non-overlapping.
   const bodies: ts.Block[] = [];
-  for (const fn of functions) {
+  for (const fn of new Set(functions)) {
     if (fn.body && ts.isBlock(fn.body)) bodies.push(fn.body);
   }
   return bodies;

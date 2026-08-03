@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { isScannableFile, scanDirectory } from "./scan.js";
+import { routeModuleFiles, scanDirectory } from "./scan.js";
 import { buildReport } from "./score.js";
 import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
 import { CHECKS } from "./checks/index.js";
@@ -62,27 +62,20 @@ const KNOWN_GAPS = new Set<string>(["dead-classifying-try-with-call"]);
 
 type SourceFile = { relativeName: string; source: string };
 
-/** Route modules exactly as `scanDirectory` enumerates them: flat files, plus one `route.ts(x)` per
- * directory. Read once; every mutation rewrites this list rather than the tree on disk. */
+/**
+ * Route modules exactly as `scanDirectory` enumerates them, because it is the same enumeration and
+ * no longer a copy of it. `isScannableFile` had already replaced the file half of the copy; the
+ * directory half survived, so "one `route.ts(x)` per immediate subdirectory" was still written
+ * twice. A harness that reads a different tree from the scanner reports files and sites the scan
+ * never saw, and those counts are what the thresholds below rest on.
+ *
+ * Read once; every mutation rewrites this list rather than the tree on disk.
+ */
 function readTree(dir: string): SourceFile[] {
-  const files: SourceFile[] = [];
-  const take = (absolutePath: string, relativeName: string) => {
-    files.push({ relativeName, source: readFileSync(absolutePath, "utf8") });
-  };
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      for (const child of readdirSync(join(dir, entry.name), { withFileTypes: true })) {
-        if (!child.isFile() || (child.name !== "route.ts" && child.name !== "route.tsx")) continue;
-        take(join(dir, entry.name, child.name), `${entry.name}/${child.name}`);
-      }
-      continue;
-    }
-    // `scanDirectory`'s own predicate rather than a copy of it. A copy that drifts lets a mutation
-    // report files and sites the scanner never read, which is what the thresholds below are for.
-    if (!entry.isFile() || !isScannableFile(entry.name)) continue;
-    take(join(dir, entry.name), entry.name);
-  }
-  return files;
+  return routeModuleFiles(dir).map((file) => ({
+    relativeName: file.relativeName,
+    source: readFileSync(file.absolutePath, "utf8"),
+  }));
 }
 
 function materialize(files: SourceFile[]): string {
@@ -317,6 +310,43 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
     files = readTree(ROUTES);
     baseline = measure(files);
   }, ENTRY_TIMEOUT_MS);
+
+  /**
+   * The corpus's own population, against the scanner's.
+   *
+   * The whole-body entries wrap what `entryBodies` finds, and that helper read two of the four
+   * export forms `scan.ts` reads. It missed `export const { action, loader } = builder(...)`,
+   * `const { action } = builder(...); export { action };` and `export const action = route.action`,
+   * which is 36 of the tree's entry points: the corpus was testing less than its entry count
+   * implied, and no assertion could notice, because a mutation that reaches fewer routes lowers the
+   * score rather than raising it. Same failure mode as the `suppress-every-check` omission above,
+   * so the answer is the same: assert the population rather than wait for a verdict to move.
+   *
+   * `admin.tsx` is the one documented exclusion. Its handler is a concise arrow
+   * (`async ({ user }) => typedjson({ user })`) with no block for a block wrapper to wrap, which is
+   * a limit of the rewrite rather than a gap in the enumeration. It is named rather than counted so
+   * a second one cannot appear silently.
+   */
+  const CONCISE_ARROW_BODIES = new Set(["admin.tsx"]);
+
+  it("wraps a body in every non-delegating entry point the scanner finds", () => {
+    const wrap = MUTATIONS.find((m) => m.id === "wrap-body-in-rethrow")!;
+    const root = materialize(files);
+    let entryPoints;
+    try {
+      ({ entryPoints } = scanDirectory(root));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    const byName = new Map(files.map((f) => [f.relativeName, f.source]));
+    const untouched = entryPoints
+      .filter((ep) => !ep.delegating && !CONCISE_ARROW_BODIES.has(ep.fileName))
+      .filter((ep) => wrap.apply(ep.fileName, byName.get(ep.fileName)!) === null)
+      .map((ep) => ep.fileName);
+
+    expect(untouched).toEqual([]);
+  });
 
   it("has a baseline worth mutating", () => {
     expect(baseline).not.toBeNull();
