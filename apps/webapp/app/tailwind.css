@@ -701,9 +701,12 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks) */
+  /* Inline code (not in pre blocks). Uses the theme-mapped --muted (charcoal on
+     dark, a light grey on light) — a hardcoded charcoal chip reads as a black
+     blob in light-mode prose. Fenced blocks stay deliberately dark via shiki. */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    background-color: var(--muted);
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
