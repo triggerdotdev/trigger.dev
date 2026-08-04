@@ -50,6 +50,33 @@ export default function Story() {
       >
         Trigger error toast
       </Button>
+      <Button
+        variant="secondary/medium"
+        onClick={() =>
+          toast.custom(
+            (t) => (
+              <ToastUI
+                variant="agent"
+                title="Watch update"
+                message="Error error_c4b4a797 happened again — 1 new occurrence since the watch started."
+                t={t as string}
+                actionNode={
+                  <Button
+                    variant="secondary/small"
+                    className="my-2 self-start"
+                    onClick={() => toast.dismiss(t as string)}
+                  >
+                    Open chat
+                  </Button>
+                }
+              />
+            ),
+            { duration: Infinity }
+          )
+        }
+      >
+        Trigger agent toast
+      </Button>
 
       <Toaster />
     </div>
