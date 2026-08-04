@@ -426,9 +426,11 @@ export function DashboardAgentPanel({
   const [watchPending, setWatchPending] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
   // The block the server appended, handed to the open chat so it appears now
-  // rather than on the next open. `seq` makes each append distinct.
+  // rather than on the next open. `seq` makes each append distinct. Carries the
+  // chat it belongs to: a chat mounted later (fresh dedupe ref) must not adopt
+  // another chat's confirmation.
   const [appendedMessage, setAppendedMessage] = useState<
-    { message: UIMessage; seq: number } | undefined
+    { chatId: string; message: UIMessage; seq: number } | undefined
   >(undefined);
 
   const handledWatchSeq = useRef<number | undefined>(undefined);
@@ -482,6 +484,7 @@ export function DashboardAgentPanel({
 
       if (active?.chatId === data.chatId) {
         setAppendedMessage((current) => ({
+          chatId: data.chatId!,
           message: data.message!,
           seq: (current?.seq ?? 0) + 1,
         }));
@@ -656,7 +659,9 @@ export function DashboardAgentPanel({
             watches={chatWatches}
             pagePaths={pagePaths}
             watchCard={watchCard}
-            appendedMessage={appendedMessage}
+            appendedMessage={
+              appendedMessage?.chatId === active.chatId ? appendedMessage : undefined
+            }
             onWatchIntent={openWatchCard}
             onCancelWatch={cancelWatch}
             onTurnSettled={handleTurnSettled}
