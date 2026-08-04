@@ -282,8 +282,13 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     }
 
     try {
-      // send the validated/normalized output so zod transforms, defaults, and coercions are applied
-      await this.#sender({ type, payload: parsedPayload.data, version: "v1" });
+      // Preserve the original payload on the wire for backwards compatibility. Validation is
+      // intentionally side-effect-free here; receivers parse the payload into the schema output.
+      await this.#sender({
+        type,
+        payload: payload as unknown as inferZodSchemaOutput<TMessageCatalog[keyof TMessageCatalog]>,
+        version: "v1",
+      });
     } catch (error) {
       console.error("[ZodMessageSender] Failed to send message", error);
     }
@@ -338,8 +343,13 @@ export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCat
     throw new ZodSchemaParsedError(parsedPayload.error, payload);
   }
 
-  // send the validated/normalized output so zod transforms, defaults, and coercions are applied
-  await sender({ type, payload: parsedPayload.data, version: "v1" });
+  // Preserve the original payload on the wire for backwards compatibility. Validation is
+  // intentionally side-effect-free here; receivers parse the payload into the schema output.
+  await sender({
+    type,
+    payload: payload as unknown as inferZodSchemaOutput<TMessageCatalog[keyof TMessageCatalog]>,
+    version: "v1",
+  });
 }
 
 export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {
