@@ -153,8 +153,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const chatId = searchParams.get("chatId");
   if (chatId) {
     const [messages, session] = await Promise.all([
-      getChatMessages(dashboardAgentDb, { chatId, userId }),
-      getSession(dashboardAgentDb, { chatId, userId }),
+      getChatMessages(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
+      getSession(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
     ]);
     return json({ messages: messages ?? [], session });
   }
@@ -483,7 +483,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ],
     };
 
-    await appendChatMessage(dashboardAgentDb, { chatId: targetChatId, userId, message });
+    await appendChatMessage(dashboardAgentDb, {
+      chatId: targetChatId,
+      userId,
+      organizationId: project.organizationId,
+      message,
+    });
 
     return json({
       chatId: targetChatId,
@@ -554,7 +559,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     case "rename": {
       if (!parsed.data.title) return json({ error: "title is required" }, { status: 400 });
-      await renameChat(dashboardAgentDb, { chatId, userId, title: parsed.data.title });
+      await renameChat(dashboardAgentDb, {
+        chatId,
+        userId,
+        organizationId: project.organizationId,
+        title: parsed.data.title,
+      });
       return json({ ok: true });
     }
 
@@ -562,6 +572,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       await setChatPinned(dashboardAgentDb, {
         chatId,
         userId,
+        organizationId: project.organizationId,
         pinned: parsed.data.pinned === "true",
       });
       return json({ ok: true });
@@ -570,7 +581,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // The user has this chat in front of them, so its watch wakes are seen. The
     // update is owner-scoped, so a chatId the caller doesn't own is a no-op.
     case "read": {
-      await markChatRead(dashboardAgentDb, { chatId, userId });
+      await markChatRead(dashboardAgentDb, {
+        chatId,
+        userId,
+        organizationId: project.organizationId,
+      });
       return json({ ok: true });
     }
 

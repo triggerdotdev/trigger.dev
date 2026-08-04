@@ -85,13 +85,18 @@ export async function listChats(
  */
 export async function getChatMessages(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string }
+  params: { chatId: string; userId: string; organizationId: string }
 ): Promise<unknown[] | null> {
   const rows = await db
     .select({ messages: chats.messages })
     .from(chats)
     .where(
-      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId),
+        isNull(chats.deletedAt)
+      )
     )
     .limit(1);
   return rows[0]?.messages ?? null;
@@ -139,7 +144,7 @@ export async function countUserMessages(
  */
 export async function getSession(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string }
+  params: { chatId: string; userId: string; organizationId: string }
 ): Promise<ChatSession | null> {
   const rows = await db
     .select({
@@ -151,7 +156,13 @@ export async function getSession(
     })
     .from(chatSessions)
     .innerJoin(chats, eq(chats.id, chatSessions.chatId))
-    .where(and(eq(chatSessions.chatId, params.chatId), eq(chats.userId, params.userId)))
+    .where(
+      and(
+        eq(chatSessions.chatId, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -213,12 +224,18 @@ export const ensureChat = createChat;
 /** #5 Rename. */
 export async function renameChat(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; title: string }
+  params: { chatId: string; userId: string; organizationId: string; title: string }
 ): Promise<void> {
   await db
     .update(chats)
     .set({ title: params.title, updatedAt: sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    );
 }
 
 /**
@@ -241,12 +258,18 @@ export async function setChatTitleIfDefault(
 /** #5 Pin / unpin. */
 export async function setChatPinned(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; pinned: boolean }
+  params: { chatId: string; userId: string; organizationId: string; pinned: boolean }
 ): Promise<void> {
   await db
     .update(chats)
     .set({ pinnedAt: params.pinned ? sql`now()` : null, updatedAt: sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    );
 }
 
 /**
@@ -255,12 +278,18 @@ export async function setChatPinned(
  */
 export async function markChatRead(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; at?: Date }
+  params: { chatId: string; userId: string; organizationId: string; at?: Date }
 ): Promise<void> {
   await db
     .update(chats)
     .set({ lastReadAt: params.at ?? sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    );
 }
 
 /**
@@ -344,7 +373,7 @@ export async function persistMessages(
  */
 export async function appendChatMessage(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; message: unknown }
+  params: { chatId: string; userId: string; organizationId: string; message: unknown }
 ): Promise<boolean> {
   const rows = await db
     .update(chats)
@@ -354,7 +383,12 @@ export async function appendChatMessage(
       updatedAt: sql`now()`,
     })
     .where(
-      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId),
+        isNull(chats.deletedAt)
+      )
     )
     .returning({ id: chats.id });
 
