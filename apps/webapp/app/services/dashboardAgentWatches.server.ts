@@ -109,7 +109,9 @@ export async function authorizeWatchEnvironment(params: {
 
   if (!environment) return { ok: false, reason: "access_revoked" };
 
-  const user = await $replica.user.findFirst({
+  // Primary for the same reason as the membership read above: this decides
+  // access for a background tick, and lag must not extend it.
+  const user = await prisma.user.findFirst({
     where: { id: params.userId },
     select: { admin: true },
   });
