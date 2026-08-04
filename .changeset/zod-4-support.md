@@ -1,5 +1,8 @@
 ---
+"@trigger.dev/build": minor
 "@trigger.dev/core": minor
+"@trigger.dev/react-hooks": minor
+"@trigger.dev/rsc": minor
 "@trigger.dev/sdk": minor
 "trigger.dev": minor
 "@trigger.dev/redis-worker": minor
