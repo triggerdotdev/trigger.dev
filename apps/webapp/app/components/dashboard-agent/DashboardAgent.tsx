@@ -30,6 +30,9 @@ import {
 // noticing within a minute, and the count is one indexed query.
 const UNREAD_POLL_INTERVAL_MS = 60_000;
 
+/** Wake ids already toasted, across reloads — see the dedupe note in the poll. */
+const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
+
 /**
  * Mounts the dashboard agent in the env layout. Renders the page content
  * (`children` = the route Outlet) and shares the open/close state via context so
@@ -64,6 +67,31 @@ export function DashboardAgent({
   // wake the user has already been shown (and maybe dismissed) must not come
   // back every 60s while the chat stays unread.
   const toastedWakes = useRef(new Set<string>());
+  // The poll's toast source is "recent deliveries", not "unread" — so the dedupe
+  // must survive a reload, or every wake younger than the window re-toasts on
+  // every refresh. Persisted per watch id; the recency window caps growth, and a
+  // failed read (private mode) degrades to the in-memory set.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TOASTED_WAKES_STORAGE_KEY);
+      if (raw) for (const id of JSON.parse(raw) as string[]) toastedWakes.current.add(id);
+    } catch {
+      // Storage unavailable — session-scoped dedupe still applies.
+    }
+  }, []);
+  const rememberToasted = useCallback((watchId: string) => {
+    toastedWakes.current.add(watchId);
+    try {
+      // Keep the newest ids only; the toast source window is 15 minutes, so a
+      // small tail is plenty and the key can't grow unbounded.
+      window.localStorage.setItem(
+        TOASTED_WAKES_STORAGE_KEY,
+        JSON.stringify([...toastedWakes.current].slice(-50))
+      );
+    } catch {
+      // Same degradation as the read.
+    }
+  }, []);
   // The chat currently on screen (panel open). A wake there streams into the
   // visible transcript, so it toasts but must not light the dot.
   const visibleChat = useRef<string | null>(null);
@@ -175,7 +203,7 @@ export function DashboardAgent({
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
 
         const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
-        for (const wake of fresh) toastedWakes.current.add(wake.watchId);
+        for (const wake of fresh) rememberToasted(wake.watchId);
 
         // A burst gets one summary toast: a stack of persistent toasts is a wall,
         // not a notification.
