@@ -128,6 +128,13 @@ describe("the report workflow's one source of the comment id", () => {
     expect(lookup).toBeDefined();
     expect(lookup).toContain("exit }'");
   });
+
+  it("only reconciles a comment github-actions[bot] posted, not anyone quoting the marker", () => {
+    const lookup = steps(job("changes")).find((step) =>
+      step.includes('startswith("<!-- observability-map')
+    )!;
+    expect(lookup).toContain('.user.login == "github-actions[bot]"');
+  });
 });
 
 /**
@@ -255,6 +262,32 @@ describe("the package's tests are wired into the gate", () => {
     expect(
       read(resolve(__dirname, "../../../.github/workflows/unit-tests-internal.yml"))
     ).toContain('--filter "@internal/*"');
+  });
+
+  // The test above only checks the package's own source path, a different overlap that was already
+  // fixed. It has no way to catch a shared *generic* path (package.json, a lockfile, this workflow
+  // file itself) added to both filters, which is its own way to run the suite twice. Asserted as the
+  // actual set intersection, not another hardcoded path, so any future shared path fails this too.
+  it("shares no path with the internal filter, so the suite runs once", () => {
+    const text = read(PR_CHECKS);
+    // Comment lines are dropped before matching: an apostrophe in prose ("this filter's own doing")
+    // otherwise pairs with a real path's quote and swallows it, which would be a silent false pass.
+    const pathsOf = (name: string, next: string) =>
+      new Set(
+        [
+          ...text
+            .split(`            ${name}:`)[1]!
+            .split(`            ${next}:`)[0]!
+            .split("\n")
+            .filter((line) => !line.trim().startsWith("#"))
+            .join("\n")
+            .matchAll(/'([^']+)'/g),
+        ].map((m) => m[1])
+      );
+    const internal = pathsOf("internal", "obsmap");
+    const obsmap = pathsOf("obsmap", "cli");
+    const shared = [...obsmap].filter((p) => internal.has(p));
+    expect(shared).toEqual([]);
   });
 
   it("is in the all-checks needs list, or it gates nothing", () => {

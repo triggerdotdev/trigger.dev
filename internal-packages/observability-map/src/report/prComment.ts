@@ -25,6 +25,18 @@ export type CommitContext = {
 
 const SHORT_SHA_LENGTH = 7;
 
+/**
+ * Closes every comment this job posts. The second sentence is there because the package's own test
+ * suite does gate webapp pull requests, and a blocked author's first stop is this footer, which used
+ * to tell them nothing gates anything.
+ */
+const FOOTER =
+  "The score and findings here are report-only and never gate the merge. Separately, a required " +
+  "test suite keeps this tool's symbol and route lists in sync with the code they name, and can " +
+  "fail a pull request that renames or removes a symbol they reference, or that adds the first " +
+  "route with a segment they anticipate. Each failure names the list to edit. The rules and their " +
+  "reasons: internal-packages/observability-map/README.md.";
+
 /** Directly under the heading, because the comment is edited in place across pushes and the first
  * question about it is which push it reflects. */
 function commitLines(commit: CommitContext | undefined): string[] {
@@ -255,8 +267,7 @@ export function renderResolvedComment(commit?: CommitContext): string {
     "Nothing in this pull request moves the report any more. The findings an earlier push " +
       "reported are gone.",
     "",
-    "Report only, nothing here gates the merge. The rules and their reasons: " +
-      "internal-packages/observability-map/README.md.",
+    FOOTER,
   ].join("\n");
 }
 
@@ -275,8 +286,7 @@ export function renderScanFailedComment(commit?: CommitContext): string {
     "The scan failed for this run, so there is no report. Anything above is from an earlier push " +
       "and is stale. The workflow log has the error.",
     "",
-    "Report only, nothing here gates the merge. The rules and their reasons: " +
-      "internal-packages/observability-map/README.md.",
+    FOOTER,
   ].join("\n");
 }
 
@@ -319,10 +329,7 @@ export function renderPrComment(
     lines.push("```", "", "</details>", "");
   }
 
-  lines.push(
-    "Report only, nothing here gates the merge. The rules and their reasons: " +
-      "internal-packages/observability-map/README.md."
-  );
+  lines.push(FOOTER);
 
   const headFailures = head.parseFailures.length;
   const baseFailures = base?.parseFailures.length ?? 0;

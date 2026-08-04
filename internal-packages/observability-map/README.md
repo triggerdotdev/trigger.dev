@@ -31,8 +31,13 @@ A pull request touching `apps/webapp/app/routes` or this package gets a sticky c
 against the tip of the base branch, with the score, what changed, and the current fix list. Every
 comment names the head commit it was rendered for, as a link to the compare range, because the
 comment is edited in place across pushes and otherwise says nothing about which push it reflects. It
-is report-only: nothing here fails the build or blocks a merge. See
-`.github/workflows/observability-map.yml`.
+is report-only: nothing in the comment or its score fails the build or blocks a merge. Separately,
+this package's test suite runs as a required check, on pull requests touching `apps/webapp/app` and
+on any other package through the internal job, and fails when a symbol the tool references stops
+resolving in one of the three trees it reads (`apps/webapp/app`, `packages/plugins/src`,
+`internal-packages/rbac/src`), or when the first route with an anticipated sensitive segment lands.
+Each failure names the list to update (`src/webappSymbols.test.ts`).
+See `.github/workflows/observability-map.yml`.
 
 The workflow runs on every pull request and applies the path list as a gate inside the job rather
 than as a `paths:` filter on the trigger. GitHub evaluates one of those per workflow, so a pull

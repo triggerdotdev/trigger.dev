@@ -89,8 +89,10 @@ jobs:
           found=""
           ok=""
           for attempt in 1 2 3; do
+            # Matched by login, not .user.type == "Bot": other bots and apps on the same PR are
+            # also type Bot, and login is the exact identity this token's own comments carry.
             if found=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-              --jq '[.[] | select((.body // "") | startswith("<!-- observability-map-report -->"))][0].id // empty'); then
+              --jq '[.[] | select(.user.login == "github-actions[bot]" and ((.body // "") | startswith("<!-- observability-map-report -->")))][0].id // empty'); then
               ok=1
               break
             fi
@@ -116,23 +118,31 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # The tree-scale mutation corpus: every known laundering shape applied to the whole route tree,
-  # asserting the score does not rise. Roughly four and a half minutes for 45 entries, which is why
-  # it is gated out of the package's default `pnpm test` and run here instead. Unlike the report
-  # job below it has no token to lose, so it runs for fork PRs too, and unlike the report job it is
+  # asserting the score does not rise. Roughly five minutes for 53 entries, which is why it is
+  # gated out of the package's default `pnpm test` and run here instead. Unlike the report job
+  # below it has no token to lose, so it runs for fork PRs too, and unlike the report job it is
   # allowed to fail the build.
   #
   # Gated to this package's own paths rather than running on every route pull request. What the
   # corpus measures is the TOOL's resistance to laundering, and only an edit to the tool can weaken
-  # that, so a routes-only change was paying four and a half minutes of a 4x runner for a result
-  # that could not differ from the last one. It was also the worst kind of job to spend that on: a
-  # red x that fires on a large share of webapp pull requests, is allowed to fail, and gates
-  # nothing, which is the shape people learn to scroll past.
+  # that, so a routes-only change was paying five minutes of a 4x runner for a result that could
+  # not differ from the last one. It was also the worst kind of job to spend that on: a red x that
+  # fires on a large share of webapp pull requests, is allowed to fail, and gates nothing, which is
+  # the shape people learn to scroll past.
   #
   # What this gives up is real and small. A route landing a shape no corpus entry has seen can make
   # a known laundering mutation start paying, and that is now caught by the nightly rather than by
   # the pull request that caused it. Tree drift accrues over months, so a day is the right
   # granularity for it; the tool's own regressions, which are the ones a single commit can cause,
   # still gate per pull request.
+  #
+  # Nothing in this repo watches whether the nightly itself succeeds: no Slack webhook and no
+  # issue-on-failure step here or in e2e-webapp-auth-full.yml, the only other scheduled workflow, so
+  # there is no house pattern to follow. A broken corpus fails quietly on the 3am cron, red only in
+  # the Actions tab,
+  # for as long as nobody checks it. Wiring up a real notification needs infrastructure (a Slack
+  # webhook secret, at minimum) that does not exist here yet, so this is a known, unfixed gap
+  # rather than a fixed one.
   mutation-corpus:
     name: 🧬 Mutation corpus
     needs: changes
