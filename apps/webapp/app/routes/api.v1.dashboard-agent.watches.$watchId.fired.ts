@@ -71,25 +71,40 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const authorization = await authorizeWatchEnvironment({
-    userId: watch.userId,
-    organizationId: watch.organizationId,
-    projectId: watch.projectId,
-    environmentId: watch.environmentId,
-  });
+  // The row is the first thing here that knows whose request this is, so the
+  // boundary starts once it is in hand. Rethrown, so the caller sees exactly what
+  // it saw before: the failure is only named, not handled.
+  try {
+    const authorization = await authorizeWatchEnvironment({
+      userId: watch.userId,
+      organizationId: watch.organizationId,
+      projectId: watch.projectId,
+      environmentId: watch.environmentId,
+    });
 
-  if (!authorization.ok) {
-    // Not cancelled here (the watch is already terminal) — just silence.
-    logger.info("Dashboard agent watch fired, but access was revoked; no alert", { watchId });
-    return json(
-      { error: "Access to this environment was revoked", code: "access_revoked" },
-      {
-        status: 403,
-      }
-    );
+    if (!authorization.ok) {
+      // Not cancelled here (the watch is already terminal) — just silence.
+      logger.info("Dashboard agent watch fired, but access was revoked; no alert", { watchId });
+      return json(
+        { error: "Access to this environment was revoked", code: "access_revoked" },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    await enqueueWatchFiredAlert(watch, "fired");
+
+    return json({ ok: true });
+  } catch (error) {
+    logger.error("Dashboard agent watch fire callback failed", {
+      error,
+      watchId,
+      userId: watch.userId,
+      organizationId: watch.organizationId,
+      projectId: watch.projectId,
+      environmentId: watch.environmentId,
+    });
+    throw error;
   }
-
-  await enqueueWatchFiredAlert(watch, "fired");
-
-  return json({ ok: true });
 }

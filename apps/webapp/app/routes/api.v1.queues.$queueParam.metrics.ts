@@ -106,6 +106,9 @@ export const loader = createLoaderApiRoute(
         logger.warn("Failed to read queue metrics", {
           summaryError: summaryError?.message,
           trendError: trendError?.message,
+          organizationId: ids.organizationId,
+          projectId: ids.projectId,
+          environmentId: ids.environmentId,
         });
         return json({ error: "Queue metrics are unavailable right now." }, { status: 503 });
       }
@@ -135,7 +138,16 @@ export const loader = createLoaderApiRoute(
           .map((row) => row.depth),
       });
     } catch (error) {
-      logger.error("Failed to read queue metrics", { error });
+      // The builder answers a thrown Response with that response; swallowing one
+      // here would turn it into a 500.
+      if (error instanceof Response) throw error;
+      logger.error("Failed to read queue metrics", {
+        error,
+        queue,
+        organizationId: authentication.environment.organizationId,
+        projectId: authentication.environment.projectId,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }

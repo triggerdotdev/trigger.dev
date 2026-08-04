@@ -7,11 +7,13 @@ import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayo
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { prisma } from "~/db.server";
 import { verifyUnsubscribeToken } from "~/services/dashboardAgentAlertUnsubscribeToken.server";
 import {
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
   unsubscribeChannelFromWatchAlerts,
 } from "~/services/dashboardAgentWatchAlerts.server";
+import { logger } from "~/services/logger.server";
 import { rootPath } from "~/utils/pathBuilder";
 
 /**
@@ -69,23 +71,42 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const result = await unsubscribeChannelFromWatchAlerts(claims.channelId);
-  if (!result.ok) {
-    return result.reason === "conflict"
-      ? typedjson(
-          {
-            success: false as const,
-            message: "This alert was being changed elsewhere. Please try again.",
-          },
-          { status: 409 }
-        )
-      : typedjson(
-          { success: false as const, message: "This alert no longer exists." },
-          { status: 404 }
-        );
-  }
+  // The token names a channel and nothing else, so the channel's project is the
+  // only tenant this route can put on a failure. Read for that alone — the
+  // unsubscribe below does its own scoped lookup.
+  const channel = await prisma.projectAlertChannel.findFirst({
+    where: { id: claims.channelId },
+    select: { projectId: true },
+  });
 
-  return typedjson({ success: true as const, channelName: result.channelName });
+  // Rethrown, so the page behaves exactly as it did before: the failure is only
+  // named, not handled.
+  try {
+    const result = await unsubscribeChannelFromWatchAlerts(claims.channelId);
+    if (!result.ok) {
+      return result.reason === "conflict"
+        ? typedjson(
+            {
+              success: false as const,
+              message: "This alert was being changed elsewhere. Please try again.",
+            },
+            { status: 409 }
+          )
+        : typedjson(
+            { success: false as const, message: "This alert no longer exists." },
+            { status: 404 }
+          );
+    }
+
+    return typedjson({ success: true as const, channelName: result.channelName });
+  } catch (error) {
+    logger.error("Failed to turn off watch alerts from an email link", {
+      error,
+      channelId: claims.channelId,
+      projectId: channel?.projectId,
+    });
+    throw error;
+  }
 }
 
 export default function Page() {

@@ -75,7 +75,16 @@ export const loader = createLoaderApiRoute(
 
       return json(diagnosis, { status: 200 });
     } catch (error) {
-      logger.error("Failed to diagnose waiting run", { error, runId: run.friendlyId });
+      // The builder answers a thrown Response with that response; swallowing one
+      // here would turn it into a 500.
+      if (error instanceof Response) throw error;
+      logger.error("Failed to diagnose waiting run", {
+        error,
+        runId: run.friendlyId,
+        environmentId: environment.id,
+        projectId: environment.projectId,
+        organizationId: environment.organizationId,
+      });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }

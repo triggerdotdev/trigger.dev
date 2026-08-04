@@ -1,13 +1,8 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { watchSpecSchema } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import {
-  canUseDashboardAgentAlerts,
-  DASHBOARD_AGENT_WATCH_ALERT_TYPE,
-} from "~/services/dashboardAgentWatchAlerts.server";
+import { resolveWatchEmailAlertsState } from "~/services/dashboardAgentWatchAlerts.server";
 import {
   authorizeWatchEnvironmentById,
   createDashboardAgentWatch,
@@ -86,16 +81,20 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  let parsed: z.infer<typeof BodySchema>;
+  // The try guards the parse and nothing else: a malformed body is a 400, and the
+  // shape check below it answers for itself.
+  let rawBody: unknown;
   try {
-    const result = BodySchema.safeParse(await request.json());
-    if (!result.success) {
-      return json({ error: "Invalid watch request", code: "invalid_request" }, { status: 400 });
-    }
-    parsed = result.data;
+    rawBody = await request.json();
   } catch {
     return json({ error: "Invalid watch request", code: "invalid_request" }, { status: 400 });
   }
+
+  const parsedBody = BodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
+    return json({ error: "Invalid watch request", code: "invalid_request" }, { status: 400 });
+  }
+  const parsed = parsedBody.data;
 
   // A body that names a different environment than the turn is a bug or an
   // attempt to move the watch — either way, refuse rather than silently pick one.
@@ -185,58 +184,18 @@ export async function action({ request }: ActionFunctionArgs) {
       identity: result.identity,
       status: result.status,
       expiresAt: result.expiresAt.toISOString(),
-      emailAlerts: await resolveEmailAlertsState({ userId, environment }),
+      emailAlerts: await resolveWatchEmailAlertsState({ userId, environment }),
       ...(result.unavailable ? { unavailable: true } : {}),
     });
   } catch (error) {
-    logger.error("Failed to create a dashboard agent watch", { error });
-    return json({ error: "Internal Server Error", code: "internal" }, { status: 500 });
-  }
-}
-
-/**
- * Whether a fired watch in this environment would already reach the user outside
- * the chat, so the agent knows whether to offer an email alert when it confirms a
- * new watch:
- *
- *   - `subscribed`  — an enabled channel here already subscribes to watch fires
- *                     (any channel type counts: email, Slack, webhook), so there
- *                     is nothing to offer.
- *   - `unavailable` — the plan or feature gate denies alerts. Say nothing: don't
- *                     advertise what the user can't have.
- *   - `none`        — alerts are possible and nothing is subscribed yet.
- *
- * Advisory only. This annotates a watch that is already created, so every failure
- * is `none` — the quiet answer — and never turns into a failed creation.
- */
-async function resolveEmailAlertsState(params: {
-  userId: string;
-  environment: AuthenticatedEnvironment;
-}): Promise<"subscribed" | "none" | "unavailable"> {
-  const { userId, environment } = params;
-  try {
-    // The same predicate the delivery job selects channels with, so "subscribed"
-    // means a fire would actually be delivered.
-    const channel = await $replica.projectAlertChannel.findFirst({
-      where: {
-        projectId: environment.project.id,
-        enabled: true,
-        alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
-        environmentTypes: { has: environment.type },
-      },
-      select: { id: true },
-    });
-    if (channel) return "subscribed";
-
-    const gate = await canUseDashboardAgentAlerts({
+    // A thrown Response is Remix control flow, not a failure to report.
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create a dashboard agent watch", {
+      error,
       userId,
-      organizationId: environment.organizationId,
-      organizationSlug: environment.organization.slug,
-      orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+      environmentId,
+      chatId: parsed.chatId,
     });
-    return gate.allowed ? "none" : "unavailable";
-  } catch (error) {
-    logger.error("Failed to resolve dashboard agent watch alert state", { error });
-    return "none";
+    return json({ error: "Internal Server Error", code: "internal" }, { status: 500 });
   }
 }

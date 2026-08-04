@@ -129,16 +129,20 @@ export async function action({ request }: ActionFunctionArgs) {
   if ("error" in auth) return auth.error;
   const { userId } = auth;
 
-  let body: z.infer<typeof CreateBodySchema>;
+  // The try guards the parse and nothing else: a malformed body is a 400, and the
+  // shape check below it answers for itself.
+  let rawBody: unknown;
   try {
-    const parsed = CreateBodySchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
-    }
-    body = parsed.data;
+    rawBody = await request.json();
   } catch {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
+
+  const parsed = CreateBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
+  }
+  const body = parsed.data;
 
   const context = await resolveAgentAlertContext({
     userId,
@@ -200,7 +204,15 @@ export async function action({ request }: ActionFunctionArgs) {
 
     return json({ id: channel.id, type: channel.type, target: email, enabled: channel.enabled });
   } catch (error) {
-    logger.error("Failed to create a dashboard agent watch alert channel", { error });
+    // A thrown Response is Remix control flow, not a failure to report.
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create a dashboard agent watch alert channel", {
+      error,
+      userId,
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      environmentId: environment.id,
+    });
     return json({ error: "Internal Server Error", code: "internal" }, { status: 500 });
   }
 }

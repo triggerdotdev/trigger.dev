@@ -2,6 +2,7 @@ import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { resolveAgentAlertContext } from "~/services/dashboardAgentAlertContext.server";
 import { unsubscribeChannelFromWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
+import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
@@ -45,43 +46,59 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) return json({ error: "Invalid params" }, { status: 400 });
 
-  let body: z.infer<typeof BodySchema>;
+  // The try guards the parse and nothing else: a malformed body is a 400, and the
+  // shape check below it answers for itself.
+  let rawBody: unknown;
   try {
-    const parsed = BodySchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
-    }
-    body = parsed.data;
+    rawBody = await request.json();
   } catch {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
-  const context = await resolveAgentAlertContext({
-    userId,
-    environmentId,
-    chatId: body.chatId,
-    claimedEnvironmentId: body.environmentId,
-    claimedProjectRef: body.projectRef,
-  });
-  if (!context.ok) {
-    return json(
-      { error: context.error, code: context.code },
-      { status: context.code === "environment_mismatch" ? 400 : 404 }
-    );
+  const parsedBody = BodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
+    return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
+  const body = parsedBody.data;
 
-  const result = await unsubscribeChannelFromWatchAlerts(parsedParams.data.channelId, {
-    projectId: context.environment.project.id,
-  });
-  if (!result.ok) {
-    if (result.reason === "conflict") {
+  // Rethrown, so the caller sees exactly what it saw before: the failure is only
+  // named, not handled.
+  try {
+    const context = await resolveAgentAlertContext({
+      userId,
+      environmentId,
+      chatId: body.chatId,
+      claimedEnvironmentId: body.environmentId,
+      claimedProjectRef: body.projectRef,
+    });
+    if (!context.ok) {
       return json(
-        { error: "That alert was being changed elsewhere. Try again.", code: "conflict" },
-        { status: 409 }
+        { error: context.error, code: context.code },
+        { status: context.code === "environment_mismatch" ? 400 : 404 }
       );
     }
-    return json({ error: "Alert not found", code: "not_found" }, { status: 404 });
-  }
 
-  return json({ ok: true, disabledChannel: result.disabledChannel });
+    const result = await unsubscribeChannelFromWatchAlerts(parsedParams.data.channelId, {
+      projectId: context.environment.project.id,
+    });
+    if (!result.ok) {
+      if (result.reason === "conflict") {
+        return json(
+          { error: "That alert was being changed elsewhere. Try again.", code: "conflict" },
+          { status: 409 }
+        );
+      }
+      return json({ error: "Alert not found", code: "not_found" }, { status: 404 });
+    }
+
+    return json({ ok: true, disabledChannel: result.disabledChannel });
+  } catch (error) {
+    logger.error("Failed to unsubscribe a channel from dashboard agent watch alerts", {
+      error,
+      userId,
+      environmentId,
+      channelId: parsedParams.data.channelId,
+    });
+    throw error;
+  }
 }

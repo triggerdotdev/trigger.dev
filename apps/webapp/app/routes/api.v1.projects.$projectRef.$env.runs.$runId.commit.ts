@@ -1,7 +1,10 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { authenticatedEnvironmentForAuthentication } from "~/services/apiAuth.server";
+import {
+  authenticatedEnvironmentForAuthentication,
+  type AuthenticatedEnvironment,
+} from "~/services/apiAuth.server";
 import { resolveRunCommit } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
@@ -37,6 +40,9 @@ type GitMetaBlob = {
 };
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
+  // Hoisted so a failure below can name the tenant it happened to.
+  let runtimeEnv: AuthenticatedEnvironment | undefined;
+
   try {
     const authentication = await authenticateUatOrApiRequest(request);
     if (!authentication) {
@@ -48,7 +54,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const { projectRef, env, runId } = parsed.data;
 
     const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
-    const runtimeEnv = await authenticatedEnvironmentForAuthentication(
+    runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authentication.authenticationResult,
       projectRef,
       env,
@@ -95,7 +101,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to resolve run commit", { error });
+    logger.error("Failed to resolve run commit", {
+      error,
+      environmentId: runtimeEnv?.id,
+      projectId: runtimeEnv?.project.id,
+      organizationId: runtimeEnv?.organizationId,
+    });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

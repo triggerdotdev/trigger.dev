@@ -104,7 +104,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     await kickWatchInvestigation({ watch, environment: authorization.environment });
   } catch (error) {
-    logger.error("Dashboard agent watch investigation could not be started", { watchId, error });
+    // A thrown Response is Remix control flow, not a failed kick.
+    if (error instanceof Response) throw error;
+    logger.error("Dashboard agent watch investigation could not be started", {
+      error,
+      watchId,
+      userId: watch.userId,
+      organizationId: watch.organizationId,
+      projectId: watch.projectId,
+      environmentId: watch.environmentId,
+    });
     return json({ ok: true, investigating: false, code: "kick_failed" });
   }
 

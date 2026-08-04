@@ -12,8 +12,10 @@
 
 import { type Watch } from "@internal/dashboard-agent-db";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
@@ -122,6 +124,59 @@ export async function canUseDashboardAgentAlerts(params: {
   if (!hasAgent) return { allowed: false, reason: "dashboard_agent_disabled" };
 
   return { allowed: true };
+}
+
+/**
+ * Whether a fired watch in this environment would already reach the user outside
+ * the chat, so the agent knows whether to offer an email alert when it confirms a
+ * new watch:
+ *
+ *   - `subscribed`  — an enabled channel here already subscribes to watch fires
+ *                     (any channel type counts: email, Slack, webhook), so there
+ *                     is nothing to offer.
+ *   - `unavailable` — the plan or feature gate denies alerts. Say nothing: don't
+ *                     advertise what the user can't have.
+ *   - `none`        — alerts are possible and nothing is subscribed yet.
+ *
+ * Advisory only. This annotates a watch that is already created, so every failure
+ * is `none` — the quiet answer — and never turns into a failed creation.
+ */
+export async function resolveWatchEmailAlertsState(params: {
+  userId: string;
+  environment: AuthenticatedEnvironment;
+}): Promise<"subscribed" | "none" | "unavailable"> {
+  const { userId, environment } = params;
+  try {
+    // The same predicate the delivery job selects channels with, so "subscribed"
+    // means a fire would actually be delivered.
+    const channel = await $replica.projectAlertChannel.findFirst({
+      where: {
+        projectId: environment.project.id,
+        enabled: true,
+        alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
+        environmentTypes: { has: environment.type },
+      },
+      select: { id: true },
+    });
+    if (channel) return "subscribed";
+
+    const gate = await canUseDashboardAgentAlerts({
+      userId,
+      organizationId: environment.organizationId,
+      organizationSlug: environment.organization.slug,
+      orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+    });
+    return gate.allowed ? "none" : "unavailable";
+  } catch (error) {
+    logger.error("Failed to resolve dashboard agent watch alert state", {
+      error,
+      userId,
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      environmentId: environment.id,
+    });
+    return "none";
+  }
 }
 
 /**
