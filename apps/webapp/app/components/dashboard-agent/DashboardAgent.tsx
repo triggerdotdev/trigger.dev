@@ -121,6 +121,10 @@ export function DashboardAgent({
     if (!next) {
       // No chat is on screen any more — the dot counts every unread wake again.
       visibleChat.current = null;
+      // Closing leaves fullscreen behind: reopening always starts as the side
+      // panel, whatever mode the panel was in when it was dismissed.
+      setFullscreen(false);
+      writeAgentFullscreen(false);
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       // An abandoned card leaves no trace (§2.2) — including no pending request
