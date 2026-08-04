@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { ImportTaskFileErrors, WorkerManifest } from "./build.js";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common.js";
 import { RunEngineVersionSchema, TaskRunExecutionMetrics } from "./schemas.js";

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const BufferEntryStatus = z.enum(["QUEUED", "DRAINING", "FAILED"]);
 export type BufferEntryStatus = z.infer<typeof BufferEntryStatus>;

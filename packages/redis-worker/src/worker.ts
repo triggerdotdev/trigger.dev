@@ -12,12 +12,16 @@ import {
   ValueType,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
+import {
+  calculateNextRetryDelay,
+  type AnyZodSchema,
+  type inferZodSchemaOutput,
+} from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { type AnyQueueItem, SimpleQueue } from "./queue.js";
 import cronParser from "cron-parser";
 
@@ -36,7 +40,7 @@ export type BatchConfig = {
 
 export type WorkerCatalog = {
   [key: string]: {
-    schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+    schema: AnyZodSchema;
     visibilityTimeoutMs: number;
     retry?: RetryOptions;
     cron?: string;
@@ -56,7 +60,7 @@ type QueueCatalogFromWorkerCatalog<Catalog extends WorkerCatalog> = {
 
 export type JobHandlerParams<Catalog extends WorkerCatalog, K extends keyof Catalog> = {
   id: string;
-  payload: z.infer<Catalog[K]["schema"]>;
+  payload: inferZodSchemaOutput<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
   attempt: number;
   deduplicationKey?: string;
@@ -311,7 +315,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }: {
     id?: string;
     job: K;
-    payload: z.infer<TCatalog[K]["schema"]>;
+    payload: inferZodSchemaOutput<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
     cancellationKey?: string;
@@ -373,7 +377,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }: {
     id: string;
     job: K;
-    payload: z.infer<TCatalog[K]["schema"]>;
+    payload: inferZodSchemaOutput<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
   }) {
@@ -1094,7 +1098,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         timestamp: scheduledAt.getTime(),
         lastTimestamp: lastTimestamp?.getTime(),
         cron,
-      } as z.infer<TCatalog[string]["schema"]>,
+      } as inferZodSchemaOutput<TCatalog[string]["schema"]>,
       availableAt,
     });
 

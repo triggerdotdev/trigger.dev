@@ -265,6 +265,7 @@ describe("canConvertSchema", () => {
   });
 
   it("should return false for unsupported schemas", () => {
+    expect(canConvertSchema(null)).toBe(false);
     expect(canConvertSchema({ notASchema: true })).toBe(false);
     expect(canConvertSchema(() => true)).toBe(false);
   });

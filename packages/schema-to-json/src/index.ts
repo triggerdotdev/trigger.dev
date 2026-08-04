@@ -1,7 +1,7 @@
 // Import JSONSchema from core to ensure compatibility
 import type { JSONSchema } from "@trigger.dev/core/v3";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import * as z4 from "zod/v4";
+import * as z4 from "zod/v4/core";
 import { convertSchema } from "@sodaru/yup-to-json-schema";
 import { JSONSchema as EffectJSONSchema } from "effect";
 
@@ -41,6 +41,13 @@ export function schemaToJsonSchema(
   schema: Schema,
   options?: ConversionOptions
 ): ConversionResult | undefined {
+  if (
+    schema === null ||
+    (typeof schema !== "object" && typeof schema !== "function")
+  ) {
+    return undefined;
+  }
+
   const parser = schema as any;
 
   if (isZodSchema(parser)) {
@@ -111,11 +118,18 @@ export function isZodSchema(schema: any): boolean {
 }
 
 function isZod3Schema(schema: any): boolean {
-  return "_def" in schema && "parse" in schema && "parseAsync" in schema && "safeParse" in schema;
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    "_def" in schema &&
+    "parse" in schema &&
+    "parseAsync" in schema &&
+    "safeParse" in schema
+  );
 }
 
 function isZod4Schema(schema: any): boolean {
-  return "_zod" in schema;
+  return typeof schema === "object" && schema !== null && "_zod" in schema;
 }
 
 function convertZodSchema(schema: any, options?: ConversionOptions): JSONSchema | undefined {

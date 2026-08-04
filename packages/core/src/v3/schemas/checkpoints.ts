@@ -1,5 +1,5 @@
 import { CheckpointType, DequeuedMessage } from "./runEngine.js";
-import z from "zod";
+import z from "zod/v4";
 
 const _CallbackUrl = z
   .string()

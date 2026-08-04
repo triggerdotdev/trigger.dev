@@ -1,10 +1,15 @@
 import { randomUUID } from "crypto";
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "./utils/zod.js";
 import type {
   ExecutorToWorkerMessageCatalog,
   WorkerToExecutorMessageCatalog,
 } from "./schemas/messages.js";
 import { ZodSchemaParsedError } from "./zodMessageHandler.js";
+import type {
+  inferZodSchemaInput,
+  inferZodSchemaOutput,
+} from "./types/schemas.js";
 import type {
   GetSocketCallbackSchema,
   GetSocketMessageSchema,
@@ -18,13 +23,13 @@ import type {
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TEmitCatalog, K>>
   ): Promise<void>;
 
   sendWithAck<K extends GetSocketMessagesWithCallback<TEmitCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
-  ): Promise<z.infer<GetSocketCallbackSchema<TEmitCatalog, K>>>;
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TEmitCatalog, K>>
+  ): Promise<inferZodSchemaOutput<GetSocketCallbackSchema<TEmitCatalog, K>>>;
 }
 
 type ZodIpcMessageHandlers<
@@ -32,11 +37,11 @@ type ZodIpcMessageHandlers<
   TEmitCatalog extends ZodSocketMessageCatalogSchema,
 > = Partial<{
   [K in keyof TListenCatalog]: (
-    payload: z.infer<GetSocketMessageSchema<TListenCatalog, K>>,
+    payload: inferZodSchemaOutput<GetSocketMessageSchema<TListenCatalog, K>>,
     sender: ZodIpcMessageSender<TEmitCatalog>
   ) => Promise<
     SocketMessageHasCallback<TListenCatalog, K> extends true
-      ? z.input<GetSocketCallbackSchema<TListenCatalog, K>>
+      ? inferZodSchemaInput<GetSocketCallbackSchema<TListenCatalog, K>>
       : void
   >;
 }>;
@@ -115,7 +120,7 @@ class ZodIpcMessageHandler<
   }
 }
 
-const Packet = z.discriminatedUnion("type", [
+const Packet = discriminatedUnion("type", [
   z.object({
     type: z.literal("CONNECT"),
     sessionId: z.string().optional(),
@@ -275,7 +280,7 @@ export class ZodIpcConnection<
 
   async send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TEmitCatalog, K>>
   ): Promise<void> {
     const schema = this.opts.emitSchema[type]?.["message"];
 
@@ -301,9 +306,9 @@ export class ZodIpcConnection<
 
   public async sendWithAck<K extends GetSocketMessagesWithCallback<TEmitCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>,
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TEmitCatalog, K>>,
     timeoutInMs?: number
-  ): Promise<z.infer<GetSocketCallbackSchema<TEmitCatalog, K>>> {
+  ): Promise<inferZodSchemaOutput<GetSocketCallbackSchema<TEmitCatalog, K>>> {
     const currentId = this.#messageCounter++;
 
     return new Promise((resolve, reject) => {

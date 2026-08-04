@@ -17,7 +17,7 @@
  * recognise a version silently fall back to no-snapshot behaviour.
  */
 
-import { z } from "zod";
+import { z } from "zod/v4";
 
 import type { UIMessage } from "ai";
 

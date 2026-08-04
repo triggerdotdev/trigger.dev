@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import {
