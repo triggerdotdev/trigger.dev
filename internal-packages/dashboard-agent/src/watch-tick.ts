@@ -656,24 +656,53 @@ export async function appendWakeToSession(args: {
   action: WatchWakeAction;
   watch: Watch;
 }): Promise<void> {
-  await sessions.open(args.chatId).in.send({
-    kind: "message",
-    payload: {
-      chatId: args.chatId,
-      trigger: "action",
-      action: args.action,
-      metadata: {
-        userId: args.watch.userId,
-        organizationId: args.watch.organizationId,
-        projectId: args.watch.projectId,
-        environmentId: args.watch.environmentId,
-        // The external ref a consented investigation is scoped by — the same
-        // one a normal turn carries, so a follow-up turn revises that
-        // investigation instead of opening a second one.
-        ...(args.watch.projectRef ? { projectRef: args.watch.projectRef } : {}),
+  const metadata = {
+    userId: args.watch.userId,
+    organizationId: args.watch.organizationId,
+    projectId: args.watch.projectId,
+    environmentId: args.watch.environmentId,
+    // The external ref a consented investigation is scoped by — the same
+    // one a normal turn carries, so a follow-up turn revises that
+    // investigation instead of opening a second one.
+    ...(args.watch.projectRef ? { projectRef: args.watch.projectRef } : {}),
+  };
+
+  const send = () =>
+    sessions.open(args.chatId).in.send({
+      kind: "message",
+      payload: {
+        chatId: args.chatId,
+        trigger: "action",
+        action: args.action,
+        metadata,
       },
-    },
-  });
+    });
+
+  try {
+    await send();
+  } catch (error) {
+    // A chat born from the configuration card (0 LLM) has no session yet —
+    // the card's confirmation is a direct JSONB append. The wake is the first
+    // thing that needs one, so create it here (idempotent on externalId) and
+    // retry once. Any other failure keeps the claim's retry semantics.
+    if (!isSessionNotFound(error)) throw error;
+    await sessions.start({
+      type: "chat.agent",
+      externalId: args.chatId,
+      taskIdentifier: "dashboard-agent",
+      triggerConfig: {
+        basePayload: { trigger: "preload", chatId: args.chatId, metadata },
+      },
+    });
+    await send();
+  }
+}
+
+/** A 404 from a session call: no Session row exists for this chat id. */
+function isSessionNotFound(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const e = error as { name?: string; status?: number };
+  return e.name === "TriggerApiError" && e.status === 404;
 }
 
 export const watchTick = task({
