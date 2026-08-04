@@ -1,7 +1,7 @@
-import type { z as z3 } from "zod/v3";
 import { z } from "zod/v4";
 import type {
   AnyZodSchema,
+  ZodErrorLike,
   inferZodSchemaInput,
   inferZodSchemaOutput,
 } from "./types/schemas.js";
@@ -9,7 +9,7 @@ import type { StructuredLogger } from "./utils/structuredLogger.js";
 
 export class ZodSchemaParsedError extends Error {
   constructor(
-    public error: z3.ZodError | z.ZodError,
+    public error: ZodErrorLike,
     public payload: unknown
   ) {
     super(error.message);
@@ -23,9 +23,7 @@ export interface ZodMessageCatalogSchema {
 }
 
 export type ZodMessageHandlers<TCatalogSchema extends ZodMessageCatalogSchema> = Partial<{
-  [K in keyof TCatalogSchema]: (
-    payload: inferZodSchemaOutput<TCatalogSchema[K]>
-  ) => Promise<any>;
+  [K in keyof TCatalogSchema]: (payload: inferZodSchemaOutput<TCatalogSchema[K]>) => Promise<any>;
 }>;
 
 export type ZodMessageHandlerOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {

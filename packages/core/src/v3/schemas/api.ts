@@ -1456,20 +1456,19 @@ const BulkActionSelectionRequestBody = {
 };
 
 export const CreateBulkActionRequestBody = discriminatedUnion("action", [
-    z.object({
-      action: z.literal("cancel"),
-      targetRegion: z.never().optional(),
-      ...BulkActionSelectionRequestBody,
-    }),
-    z.object({
-      action: z.literal("replay"),
-      targetRegion: z.string().optional(),
-      ...BulkActionSelectionRequestBody,
-    }),
-  ])
-  .refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
-    message: "Exactly one of filter or runIds must be provided",
-  });
+  z.object({
+    action: z.literal("cancel"),
+    targetRegion: z.never().optional(),
+    ...BulkActionSelectionRequestBody,
+  }),
+  z.object({
+    action: z.literal("replay"),
+    targetRegion: z.string().optional(),
+    ...BulkActionSelectionRequestBody,
+  }),
+]).refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
+  message: "Exactly one of filter or runIds must be provided",
+});
 
 export type CreateBulkActionRequestBody = z.infer<typeof CreateBulkActionRequestBody>;
 
@@ -1543,10 +1542,9 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   // When omitted, variables default to non-secret (the DB default is false).
   isSecret: z.boolean().optional(),
   source: discriminatedUnion("type", [
-      z.object({ type: z.literal("user"), userId: z.string() }),
-      z.object({ type: z.literal("integration"), integration: z.string() }),
-    ])
-    .optional(),
+    z.object({ type: z.literal("user"), userId: z.string() }),
+    z.object({ type: z.literal("integration"), integration: z.string() }),
+  ]).optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<

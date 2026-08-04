@@ -41,10 +41,7 @@ export function schemaToJsonSchema(
   schema: Schema,
   options?: ConversionOptions
 ): ConversionResult | undefined {
-  if (
-    schema === null ||
-    (typeof schema !== "object" && typeof schema !== "function")
-  ) {
+  if (schema === null || (typeof schema !== "object" && typeof schema !== "function")) {
     return undefined;
   }
 

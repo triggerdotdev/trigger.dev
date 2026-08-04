@@ -27,10 +27,7 @@ import { wrapZodFetch, type ApiResult, type ZodFetchOptions } from "../../zodfet
 import { createHeaders } from "../util.js";
 import { WORKER_HEADERS } from "../consts.js";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "../../types/schemas.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../../types/schemas.js";
 
 type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 

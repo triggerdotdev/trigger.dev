@@ -6,10 +6,7 @@ import type {
   WorkerToExecutorMessageCatalog,
 } from "./schemas/messages.js";
 import { ZodSchemaParsedError } from "./zodMessageHandler.js";
-import type {
-  inferZodSchemaInput,
-  inferZodSchemaOutput,
-} from "./types/schemas.js";
+import type { inferZodSchemaInput, inferZodSchemaOutput } from "./types/schemas.js";
 import type {
   GetSocketCallbackSchema,
   GetSocketMessageSchema,

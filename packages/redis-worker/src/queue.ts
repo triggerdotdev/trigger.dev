@@ -6,10 +6,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "@trigger.dev/core/v3";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 
 export interface MessageCatalogSchema {

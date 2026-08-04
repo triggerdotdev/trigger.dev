@@ -9,8 +9,12 @@ export type CompatibleZodDiscriminatedUnion<
   Types extends readonly [z.ZodTypeAny, ...z.ZodTypeAny[]],
 > = z.ZodDiscriminatedUnion<Types>;
 
-export function discriminatedUnion<
-  const Types extends readonly [z.ZodTypeAny, ...z.ZodTypeAny[]],
->(discriminator: string, options: Types): CompatibleZodDiscriminatedUnion<Types> {
-  return z.discriminatedUnion(discriminator, options as any) as CompatibleZodDiscriminatedUnion<Types>;
+export function discriminatedUnion<const Types extends readonly [z.ZodTypeAny, ...z.ZodTypeAny[]]>(
+  discriminator: string,
+  options: Types
+): CompatibleZodDiscriminatedUnion<Types> {
+  return z.discriminatedUnion(
+    discriminator,
+    options as any
+  ) as CompatibleZodDiscriminatedUnion<Types>;
 }

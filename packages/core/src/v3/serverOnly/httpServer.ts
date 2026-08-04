@@ -5,10 +5,7 @@ import { HttpReply, getJsonBody } from "../apps/http.js";
 import type { Registry } from "prom-client";
 import { Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "../types/schemas.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 
 const logger = new SimpleStructuredLogger("http-server");
 

@@ -3,14 +3,24 @@ type SchemaZodEsque<TInput, TParsedInput> = {
   _output: TParsedInput;
   parse: (input: unknown) => TParsedInput;
   parseAsync: (input: unknown) => Promise<TParsedInput>;
-  safeParse: (input: unknown) =>
-    | { success: true; data: TParsedInput }
-    | { success: false; error: any };
+  safeParse: (
+    input: unknown
+  ) => { success: true; data: TParsedInput } | { success: false; error: any };
 };
 
 export type AnyZodSchema = SchemaZodEsque<any, any>;
 export type inferZodSchemaInput<TSchema extends AnyZodSchema> = TSchema["_input"];
 export type inferZodSchemaOutput<TSchema extends AnyZodSchema> = TSchema["_output"];
+
+export type ZodIssueLike = {
+  message: string;
+  path: ReadonlyArray<PropertyKey>;
+};
+
+export type ZodErrorLike = {
+  message: string;
+  issues: ReadonlyArray<ZodIssueLike>;
+};
 
 export function isSchemaZodEsque<TInput, TParsedInput>(
   schema: unknown
