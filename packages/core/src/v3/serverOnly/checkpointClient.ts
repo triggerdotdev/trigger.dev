@@ -11,21 +11,12 @@ export type CheckpointClientOptions = {
   apiUrl: URL;
   workerClient: SupervisorHttpClient;
   orchestrator: CheckpointType;
-  timeoutMs?: number;
-  restoreTimeoutMs?: number;
 };
-
-const DEFAULT_TIMEOUT_MS = 5_000;
-const DEFAULT_RESTORE_TIMEOUT_MS = 30_000;
 
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
 
   constructor(private readonly opts: CheckpointClientOptions) {}
-
-  private timeout(ms = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS): AbortSignal {
-    return AbortSignal.timeout(ms);
-  }
 
   async suspendRun({
     runFriendlyId,
@@ -50,7 +41,6 @@ export class CheckpointClient {
           type: this.opts.orchestrator,
           ...body,
         } satisfies CheckpointServiceSuspendRequestBodyInput),
-        signal: this.timeout(),
       }
     );
 
@@ -115,7 +105,6 @@ export class CheckpointClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: this.timeout(this.opts.restoreTimeoutMs ?? DEFAULT_RESTORE_TIMEOUT_MS),
       }
     );
 
@@ -155,7 +144,6 @@ export class CheckpointClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: this.timeout(),
       }
     );
 
@@ -170,28 +158,20 @@ export class CheckpointClient {
     return true;
   }
 
-  async cancelCheckpoints({
-    runFriendlyId,
-  }: {
-    runFriendlyId: string;
-  }): Promise<"ok" | "unsupported" | "failed"> {
+  async cancelCheckpoints({ runFriendlyId }: { runFriendlyId: string }): Promise<boolean> {
     const res = await fetch(
       new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
-      { method: "POST", signal: this.timeout() }
+      { method: "POST" }
     );
-
-    if (res.status === 404) {
-      return "unsupported";
-    }
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Cancel checkpoints request failed", {
         runFriendlyId,
         status: res.status,
       });
-      return "failed";
+      return false;
     }
 
-    return "ok";
+    return true;
   }
 }

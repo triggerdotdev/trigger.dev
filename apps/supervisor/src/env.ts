@@ -115,8 +115,6 @@ export const Env = z
     TRIGGER_WARM_START_URL: z.string().optional(),
     TRIGGER_WARM_START_DISPATCH_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
-    TRIGGER_CHECKPOINT_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
-    TRIGGER_CHECKPOINT_RESTORE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_METADATA_URL: z.string().optional(),
 
     // Warm-start delivery verification: after a warm-start hit, probe the

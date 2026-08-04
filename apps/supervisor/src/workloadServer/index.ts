@@ -301,19 +301,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return;
     }
 
-    const [error, outcome] = await tryCatch(
+    const [error, accepted] = await tryCatch(
       this.checkpointClient.cancelCheckpoints({ runFriendlyId })
     );
 
-    if (error || outcome === "failed") {
+    if (error || !accepted) {
       checkpointCancelRequests.inc({ result: "http_error" });
       this.logger.error("Failed to request checkpoint cancel", { runFriendlyId, error });
-      return;
-    }
-
-    if (outcome === "unsupported") {
-      checkpointCancelRequests.inc({ result: "unsupported" });
-      this.logger.debug("Checkpoint cancel not supported", { runFriendlyId });
       return;
     }
 
