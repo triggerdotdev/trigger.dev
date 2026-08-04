@@ -40,7 +40,7 @@ export function DashboardAgentHero({
         <div className="flex flex-col items-center gap-1.5 text-center">
           <Header1 className="flex items-center gap-2">
             <AgentMonoLogo size={22} decorative />
-            Ask AI
+            Ask Trigger
             <BetaBadge />
           </Header1>
           <Paragraph variant="small" className="text-text-dimmed">

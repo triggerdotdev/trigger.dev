@@ -1,6 +1,6 @@
+import { EyeIcon } from "@heroicons/react/20/solid";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
-import { AGENT_ICON_ACCENT_CLASS, AgentIcon } from "./agent-identity";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
 
 /**
@@ -17,8 +17,8 @@ import { useDashboardAgent } from "./dashboardAgentLauncher";
  * pre-filled, and an abandoned card leaves no trace in the transcript.
  *
  * Self-hiding, like every agent entry point: no provider (or the agent gated off)
- * renders nothing, so callers need no gate of their own. Icon and accent come from
- * `agent-identity`, so it reads as one family with Investigate.
+ * renders nothing, so callers need no gate of their own. The eye glyph matches
+ * the chat's Watch block — the watch is the object, not the agent.
  */
 export function WatchButton({
   spec,
@@ -47,8 +47,10 @@ export function WatchButton({
     <Button
       type="button"
       variant={`${variant}/${size}`}
-      LeadingIcon={AgentIcon}
-      leadingIconClassName={variant === "primary" ? undefined : AGENT_ICON_ACCENT_CLASS}
+      // The same eye the chat's Watch block wears — a watch is the object here,
+      // not the agent, so the button doesn't carry the agent's glyph.
+      LeadingIcon={EyeIcon}
+      leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}

@@ -208,6 +208,18 @@ export function DashboardAgentPanel({
     return request;
   }, [actionPath, toast]);
 
+  // The generated chat name lands a few seconds AFTER the first answer (the
+  // agent defers it so it never blocks the response), so the reload a settled
+  // turn triggers still reads "New chat". One delayed follow-up reload picks the
+  // name up without the user having to reopen the panel.
+  const titleRefreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(titleRefreshTimer.current), []);
+  const handleTurnSettled = useCallback(() => {
+    void loadHistory();
+    clearTimeout(titleRefreshTimer.current);
+    titleRefreshTimer.current = setTimeout(() => void loadHistory(), 5000);
+  }, [loadHistory]);
+
   // Bumped on each open so a slower earlier open can't overwrite a newer one
   // when chats are switched rapidly.
   const openChatRequestSeq = useRef(0);
@@ -647,7 +659,7 @@ export function DashboardAgentPanel({
             appendedMessage={appendedMessage}
             onWatchIntent={openWatchCard}
             onCancelWatch={cancelWatch}
-            onTurnSettled={loadHistory}
+            onTurnSettled={handleTurnSettled}
             onActivityChange={handleActivityChange}
           />
         ) : (

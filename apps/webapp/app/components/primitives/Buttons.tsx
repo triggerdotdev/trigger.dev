@@ -116,7 +116,7 @@ const theme = {
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
   },
-  // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
+  // Reserved for the AI agent's "Ask Trigger" affordance: secondary styling with a
   // softened trigger-green border.
   "ask-ai": {
     // Light hover fills with a pale brand-green tint and the ink flips DARK —

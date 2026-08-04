@@ -80,10 +80,10 @@ export function DashboardAgentLauncher() {
         <span className="relative inline-flex shrink-0">
           <Button
             variant="ask-ai/small"
-            aria-label={hasUnread ? "Ask AI, unread updates" : "Ask AI"}
+            aria-label={hasUnread ? "Ask Trigger, unread updates" : "Ask Trigger"}
             onClick={() => setOpen(true)}
           >
-            Ask AI
+            Ask Trigger
           </Button>
           {hasUnread && (
             <span
