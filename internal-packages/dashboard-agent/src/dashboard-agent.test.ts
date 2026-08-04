@@ -731,9 +731,10 @@ describe("watch wake narration", () => {
     });
 
     expect(calls.appendMessage).toHaveLength(2);
-    expect(
-      calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)
-    ).toEqual(["wake:watch:watch_1:fired", "wake:watch:watch_2:expired"]);
+    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
+      "wake:watch:watch_1:fired",
+      "wake:watch:watch_2:expired",
+    ]);
   });
 });
 
@@ -1775,6 +1776,114 @@ describe("buildDashboardAgentTools", () => {
       // One retry, not a loop: two exchanges and two reads.
       expect(fetchStub.exchanges()).toBe(2);
       expect(fetchStub.requests).toHaveLength(4);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // render_view: a chart block's query is validated inside the turn
+  // -------------------------------------------------------------------------
+
+  const CHART_SPEC = {
+    blocks: [
+      {
+        type: "chart",
+        title: "Runs per hour",
+        query: "SELECT toStartOfHour(triggered_at) AS bucket, count() AS runs FROM runs",
+        period: "24h",
+        chartType: "line" as const,
+        xAxisColumn: "bucket",
+        yAxisColumns: ["runs"],
+      },
+    ],
+  };
+
+  const renderView = (ctx: Record<string, unknown>, spec: unknown) =>
+    (
+      buildDashboardAgentTools(ctx).render_view as {
+        execute: (i: unknown, o: unknown) => Promise<any>;
+      }
+    ).execute(spec, {});
+
+  const queryRequests = (requests: Array<{ url: string }>) =>
+    requests.filter((r) => r.url.endsWith("/api/v1/query"));
+
+  it("render_view fails with the chart query's own error, committing no blocks", async () => {
+    const fetchStub = stubFetch((url) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      return { status: 400, body: { error: "Unknown column createdAt" } };
+    });
+    try {
+      const result = await renderView(ENV_CTX, {
+        blocks: [{ ...CHART_SPEC.blocks[0], query: "SELECT createdAt FROM runs" }],
+      });
+      expect(result.error).toContain("Unknown column createdAt");
+      expect(result.blocks).toBeUndefined();
+      expect(queryRequests(fetchStub.requests)).toHaveLength(1);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("render_view commits the chart when its query runs, validating it once", async () => {
+    const fetchStub = stubFetch((url, init) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      // The validation runs the same window the panel will render.
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        scope: "environment",
+        period: "24h",
+      });
+      return { body: { results: [{ bucket: "2026-01-01T00:00:00Z", runs: 1 }] } };
+    });
+    try {
+      // The rows aren't embedded in the block — the panel stays the runner.
+      await expect(renderView(ENV_CTX, CHART_SPEC)).resolves.toEqual({ blocks: CHART_SPEC.blocks });
+      expect(queryRequests(fetchStub.requests)).toHaveLength(1);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("render_view commits the chart when the validation request itself fails", async () => {
+    const fetchStub = stubFetch((url) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      throw new Error("ECONNREFUSED");
+    });
+    try {
+      await expect(renderView(ENV_CTX, CHART_SPEC)).resolves.toEqual({ blocks: CHART_SPEC.blocks });
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("render_view skips chart validation when the turn carries no delegated token", async () => {
+    const fetchStub = stubFetch(() => ({ status: 400, body: { error: "never asked" } }));
+    try {
+      await expect(renderView({}, CHART_SPEC)).resolves.toEqual({ blocks: CHART_SPEC.blocks });
+      expect(fetchStub.requests).toEqual([]);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("render_view never runs a query for non-chart blocks", async () => {
+    const fetchStub = stubFetch(() => ({ status: 400, body: { error: "never asked" } }));
+    try {
+      const blocks = [
+        {
+          type: "diagnosis",
+          runId: "run_abc123",
+          summary: "The task threw because the order had no line items.",
+          category: "user_code_error",
+          likelyCause: "processOrder throws when items is empty.",
+          confidence: "high",
+          evidence: [{ type: "error", detail: "Error: order has no items" }],
+          nextSteps: ["Validate the payload before triggering."],
+        },
+      ];
+      await expect(renderView(ENV_CTX, { blocks })).resolves.toEqual({ blocks });
+      expect(fetchStub.requests).toEqual([]);
     } finally {
       fetchStub.restore();
     }

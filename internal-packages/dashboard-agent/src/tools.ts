@@ -17,6 +17,7 @@ import {
   type ParsedTriggerUri,
   type ViewBlockInput,
 } from "@internal/dashboard-agent-contracts";
+import { logger } from "@trigger.dev/sdk";
 import { tool, type ToolSet } from "ai";
 import {
   askSupportSchema,
@@ -115,6 +116,13 @@ export type InvestigationsCapability = {
 };
 
 type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
+
+// A query POST outcome, split by blame: "query" is the server rejecting the TRQL
+// itself (a 4xx carrying a message the model can act on), "transport" is the
+// request or the server breaking. Chart validation only fails a render on "query".
+type QueryPostResult =
+  | { ok: true; rows: Array<Record<string, unknown>> }
+  | { ok: false; kind: "query" | "transport"; error: string };
 
 async function apiGet(origin: string, path: string, token: string): Promise<FetchResult> {
   const res = await fetch(`${origin}${path}`, {
@@ -546,6 +554,74 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   // The common shape: a GET against an env-scoped route, with the retry above.
   function envApiGet(path: string): Promise<FetchResult | null> {
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+  }
+
+  /**
+   * Run a TRQL query against the query API. A POST, so it can't use envApiGet —
+   * same JWT cache and same one-shot re-exchange on a 401, spelled out here.
+   * `null` means there is no current environment. Shared by the run_query tool
+   * and chart-block validation, so both see the same window and the same errors.
+   */
+  async function postQuery(
+    query: string,
+    period: string | undefined
+  ): Promise<QueryPostResult | null> {
+    const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
+      async (jwt) => {
+        try {
+          return {
+            res: await fetch(`${origin}/api/v1/query`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${jwt}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
+            }),
+          };
+        } catch (error) {
+          return { error: `Query request failed: ${(error as Error).message}` };
+        }
+      },
+      (result) => "res" in result && result.res.status === 401
+    );
+    if (!attempt) return null;
+    if ("error" in attempt) return { ok: false, kind: "transport", error: attempt.error };
+    const res = attempt.res;
+    // The route returns 400 with { error } for invalid TRQL; surface it so the
+    // model can fix the query rather than the turn dying.
+    const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
+    if (!res.ok) {
+      return {
+        ok: false,
+        kind: res.status >= 500 ? "transport" : "query",
+        error: data.error ?? `Query failed (status ${res.status}).`,
+      };
+    }
+    return {
+      ok: true,
+      rows: Array.isArray(data.results) ? (data.results as Array<Record<string, unknown>>) : [],
+    };
+  }
+
+  /**
+   * The query error a chart block's query produced, or null when it's fine — or
+   * when we can't tell. Validation is a tripwire, not a gate: with no delegated
+   * token (e.g. a wake or action turn) or on a broken request we skip it rather
+   * than block the render.
+   */
+  async function validateChartQuery(
+    query: string,
+    period: string | undefined
+  ): Promise<string | null> {
+    const result = await postQuery(query, period);
+    if (!result || result.ok) return null;
+    if (result.kind === "transport") {
+      logger.warn("Skipped chart query validation", { error: result.error });
+      return null;
+    }
+    return result.error;
   }
 
   /**
@@ -1253,39 +1329,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     run_query: tool({
       ...runQuerySchema,
       execute: async ({ query, period }) => {
-        // POST, so it can't use envApiGet — same JWT cache and same one-shot
-        // re-exchange on a 401, spelled out around the query request.
-        const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
-          async (jwt) => {
-            try {
-              return {
-                res: await fetch(`${origin}/api/v1/query`, {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${jwt}`,
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                  },
-                  body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
-                }),
-              };
-            } catch (error) {
-              return { error: `Query request failed: ${(error as Error).message}` };
-            }
-          },
-          (result) => "res" in result && result.res.status === 401
-        );
-        if (!attempt) return { error: "No current environment is available to query." };
-        if ("error" in attempt) return attempt;
-        const res = attempt.res;
-        // The route returns 400 with { error } for invalid TRQL; surface it so
-        // the model can fix the query rather than the turn dying.
-        const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
-        if (!res.ok) return { error: data.error ?? `Query failed (status ${res.status}).` };
-        const rows = Array.isArray(data.results)
-          ? (data.results as Array<Record<string, unknown>>)
-          : [];
+        const result = await postQuery(query, period);
+        if (!result) return { error: "No current environment is available to query." };
+        if (!result.ok) return { error: result.error };
         const cap = 200;
+        const rows = result.rows;
         return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
       },
     }),
@@ -1349,9 +1397,27 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     // An `investigation` block is the exception — see `renderInvestigations`: it
     // is the one progressive block, so the executor (not the model) owns its
     // identity and commits each revision before the block reaches the transcript.
+    //
+    // A `chart` block gets its query run here first. The panel runs that query
+    // after the turn, so a broken one would leave a chart the model never learns
+    // failed; validating now turns it into a named failure the model can fix in
+    // this turn. The rows are thrown away — the panel stays the runner and the
+    // renderer — and the double execution is near-free thanks to ClickHouse's
+    // 30s query cache.
     render_view: tool({
       ...renderViewSchema,
-      execute: async (view) => renderInvestigations(view.blocks, view.investigationId),
+      execute: async (view) => {
+        for (const block of view.blocks) {
+          if (block.type !== "chart") continue;
+          const queryError = await validateChartQuery(block.query, block.period);
+          if (queryError) {
+            return {
+              error: `The chart query failed: ${queryError}. Fix the query — column names are snake_case — and render the chart again.`,
+            };
+          }
+        }
+        return renderInvestigations(view.blocks, view.investigationId);
+      },
     }),
 
     get_report: tool({
