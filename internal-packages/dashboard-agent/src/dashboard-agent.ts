@@ -1,5 +1,6 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import {
+  appendChatMessageOnce,
   createDashboardAgentDb,
   ensureChat,
   persistMessages,
@@ -73,6 +74,13 @@ const registry = createProviderRegistry({ anthropic });
 export interface DashboardAgentStore {
   ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
   persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
+  /**
+   * Id-deduped single-message append. The wake narration writes through this
+   * rather than `persistMessages`: a wake runs without a client, so the session's
+   * view can miss host-appended blocks (the watch card's confirmation), and a
+   * wholesale write would drop them.
+   */
+  appendMessage(args: Parameters<typeof appendChatMessageOnce>[1]): Promise<unknown>;
   persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
   setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
   /**
@@ -192,6 +200,7 @@ function getStore(): DashboardAgentStore {
   return locals.set(dashboardAgentStoreKey, {
     ensureChat: (args) => ensureChat(db, args),
     persistMessages: (args) => persistMessages(db, args),
+    appendMessage: (args) => appendChatMessageOnce(db, args),
     persistTurn: (args) => persistTurn(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
@@ -733,9 +742,24 @@ async function narrateWatchWake(args: {
     role: "assistant",
     parts: [{ type: "text", text }],
   };
-  const messages = [...uiMessages, message];
-  chat.history.set(messages);
-  await getStore().persistMessages({ chatId, messages });
+  // The session's view of the transcript, for the model's next turn.
+  chat.history.set([...uiMessages, message]);
+  // The display copy is an id-deduped APPEND, never a wholesale write: a wake
+  // has no client to carry the stored transcript in, so the session view can
+  // miss host-appended blocks (a card-born chat starts with ONLY those), and
+  // `persistMessages` here would drop them.
+  const userId = args.clientData?.userId;
+  if (userId) {
+    await getStore().appendMessage({ chatId, userId, message });
+  } else {
+    // A wake always carries its watch's tenancy; reaching this means the
+    // metadata contract broke. Deliver anyway — losing blocks beats losing
+    // the wake.
+    logger.error("dashboard-agent watch wake has no userId; falling back to persistMessages", {
+      chatId,
+    });
+    await getStore().persistMessages({ chatId, messages: [...uiMessages, message] });
+  }
 
   // Only now, with the wake in the transcript: the investigation is the turn's
   // business after the banner exists, and it can never hold the banner up.

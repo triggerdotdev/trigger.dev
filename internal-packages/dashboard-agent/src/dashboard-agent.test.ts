@@ -90,6 +90,7 @@ function mockModel(steps: LanguageModelV3StreamPart[][], titleText = "Test Chat 
 type StoreCalls = {
   ensureChat: unknown[];
   persistMessages: unknown[];
+  appendMessage: unknown[];
   persistTurn: unknown[];
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
@@ -99,6 +100,7 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
   const calls: StoreCalls = {
     ensureChat: [],
     persistMessages: [],
+    appendMessage: [],
     persistTurn: [],
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
@@ -106,6 +108,7 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
   const store: DashboardAgentStore = {
     ensureChat: async (args) => void calls.ensureChat.push(args),
     persistMessages: async (args) => void calls.persistMessages.push(args),
+    appendMessage: async (args) => void calls.appendMessage.push(args),
     persistTurn: async (args) => void calls.persistTurn.push(args),
     setChatTitleIfDefault: async (args) => void calls.setChatTitleIfDefault.push(args),
     upsertInvestigationRevision: async (args) => {
@@ -443,17 +446,20 @@ describe("watch wake narration", () => {
     expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
 
     // An action is not a turn: no turn persistence ran, but the narration is in
-    // the display read-model under an id derived from the action.
+    // the display read-model under an id derived from the action — as an
+    // id-deduped APPEND, never a wholesale write (a card-born chat's transcript
+    // holds host blocks the session view can't see).
     expect(calls.persistTurn).toHaveLength(0);
-    expect(calls.persistMessages).toHaveLength(1);
-    const persisted = (calls.persistMessages[0] as { messages: UIMessage[] }).messages;
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0]).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
+    expect(calls.persistMessages).toHaveLength(0);
+    expect(calls.appendMessage).toHaveLength(1);
+    const appended = calls.appendMessage[0] as { userId: string; message: UIMessage };
+    expect(appended.userId).toBe(CLIENT_DATA.userId);
+    expect(appended.message).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
 
     // Same action id again (the watcher retried after appending): deduped.
     const second = await harness.sendAction(WAKE);
     expect(collectText(second.chunks)).toBe("");
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(1);
   });
 
   /**
@@ -613,7 +619,7 @@ describe("watch wake narration", () => {
     await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
 
     // The wake still lands first and says the investigation has started.
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(1);
     expect(wakeText(prompts)).toContain("ALREADY been started");
 
     // And the investigation exists: opened, not concluded — the wake has no
@@ -653,7 +659,7 @@ describe("watch wake narration", () => {
       investigateOnAttention: true,
     });
 
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
   });
 
@@ -671,7 +677,7 @@ describe("watch wake narration", () => {
 
     await harness.sendAction(FAILED_RUN_WAKE);
 
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
     // …and the wake is never framed as having started one.
     expect(wakeText(prompts)).not.toContain("ALREADY been started");
@@ -701,7 +707,7 @@ describe("watch wake narration", () => {
     const wake = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
 
     expect(collectText(wake.chunks)).toBe("Run run_abc123 failed.");
-    expect(calls.persistMessages).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(1);
   });
 
   it("a different outcome on the same watch is a different wake", async () => {
@@ -724,12 +730,10 @@ describe("watch wake narration", () => {
       facts: { verified: false, reason: "unverified_at_expiry" },
     });
 
-    expect(calls.persistMessages).toHaveLength(2);
-    const latest = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
-    expect(latest.map((m) => m.id)).toEqual([
-      "wake:watch:watch_1:fired",
-      "wake:watch:watch_2:expired",
-    ]);
+    expect(calls.appendMessage).toHaveLength(2);
+    expect(
+      calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)
+    ).toEqual(["wake:watch:watch_1:fired", "wake:watch:watch_2:expired"]);
   });
 });
 

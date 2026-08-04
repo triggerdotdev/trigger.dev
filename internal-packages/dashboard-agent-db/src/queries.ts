@@ -362,6 +362,36 @@ export async function appendChatMessage(
 }
 
 /**
+ * `appendChatMessage`, but idempotent on the message's `id`: a message the
+ * transcript already holds is not appended again. The wake narration writes
+ * through this — its deliverer retries, and each retry re-appends blindly with
+ * plain `||`.
+ */
+export async function appendChatMessageOnce(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string; message: { id: string } }
+): Promise<boolean> {
+  const rows = await db
+    .update(chats)
+    .set({
+      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
+      lastMessageAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`not exists (select 1 from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) m where m->>'id' = ${params.message.id})`
+      )
+    )
+    .returning({ id: chats.id });
+
+  return rows.length > 0;
+}
+
+/**
  * #6b Persist a completed turn (agent `onTurnComplete`): the finalized transcript
  * and the refreshed session state, in one transaction. Atomicity matters — on
  * the next page load the frontend reads `messages` and `lastEventId` in parallel;

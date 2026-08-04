@@ -56,6 +56,7 @@ const CLIENT_DATA = {
 const NOOP_STORE: DashboardAgentStore = {
   ensureChat: async () => {},
   persistMessages: async () => {},
+  appendMessage: async () => {},
   persistTurn: async () => {},
   setChatTitleIfDefault: async () => {},
   upsertInvestigationRevision: async () => ({
