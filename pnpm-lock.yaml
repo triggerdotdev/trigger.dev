@@ -1530,6 +1530,9 @@ importers:
       typescript7:
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/cli-v3:
     dependencies:
@@ -1955,6 +1958,9 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/redis-worker:
     dependencies:
@@ -2032,6 +2038,9 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/schema-to-json:
     dependencies:
