@@ -29,11 +29,18 @@ export type AgentTone = "neutral" | "success" | "warning" | "error";
 
 // Semantic tokens, not raw palette classes: those are tuned for the dark theme
 // only, and these tokens are what the theme layer remaps (see tailwind.css).
+// The `system:` counterparts exist because the Badge primitive's `small` variant
+// paints a BLUE tinted chip on the system themes — without an explicit override
+// per tone, every agent badge turns blue there. Same chip language, tone colour.
 const TONE_BADGE: Record<AgentTone, string> = {
-  neutral: "border-border-bright text-text-dimmed",
-  success: "border-success/40 text-success",
-  warning: "border-warning/40 text-warning",
-  error: "border-error/40 text-error",
+  neutral:
+    "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500/10 system:text-text-dimmed",
+  success:
+    "border-success/40 text-success system:border-transparent system:bg-success/10 system:text-success",
+  warning:
+    "border-warning/40 text-warning system:border-transparent system:bg-warning/10 system:text-warning",
+  error:
+    "border-error/40 text-error system:border-transparent system:bg-error/10 system:text-error",
 };
 
 export const TONE_ICON_COLOR: Record<AgentTone, string> = {
