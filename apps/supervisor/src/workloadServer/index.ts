@@ -63,7 +63,7 @@ const checkpointDeleteRequests = new Counter({
 const checkpointCancelRequests = new Counter({
   name: "checkpoint_cancel_requests_total",
   help: "Checkpoint cancel requests attempted when a run continues, by outcome",
-  labelNames: ["result"], // "sent" | "no_client" | "not_applicable" | "http_error"
+  labelNames: ["result"],
   registers: [register],
 });
 
@@ -306,13 +306,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return;
     }
 
-    const [error, accepted] = await tryCatch(
+    const [error, outcome] = await tryCatch(
       this.checkpointClient.cancelCheckpoints({ runFriendlyId })
     );
 
-    if (error || !accepted) {
+    if (error || outcome === "failed") {
       checkpointCancelRequests.inc({ result: "http_error" });
       this.logger.error("Failed to request checkpoint cancel", { runFriendlyId, error });
+      return;
+    }
+
+    if (outcome === "unsupported") {
+      checkpointCancelRequests.inc({ result: "unsupported" });
+      this.logger.debug("Checkpoint cancel not supported", { runFriendlyId });
       return;
     }
 

@@ -158,20 +158,32 @@ export class CheckpointClient {
     return true;
   }
 
-  async cancelCheckpoints({ runFriendlyId }: { runFriendlyId: string }): Promise<boolean> {
+  /**
+   * cancelCheckpoints returns "unsupported" when the route is absent, which is expected while a
+   * newer caller runs against an older checkpoint service.
+   */
+  async cancelCheckpoints({
+    runFriendlyId,
+  }: {
+    runFriendlyId: string;
+  }): Promise<"ok" | "unsupported" | "failed"> {
     const res = await fetch(
       new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
       { method: "POST" }
     );
+
+    if (res.status === 404) {
+      return "unsupported";
+    }
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Cancel checkpoints request failed", {
         runFriendlyId,
         status: res.status,
       });
-      return false;
+      return "failed";
     }
 
-    return true;
+    return "ok";
   }
 }
