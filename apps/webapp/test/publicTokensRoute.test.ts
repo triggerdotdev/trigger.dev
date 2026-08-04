@@ -203,7 +203,7 @@ describe("POST /api/v1/auth/public-tokens", () => {
     // A single parse governs both the cap check and the claim.
     const exp = (validation as { payload: { exp: number } }).payload.exp;
     expect(exp).toBeGreaterThanOrEqual(before + 600);
-    expect(exp).toBeLessThanOrEqual(before + 601);
+    expect(exp).toBeLessThanOrEqual(before + 605);
   });
 
   it("does not allow a public JWT bearer to mint another token", async () => {

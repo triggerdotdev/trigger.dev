@@ -7,9 +7,9 @@ import {
   PlusIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useFetcher, useSearchParams } from "@remix-run/react";
+import { Form, useSearchParams } from "@remix-run/react";
 import { useEffect, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -105,7 +105,7 @@ const CreateApiKeySchema = z.object({
   presetId: z.string().trim().min(1),
   taskScope: z.enum(["all", "selected"]).optional(),
   taskIdentifiers: z
-    .array(z.string())
+    .array(z.string().trim().min(1, "Task identifiers cannot be blank"))
     .max(MAX_API_KEY_TASK_IDENTIFIERS, {
       message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
     })
@@ -561,8 +561,9 @@ function NewApiKeyDialog({
   availableTasks: string[];
   presets: ApiKeyPreset[] | null;
 }) {
-  const fetcher = useFetcher<typeof action>();
+  const fetcher = useTypedFetcher<typeof action>();
   const actionData = fetcher.data as ApiKeyActionData | undefined;
+  const [showError, setShowError] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date>();
@@ -573,8 +574,14 @@ function NewApiKeyDialog({
   const [createdApiKey, setCreatedApiKey] = useState<string>();
 
   useEffect(() => {
-    if (fetcher.state === "idle" && actionData?.ok && actionData.action === "create") {
+    if (fetcher.state !== "idle") {
+      return;
+    }
+
+    if (actionData?.ok && actionData.action === "create") {
       setCreatedApiKey(actionData.apiKey);
+    } else if (actionData && !actionData.ok) {
+      setShowError(true);
     }
   }, [actionData, fetcher.state]);
 
@@ -594,6 +601,7 @@ function NewApiKeyDialog({
           setTaskScope("all");
           setSelectedTasks([]);
           setCreatedApiKey(undefined);
+          setShowError(false);
         }
       }}
     >
@@ -636,7 +644,7 @@ function NewApiKeyDialog({
             />
           </div>
         ) : (
-          <fetcher.Form method="post">
+          <fetcher.Form method="post" onSubmit={() => setShowError(false)}>
             <input type="hidden" name="action" value="create" />
             {expiresAt ? (
               <input type="hidden" name="expiresAt" value={expiresAt.toISOString()} />
@@ -742,7 +750,7 @@ function NewApiKeyDialog({
                 </InputGroup>
               ) : null}
 
-              {actionData && !actionData.ok ? (
+              {showError && actionData && !actionData.ok ? (
                 <Paragraph variant="small" className="text-error">
                   {actionData.error}
                 </Paragraph>
