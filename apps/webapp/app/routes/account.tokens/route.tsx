@@ -167,7 +167,7 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
     tokenName: z
       .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
-      .max(50),
+      .max(50, "Your name must be 50 characters or less"),
     // Optional — when no RBAC plugin is installed the UI hides the
     // dropdown and submits no roleId; the action passes that through
     // and createPersonalAccessToken just doesn't write a TokenRole.
