@@ -1,5 +1,4 @@
 import {
-  ChatBubbleLeftRightIcon,
   CreditCardIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
@@ -14,6 +13,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { Paragraph } from "./Paragraph";
 import { Spinner } from "./Spinner";
 
@@ -61,12 +61,13 @@ export const variantClasses = {
     linkClassName: "transition hover:bg-callout-pending/20",
   },
   // Something the dashboard agent has to say, carrying a way into the chat.
-  // Indigo is the agent's accent, and the icon is the launcher's own.
+  // Dressed like the Ask Trigger button: the agent logo on the button's own
+  // surface (charcoal on dark, white on light) with the softened green border.
   agent: {
-    className: "border-indigo-500/20 bg-indigo-500/10",
-    icon: <ChatBubbleLeftRightIcon className="h-5 w-5 shrink-0 text-indigo-500" />,
+    className: "border-[#41FF54]/25 bg-secondary light:border-success/60",
+    icon: <AgentMonoLogo size={20} decorative />,
     textColor: "text-text-bright",
-    linkClassName: "transition hover:bg-indigo-500/20",
+    linkClassName: "transition dark:hover:bg-background-raised light:hover:bg-[#e4ffe8]",
   },
   pricing: {
     className: "border-callout-pricing/20 bg-callout-pricing-bg/30",
