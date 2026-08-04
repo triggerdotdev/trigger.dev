@@ -172,7 +172,29 @@ function withoutSupersededInvestigations(
  * would read as the agent ignoring the question. Citations are handled a level up,
  * where a run of them can be grouped into one row.
  */
-function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
+/**
+ * Rewrite `[label](trigger://…)` links in prose to their resolved dashboard
+ * paths. Markdown renderers won't link an unknown scheme, so a raw trigger://
+ * target renders dead; while the resolver hasn't answered (or can't), the link
+ * degrades to its plain label — never a dead href.
+ */
+const TRIGGER_MD_LINK = /\[([^\]]+)\]\((trigger:\/\/[^\s)]+)\)/g;
+function resolveTriggerLinks(
+  text: string,
+  resolveUri?: (uri: string) => ResolvedUri | null
+): string {
+  if (!text.includes("trigger://")) return text;
+  return text.replace(TRIGGER_MD_LINK, (whole, label: string, uri: string) => {
+    const resolved = resolveUri?.(uri);
+    return resolved ? `[${label}](${resolved.url})` : label;
+  });
+}
+
+function renderDashboardPart(
+  part: UIMessage["parts"][number],
+  i: number,
+  resolveUri?: (uri: string) => ResolvedUri | null
+) {
   const p = part as {
     type: string;
     text?: string;
@@ -183,7 +205,7 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   const type = part.type as string;
 
   if (type === "text") {
-    return p.text ? <ChatText key={i} text={p.text} /> : null;
+    return p.text ? <ChatText key={i} text={resolveTriggerLinks(p.text, resolveUri)} /> : null;
   }
 
   if (type.startsWith("tool-")) {
@@ -325,7 +347,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       continue;
     }
 
-    body.push(renderDashboardPart(part, i));
+    body.push(renderDashboardPart(part, i, resolveUri));
   }
 
   // A wake narration is identified by the message id the agent wrote it under,
