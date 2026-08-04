@@ -1,5 +1,6 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { useThemeMode } from "~/hooks/useThemeMode";
 import { AgentMonoLogo } from "./AgentDotMatrix";
 import { useSearchParams } from "@remix-run/react";
 import { useEffect, useMemo } from "react";
@@ -17,6 +18,7 @@ const permanentToastDuration = 60 * 60 * 24 * 1000;
 
 export function Toast() {
   const { toastMessage } = useTypedLoaderData<typeof loader>();
+  const mode = useThemeMode();
   useEffect(() => {
     if (!toastMessage) {
       return;
@@ -41,7 +43,11 @@ export function Toast() {
     );
   }, [toastMessage]);
 
-  return <Toaster />;
+  // Sonner stamps its own `data-theme` (default "light") on the toast list,
+  // and the app's theme selectors remap tokens for ANY subtree carrying that
+  // attribute — so an unthemed Toaster forces every toast light. Pass the app's
+  // mode through so the attribute agrees with the page (classic paints as dark).
+  return <Toaster theme={mode} />;
 }
 
 export function useToast() {
