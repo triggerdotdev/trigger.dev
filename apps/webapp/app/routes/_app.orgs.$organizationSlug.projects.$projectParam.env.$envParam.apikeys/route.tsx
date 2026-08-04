@@ -102,7 +102,7 @@ const CreateApiKeySchema = z.object({
       .refine((date) => date.getTime() > Date.now(), "Expiration must be in the future")
       .optional()
   ),
-  presetId: z.string().trim().min(1).optional(),
+  presetId: z.string().trim().min(1),
   taskScope: z.enum(["all", "selected"]).optional(),
   taskIdentifiers: z
     .array(z.string())
@@ -563,7 +563,7 @@ function NewApiKeyDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date>();
-  const defaultPresetId = presets?.find((preset) => preset.available)?.id ?? "";
+  const defaultPresetId = presets?.find((preset) => preset.available)?.id ?? "FULL_ACCESS";
   const [presetId, setPresetId] = useState(defaultPresetId);
   const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);

@@ -24,17 +24,14 @@ export function validateCreateApiKeyPreset({
   const fullAccess = { presetId: FULL_ACCESS_PRESET_ID, usesTaskSelection: false };
 
   if (presets === null) {
-    if (presetId !== undefined || hasTaskParameters) {
+    if (presetId !== FULL_ACCESS_PRESET_ID || hasTaskParameters) {
       throw new Error("API key access presets are not available");
     }
     return fullAccess;
   }
 
   if (!presetId) {
-    if (hasTaskParameters) {
-      throw new Error("A preset is required when selecting tasks");
-    }
-    return fullAccess;
+    throw new Error("A preset is required");
   }
 
   const preset = presets.find((candidate) => candidate.id === presetId);
