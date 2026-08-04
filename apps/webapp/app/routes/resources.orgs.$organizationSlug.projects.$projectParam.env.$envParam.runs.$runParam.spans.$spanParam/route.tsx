@@ -1154,7 +1154,13 @@ function RunBody({
                   recommendation: tell me when it finishes. Only while the run can
                   still change — a finished run has nothing left to wait for. */}
               {isFinalRunStatus(run.status) ? null : (
-                <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
+                <WatchButton
+                  spec={runWatchRecommendation(run.friendlyId)}
+                  // Primary here: on a live run it's the page's one agent action,
+                  // dressed like Investigate is on a failed one.
+                  variant="primary"
+                  className="self-start"
+                />
               )}
               <RunTimeline run={run} />
 
