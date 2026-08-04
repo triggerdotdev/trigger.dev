@@ -11,14 +11,21 @@ export type CheckpointClientOptions = {
   apiUrl: URL;
   workerClient: SupervisorHttpClient;
   orchestrator: CheckpointType;
+  timeoutMs?: number;
+  restoreTimeoutMs?: number;
 };
 
-const CANCEL_TIMEOUT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_RESTORE_TIMEOUT_MS = 30_000;
 
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
 
   constructor(private readonly opts: CheckpointClientOptions) {}
+
+  private timeout(ms = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS): AbortSignal {
+    return AbortSignal.timeout(ms);
+  }
 
   async suspendRun({
     runFriendlyId,
@@ -43,6 +50,7 @@ export class CheckpointClient {
           type: this.opts.orchestrator,
           ...body,
         } satisfies CheckpointServiceSuspendRequestBodyInput),
+        signal: this.timeout(),
       }
     );
 
@@ -107,6 +115,7 @@ export class CheckpointClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: this.timeout(this.opts.restoreTimeoutMs ?? DEFAULT_RESTORE_TIMEOUT_MS),
       }
     );
 
@@ -146,6 +155,7 @@ export class CheckpointClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: this.timeout(),
       }
     );
 
@@ -160,11 +170,6 @@ export class CheckpointClient {
     return true;
   }
 
-  /**
-   * cancelCheckpoints returns "unsupported" when the route is absent, which is expected while a
-   * newer caller runs against an older checkpoint service. The route answers 202 even when the run
-   * has nothing in flight, so a 404 only ever means the route itself is missing.
-   */
   async cancelCheckpoints({
     runFriendlyId,
   }: {
@@ -172,7 +177,7 @@ export class CheckpointClient {
   }): Promise<"ok" | "unsupported" | "failed"> {
     const res = await fetch(
       new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
-      { method: "POST", signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS) }
+      { method: "POST", signal: this.timeout() }
     );
 
     if (res.status === 404) {

@@ -382,6 +382,8 @@ class ManagedSupervisor {
         apiUrl: new URL(env.TRIGGER_CHECKPOINT_URL),
         workerClient: this.workerSession.httpClient,
         orchestrator: this.isKubernetes ? "KUBERNETES" : "DOCKER",
+        timeoutMs: env.TRIGGER_CHECKPOINT_TIMEOUT_MS,
+        restoreTimeoutMs: env.TRIGGER_CHECKPOINT_RESTORE_TIMEOUT_MS,
       });
     }
 

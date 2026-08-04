@@ -290,12 +290,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     checkpointDeleteRequests.inc({ result: "sent" });
   }
 
-  /**
-   * cancelCheckpoints tells the checkpoint service a resumed run's in-flight checkpoint is moot.
-   * Must be called after the reply is sent: it never delays the runner. Without it the checkpoint
-   * is abandoned by a periodic snapshot poll instead, up to that interval later.
-   */
-  private async cancelCheckpoints(runFriendlyId: string): Promise<void> {
+  private async cancelCheckpointsAfterReply(runFriendlyId: string): Promise<void> {
     if (!this.checkpointClient) {
       checkpointCancelRequests.inc({ result: "no_client" });
       return;
@@ -686,7 +681,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
                 reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
 
-                await this.cancelCheckpoints(params.runFriendlyId);
+                await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }
             ),
         }
