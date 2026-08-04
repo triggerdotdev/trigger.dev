@@ -78,10 +78,7 @@ import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPerio
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
 import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
-import {
-  QUEUE_OLDEST_WAIT_WARNING_MS,
-  queueAgentPageContext,
-} from "~/components/dashboard-agent/suggested-prompts";
+import { queueAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
