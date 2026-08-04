@@ -1,28 +1,11 @@
 import type { UIMessage } from "@ai-sdk/react";
-import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
-import {
-  INVESTIGATION_CAPABILITIES_VERSION,
-  safeParseTriggerUri,
-  VIEW_BLOCK_VERSION,
-  type AgentPageContext,
-  type InvestigationBlock,
-  type InvestigationCapabilities,
-  type ReportViewModelPayload,
-  type SuggestedPrompt,
-} from "@internal/dashboard-agent-contracts";
+import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useState } from "react";
-import { QueryResultsChart } from "~/components/code/QueryResultsChart";
-import { AGENT_CHART_PLOT_CLASS } from "~/components/dashboard-agent/AgentChart";
 import {
   demoChatById,
   demoFixtures,
   demoId,
-  DemoChartCard,
   DemoIntentBubble,
-  DemoInvestigationCard,
-  DemoReportCard,
-  DemoWatchChips,
-  type DemoItem,
 } from "~/components/dashboard-agent/demo";
 import { ChatProgress, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
 import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
@@ -32,277 +15,24 @@ import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAg
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
 import { liveProgress } from "~/components/dashboard-agent/progress-line";
-import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCard";
-import { ReportView } from "~/components/dashboard-agent/ReportView";
-import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
-import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
-import { WatchCard } from "~/components/dashboard-agent/WatchCard";
-import {
-  watchDraftFor,
-  withAgeMinutes,
-  withFollowUp,
-  withThreshold,
-  withVariant,
-} from "~/components/dashboard-agent/watch-card";
-import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
-import {
-  watchConfirmationBlockBody,
-  watchOneShotBlockBody,
-} from "~/components/dashboard-agent/watch-presentation";
-import {
-  errorWatchRecommendation,
-  healthWatchRecommendation,
-  queueWatchRecommendation,
-  runWatchRecommendation,
-} from "~/components/dashboard-agent/watch-recommendations";
-import { WatchResultBlock } from "~/components/dashboard-agent/WatchResultBlock";
-import { watchWakeToastTitle, type WatchWake } from "~/components/dashboard-agent/WatchWakeToast";
-import { Header1, Header2 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
-import { GALLERY_GROUPS, MANIFEST, sectionsInGroup, type GallerySection } from "./manifest";
+import { chatMessages, investigationBlock } from "./fixtures";
+import { fixtureResolveUri, GalleryPage, Missing, noop, PANEL_FRAME } from "./gallery";
 
 /**
- * The dashboard agent state gallery.
- *
- * Every state each panel component can be in, rendered in isolation at panel
- * width, fed by the demo fixtures in
- * `~/components/dashboard-agent/demo/fixtures` — the same data the demo
- * conversations use, so the gallery and the panel can never drift.
- *
- * `./manifest.ts` is the source of truth for what the page contains: sections
- * render in manifest order, and a manifest row with no renderer shows up as a
- * loud placeholder rather than silently vanishing. The screenshot script walks
- * the same manifest, capturing each section by its `id`.
- *
- * Gated by the parent `storybook` route, which requires an admin user.
+ * The chat chrome gallery: the hero, the prompts, the transcript, wake banners,
+ * watch chips and the context banner. The card catalogs live on their own pages
+ * (see `GALLERY_PAGES` in `./manifest.ts`).
  */
 
-const noop = () => undefined;
-
-/** Panel width, matching `DashboardAgent`'s default panel size. */
-const PANEL = "w-[380px]";
-
-/**
- * The canvas is the chat panel's own background (`DashboardAgentPanel` uses
- * `bg-background-bright`), so each state is judged on the surface it ships on
- * rather than against a darker page. Anything that shares that colour — a card's
- * header strip, a pending pill, a chip — reads by its border here, exactly as it
- * does in the panel.
- */
-const CANVAS = "bg-background-bright";
-
-/**
- * The frame a harness draws around transcript content to stand in for the panel.
- * Its fill is the canvas colour, so the border is the only thing separating the
- * two — hence `border-border-bright` rather than the subtler `border-grid-bright`
- * these frames used when the page had a darker background.
- */
-const PANEL_FRAME = "rounded-lg border border-border-bright bg-background-bright";
+const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
 
 // ---------------------------------------------------------------------------
-// Diagnosis fixtures written for this page. The demo fixtures cover the cases
-// the panel actually shows; these three cover the card's own range (a fully
-// populated card, a thin one, and the middle) which no conversation needs.
+// Harnesses
 // ---------------------------------------------------------------------------
-
-const fullDiagnosis: DiagnosisBlock = {
-  type: "diagnosis",
-  runId: "run_a1b2c3d4e5",
-  summary:
-    "The run failed because processOrder threw on an order with no line items. The payload had an empty items array.",
-  category: "user_code_error",
-  likelyCause:
-    "processOrder calls order.items[0] without checking length, so an empty items array throws a TypeError before any work happens.",
-  confidence: "high",
-  evidence: [
-    {
-      type: "error",
-      detail: "TypeError: Cannot read properties of undefined (reading 'sku')",
-      reference: "run_a1b2c3d4e5",
-    },
-    { type: "failed_span", detail: "processOrder attempt 1 failed after 42ms" },
-    {
-      type: "source",
-      detail: "The throwing line reads order.items[0].sku with no guard.",
-      reference: "src/trigger/processOrder.ts:18",
-    },
-    {
-      type: "historical_match",
-      detail: "14 runs of this task hit the same error in the last 24h.",
-      reference: "error_emptyorder",
-    },
-  ],
-  impact:
-    "14 runs of process-order failed with this error in the last 24 hours, all in production.",
-  nextSteps: [
-    "Guard against an empty items array at the top of processOrder and return early.",
-    "Validate the payload before triggering so empty orders never reach the task.",
-  ],
-  actions: [
-    { label: "View run", kind: "view_run", target: "run_a1b2c3d4e5" },
-    { label: "Retries docs", kind: "docs", target: "https://trigger.dev/docs/errors-retrying" },
-  ],
-};
-
-const externalServiceDiagnosis: DiagnosisBlock = {
-  type: "diagnosis",
-  runId: "run_f6g7h8i9j0",
-  summary: "chargePayment timed out waiting on the Stripe API after 30 seconds.",
-  category: "external_service",
-  likelyCause:
-    "The Stripe call has no timeout or retry, so a slow upstream response runs past the task's max duration.",
-  confidence: "medium",
-  evidence: [
-    {
-      type: "error",
-      detail: "TimeoutError: Stripe API timed out after 30s",
-      reference: "run_f6g7h8i9j0",
-    },
-    { type: "deploy", detail: "First seen on version 20260620.2", reference: "20260620.2" },
-  ],
-  impact: "Intermittent: 3 of the last 50 charge-payment runs timed out.",
-  nextSteps: [
-    "Wrap the Stripe call in a retry with backoff.",
-    "Set an explicit request timeout shorter than the task's max duration.",
-  ],
-  actions: [{ label: "View run", kind: "view_run", target: "run_f6g7h8i9j0" }],
-};
-
-const lowConfidenceDiagnosis: DiagnosisBlock = {
-  type: "diagnosis",
-  runId: "run_k1l2m3n4o5",
-  summary:
-    "The run crashed without a captured error, so the cause isn't conclusive from the available signals.",
-  category: "unknown",
-  likelyCause:
-    "The container exited without writing an error. This is consistent with an out-of-memory kill, but there's no OOM signal in the trace to confirm it.",
-  confidence: "low",
-  evidence: [
-    { type: "failed_span", detail: "Root span ended with status CRASHED and no error payload." },
-    { type: "logs", detail: "Logs stop abruptly mid-execution with no stack trace." },
-  ],
-  nextSteps: [
-    "Re-run with a larger machine to rule out out-of-memory.",
-    "Add logging around the last successful step to narrow where it stops.",
-  ],
-};
-
-// Blocks may carry an envelope: `id` identifies the block across turns and
-// `revision` says how fresh it is. ViewBlocks collapses same-(type, id) blocks
-// to the highest revision, so a re-emitted diagnosis replaces the earlier one
-// instead of stacking cards.
-const revisedDiagnosis: ViewBlock[] = [
-  {
-    ...lowConfidenceDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
-    revision: 1,
-    version: VIEW_BLOCK_VERSION,
-    summary: "Revision 1 — first guess, before the logs came back. Should not render.",
-  },
-  {
-    ...externalServiceDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
-    revision: 2,
-    version: VIEW_BLOCK_VERSION,
-    summary: "Revision 2 — narrowed to the payload, still unconfirmed. Should not render.",
-  },
-  {
-    ...fullDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
-    revision: 3,
-    version: VIEW_BLOCK_VERSION,
-    summary:
-      "Revision 3 — the only card that should render: processOrder threw on an order with no line items.",
-  },
-];
-
-// Two envelope-less (legacy) blocks: no id, so nothing is grouped and both
-// render, in order — the pre-envelope behaviour.
-const legacyBlocks: ViewBlock[] = [externalServiceDiagnosis, lowConfidenceDiagnosis];
-
-// The watch offer as buttons: the answer ends with one line of prose, this block
-// makes the offer a click. The first action is the one to take.
-const offerActionsBlock: ViewBlock = {
-  type: "actions",
-  id: "actions-offer",
-  revision: 0,
-  version: VIEW_BLOCK_VERSION,
-  actions: [
-    {
-      label: "Set up a watch",
-      intent: {
-        kind: "watch",
-        spec: {
-          kind: "error_recurrence",
-          fingerprint: "a1b2c3",
-          checkEveryMinutes: 15,
-          maxHours: 6,
-          note: "the TypeError in send-order-receipt",
-        },
-      },
-    },
-    {
-      label: "See its failed runs",
-      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/runs" },
-    },
-  ],
-};
-
-/**
- * The badge matrix: one card per diagnosis category, cycling through the three
- * confidence levels, so every badge colour pair on the card is on screen at
- * once and can be checked in both themes. Bodies are the demo fixture's, so the
- * only thing varying is the badges.
- */
-const DIAGNOSIS_CATEGORIES: DiagnosisBlock["category"][] = [
-  "user_code_error",
-  "configuration",
-  "dependency",
-  "timeout",
-  "out_of_memory",
-  "rate_limit",
-  "external_service",
-  "infrastructure",
-  "cancellation",
-  "unknown",
-];
-
-const CONFIDENCES: DiagnosisBlock["confidence"][] = ["high", "medium", "low"];
-
-const badgeMatrixBlocks: DiagnosisBlock[] = DIAGNOSIS_CATEGORIES.map((category, i) => ({
-  ...demoFixtures.demoDiagnosisBlockFirstPass,
-  category,
-  confidence: CONFIDENCES[i % CONFIDENCES.length]!,
-  // The badges are the subject; strip everything that would make each card tall.
-  evidence: [],
-  nextSteps: [],
-  actions: undefined,
-  impact: undefined,
-}));
-
-// ---------------------------------------------------------------------------
-// Reading fixture conversations. The message-level states already exist as demo
-// chats, so the harness pulls their items rather than inventing transcripts.
-// ---------------------------------------------------------------------------
-
-function chatItems<K extends DemoItem["kind"]>(
-  chatId: string,
-  kind: K
-): Extract<DemoItem, { kind: K }>[] {
-  const chat = demoChatById(chatId);
-  return (chat?.items ?? []).filter(
-    (item): item is Extract<DemoItem, { kind: K }> => item.kind === kind
-  );
-}
-
-function chatMessages(chatId: string, take?: number): UIMessage[] {
-  const items = chatItems(chatId, "messages");
-  return (take === undefined ? items : items.slice(0, take)).flatMap((item) => item.messages);
-}
 
 /**
  * `DashboardAgentMessages` in isolation. Its root is `flex-1 overflow-y-auto`,
@@ -382,25 +112,6 @@ function PendingPillsHarness() {
           </ChatTurn>
         ))}
       </ChatTranscript>
-    </div>
-  );
-}
-
-/** The demo chart card's frame around an empty result set. */
-function EmptyChartCard() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
-        {demoFixtures.demoChart.title}
-      </div>
-      <div className={AGENT_CHART_PLOT_CLASS}>
-        <QueryResultsChart
-          rows={[]}
-          columns={demoFixtures.demoChart.columns}
-          config={demoFixtures.demoChart.config}
-          timeRange={demoFixtures.demoChart.timeRange}
-        />
-      </div>
     </div>
   );
 }
@@ -496,417 +207,6 @@ function HeroHarness({
   );
 }
 
-function Missing({ what }: { what: string }) {
-  return (
-    <div className="rounded-md border border-error/50 bg-error/10 px-3 py-2 text-xs text-error">
-      No renderer for {what}. The manifest and the gallery are out of sync.
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The state map. Keyed by `sectionId`, so the manifest drives what renders.
-// ---------------------------------------------------------------------------
-
-const { demoInvestigations, demoIntents, demoWatches, demoPageContexts } = demoFixtures;
-
-// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
-// production — the point of the state is the styling of the top slot.
-const promotedPrompt: SuggestedPrompt = {
-  id: "sp:promo-storybook",
-  label: "Try the new health report",
-  prompt: "Give me a health report for this environment.",
-  source: "promoted",
-};
-
-// Dismiss whatever the resolver puts first on the failed-run page, so the
-// "after a dismissal" state always shows a real chip having been removed even if
-// the registry's wording changes.
-const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
-  .slice(0, 1)
-  .map((prompt) => prompt.id);
-
-const reportItems = chatItems(demoId("report-healthy"), "report").concat(
-  chatItems(demoId("report-degraded"), "report")
-);
-
-// ---------------------------------------------------------------------------
-// Report fixtures for the shipped ReportView. The two demo VMs cover healthy and
-// degraded; the third is derived here because no fixture conversation shows it:
-// when telemetry goes stale the interpreter marks flow AND execution "unknown",
-// strips every actionable field, and flags the snapshot `trustworthy: false` —
-// the one state where the card must show numbers while refusing to advise on
-// them. Derived exactly the way `applyStaleGuard` does it, so the shape is real.
-// ---------------------------------------------------------------------------
-
-const untrustworthyReport: ReportViewModelPayload = {
-  ...demoFixtures.demoDegradedReport,
-  summary: {
-    severity: "crit",
-    statements: [
-      { findingType: "flow", severity: "crit", reason: "unknown" },
-      { findingType: "execution", severity: "crit", reason: "unknown" },
-      { findingType: "liveness", severity: "crit" },
-    ],
-  },
-  findings: demoFixtures.demoDegradedReport.findings.map((finding) =>
-    finding.type === "liveness"
-      ? {
-          ...finding,
-          severity: "crit",
-          reason: "stale",
-          recommendation: { code: "check_control_plane", link: "status" },
-        }
-      : {
-          ...finding,
-          severity: "crit",
-          reason: "unknown",
-          recommendation: undefined,
-          attribution: undefined,
-          exclusions: undefined,
-          observations: undefined,
-          hedge: undefined,
-          anomalyWindow: undefined,
-        }
-  ),
-  metrics: demoFixtures.demoDegradedReport.metrics.map((metric) =>
-    metric.id === "liveness"
-      ? { ...metric, value: 21 * 60_000, severity: "crit" }
-      : { ...metric, annotation: undefined }
-  ),
-  facts: { trustworthy: false, staleReason: "telemetry_stale" },
-  links: [{ key: "status", label: "status.trigger.dev", url: "https://status.trigger.dev" }],
-  footer: [{ code: "check_control_plane", link: "status" }],
-};
-
-/**
- * The gallery's stand-in for the panel's URI resolver. In the app the host
- * resolves against the real environment (`resolveTriggerUri.server.ts`); here a
- * fixture resolver proves the seam exists without a project route.
- */
-/**
- * The demo investigation fixtures, as the real `investigation` block: the demo
- * type carries its identity inline (`investigationId` + `revision`) where the
- * block carries it in the envelope, so the mapping is a move, not a rewrite —
- * which is the point of having reviewed the demo payload.
- */
-function investigationBlock(
-  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations],
-  capabilities?: InvestigationCapabilities
-): InvestigationBlock {
-  const { investigationId, revision, ...investigation } = fixture;
-  return {
-    type: "investigation",
-    id: investigationId,
-    revision,
-    version: VIEW_BLOCK_VERSION,
-    investigation,
-    ...(capabilities ? { capabilities } : {}),
-  };
-}
-
-/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
-function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
-  return {
-    id: watch.id,
-    identity: watch.identity,
-    status: watch.status,
-    kind: watch.spec.kind,
-    note: watch.spec.note,
-    checkEveryMinutes: watch.spec.checkEveryMinutes,
-    expiresAt: watch.expiresAt,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Watch card fixtures. The card is pure — draft in, callbacks out — so every
-// state here is a fixed draft plus a `noop` onChange: nothing on this page
-// edits, and nothing is submitted. The drafts come from the same
-// recommendation helpers the real Watch… action uses, so what the gallery shows
-// is the condition each object actually proposes.
-// ---------------------------------------------------------------------------
-
-const queueWatchDraft = watchDraftFor(queueWatchRecommendation("email-sends"));
-
-// A run watch with the "investigate if it turns out badly" opt-in already set,
-// so the expanded state shows a checked box rather than two empty ones.
-const runWatchDraft = withFollowUp(watchDraftFor(runWatchRecommendation("run_a1b2c3d4e5")), {
-  investigateOnAttention: true,
-});
-
-// A threshold the schema refuses. No `error` prop: the point of the state is the
-// card's OWN validation path (`watchDraftError`), which blocks the submit before
-// anything reaches the server.
-const invalidThresholdDraft = withThreshold(
-  withVariant(queueWatchDraft, "queue_depth_above"),
-  Number.NaN
-);
-
-// The queue pack (TRI-12890). One draft per condition, each shown expanded so the
-// review is of the picker plus that condition's ONE parameter — and the stall
-// variant proves the case with no parameter at all.
-const queueBelowDraft = withThreshold(withVariant(queueWatchDraft, "queue_depth_below"), 100);
-const queueStalledDraft = withVariant(queueWatchDraft, "queue_stalled");
-const queueAgeDraft = withAgeMinutes(withVariant(queueWatchDraft, "queue_oldest_age"), 5);
-
-// The contextual recommendation: on a queue whose oldest run is already waiting
-// past the page's warning threshold the SLA is already breached, so the card
-// OPENS on the drain (the recovery) instead of the age SLA. Compact, because
-// that is what the user sees first.
-const lateQueueDraft = watchDraftFor(
-  queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS })
-);
-
-/** The envelope a host-emitted `watch_result` block carries into the transcript. */
-const WATCH_BLOCK_ENVELOPE = {
-  id: "watch:watch_demo",
-  revision: 0,
-  version: VIEW_BLOCK_VERSION,
-} as const;
-
-const watchConfirmationBlock = {
-  ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation("email-sends"),
-    watchId: "watch_demo",
-    followUp: { investigateOnAttention: true, notifyExternally: true },
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-const watchSatisfiedBlock = {
-  ...watchOneShotBlockBody({
-    spec: runWatchRecommendation("run_a1b2c3d4e5"),
-    result: "satisfied",
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-const watchImpossibleBlock = {
-  ...watchOneShotBlockBody({
-    spec: runWatchRecommendation("run_a1b2c3d4e5"),
-    result: "terminal_unsatisfied",
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-/**
- * The toast is a sonner portal, so it can't be rendered inline in a section —
- * what the gallery can show is the thing worth reviewing: the headline the
- * presenter produces, fact first, with the note the toast puts under it.
- */
-const toastWakes: WatchWake[] = [
-  {
-    watchId: "watch_queue",
-    chatId: "chat_demo",
-    outcome: "fired",
-    note: "tell me when the email-sends backlog clears",
-    kind: "backlog_drain",
-    identity: "backlog_drain:email-sends",
-    resolution: "condition_met",
-    observedOutcome: { kind: "backlog_drain", verified: true, depth: 0 },
-  },
-  {
-    watchId: "watch_run_failed",
-    chatId: "chat_demo",
-    outcome: "fired",
-    note: "ping me when the nightly backfill finishes",
-    kind: "run_finished",
-    identity: "run_finished:run_a1b2c3d4e5",
-    resolution: "condition_met",
-    observedOutcome: {
-      kind: "run_finished",
-      verified: true,
-      finalStatus: "COMPLETED_WITH_ERRORS",
-      durationMs: 812_000,
-    },
-  },
-];
-
-function WakeToastHeadlines({ wakes }: { wakes: WatchWake[] }) {
-  return (
-    <div className={cn(PANEL_FRAME, "space-y-3 p-3")}>
-      {wakes.map((wake) => (
-        <div key={wake.watchId} className="space-y-0.5">
-          <p className="text-[10px] uppercase tracking-wide text-text-faint">{wake.kind}</p>
-          <p className="text-sm text-text-bright">{watchWakeToastTitle(wake)}</p>
-          <p className="text-xs text-text-dimmed">{wake.note}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Wake fixtures, written here rather than pulled from the demo conversations: a
-// wake is a message *id* plus the watch it names, and no demo chat carries one.
-// ---------------------------------------------------------------------------
-
-/** A wake narration, in the shape the panel merges live stream and history into. */
-function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
-  return {
-    id: `wake:watch:${watchId}:${outcome}`,
-    role: "assistant",
-    parts: [{ type: "text", text }],
-  };
-}
-
-// One watch per presentation category, plus the pair that proves the point of
-// the resolution model: the SAME `condition_met` on the same kind, presented as
-// a success and as a failure, decided only by the observed final status.
-const wakeWatches: WakeWatch[] = [
-  {
-    id: "watch_health",
-    kind: "health_recovery",
-    note: "prod health back to normal",
-    identity: "health_recovery:health",
-    resolution: "condition_met",
-    observedOutcome: { kind: "health_recovery", verified: true, severity: "ok" },
-  },
-  {
-    id: "watch_error",
-    kind: "error_recurrence",
-    note: "tell me if that TypeError comes back",
-    identity: "error_recurrence:a1b2c3d4e5f6",
-    resolution: "condition_met",
-    observedOutcome: { kind: "error_recurrence", verified: true, countSince: 6 },
-  },
-  {
-    id: "watch_run",
-    kind: "run_finished",
-    note: "ping me when the nightly backfill finishes",
-    identity: "run_finished:run_a1b2c3d4e5",
-    resolution: "window_completed",
-    observedOutcome: { kind: "run_finished", verified: true, finalStatus: null, durationMs: null },
-  },
-  {
-    id: "watch_run_failed",
-    kind: "run_finished",
-    note: "ping me when the nightly backfill finishes",
-    identity: "run_finished:run_a1b2c3d4e5",
-    resolution: "condition_met",
-    observedOutcome: {
-      kind: "run_finished",
-      verified: true,
-      finalStatus: "COMPLETED_WITH_ERRORS",
-      durationMs: 812_000,
-    },
-  },
-  {
-    id: "watch_queue_gone",
-    kind: "backlog_drain",
-    note: "tell me when the email-sends backlog clears",
-    identity: "backlog_drain:email-sends",
-    resolution: "condition_impossible",
-    observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
-  },
-  // The queue pack (TRI-12890): the numbers in these headlines come from the
-  // frozen observation, so the banner is complete without the narration.
-  {
-    id: "watch_queue_below",
-    kind: "queue_depth_below",
-    note: "tell me when email-sends is back under 100",
-    identity: "queue_depth_below:email-sends:100",
-    resolution: "condition_met",
-    observedOutcome: { kind: "queue_depth_below", verified: true, depth: 42, threshold: 100 },
-  },
-  {
-    id: "watch_queue_stalled",
-    kind: "queue_stalled",
-    note: "tell me if email-sends stops moving",
-    identity: "queue_stalled:email-sends",
-    resolution: "condition_met",
-    observedOutcome: {
-      kind: "queue_stalled",
-      verified: true,
-      depth: 42,
-      notDecreasingStreak: 3,
-      ticks: 3,
-    },
-  },
-  {
-    id: "watch_queue_age",
-    kind: "queue_oldest_age",
-    note: "tell me if runs wait longer than 5 minutes",
-    identity: "queue_oldest_age:email-sends:5",
-    resolution: "condition_met",
-    observedOutcome: {
-      kind: "queue_oldest_age",
-      verified: true,
-      ageMs: 12 * 60_000,
-      thresholdMinutes: 5,
-    },
-  },
-  {
-    id: "watch_unverified",
-    kind: "backlog_drain",
-    note: "tell me when the email-sends backlog clears",
-    identity: "backlog_drain:email-sends",
-    resolution: "window_completed",
-    observedOutcome: { kind: "backlog_drain", verified: false, depth: null },
-  },
-];
-
-/** One wake through the production renderer, with the watches the panel would have. */
-function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
-  return (
-    <div className={PANEL_FRAME}>
-      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
-    </div>
-  );
-}
-
-/**
- * The actions the executor would attach to each settled card — written out here
- * because they are server-decided (§6) and the fixtures deliberately don't carry
- * them. "Show code" hangs on a source citation the agent read at the pinned
- * commit, which is exactly what separates the two concluded states below.
- */
-// Both actions point at URIs the card already cites, the way the executor builds
-// them: an action can only ever target evidence the investigation resolved.
-const citedUri = (
-  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations],
-  kind: string
-) => fixture.evidence.find((evidence) => evidence.kind === kind)!.uri;
-
-const codeGroundedCapabilities: InvestigationCapabilities = {
-  version: INVESTIGATION_CAPABILITIES_VERSION,
-  actions: [
-    {
-      kind: "show_code",
-      label: "Show code",
-      intent: {
-        kind: "ask",
-        prompt:
-          "Show me the code behind this and propose the minimal fix as a fenced diff, anchored to the file, line and commit you read.",
-      },
-    },
-    {
-      kind: "view_similar",
-      label: "View similar failures",
-      intent: { kind: "navigate", target: citedUri(demoInvestigations.concluded, "error") },
-    },
-  ],
-};
-
-// Nothing was read, so there is no code to show — only the follow-up that needs
-// no source at all.
-const notCodeGroundedCapabilities: InvestigationCapabilities = {
-  version: INVESTIGATION_CAPABILITIES_VERSION,
-  actions: [
-    {
-      kind: "view_similar",
-      label: "View the queue",
-      intent: { kind: "navigate", target: citedUri(demoInvestigations.concludedNoCode, "queue") },
-    },
-  ],
-};
-
-function fixtureResolveUri(uri: string): { label: string; url: string } | null {
-  const parsed = safeParseTriggerUri(uri);
-  if (!parsed.success) return null;
-  return { label: uri.split("/").slice(-1)[0]!, url: "#resolved-by-the-host" };
-}
-
 /**
  * A live investigation through the production renderer.
  *
@@ -936,243 +236,139 @@ function LiveInvestigationHarness() {
   );
 }
 
-const STATES: Record<string, React.ReactNode> = {
-  // --- Diagnosis card -----------------------------------------------------
-  "diagnosis-full-high": <RunDiagnosisCard block={fullDiagnosis} />,
-  "diagnosis-external-medium": <RunDiagnosisCard block={externalServiceDiagnosis} />,
-  "diagnosis-low-minimal": <RunDiagnosisCard block={lowConfidenceDiagnosis} />,
-  "diagnosis-demo-first-pass": (
-    <RunDiagnosisCard block={demoFixtures.demoDiagnosisBlockFirstPass} />
-  ),
-  "diagnosis-demo-revised": <RunDiagnosisCard block={demoFixtures.demoDiagnosisBlockRevised} />,
-  "diagnosis-badge-matrix": (
-    <div className="flex flex-wrap gap-3">
-      {badgeMatrixBlocks.map((block, i) => (
-        <div key={i} className="w-[300px]">
-          <RunDiagnosisCard block={block} />
-        </div>
-      ))}
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
+// production — the point of the state is the styling of the top slot.
+const promotedPrompt: SuggestedPrompt = {
+  id: "sp:promo-storybook",
+  label: "Try the new health report",
+  prompt: "Give me a health report for this environment.",
+  source: "promoted",
+};
+
+// Dismiss whatever the resolver puts first on the failed-run page, so the
+// "after a dismissal" state always shows a real chip having been removed even if
+// the registry's wording changes.
+const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
+  .slice(0, 1)
+  .map((prompt) => prompt.id);
+
+/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
+function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
+  return {
+    id: watch.id,
+    identity: watch.identity,
+    status: watch.status,
+    kind: watch.spec.kind,
+    note: watch.spec.note,
+    checkEveryMinutes: watch.spec.checkEveryMinutes,
+    expiresAt: watch.expiresAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wake fixtures, written here rather than pulled from the demo conversations: a
+// wake is a message *id* plus the watch it names, and no demo chat carries one.
+// ---------------------------------------------------------------------------
+
+/** A wake narration, in the shape the panel merges live stream and history into. */
+function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
+  return {
+    id: `wake:watch:${watchId}:${outcome}`,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+  };
+}
+
+/** One watch per presentation category the banner can reach. */
+const wakeWatches: WakeWatch[] = [
+  {
+    id: "watch_health",
+    kind: "health_recovery",
+    note: "prod health back to normal",
+    identity: "health_recovery:health",
+    resolution: "condition_met",
+    observedOutcome: { kind: "health_recovery", verified: true, severity: "ok" },
+  },
+  {
+    id: "watch_error",
+    kind: "error_recurrence",
+    note: "tell me if that TypeError comes back",
+    identity: "error_recurrence:a1b2c3d4e5f6",
+    resolution: "condition_met",
+    observedOutcome: { kind: "error_recurrence", verified: true, countSince: 6 },
+  },
+  {
+    id: "watch_queue_gone",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "condition_impossible",
+    observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
+  },
+  {
+    id: "watch_unverified",
+    kind: "backlog_drain",
+    note: "tell me when the email-sends backlog clears",
+    identity: "backlog_drain:email-sends",
+    resolution: "window_completed",
+    observedOutcome: { kind: "backlog_drain", verified: false, depth: null },
+  },
+];
+
+/** One wake through the production renderer, with the watches the panel would have. */
+function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
+  return (
+    <div className={PANEL_FRAME}>
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The state map. Keyed by `sectionId`, so the manifest drives what renders.
+// ---------------------------------------------------------------------------
+
+const STATES: Record<string, React.ReactNode> = {
+  // --- Blank-state hero ---------------------------------------------------
+  "hero-panel": <HeroHarness context={demoPageContexts.other} />,
+  "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
+  "hero-fullscreen": <HeroHarness context={demoPageContexts.failedRun} fullscreen />,
+  "hero-in-chat": <HeroHarness context={demoPageContexts.runs} withComposer={false} />,
+
+  // --- Suggested prompts --------------------------------------------------
+  // The real component, resolving the registry against each fixture context.
+  "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
+  "prompts-contextual-fresh-failure": <PromptsHarness context={demoPageContexts.failedRun} />,
+  "prompts-promoted": (
+    <PromptsHarness context={demoPageContexts.failedRun} promoted={promotedPrompt} />
+  ),
+  "prompts-dismissed": (
+    <PromptsHarness context={demoPageContexts.failedRun} dismissedIds={dismissedPromptIds} />
   ),
 
-  // --- ViewBlocks ---------------------------------------------------------
-  "view-blocks-revisions": <ViewBlocks blocks={revisedDiagnosis} />,
-  "view-blocks-legacy": <ViewBlocks blocks={legacyBlocks} />,
-  "view-blocks-mixed": (
-    <ViewBlocks
-      blocks={[
-        demoFixtures.demoDiagnosisBlockFirstPass,
-        demoFixtures.demoDiagnosisBlockRevised,
-        demoFixtures.demoLegacyDiagnosisBlock,
-      ]}
-    />
-  ),
-  "view-blocks-actions-offer": <ViewBlocks blocks={[offerActionsBlock]} onIntent={noop} />,
+  // --- Message-level states ------------------------------------------------
+  "messages-streaming-text": <MessageHarness chatId={demoId("base-streaming")} />,
+  "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
+  "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
+  "messages-tool-pending-pills": <PendingPillsHarness />,
+  "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
+  // Two turns only: the resumed chat's third turn is a live `chart` block, and
+  // the real AgentChart has no environment to query outside a project route.
+  "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
+  "messages-investigation-live": <LiveInvestigationHarness />,
+  "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
 
-  // --- Investigation card, the shipped one ---------------------------------
-  // The card only, so the unfinished states show no progress line here: progress
-  // belongs to the transcript, which mounts one line for the whole turn — see
-  // `messages-investigation-live` for the card as the panel shows it.
-  "investigation-card-in-progress-early": (
-    <InvestigationCard block={investigationBlock(demoInvestigations.early)} />
+  // --- Intent bubbles -----------------------------------------------------
+  "intent-navigate-filtered-runs": (
+    <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
   ),
-  "investigation-card-streaming-rev0": (
-    <InvestigationCard block={investigationBlock(demoInvestigations.streamingRev0)} />
-  ),
-  "investigation-card-streaming-rev1": (
-    <InvestigationCard block={investigationBlock(demoInvestigations.streamingRev1)} />
-  ),
-  "investigation-card-concluded": (
-    <InvestigationCard block={investigationBlock(demoInvestigations.concluded)} />
-  ),
-  "investigation-card-concluded-expanded": (
-    <InvestigationCard
-      block={investigationBlock(demoInvestigations.concluded)}
-      defaultExpanded
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-  // The two concluded endings side by side: one whose verdict rests on a line of
-  // source it read (so the host is offered "Show code"), one established from
-  // telemetry alone (no source citation, and no Show code to offer).
-  "investigation-card-concluded-code-grounded": (
-    <InvestigationCard
-      block={investigationBlock(demoInvestigations.concluded, codeGroundedCapabilities)}
-      resolveUri={fixtureResolveUri}
-      onIntent={noop}
-    />
-  ),
-  "investigation-card-concluded-not-code-grounded": (
-    <InvestigationCard
-      block={investigationBlock(demoInvestigations.concludedNoCode, notCodeGroundedCapabilities)}
-      resolveUri={fixtureResolveUri}
-      onIntent={noop}
-    />
-  ),
-  "investigation-card-inconclusive": (
-    <InvestigationCard
-      block={investigationBlock(demoInvestigations.inconclusive)}
-      defaultExpanded
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-  "investigation-card-degraded": (
-    <InvestigationCard
-      block={investigationBlock(demoInvestigations.degraded)}
-      defaultExpanded
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-  "investigation-card-dirty-commit": (
-    <InvestigationCard block={investigationBlock(demoInvestigations.dirtyCommit)} />
-  ),
-  // Through the production renderer: two revisions of one investigation reach
-  // the panel and latest-wins leaves a single, current card.
-  "investigation-card-revisions": (
-    <ViewBlocks
-      blocks={[
-        investigationBlock(demoInvestigations.streamingRev0),
-        investigationBlock(demoInvestigations.streamingRev1),
-      ]}
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-
-  // --- Investigation card, the reviewed demo mockup ------------------------
-  "investigation-streaming-rev0": (
-    <DemoInvestigationCard investigation={demoInvestigations.streamingRev0} />
-  ),
-  "investigation-streaming-rev1": (
-    <DemoInvestigationCard investigation={demoInvestigations.streamingRev1} />
-  ),
-  "investigation-concluded": <DemoInvestigationCard investigation={demoInvestigations.concluded} />,
-  "investigation-concluded-expanded": (
-    <DemoInvestigationCard investigation={demoInvestigations.concluded} defaultExpanded />
-  ),
-  "investigation-inconclusive": (
-    <DemoInvestigationCard investigation={demoInvestigations.inconclusive} defaultExpanded />
-  ),
-  "investigation-dirty-commit": (
-    <DemoInvestigationCard investigation={demoInvestigations.dirtyCommit} />
-  ),
-
-  // --- Report card --------------------------------------------------------
-  "report-view-healthy": (
-    <ReportView
-      vm={demoFixtures.demoHealthyReport}
-      reportUri={reportItems[0]?.sourceUri}
-      onIntent={noop}
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-  "report-view-degraded": (
-    <ReportView
-      vm={demoFixtures.demoDegradedReport}
-      reportUri={reportItems[1]?.sourceUri}
-      onIntent={noop}
-      resolveUri={fixtureResolveUri}
-    />
-  ),
-  "report-view-untrustworthy": (
-    <ReportView vm={untrustworthyReport} onIntent={noop} resolveUri={fixtureResolveUri} />
-  ),
-  "report-healthy": (
-    <DemoReportCard
-      vm={demoFixtures.demoHealthyReport}
-      sourceUri={reportItems[0]?.sourceUri}
-      onAction={noop}
-    />
-  ),
-  "report-degraded": (
-    <DemoReportCard
-      vm={demoFixtures.demoDegradedReport}
-      sourceUri={reportItems[1]?.sourceUri}
-      onAction={noop}
-    />
-  ),
-
-  // --- Chart card ---------------------------------------------------------
-  "chart-with-data": <DemoChartCard />,
-  "chart-with-actions": (
-    <DemoChartCard actions={demoFixtures.demoChartBlock.actions ?? []} onIntent={noop} />
-  ),
-  "chart-empty": <EmptyChartCard />,
-
-  // --- Watch chips --------------------------------------------------------
-  "watches-active": <DemoWatchChips watches={[demoWatches.runFinished]} onCancel={noop} />,
-  "watches-fired": <DemoWatchChips watches={[demoWatches.errorRecurrence]} />,
-  "watches-expired": <DemoWatchChips watches={[demoWatches.healthRecovery]} />,
-  "watches-cancelled": <DemoWatchChips watches={[demoWatches.cancelled]} />,
-  "watches-all-states": <DemoWatchChips watches={demoWatches.row} onCancel={noop} />,
-  // The real panel component, fed the same fixtures through the shape its loader
-  // hands over — so its labels (derived from the watch identity) and the demo
-  // chips above can be compared side by side.
-  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
-
-  // --- Watch card ---------------------------------------------------------
-  "watch-card-compact": (
-    <WatchCard draft={queueWatchDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
-  ),
-  // Customize expands the same block in place — never a second surface.
-  "watch-card-expanded": (
-    <WatchCard
-      draft={runWatchDraft}
-      onChange={noop}
-      onSubmit={noop}
-      onCancel={noop}
-      defaultExpanded
-    />
-  ),
-  // Expanded so the field the message is about is on screen with it.
-  "watch-card-validation-error": (
-    <WatchCard
-      draft={invalidThresholdDraft}
-      onChange={noop}
-      onSubmit={noop}
-      onCancel={noop}
-      defaultExpanded
-    />
-  ),
-  // The submit is in flight: the card stays put, disabled, so nothing moves.
-  "watch-card-pending": (
-    <WatchCard
-      draft={watchDraftFor(errorWatchRecommendation("a1b2c3d4e5f6"))}
-      onChange={noop}
-      onSubmit={noop}
-      onCancel={noop}
-      pending
-    />
-  ),
-  // A refusal from the server. It stays inside the card, and the draft survives.
-  "watch-card-create-failure": (
-    <WatchCard
-      draft={watchDraftFor(healthWatchRecommendation("crit"))}
-      onChange={noop}
-      onSubmit={noop}
-      onCancel={noop}
-      error="This chat already has 3 active watches. Cancel one first."
-    />
-  ),
-  // What a submitted card leaves in the transcript, built by the same presenter
-  // the host freezes into the block — so the gallery shows the real wording.
-  "watch-card-confirmation": <WatchResultBlock block={watchConfirmationBlock} />,
-  "watch-card-one-shot-satisfied": <WatchResultBlock block={watchSatisfiedBlock} />,
-  "watch-card-one-shot-impossible": <WatchResultBlock block={watchImpossibleBlock} />,
-  "watch-card-toast-headline": <WakeToastHeadlines wakes={toastWakes} />,
-  // The queue pack's three conditions, expanded: the picker now holds the whole
-  // queue family, and each condition brings at most one field.
-  "watch-card-queue-below": (
-    <WatchCard draft={queueBelowDraft} onChange={noop} onSubmit={noop} defaultExpanded />
-  ),
-  "watch-card-queue-stalled": (
-    <WatchCard draft={queueStalledDraft} onChange={noop} onSubmit={noop} defaultExpanded />
-  ),
-  "watch-card-queue-age": (
-    <WatchCard draft={queueAgeDraft} onChange={noop} onSubmit={noop} defaultExpanded />
-  ),
-  // Opened from a queue that is already late: the recommendation flips to the drain.
-  "watch-card-queue-late-recommended": (
-    <WatchCard draft={lateQueueDraft} onChange={noop} onSubmit={noop} onCancel={noop} />
+  "intent-watch": <DemoIntentBubble intent={demoIntents.watch} onIntercept={noop} />,
+  "intent-rejected-propose-fix": (
+    <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />
   ),
 
   // --- Wake banners -------------------------------------------------------
@@ -1196,30 +392,6 @@ const STATES: Record<string, React.ReactNode> = {
       )}
     />
   ),
-  // The answer the resolution model insists is an answer: the window ran out
-  // with the condition still not true, and that is what the user asked to know.
-  "wake-window-completed": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_run",
-        "expired",
-        "The nightly backfill is still running after two hours — it hasn't failed, it just hasn't landed. Ask me again if you want another window on it."
-      )}
-    />
-  ),
-  // Same kind, same `condition_met`, opposite presentation. The icon follows the
-  // outcome, never the resolution.
-  "wake-attention-failed-run": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_run_failed",
-        "fired",
-        "The nightly backfill finished, but with errors: 13m 32s in, it ended as COMPLETED_WITH_ERRORS. Worth looking at the last attempt's trace."
-      )}
-    />
-  ),
   "wake-neutral-impossible": (
     <WakeHarness
       watches={wakeWatches}
@@ -1240,113 +412,16 @@ const STATES: Record<string, React.ReactNode> = {
       )}
     />
   ),
-  // The queue pack's wakes. All three read the same presenter, so the number in
-  // each headline is the one the resolving check froze.
-  "wake-queue-below": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_queue_below",
-        "fired",
-        "email-sends is back under 100 — 42 pending now, down from 780 twenty minutes ago. Throughput has been steady since the extra workers came up."
-      )}
-    />
-  ),
-  "wake-queue-stalled": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_queue_stalled",
-        "fired",
-        "email-sends hasn't moved in three checks: 42 pending the whole time, nothing started. Concurrency is at its limit with every slot held by a run that's still executing."
-      )}
-    />
-  ),
-  "wake-queue-age": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_queue_age",
-        "fired",
-        "The oldest run in email-sends has been waiting 12 minutes, past the 5 you set. The queue itself is small — 8 pending — so this is a concurrency limit, not a flood."
-      )}
-    />
-  ),
-  // No watches in hand (an older chat, or a watch already swept away): the
-  // banner still fires, without claiming an outcome it can't know.
-  "wake-unknown-watch": (
-    <WakeHarness
-      message={wakeMessage(
-        "watch_gone",
-        "fired",
-        "The condition you asked me to watch for just happened. Here's what the check found."
-      )}
-    />
-  ),
 
-  // --- Blank-state hero ---------------------------------------------------
-  "hero-panel": <HeroHarness context={demoPageContexts.other} />,
-  "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
-  "hero-panel-promoted": <HeroHarness context={demoPageContexts.runs} promoted={promotedPrompt} />,
-  "hero-fullscreen": <HeroHarness context={demoPageContexts.failedRun} fullscreen />,
-  "hero-in-chat": <HeroHarness context={demoPageContexts.runs} withComposer={false} />,
+  // --- Watch chips --------------------------------------------------------
+  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
 
-  // --- Suggested prompts --------------------------------------------------
-  // The real component, resolving the registry against each fixture context.
-  "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
-  "prompts-contextual-fresh-failure": <PromptsHarness context={demoPageContexts.failedRun} />,
-  "prompts-promoted": (
-    <PromptsHarness context={demoPageContexts.failedRun} promoted={promotedPrompt} />
-  ),
-  "prompts-dismissed": (
-    <PromptsHarness context={demoPageContexts.failedRun} dismissedIds={dismissedPromptIds} />
-  ),
-  "prompts-contextual-waiting-run": <PromptsHarness context={demoPageContexts.waitingRun} />,
-  "prompts-contextual-slow-run": <PromptsHarness context={demoPageContexts.slowRun} />,
-  "prompts-contextual-saturation": <PromptsHarness context={demoPageContexts.queue} />,
-  "prompts-page-runs": <PromptsHarness context={demoPageContexts.runs} />,
-  "prompts-page-error": <PromptsHarness context={demoPageContexts.error} />,
-  "prompts-page-deployment": <PromptsHarness context={demoPageContexts.deployment} />,
-
-  // --- Intent bubbles -----------------------------------------------------
-  "intent-navigate-filtered-runs": (
-    <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
-  ),
-  "intent-navigate-run": <DemoIntentBubble intent={demoIntents.navigateToRun} onIntercept={noop} />,
-  "intent-watch": <DemoIntentBubble intent={demoIntents.watch} onIntercept={noop} />,
-  "intent-ask": <DemoIntentBubble intent={demoIntents.ask} onIntercept={noop} />,
-  "intent-rejected-propose-fix": (
-    <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />
-  ),
-
-  // --- Message-level states ------------------------------------------------
-  "messages-streaming-text": <MessageHarness chatId={demoId("base-streaming")} />,
-  "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
-  "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
-  "messages-tool-pending-pills": <PendingPillsHarness />,
-  // The same chat whose pending pill is shown above, but with the call landed:
-  // the tool row is gone entirely — only the prose (and any cards) remain.
-  "messages-tool-completed": <MessageHarness chatId={demoId("docs-answer")} />,
-  "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
-  // Two turns only: the resumed chat's third turn is a live `chart` block, and
-  // the real AgentChart has no environment to query outside a project route.
-  "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
-  "messages-investigation-live": <LiveInvestigationHarness />,
-  "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
-
-  // --- Context banner (variants live here, not in demo chats) --------------
+  // --- Context banner -----------------------------------------------------
   "banner-prod": (
     <DashboardAgentContextBanner
       projectSlug="demo-storefront"
       environmentSlug="prod"
       currentPage="Runs"
-    />
-  ),
-  "banner-dev": (
-    <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
-      environmentSlug="dev"
-      currentPage="Queues"
     />
   ),
   "banner-preview-long": (
@@ -1356,127 +431,8 @@ const STATES: Record<string, React.ReactNode> = {
       currentPage="Deployments"
     />
   ),
-  "banner-run-detail": (
-    <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
-      environmentSlug="prod"
-      currentPage="Run detail"
-    />
-  ),
 };
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-/**
- * One state. The `id` is the deep-link anchor and the screenshot target, and the
- * element is width-fitted so a capture of it hugs the component instead of the
- * page.
- */
-function Section({ section, wide = false }: { section: GallerySection; wide?: boolean }) {
-  const state = STATES[section.sectionId];
-  return (
-    <section id={section.sectionId} className="w-fit scroll-mt-4 space-y-1.5">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-medium text-text-bright">{section.title}</h3>
-        <code className="font-mono text-[10px] text-text-faint">{section.sectionId}</code>
-      </div>
-      <div className={cn(wide ? "w-auto" : PANEL)}>
-        {state ?? <Missing what={`section "${section.sectionId}"`} />}
-      </div>
-    </section>
-  );
-}
-
-/** Groups whose states are wider than the panel. */
-const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
-
-function ThemeToggle() {
-  return (
-    <div className="flex items-center gap-1.5">
-      {/* classic is still the default theme for most users, so it's part of the pack */}
-      {(["classic", "dark", "light"] as const).map((theme) => (
-        <button
-          key={theme}
-          type="button"
-          onClick={() => document.documentElement.setAttribute("data-theme", theme)}
-          className="rounded border border-border-bright bg-background-bright px-2 py-1 text-xs text-text-dimmed transition hover:text-text-bright"
-        >
-          {theme}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Nav() {
-  return (
-    <nav className="sticky top-0 space-y-3 self-start py-6 pr-4">
-      {GALLERY_GROUPS.map(({ group, label }) => (
-        <div key={group} className="space-y-1">
-          <p className="text-[10px] uppercase tracking-wide text-text-faint">{label}</p>
-          <ul className="space-y-0.5">
-            {sectionsInGroup(group).map((section) => (
-              <li key={section.sectionId}>
-                <a
-                  href={`#${section.sectionId}`}
-                  className="block truncate text-xs text-text-dimmed transition hover:text-text-bright"
-                >
-                  {section.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </nav>
-  );
-}
-
 export default function Story() {
-  return (
-    <div className={cn("grid min-h-full grid-cols-[15rem_1fr] gap-4 px-6", CANVAS)}>
-      <Nav />
-
-      <div className="flex flex-col gap-10 py-6">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between gap-4">
-            <Header1>Trigger Agent — Chat UI</Header1>
-            <ThemeToggle />
-          </div>
-          <Paragraph variant="small">
-            Every state the agent panel's components can be in, rendered in isolation at panel width
-            (380px) from the demo fixtures in{" "}
-            <code className="font-mono text-xs">app/components/dashboard-agent/demo/fixtures</code>{" "}
-            — the same data the demo conversations use. {MANIFEST.length} states across{" "}
-            {GALLERY_GROUPS.length} groups; the list lives in{" "}
-            <code className="font-mono text-xs">manifest.ts</code>, which the screenshot script
-            walks too.
-          </Paragraph>
-          <Paragraph variant="extra-small">
-            Run ids, queues, errors and reports are fabricated. Deep links resolve inside a project,
-            so here they render as plain text or navigate nowhere. The theme buttons flip{" "}
-            <code className="font-mono text-xs">data-theme</code> on the root element, which is how
-            the screenshot pack captures both themes.
-          </Paragraph>
-        </div>
-
-        {GALLERY_GROUPS.map(({ group, label }) => (
-          <div key={group} className="flex flex-col gap-4">
-            <Header2 className="border-b border-grid-bright pb-1">{label}</Header2>
-            <div className="flex flex-wrap items-start gap-8">
-              {sectionsInGroup(group).map((section) => (
-                <Section
-                  key={section.sectionId}
-                  section={section}
-                  wide={WIDE_SECTIONS.has(section.sectionId)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <GalleryPage page="chat" states={STATES} />;
 }

@@ -1,22 +1,75 @@
 /**
- * The gallery's table of contents — one row per state on the storybook page.
+ * The gallery's table of contents — one row per state, spread over a handful of
+ * storybook pages.
  *
- * Two consumers share this file, which is why it holds no imports and no JSX:
+ * Three consumers share this file, which is why it holds no imports and no JSX:
  *
- * 1. `route.tsx` renders the gallery *from* it, and fails loudly (a visible
+ * 1. `gallery.tsx` renders a page *from* it, and fails loudly (a visible
  *    "no renderer" placeholder) for any row it can't render. So the manifest is
  *    the spec, not a description written after the fact.
- * 2. `scripts/agent-ui-screenshots.ts` walks it to capture every state. A node
- *    script can't import a Remix route module (JSX, `~/` aliases, browser-only
- *    deps), but it can import this — hence the no-dependency rule. Keep it that
- *    way.
+ * 2. Each `storybook.agent-…` route module maps a page id to its states.
+ * 3. `scripts/agent-ui-screenshots.ts` walks it to capture every state on every
+ *    page. A node script can't import a Remix route module (JSX, `~/` aliases,
+ *    browser-only deps), but it can import this — hence the no-dependency rule.
+ *    Keep it that way.
  *
  * `sectionId` is the DOM `id` of the section element and the screenshot's
  * filename, so it must be URL- and filename-safe and must never change
- * casually — a rename breaks deep links and orphans old screenshots.
+ * casually — a rename breaks deep links and orphans old screenshots. Groups are
+ * the screenshot directories, so those are stable too; which page a group lives
+ * on is not.
  */
 
-/** The gallery's top-level grouping. Screenshots land in a directory per group. */
+/** A storybook page in the "Trigger Agent" nav section. */
+export type GalleryPageId = "chat" | "view-blocks" | "report" | "investigation" | "watch";
+
+export type GalleryPage = {
+  id: GalleryPageId;
+  /** Route slug under `/storybook`. */
+  slug: string;
+  /** Page heading, and the label in the storybook nav. */
+  title: string;
+  blurb: string;
+};
+
+/** Page order in the nav. */
+export const GALLERY_PAGES: GalleryPage[] = [
+  {
+    id: "chat",
+    slug: "agent-ui",
+    title: "Chat UI",
+    blurb:
+      "The chat chrome: the blank-state hero, suggested prompts, the transcript and its one progress line, wake banners, watch chips and the context banner.",
+  },
+  {
+    id: "view-blocks",
+    slug: "agent-view-blocks",
+    title: "View blocks",
+    blurb:
+      "The envelope rules every card obeys, the diagnosis card, the actions block and the chart card.",
+  },
+  {
+    id: "report",
+    slug: "agent-report",
+    title: "Report view",
+    blurb: "The health report, one state per verdict it can reach.",
+  },
+  {
+    id: "investigation",
+    slug: "agent-investigation",
+    title: "Investigation card",
+    blurb: "One card per ending an investigation can have, plus the state while it is still going.",
+  },
+  {
+    id: "watch",
+    slug: "agent-watch",
+    title: "Watch card",
+    blurb:
+      "The configuration card, what a submitted card leaves in the transcript, and the wake headline.",
+  },
+];
+
+/** The gallery's grouping inside a page. Screenshots land in a directory per group. */
 export type GalleryGroup =
   | "diagnosis"
   | "view-blocks"
@@ -39,77 +92,125 @@ export type GallerySection = {
   title: string;
   group: GalleryGroup;
   /**
-   * A state that only exists after a click (an expandable tool row's output
-   * tab, say). The screenshot script clicks the first element inside the
-   * section whose text matches, then captures. Rendering ignores it.
+   * A state that only exists after a click (an expandable card's details, say).
+   * The screenshot script clicks the first element inside the section whose text
+   * matches, then captures. Rendering ignores it.
    */
   expandText?: string;
 };
 
-/** Group order in the page and the nav. */
-export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
-  { group: "diagnosis", label: "Diagnosis card" },
-  { group: "view-blocks", label: "View blocks & envelope" },
-  { group: "investigation", label: "Investigation card" },
-  { group: "report", label: "Report card" },
-  { group: "chart", label: "Chart card" },
-  { group: "watches", label: "Watch chips" },
-  { group: "watch-card", label: "Watch card" },
-  { group: "wakes", label: "Wake banners" },
-  { group: "hero", label: "Blank-state hero" },
-  { group: "prompts", label: "Suggested prompts" },
-  { group: "intents", label: "Intent bubbles" },
-  { group: "messages", label: "Message-level states" },
-  { group: "banner", label: "Context banner" },
+/** Group order within its page. */
+export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: string }[] = [
+  { group: "hero", page: "chat", label: "Blank-state hero" },
+  { group: "prompts", page: "chat", label: "Suggested prompts" },
+  { group: "messages", page: "chat", label: "Message-level states" },
+  { group: "intents", page: "chat", label: "Intent bubbles" },
+  { group: "wakes", page: "chat", label: "Wake banners" },
+  { group: "watches", page: "chat", label: "Watch chips" },
+  { group: "banner", page: "chat", label: "Context banner" },
+  { group: "view-blocks", page: "view-blocks", label: "Envelope & actions" },
+  { group: "diagnosis", page: "view-blocks", label: "Diagnosis card" },
+  { group: "chart", page: "view-blocks", label: "Chart card" },
+  { group: "report", page: "report", label: "Report view" },
+  { group: "investigation", page: "investigation", label: "Investigation card" },
+  { group: "watch-card", page: "watch", label: "Watch card" },
 ];
 
 export const MANIFEST: GallerySection[] = [
-  // --- Diagnosis card (the one shipped view-catalog card) -------------------
+  // --- Blank-state hero -----------------------------------------------------
+  // The new-chat state, with the composer inside the hero. Both widths it ships
+  // at: the 380px side panel and the fullscreen takeover's centred column.
+  { sectionId: "hero-panel", title: "Side panel (380px) — no page context", group: "hero" },
   {
-    sectionId: "diagnosis-full-high",
-    title: "Full card, high confidence",
-    group: "diagnosis",
+    sectionId: "hero-panel-contextual",
+    title: "Side panel — failed run on the page",
+    group: "hero",
+  },
+  { sectionId: "hero-fullscreen", title: "Fullscreen takeover — centred column", group: "hero" },
+  { sectionId: "hero-in-chat", title: "Empty chat — hero without its own composer", group: "hero" },
+
+  // --- Suggested prompts ---------------------------------------------------
+  { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },
+  {
+    sectionId: "prompts-contextual-fresh-failure",
+    title: "Contextual — fresh failure first",
+    group: "prompts",
+  },
+  { sectionId: "prompts-promoted", title: "Promoted chip on top", group: "prompts" },
+  { sectionId: "prompts-dismissed", title: "After a dismissal", group: "prompts" },
+
+  // --- Message-level states, through the production renderer ---------------
+  {
+    sectionId: "messages-streaming-text",
+    title: "Text part still streaming, with activity row",
+    group: "messages",
+  },
+  { sectionId: "messages-reasoning", title: "Reasoning part", group: "messages" },
+  {
+    sectionId: "messages-tool-in-flight",
+    title: "Tool call in flight — the turn's one progress line",
+    group: "messages",
   },
   {
-    sectionId: "diagnosis-external-medium",
-    title: "External service, medium confidence",
-    group: "diagnosis",
+    sectionId: "messages-tool-pending-pills",
+    title: "Progress labels — one per tool, including a card tool",
+    group: "messages",
   },
   {
-    sectionId: "diagnosis-low-minimal",
-    title: "Low confidence, minimal evidence",
-    group: "diagnosis",
+    sectionId: "messages-error-retry",
+    title: "Failed turn — error row and retry",
+    group: "messages",
   },
   {
-    sectionId: "diagnosis-demo-first-pass",
-    title: "Demo fixture, first pass (revision 0)",
-    group: "diagnosis",
+    sectionId: "messages-render-view",
+    title: "render_view part — blocks as cards",
+    group: "messages",
   },
   {
-    sectionId: "diagnosis-demo-revised",
-    title: "Demo fixture, revised (revision 1)",
-    group: "diagnosis",
+    sectionId: "messages-investigation-live",
+    title: "Live investigation — the card, and the turn's one progress line under it",
+    group: "messages",
   },
+  { sectionId: "messages-docs-sources", title: "Answer with source links", group: "messages" },
+
+  // --- Intent bubbles ------------------------------------------------------
   {
-    sectionId: "diagnosis-badge-matrix",
-    title: "Badge matrix — every category x confidence",
-    group: "diagnosis",
+    sectionId: "intent-navigate-filtered-runs",
+    title: "Navigate — runs with filters",
+    group: "intents",
+  },
+  { sectionId: "intent-watch", title: "Watch started", group: "intents" },
+  {
+    sectionId: "intent-rejected-propose-fix",
+    title: "Rejected — propose_fix is reserved",
+    group: "intents",
   },
 
-  // --- ViewBlocks: identity, revisions, legacy -----------------------------
+  // --- Wake banners --------------------------------------------------------
+  // A wake narration through the production renderer: the banner plus the prose
+  // the agent wrote, as the panel shows them. One per presentation category.
+  { sectionId: "wake-positive", title: "Positive", group: "wakes" },
+  { sectionId: "wake-attention", title: "Attention", group: "wakes" },
+  { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
+  { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
+
+  // --- Watch chips ---------------------------------------------------------
+  // The real panel component, fed every status at once.
+  { sectionId: "watches-live", title: "All four states, cancellable", group: "watches" },
+
+  // --- Context banner ------------------------------------------------------
+  { sectionId: "banner-prod", title: "Production environment", group: "banner" },
+  { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
+
+  // --- ViewBlocks: identity, revisions, actions -----------------------------
   {
     sectionId: "view-blocks-revisions",
     title: "Three same-id revisions collapse to one card",
     group: "view-blocks",
   },
   {
-    sectionId: "view-blocks-legacy",
-    title: "Legacy blocks with no envelope both render",
-    group: "view-blocks",
-  },
-  {
     sectionId: "view-blocks-mixed",
-    title: "Enveloped revisions plus a legacy block",
+    title: "Enveloped revisions plus a legacy block with no envelope",
     group: "view-blocks",
   },
   {
@@ -118,22 +219,44 @@ export const MANIFEST: GallerySection[] = [
     group: "view-blocks",
   },
 
-  // --- Investigation card ---------------------------------------------------
-  // The shipped `InvestigationCard` (fed the real block) first, then the demo
-  // mockup whose review froze the payload — kept so the two can be compared.
+  // --- Diagnosis card ------------------------------------------------------
+  { sectionId: "diagnosis-full-high", title: "Full card, high confidence", group: "diagnosis" },
   {
-    sectionId: "investigation-card-in-progress-early",
-    title: "In progress, early — subject and first evidence, no hypotheses",
-    group: "investigation",
+    sectionId: "diagnosis-low-minimal",
+    title: "Low confidence, minimal evidence",
+    group: "diagnosis",
   },
   {
-    sectionId: "investigation-card-streaming-rev0",
-    title: "Streaming, revision 0 — nothing settled",
-    group: "investigation",
+    sectionId: "diagnosis-badge-matrix",
+    title: "Badge matrix — every category x confidence",
+    group: "diagnosis",
   },
+
+  // --- Chart card ----------------------------------------------------------
+  {
+    sectionId: "chart-with-actions",
+    title: "Ranking chart with actions on the top item",
+    group: "chart",
+  },
+  { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
+
+  // --- Report view ---------------------------------------------------------
+  { sectionId: "report-view-healthy", title: "Healthy — nothing to do", group: "report" },
+  {
+    sectionId: "report-view-degraded",
+    title: "Degraded — env limit saturation, actions wired",
+    group: "report",
+  },
+  {
+    sectionId: "report-view-untrustworthy",
+    title: "Stale telemetry — verdict unknown, numbers informational",
+    group: "report",
+  },
+
+  // --- Investigation card --------------------------------------------------
   {
     sectionId: "investigation-card-streaming-rev1",
-    title: "Streaming, revision 1 — one hypothesis settled",
+    title: "In progress — one hypothesis settled",
     group: "investigation",
   },
   {
@@ -141,11 +264,8 @@ export const MANIFEST: GallerySection[] = [
     title: "Concluded, collapsed",
     group: "investigation",
   },
-  {
-    sectionId: "investigation-card-concluded-expanded",
-    title: "Concluded, details expanded",
-    group: "investigation",
-  },
+  // The two concluded endings side by side: one whose verdict rests on a line of
+  // source it read (so "Show code" is offered), one from telemetry alone.
   {
     sectionId: "investigation-card-concluded-code-grounded",
     title: "Concluded, code-grounded — source citation and Show code",
@@ -168,112 +288,17 @@ export const MANIFEST: GallerySection[] = [
     title: "Inconclusive, degraded after a tool failure — names what it couldn't read",
     group: "investigation",
   },
-  {
-    sectionId: "investigation-card-dirty-commit",
-    title: "Dirty-commit caveat",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-card-revisions",
-    title: "Two revisions of one investigation collapse to one card",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-streaming-rev0",
-    title: "Demo mockup — streaming, revision 0",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-streaming-rev1",
-    title: "Demo mockup — streaming, revision 1",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-concluded",
-    title: "Demo mockup — concluded, collapsed",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-concluded-expanded",
-    title: "Demo mockup — concluded, expanded",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-inconclusive",
-    title: "Demo mockup — inconclusive",
-    group: "investigation",
-  },
-  {
-    sectionId: "investigation-dirty-commit",
-    title: "Demo mockup — dirty-commit caveat",
-    group: "investigation",
-  },
-
-  // --- Report card ---------------------------------------------------------
-  // The shipped ReportView first, then the demo mockup it grew out of (kept so a
-  // design change can be compared against what was reviewed).
-  { sectionId: "report-view-healthy", title: "Healthy — nothing to do", group: "report" },
-  {
-    sectionId: "report-view-degraded",
-    title: "Degraded — env limit saturation, actions wired",
-    group: "report",
-  },
-  {
-    sectionId: "report-view-untrustworthy",
-    title: "Stale telemetry — verdict unknown, numbers informational",
-    group: "report",
-  },
-  { sectionId: "report-healthy", title: "Demo mockup — healthy", group: "report" },
-  { sectionId: "report-degraded", title: "Demo mockup — degraded", group: "report" },
-
-  // --- Chart card ----------------------------------------------------------
-  { sectionId: "chart-with-data", title: "With canned rows", group: "chart" },
-  {
-    sectionId: "chart-with-actions",
-    title: "Ranking chart with actions on the top item",
-    group: "chart",
-  },
-  { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
-
-  // --- Watch chips ---------------------------------------------------------
-  { sectionId: "watches-active", title: "Active — cancellable", group: "watches" },
-  { sectionId: "watches-fired", title: "Fired", group: "watches" },
-  { sectionId: "watches-expired", title: "Expired", group: "watches" },
-  { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
-  { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
-  { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
 
   // --- Watch card ----------------------------------------------------------
-  // The configuration card and the two blocks a submitted card leaves behind.
-  // The card is ephemeral (it never enters the transcript), so the states here
-  // are the whole of what a user can see of it.
-  {
-    sectionId: "watch-card-compact",
-    title: "Compact — the recommendation",
-    group: "watch-card",
-  },
+  // The configuration card and the blocks a submitted card leaves behind. The
+  // card is ephemeral (it never enters the transcript), so these states are the
+  // whole of what a user can see of it.
+  { sectionId: "watch-card-compact", title: "Compact — the recommendation", group: "watch-card" },
   { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
   { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
   { sectionId: "watch-card-pending", title: "Pending create", group: "watch-card" },
-  { sectionId: "watch-card-create-failure", title: "Create failure", group: "watch-card" },
-  { sectionId: "watch-card-confirmation", title: "Confirmation block", group: "watch-card" },
-  {
-    sectionId: "watch-card-one-shot-satisfied",
-    title: "One-shot result — already true",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-one-shot-impossible",
-    title: "One-shot result — can't happen now",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-toast-headline",
-    title: "Wake toast headline (fact first)",
-    group: "watch-card",
-  },
-  // The queue pack (TRI-12890): the three conditions that live one tap deeper,
-  // each with its ONE contextual parameter.
+  // The queue pack (TRI-12890): a condition with its ONE contextual parameter,
+  // and the one that takes no parameter at all.
   {
     sectionId: "watch-card-queue-below",
     title: "Customize — back below a threshold",
@@ -284,160 +309,30 @@ export const MANIFEST: GallerySection[] = [
     title: "Customize — stopped moving (no parameter)",
     group: "watch-card",
   },
+  { sectionId: "watch-card-confirmation", title: "Confirmation block", group: "watch-card" },
   {
-    sectionId: "watch-card-queue-age",
-    title: "Customize — runs waiting past an SLA",
+    sectionId: "watch-card-one-shot-satisfied",
+    title: "One-shot result — already true",
     group: "watch-card",
   },
   {
-    sectionId: "watch-card-queue-late-recommended",
-    title: "Compact — drain recommended on a late queue",
+    sectionId: "watch-card-toast-headline",
+    title: "Wake toast headline (fact first)",
     group: "watch-card",
   },
-
-  // --- Wake banners --------------------------------------------------------
-  // A wake narration through the production renderer: the banner plus the prose
-  // the agent wrote, as the panel shows them.
-  { sectionId: "wake-positive", title: "Positive", group: "wakes" },
-  { sectionId: "wake-attention", title: "Attention", group: "wakes" },
-  {
-    sectionId: "wake-attention-failed-run",
-    title: "Attention — a run that finished badly",
-    group: "wakes",
-  },
-  { sectionId: "wake-window-completed", title: "Window completed", group: "wakes" },
-  { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
-  { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
-  {
-    sectionId: "wake-unknown-watch",
-    title: "Fired, watch not in hand — kind-agnostic",
-    group: "wakes",
-  },
-  { sectionId: "wake-queue-below", title: "Queue back below its threshold", group: "wakes" },
-  { sectionId: "wake-queue-stalled", title: "Queue stopped moving", group: "wakes" },
-  { sectionId: "wake-queue-age", title: "Runs waiting past the SLA", group: "wakes" },
-
-  // --- Blank-state hero -----------------------------------------------------
-  // The new-chat state, with the composer inside the hero. Both widths it ships
-  // at: the 380px side panel and the fullscreen takeover's centred column.
-  {
-    sectionId: "hero-panel",
-    title: "Side panel (380px) — no page context",
-    group: "hero",
-  },
-  {
-    sectionId: "hero-panel-contextual",
-    title: "Side panel — failed run on the page",
-    group: "hero",
-  },
-  {
-    sectionId: "hero-panel-promoted",
-    title: "Side panel — with a promoted prompt",
-    group: "hero",
-  },
-  {
-    sectionId: "hero-fullscreen",
-    title: "Fullscreen takeover — centred column",
-    group: "hero",
-  },
-  {
-    sectionId: "hero-in-chat",
-    title: "Empty chat — hero without its own composer",
-    group: "hero",
-  },
-
-  // --- Suggested prompts ---------------------------------------------------
-  { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },
-  {
-    sectionId: "prompts-contextual-fresh-failure",
-    title: "Contextual — fresh failure first",
-    group: "prompts",
-  },
-  { sectionId: "prompts-promoted", title: "Promoted chip on its own", group: "prompts" },
-  { sectionId: "prompts-dismissed", title: "After a dismissal", group: "prompts" },
-  {
-    sectionId: "prompts-contextual-waiting-run",
-    title: "Contextual — run waiting in a queue",
-    group: "prompts",
-  },
-  {
-    sectionId: "prompts-contextual-slow-run",
-    title: "Contextual — run slower than usual",
-    group: "prompts",
-  },
-  {
-    sectionId: "prompts-contextual-saturation",
-    title: "Contextual — queue at capacity",
-    group: "prompts",
-  },
-  { sectionId: "prompts-page-runs", title: "Page defaults — runs list", group: "prompts" },
-  { sectionId: "prompts-page-error", title: "Page defaults — error group", group: "prompts" },
-  {
-    sectionId: "prompts-page-deployment",
-    title: "Page defaults — deployment",
-    group: "prompts",
-  },
-
-  // --- Intent bubbles ------------------------------------------------------
-  {
-    sectionId: "intent-navigate-filtered-runs",
-    title: "Navigate — runs with filters",
-    group: "intents",
-  },
-  { sectionId: "intent-navigate-run", title: "Navigate — one run", group: "intents" },
-  { sectionId: "intent-watch", title: "Watch started", group: "intents" },
-  { sectionId: "intent-ask", title: "Ask — follow-up handed back", group: "intents" },
-  {
-    sectionId: "intent-rejected-propose-fix",
-    title: "Rejected — propose_fix is reserved",
-    group: "intents",
-  },
-
-  // --- Message-level states, through the production renderer ---------------
-  {
-    sectionId: "messages-streaming-text",
-    title: "Text part still streaming, with activity row",
-    group: "messages",
-  },
-  { sectionId: "messages-reasoning", title: "Reasoning part", group: "messages" },
-  {
-    sectionId: "messages-tool-in-flight",
-    title: "Tool call in flight — the turn's one progress line",
-    group: "messages",
-  },
-  {
-    sectionId: "messages-tool-pending-pills",
-    title: "Progress labels — one per tool, including a card tool",
-    group: "messages",
-  },
-  {
-    sectionId: "messages-tool-completed",
-    title: "Completed tool call — no row, just the answer",
-    group: "messages",
-  },
-  {
-    sectionId: "messages-error-retry",
-    title: "Failed turn — error row and retry",
-    group: "messages",
-  },
-  {
-    sectionId: "messages-render-view",
-    title: "render_view part — blocks as cards",
-    group: "messages",
-  },
-  {
-    sectionId: "messages-investigation-live",
-    title: "Live investigation — the card, and the turn's one progress line under it",
-    group: "messages",
-  },
-  { sectionId: "messages-docs-sources", title: "Answer with source links", group: "messages" },
-  { sectionId: "banner-prod", title: "Production environment", group: "banner" },
-  { sectionId: "banner-dev", title: "Dev environment", group: "banner" },
-  { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
-  { sectionId: "banner-run-detail", title: "Run detail page", group: "banner" },
 ];
+
+/** Groups on a page, in group order. */
+export function groupsOnPage(page: GalleryPageId) {
+  return GALLERY_GROUPS.filter((entry) => entry.page === page);
+}
 
 /** Sections in a group, in manifest order. */
 export function sectionsInGroup(group: GalleryGroup): GallerySection[] {
   return MANIFEST.filter((section) => section.group === group);
+}
+
+/** Sections on a page, in group order then manifest order. */
+export function sectionsOnPage(page: GalleryPageId): GallerySection[] {
+  return groupsOnPage(page).flatMap((entry) => sectionsInGroup(entry.group));
 }

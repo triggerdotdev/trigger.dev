@@ -166,6 +166,22 @@ const stories: Story[] = [
     slug: "agent-ui",
   },
   {
+    name: "View blocks",
+    slug: "agent-view-blocks",
+  },
+  {
+    name: "Report view",
+    slug: "agent-report",
+  },
+  {
+    name: "Investigation card",
+    slug: "agent-investigation",
+  },
+  {
+    name: "Watch card",
+    slug: "agent-watch",
+  },
+  {
     name: "Icons & Buttons",
     slug: "ai-agent",
   },

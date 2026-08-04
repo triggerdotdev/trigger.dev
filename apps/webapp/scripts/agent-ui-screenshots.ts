@@ -3,8 +3,8 @@
  *
  * Walks two things against a running local webapp and writes a PNG per state:
  *
- *   a) the storybook state gallery (`/storybook/agent-ui`) — one capture per
- *      row of `app/routes/storybook.agent-ui/manifest.ts`, which this script
+ *   a) the storybook state gallery — every page in `GALLERY_PAGES`, one capture
+ *      per row of `app/routes/storybook.agent-ui/manifest.ts`, which this script
  *      imports so the two can never disagree about what exists;
  *   b) every conversation in the panel's history, opened in the real panel on a
  *      real env page, so the review also sees the components in their actual
@@ -50,7 +50,7 @@
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { MANIFEST } from "../app/routes/storybook.agent-ui/manifest";
+import { GALLERY_PAGES, MANIFEST, sectionsOnPage } from "../app/routes/storybook.agent-ui/manifest";
 
 // The package script runs from apps/webapp; tolerate a run from the repo root
 // too, so `tsx apps/webapp/scripts/agent-ui-screenshots.ts` works as well.
@@ -74,8 +74,10 @@ const HEADED = process.env.SCREENSHOT_HEADED === "1";
 
 const CHAT_GROUP = "chats";
 
-const GALLERY_PATH = "/storybook/agent-ui";
 const PANEL_SELECTOR = "#dashboard-agent-panel";
+
+/** The route each gallery page lives at, e.g. `/storybook/agent-ui`. */
+const galleryPath = (slug: string) => `/storybook/${slug}`;
 
 type Capture = {
   theme: string;
@@ -179,18 +181,29 @@ async function capture(
 // ---------------------------------------------------------------------------
 
 async function shootGallery(page: Page, theme: string) {
-  log(`\nGallery · ${theme}`);
-  await open(page, GALLERY_PATH, theme);
+  for (const galleryPage of GALLERY_PAGES) {
+    await shootGalleryPage(page, theme, galleryPage);
+  }
+}
+
+async function shootGalleryPage(
+  page: Page,
+  theme: string,
+  galleryPage: (typeof GALLERY_PAGES)[number]
+) {
+  const pagePath = galleryPath(galleryPage.slug);
+  log(`\nGallery · ${galleryPage.title} · ${theme}`);
+  await open(page, pagePath, theme);
 
   const pathname = new URL(page.url()).pathname;
-  if (pathname !== GALLERY_PATH) {
+  if (pathname !== pagePath) {
     throw new Error(
-      `${GALLERY_PATH} redirected to ${pathname}. The storybook route requires an admin user — ` +
+      `${pagePath} redirected to ${pathname}. The storybook route requires an admin user — ` +
         `check that ${EMAIL} has admin set (the local seed does).`
     );
   }
 
-  for (const section of MANIFEST) {
+  for (const section of sectionsOnPage(galleryPage.id)) {
     const target = page.locator(`#${section.sectionId}`);
     if (section.expandText) {
       // A state that only exists after a click, e.g. a tool row's output tab.
@@ -324,7 +337,7 @@ function summarise() {
 async function main() {
   log(`Base URL: ${BASE_URL}`);
   log(`Themes:   ${THEMES.join(", ")}`);
-  log(`Sections: ${MANIFEST.length} gallery states`);
+  log(`Sections: ${MANIFEST.length} gallery states across ${GALLERY_PAGES.length} pages`);
   log(`Env path: ${ENV_PATH ?? "(not set — skipping the chat walk)"}`);
 
   let browser: Browser | undefined;
