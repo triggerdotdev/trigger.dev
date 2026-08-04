@@ -1,7 +1,4 @@
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "../types/schemas.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 import {
   type Offset,
   FetchError,

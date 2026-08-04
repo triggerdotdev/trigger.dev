@@ -8,6 +8,7 @@ import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
 import { links } from "./links.js";
 import type { ExceptionEventProperties } from "./schemas/openTelemetry.js";
 import { assertExhaustive } from "../utils.js";
+import type { ZodIssueLike } from "./types/schemas.js";
 
 /**
  * If you throw this, it will get converted into an INTERNAL_ERROR
@@ -484,7 +485,7 @@ function correctStackTraceLine(line: string, projectDir?: string, isDev?: boolea
   return line.trim();
 }
 
-export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) {
+export function groupTaskMetadataIssuesByTask(tasks: any, issues: ReadonlyArray<ZodIssueLike>) {
   return issues.reduce(
     (acc, issue) => {
       if (issue.path.length === 0) {
@@ -553,7 +554,7 @@ export class UncaughtExceptionError extends Error {
 
 export class TaskMetadataParseError extends Error {
   constructor(
-    public readonly zodIssues: z.ZodIssue[],
+    public readonly zodIssues: ReadonlyArray<ZodIssueLike>,
     public readonly tasks: any
   ) {
     super(`Failed to parse task metadata`);

@@ -1,9 +1,6 @@
 import type { RedisOptions } from "@internal/redis";
 import type { Logger } from "@trigger.dev/core/logger";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "@trigger.dev/core/v3";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import type { Tracer, Meter } from "@internal/tracing";
 import type { z } from "zod/v4";
 import type { RetryStrategy } from "./retry.js";

@@ -2,10 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { z as z3 } from "zod/v3";
 import { z as z4 } from "zod/v4";
 import { getSchemaParseFn, isSchemaZodEsque } from "./schemas.js";
-import {
-  convertToolParametersToSchema,
-  type inferToolParameters,
-} from "./tools.js";
+import { convertToolParametersToSchema, type inferToolParameters } from "./tools.js";
 
 describe("Zod schema compatibility", () => {
   it("detects and parses Zod 3 schemas", async () => {
