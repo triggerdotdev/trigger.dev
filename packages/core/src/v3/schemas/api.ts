@@ -289,7 +289,7 @@ const ExternalDeploymentId = z.preprocess((value) => {
 
 export const TriggerTaskRequestBody = z
   .object({
-    payload: z.any(),
+    payload: z.any().optional(),
     context: z.any().optional(),
     options: z
       .object({
@@ -407,7 +407,7 @@ export type BatchTriggerTaskRequestBody = z.infer<typeof BatchTriggerTaskRequest
 
 export const BatchTriggerTaskItem = z.object({
   task: z.string(),
-  payload: z.any(),
+  payload: z.any().optional(),
   context: z.any().optional(),
   options: z
     .object({
