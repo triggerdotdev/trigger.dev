@@ -373,7 +373,10 @@ export default function Page() {
               ) : null}
 
               <Accordion type="single" collapsible>
-                <AccordionItem value="environment-variables" className="bg-white dark:bg-transparent">
+                <AccordionItem
+                  value="environment-variables"
+                  className="bg-white dark:bg-transparent"
+                >
                   <AccordionTrigger>How to set these environment variables</AccordionTrigger>
                   <AccordionContent>
                     <div className="flex flex-col gap-2">

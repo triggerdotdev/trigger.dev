@@ -300,8 +300,7 @@ export async function authenticateApiKeyWithScope(
     resource,
     allowJWT = false,
   }: { action: string; resource: RbacResource; allowJWT?: boolean },
-  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry =
-    authenticateAuthorizeBearerWithTelemetry
+  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
