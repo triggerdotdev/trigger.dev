@@ -830,7 +830,7 @@ function ErrorStatusDropdown({
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverArrowTrigger variant="primary" disabled={isSubmitting} className="items-center">
-          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-text-bright" />
+          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-white" />
           Mark error as…
         </PopoverArrowTrigger>
         <PopoverContent className="inline-flex min-w-0! flex-col p-1" align="end">
