@@ -327,6 +327,14 @@ export const Env = z
         path: ["WORKLOAD_TOKEN_SECRET"],
       });
     }
+    if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
+        path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
+      });
+    }
     if (
       data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&
       !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST
