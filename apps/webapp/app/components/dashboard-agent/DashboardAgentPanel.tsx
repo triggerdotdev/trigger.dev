@@ -490,17 +490,18 @@ export function DashboardAgentPanel({
     }
   }, [watchDraft, active?.chatId, actionPath, loadHistory]);
 
+  // Bare, placement-agnostic: the chat insets it to match its docked composer,
+  // the hero's composer slot is already inset, so a wrapper here would make the
+  // card narrower than the field it sits above.
   const watchCard = watchDraft ? (
-    <div className="px-3 pb-2">
-      <WatchCard
-        draft={watchDraft}
-        onChange={setWatchDraft}
-        onSubmit={() => void submitWatch()}
-        onCancel={dismissWatchCard}
-        pending={watchPending}
-        error={watchError}
-      />
-    </div>
+    <WatchCard
+      draft={watchDraft}
+      onChange={setWatchDraft}
+      onSubmit={() => void submitWatch()}
+      onCancel={dismissWatchCard}
+      pending={watchPending}
+      error={watchError}
+    />
   ) : null;
 
   const newChat = useCallback(() => {

@@ -405,7 +405,8 @@ export function DashboardAgentChat({
           resolveUri={resolveUri}
         />
       )}
-      {watchCard}
+      {/* Inset to line up with the docked composer below it. */}
+      {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
       {/* The Free plan's message cap occupies the composer slot: at the cap the
           composer is replaced by the upgrade block (a composer you can't send
           from is worse than none), and under it the composer is followed by the
