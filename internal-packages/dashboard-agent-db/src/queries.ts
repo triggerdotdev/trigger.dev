@@ -533,6 +533,36 @@ export async function getInvestigation(
   return rows[0] ?? null;
 }
 
+/**
+ * #12 The freshest investigation of a chat that is still `in_progress`, within a
+ * recent window.
+ *
+ * The hand-off for a consented watch investigation: the wake seeds the card, and
+ * the investigating turn that follows it has to revise THAT row rather than open a
+ * second one. Ordering makes it safe — the wake's seed is committed before the
+ * investigate action is handled — and the window keeps an old abandoned card (one
+ * the stale sweep hasn't reached yet) from being picked up as this watch's.
+ */
+export async function findOpenInvestigationForChat(
+  db: DashboardAgentDb,
+  params: { chatId: string; createdAfter: Date }
+): Promise<Investigation | null> {
+  const rows = await db
+    .select()
+    .from(investigations)
+    .where(
+      and(
+        eq(investigations.chatId, params.chatId),
+        sql`${investigations.state}->>'outcome' = 'in_progress'`,
+        // A string bind: postgres-js won't serialize a Date into a raw fragment.
+        sql`${investigations.createdAt} >= ${params.createdAfter.toISOString()}::timestamptz`
+      )
+    )
+    .orderBy(desc(investigations.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /** #12 The investigations of a chat, most recently updated first. */
 export async function listInvestigationsForChat(
   db: DashboardAgentDb,

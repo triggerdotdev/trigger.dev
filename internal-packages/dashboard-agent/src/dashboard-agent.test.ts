@@ -94,9 +94,12 @@ type StoreCalls = {
   persistTurn: unknown[];
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
+  findOpenInvestigation: unknown[];
 };
 
-function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
+function fakeStore(
+  options: { openInvestigation?: { id: string; projectRef: string; environmentRef: string } } = {}
+): { store: DashboardAgentStore; calls: StoreCalls } {
   const calls: StoreCalls = {
     ensureChat: [],
     persistMessages: [],
@@ -104,6 +107,7 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
     persistTurn: [],
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
+    findOpenInvestigation: [],
   };
   const store: DashboardAgentStore = {
     ensureChat: async (args) => void calls.ensureChat.push(args),
@@ -113,7 +117,11 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
     setChatTitleIfDefault: async (args) => void calls.setChatTitleIfDefault.push(args),
     upsertInvestigationRevision: async (args) => {
       calls.upsertInvestigationRevision.push(args);
-      return { ok: true, id: "inv_fake", revision: 0, created: true };
+      return { ok: true, id: args.id ?? "inv_fake", revision: 0, created: !args.id };
+    },
+    findOpenInvestigation: async (args) => {
+      calls.findOpenInvestigation.push(args);
+      return options.openInvestigation ?? null;
     },
   };
   return { store, calls };
@@ -735,6 +743,238 @@ describe("watch wake narration", () => {
       "wake:watch:watch_1:fired",
       "wake:watch:watch_2:expired",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conducting the consented investigation
+// ---------------------------------------------------------------------------
+
+describe("watch investigation", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  const INVESTIGATE = {
+    type: "watch.investigate" as const,
+    id: "watch:watch_1:fired:investigate",
+    watchId: "watch_1",
+    identity: "run_finished:run_abc123",
+    spec: {
+      kind: "run_finished",
+      runId: "run_abc123",
+      checkEveryMinutes: 5,
+      maxHours: 2,
+      note: "tell me when the receipt run finishes",
+    },
+    facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
+    resolution: "condition_met" as const,
+    observed: {
+      kind: "run_finished",
+      verified: true,
+      finalStatus: "COMPLETED_WITH_ERRORS",
+      durationMs: 4200,
+    },
+  };
+
+  const CLIENT_DATA_WITH_TOKEN = {
+    ...CLIENT_DATA,
+    projectRef: "proj_abc",
+    environmentId: "env_abc",
+    environmentName: "prod",
+    apiOrigin: "https://api.example.com",
+    // The delegated token the kick minted, arriving the way a turn's does.
+    userActorToken: "uat_investigate",
+  };
+
+  const inProgress = {
+    outcome: "in_progress",
+    severity: "warn",
+    confidence: "low",
+    runId: "run_abc123",
+    title: "Investigating run_abc123",
+    headline: "The run finished with errors. Looking into why.",
+    hypotheses: [],
+    evidence: [],
+  };
+
+  const concluded = {
+    ...inProgress,
+    outcome: "concluded",
+    confidence: "high",
+    headline: "The receipt task threw on every attempt: the payload lost `order.total`.",
+    remediation: "Restore the field on the producer, or guard the read.",
+    hypotheses: [
+      {
+        id: "hyp_payload",
+        statement: "The new payload no longer carries order.total.",
+        verdict: "validated",
+        finding: "Every attempt failed with the same TypeError.",
+        evidence: [],
+      },
+    ],
+  };
+
+  // A model that records the prompts it was called with, and plays one step per call.
+  function recordingModel(steps: LanguageModelV3StreamPart[][]) {
+    const prompts: unknown[] = [];
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        const chunks = steps[Math.min(call, steps.length - 1)] ?? [];
+        call++;
+        return { stream: simulateReadableStream({ chunks }) };
+      },
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "" }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: USAGE,
+        warnings: [],
+      }),
+    });
+    return { model, prompts };
+  }
+
+  const renderStep = (
+    investigation: Record<string, unknown>,
+    investigationId: string,
+    toolCallId: string
+  ) =>
+    toolCallStep(
+      "render_view",
+      { blocks: [{ type: "investigation", investigation }], investigationId },
+      toolCallId
+    );
+
+  it("revises the card the wake seeded, answers in its own message, and dedupes a replay", async () => {
+    const { store, calls } = fakeStore({
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    const { model, prompts } = recordingModel([
+      renderStep(concluded, "inv_seeded", "tc_verdict"),
+      textStep("The payload lost order.total — every attempt threw on the same line."),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    const turn = await harness.sendAction(INVESTIGATE);
+
+    // A real investigating turn: the model called a tool and it EXECUTED.
+    expect(executedTool(turn.chunks)).toBe(true);
+    expect(collectText(turn.chunks)).toContain("order.total");
+
+    // The card the wake opened is the card this revises — no second investigation
+    // for the same news, and no id the model got to choose.
+    expect(calls.findOpenInvestigation).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    const revision = calls.upsertInvestigationRevision[0] as {
+      id?: string;
+      chatId: string;
+      state: { outcome: string };
+    };
+    expect(revision.id).toBe("inv_seeded");
+    expect(revision.chatId).toBe("chat_investigate");
+    expect(revision.state.outcome).toBe("concluded");
+
+    // The prompt names that card and frames the findings as their own message.
+    const prompt = JSON.stringify(prompts);
+    expect(prompt).toContain("inv_seeded");
+    expect(prompt).toContain("pre-approved");
+    expect(prompt).toContain("its own message");
+
+    // Findings appended ONCE, under an id derived from the action, and WHOLE —
+    // the render_view part is what the panel rebuilds the card from.
+    expect(calls.appendMessage).toHaveLength(1);
+    const appended = calls.appendMessage[0] as { userId: string; message: UIMessage };
+    expect(appended.userId).toBe(CLIENT_DATA.userId);
+    expect(appended.message.id).toBe("investigate:watch:watch_1:fired:investigate");
+    expect(appended.message.parts.some((part) => part.type === "tool-render_view")).toBe(true);
+
+    // The same kick again (the sender retried): nothing runs, nothing is written.
+    await harness.sendAction(INVESTIGATE);
+    expect(calls.appendMessage).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+  });
+
+  it("opens a card of its own when the wake's seed never landed", async () => {
+    const { store, calls } = fakeStore();
+    const { model, prompts } = recordingModel([textStep("Couldn't get far — the trace is gone.")]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_seed",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    // No open card to find, so the turn seeded one (no id = create) and told the
+    // model to revise that.
+    expect(calls.findOpenInvestigation).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    expect((calls.upsertInvestigationRevision[0] as { id?: string }).id).toBeUndefined();
+    expect(JSON.stringify(prompts)).toContain("inv_fake");
+    expect(calls.appendMessage).toHaveLength(1);
+  });
+
+  it("settles a card the investigating turn left in progress", async () => {
+    const { store, calls } = fakeStore({
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    const { model } = recordingModel([
+      renderStep(inProgress, "inv_seeded", "tc_open"),
+      textStep("still looking"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_unsettled",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    // No onTurnComplete fires on an action, so the guard runs in the handler:
+    // the render, then the settle on top of it.
+    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    const settle = calls.upsertInvestigationRevision[1] as {
+      id?: string;
+      state: { outcome: string };
+    };
+    expect(settle.id).toBe("inv_seeded");
+    expect(settle.state.outcome).toBe("inconclusive");
+  });
+
+  it("says nothing when the kick carries no tenancy to scope a card with", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_unscoped",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    expect(calls.findOpenInvestigation).toHaveLength(0);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    expect(calls.appendMessage).toHaveLength(0);
   });
 });
 

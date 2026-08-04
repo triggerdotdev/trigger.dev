@@ -3,6 +3,7 @@ import {
   appendChatMessageOnce,
   createDashboardAgentDb,
   ensureChat,
+  findOpenInvestigationForChat,
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
@@ -15,6 +16,7 @@ import { locals, logger, tasks } from "@trigger.dev/sdk";
 import {
   createProviderRegistry,
   generateText,
+  readUIMessageStream,
   stepCountIs,
   streamText,
   type LanguageModel,
@@ -91,6 +93,15 @@ export interface DashboardAgentStore {
   upsertInvestigationRevision(
     args: Parameters<typeof upsertInvestigationRevision>[1]
   ): Promise<UpsertInvestigationResult>;
+  /**
+   * The freshest card this chat still has open, for the investigating turn a
+   * consented wake kicks off: it must revise the row the wake seeded, not open a
+   * second one. Safe because the wake's seed is committed before the investigate
+   * action is handled.
+   */
+  findOpenInvestigation(
+    args: Parameters<typeof findOpenInvestigationForChat>[1]
+  ): Promise<{ id: string; projectRef: string; environmentRef: string } | null>;
 }
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
@@ -181,6 +192,7 @@ function getStore(): DashboardAgentStore {
     persistTurn: (args) => persistTurn(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
+    findOpenInvestigation: (args) => findOpenInvestigationForChat(db, args),
   });
 }
 
@@ -331,9 +343,8 @@ import {
   forceSettledInvestigationState,
   formatTriggerUri,
   investigationStateSchema,
-  isWatchKind,
-  resolveWatchResult,
   watchResolutions,
+  watchResultNeedsAttention,
   type InvestigationState,
   type WatchObservedOutcome,
   type WatchResolution,
@@ -453,6 +464,79 @@ export const watchWakeActionSchema = z.object({
   investigateOnAttention: z.boolean().optional(),
 });
 
+/**
+ * The second half of a consented watch: CONDUCT the investigation the wake opened.
+ *
+ * Sent by the webapp — never by the watcher and never by a client — right after a
+ * delivered wake on a watch whose creator ticked "investigate attention outcomes",
+ * and only when the row's outcome is an attention one. It carries a freshly minted
+ * delegated token for the watch's initiating user in the record's METADATA (the
+ * agent's `clientData`), exactly the way the `in` proxy injects a turn's token, so
+ * this turn can read like any other.
+ *
+ * Why an action rather than a turn: nobody asked a question. The wake already
+ * landed as its own message, and the findings arrive as another one — the agent
+ * speaking twice, unprompted, which is exactly what the consent bought.
+ */
+export type WatchInvestigateAction = {
+  type: "watch.investigate";
+  /** `watch:{watchId}:{status}:investigate` — stable, so a redelivery is a no-op. */
+  id: string;
+  watchId: string;
+  identity: string;
+  spec: WatchSpec & { since?: string };
+  facts?: Record<string, unknown>;
+  resolution?: WatchResolution;
+  observed?: WatchObservedOutcome;
+  note?: string;
+  /**
+   * The card to revise, when the sender already knows it. Usually absent: the wake
+   * seeds the row inside the agent, so the id is resolved here (see
+   * `resolveInvestigationId`).
+   */
+  investigationId?: string;
+};
+
+// Same leniency as the wake schema, for the same reason: an investigate action
+// must never be lost to a spec field this version doesn't know about.
+export const watchInvestigateActionSchema = z.object({
+  type: z.literal("watch.investigate"),
+  id: z.string(),
+  watchId: z.string(),
+  identity: z.string().default(""),
+  spec: z
+    .object({
+      kind: z.string(),
+      note: z.string().optional(),
+      checkEveryMinutes: z.number().optional(),
+    })
+    .passthrough(),
+  facts: z.record(z.unknown()).default({}),
+  resolution: z.enum(watchResolutions).optional(),
+  observed: z.record(z.unknown()).optional(),
+  note: z.string().optional(),
+  investigationId: z.string().optional(),
+});
+
+/**
+ * Every action the agent accepts. Both arrive the same way — one record on the
+ * chat's `in` stream with `trigger: "action"` — and the union is the whole
+ * vocabulary: anything else fails to parse and never reaches a handler.
+ *
+ * The trust boundary is the STREAM, not the schema: `.in` records are written with
+ * an environment secret key (the watcher) or from the dashboard's own server-side
+ * hop (the investigate kick), and the dashboard's `in` proxy refuses to forward a
+ * browser-supplied `trigger: "action"` at all. So the model can describe an action
+ * but can never place one — and a forged record would still arrive with no valid
+ * delegated token, leaving every read tool failed closed.
+ */
+export const dashboardAgentActionSchema = z.union([
+  watchWakeActionSchema,
+  watchInvestigateActionSchema,
+]);
+
+export type DashboardAgentAction = WatchWakeAction | WatchInvestigateAction;
+
 // The wake's own line. How a wake is narrated (once, briefly, outcome + facts +
 // one suggestion) lives in the managed system prompt's "Watches" section, which
 // is the cached block — this is only the per-wake framing.
@@ -542,19 +626,18 @@ function wakeOutcome(action: WatchWakeAction): string {
  */
 export function wakeStartsInvestigation(action: WatchWakeAction): boolean {
   if (action.investigateOnAttention !== true) return false;
-  const kind = action.spec.kind;
-  // A kind this build doesn't know has no mapping, so it has no category either.
-  if (!isWatchKind(kind)) return false;
-  const { category } = resolveWatchResult({
-    kind,
+  return watchResultNeedsAttention({
+    kind: action.spec.kind,
     resolution: wakeResolution(action),
     outcome: action.observed as WatchObservedOutcome | undefined,
   });
-  return category === "attention";
 }
 
+/** The watched thing, as either action carries it. */
+type WatchedSubject = { spec: WatchWakeAction["spec"]; identity: string };
+
 /** The thing being watched, for the seeded investigation's own words. */
-function wakeSubject(action: WatchWakeAction): string {
+function wakeSubject(action: WatchedSubject): string {
   const spec = action.spec as Record<string, unknown>;
   for (const key of ["runId", "queue", "fingerprint", "report"]) {
     const value = spec[key];
@@ -565,9 +648,10 @@ function wakeSubject(action: WatchWakeAction): string {
 
 // The wake's own line when the investigation is pre-approved. It states a fact
 // about this turn — the investigation IS being opened here — so the model can't
-// turn it into an offer, and the findings are explicitly somebody else's message.
+// turn it into an offer, and the findings are explicitly the NEXT message's, which
+// this same agent sends itself, without being asked.
 function investigationInstruction(action: WatchWakeAction): string {
-  return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them — say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: the findings arrive later, in their own message with the investigation card. Subject: ${wakeSubject(
+  return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them — say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: you are conducting it right now and the findings land in your very next message, with the investigation card. Subject: ${wakeSubject(
     action
   )}.`;
 }
@@ -578,7 +662,7 @@ function investigationInstruction(action: WatchWakeAction): string {
  * Needs the tenancy from the wake's metadata; without it there is no link.
  */
 function wakeSubjectLink(
-  action: WatchWakeAction,
+  action: WatchedSubject,
   tenancy: { projectRef?: string; environmentId?: string } | undefined
 ): string | undefined {
   const projectRef = tenancy?.projectRef;
@@ -797,12 +881,255 @@ async function narrateWatchWake(args: {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Conducting the consented investigation
+ * ------------------------------------------------------------------ */
+
+/**
+ * The turn's tool set: the read tools built from the delegated token this record's
+ * metadata carried, plus the one narrow write the investigation executor needs.
+ *
+ * Shared by the agent's `tools` hook and the investigating turn below, so a
+ * consented investigation reads with exactly the tools — and exactly the scope — a
+ * user-driven one does.
+ */
+function buildTurnTools(
+  chatId: string,
+  clientData: z.infer<typeof clientDataSchema> | undefined
+): ToolSet {
+  return (
+    locals.get(dashboardAgentToolsKey) ??
+    buildDashboardAgentTools({
+      ...(clientData ?? {}),
+      chatId,
+      investigations: {
+        // Every committed revision is recorded here too, so the settle guard knows
+        // whether the turn left a card running.
+        upsert: async (params) => {
+          const result = await getStore().upsertInvestigationRevision({ ...params, chatId });
+          if (result.ok) trackInvestigationOutcome(chatId, result.id, params);
+          return result;
+        },
+      },
+    })
+  );
+}
+
+// How far back the investigate action will look for the card the wake seeded. Wide
+// enough to cover a slow wake turn (and a run that had to boot), tight enough that
+// an older abandoned card is never mistaken for this watch's.
+const CONSENTED_INVESTIGATION_LOOKBACK_MS = 30 * 60 * 1000;
+
+/**
+ * The card this turn must revise.
+ *
+ * Preference order, and the reason for it: the sender's id when it has one; then
+ * the freshest card this chat still has open, which IS the one the wake seeded
+ * (records on `.in` are handled in order, so the seed is committed before this
+ * action is); and finally a fresh seed of our own, for the wake whose seed failed.
+ * The point of all three is the same — ONE card per consented outcome, never a
+ * second one for the same news.
+ */
+async function resolveInvestigationId(args: {
+  action: WatchInvestigateAction;
+  chatId: string;
+  projectRef: string;
+  environmentRef: string;
+}): Promise<string | undefined> {
+  const { action, chatId, projectRef, environmentRef } = args;
+  if (action.investigationId) return action.investigationId;
+
+  const store = getStore();
+  const open = await store.findOpenInvestigation({
+    chatId,
+    createdAfter: new Date(Date.now() - CONSENTED_INVESTIGATION_LOOKBACK_MS),
+  });
+  if (open) return open.id;
+
+  const seeded = await store.upsertInvestigationRevision({
+    chatId,
+    projectRef,
+    environmentRef,
+    state: {
+      outcome: "in_progress",
+      severity: "warn",
+      confidence: "low",
+      title: `Investigating ${wakeSubject(action)}`,
+      headline: `The watch on ${wakeSubject(action)} resolved to something that needs attention. Looking into why.`,
+      hypotheses: [],
+      evidence: [],
+      startedAt: new Date().toISOString(),
+    },
+  });
+  return seeded.ok ? seeded.id : undefined;
+}
+
+// The investigating turn's own framing. The protocol itself (gather, open, one
+// test round, verdict) lives in the managed system prompt's Investigations
+// section, which is the cached block — this only says which investigation, about
+// what, and that nobody asked.
+function investigatePrompt(args: {
+  action: WatchInvestigateAction;
+  investigationId: string;
+  tenancy: { projectRef?: string; environmentId?: string };
+}): string {
+  const { action, investigationId } = args;
+  const subjectLink = wakeSubjectLink(action, args.tenancy);
+  return [
+    `Conduct the investigation the user pre-approved when they created this watch, right now, and finish it in this message. Nobody asked a question and nobody is waiting on a reply: your wake message has already told them the watch resolved and that you started looking into why, so this is the follow-up you promised — write it as its own message, and never re-narrate the wake.`,
+    `The investigation is ALREADY OPEN as \`${investigationId}\`. Pass that exact investigationId to every render_view you make, so you revise that one card instead of opening a second. Your last tool call must be a render_view of it carrying a terminal outcome (concluded or inconclusive) — an investigation left at in_progress is an unfinished answer.`,
+    `Subject: ${wakeSubject(action)} (${action.spec.kind}${
+      action.identity ? `, ${action.identity}` : ""
+    }).`,
+    action.note ? `Why the user asked to be told: ${action.note}` : undefined,
+    action.observed
+      ? `What the resolving check observed:\n${JSON.stringify(action.observed, null, 2)}`
+      : undefined,
+    action.facts && Object.keys(action.facts).length > 0
+      ? `Facts from that check — start from these rather than re-reading them:\n${JSON.stringify(
+          action.facts,
+          null,
+          2
+        )}`
+      : undefined,
+    subjectLink
+      ? `When you point at the watched object, link it: ${subjectLink} — use this exact markdown link, not a bare name.`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Conduct the consented investigation, exactly once, as the agent's own message.
+ *
+ * A real turn in everything but name: the tools are built from the delegated token
+ * the kick carried in this record's metadata, the investigation protocol applies,
+ * and the model has the same step budget `run()` gives it. What it is NOT is a
+ * turn in the SDK's sense — no `onTurnComplete` fires — so the settle guard is run
+ * here by hand, and the message is appended id-deduped, same as the wake.
+ *
+ * Independence is binding (§6): the wake was delivered long before this, so
+ * everything here is best-effort and nothing it does can retry or invalidate it.
+ */
+async function conductWatchInvestigation(args: {
+  action: WatchInvestigateAction;
+  chatId: string;
+  clientData: z.infer<typeof clientDataSchema> | undefined;
+  uiMessages: UIMessage[];
+  messages: ModelMessage[];
+}): Promise<void> {
+  const { action, chatId, clientData, uiMessages } = args;
+  const messageId = `investigate:${action.id}`;
+
+  // Dedup on the action id, against the durable transcript — a redelivered kick
+  // must not investigate (or answer) twice.
+  if (uiMessages.some((message) => message.id === messageId)) {
+    logger.info("dashboard-agent watch investigation already ran; skipping", {
+      chatId,
+      watchId: action.watchId,
+      actionId: action.id,
+    });
+    return;
+  }
+
+  const projectRef = clientData?.projectRef;
+  const environmentRef = clientData?.environmentId;
+  if (!projectRef || !environmentRef) {
+    // An investigation is answered on a card, and a card can't be scoped without
+    // the tenancy. Saying nothing beats a findings message with nowhere to render.
+    logger.error("dashboard-agent watch investigation can't be scoped; skipping", {
+      chatId,
+      watchId: action.watchId,
+    });
+    return;
+  }
+
+  const investigationId = await resolveInvestigationId({
+    action,
+    chatId,
+    projectRef,
+    environmentRef,
+  });
+  if (!investigationId) {
+    logger.error("dashboard-agent watch investigation has no card to revise; skipping", {
+      chatId,
+      watchId: action.watchId,
+    });
+    return;
+  }
+
+  const store = getStore();
+  const resolved = await getSystemPrompt(modeFor(clientData));
+  const result = streamText({
+    model:
+      locals.get(dashboardAgentModelKey) ??
+      registry.languageModel(
+        (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
+      ),
+    system: resolved.text,
+    tools: buildTurnTools(chatId, clientData),
+    messages: [
+      ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
+      {
+        role: "user" as const,
+        content: investigatePrompt({
+          action,
+          investigationId,
+          tenancy: { projectRef, environmentId: environmentRef },
+        }),
+      },
+    ],
+    // The same budget a turn gets: four tool phases plus the answer.
+    stopWhen: stepCountIs(10),
+    ...resolved.toAISDKTelemetry(),
+  });
+
+  try {
+    // Tee'd, because the findings message has to be persisted WHOLE: the panel
+    // renders the investigation card from the `render_view` tool part, so a
+    // text-only copy (what the wake narration gets away with) would lose the card
+    // on the next page load. One branch streams to the panel, the other reduces the
+    // same chunks back into the UIMessage a turn would have persisted.
+    const [toPanel, toTranscript] = result
+      .toUIMessageStream({ generateMessageId: () => messageId })
+      .tee();
+    let response: UIMessage | undefined;
+    const reduced = (async () => {
+      for await (const snapshot of readUIMessageStream({ stream: toTranscript })) {
+        response = snapshot;
+      }
+    })();
+    await chat.pipe(toPanel);
+    await reduced;
+
+    if (response) {
+      const message: UIMessage = { ...response, id: messageId, role: "assistant" };
+      chat.history.set([...uiMessages, message]);
+      const userId = clientData?.userId;
+      if (userId) {
+        await store.appendMessage({ chatId, userId, message });
+      } else {
+        logger.error("dashboard-agent watch investigation has no userId; skipping the append", {
+          chatId,
+        });
+      }
+    }
+  } finally {
+    // No `onTurnComplete` on an action, so the guard runs here: a card the model
+    // left at in_progress — because it ran out of steps, or because this threw —
+    // is a spinner nothing else will ever stop.
+    await settleOpenInvestigations(store, chatId);
+  }
+}
+
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
-  // The only action the agent accepts: a watch wake, appended by the watcher
-  // task. Actions are not turns — see `narrateWatchWake`.
-  actionSchema: watchWakeActionSchema,
+  // The two actions the agent accepts: a watch wake (appended by the watcher task)
+  // and the investigate kick that follows a consented one (sent by the webapp).
+  // Actions are not turns — see `narrateWatchWake`.
+  actionSchema: dashboardAgentActionSchema,
   // Latency levers come next (Head Start, prompt caching, AI Prompts). Scaffold
   // keeps a short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
@@ -814,21 +1141,7 @@ export const dashboardAgent = chat.agent({
   // agent's datastore: the store is reached here (where the chat id is known) and
   // handed to the tools as a single narrow write, so `tools.ts` stays free of the
   // database package.
-  tools: async ({ chatId, clientData }) =>
-    locals.get(dashboardAgentToolsKey) ??
-    buildDashboardAgentTools({
-      ...(clientData ?? {}),
-      chatId,
-      investigations: {
-        // Every committed revision is also recorded here, so `onTurnComplete`
-        // knows whether the turn left a card running (the settle guard above).
-        upsert: async (params) => {
-          const result = await getStore().upsertInvestigationRevision({ ...params, chatId });
-          if (result.ok) trackInvestigationOutcome(chatId, result.id, params);
-          return result;
-        },
-      },
-    }),
+  tools: async ({ chatId, clientData }) => buildTurnTools(chatId, clientData),
 
   onBoot: async () => {
     // Establish the store (and, in production, its connection pool) once.
@@ -850,17 +1163,18 @@ export const dashboardAgent = chat.agent({
     });
   },
 
-  // A watch fired or expired. The narration is one message, deduped on the
-  // action id, and it returns void: the stream is piped inside so the final
-  // text can be written to the history and the read-model.
+  // Two things a watch can ask of the agent, in this order: narrate the outcome,
+  // then — when the user consented to it — conduct the investigation that outcome
+  // opened. Each is one message, deduped on the action id, and each returns void:
+  // the stream is piped inside so the response can be written to the history and
+  // the read-model.
   onAction: async ({ action, chatId, clientData, uiMessages, messages }) => {
-    await narrateWatchWake({
-      action: action as WatchWakeAction,
-      chatId,
-      clientData,
-      uiMessages,
-      messages,
-    });
+    const typed = action as DashboardAgentAction;
+    if (typed.type === "watch.investigate") {
+      await conductWatchInvestigation({ action: typed, chatId, clientData, uiMessages, messages });
+      return;
+    }
+    await narrateWatchWake({ action: typed, chatId, clientData, uiMessages, messages });
   },
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {

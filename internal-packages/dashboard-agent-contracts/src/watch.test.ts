@@ -16,6 +16,7 @@ import {
   watchResolutionSchema,
   watchResolutionToWireStatus,
   watchResolutions,
+  watchResultNeedsAttention,
   watchRunDisposition,
   watchSpecSchema,
   watchStatusSchema,
@@ -350,6 +351,46 @@ describe("the queue pack (TRI-12890)", () => {
         headlineKey: "queue_gone",
       });
     }
+  });
+
+  // The shared predicate behind the "investigate attention outcomes" consent: the
+  // agent's wake and the webapp's kick both ask this, so neither can invent its own
+  // idea of bad news.
+  it("answers the attention question for every surface, and never for an unknown kind", () => {
+    expect(
+      watchResultNeedsAttention({ kind: "backlog_drain", resolution: "window_completed" })
+    ).toBe(true);
+    expect(watchResultNeedsAttention({ kind: "backlog_drain", resolution: "condition_met" })).toBe(
+      false
+    );
+    // Refined by the observed outcome, exactly as the mapping is.
+    expect(
+      watchResultNeedsAttention({
+        kind: "run_finished",
+        resolution: "condition_met",
+        outcome: {
+          kind: "run_finished",
+          verified: true,
+          finalStatus: "COMPLETED_WITH_ERRORS",
+          durationMs: 4200,
+        },
+      })
+    ).toBe(true);
+    expect(
+      watchResultNeedsAttention({
+        kind: "run_finished",
+        resolution: "condition_met",
+        outcome: {
+          kind: "run_finished",
+          verified: true,
+          finalStatus: "COMPLETED_SUCCESSFULLY",
+          durationMs: 4200,
+        },
+      })
+    ).toBe(false);
+    expect(watchResultNeedsAttention({ kind: "not_a_kind", resolution: "condition_met" })).toBe(
+      false
+    );
   });
 });
 

@@ -142,6 +142,14 @@ export type WatchDeliveryDeps = {
    * the wake in the chat is the delivery that matters.
    */
   notifyFired: (watchId: string) => Promise<void>;
+  /**
+   * Tell the webapp a consented watch has been woken, so the agent can be sent off
+   * to conduct the investigation the wake announced. The webapp owns that: the
+   * investigating turn needs a delegated token for the watch's user, which only it
+   * can mint. Best-effort for the same reason as `notifyFired` — the wake is already
+   * delivered by the time this runs, and nothing here may retry or invalidate it.
+   */
+  notifyInvestigate: (watchId: string) => Promise<void>;
   now?: () => Date;
 };
 
@@ -269,9 +277,26 @@ async function postCheck(
  * the alert is better than losing the wake.
  */
 async function postFired(payload: WatchTickPayload): Promise<void> {
+  await postWatchCallback(payload, "fired");
+}
+
+/**
+ * Tell the webapp a consented watch has been woken, so it can send the agent off to
+ * conduct the investigation. Same token, same "the row is the authority" contract:
+ * this call says only that the wake is delivered, and the endpoint decides whether
+ * the outcome is one the consent covers.
+ */
+async function postInvestigate(payload: WatchTickPayload): Promise<void> {
+  await postWatchCallback(payload, "investigate");
+}
+
+async function postWatchCallback(
+  payload: WatchTickPayload,
+  path: "fired" | "investigate"
+): Promise<void> {
   const origin = payload.apiOrigin.replace(/\/$/, "");
   const response = await fetch(
-    `${origin}/api/v1/dashboard-agent/watches/${encodeURIComponent(payload.watchId)}/fired`,
+    `${origin}/api/v1/dashboard-agent/watches/${encodeURIComponent(payload.watchId)}/${path}`,
     {
       method: "POST",
       headers: {
@@ -284,7 +309,7 @@ async function postFired(payload: WatchTickPayload): Promise<void> {
   );
 
   if (!response.ok) {
-    throw new Error(`the fired callback returned ${response.status}`);
+    throw new Error(`the ${path} callback returned ${response.status}`);
   }
 }
 
@@ -410,6 +435,21 @@ async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boole
       await deps.notifyFired(claimed.id);
     } catch (error) {
       logger.warn("dashboard-agent watch: the fired notification failed", {
+        watchId: claimed.id,
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  // The consented investigation, on any resolved outcome: whether THIS one is an
+  // attention outcome is the webapp's call (it has the contracts mapping and the
+  // row), so the tick only reports that a consented watch has been woken. Outside
+  // the wake's failure path, like the alerts above.
+  if (claimed.investigateOnAttention) {
+    try {
+      await deps.notifyInvestigate(claimed.id);
+    } catch (error) {
+      logger.warn("dashboard-agent watch: the investigate kick failed", {
         watchId: claimed.id,
         error: (error as Error).message,
       });
@@ -726,6 +766,7 @@ export const watchTick = task({
       fetch: (input, init) => fetch(input, init),
       deliver: appendWakeToSession,
       notifyFired: () => postFired(payload),
+      notifyInvestigate: () => postInvestigate(payload),
       reschedule: (next, options) =>
         tasks.trigger<typeof watchTick>("dashboard-agent-watch", next, options),
     });

@@ -215,6 +215,7 @@ function deps(parts: {
   deliver: WatchTickDeps["deliver"];
   reschedule: WatchTickDeps["reschedule"];
   notifyFired?: WatchTickDeps["notifyFired"];
+  notifyInvestigate?: WatchTickDeps["notifyInvestigate"];
   now?: Date;
 }): WatchTickDeps {
   return {
@@ -223,6 +224,7 @@ function deps(parts: {
     deliver: parts.deliver,
     reschedule: parts.reschedule,
     notifyFired: parts.notifyFired ?? (async () => {}),
+    notifyInvestigate: parts.notifyInvestigate ?? (async () => {}),
     now: () => parts.now ?? NOW,
   };
 }
@@ -302,17 +304,101 @@ describe("runWatchTick", () => {
     expect(notified).toEqual(["watch_1"]);
   });
 
-  // The consent lives on the row and travels in the wake: the tick never acts on
-  // it (an investigation is the wake turn's business, §6), it only carries it.
-  it("the wake carries the row's investigate-on-attention consent", async () => {
+  // The consent lives on the row and travels in the wake. The tick never judges it
+  // (whether THIS outcome is an attention one is the webapp's call, §6) — it carries
+  // the flag and, after the wake, tells the webapp a consented watch was woken.
+  it("the wake carries the row's investigate-on-attention consent, and kicks the investigation", async () => {
     const { store } = fakeStore(watchRow({ investigateOnAttention: true }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
     const { appends, deliver } = fakeDeliver();
     const { reschedule } = fakeReschedule();
+    const kicked: string[] = [];
 
-    await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+    await runWatchTick(
+      PAYLOAD,
+      deps({
+        store,
+        fetch,
+        deliver,
+        reschedule,
+        notifyInvestigate: async (watchId) => void kicked.push(watchId),
+      })
+    );
 
     expect(appends[0]?.action.investigateOnAttention).toBe(true);
+    expect(kicked).toEqual(["watch_1"]);
+  });
+
+  it("kicks no investigation without the consent", async () => {
+    const { store } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const kicked: string[] = [];
+
+    await runWatchTick(
+      PAYLOAD,
+      deps({
+        store,
+        fetch,
+        deliver,
+        reschedule,
+        notifyInvestigate: async (watchId) => void kicked.push(watchId),
+      })
+    );
+
+    expect(kicked).toEqual([]);
+  });
+
+  // The wake is already delivered and marked by the time the kick runs — losing the
+  // follow-up is bad, losing or re-delivering the wake is worse.
+  it("a failing investigate kick does not fail the tick", async () => {
+    const { store, row } = fakeStore(watchRow({ investigateOnAttention: true }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(
+      PAYLOAD,
+      deps({
+        store,
+        fetch,
+        deliver,
+        reschedule,
+        notifyInvestigate: async () => {
+          throw new Error("the investigate callback returned 500");
+        },
+      })
+    );
+
+    expect(result).toEqual({ outcome: "fired" });
+    expect(appends).toHaveLength(1);
+    expect(row.deliveryStatus).toBe("delivered");
+  });
+
+  // An expiry can be an attention outcome too (a backlog that never drained), so the
+  // kick is NOT gated on `fired` the way the alert is.
+  it("kicks the investigation on an expiry as well", async () => {
+    const { store } = fakeStore(watchRow({ tickCount: 3, investigateOnAttention: true }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "pending" } }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const kicked: string[] = [];
+
+    const result = await runWatchTick(
+      payloadFor(4),
+      deps({
+        store,
+        fetch,
+        deliver,
+        reschedule,
+        notifyInvestigate: async (watchId) => void kicked.push(watchId),
+        now: new Date("2026-01-01T13:00:01.000Z"),
+      })
+    );
+
+    expect(result.outcome).toBe("expired");
+    expect(kicked).toEqual(["watch_1"]);
   });
 
   it("a failing fired notification does not fail the tick", async () => {

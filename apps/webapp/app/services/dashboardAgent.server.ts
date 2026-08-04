@@ -55,6 +55,21 @@ export function mintDashboardAgentUserActorToken(
   });
 }
 
+// The API's env routes key on the canonical env name (dev/staging/prod/preview),
+// not the dashboard URL slug (e.g. staging's slug is "stg"). Anything handing the
+// agent an environment maps from the type through here, so a tool built from an
+// injected token and a tool built from a kicked action address the same place.
+const ENV_NAME_BY_TYPE: Record<string, string> = {
+  DEVELOPMENT: "dev",
+  STAGING: "staging",
+  PRODUCTION: "prod",
+  PREVIEW: "preview",
+};
+
+export function dashboardAgentEnvironmentName(type: string | undefined): string | undefined {
+  return type ? ENV_NAME_BY_TYPE[type] : undefined;
+}
+
 // The session is created in whatever env DASHBOARD_AGENT_SECRET_KEY belongs to.
 // baseURL is the Trigger instance this webapp runs against (its own API origin).
 function dashboardAgentConfig() {

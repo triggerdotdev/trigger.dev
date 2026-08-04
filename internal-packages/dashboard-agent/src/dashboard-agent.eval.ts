@@ -65,6 +65,7 @@ const NOOP_STORE: DashboardAgentStore = {
     revision: 0,
     created: true,
   }),
+  findOpenInvestigation: async () => null,
 };
 
 // Realistic, fixed tool results so the model has something concrete to act on

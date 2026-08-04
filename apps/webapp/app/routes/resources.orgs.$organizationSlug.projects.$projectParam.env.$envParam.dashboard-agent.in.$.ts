@@ -3,6 +3,7 @@ import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentEnvironmentName,
   mintDashboardAgentUserActorToken,
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
@@ -36,17 +37,6 @@ const FORWARDED_HEADERS = [
   "x-trigger-branch",
 ];
 
-// The API's env routes key on the canonical env name (dev/staging/prod/preview),
-// not the dashboard URL slug (e.g. staging's slug is "stg"). Map from the env
-// type so the agent's tools address the right environment. Preview branches
-// aren't threaded yet (they'd need the branch on every tool call) — a follow-up.
-const ENV_NAME_BY_TYPE: Record<string, string> = {
-  DEVELOPMENT: "dev",
-  STAGING: "staging",
-  PRODUCTION: "prod",
-  PREVIEW: "preview",
-};
-
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
@@ -79,7 +69,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     where: { projectId: project.id, slug: envParam },
     select: { id: true, type: true },
   });
-  const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
+  const environmentName = dashboardAgentEnvironmentName(runtimeEnv?.type);
 
   // When the project has a connected GitHub repo, resolve a signed source-archive
   // pointer (code mode). Null otherwise -> the agent stays in assistant mode.
@@ -91,8 +81,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const parsed = JSON.parse(raw) as {
       kind?: string;
-      payload?: { metadata?: Record<string, unknown> };
+      payload?: { trigger?: string; metadata?: Record<string, unknown> };
     };
+    // Actions are server business, not the browser's. A wake comes from the
+    // watcher task and the investigate kick from our own server hop, both writing
+    // to `.in` with an environment key — nothing arriving through this proxy may
+    // claim to be one. Refusing here (rather than letting the agent's action schema
+    // sort it out) keeps "an action was placed by the server" a real boundary: the
+    // proxy is the one path a browser can reach `.in` through, and it is also where
+    // a delegated token gets minted.
+    if (parsed.payload?.trigger === "action") {
+      return json({ error: "Not allowed" }, { status: 403 });
+    }
     if (parsed.kind === "message" && parsed.payload) {
       parsed.payload.metadata = {
         ...(parsed.payload.metadata ?? {}),

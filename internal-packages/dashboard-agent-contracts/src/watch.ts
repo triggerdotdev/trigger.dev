@@ -626,6 +626,30 @@ export function resolveWatchResult(args: {
   return RESOLVED_RESULTS[kind][resolution];
 }
 
+/**
+ * Whether a resolved watch is an ATTENTION outcome — the only outcomes the
+ * "investigate attention outcomes" consent covers (§6).
+ *
+ * The single place that question is answered, for every surface: the agent's wake
+ * and the webapp's kick both call this, so neither can substitute its own
+ * judgement about what counts as bad news. Lenient on `kind` on purpose — a kind
+ * this build doesn't know has no mapping, so it has no category either, and an
+ * unknown kind never starts anything.
+ */
+export function watchResultNeedsAttention(args: {
+  kind: string;
+  resolution: WatchResolution;
+  outcome?: WatchObservedOutcome | null;
+}): boolean {
+  if (!isWatchKind(args.kind)) return false;
+  const { category } = resolveWatchResult({
+    kind: args.kind,
+    resolution: args.resolution,
+    outcome: args.outcome,
+  });
+  return category === "attention";
+}
+
 /* ------------------------------------------------------------------ *
  * The configuration card — what the dashboard's `Watch…` entry offers
  * ------------------------------------------------------------------ */
