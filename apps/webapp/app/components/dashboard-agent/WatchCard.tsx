@@ -143,22 +143,26 @@ export function WatchCard({
       icon={<EyeIcon className="size-3.5 shrink-0 text-text-dimmed" />}
       actions={
         <>
+          {/* One confirm, expanded or not — an expanded card is submitted as
+              shown, there is no separate "Done" collapse step. */}
           <Button
             variant="primary/small"
             disabled={blocked}
             LeadingIcon={pending ? ButtonSpinner : undefined}
             onClick={onSubmit}
           >
-            {pending ? "Starting…" : "Start watching"}
+            {pending ? "Starting…" : "Watch"}
           </Button>
-          <Button
-            variant="minimal/small"
-            disabled={pending}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded ? "Done" : "Customize"}
-          </Button>
+          {!expanded ? (
+            <Button
+              variant="minimal/small"
+              disabled={pending}
+              aria-expanded={expanded}
+              onClick={() => setExpanded(true)}
+            >
+              Customize
+            </Button>
+          ) : null}
           {onCancel ? (
             <Button variant="minimal/small" disabled={pending} onClick={onCancel}>
               Cancel
