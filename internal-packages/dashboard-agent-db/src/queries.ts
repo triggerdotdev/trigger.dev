@@ -587,6 +587,87 @@ export async function listChatIdsWithOpenInvestigations(
   return new Set(rows.map((row) => row.chatId));
 }
 
+/**
+ * #12 Sweep: investigations still `in_progress` long after any turn could still be
+ * working on them, oldest first.
+ *
+ * The turn that opens a card is supposed to settle it — the agent force-settles
+ * whatever it left open when the turn completes. That leaves two rows nothing
+ * settles: a turn that died before its own settle ran, and a card opened for a
+ * LATER turn to finish (a wake's narration does exactly this) whose follow-up never
+ * came. Either way the user watches a spinner forever, so the caller settles these
+ * to `inconclusive`.
+ *
+ * `olderThan` is on `updated_at`, which every revision bumps, so a card a live turn
+ * is still writing to keeps moving out of the window.
+ *
+ * Deleted chats are excluded — there is no card to unstick in a conversation the
+ * user can no longer open.
+ */
+export async function listStaleOpenInvestigations(
+  db: DashboardAgentDb,
+  params: { olderThan: Date; limit?: number }
+): Promise<Investigation[]> {
+  const rows = await db
+    .select({ investigation: investigations })
+    .from(investigations)
+    .innerJoin(chats, eq(chats.id, investigations.chatId))
+    .where(
+      and(
+        sql`${investigations.state}->>'outcome' = 'in_progress'`,
+        isNull(chats.deletedAt),
+        // A string bind: postgres-js won't serialize a Date into a raw fragment.
+        sql`${investigations.updatedAt} <= ${params.olderThan.toISOString()}::timestamptz`
+      )
+    )
+    .orderBy(investigations.updatedAt)
+    .limit(params.limit ?? 100);
+
+  return rows.map((row) => row.investigation);
+}
+
+/**
+ * #12 Settle one investigation as `inconclusive` — the between-turns backstop for
+ * {@link listStaleOpenInvestigations}. Returns false if the row was no longer
+ * `in_progress`.
+ *
+ * One statement, so it can't fight a live revision: the merge, the `revision + 1`
+ * and the `in_progress` guard are evaluated together, and a turn that concludes the
+ * card first simply wins (this then updates nothing). The state is rewritten in
+ * SQL rather than read-modify-written for the same reason — there is no window
+ * between the read and the write to lose a concurrent revision in.
+ *
+ * The merge mirrors the agent's own `forceSettledInvestigationState`: `progress`
+ * and `remediation` are dropped (an inconclusive card may not carry a fix, and the
+ * schema rejects one), confidence falls to `low`, and `note` is appended to the
+ * headline. Everything established — hypotheses, evidence, `checkNext` — is kept.
+ */
+export async function settleInvestigationAsInconclusive(
+  db: DashboardAgentDb,
+  params: { id: string; note: string }
+): Promise<boolean> {
+  const rows = await db
+    .update(investigations)
+    .set({
+      state: sql`(${investigations.state} - 'progress' - 'remediation') || jsonb_build_object(
+        'outcome', 'inconclusive',
+        'confidence', 'low',
+        'headline', btrim(coalesce(${investigations.state}->>'headline', '') || ' ' || ${params.note})
+      )`,
+      revision: sql`${investigations.revision} + 1`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(investigations.id, params.id),
+        sql`${investigations.state}->>'outcome' = 'in_progress'`
+      )
+    )
+    .returning({ id: investigations.id });
+
+  return rows.length > 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Watches
  * ------------------------------------------------------------------ */

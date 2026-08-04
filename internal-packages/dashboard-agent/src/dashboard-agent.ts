@@ -141,29 +141,6 @@ function trackInvestigationOutcome(
 }
 
 /**
- * The honest ending for a card nobody concluded.
- *
- * `inconclusive` is an answer (§4.1: there is no "cancelled" and no "expired"),
- * so the forced settle keeps every fact the turn established — the evidence and
- * the hypotheses say what was checked — and only stops the card claiming work is
- * still happening. It invents nothing: no cause, and no fix (which the schema
- * would reject on an inconclusive card anyway).
- */
-export const UNSETTLED_INVESTIGATION_NOTE =
-  "The investigation didn't conclude within this turn, so the cause isn't established. What's below is what was checked.";
-
-export function forceSettledInvestigationState(state: InvestigationState): InvestigationState {
-  const { progress: _progress, remediation: _remediation, ...rest } = state;
-  return {
-    ...rest,
-    outcome: "inconclusive",
-    // Nothing was settled, so the card can't keep claiming it was.
-    confidence: "low",
-    headline: `${state.headline.trim()} ${UNSETTLED_INVESTIGATION_NOTE}`.trim(),
-  };
-}
-
-/**
  * Force-settle whatever this turn left `in_progress`, as one more revision on
  * the same investigation (identity is fixed, revisions only climb).
  *
@@ -351,6 +328,7 @@ async function generateAndSaveTitle(
 
 import {
   agentPageContextSchema,
+  forceSettledInvestigationState,
   formatTriggerUri,
   investigationStateSchema,
   isWatchKind,

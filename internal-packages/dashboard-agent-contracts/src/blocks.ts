@@ -585,6 +585,33 @@ export const investigationStateInputSchema = investigationStateSchemaWith(
 );
 
 /**
+ * The honest ending for a card nobody concluded.
+ *
+ * `inconclusive` is an answer (§4.1: there is no "cancelled" and no "expired"),
+ * so a forced settle keeps every fact that was established — the evidence and the
+ * hypotheses say what was checked — and only stops the card claiming work is still
+ * happening. It invents nothing: no cause, and no fix (which the schema would
+ * reject on an inconclusive card anyway).
+ *
+ * It lives here, not in the agent, because both settles use it: the turn's own
+ * (in-process, on the state it holds) and the webapp's between-turns sweep (in
+ * SQL, on a row whose turn never came back).
+ */
+export const UNSETTLED_INVESTIGATION_NOTE =
+  "The investigation didn't conclude within this turn, so the cause isn't established. What's below is what was checked.";
+
+export function forceSettledInvestigationState(state: InvestigationState): InvestigationState {
+  const { progress: _progress, remediation: _remediation, ...rest } = state;
+  return {
+    ...rest,
+    outcome: "inconclusive",
+    // Nothing was settled, so the card can't keep claiming it was.
+    confidence: "low",
+    headline: `${state.headline.trim()} ${UNSETTLED_INVESTIGATION_NOTE}`.trim(),
+  };
+}
+
+/**
  * The card's typed next actions — and the one thing on an investigation block the
  * model does NOT write.
  *

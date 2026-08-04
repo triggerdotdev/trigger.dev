@@ -11,6 +11,7 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
+import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
 import { sweepDashboardAgentWatches } from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
 import {
@@ -147,9 +148,11 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      // The dashboard agent's watch backstop: expire what is overdue (through the
-      // same authorization a check goes through) and re-deliver wakes that never
-      // reached their chat. See dashboardAgentWatchSweep.server.ts.
+      // The dashboard agent's backstops, on one cron: expire what is overdue
+      // (through the same authorization a check goes through), re-deliver wakes that
+      // never reached their chat, and settle investigation cards whose turn never
+      // came back. See dashboardAgentWatchSweep.server.ts and
+      // dashboardAgentInvestigationSweep.server.ts.
       "dashboardAgent.sweepWatches": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
@@ -218,10 +221,30 @@ function initializeWorker() {
         await service.process(payload.bulkActionId);
       },
       "dashboardAgent.sweepWatches": async () => {
-        const result = await sweepDashboardAgentWatches();
-        if (result.overdue > 0 || result.undelivered > 0) {
-          logger.debug("Dashboard agent watch sweep", result);
+        // Independent backstops: a failing watch sweep must not stop stuck
+        // investigation cards from being settled, so each runs on its own and the
+        // first failure is rethrown once both have had their turn.
+        let failure: unknown;
+
+        try {
+          const watches = await sweepDashboardAgentWatches();
+          if (watches.overdue > 0 || watches.undelivered > 0) {
+            logger.debug("Dashboard agent watch sweep", watches);
+          }
+        } catch (error) {
+          failure = error;
         }
+
+        try {
+          const investigations = await sweepDashboardAgentInvestigations();
+          if (investigations.stale > 0) {
+            logger.debug("Dashboard agent investigation sweep", investigations);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        if (failure) throw failure;
       },
     },
   });
