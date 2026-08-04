@@ -24,10 +24,10 @@ and the panel has to be reachable: `DASHBOARD_AGENT_ENABLED=1` or
 `DASHBOARD_AGENT_ADMIN_PREVIEW=1` in `apps/webapp/.env`.
 
 Re-runnable — it wipes only what it owns. Add `-- --scale 0.1` for a fast
-iteration, and leave `-- --heartbeat` running beside it to keep the report's
-liveness finding fresh. Read the header of
-`apps/webapp/seed-agent-examples.mts` for the story's numbers and the two
-caveats about baselines.
+iteration. Read the header of `apps/webapp/seed-agent-examples.mts` for the
+story's numbers and the two caveats about baselines. The report's liveness
+finding goes stale within the hour, so re-seed (or run `-- --degrade`) before a
+session.
 
 Then open the `agent-examples` project (org `agent-examples`), open the agent
 panel and click the History icon: the conversations below are the rows.

@@ -11,23 +11,13 @@
  *
  *   pnpm --filter webapp run db:seed:agent-examples
  *   pnpm --filter webapp run db:seed:agent-examples -- --scale 0.1   # fast iteration
- *   pnpm --filter webapp run db:seed:agent-examples -- --heartbeat    # keep it fresh
  *   pnpm --filter webapp run db:seed:agent-examples -- --recover      # flip to healthy
  *   pnpm --filter webapp run db:seed:agent-examples -- --degrade       # flip back
- *
- * `--heartbeat` is the answer to a stand that ages: it appends a minute of fresh
- * telemetry to both environments every minute, so the report's liveness finding
- * keeps reading "fresh" and `facts.trustworthy` stays true. It seeds nothing and
- * wipes nothing — run the full seed first, then leave a heartbeat running beside
- * it. See the heartbeat section below for what a tick writes and what it can't
- * hold still.
  *
  * `--recover` / `--degrade` are the switch the recovery-watch demo needs: the
  * stand's default story is permanently degraded, and a watch only fires when the
  * report actually flips to "ok". Each flag rewrites the report's live window for
- * both environments and leaves the mode behind in a state file the heartbeat
- * re-reads every tick, so the flip sticks instead of being overwritten 30 seconds
- * later. See the recovery section below.
+ * both environments. See the recovery section below.
  *
  * Re-runnable: the project is identified by a fixed external ref, and every run
  * of the seeder wipes the data it owns (both environments' runs/queues/metrics
@@ -45,10 +35,10 @@
  * One invariant the whole file is arranged around: **the runs list gets its ids
  * from ClickHouse and hydrates them from Postgres, dropping any id it can't find
  * there.** So anything that can reach the first pages of that list needs a
- * Postgres row, not just a ClickHouse one — the cast, the recent runs
- * (`RECENT_PG_RUNS`, more than a page of them) and every heartbeat trickle run
- * all have both. Only the deep volume rows are ClickHouse-only, and they are
- * backdated behind the Postgres-backed ones so they can't surface on page 1.
+ * Postgres row, not just a ClickHouse one — the cast and the recent runs
+ * (`RECENT_PG_RUNS`, more than a page of them) have both. Only the deep volume
+ * rows are ClickHouse-only, and they are backdated behind the Postgres-backed
+ * ones so they can't surface on page 1.
  *
  * The story, one set of numbers everywhere: the environment has been pinned at
  * its concurrency ceiling for the last ~38 minutes while work keeps arriving, so
@@ -72,8 +62,6 @@ import { ClickHouse, TASK_RUN_COLUMNS } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input, TaskEventV2Input } from "@internal/clickhouse";
 import { createChat, createDashboardAgentDb } from "@internal/dashboard-agent-db";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
 import {
   buildAgentExampleChats,
@@ -84,6 +72,7 @@ import {
   type AgentExamplesWorld,
   type SeedChat,
 } from "./seed-agent-examples-chats.mjs";
+import { stageRedisDepth } from "./seed-agent-examples-redis.mjs";
 // oxlint-disable import/default -- deliberate CommonJS interop, see below.
 // The webapp's own modules come in through their default binding on purpose.
 // This entry has to be ESM (`@internal/clickhouse` and the agent datastore are
@@ -163,10 +152,10 @@ const STORY = {
 } as const;
 
 /**
- * The recovered story, for `--recover` and for the heartbeat's calm mode. Everything
- * here reads healthy against the seeded 7-day baseline: a quarter of the ceiling in use,
- * a backlog of a few runs against a normal of ~45, and the baseline's own wait median so
- * the start-latency ratio lands on 1x.
+ * The recovered story, for `--recover`. Everything here reads healthy against the
+ * seeded 7-day baseline: a quarter of the ceiling in use, a backlog of a few runs
+ * against a normal of ~45, and the baseline's own wait median so the start-latency
+ * ratio lands on 1x.
  */
 const CALM = {
   /** Share of the env ceiling a calm bucket runs at. */
@@ -199,8 +188,8 @@ const QUEUE_PENDING_SHARE: Record<string, number> = {
  *
  * The runs list pages 25 at a time (`DEFAULT_PAGE_SIZE` in
  * `NextRunListPresenter`) and drops ids it can't hydrate from Postgres, so this
- * has to comfortably exceed a page — two pages' worth, so the heartbeat and a bit
- * of drift can't eat the margin.
+ * has to comfortably exceed a page — two pages' worth, so a bit of drift can't
+ * eat the margin.
  */
 const RECENT_PG_RUNS = 60;
 /** The window those runs are spread across. */
@@ -759,12 +748,11 @@ async function insertPostgresRuns(
     /** Null when the stand has no seeded deployment — the run is simply unlocked. */
     workerId: string | null;
     environmentType: SeededEnvType;
-    /** Run numbers are per-environment and user-visible, so they keep climbing. */
-    startNumber?: number;
   }
 ): Promise<Map<string, string>> {
   const runIdByFriendlyId = new Map<string, string>();
-  let number = ids.startNumber ?? 1;
+  // Run numbers are per-environment and user-visible; a re-seed starts them over.
+  let number = 1;
   const data = specs.map((spec) => {
     const id = runRowId();
     runIdByFriendlyId.set(spec.friendlyId, id);
@@ -804,8 +792,7 @@ async function insertPostgresRuns(
       taskEventStore: "clickhouse_v2",
     };
   });
-  // One statement, not one per run: the heartbeat calls this every tick and its
-  // budget is a couple of hundred milliseconds for everything.
+  // One statement, not one per run.
   await prisma.taskRun.createMany({ data });
   return runIdByFriendlyId;
 }
@@ -882,7 +869,7 @@ function taskRunRow(
   return TASK_RUN_COLUMNS.map((column) => row[column]);
 }
 
-/** One volume run. Shared by the backfill and the heartbeat's per-tick trickle. */
+/** One volume run. */
 function makeRunSpec(opts: {
   created: number;
   task: string;
@@ -1213,11 +1200,11 @@ type BucketShape = {
 
 /**
  * A bucket emitter with the per-queue odometers held in its closure, so the
- * backfill and the heartbeat can both append buckets without the counters
+ * backfill and a later flip can both append buckets without the counters
  * disagreeing. A fresh emitter restarts its odometers at zero; the rollup reads
  * that as a counter reset (`deltaSumTimestamp` is built for it) and keeps
- * attributing deltas correctly, which is what lets a heartbeat process pick up
- * where a previous one left off.
+ * attributing deltas correctly, which is what lets a second process pick up
+ * where the first left off.
  */
 function createBucketEmitter(ids: ChIds, epochMs: number, rng: () => number) {
   const odometers: Odometers = {};
@@ -1226,8 +1213,8 @@ function createBucketEmitter(ids: ChIds, epochMs: number, rng: () => number) {
 
   // Strictly increasing for the life of the emitter, seeded from the wall clock so
   // a later process's keys always sort after an earlier one's. A counter rather
-  // than `base + seq` so a long-lived heartbeat can't run the sequence into the
-  // next second's base.
+  // than `base + seq` so a long emit can't run the sequence into the next
+  // second's base.
   let key = Math.floor(epochMs / 1000) * 1_000_000;
   const orderKey = () => ++key;
 
@@ -1391,123 +1378,8 @@ async function insertQueueMetrics(ch: ClickHouse, rows: QueueMetricsRawV1Input[]
 // ---------------------------------------------------------------------------
 // Redis: the live env-queue depth the report prefers over the metric series
 // ---------------------------------------------------------------------------
-
-function redisConnection(): { host: string; port: number } | null {
-  const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
-  const port = Number(
-    process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
-  );
-  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
-  if (!localHosts.has(host)) {
-    console.warn(`Skipping Redis staging on a non-local host: ${host}`);
-    return null;
-  }
-  return { host, port };
-}
-
-function envQueueKey(organizationId: string, environmentId: string): string {
-  return `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
-}
-
-// The PER-QUEUE counter (`engine.lengthOfQueue`) — what the watch checks and the
-// queue pages read. Staging only the env-level key leaves every queue reading 0,
-// so a drain watch one-shots with "that already happened".
-function queueDepthKey(
-  organizationId: string,
-  projectId: string,
-  environmentId: string,
-  queueName: string
-): string {
-  return `engine:runqueue:{org:${organizationId}}:proj:${projectId}:env:${environmentId}:queue:${queueName}`;
-}
-
-type RedisLike = {
-  del: (key: string) => Promise<unknown>;
-  zadd: (key: string, ...args: Array<string | number>) => Promise<unknown>;
-  zcard: (key: string) => Promise<number>;
-  quit: () => Promise<unknown>;
-};
-
-async function writeRedisDepth(
-  redis: RedisLike,
-  organizationId: string,
-  environmentId: string,
-  depth: number
-) {
-  const key = envQueueKey(organizationId, environmentId);
-  await redis.del(key);
-  const now = Date.now();
-  const BATCH = 1_000;
-  for (let i = 0; i < depth; i += BATCH) {
-    const args: Array<string | number> = [];
-    for (let j = i; j < Math.min(depth, i + BATCH); j++) {
-      args.push(now + j, `seed_agentex_queued_${j}`);
-    }
-    await redis.zadd(key, ...args);
-  }
-}
-
-async function stageRedisDepth(
-  organizationId: string,
-  environmentId: string,
-  depth: number,
-  label: string,
-  projectId?: string,
-  queueName?: string
-) {
-  const connection = redisConnection();
-  if (!connection) return;
-  try {
-    const { createRedisClient } = await import("@internal/redis");
-    const redis = createRedisClient(connection) as unknown as RedisLike;
-    await writeRedisDepth(redis, organizationId, environmentId, depth);
-    if (projectId && queueName) {
-      const key = queueDepthKey(organizationId, projectId, environmentId, queueName);
-      await redis.del(key);
-      const now = Date.now();
-      const args: Array<string | number> = [];
-      for (let j = 0; j < Math.min(depth, 1000); j++) {
-        args.push(now + j, `seed_agentex_q_${j}`);
-      }
-      if (args.length > 0) await redis.zadd(key, ...args);
-      console.log(`[${label}] staged ${queueName} queue depth ${Math.min(depth, 1000)} in Redis`);
-    }
-    await redis.quit();
-    console.log(`[${label}] staged env-queue depth ${depth} in Redis`);
-  } catch (error) {
-    console.warn(
-      `[${label}] Redis staging skipped:`,
-      error instanceof Error ? error.message : error
-    );
-  }
-}
-
-/**
- * Per-tick depth top-up. The key has no TTL, so the usual case is a single ZCARD
- * that finds it already correct — restaging ~5k members every minute would be
- * most of the tick's budget for no gain.
- */
-async function refreshRedisDepth(
-  organizationId: string,
-  envs: Array<{ environment: { id: string; slug: string } }>,
-  depth: number
-) {
-  const connection = redisConnection();
-  if (!connection) return;
-  try {
-    const { createRedisClient } = await import("@internal/redis");
-    const redis = createRedisClient(connection) as unknown as RedisLike;
-    for (const { environment } of envs) {
-      const current = await redis.zcard(envQueueKey(organizationId, environment.id));
-      if (Math.abs(current - depth) > depth * 0.01) {
-        await writeRedisDepth(redis, organizationId, environment.id, depth);
-      }
-    }
-    await redis.quit();
-  } catch (error) {
-    console.warn("Redis depth refresh skipped:", error instanceof Error ? error.message : error);
-  }
-}
+// The key shapes and the staging live in `seed-agent-examples-redis.mjs`, shared
+// with the scenario kit so both stage the same keys the same way.
 
 // ---------------------------------------------------------------------------
 // Reports
@@ -1957,34 +1829,9 @@ Showcase re-seeded${live ? " (live report card)" : " (built report card — is t
 
 /**
  * Which story the stand is telling. The default is `degraded` — that's the story every
- * transcript cites, and an absent state file must not quietly change it.
+ * transcript cites.
  */
-type HeartbeatMode = "degraded" | "calm";
-
-/**
- * The mode lives in a file rather than in the heartbeat process, because the two things
- * that need to agree about it run in different processes: a long-lived heartbeat and a
- * one-shot `--recover`. The heartbeat re-reads it every tick, so flipping the file flips
- * the next tick's writes with no restart.
- */
-const HEARTBEAT_MODE_FILE = fileURLToPath(
-  new URL("./.agent-examples-heartbeat-mode", import.meta.url)
-);
-
-function readHeartbeatMode(): HeartbeatMode {
-  try {
-    return readFileSync(HEARTBEAT_MODE_FILE, "utf8").trim().toLowerCase() === "calm"
-      ? "calm"
-      : "degraded";
-  } catch {
-    return "degraded";
-  }
-}
-
-function writeHeartbeatMode(mode: HeartbeatMode) {
-  writeFileSync(HEARTBEAT_MODE_FILE, `${mode}\n`);
-  console.log(`Heartbeat mode file set to "${mode}" (${HEARTBEAT_MODE_FILE})`);
-}
+type StandMode = "degraded" | "calm";
 
 /**
  * Every queue-metrics table the seeder's rows reach. The rollups are fed by materialized
@@ -2004,8 +1851,8 @@ const QUEUE_METRIC_TABLES: Array<{ table: string; timeColumn: string; envQueuedC
 
 /**
  * How far back a flip rewrites. The report reads a 1h window; 2h clears it with room for
- * the last degraded heartbeat tick and any clock skew, and stops well short of the 7-day
- * baseline — which is what makes the recovered report *trustworthy* rather than empty.
+ * any clock skew, and stops well short of the 7-day baseline — which is what makes
+ * the recovered report *trustworthy* rather than empty.
  */
 const FLIP_LOOKBACK_HOURS = 2;
 
@@ -2013,7 +1860,7 @@ const FLIP_LOOKBACK_HOURS = 2;
  * Above this env-level depth a bucket is part of the pinned story, not the calm baseline:
  * calm baseline buckets sit at 34-56 and calm-mode buckets at 0-2, while the pinned ramp
  * starts at 60 and ends at ~4.8k. Used to purge the pinned story from *outside* the flip
- * window, which a long-running degraded heartbeat writes into the 7-day baseline.
+ * window, where earlier degraded windows age into the 7-day baseline.
  */
 const DEGRADED_QUEUED_FLOOR = 200;
 
@@ -2032,8 +1879,8 @@ async function deleteFlipWindow(ch: ClickHouse, environmentId: string, label: st
 }
 
 /**
- * Deletes the pinned buckets a degraded heartbeat left *behind* the flip window. Hours of
- * 10-second pinned buckets outnumber the seeded 5-minute baseline by orders of magnitude,
+ * Deletes the pinned buckets earlier degraded windows left *behind* the flip window. Hours
+ * of 10-second pinned buckets outnumber the seeded 5-minute baseline by orders of magnitude,
  * so the 7-day normals drift up to the anomaly's own numbers (`pending` normal ~4.8k) and
  * the degraded window stops reading as degraded. Scoped by depth, so calm baseline buckets
  * survive — they're the baseline the report needs.
@@ -2055,12 +1902,12 @@ async function purgeDegradedBaseline(ch: ClickHouse, environmentId: string, labe
 
 /**
  * Writes a fresh live window ending now, in one mode or the other, through the same
- * emitter the seed and the heartbeat use — only the gauge numbers differ.
+ * emitter the seed uses — only the gauge numbers differ.
  */
 async function writeFlipWindow(opts: {
   ch: ClickHouse;
   ids: ChIds;
-  mode: HeartbeatMode;
+  mode: StandMode;
   minutes: number;
   ratePerMin: number;
   now: number;
@@ -2154,22 +2001,17 @@ async function printLiveSeverity(environment: StandEnv, label: string) {
 }
 
 /**
- * One-shot flip. `calm` clears the degraded window, writes a short calm one in its place,
- * drops the live Redis depth and leaves the heartbeat in calm mode; `degraded` is the
- * inverse, and additionally purges the pinned buckets a long heartbeat has pushed into the
- * 7-day baseline — without that the degraded window is measured against itself and reads
- * as normal.
+ * One-shot flip. `calm` clears the degraded window, writes a short calm one in its place
+ * and drops the live Redis depth; `degraded` is the inverse, and additionally purges the
+ * pinned buckets earlier degraded windows have aged into the 7-day baseline — without that
+ * the degraded window is measured against itself and reads as normal.
  */
-async function runFlip(mode: HeartbeatMode, scale: number) {
+async function runFlip(mode: StandMode, scale: number) {
   const { organizationId, projectId, environments } = await lookupStand();
   const ch = clickhouse();
   const rng = mulberry32(Date.now() & 0xffff);
   const nonce = `agentex-flip-${Date.now()}`;
   const now = Date.now();
-
-  // Written first: a heartbeat tick landing mid-flip should already be writing the new
-  // story rather than the one we're deleting.
-  writeHeartbeatMode(mode);
 
   for (const environment of environments) {
     const ids: ChIds = {
@@ -2216,330 +2058,11 @@ async function runFlip(mode: HeartbeatMode, scale: number) {
   await printLiveSeverity(environments[0], environments[0].slug);
   console.log(
     mode === "calm"
-      ? `\nRecovered. A running heartbeat picks the calm mode up on its next tick; the report's
-7d baselines are cached in the dev server for 5 minutes, so a stale "normal" column can
-lag the flip by that much.`
-      : `\nDegraded again. A running heartbeat picks the degraded mode up on its next tick.`
+      ? `\nRecovered. The report's 7d baselines are cached in the dev server for 5 minutes, so a
+stale "normal" column can lag the flip by that much.`
+      : `\nDegraded again.`
   );
   process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// Heartbeat: keep the stand from ageing
-// ---------------------------------------------------------------------------
-
-/**
- * A seeded stand ages. The health report's liveness finding measures how far
- * behind the freshest telemetry is, so within the hour a stand that was seeded
- * once reads as stale — `facts.trustworthy` flips and every other number on the
- * card is caveated. Heartbeat mode fixes that by appending a thin slice of
- * *now* on every tick, to both environments:
- *
- * - a handful of completed runs at roughly the calm baseline rate, in Postgres
- *   *and* ClickHouse, so the runs telemetry has a current timestamp and the top
- *   of the runs list still hydrates (a ClickHouse-only trickle empties page 1
- *   within a few ticks);
- * - the tick's worth of 10-second queue-metric buckets with the gauges still
- *   pinned at the ceiling and the backlog held where the seed left it, so flow
- *   keeps telling the same story instead of quietly recovering;
- * - the live env-queue depth in Redis, if something has emptied it;
- * - the executing cast run's `updatedAt`, so a run that has been busy for hours
- *   doesn't look abandoned in a list ordered by it.
- *
- * The counter odometers restart at zero in a fresh heartbeat process, which the
- * rollup reads as a counter reset and handles — so the trickle's arrival and
- * completion rates are the *trickle's* rates, not the seed's. The pinned story
- * is carried by the gauges (running vs limit, queued depth), which is where the
- * cause tree reads it from. What does decay is the run-derived arrival rate: as
- * the seeded spike hour ages out of the live window, throughput settles to the
- * trickle. Re-run the full seed when you want the arrival-spike figures back.
- *
- * Every trickle run is tagged `seed:heartbeat`, which is how the per-tick prune
- * finds its own Postgres rows once they pass `HEARTBEAT_RETENTION_HOURS` and
- * nothing else — the cast and the seeded recent runs carry no such tag.
- *
- * Ticks only ever append (bar that prune), so Ctrl-C at any point leaves a valid
- * stand.
- *
- * Which story a tick writes comes from the mode file, re-read every tick: `degraded`
- * (the default) pins the gauges as above, `calm` writes a healthy env and stops failing
- * runs. `--recover` / `--degrade` set it.
- */
-/**
- * Half the liveness finding's 60s "fresh" threshold. The reported age runs a
- * little ahead of the cadence — buckets are floored to 10s and the report caches
- * its queries — so a 45s tick measured ~50s and grazed the boundary. 30s keeps
- * the finding green with room to spare, and a tick is ~100ms. (Trust is a
- * separate, looser gate: `facts.trustworthy` only flips past 5 minutes.)
- */
-const HEARTBEAT_INTERVAL_SEC = 30;
-/** The rate the trickle runs at, per environment, before per-env scaling. */
-const HEARTBEAT_RUNS_PER_MIN = STORY.baselineRunsPerMin;
-/**
- * Stamped on every trickle run so the prune can find its own rows and nothing
- * else. The cast and the seeded recent runs carry no such tag, so they can never
- * be caught by it however long a heartbeat runs.
- */
-const HEARTBEAT_TAG = "seed:heartbeat";
-/** How long a trickle run stays in Postgres before the prune collects it. */
-const HEARTBEAT_RETENTION_HOURS = 24;
-/** Prune cadence, in ticks. ~10 minutes at a 30s tick. */
-const HEARTBEAT_PRUNE_EVERY_TICKS = 20;
-
-type HeartbeatEnv = {
-  environment: { id: string; slug: string; type: SeededEnvType };
-  ids: ChIds;
-  projectId: string;
-  /** The seeded deployment's worker, so trickle runs are locked to a version. */
-  workerId: string | null;
-  emit: ReturnType<typeof createBucketEmitter>;
-  runsPerTick: number;
-  /** Next per-environment run number, so the list's numbering keeps climbing. */
-  nextRunNumber: number;
-  /** The cast's still-executing run, whose `updatedAt` each tick touches. */
-  executingRunId: string | null;
-};
-
-/** One minute of runs and buckets, appended to one environment. */
-async function heartbeatTick(
-  ch: ClickHouse,
-  env: HeartbeatEnv,
-  now: number,
-  rng: () => number,
-  nonce: string,
-  tick: number,
-  mode: HeartbeatMode
-): Promise<{ runs: number; metricRows: number; pruned: number }> {
-  const { ids, environment } = env;
-
-  // Runs: a healthy mix landing across the tick just gone. Nothing fails in calm mode —
-  // a recovered stand shouldn't keep minting error occurrences.
-  const specs: RunSpec[] = [];
-  for (let i = 0; i < env.runsPerTick; i++) {
-    const created =
-      now -
-      HEARTBEAT_INTERVAL_SEC * 1000 +
-      Math.floor((i / env.runsPerTick) * (HEARTBEAT_INTERVAL_SEC - 5) * 1000);
-    const failing = mode === "degraded" && rng() < STORY.baselineFailureRate;
-    const task = failing ? { id: TASK_ID, queue: QUEUE } : VOLUME_TASKS[i % VOLUME_TASKS.length];
-    specs.push(
-      makeRunSpec({
-        created,
-        task: task.id,
-        queue: task.queue,
-        status: failing ? "COMPLETED_WITH_ERRORS" : "COMPLETED_SUCCESSFULLY",
-        waitMs: lognormal(STORY.calmWaitMedianMs, STORY.waitSigma, rng),
-        durationMs: lognormal(STORY.durationMedianMs, STORY.waitSigma, rng),
-        failing,
-        tags: [HEARTBEAT_TAG],
-      })
-    );
-  }
-
-  // Postgres first, and for every trickle run — not just the volume treatment the
-  // seed's bulk rows get. The trickle lands at the very top of the runs list, and
-  // the list drops ClickHouse ids it can't hydrate from Postgres, so a
-  // ClickHouse-only trickle empties page 1 within a few ticks.
-  const runIdByFriendlyId = await insertPostgresRuns(specs, {
-    projectId: env.projectId,
-    environmentId: environment.id,
-    organizationId: ids.organization_id,
-    workerId: env.workerId,
-    environmentType: environment.type,
-    startNumber: env.nextRunNumber,
-  });
-  env.nextRunNumber += specs.length;
-
-  const runRows = specs.map((spec) =>
-    taskRunRow(spec, runIdByFriendlyId.get(spec.friendlyId)!, ids, String(now), environment.type)
-  );
-  await insertTaskRuns(ch, runRows, `${nonce}:${environment.slug}:tick${tick}:runs`);
-
-  // Buckets: the last minute at the live resolution. In degraded mode the gauges stay
-  // pinned and the backlog jitters by a fraction of a percent, so it reads as live rather
-  // than frozen without moving the number the card quotes. In calm mode the same emitter
-  // writes a healthy env instead — a quarter of the ceiling, an empty queue, no throttling.
-  const bucketsPerTick = Math.ceil(HEARTBEAT_INTERVAL_SEC / BUCKET_SEC);
-  const nowBucket = Math.floor(now / 1000 / BUCKET_SEC) * BUCKET_SEC * 1000;
-  const runsPerMin = (env.runsPerTick * 60) / HEARTBEAT_INTERVAL_SEC;
-  const metricRows: QueueMetricsRawV1Input[] = [];
-  for (let b = 0; b < bucketsPerTick; b++) {
-    const bucketMs = nowBucket - (bucketsPerTick - 1 - b) * BUCKET_SEC * 1000;
-    metricRows.push(
-      ...env.emit(
-        bucketMs,
-        mode === "calm"
-          ? // progress 1: the backlog sits at its floor, so a calm series can never
-            // read as "pending increasing".
-            calmBucketShape(1, runsPerMin, rng)
-          : {
-              envRunning: STORY.envConcurrencyLimit,
-              envQueued: Math.round(STORY.pending * (0.995 + rng() * 0.01)),
-              startedPerQueue: (env.runsPerTick * BUCKET_SEC) / 60,
-              arrivalsPerQueue: (env.runsPerTick * BUCKET_SEC) / 60,
-              waitMedianMs: STORY.pinnedWaitMedianMs,
-              throttled: true,
-              waitSamples: LIVE_WAIT_SAMPLES,
-            }
-      )
-    );
-  }
-  await insertQueueMetrics(ch, metricRows, `${nonce}:${environment.slug}:tick${tick}:metrics`);
-
-  // The runs list can order by `updatedAt`; a run that has been "executing" for
-  // hours without its row moving looks abandoned rather than busy.
-  if (env.executingRunId) {
-    await prisma.taskRun.update({
-      where: { id: env.executingRunId },
-      data: { updatedAt: new Date(now) },
-    });
-  }
-
-  // Prune the trickle's own Postgres rows once they're a day old, so a heartbeat
-  // left running for a week doesn't grow the table without bound. Scoped by the
-  // tag AND the age, so the cast and the seeded recent runs are untouchable.
-  // Nothing can be collectable more often than the retention window, so this runs
-  // on a slow cadence rather than every tick.
-  let pruned = 0;
-  if (tick % HEARTBEAT_PRUNE_EVERY_TICKS === 1) {
-    ({ count: pruned } = await prisma.taskRun.deleteMany({
-      where: {
-        runtimeEnvironmentId: environment.id,
-        runTags: { has: HEARTBEAT_TAG },
-        createdAt: { lt: new Date(now - HEARTBEAT_RETENTION_HOURS * 3600_000) },
-      },
-    }));
-  }
-
-  return { runs: runRows.length, metricRows: metricRows.length, pruned };
-}
-
-async function runHeartbeat(scale: number) {
-  const user = await prisma.user.findFirst({ where: { email: "local@trigger.dev" } });
-  if (!user) {
-    console.error("User local@trigger.dev not found. Run `pnpm run db:seed` first.");
-    process.exit(1);
-  }
-
-  // Heartbeat runs on top of an existing stand and never wipes, so it looks the
-  // world up instead of creating it.
-  const project = await prisma.project.findFirst({ where: { externalRef: PROJECT_REF } });
-  if (!project) {
-    console.error(
-      `No "${PROJECT_NAME}" project found. Run the full seed first:\n` +
-        `  pnpm --filter webapp run db:seed:agent-examples`
-    );
-    process.exit(1);
-  }
-  const organizationId = project.organizationId;
-
-  const ch = clickhouse();
-  const rng = mulberry32(Date.now() & 0xffff);
-  const nonce = `agentex-hb-${Date.now()}`;
-
-  const envs: HeartbeatEnv[] = [];
-  for (const type of ENV_TYPES) {
-    const environment = await prisma.runtimeEnvironment.findFirst({
-      where: { projectId: project.id, type },
-    });
-    if (!environment) {
-      console.error(`No ${type} environment on project ${project.slug}.`);
-      process.exit(1);
-    }
-    const ids: ChIds = {
-      organization_id: organizationId,
-      project_id: project.id,
-      environment_id: environment.id,
-    };
-    const executing = await prisma.taskRun.findFirst({
-      where: { runtimeEnvironmentId: environment.id, status: "EXECUTING" },
-      select: { id: true },
-    });
-    if (!executing) {
-      console.warn(
-        `[${environment.slug}] no executing run found — is this stand seeded? Continuing anyway.`
-      );
-    }
-    // Trickle runs are locked to the seeded deployment, like every other run on
-    // the stand, so the list's version column isn't blank for the newest rows.
-    const worker = await prisma.backgroundWorker.findFirst({
-      where: { runtimeEnvironmentId: environment.id, version: DEPLOYMENT_VERSION },
-      select: { id: true },
-    });
-    const highestNumber = await prisma.taskRun.aggregate({
-      where: { runtimeEnvironmentId: environment.id },
-      _max: { number: true },
-    });
-    envs.push({
-      environment: { id: environment.id, slug: environment.slug, type: type as SeededEnvType },
-      ids,
-      projectId: project.id,
-      workerId: worker?.id ?? null,
-      nextRunNumber: (highestNumber._max.number ?? 0) + 1,
-      emit: createBucketEmitter(ids, Date.now(), rng),
-      runsPerTick: Math.max(
-        1,
-        Math.round(
-          HEARTBEAT_RUNS_PER_MIN *
-            (HEARTBEAT_INTERVAL_SEC / 60) *
-            scale *
-            (type === "PRODUCTION" ? 1 : DEV_SCALE_FACTOR)
-        )
-      ),
-      executingRunId: executing?.id ?? null,
-    });
-  }
-
-  let stopping = false;
-  const stop = async () => {
-    if (stopping) return;
-    stopping = true;
-    console.log("\nStopped. The stand is intact — ticks only append.");
-    await ch.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
-
-  let mode = readHeartbeatMode();
-  console.log(
-    `Heartbeat every ${HEARTBEAT_INTERVAL_SEC}s in "${mode}" mode for ${envs
-      .map((env) => `${env.environment.slug} ${env.runsPerTick} runs/tick`)
-      .join(", ")}. Ctrl-C to stop.
-Mode is re-read from ${HEARTBEAT_MODE_FILE} every tick — write "calm" or "degraded" there
-(or run --recover / --degrade) to flip the story without a restart.`
-  );
-
-  for (let tick = 1; !stopping; tick++) {
-    const started = Date.now();
-    // Re-read every tick: a flip is a file write from another process, and a heartbeat that
-    // only read it at boot would overwrite the recovery 30 seconds later.
-    const current = readHeartbeatMode();
-    if (current !== mode) {
-      console.log(`Mode changed: ${mode} -> ${current}`);
-      mode = current;
-    }
-    const counts: string[] = [];
-    for (const env of envs) {
-      const result = await heartbeatTick(ch, env, started, rng, nonce, tick, mode);
-      counts.push(
-        `${env.environment.slug} +${result.runs} runs +${result.metricRows} metric rows` +
-          (result.pruned > 0 ? ` -${result.pruned} pruned` : "")
-      );
-    }
-    await refreshRedisDepth(
-      organizationId,
-      envs,
-      mode === "calm" ? CALM.pendingDepth : STORY.pending
-    );
-    console.log(
-      `[${new Date(started).toISOString().slice(11, 19)}] tick ${tick} ${mode} · ${counts.join(
-        " · "
-      )} · ${Date.now() - started}ms`
-    );
-    if (stopping) break;
-    await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_INTERVAL_SEC * 1000));
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2557,20 +2080,15 @@ Flags:
                  the rows for fast iteration; the story's headline numbers stay
                  the same, only the row counts shrink. Dev is seeded at
                  ${DEV_SCALE_FACTOR}x this.
-  --heartbeat    don't seed — keep running and append a minute of fresh rows to
-                 both environments every ${HEARTBEAT_INTERVAL_SEC}s, so the health report never ages
-                 into "stale telemetry". Runs on top of an existing stand and
-                 never wipes; Ctrl-C leaves it intact. Writes the story named by
-                 the mode file, re-read every tick.
   --recover      one-shot: flip both environments to healthy. Clears the last
                  ${FLIP_LOOKBACK_HOURS}h of queue metrics, writes ${CALM.windowMinutes}m of calm buckets ending now,
-                 drops the live queue depth, sets the mode file to "calm", then
-                 prints the live report's severity. The 7d baseline is untouched,
-                 so the recovered report is still trustworthy.
+                 drops the live queue depth, then prints the live report's
+                 severity. The 7d baseline is untouched, so the recovered report
+                 is still trustworthy.
   --degrade      one-shot: flip back. Rewrites ${DEGRADE_WINDOW_MINUTES}m of pinned buckets, restores the
-                 queue depth, sets the mode file to "degraded", and purges pinned
-                 buckets a long heartbeat has pushed into the 7d baseline (without
-                 that the spike is measured against itself and reads normal).
+                 queue depth, and purges pinned buckets earlier degraded windows
+                 have aged into the 7d baseline (without that the spike is
+                 measured against itself and reads normal).
   --showcase     re-seed just the "Morning after the deploy" chat (and its two
                  watch rows) over an existing stand. Seeds no runs and wipes
                  nothing else, so it's safe while someone is looking at the
@@ -2579,8 +2097,8 @@ Flags:
   --reset-only   delete everything this seeder owns and exit
   --help         this text
 
-Mode file: ${HEARTBEAT_MODE_FILE}
-               "degraded" (default when absent) or "calm".`);
+Watch/Investigate scenarios (drain a queue, recur an error, run a task) live in
+seed-watch-scenarios.mts — see internal-packages/dashboard-agent/SCENARIOS.md.`);
 }
 
 /**
@@ -2682,10 +2200,6 @@ async function main() {
   }
 
   // Before anything destructive: these all run on top of an existing stand.
-  if (flags.heartbeat === "true") {
-    await runHeartbeat(scale);
-    return;
-  }
   if (flags.recover === "true" && flags.degrade === "true") {
     console.error("--recover and --degrade are opposites; pass one.");
     process.exit(1);
@@ -2732,10 +2246,6 @@ async function main() {
   const now = Date.now();
   const rng = mulberry32(20260727);
   const nonce = `agentex-${now}`;
-
-  // A fresh seed is the degraded story, so a heartbeat left in calm mode by an earlier
-  // --recover doesn't quietly flatten it on its next tick.
-  writeHeartbeatMode("degraded");
 
   // Prod first: it's the environment the transcripts cite, so its cast is the one
   // the world is built from.
