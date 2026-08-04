@@ -25,8 +25,11 @@ export function InvestigateButton({
   prompt: string;
   label?: string;
   size?: "small" | "medium";
-  /** `primary` for the standalone accent button, `minimal` inside menus. */
-  variant?: "primary" | "minimal";
+  /**
+   * `primary` for the standalone accent button, `minimal` inside menus,
+   * `secondary` where it sits in a row of grey buttons (the queue page).
+   */
+  variant?: "primary" | "secondary" | "minimal";
   fullWidth?: boolean;
   className?: string;
   tooltip?: string;

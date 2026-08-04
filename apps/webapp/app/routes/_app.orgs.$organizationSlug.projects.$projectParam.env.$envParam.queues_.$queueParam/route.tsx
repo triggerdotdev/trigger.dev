@@ -342,6 +342,20 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
+            {/* The agent pair, Investigate then Watch. Both self-hide without the
+                agent, and both dress as secondary here — one grey row, no accent.
+                Investigate: hand a backed-up queue over. Watch: the universal
+                entry, pre-filled with this queue's recommendation — if runs start
+                waiting past the SLA, or, when they already are (the same signal
+                `degraded` comes from), when the queue drains. */}
+            {degraded ? (
+              <InvestigateButton
+                prompt={queueBacklogPrompt(queue.name)}
+                variant="secondary"
+                tooltip="Ask why this queue is backed up"
+              />
+            ) : null}
+            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -352,18 +366,6 @@ export default function Page() {
               variant="secondary/small"
               withQueueName
             />
-            {/* The agent pair, Investigate then Watch. Both self-hide without the
-                agent. Investigate: hand a backed-up queue over. Watch: the
-                universal entry, pre-filled with this queue's recommendation —
-                if runs start waiting past the SLA, or, when they already are
-                (the same signal `degraded` comes from), when the queue drains. */}
-            {degraded ? (
-              <InvestigateButton
-                prompt={queueBacklogPrompt(queue.name)}
-                tooltip="Ask why this queue is backed up"
-              />
-            ) : null}
-            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
           </div>
         </MetricsLayout.Filters>
 
