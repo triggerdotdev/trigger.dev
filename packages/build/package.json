@@ -96,11 +96,13 @@
     "tsx": "4.17.0",
     "typescript": "6.0.3",
     "typescript5": "npm:typescript@5.9.3",
-    "typescript7": "npm:typescript@7.0.2"
+    "typescript7": "npm:typescript@7.0.2",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "@typescript/typescript6": "^6.0.0",
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0",
+    "zod": "^3.25.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
     "@typescript/typescript6": {
