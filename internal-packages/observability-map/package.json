@@ -1,0 +1,25 @@
+{
+  "name": "@internal/observability-map",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "rimraf": "6.0.1",
+    "tsx": "^4.19.2",
+    "vitest": "4.1.7"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "map": "tsx src/cli.ts"
+  }
+}
