@@ -2,6 +2,7 @@ import { EyeIcon } from "@heroicons/react/20/solid";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
+import { watchTooltipLabel } from "./watch-presentation";
 
 /**
  * The universal **Watch…** action (§2.1).
@@ -54,8 +55,8 @@ export function WatchButton({
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}
-      // The recommendation's own promise is the best description of the button.
-      tooltip={tooltip ?? spec.note}
+      // Same imperative form as the Investigate tooltip.
+      tooltip={tooltip ?? watchTooltipLabel(spec)}
       onClick={() => agent.openWithWatch(spec)}
     >
       {label}

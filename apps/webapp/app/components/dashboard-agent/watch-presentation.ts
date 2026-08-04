@@ -420,6 +420,32 @@ export function watchConditionLabel(spec: WatchSpec): string {
   }
 }
 
+/** The Watch button's tooltip — same imperative form as Investigate's. */
+export function watchTooltipLabel(spec: WatchSpec): string {
+  switch (spec.kind) {
+    case "run_start":
+      return "Get notified when this run starts";
+    case "run_finished":
+      return "Get notified when this run finishes";
+    case "run_failed":
+      return "Get notified if this run fails";
+    case "backlog_drain":
+      return "Get notified when this queue drains";
+    case "queue_depth_above":
+      return `Get notified if this queue goes above ${spec.threshold}`;
+    case "queue_depth_below":
+      return `Get notified when this queue is back below ${spec.threshold}`;
+    case "queue_stalled":
+      return "Get notified if this queue stops moving";
+    case "queue_oldest_age":
+      return `Get notified if runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
+    case "error_recurrence":
+      return "Get notified if this error happens again";
+    case "health_recovery":
+      return "Get notified when health recovers";
+  }
+}
+
 /** "For 1 hour · checking every 5 min" — the duration line of the card. */
 export function watchDurationLabel(spec: WatchSpec): string {
   return `For ${formatWatchWindow(spec.maxHours)} · checking ${formatWatchCadence(
