@@ -224,6 +224,34 @@ const revisedDiagnosis: ViewBlock[] = [
 // render, in order — the pre-envelope behaviour.
 const legacyBlocks: ViewBlock[] = [externalServiceDiagnosis, lowConfidenceDiagnosis];
 
+// The watch offer as buttons: the answer ends with one line of prose, this block
+// makes the offer a click. The first action is the one to take.
+const offerActionsBlock: ViewBlock = {
+  type: "actions",
+  id: "actions-offer",
+  revision: 0,
+  version: VIEW_BLOCK_VERSION,
+  actions: [
+    {
+      label: "Set up a watch",
+      intent: {
+        kind: "watch",
+        spec: {
+          kind: "error_recurrence",
+          fingerprint: "a1b2c3",
+          checkEveryMinutes: 15,
+          maxHours: 6,
+          note: "the TypeError in send-order-receipt",
+        },
+      },
+    },
+    {
+      label: "See its failed runs",
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/runs" },
+    },
+  ],
+};
+
 /**
  * The badge matrix: one card per diagnosis category, cycling through the three
  * confidence levels, so every badge colour pair on the card is on screen at
@@ -939,6 +967,7 @@ const STATES: Record<string, React.ReactNode> = {
       ]}
     />
   ),
+  "view-blocks-actions-offer": <ViewBlocks blocks={[offerActionsBlock]} onIntent={noop} />,
 
   // --- Investigation card, the shipped one ---------------------------------
   // The card only, so the unfinished states show no progress line here: progress

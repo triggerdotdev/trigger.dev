@@ -112,6 +112,11 @@ export const MANIFEST: GallerySection[] = [
     title: "Enveloped revisions plus a legacy block",
     group: "view-blocks",
   },
+  {
+    sectionId: "view-blocks-actions-offer",
+    title: "Actions block — the watch offer as buttons",
+    group: "view-blocks",
+  },
 
   // --- Investigation card ---------------------------------------------------
   // The shipped `InvestigationCard` (fed the real block) first, then the demo

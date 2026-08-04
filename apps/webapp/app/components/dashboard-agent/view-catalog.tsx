@@ -1,4 +1,5 @@
 import type { AgentIntent, ViewBlock } from "@internal/dashboard-agent-contracts";
+import { ActionsBlock } from "./ActionsBlock";
 import { AgentChart } from "./AgentChart";
 import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
@@ -57,6 +58,10 @@ export function ViewBlocks({
             return <RunDiagnosisCard key={key} block={block} />;
           case "chart":
             return <AgentChart key={key} block={block} onIntent={onIntent} />;
+          // The agent's offer as buttons — a watch action opens the watch card
+          // pre-filled. Renders nothing without a host to honour the intent.
+          case "actions":
+            return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
           // The one progressive block: revisions share the investigationId, so
           // latest-wins above keeps a single live card.
           case "investigation":

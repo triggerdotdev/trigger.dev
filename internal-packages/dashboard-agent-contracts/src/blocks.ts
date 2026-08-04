@@ -30,6 +30,7 @@ import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
 import { agentIntentSchema } from "./intent.js";
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
+import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -246,6 +247,62 @@ export const chartBlockBodySchema = z.object({
     .optional()
     .describe(
       "Optional buttons under the chart, at most 2-3. After a ranking or failures chart, give the top item an 'Investigate <name>' ask action, and a navigate action to the page that shows it (its filtered runs list, its error, its queue) when you have the target."
+    ),
+});
+
+// ---------------------------------------------------------------------------
+// actions — an offer the user can click
+// ---------------------------------------------------------------------------
+
+/**
+ * An action's intent. Same boundary rule as `chartActionIntentSchema`: navigate
+ * `target` is a plain string here because the model can't always build a
+ * canonical URI, and a malformed target must cost one button rather than the
+ * whole tool call — the renderer drops navigate actions whose target doesn't
+ * parse. `watch` carries a full spec, so the click opens the watch card
+ * pre-filled with what the model composed.
+ *
+ * `propose_fix` is absent, and that is the point: it is reserved and not
+ * executable (see `isExecutableIntent`), so a button can never carry it.
+ */
+const actionIntentSchema = z.union([
+  z.object({
+    kind: z.literal("ask"),
+    prompt: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("navigate"),
+    target: z.string().min(1),
+    filters: runFiltersSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal("watch"),
+    spec: watchSpecSchema,
+  }),
+]);
+
+export const actionsBlockActionSchema = z.object({
+  label: z.string().min(1).describe("The button text, e.g. 'Set up a watch'."),
+  intent: actionIntentSchema.describe(
+    "What the button does. `watch` opens the watch configuration card pre-filled with your spec — the user confirming the card is what starts it. `ask` sends the prompt as the user's next message, phrased in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped, so when in doubt use `ask`."
+  ),
+});
+
+export type ActionsBlockAction = z.infer<typeof actionsBlockActionSchema>;
+
+/**
+ * A standalone row of buttons: the agent's offer, clickable. When an answer ends
+ * in "want me to watch this?", this block is how that offer becomes a button
+ * instead of something the user has to type a reply to.
+ */
+const actionsBlockBodySchema = z.object({
+  type: z.literal("actions"),
+  actions: z
+    .array(actionsBlockActionSchema)
+    .min(1)
+    .max(3)
+    .describe(
+      "1-3 buttons, the one to take first. Keep labels short and imperative ('Set up a watch', 'See its failed runs')."
     ),
 });
 
@@ -725,11 +782,13 @@ export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
   chartBlockBodySchema,
+  actionsBlockBodySchema,
   investigationBlockBodyInputSchema,
 ]);
 
 export type DiagnosisBlockBody = z.infer<typeof diagnosisBlockBodySchema>;
 export type ChartBlockBody = z.infer<typeof chartBlockBodySchema>;
+export type ActionsBlockBody = z.infer<typeof actionsBlockBodySchema>;
 export type InvestigationBlockBody = z.infer<typeof investigationBlockBodySchema>;
 export type InvestigationBlockBodyInput = z.infer<typeof investigationBlockBodyInputSchema>;
 export type InvestigationState = z.infer<typeof investigationStateSchema>;
@@ -750,6 +809,7 @@ export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 
 export const diagnosisBlockSchema = diagnosisBlockBodySchema.merge(blockEnvelopeSchema);
 export const chartBlockSchema = chartBlockBodySchema.merge(blockEnvelopeSchema);
+export const actionsBlockSchema = actionsBlockBodySchema.merge(blockEnvelopeSchema);
 
 /**
  * An investigation at one point in time. `id` is the `investigationId` and
@@ -773,6 +833,7 @@ export const reportBlockSchema = reportBlockBodySchema
 export const viewBlockSchema = z.discriminatedUnion("type", [
   diagnosisBlockSchema,
   chartBlockSchema,
+  actionsBlockSchema,
   reportBlockSchema,
   investigationBlockSchema,
   watchResultBlockSchema,
@@ -780,6 +841,7 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
 export type EnvelopedChartBlock = z.infer<typeof chartBlockSchema>;
+export type EnvelopedActionsBlock = z.infer<typeof actionsBlockSchema>;
 export type EnvelopedReportBlock = z.infer<typeof reportBlockSchema>;
 export type EnvelopedInvestigationBlock = z.infer<typeof investigationBlockSchema>;
 export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
@@ -790,6 +852,7 @@ export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
 
 export const legacyDiagnosisBlockSchema = diagnosisBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyChartBlockSchema = chartBlockBodySchema.extend(optionalEnvelopeShape);
+export const legacyActionsBlockSchema = actionsBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyReportBlockSchema = reportBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyInvestigationBlockSchema =
   investigationBlockBodySchema.extend(optionalEnvelopeShape);
@@ -798,6 +861,7 @@ export const legacyInvestigationBlockSchema =
 export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyDiagnosisBlockSchema,
   legacyChartBlockSchema,
+  legacyActionsBlockSchema,
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
   legacyWatchResultBlockSchema,
@@ -812,6 +876,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
  */
 export type DiagnosisBlock = z.infer<typeof legacyDiagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof legacyChartBlockSchema>;
+export type ActionsBlock = z.infer<typeof legacyActionsBlockSchema>;
 export type ReportBlock = z.infer<typeof legacyReportBlockSchema>;
 export type InvestigationBlock = z.infer<typeof legacyInvestigationBlockSchema>;
 export type ViewBlock = z.infer<typeof legacyViewBlockSchema>;

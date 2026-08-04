@@ -240,6 +240,66 @@ describe("chart actions", () => {
   });
 });
 
+describe("actions block", () => {
+  // The agent's offer, clickable: "want me to watch this?" as a button that
+  // opens the watch card pre-filled.
+  const watchAction = {
+    label: "Set up a watch",
+    intent: {
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "a1b2c3",
+        checkEveryMinutes: 15,
+        maxHours: 6,
+        note: "the TypeError in send-order-receipt",
+      },
+    },
+  };
+
+  const askAction = {
+    label: "Investigate it",
+    intent: { kind: "ask", prompt: "Investigate the send-order-receipt failures." },
+  };
+
+  it("round-trips through both schemas", () => {
+    const body = { type: "actions", actions: [watchAction, askAction] };
+    const input = viewBlockInputSchema.parse(body);
+    expect(input.type === "actions" && input.actions).toHaveLength(2);
+    const strict = viewBlockSchema.parse({ ...body, ...envelope });
+    expect(strict.type === "actions" && strict.actions[0].intent.kind).toBe("watch");
+    expect(parseStoredViewBlock(body).type).toBe("actions");
+  });
+
+  it("needs at least one action and caps the row at three", () => {
+    expect(viewBlockInputSchema.safeParse({ type: "actions", actions: [] }).success).toBe(false);
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "actions",
+        actions: [askAction, askAction, askAction, askAction],
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects a propose_fix intent — it is reserved and not executable", () => {
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "actions",
+        actions: [{ label: "Fix it", intent: { kind: "propose_fix", investigationId: "inv_1" } }],
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts a non-canonical navigate target — the renderer drops it", () => {
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "actions",
+        actions: [{ label: "Runs", intent: { kind: "navigate", target: "/runs?status=FAILED" } }],
+      }).success
+    ).toBe(true);
+  });
+});
+
 describe("report block", () => {
   it("round-trips a whole view model", () => {
     const parsed = reportBlockSchema.parse(reportBlock);
