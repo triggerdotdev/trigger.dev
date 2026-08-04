@@ -13,7 +13,6 @@ import {
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { AgentMonoLogo } from "./AgentDotMatrix";
 import { Paragraph } from "./Paragraph";
 import { Spinner } from "./Spinner";
 
@@ -59,15 +58,6 @@ export const variantClasses = {
     icon: <Spinner className="h-5 w-5 shrink-0 " />,
     textColor: "text-callout-pending-text",
     linkClassName: "transition hover:bg-callout-pending/20",
-  },
-  // Something the dashboard agent has to say, carrying a way into the chat.
-  // Dressed like the Ask Trigger button: the agent logo on the button's own
-  // surface (charcoal on dark, white on light) with the softened green border.
-  agent: {
-    className: "border-[#41FF54]/25 bg-secondary light:border-success/60",
-    icon: <AgentMonoLogo size={20} decorative />,
-    textColor: "text-text-bright",
-    linkClassName: "transition dark:hover:bg-background-raised light:hover:bg-[#e4ffe8]",
   },
   pricing: {
     className: "border-callout-pricing/20 bg-callout-pricing-bg/30",

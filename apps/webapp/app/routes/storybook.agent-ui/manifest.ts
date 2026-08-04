@@ -290,8 +290,8 @@ export const MANIFEST: GallerySection[] = [
     group: "watch-card",
   },
   {
-    sectionId: "watch-card-queue-age-recommended",
-    title: "Compact — age SLA recommended on a late queue",
+    sectionId: "watch-card-queue-late-recommended",
+    title: "Compact — drain recommended on a late queue",
     group: "watch-card",
   },
 
