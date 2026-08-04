@@ -53,13 +53,6 @@ interface DefaultEventsMap {
   [event: string]: (...args: any[]) => void;
 }
 
-/**
- * checkpointDeleteRequests counts the delete requests this supervisor makes, and every reason it
- * decides not to: `sent`, `disabled`, `no_client`, `not_applicable`, `not_terminal`, `no_claims`,
- * `no_project_ref`, `http_error`.
- * Without the negative outcomes, "no deletes are happening" is indistinguishable from the feature
- * being switched off - and with no lifecycle expiry, that difference is leaked storage.
- */
 const checkpointDeleteRequests = new Counter({
   name: "checkpoint_delete_requests_total",
   help: "Checkpoint delete requests attempted at run completion, by outcome",
@@ -199,9 +192,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
    * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
    *
-   * `claims` are returned whenever the token verifies, in either mode. They are for addressing a
-   * run's own resources locally (e.g. its checkpoint storage) - never for scoping the platform,
-   * which is why environmentId above stays gated on enforce.
+   * `claims` are returned on any valid token, for local use only - never to scope the platform,
+   * which is why environmentId stays gated on enforce.
    */
   private async authorizeWorkloadRequest(
     req: IncomingMessage
@@ -230,18 +222,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
   /**
    * reclaimCheckpoints asks the checkpoint service to delete a finished run's checkpoint storage.
-   *
-   * Called only after the reply has been sent, so it never delays the runner - the same shape the
-   * suspend route uses. Every early return is counted: nothing reclaims storage behind this, so a
-   * silently skipped request leaks it, and silence must not look like success.
-   *
-   * This covers runner-driven completion only. A run that dies without posting one - killed pod,
-   * OOM, node loss, platform-side expiry - is finalised on the platform, which the worker never
-   * hears about, so those are not reclaimed here and are not reclaimable from this side.
-   *
-   * `RUN_PENDING_CANCEL` is terminal too - a run cancelled mid-execution never restores - so it is
-   * reclaimed alongside `RUN_FINISHED`. Retries are deliberately excluded: the prefix is run-level,
-   * so a retry's checkpoints are cleaned by the final completion.
+   * Must be called after the reply is sent: it never delays the runner.
    */
   private async reclaimCheckpoints(
     req: IncomingMessage,
