@@ -299,7 +299,9 @@ export async function authenticateApiKeyWithScope(
     action,
     resource,
     allowJWT = false,
-  }: { action: string; resource: RbacResource; allowJWT?: boolean }
+  }: { action: string; resource: RbacResource; allowJWT?: boolean },
+  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry =
+    authenticateAuthorizeBearerWithTelemetry
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
@@ -309,11 +311,7 @@ export async function authenticateApiKeyWithScope(
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
   }
 
-  const result = await authenticateAuthorizeBearerWithTelemetry(
-    request,
-    { action, resource },
-    { allowJWT }
-  );
+  const result = await authorizeBearer(request, { action, resource }, { allowJWT });
   if (!result.ok) {
     return result;
   }

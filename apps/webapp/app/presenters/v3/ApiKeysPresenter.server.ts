@@ -69,7 +69,7 @@ export class ApiKeysPresenter {
     const keyEnvironmentId = environment.parentEnvironmentId ?? environment.id;
 
     const [keyEnvironment, vercelIntegration] = await Promise.all([
-      this.#prismaClient.runtimeEnvironment.findUniqueOrThrow({
+      this.#prismaClient.runtimeEnvironment.findFirstOrThrow({
         where: { id: keyEnvironmentId },
         select: {
           id: true,

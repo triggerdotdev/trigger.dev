@@ -10,7 +10,7 @@ export async function canIssueAdditionalApiKeys(
   prismaClient: IssuancePrismaClient = prisma
 ): Promise<boolean> {
   const [organization, globalFlags] = await Promise.all([
-    prismaClient.organization.findUnique({
+    prismaClient.organization.findFirst({
       where: { id: organizationId },
       select: { featureFlags: true },
     }),

@@ -75,8 +75,11 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import { FULL_ACCESS_PRESET_ID } from "@trigger.dev/rbac";
 import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
+import {
+  validateCreateApiKeyPreset,
+  type ApiKeyPreset,
+} from "~/services/apiKeyPresetValidation.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -88,8 +91,6 @@ export const meta = pageMeta("API keys");
 const ApiKeySearchParams = z.object({
   showRevoked: z.preprocess((value) => value === "true" || value === true, z.boolean()).optional(),
 });
-
-type ApiKeyPreset = NonNullable<Awaited<ReturnType<typeof rbac.apiKeyPresets>>>[number];
 
 const CreateApiKeySchema = z.object({
   action: z.literal("create"),
@@ -115,59 +116,6 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
   CreateApiKeySchema,
   z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
 ]);
-
-function validateCreateApiKeyPreset({
-  presets,
-  presetId,
-  taskScope,
-  taskIdentifiers,
-  hasTaskParameters,
-}: {
-  presets: ApiKeyPreset[] | null;
-  presetId?: string;
-  taskScope?: "all" | "selected";
-  taskIdentifiers: string[];
-  hasTaskParameters: boolean;
-}): { presetId: string; usesTaskSelection: boolean } {
-  // Always resolves to a concrete preset id. "No preset chosen" means full
-  // access, and saying so here keeps that decision visible at the call site
-  // instead of relying on a default inside prepareApiKeyPolicy.
-  const fullAccess = { presetId: FULL_ACCESS_PRESET_ID, usesTaskSelection: false };
-
-  if (presets === null) {
-    if (presetId !== undefined || hasTaskParameters) {
-      throw new Error("API key access presets are not available");
-    }
-    return fullAccess;
-  }
-
-  if (!presetId) {
-    if (hasTaskParameters) {
-      throw new Error("A preset is required when selecting tasks");
-    }
-    return fullAccess;
-  }
-
-  const preset = presets.find((candidate) => candidate.id === presetId);
-  if (!preset) {
-    throw new Error("Invalid API key access preset");
-  }
-  if (!preset.available) {
-    throw new Error("This API key access preset is not available on your plan");
-  }
-
-  if (!preset.usesTaskSelection && hasTaskParameters) {
-    throw new Error("This API key access preset does not support task selection");
-  }
-  if (preset.usesTaskSelection && taskScope === "selected" && taskIdentifiers.length === 0) {
-    throw new Error("Select at least one task");
-  }
-  if (preset.usesTaskSelection && taskScope !== "selected" && taskIdentifiers.length > 0) {
-    throw new Error("Task identifiers require selected task scope");
-  }
-
-  return { presetId: preset.id, usesTaskSelection: preset.usesTaskSelection ?? false };
-}
 
 type ApiKeyActionData =
   | { ok: true; action: "create"; apiKey: string }
