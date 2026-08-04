@@ -13,10 +13,7 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { randomUUID } from "../utils/crypto.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "../types/schemas.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 import type {
   CursorPageParams,
   CursorPageResponse,
@@ -106,21 +103,22 @@ export function zodfetchCursorPage<TItemSchema extends AnyZodSchema>(
     query.set("page[before]", params.before);
   }
 
-  const cursorPageSchema = "_zod" in schema
-    ? z.object({
-        data: z.array(schema as any),
-        pagination: z.object({
-          next: z.string().optional(),
-          previous: z.string().optional(),
-        }),
-      })
-    : z3.object({
-        data: z3.array(schema as any),
-        pagination: z3.object({
-          next: z3.string().optional(),
-          previous: z3.string().optional(),
-        }),
-      });
+  const cursorPageSchema =
+    "_zod" in schema
+      ? z.object({
+          data: z.array(schema as any),
+          pagination: z.object({
+            next: z.string().optional(),
+            previous: z.string().optional(),
+          }),
+        })
+      : z3.object({
+          data: z3.array(schema as any),
+          pagination: z3.object({
+            next: z3.string().optional(),
+            previous: z3.string().optional(),
+          }),
+        });
 
   const $url = new URL(url);
   $url.search = query.toString();
@@ -147,23 +145,24 @@ export function zodfetchOffsetLimitPage<TItemSchema extends AnyZodSchema>(
     query.set("page", String(params.page));
   }
 
-  const offsetLimitPageSchema = "_zod" in schema
-    ? z.object({
-        data: z.array(schema as any),
-        pagination: z.object({
-          currentPage: z.coerce.number(),
-          totalPages: z.coerce.number(),
-          count: z.coerce.number(),
-        }),
-      })
-    : z3.object({
-        data: z3.array(schema as any),
-        pagination: z3.object({
-          currentPage: z3.coerce.number(),
-          totalPages: z3.coerce.number(),
-          count: z3.coerce.number(),
-        }),
-      });
+  const offsetLimitPageSchema =
+    "_zod" in schema
+      ? z.object({
+          data: z.array(schema as any),
+          pagination: z.object({
+            currentPage: z.coerce.number(),
+            totalPages: z.coerce.number(),
+            count: z.coerce.number(),
+          }),
+        })
+      : z3.object({
+          data: z3.array(schema as any),
+          pagination: z3.object({
+            currentPage: z3.coerce.number(),
+            totalPages: z3.coerce.number(),
+            count: z3.coerce.number(),
+          }),
+        });
 
   const $url = new URL(url);
   $url.search = query.toString();
@@ -669,8 +668,7 @@ function injectRequestIdempotencyKey(
   };
 }
 
-export type ZodFetchSSEMessageValueSchema<TSchema extends AnyZodSchema = AnyZodSchema> =
-  TSchema;
+export type ZodFetchSSEMessageValueSchema<TSchema extends AnyZodSchema = AnyZodSchema> = TSchema;
 
 export interface ZodFetchSSEMessageCatalogSchema {
   [key: string]: AnyZodSchema;

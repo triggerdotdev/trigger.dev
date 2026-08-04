@@ -4,6 +4,7 @@ import { TaskRunExecution, TaskRunExecutionResult } from "./common.js";
 import { RunEngineVersionSchema, TaskRunExecutionMetrics } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
 import { DebugLogPropertiesInput } from "../runEngineWorker/supervisor/schemas.js";
+import type { ZodIssueLike } from "../types/schemas.js";
 
 export const ServerBackgroundWorker = z.object({
   id: z.string(),
@@ -27,7 +28,7 @@ export const UncaughtExceptionMessage = z.object({
 export const TaskMetadataFailedToParseData = z.object({
   version: z.literal("v1").default("v1"),
   tasks: z.unknown(),
-  zodIssues: z.custom<z.ZodIssue[]>((v) => {
+  zodIssues: z.custom<ReadonlyArray<ZodIssueLike>>((v) => {
     return Array.isArray(v) && v.every((issue) => typeof issue === "object" && "message" in issue);
   }),
 });

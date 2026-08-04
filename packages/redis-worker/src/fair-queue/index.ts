@@ -1,10 +1,7 @@
 import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import type {
-  AnyZodSchema,
-  inferZodSchemaOutput,
-} from "@trigger.dev/core/v3";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 import { setInterval, setTimeout as delay } from "node:timers/promises";
 import { type z } from "zod/v4";
@@ -370,7 +367,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   /**
    * Enqueue multiple messages to a queue.
    */
-  async enqueueBatch(options: EnqueueBatchOptions<inferZodSchemaOutput<TPayloadSchema>>): Promise<string[]> {
+  async enqueueBatch(
+    options: EnqueueBatchOptions<inferZodSchemaOutput<TPayloadSchema>>
+  ): Promise<string[]> {
     return this.telemetry.trace(
       "enqueueBatch",
       async (span) => {
@@ -499,7 +498,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       if (!dataJson) continue;
 
       try {
-        const data = JSON.parse(dataJson) as DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>;
+        const data = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
         data.deadLetteredAt = parseFloat(deadLetteredAtStr);
         messages.push(data);
       } catch {
@@ -530,7 +531,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
           return false;
         }
 
-        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>;
+        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
 
         // Re-enqueue with reset attempt count
         await this.enqueue({
