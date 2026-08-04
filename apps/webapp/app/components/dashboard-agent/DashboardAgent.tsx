@@ -64,6 +64,9 @@ export function DashboardAgent({
   // wake the user has already been shown (and maybe dismissed) must not come
   // back every 60s while the chat stays unread.
   const toastedWakes = useRef(new Set<string>());
+  // The chat currently on screen (panel open). A wake there streams into the
+  // visible transcript, so it toasts but must not light the dot.
+  const visibleChat = useRef<string | null>(null);
   // The side panel is the default; someone who last worked fullscreen gets
   // fullscreen back. Read lazily so SSR always renders the side panel.
   const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
@@ -116,6 +119,8 @@ export function DashboardAgent({
     // Closing drops both pending requests: the panel unmounts, so a stale one
     // would re-apply on the next open instead of restoring the last chat.
     if (!next) {
+      // No chat is on screen any more — the dot counts every unread wake again.
+      visibleChat.current = null;
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       // An abandoned card leaves no trace (§2.2) — including no pending request
@@ -158,7 +163,10 @@ export function DashboardAgent({
         if (!res.ok) return;
         const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
         if (cancelled) return;
-        setUnreadWakes(data.unreadWakes ?? 0);
+        const wakesInView = (data.wakes ?? []).filter(
+          (wake) => wake.chatId === visibleChat.current
+        ).length;
+        setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - wakesInView));
 
         const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
         for (const wake of fresh) toastedWakes.current.add(wake.watchId);
@@ -191,6 +199,7 @@ export function DashboardAgent({
   // persists the read marker for the chat that's actually visible.
   const markChatRead = useCallback(
     async (chatId: string) => {
+      visibleChat.current = chatId;
       setUnreadWakes(0);
       const body = new FormData();
       body.set("intent", "read");
