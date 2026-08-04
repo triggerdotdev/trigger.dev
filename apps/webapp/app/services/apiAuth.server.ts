@@ -44,6 +44,16 @@ const ClaimsSchema = z.object({
       skipColumns: z.array(z.string()).optional(),
     })
     .optional(),
+  // Delegation stamped at env-JWT exchange time: who the exchange was done for
+  // (`sub`) and what kind of caller did it (`client`). Identity only — it must
+  // never feed the ability. Authorization comes from `sub` (the environment)
+  // and `scopes` alone, so `act` can't widen what a token can do.
+  act: z
+    .object({
+      sub: z.string(),
+      client: z.string().optional(),
+    })
+    .optional(),
 });
 
 // Re-export the slim shape defined in @trigger.dev/core. Single source of
@@ -74,6 +84,7 @@ export type ApiAuthenticationResultSuccess = {
   // API keys (no user) and JWTs minted without delegation.
   actor?: {
     sub: string;
+    client?: string;
   };
 };
 
@@ -187,6 +198,7 @@ export async function authenticateApiKey(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
+        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
       };
     }
   }
@@ -279,6 +291,7 @@ async function authenticateApiKeyWithFailure(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
+        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
       };
     }
   }

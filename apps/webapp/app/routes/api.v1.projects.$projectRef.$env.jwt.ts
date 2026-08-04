@@ -99,17 +99,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // authentication result. Either way downstream handlers read `act.sub`
     // (e.g. the errors API records who resolved/ignored an error). An org
     // access token has no user, so `act` is omitted.
+    //
+    // `act.client` names the kind of caller that did the exchange, for
+    // attribution only. A UAT already carries its own `client` (e.g.
+    // "dashboard-agent"), so pass it through; a PAT exchange has none, and
+    // gets the same default the UAT mint route uses.
     const actorUserId =
       userActorId ??
       (authenticationResult.type === "personalAccessToken"
         ? authenticationResult.result.userId
         : undefined);
+    const actorClient = userActor?.client ?? "personal-access-token";
 
     const claims = {
       sub: runtimeEnv.id,
       pub: true,
       ...(scopes ? { scopes } : {}),
-      ...(actorUserId ? { act: { sub: actorUserId } } : {}),
+      ...(actorUserId ? { act: { sub: actorUserId, client: actorClient } } : {}),
     };
 
     const jwt = await internal_generateJWT({

@@ -35,9 +35,15 @@ export const tenantContext = {
   },
 };
 
-export function tenantContextFromAuthEnvironment(env: AuthenticatedEnvironment): TenantContext {
+// `actor` is the env JWT's delegation claim, when the request carried one. It
+// wins over `orgMember`: that only exists on dev environments, so an env-authed
+// call against a shared prod/staging env is otherwise attributed to nobody.
+export function tenantContextFromAuthEnvironment(
+  env: AuthenticatedEnvironment,
+  actor?: { sub: string }
+): TenantContext {
   return {
-    userId: env.orgMember?.userId,
+    userId: actor?.sub ?? env.orgMember?.userId,
     orgSlug: env.organization.slug,
     projectSlug: env.project.slug,
     envSlug: env.slug,

@@ -422,7 +422,10 @@ export function createLoaderApiRoute<
       const apiVersion = getApiVersion(request);
 
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           handler({
             params: parsedParams,
@@ -1278,7 +1281,10 @@ export function createActionApiRoute<
       }
 
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           handler({
             params: parsedParams,
@@ -1543,7 +1549,10 @@ export function createMultiMethodApiRoute<
 
       // Dispatch to method handler
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           methodConfig.handler({
             params: parsedParams,
