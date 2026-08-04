@@ -157,4 +157,21 @@ export class CheckpointClient {
 
     return true;
   }
+
+  async cancelCheckpoints({ runFriendlyId }: { runFriendlyId: string }): Promise<boolean> {
+    const res = await fetch(
+      new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
+      { method: "POST" }
+    );
+
+    if (!res.ok) {
+      this.logger.error("[CheckpointClient] Cancel checkpoints request failed", {
+        runFriendlyId,
+        status: res.status,
+      });
+      return false;
+    }
+
+    return true;
+  }
 }
