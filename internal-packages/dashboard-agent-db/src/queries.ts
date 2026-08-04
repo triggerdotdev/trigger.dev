@@ -1050,6 +1050,8 @@ export interface UnreadWatchWake {
   /** Null on a row written before the resolution model — the surface falls back. */
   resolution: WatchResolution | null;
   observedOutcome: WatchObservedOutcome | null;
+  /** Landed after the chat's read marker. The dot counts these; the toast fires either way. */
+  unread: boolean;
 }
 
 // The toast fires one per wake, so a long-unopened panel doesn't need the whole
@@ -1062,11 +1064,14 @@ const UNREAD_WAKE_LIST_LIMIT = 10;
  * this one returns rows instead of a total, capped at
  * {@link UNREAD_WAKE_LIST_LIMIT}.
  */
-export async function listUnreadWatchWakes(
+export async function listRecentWatchWakes(
   db: DashboardAgentDb,
-  params: { organizationId: string; userId: string }
+  params: { organizationId: string; userId: string; deliveredAfter: Date }
 ): Promise<UnreadWatchWake[]> {
   const resolvedAt = sql<Date>`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`;
+  // Whether the wake landed after the chat was last read. The TOAST doesn't
+  // care (a wake read on screen still deserves its toast, once); the DOT does.
+  const unread = sql<boolean>`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`;
 
   const rows = await db
     .select({
@@ -1078,6 +1083,7 @@ export async function listUnreadWatchWakes(
       resolution: watches.resolution,
       observedOutcome: watches.observedOutcome,
       resolvedAt,
+      unread,
     })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
@@ -1091,7 +1097,7 @@ export async function listUnreadWatchWakes(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
-        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
+        sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${params.deliveredAfter.toISOString()}::timestamptz`
       )
     )
     .orderBy(desc(resolvedAt))
@@ -1108,6 +1114,7 @@ export async function listUnreadWatchWakes(
     identity: row.identity,
     resolution: row.resolution,
     observedOutcome: row.observedOutcome,
+    unread: row.unread,
   }));
 }
 

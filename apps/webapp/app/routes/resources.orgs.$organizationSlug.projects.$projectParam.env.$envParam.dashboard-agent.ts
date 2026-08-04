@@ -12,7 +12,7 @@ import {
   listChatIdsWithOpenInvestigations,
   listChatIdsWithUnreadWakes,
   listChats,
-  listUnreadWatchWakes,
+  listRecentWatchWakes,
   markChatRead,
   renameChat,
   setChatPinned,
@@ -120,15 +120,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const searchParams = new URL(request.url).searchParams;
 
   if (searchParams.get("unread") === "1") {
-    // The count drives the dot, the capped list drives one toast per wake.
+    // The count drives the dot; the list drives one toast per wake. The list is
+    // RECENT deliveries rather than unread ones — a wake the user happened to be
+    // reading when it landed still deserves its toast (client dedupes by id).
     const [unreadWakes, wakes] = await Promise.all([
       countUnreadWatchWakes(dashboardAgentDb, {
         organizationId: project.organizationId,
         userId,
       }),
-      listUnreadWatchWakes(dashboardAgentDb, {
+      listRecentWatchWakes(dashboardAgentDb, {
         organizationId: project.organizationId,
         userId,
+        deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
       }),
     ]);
     return json({ unreadWakes, wakes });

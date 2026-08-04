@@ -167,10 +167,12 @@ export function DashboardAgent({
         if (!res.ok) return;
         const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
         if (cancelled) return;
-        const wakesInView = (data.wakes ?? []).filter(
-          (wake) => wake.chatId === visibleChat.current
+        // The wakes list now carries READ ones too (they still toast, once) —
+        // only unread ones in the visible chat are subtracted from the dot.
+        const unreadInView = (data.wakes ?? []).filter(
+          (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
-        setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - wakesInView));
+        setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
 
         const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
         for (const wake of fresh) toastedWakes.current.add(wake.watchId);

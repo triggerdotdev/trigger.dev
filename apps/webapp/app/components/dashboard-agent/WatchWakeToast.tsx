@@ -42,6 +42,8 @@ export type WatchWake = {
   identity?: string;
   resolution?: WatchResolution | null;
   observedOutcome?: WatchObservedOutcome | null;
+  /** Landed after the chat's read marker. The dot counts these; the toast fires either way. */
+  unread?: boolean;
 };
 
 /**

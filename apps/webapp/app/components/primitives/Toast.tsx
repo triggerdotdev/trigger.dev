@@ -103,8 +103,9 @@ export function ToastUI({
         "self-end rounded-md border border-grid-bright bg-background-dimmed",
         variant === "success" && "border-success",
         variant === "error" && "border-error",
-        // The agent's toast wears the Ask Trigger button's border.
-        variant === "agent" && "border-[#41FF54]/25 light:border-success/60"
+        // The agent's toast wears the Ask Trigger button's border, and on the
+        // dark themes its surface too.
+        variant === "agent" && "border-[#41FF54]/25 light:border-success/60 dark:bg-secondary"
       )}
       style={{
         width: toastWidth,
