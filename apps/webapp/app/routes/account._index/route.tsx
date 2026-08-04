@@ -92,7 +92,7 @@ function createSchema(
     name: z
       .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
-      .max(50),
+      .max(50, "Your name must be 50 characters or less"),
     email: emailSchema.pipe(
       z.string().superRefine((email, ctx) => {
         if (constraints.isEmailUnique === undefined) {
