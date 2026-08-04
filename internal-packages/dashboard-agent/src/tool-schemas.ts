@@ -370,17 +370,11 @@ export const renderViewSchema = tool({
 
 export const scheduleWatchSchema = tool({
   description:
-    "Watch something and tell the user when it happens, later, without them asking again. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining, growing past a threshold or coming back below one, a queue that stops moving at all, runs waiting in a queue longer than a limit, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. The watch checks on its own cadence and reports ONCE, with what it found; it stops within 24 hours either way, and a window that ran out with the condition still not true is still an answer. A chat may hold at most 3 at once. `note` is why the watch exists in the user's own words — it is shown with the result. If the condition is already true (or can no longer become true) when you call this, no watch is created: you get the answer back immediately and must answer from it in the same turn.",
+    "Fill in a watch for the user to confirm. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining, growing past a threshold or coming back below one, a queue that stops moving at all, runs waiting in a queue longer than a limit, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. It does NOT start the watch: it opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts it. So never say a watch is running, scheduled, or that you'll tell them later — say you've filled one in for them to review. A watch checks on its own cadence and reports ONCE; it stops within 24 hours either way. `note` is why the watch exists in the user's own words — it is shown with the result.",
   inputSchema: z.object({
     watch: watchSpecSchema.describe(
       "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words — it is shown when it fires."
     ),
-    investigateOnAttention: z
-      .boolean()
-      .optional()
-      .describe(
-        "Set this ONLY when the user explicitly asked you to dig in / look into it / find out why if the outcome is bad — never as a helpful extra. It gives standing permission to open an investigation when (and only when) the watch resolves to something needing attention. Leave it out otherwise."
-      ),
   }),
 });
 
@@ -561,7 +555,7 @@ You have read-only tools that act as the user against their own account:
 - search_docs: search the Trigger.dev documentation.
 - get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
 - navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
-- schedule_watch: watch for something to happen (a run finishing, a queue draining, crossing a depth threshold either way, stalling, or its runs waiting past an SLA, an error recurring, health recovering) and tell the user when it does.
+- schedule_watch: fill in a watch — for something to happen (a run finishing, a queue draining, crossing a depth threshold either way, stalling, or its runs waiting past an SLA, an error recurring, health recovering) — and show it to the user to confirm.
 - list_alerts: the project's alert subscriptions for watch fires.
 - create_alert: subscribe the user to an email alert for watch fires in this project.
 - delete_alert: turn one alert subscription off.
@@ -602,15 +596,14 @@ Is anything wrong?:
 
 Watches — telling the user later:
 - When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "tell me when it's back under 100", "tell me if that queue stops moving", "ping me if runs start waiting more than 5 minutes", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
-- Confirm four things in one line: what is being watched, how often it checks, that it fires ONCE and is then done, and exactly when it gives up (the maxHours you set — e.g. "or stops in 6 hours if it doesn't happen"). A watch is never open-ended and the user must not have to ask. Pick the longest cadence that still answers in time — 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
-- A chat holds at most 3 watches. If the tool says the limit is reached or that this thing is already watched, say so and name the existing watch instead of trying again.
-- If the tool returns an immediate outcome, the condition already holds: answer now and don't promise a message later.
+- schedule_watch does not start anything. It opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts the watch. So say what you filled in — what is being watched, how often it checks, and when it gives up (the maxHours you set) — and that confirming starts it. Never say it's running, scheduled, or that you'll tell them later: "I've filled in a watch for you to review — confirm to start it", never "I'll let you know when it finishes". Pick the longest cadence that still answers in time — 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
+- The card settles everything after the user confirms: whether this chat can hold another watch, whether the same thing is already watched, and whether the condition is already true (in which case they get the answer instead of a watch). Never promise, predict, or pre-explain any of those.
 - A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else — no new investigation, no fresh reads, no recap of the conversation.
-- The ONE exception to "no new investigation": the user consented at creation ("watch it and dig in if it goes wrong"). Pass investigateOnAttention on schedule_watch only when they asked for that in so many words, and confirm it in the same line as the rest of the watch. Never add it as a helpful extra — an investigation nobody asked for is worse than none.
+- The ONE exception to "no new investigation": the user consented on the card ("investigate attention outcomes"). That opt-in is the card's, it starts off, and you cannot set it — if they asked for it ("watch it and dig in if it goes wrong"), say it's there to tick before they confirm.
 - A consented investigation applies only to outcomes that need attention: a run that failed, a queue that stayed backed up, an error that came back. Good news and neutral news end the watch and nothing else happens. When the wake tells you the investigation has already started, say so in one short clause and stop — the findings come later, in their own message.
 - On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
 - Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
-- When schedule_watch returns emailAlerts "none", the confirmation line MAY end with one short offer: "I can also email you when it fires — say the word." On "subscribed" add nothing, they already get one; on "unavailable" say nothing at all — never advertise an alert the plan denies.
+- Being notified outside the chat is the card's other opt-in, also off by default. Don't offer an email after filling in a card — the card is where that's chosen.
 - After a wake that fired, and only if no alert is subscribed yet, your ONE suggested next step may be that same offer — one short line. Never create an alert unprompted.
 - Call create_alert only after the user confirms. If it comes back denied (plan or feature flag), say so plainly and add that the dashboard still shows the notification badge for every fire.
 - "What alerts do I have?" is list_alerts. Turning one off is delete_alert — if which one is ambiguous, list them and ask which.

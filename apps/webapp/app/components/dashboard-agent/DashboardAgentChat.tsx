@@ -12,7 +12,8 @@ import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
-import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
+import { appendRunFilters } from "./navigate-target";
+import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
@@ -345,8 +346,25 @@ export function DashboardAgentChat({
     const pending = pendingNavigateIntents(messages, navigatedRef.current!);
     // Only the last one matters — the earlier destinations are already history.
     const target = pending.at(-1);
-    if (target?.kind === "navigate") void goTo(target);
+    if (target) void goTo(target);
   }, [messages, goTo]);
+
+  // `schedule_watch` proposes rather than creates: it answers with a watch intent
+  // and the panel opens the card pre-filled, so a free-text ask ("set up a watch
+  // then") is reviewed and confirmed like any other watch (§2.1 Path B). Seeded
+  // and deduped exactly like navigate, so reopening a chat whose history holds
+  // the call never reopens the card.
+  const watchProposedRef = useRef<Set<string> | null>(null);
+  if (watchProposedRef.current === null) {
+    watchProposedRef.current = new Set();
+    pendingWatchIntents(initialMessages, watchProposedRef.current);
+  }
+  useEffect(() => {
+    const pending = pendingWatchIntents(messages, watchProposedRef.current!);
+    // One card at a time, so the newest proposal is the one to review.
+    const proposed = pending.at(-1);
+    if (proposed) onWatchIntent?.(proposed.spec);
+  }, [messages, onWatchIntent]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);

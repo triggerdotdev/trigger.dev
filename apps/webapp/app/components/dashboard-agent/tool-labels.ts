@@ -31,7 +31,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_docs: "Searching the docs",
   get_current_page: "Reading the current page",
   navigate_to: "Opening the page",
-  schedule_watch: "Setting up a watch",
+  schedule_watch: "Filling in a watch",
   list_alerts: "Listing alerts",
   create_alert: "Creating an alert",
   delete_alert: "Deleting an alert",

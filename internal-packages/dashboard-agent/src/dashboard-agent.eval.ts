@@ -268,16 +268,6 @@ const FIXTURES: Record<string, unknown> = {
       pullRequestTitle: "Batch the receipt sends",
     },
   },
-  // A scheduled watch, as the host returns it: the id, the thing it watches, and
-  // when it gives up. No immediate outcome, so the answer must promise a message.
-  schedule_watch: {
-    watchId: "watch_eval1",
-    identity: "run_finished:run_a1",
-    status: "active",
-    expiresAt: "2026-01-02T01:00:00.000Z",
-    checkEveryMinutes: 1,
-    watching: true,
-  },
   search_docs: {
     results:
       "batchTrigger() triggers many runs of the same task in one call. It takes an array of payloads and returns a batch handle; use batchTriggerAndWait() inside a task to wait for all of them.",
@@ -313,6 +303,11 @@ function makeFixtureTools(
           // navigate_to doesn't fetch anything: the real one echoes the intent it
           // built, so the fixture does too.
           if (name === "navigate_to") return input;
+          // schedule_watch creates nothing either: it hands the spec back as the
+          // intent that opens the pre-filled card.
+          if (name === "schedule_watch") {
+            return { intent: { kind: "watch", spec: (input as { watch?: unknown }).watch } };
+          }
           // render_view echoes the spec and — for an investigation — reports the
           // identity the store assigned, which is what the model carries forward.
           if (name === "render_view") {

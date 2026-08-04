@@ -1569,7 +1569,7 @@ describe("buildDashboardAgentTools", () => {
   });
 
   // -------------------------------------------------------------------------
-  // schedule_watch: the one tool that schedules future work
+  // schedule_watch: proposes a watch, never creates one
   // -------------------------------------------------------------------------
 
   const WATCH_CTX = {
@@ -1586,21 +1586,17 @@ describe("buildDashboardAgentTools", () => {
     note: "tell me when the receipt run finishes",
   };
 
-  // Runs schedule_watch against a stubbed global fetch and hands back both the
-  // tool's result and the request the host would have received.
+  // Runs schedule_watch and records any request it would have made — it must make
+  // none: the card the intent opens is the only thing that creates a watch.
   async function scheduleWatch(
-    response: { status?: number; body: unknown },
     input: unknown = { watch: RUN_WATCH },
     ctx: Record<string, unknown> = WATCH_CTX
   ) {
-    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const requests: string[] = [];
     const original = globalThis.fetch;
-    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      requests.push({ url: String(url), init });
-      return new Response(JSON.stringify(response.body), {
-        status: response.status ?? 200,
-        headers: { "Content-Type": "application/json" },
-      });
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]) => {
+      requests.push(String(url));
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
     }) as typeof fetch;
     try {
       const tools = buildDashboardAgentTools(ctx);
@@ -1608,137 +1604,50 @@ describe("buildDashboardAgentTools", () => {
         inputSchema: { parse: (input: unknown) => unknown };
         execute: (input: unknown, opts: unknown) => Promise<any>;
       };
-      const result = await scheduleTool.execute(scheduleTool.inputSchema.parse(input), {});
+      const result = await scheduleTool.execute(input, {});
       return { result, requests };
     } finally {
       globalThis.fetch = original;
     }
   }
 
-  it("schedule_watch posts the spec and the chat id as the user, and reports the created watch", async () => {
-    const { result, requests } = await scheduleWatch({
-      body: {
-        watchId: "watch_1",
-        identity: "run_finished:run_a1",
-        status: "active",
-        expiresAt: "2026-01-01T14:00:00.000Z",
-        emailAlerts: "none",
+  // §2.1 Path B: free text goes through schedule_watch and pre-fills the same
+  // card for review, so the tool's whole job is the intent.
+  it("schedule_watch returns a watch intent and creates nothing", async () => {
+    const { result, requests } = await scheduleWatch();
+
+    expect(result).toEqual({ intent: { kind: "watch", spec: RUN_WATCH } });
+    expect(requests).toEqual([]);
+  });
+
+  it("schedule_watch has no consent parameter — the card owns the opt-ins", () => {
+    const tools = buildDashboardAgentTools(WATCH_CTX);
+    const scheduleTool = tools.schedule_watch as {
+      inputSchema: { parse: (input: unknown) => unknown };
+    };
+    const parsed = scheduleTool.inputSchema.parse({
+      watch: RUN_WATCH,
+      investigateOnAttention: true,
+    });
+    expect(parsed).toEqual({ watch: RUN_WATCH });
+  });
+
+  it("schedule_watch rejects a spec the contract won't accept", async () => {
+    // Aggregate conditions are floored at 5 minutes by the contract's schema.
+    const floored = await scheduleWatch({
+      watch: {
+        kind: "backlog_drain",
+        queue: "task/x",
+        checkEveryMinutes: 1,
+        maxHours: 1,
+        note: "n",
       },
     });
+    expect(typeof floored.result.error).toBe("string");
+    expect(floored.requests).toEqual([]);
 
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/watches");
-    expect(requests[0]?.init?.method).toBe("POST");
-    // The delegated user token — a watch is created with exactly the access of
-    // the user who asked for it.
-    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
-      "Bearer uat_token"
-    );
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
-      spec: RUN_WATCH,
-      chatId: "chat_1",
-    });
-
-    expect(result).toMatchObject({
-      watchId: "watch_1",
-      identity: "run_finished:run_a1",
-      status: "active",
-      expiresAt: "2026-01-01T14:00:00.000Z",
-      checkEveryMinutes: 1,
-      watching: true,
-      // What the model needs to decide whether to offer an email alert.
-      emailAlerts: "none",
-    });
-  });
-
-  it("schedule_watch passes the alert state through, and defaults to none when the host omits it", async () => {
-    for (const state of ["subscribed", "unavailable"] as const) {
-      const { result } = await scheduleWatch({
-        body: { watchId: "watch_1", status: "active", emailAlerts: state },
-      });
-      expect(result.emailAlerts).toBe(state);
-    }
-
-    // An older host that doesn't send the field must not read as "already
-    // subscribed" — the offer is the safe default.
-    const legacy = await scheduleWatch({ body: { watchId: "watch_1", status: "active" } });
-    expect(legacy.result.emailAlerts).toBe("none");
-  });
-
-  it("schedule_watch surfaces the limit and the duplicate as friendly text, naming the existing watch", async () => {
-    const limit = await scheduleWatch({
-      status: 400,
-      body: { error: "too many", code: "limit_reached" },
-    });
-    expect(limit.result.error).toContain("3 active watches");
-
-    const duplicate = await scheduleWatch({
-      status: 409,
-      body: { error: "already watching", code: "duplicate", existingId: "watch_existing" },
-    });
-    expect(duplicate.result.error).toContain("watch_existing");
-    expect(duplicate.result.error).toContain("already being watched");
-  });
-
-  // §2.2/§4.1: the host answered the request outright and created no watch, so
-  // the tool result is a ONE-SHOT the model must answer from in this turn.
-  it("schedule_watch reports a one-shot outcome instead of a running watch", async () => {
-    const { result } = await scheduleWatch({
-      body: {
-        watching: false,
-        identity: "run_finished:run_abc",
-        immediate: { result: "satisfied", facts: { status: "COMPLETED" } },
-      },
-    });
-    expect(result.watching).toBe(false);
-    expect(result.outcome).toBe("already_true");
-    expect(result.immediate).toEqual({ result: "satisfied", facts: { status: "COMPLETED" } });
-    // No watch id: there is nothing to cancel, and nothing will wake later.
-    expect(result.watchId).toBeUndefined();
-
-    const impossible = await scheduleWatch({
-      body: {
-        watching: false,
-        identity: "run_finished:run_abc",
-        immediate: { result: "terminal_unsatisfied", facts: {} },
-      },
-    });
-    expect(impossible.result.outcome).toBe("no_longer_possible");
-  });
-
-  it("schedule_watch says so when the first check couldn't run", async () => {
-    const { result } = await scheduleWatch({
-      body: { watching: true, watchId: "watch_1", status: "active", unavailable: true },
-    });
-    expect(result.watching).toBe(true);
-    expect(result.firstCheck).toBe("unavailable");
-    expect(result.checked).toBe(false);
-  });
-
-  it("schedule_watch fails closed with no chat and rejects a cadence the contract floors", async () => {
-    const noChat = await scheduleWatch({ body: {} }, { watch: RUN_WATCH }, {
-      userActorToken: "uat_token",
-      apiOrigin: "http://localhost:3030",
-    } as Record<string, unknown>);
-    expect(typeof noChat.result.error).toBe("string");
-    expect(noChat.requests).toHaveLength(0);
-
-    // Aggregate conditions are floored at 5 minutes by the contract's schema, so
-    // an over-eager watch never reaches the host.
-    await expect(
-      scheduleWatch(
-        { body: {} },
-        {
-          watch: {
-            kind: "backlog_drain",
-            queue: "task/x",
-            checkEveryMinutes: 1,
-            maxHours: 1,
-            note: "n",
-          },
-        }
-      )
-    ).rejects.toThrow();
+    const nonsense = await scheduleWatch({ watch: { kind: "run_finished" } });
+    expect(typeof nonsense.result.error).toBe("string");
   });
 
   // The env-JWT exchange is a webapp request plus DB work, so it is paid for once

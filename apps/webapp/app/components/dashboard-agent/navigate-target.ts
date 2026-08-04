@@ -6,11 +6,7 @@
  * client-side halves: the runs-list filters a navigate intent carries, and links
  * that arrived as absolute URLs into our own origin.
  */
-import {
-  agentIntentSchema,
-  type AgentIntent,
-  type RunFilters,
-} from "@internal/dashboard-agent-contracts";
+import { type RunFilters } from "@internal/dashboard-agent-contracts";
 
 // The filter keys are already the runs page's own URL params (see
 // `TaskRunListSearchFilters`), with one exception: the page reads absolute
@@ -60,42 +56,4 @@ export function sameOriginPath(href: string, origin: string): string | null {
   }
   if (url.origin !== origin) return null;
   return `${url.pathname}${url.search}${url.hash}`;
-}
-
-type ToolPart = { type?: string; state?: string; toolCallId?: string; output?: unknown };
-type ToolMessage = { id: string; parts?: ReadonlyArray<unknown> };
-
-/**
- * The navigate intents from completed `navigate_to` tool calls the host hasn't
- * honoured yet.
- *
- * The tool returns an intent rather than performing the navigation, so the panel
- * is what actually moves the user — otherwise the agent says "you're now on the
- * page" and nothing happened. `seen` is mutated with the calls handled, and is
- * seeded with the transcript loaded at mount so opening an old chat never
- * navigates on history.
- */
-export function pendingNavigateIntents(
-  messages: ReadonlyArray<ToolMessage>,
-  seen: Set<string>
-): AgentIntent[] {
-  const intents: AgentIntent[] = [];
-
-  for (const message of messages) {
-    const parts = message.parts ?? [];
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i] as ToolPart;
-      if (part?.type !== "tool-navigate_to" || part.state !== "output-available") continue;
-
-      const key = part.toolCallId ?? `${message.id}:${i}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const output = part.output as { intent?: unknown } | undefined;
-      const parsed = agentIntentSchema.safeParse(output?.intent);
-      if (parsed.success && parsed.data.kind === "navigate") intents.push(parsed.data);
-    }
-  }
-
-  return intents;
 }

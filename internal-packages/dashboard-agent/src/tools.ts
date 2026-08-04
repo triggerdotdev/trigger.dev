@@ -1580,123 +1580,23 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // The one tool that schedules future work. The host owns everything the
-    // model shouldn't: the tenancy snapshot, the watch token, the periodic
-    // checks, and the guardrails (≤3 per chat, no duplicate on the same thing,
-    // 24h ceiling). The model composes the spec and gets back one of two things:
-    // a running watch, or — when the creation-time check already answered the
-    // request — a ONE-SHOT result with no watch behind it at all.
+    // Proposes a watch; it never creates one. The tool validates the spec the
+    // model composed and answers with a `watch` intent — the panel opens the
+    // pre-filled configuration card, and the user's confirmation is the only
+    // thing that starts a watch (§2.1 Path B). Emitting the intent is a request,
+    // never an action, so the card owns consent, the cap, dedup, and the
+    // creation-time one-shot result.
     schedule_watch: tool({
       ...scheduleWatchSchema,
-      execute: async ({ watch, investigateOnAttention }) => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) {
-          return { error: "This turn isn't attached to a chat, so a watch can't be scheduled." };
-        }
-        let res: Response;
+      execute: async ({ watch }) => {
+        // Re-validated through the intent schema, so a spec the contract rejects
+        // becomes a tool error the model can fix rather than an intent the host
+        // has to drop.
         try {
-          res = await fetch(`${origin}/api/v1/dashboard-agent/watches`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${userActorToken!}`,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({
-              spec: watch,
-              chatId: ctx.chatId,
-              // Only ever sent as `true`: the flag is consent, and an absent
-              // field is the same as a refused one.
-              ...(investigateOnAttention === true ? { investigateOnAttention: true } : {}),
-            }),
-          });
+          return { intent: agentIntentSchema.parse({ kind: "watch", spec: watch }) };
         } catch (error) {
-          return { error: `Couldn't schedule the watch: ${(error as Error).message}` };
+          return { error: `Couldn't build that watch: ${(error as Error).message}` };
         }
-
-        const data = (await res.json().catch(() => undefined)) as
-          | {
-              /** False = the ONE-SHOT result: the check answered, no watch exists. */
-              watching?: boolean;
-              watchId?: string;
-              identity?: string;
-              status?: string;
-              expiresAt?: string;
-              /** The creation-time check couldn't run; the watch is active anyway. */
-              unavailable?: boolean;
-              /** Whether a resolution would already reach the user outside the chat. */
-              emailAlerts?: "subscribed" | "none" | "unavailable";
-              immediate?: { result?: string; facts?: unknown };
-              existingId?: string;
-              error?: string;
-              code?: string;
-            }
-          | undefined;
-
-        if (!res.ok) {
-          switch (data?.code) {
-            case "limit_reached":
-              return {
-                error:
-                  "This chat already has the maximum of 3 active watches. Cancel one of them before adding another.",
-              };
-            case "duplicate":
-              return {
-                error: `That's already being watched in this chat${
-                  (data.existingId ?? data.watchId)
-                    ? ` (watch ${data.existingId ?? data.watchId})`
-                    : ""
-                }, so nothing new was scheduled. Tell the user the existing watch covers it.`,
-              };
-            case "invalid_target":
-              return {
-                error:
-                  data.error ??
-                  "That thing can't be watched — check the run id, queue, or error group is right.",
-              };
-            default:
-              return {
-                error: data?.error ?? `Couldn't schedule the watch (status ${res.status}).`,
-              };
-          }
-        }
-
-        // The ONE-SHOT result. The creation-time check already answered the
-        // request, so NO watch was created — no row, no chip, no later wake. The
-        // model must answer from this result now; there is nothing to promise.
-        if (data?.watching === false && data.immediate) {
-          const satisfied = data.immediate.result === "satisfied";
-          return {
-            watching: false,
-            identity: data.identity,
-            outcome: satisfied ? "already_true" : "no_longer_possible",
-            immediate: data.immediate,
-            note: satisfied
-              ? "That already happened, so there is nothing left to watch. Answer now from these facts."
-              : "That can no longer happen, so there is nothing to watch. Answer now from these facts.",
-          };
-        }
-
-        return {
-          watchId: data?.watchId,
-          identity: data?.identity,
-          status: data?.status ?? "active",
-          expiresAt: data?.expiresAt,
-          checkEveryMinutes: watch.checkEveryMinutes,
-          note: watch.note,
-          watching: true,
-          // Echoed so the confirmation can say the second half out loud: this
-          // watch will also start looking into it if the news is bad.
-          ...(investigateOnAttention === true ? { investigateOnAttention: true } : {}),
-          // The first check couldn't run. The watch is running anyway; say so
-          // rather than implying the condition was evaluated.
-          ...(data?.unavailable
-            ? { firstCheck: "unavailable" as const, checked: false }
-            : { checked: true }),
-          // Decides whether the confirmation may offer an email alert: only
-          // "none" leaves something to offer.
-          emailAlerts: data?.emailAlerts ?? "none",
-        };
       },
     }),
 
