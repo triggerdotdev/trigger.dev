@@ -144,12 +144,12 @@ export function DashboardAgent({
     setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // The dot's poll, and the toast's. Runs only while the panel is CLOSED — an
-  // open panel shows the wake in the transcript, so polling then would only race
-  // the read marker. Both the interval and the on-close refresh come from this
-  // effect re-running on `open`.
+  // The dot's poll, and the toast's. Runs whether the panel is open or not: a
+  // wake in a chat that isn't on screen (another chat open, or none) must
+  // announce itself either way. `toastedWakes` keeps a wake that streamed into
+  // the visible transcript from toasting twice across polls.
   useEffect(() => {
-    if (!hasAccess || open) return;
+    if (!hasAccess) return;
 
     let cancelled = false;
     const load = async () => {
@@ -184,7 +184,7 @@ export function DashboardAgent({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [hasAccess, open, actionPath, setPanelOpen, openChat]);
+  }, [hasAccess, actionPath, setPanelOpen, openChat]);
 
   // A chat the user is now looking at has no unread wakes. Zeroes the dot right
   // away (the poll restores the truth on close if another chat still has one) and
