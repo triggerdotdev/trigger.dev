@@ -1,5 +1,5 @@
+import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Button } from "~/components/primitives/Buttons";
-import { AgentIcon, AGENT_ICON_ACCENT_CLASS } from "./agent-identity";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
 
 /**
@@ -9,9 +9,8 @@ import { useDashboardAgent } from "./dashboardAgentLauncher";
  * Renders nothing when the agent isn't available (no provider, or gated off) —
  * every entry point self-hides, so callers don't need their own gate.
  *
- * Icon and accent come from `agent-identity`, which the launcher and the
- * "Ask {agent}" menu item read too — so every agent surface is one recognisable
- * thing, and the character icon design is drawing lands on all of them at once.
+ * The magnifier matches the chat's investigate chip — like the Watch button's
+ * eye, the glyph names the action, not the agent.
  */
 export function InvestigateButton({
   prompt,
@@ -41,10 +40,9 @@ export function InvestigateButton({
     <Button
       type="button"
       variant={`${variant}/${size}`}
-      LeadingIcon={AgentIcon}
-      // A primary button is already accented, so the icon stays on its own
-      // foreground there; everywhere else it carries the agent's accent.
-      leadingIconClassName={variant === "primary" ? undefined : AGENT_ICON_ACCENT_CLASS}
+      LeadingIcon={MagnifyingGlassIcon}
+      // A primary button is already accented; everywhere else the glyph stays quiet.
+      leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}

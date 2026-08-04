@@ -342,11 +342,6 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
-            {/* The universal `Watch…` entry, pre-filled with this queue's
-                recommendation: when it drains, or — when runs are already waiting
-                past the threshold this page tints at — when the wait crosses the
-                SLA. Same signal the Investigate button derives `degraded` from. */}
-            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -357,13 +352,18 @@ export default function Page() {
               variant="secondary/small"
               withQueueName
             />
-            {/* Hand a backed-up queue to the agent. Hidden when the agent isn't available. */}
+            {/* The agent pair, Investigate then Watch. Both self-hide without the
+                agent. Investigate: hand a backed-up queue over. Watch: the
+                universal entry, pre-filled with this queue's recommendation —
+                if runs start waiting past the SLA, or, when they already are
+                (the same signal `degraded` comes from), when the queue drains. */}
             {degraded ? (
               <InvestigateButton
                 prompt={queueBacklogPrompt(queue.name)}
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}
+            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
           </div>
         </MetricsLayout.Filters>
 
