@@ -65,7 +65,7 @@ export function DashboardAgentComposer({
       variant="minimal/small"
       // Filled neutral, not transparent: a white glyph needs a surface on the
       // light theme too. Raw charcoal is deliberately theme-stable here.
-      className="aspect-square h-6 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
+      className="aspect-square h-7 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
       aria-label="Stop generating"
       tooltip="Stop generating"
       onClick={onStop}
@@ -74,7 +74,7 @@ export function DashboardAgentComposer({
   ) : (
     <Button
       variant="primary/small"
-      className="aspect-square h-6 min-w-0 p-1"
+      className="aspect-square h-7 min-w-0 p-1"
       aria-label="Send"
       tooltip="Send"
       onClick={onSubmit}
@@ -101,7 +101,7 @@ export function DashboardAgentComposer({
           isHero ? "rounded-lg p-2" : "rounded-md p-1"
         )}
       >
-        <div className={isHero ? "flex flex-col gap-1.5" : "flex items-center gap-1"}>
+        <div className={isHero ? "flex flex-col gap-1.5" : "flex items-end gap-1"}>
           {/* Docked: one text line tall at rest (matches the button height),
               growing with content up to the cap. Hero: three lines at rest, the
               same growth. rows + field-sizing-content do the work. */}
