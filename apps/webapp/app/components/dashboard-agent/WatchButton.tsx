@@ -54,7 +54,8 @@ export function WatchButton({
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}
-      tooltip={tooltip}
+      // The recommendation's own promise is the best description of the button.
+      tooltip={tooltip ?? spec.note}
       onClick={() => agent.openWithWatch(spec)}
     >
       {label}
