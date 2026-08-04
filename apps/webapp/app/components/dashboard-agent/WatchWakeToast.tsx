@@ -12,12 +12,9 @@
  * toasts use — so a wake looks like everything else the dashboard says, not like
  * a one-off panel.
  */
-import { XMarkIcon } from "@heroicons/react/20/solid";
 import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
-import { Header2 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { ToastUI } from "~/components/primitives/Toast";
 import type { WatchObservedOutcome, WatchResolution } from "@internal/dashboard-agent-contracts";
 import { wakeResolution } from "./WakeBanner";
 import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-presentation";
@@ -74,38 +71,28 @@ function WakeToastUI({
   message: string;
   onOpenChat: () => void;
 }) {
+  // The standard toast, in its agent status: success's layout, the agent's
+  // glyph and the Ask Trigger border.
   return (
-    // Opaque base under the callout: a callout is translucent by design, and a
-    // toast has to read over whatever page is behind it.
-    <div className="self-end rounded-md bg-background-dimmed" style={{ width: TOAST_WIDTH }}>
-      <Callout
-        variant="agent"
-        cta={
-          <button
-            className="-mr-1 -mt-1 rounded p-1 text-text-dimmed transition hover:text-text-bright"
-            aria-label="Dismiss"
-            onClick={() => toast.dismiss(t)}
-          >
-            <XMarkIcon className="size-4" />
-          </button>
-        }
-      >
-        <div className="flex flex-col items-start gap-1">
-          <Header2 className="pt-0">{title}</Header2>
-          <Paragraph variant="small/dimmed">{message}</Paragraph>
-          <Button
-            variant="secondary/small"
-            className="mt-1"
-            onClick={() => {
-              onOpenChat();
-              toast.dismiss(t);
-            }}
-          >
-            Open chat
-          </Button>
-        </div>
-      </Callout>
-    </div>
+    <ToastUI
+      variant="agent"
+      t={t}
+      title={title}
+      message={message}
+      toastWidth={TOAST_WIDTH}
+      actionNode={
+        <Button
+          variant="secondary/small"
+          className="my-2 self-start"
+          onClick={() => {
+            onOpenChat();
+            toast.dismiss(t);
+          }}
+        >
+          Open chat
+        </Button>
+      }
+    />
   );
 }
 

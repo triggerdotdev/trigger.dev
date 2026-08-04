@@ -17,6 +17,18 @@ export default function Story() {
         message="This is a long error message that wraps over multiple lines so we can test the UI."
         t="-"
       />
+      <ToastUI variant="agent" message="Agent info UI" t="-" />
+      <ToastUI
+        variant="agent"
+        title="Watch update"
+        message="Error error_c4b4a797 happened again — 1 new occurrence since the watch started."
+        t="-"
+        actionNode={
+          <Button variant="secondary/small" className="my-2 self-start">
+            Open chat
+          </Button>
+        }
+      />
       <br />
       <Button
         variant="primary/medium"

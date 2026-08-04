@@ -1,5 +1,6 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { useSearchParams } from "@remix-run/react";
 import { useEffect, useMemo } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
@@ -76,20 +77,28 @@ export function ToastUI({
   toastWidth = 356, // Default width, matches what sonner provides by default
   title,
   action,
+  actionNode,
 }: {
-  variant: "error" | "success";
+  variant: "error" | "success" | "agent";
   message: string;
   t: string;
   toastWidth?: string | number;
   title?: string;
   action?: ToastMessageAction;
+  /**
+   * A caller-rendered action (a button with an onClick) for toasts shown from
+   * client code — `action` stays the serializable server-message shape.
+   */
+  actionNode?: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
         "self-end rounded-md border border-grid-bright bg-background-dimmed",
         variant === "success" && "border-success",
-        variant === "error" && "border-error"
+        variant === "error" && "border-error",
+        // The agent's toast wears the Ask Trigger button's border.
+        variant === "agent" && "border-[#41FF54]/25 light:border-success/60"
       )}
       style={{
         width: toastWidth,
@@ -100,6 +109,10 @@ export function ToastUI({
       >
         {variant === "success" ? (
           <CheckCircleIcon className={cn("size-4 min-w-4 text-success", title && "mt-1")} />
+        ) : variant === "agent" ? (
+          <span className={cn("flex size-4 min-w-4 items-center", title && "mt-1")}>
+            <AgentMonoLogo size={16} decorative />
+          </span>
         ) : (
           <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />
         )}
@@ -112,6 +125,7 @@ export function ToastUI({
             {message}
           </Paragraph>
           <Action action={action} toastId={t} className="my-2" />
+          {actionNode}
         </div>
         <button
           className={cn(
