@@ -16,7 +16,13 @@ import {
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches` — the agent's `schedule_watch` adapter.
+ * `POST /api/v1/dashboard-agent/watches` — programmatic watch creation.
+ *
+ * Currently caller-less by design: the dashboard chat creates watches through
+ * the configuration card (`watch-create` resource intent), and `schedule_watch`
+ * only proposes that card. Kept for MCP — an external agent has no card surface,
+ * so its watch creation lands here (the creation-time check, dedup, and caps are
+ * already in place).
  *
  * Accepts ONLY the dashboard agent's delegated user-actor token. Unlike the other
  * UAT routes it does not also take a PAT: this endpoint creates something that
