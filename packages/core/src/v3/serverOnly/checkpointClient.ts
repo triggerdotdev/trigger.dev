@@ -13,6 +13,8 @@ export type CheckpointClientOptions = {
   orchestrator: CheckpointType;
 };
 
+const CANCEL_TIMEOUT_MS = 5_000;
+
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
 
@@ -161,7 +163,7 @@ export class CheckpointClient {
   async cancelCheckpoints({ runFriendlyId }: { runFriendlyId: string }): Promise<boolean> {
     const res = await fetch(
       new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
-      { method: "POST" }
+      { method: "POST", signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS) }
     );
 
     if (!res.ok) {
