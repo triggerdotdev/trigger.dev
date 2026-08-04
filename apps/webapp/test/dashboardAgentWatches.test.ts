@@ -22,7 +22,7 @@ import {
   getWatch,
   listActiveWatchesForChat,
   listChatIdsWithUnreadWakes,
-  listUnreadWatchWakes,
+  listRecentWatchWakes,
   markWatchDelivered,
   recordWatchCheck,
   releaseWatchDelivery,
@@ -889,6 +889,8 @@ describe("unread watch wakes", () => {
       if (!created.ok) return;
 
       const scope = { organizationId: seeded.organization.id, userId: seeded.user.id };
+      // The toast feed lists recent DELIVERIES (read or not) inside a window.
+      const recent = { ...scope, deliveredAfter: new Date(Date.now() - 15 * 60 * 1000) };
 
       // Terminal but undelivered: the chat has no message to open yet, so the
       // launcher's dot and the toast must stay quiet.
@@ -898,13 +900,13 @@ describe("unread watch wakes", () => {
         resolution: "condition_met",
       });
       expect(await countUnreadWatchWakes(ctx.agentDb, scope)).toBe(0);
-      expect(await listUnreadWatchWakes(ctx.agentDb, scope)).toEqual([]);
+      expect(await listRecentWatchWakes(ctx.agentDb, recent)).toEqual([]);
       expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set());
 
       await markWatchDelivered(ctx.agentDb, { id: created.watchId });
       expect(await countUnreadWatchWakes(ctx.agentDb, scope)).toBe(1);
-      expect(await listUnreadWatchWakes(ctx.agentDb, scope)).toMatchObject([
-        { watchId: created.watchId, chatId: "chat_1", outcome: "fired" },
+      expect(await listRecentWatchWakes(ctx.agentDb, recent)).toMatchObject([
+        { watchId: created.watchId, chatId: "chat_1", outcome: "fired", unread: true },
       ]);
       expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set(["chat_1"]));
     }
@@ -1666,18 +1668,21 @@ describe("appendChatMessage", () => {
         await appendChatMessage(ctx.agentDb, {
           chatId: "chat_1",
           userId: seeded.user.id,
+          organizationId: seeded.organization.id,
           message: first,
         })
       ).toBe(true);
       await appendChatMessage(ctx.agentDb, {
         chatId: "chat_1",
         userId: seeded.user.id,
+        organizationId: seeded.organization.id,
         message: second,
       });
 
       const messages = await getChatMessages(ctx.agentDb, {
         chatId: "chat_1",
         userId: seeded.user.id,
+        organizationId: seeded.organization.id,
       });
       expect(messages).toEqual([first, second]);
     }
@@ -1694,6 +1699,7 @@ describe("appendChatMessage", () => {
         await appendChatMessage(ctx.agentDb, {
           chatId: "chat_1",
           userId: "user_someone_else",
+          organizationId: seeded.organization.id,
           message: { id: "watch-card:watch_1", role: "assistant", parts: [] },
         })
       ).toBe(false);
@@ -1701,6 +1707,7 @@ describe("appendChatMessage", () => {
       const messages = await getChatMessages(ctx.agentDb, {
         chatId: "chat_1",
         userId: seeded.user.id,
+        organizationId: seeded.organization.id,
       });
       expect(messages).toEqual([]);
     }
