@@ -331,7 +331,7 @@ describe("routes-batch-get callers under a lagging replica", () => {
       holder.environment = authEnv(seed);
       holder.cachedRequest = { id: batchId };
 
-      const body = JSON.stringify({ items: [{ task: "my-task", payload: null }] });
+      const body = JSON.stringify({ items: [{ task: "my-task" }] });
       const res = (await actionTasksBatch({
         request: new Request("http://localhost/api/v2/tasks/batch", {
           method: "POST",
