@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import type { RequireKeys } from "../types/index.js";
 import {
   MachineConfig,
@@ -95,7 +96,7 @@ export const SlidingWindowRateLimit = z.object({
   ]),
 });
 
-export const RateLimitOptions = z.discriminatedUnion("type", [
+export const RateLimitOptions = discriminatedUnion("type", [
   FixedWindowRateLimit,
   SlidingWindowRateLimit,
 ]);

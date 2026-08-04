@@ -6,18 +6,21 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import type {
+  AnyZodSchema,
+  inferZodSchemaOutput,
+} from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
-import type { z } from "zod";
 
 export interface MessageCatalogSchema {
-  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+  [key: string]: AnyZodSchema;
 }
 
 export type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
 export type MessageCatalogValue<
   TMessageCatalog extends MessageCatalogSchema,
   TKey extends MessageCatalogKey<TMessageCatalog>,
-> = z.infer<TMessageCatalog[TKey]>;
+> = inferZodSchemaOutput<TMessageCatalog[TKey]>;
 
 export type AnyMessageCatalog = MessageCatalogSchema;
 export type QueueItem<TMessageCatalog extends MessageCatalogSchema> = {
@@ -218,7 +221,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         }
 
         // zod v4 narrows the generic schema union here; cast to public ZodType (has safeParse in v3 & v4)
-        const validatedItem = (schema as z.ZodType).safeParse(parsedItem.item);
+        const validatedItem = schema.safeParse(parsedItem.item);
 
         if (!validatedItem.success) {
           this.logger.error("Invalid item in queue", {

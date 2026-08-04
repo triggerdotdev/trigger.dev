@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { VERSION } from "../../version.js";
 import { isAdditionalApiKey } from "../apiKeys.js";
 import type { ApiClientConfiguration } from "../apiClientManager-api.js";

@@ -1,6 +1,6 @@
 import { JSONHeroPath } from "@jsonhero/path";
 import type { Attributes, Span } from "@opentelemetry/api";
-import { z } from "zod";
+import { z } from "zod/v4";
 import type { ApiClient } from "../apiClient/index.js";
 import { apiClientManager } from "../apiClientManager-api.js";
 import {

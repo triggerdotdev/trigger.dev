@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../../utils/zod.js";
 import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
   MachineResources,
@@ -28,7 +29,7 @@ export const WorkerApiHeartbeatResponseBody = z.object({
 });
 export type WorkerApiHeartbeatResponseBody = z.infer<typeof WorkerApiHeartbeatResponseBody>;
 
-export const WorkerApiSuspendRunRequestBody = z.discriminatedUnion("success", [
+export const WorkerApiSuspendRunRequestBody = discriminatedUnion("success", [
   z.object({
     success: z.literal(true),
     checkpoint: CheckpointInput,

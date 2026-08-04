@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import {
   FlushedRunMetadata,
@@ -855,7 +856,7 @@ export const DeploymentFinalizedEvent = z.object({
   }),
 });
 
-export const DeploymentEvent = z.discriminatedUnion("type", [
+export const DeploymentEvent = discriminatedUnion("type", [
   DeploymentLogEvent,
   DeploymentFinalizedEvent,
 ]);
@@ -1302,8 +1303,7 @@ const BulkActionSelectionRequestBody = {
   name: z.string().max(255, "Name must be less than 255 characters").optional(),
 };
 
-export const CreateBulkActionRequestBody = z
-  .discriminatedUnion("action", [
+export const CreateBulkActionRequestBody = discriminatedUnion("action", [
     z.object({
       action: z.literal("cancel"),
       targetRegion: z.never().optional(),
@@ -1390,8 +1390,7 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   override: z.boolean().optional(),
   // When omitted, variables default to non-secret (the DB default is false).
   isSecret: z.boolean().optional(),
-  source: z
-    .discriminatedUnion("type", [
+  source: discriminatedUnion("type", [
       z.object({ type: z.literal("user"), userId: z.string() }),
       z.object({ type: z.literal("integration"), integration: z.string() }),
     ])
