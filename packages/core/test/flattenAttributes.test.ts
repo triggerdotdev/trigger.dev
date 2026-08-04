@@ -707,4 +707,20 @@ describe("unflattenAttributes", () => {
       a: { b: ["indexed"] },
     });
   });
+
+  it("keeps large numeric keys as an object instead of throwing Invalid array length", () => {
+    expect(() => unflattenAttributes({ "1699999999999": "value" })).not.toThrow();
+    expect(unflattenAttributes({ "1699999999999": "value" })).toEqual({
+      "1699999999999": "value",
+    });
+  });
+
+  it("keeps a nested object of large numeric keys as an object", () => {
+    expect(() =>
+      unflattenAttributes({ "a.1699999999999": "x", "a.1700000000000": "y" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.1699999999999": "x", "a.1700000000000": "y" })).toEqual({
+      a: { "1699999999999": "x", "1700000000000": "y" },
+    });
+  });
 });

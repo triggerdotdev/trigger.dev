@@ -5,6 +5,10 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 const DEFAULT_MAX_DEPTH = 128;
 
+// The largest value a JS array length can hold. A numeric key at or above this
+// is not a real array index, so we never try to build an array that big.
+const MAX_ARRAY_INDEX = 2 ** 32 - 1;
+
 // This property name would let a crafted key walk into Object.prototype during
 // reconstruction and pollute the shared process.
 const PROTOTYPE_POLLUTION_KEY = "__proto__";
@@ -342,13 +346,20 @@ export function unflattenAttributes(
   // Convert the result to an array if all top-level keys are numeric indices.
   // Guard against an empty result (e.g. every key was skipped as unsafe), which
   // would otherwise produce Array(-Infinity) and throw.
-  if (Object.keys(result).length > 0 && Object.keys(result).every((k) => /^\d+$/.test(k))) {
-    const maxIndex = Math.max(...Object.keys(result).map((k) => parseInt(k)));
-    const arrayResult = Array(maxIndex + 1);
-    for (const key in result) {
-      arrayResult[parseInt(key)] = result[key];
+  const topLevelKeys = Object.keys(result);
+  if (topLevelKeys.length > 0 && topLevelKeys.every((k) => /^\d+$/.test(k))) {
+    const maxIndex = topLevelKeys.reduce((max, k) => Math.max(max, parseInt(k)), 0);
+    // Only rebuild an array when every key is a real array index (< 2^32 - 1). A
+    // larger numeric key, like a millisecond timestamp used as an object key, is
+    // not an array index, so keep the object form instead of throwing "Invalid
+    // array length" or allocating a huge array.
+    if (maxIndex < MAX_ARRAY_INDEX) {
+      const arrayResult = Array(maxIndex + 1);
+      for (const key of topLevelKeys) {
+        arrayResult[parseInt(key)] = result[key];
+      }
+      return arrayResult as any;
     }
-    return arrayResult as any;
   }
 
   return result;
