@@ -150,7 +150,7 @@ export class WeightedScheduler extends BaseScheduler {
 
     // Apply maximum tenant count if configured
     if (this.maximumTenantCount > 0) {
-      rawQueues = this.#selectTopTenantQueues(rawQueues);
+      rawQueues = this.#selectTopTenantQueues(rawQueues, now);
     }
 
     // Build tenant data
@@ -230,7 +230,7 @@ export class WeightedScheduler extends BaseScheduler {
     return queues;
   }
 
-  #selectTopTenantQueues(queues: QueueWithScore[]): QueueWithScore[] {
+  #selectTopTenantQueues(queues: QueueWithScore[], now: number): QueueWithScore[] {
     // Group by tenant and calculate average age
     const queuesByTenant = new Map<string, QueueWithScore[]>();
     for (const queue of queues) {
@@ -239,9 +239,11 @@ export class WeightedScheduler extends BaseScheduler {
       queuesByTenant.set(queue.tenantId, tenantQueues);
     }
 
-    // Calculate average age per tenant
+    // Calculate average age per tenant. A queue's score is its oldest message
+    // timestamp, so age is now - score. Older queues have a higher age and
+    // should get more weight when we pick the top tenants.
     const tenantAges = Array.from(queuesByTenant.entries()).map(([tenantId, tQueues]) => {
-      const avgAge = tQueues.reduce((sum, q) => sum + q.score, 0) / tQueues.length;
+      const avgAge = tQueues.reduce((sum, q) => sum + (now - q.score), 0) / tQueues.length;
       return { tenantId, avgAge };
     });
 
