@@ -81,10 +81,9 @@ function Section({
   const state = states[section.sectionId];
   return (
     <section id={section.sectionId} className="w-fit scroll-mt-4 space-y-1.5">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-medium text-text-bright">{section.title}</h3>
-        <code className="font-mono text-[10px] text-text-faint">{section.sectionId}</code>
-      </div>
+      {/* The section id stays as the DOM id / deep-link anchor; showing it
+          overflowed the tile, and `title` says what the state is. */}
+      <h3 className="text-sm font-medium text-text-bright">{section.title}</h3>
       <div className={cn(WIDE_SECTIONS.has(section.sectionId) ? "w-auto" : PANEL)}>
         {state ?? <Missing what={`section "${section.sectionId}"`} />}
       </div>
