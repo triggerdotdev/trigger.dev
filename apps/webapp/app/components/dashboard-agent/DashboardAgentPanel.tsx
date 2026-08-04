@@ -344,6 +344,22 @@ export function DashboardAgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChat, storageKey, loadHistory]);
 
+  // Crossing into another organization does NOT remount the layout (same route,
+  // new params) — so the previous org's open chat and history would linger. Chats
+  // are org-scoped, so the panel resets to a fresh draft and reloads this org's
+  // list; the previous conversation stays where it belongs, in its own org.
+  const panelOrg = useRef(organization.id);
+  useEffect(() => {
+    if (panelOrg.current === organization.id) return;
+    panelOrg.current = organization.id;
+    openChatRequestSeq.current += 1;
+    setActive(null);
+    setLoading(false);
+    setWatchDraft(null);
+    setChats([]);
+    void loadHistory();
+  }, [organization.id, loadHistory]);
+
   // A chat asked for from outside: a wake toast is about one conversation, so it
   // opens that one. Runs after the mount-time restore, and `openChat` invalidates
   // any request already in flight, so the asked-for chat is the one that lands.
