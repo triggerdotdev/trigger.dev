@@ -11,7 +11,7 @@
     "@internal/tsql": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "zod": "4.4.3",
-    "zod-error": "1.5.0"
+    "zod-error": "2.0.0"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
