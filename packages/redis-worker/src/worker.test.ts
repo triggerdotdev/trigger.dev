@@ -2,7 +2,7 @@ import { isolatedRedisTest as redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { expect } from "vitest";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { Worker } from "./worker.js";
 import { createRedisClient, type Redis } from "@internal/redis";
 

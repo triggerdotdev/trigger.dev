@@ -1,30 +1,34 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { HttpReply, getJsonBody } from "../apps/http.js";
 import type { Registry } from "prom-client";
 import { Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
+import type {
+  AnyZodSchema,
+  inferZodSchemaOutput,
+} from "../types/schemas.js";
 
 const logger = new SimpleStructuredLogger("http-server");
 
 type RouteHandler<
-  TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+  TParams extends AnyZodSchema = z.ZodUnknown,
+  TQuery extends AnyZodSchema = z.ZodUnknown,
+  TBody extends AnyZodSchema = z.ZodUnknown,
 > = (ctx: {
-  params: z.infer<TParams>;
-  queryParams: z.infer<TQuery>;
-  body: z.infer<TBody>;
+  params: inferZodSchemaOutput<TParams>;
+  queryParams: inferZodSchemaOutput<TQuery>;
+  body: inferZodSchemaOutput<TBody>;
   req: IncomingMessage;
   res: ServerResponse;
   reply: HttpReply;
 }) => Promise<any>;
 
 interface RouteDefinition<
-  TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+  TParams extends AnyZodSchema = z.ZodUnknown,
+  TQuery extends AnyZodSchema = z.ZodUnknown,
+  TBody extends AnyZodSchema = z.ZodUnknown,
 > {
   paramsSchema?: TParams;
   querySchema?: TQuery;
@@ -235,9 +239,9 @@ export class HttpServer {
   }
 
   route<
-    TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-    TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-    TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+    TParams extends AnyZodSchema = z.ZodUnknown,
+    TQuery extends AnyZodSchema = z.ZodUnknown,
+    TBody extends AnyZodSchema = z.ZodUnknown,
   >(path: `/${string}`, method: HttpMethod, definition: RouteDefinition<TParams, TQuery, TBody>) {
     this.routes[path] = {
       ...this.routes[path],
@@ -284,8 +288,8 @@ export class HttpServer {
   }
 
   private optionalSchema<
-    TSchema extends z.ZodFirstPartySchemaTypes | undefined,
-    TData extends TSchema extends z.ZodFirstPartySchemaTypes ? z.TypeOf<TSchema> : TData,
+    TSchema extends AnyZodSchema | undefined,
+    TData extends TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData,
   >(
     schema: TSchema,
     data: TData
@@ -296,14 +300,13 @@ export class HttpServer {
       }
     | {
         success: true;
-        data: TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData;
+        data: TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData;
       } {
     if (!schema) {
       return { success: true, data };
     }
 
-    // zod v4 narrows the generic schema to $ZodTypes here; cast to the public ZodType (has safeParse in v3 & v4)
-    const parsed = (schema as unknown as z.ZodType).safeParse(data);
+    const parsed = schema.safeParse(data);
 
     if (!parsed.success) {
       return { success: false, error: parsed.error.message };
@@ -311,7 +314,7 @@ export class HttpServer {
 
     return {
       success: true,
-      data: parsed.data as TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData,
+      data: parsed.data as TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData,
     };
   }
 

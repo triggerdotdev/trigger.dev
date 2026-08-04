@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 const LiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type Literal = z.infer<typeof LiteralSchema>;

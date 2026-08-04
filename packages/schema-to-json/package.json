@@ -44,7 +44,7 @@
     "@trigger.dev/core": "workspace:*",
     "zod-to-json-schema": "^3.25.0",
     "@sodaru/yup-to-json-schema": "^2",
-    "zod": "4.4.3",
+    "zod": "^3.25.76 || ^4.0.0",
     "effect": "^3"
   },
   "devDependencies": {
@@ -59,6 +59,7 @@
     "@arethetypeswrong/cli": "^0.18.5"
   },
   "peerDependencies": {
+    "zod": "^3.25.76 || ^4.0.0",
     "arktype": ">=2.0.0",
     "runtypes": ">=5.0.0",
     "superstruct": ">=0.14.2",

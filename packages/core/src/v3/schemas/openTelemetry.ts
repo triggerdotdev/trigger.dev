@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const ExceptionEventProperties = z.object({
   type: z.string().optional(),

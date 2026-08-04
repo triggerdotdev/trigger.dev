@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import type { RuntimeEnvironmentType as DBRuntimeEnvironmentType } from "@trigger.dev/database";
 
@@ -69,7 +70,7 @@ export const RunMetadataIncrementKeyOperation = z.object({
 
 export type RunMetadataIncrementKeyOperation = z.infer<typeof RunMetadataIncrementKeyOperation>;
 
-export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
+export const RunMetadataChangeOperation = discriminatedUnion("type", [
   RunMetadataUpdateOperation,
   RunMetadataSetKeyOperation,
   RunMetadataDeleteKeyOperation,
@@ -220,7 +221,7 @@ export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
 export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
 export type TaskRunErrorCodes = TaskRunInternalError["code"];
 
-export const TaskRunError = z.discriminatedUnion("type", [
+export const TaskRunError = discriminatedUnion("type", [
   TaskRunBuiltInError,
   TaskRunCustomErrorObject,
   TaskRunStringError,
@@ -537,7 +538,7 @@ export const TaskRunSuccessfulExecutionResult = z.object({
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;
 
-export const TaskRunExecutionResult = z.discriminatedUnion("ok", [
+export const TaskRunExecutionResult = discriminatedUnion("ok", [
   TaskRunSuccessfulExecutionResult,
   TaskRunFailedExecutionResult,
 ]);

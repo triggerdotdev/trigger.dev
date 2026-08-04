@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { z } from "zod/v4";
 import type { DeploymentErrorData } from "./schemas/api.js";
 import type { WorkerManifest } from "./schemas/build.js";
 import { ImportTaskFileErrors } from "./schemas/build.js";

@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 import { redisTest } from "@internal/testcontainers";
-import { z } from "zod";
+import { z } from "zod/v4";
 import {
   FairQueue,
   DefaultFairQueueKeyProducer,

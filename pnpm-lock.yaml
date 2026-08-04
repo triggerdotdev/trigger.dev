@@ -1530,9 +1530,6 @@ importers:
       typescript7:
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
 
   packages/cli-v3:
     dependencies:
@@ -1820,7 +1817,7 @@ importers:
         specifier: ^0.1.3
         version: 0.1.3
       zod:
-        specifier: 4.4.3
+        specifier: ^3.25.76 || ^4.0.0
         version: 4.4.3
       zod-validation-error:
         specifier: ^5.0.0
@@ -1958,9 +1955,6 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
 
   packages/redis-worker:
     dependencies:
@@ -1980,7 +1974,7 @@ importers:
         specifier: ^3.0.5
         version: 3.0.5
       zod:
-        specifier: 4.4.3
+        specifier: ^3.25.76 || ^4.0.0
         version: 4.4.3
     devDependencies:
       '@internal/redis':
@@ -2038,9 +2032,6 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
 
   packages/schema-to-json:
     dependencies:
@@ -2054,7 +2045,7 @@ importers:
         specifier: ^3
         version: 3.17.1
       zod:
-        specifier: 3.25.76
+        specifier: ^3.25.76 || ^4.0.0
         version: 4.4.3
       zod-to-json-schema:
         specifier: ^3.25.0

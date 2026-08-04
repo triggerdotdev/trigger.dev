@@ -1,7 +1,11 @@
 import type { RedisOptions } from "@internal/redis";
 import type { Logger } from "@trigger.dev/core/logger";
+import type {
+  AnyZodSchema,
+  inferZodSchemaOutput,
+} from "@trigger.dev/core/v3";
 import type { Tracer, Meter } from "@internal/tracing";
-import type { z } from "zod";
+import type { z } from "zod/v4";
 import type { RetryStrategy } from "./retry.js";
 
 // ============================================================================
@@ -371,7 +375,7 @@ export interface CooloffOptions {
  *
  * @typeParam TPayloadSchema - Zod schema for message payload validation
  */
-export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
+export interface FairQueueOptions<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   /** Redis connection options */
   redis: RedisOptions;
 
@@ -400,7 +404,7 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
    * Worker queue configuration.
    * FairQueue routes messages to worker queues; external consumers handle consumption.
    */
-  workerQueue: WorkerQueueOptions<z.infer<TPayloadSchema>>;
+  workerQueue: WorkerQueueOptions<inferZodSchemaOutput<TPayloadSchema>>;
 
   // Retry and DLQ
   /** Retry and dead letter queue configuration */
