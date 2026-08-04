@@ -160,7 +160,8 @@ export class CheckpointClient {
 
   /**
    * cancelCheckpoints returns "unsupported" when the route is absent, which is expected while a
-   * newer caller runs against an older checkpoint service.
+   * newer caller runs against an older checkpoint service. The route answers 202 even when the run
+   * has nothing in flight, so a 404 only ever means the route itself is missing.
    */
   async cancelCheckpoints({
     runFriendlyId,
