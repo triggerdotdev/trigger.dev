@@ -1,4 +1,4 @@
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
 import { ToastUI } from "~/components/primitives/Toast";
 
@@ -77,8 +77,6 @@ export default function Story() {
       >
         Trigger agent toast
       </Button>
-
-      <Toaster />
     </div>
   );
 }
