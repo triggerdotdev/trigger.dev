@@ -19,13 +19,16 @@ pnpm --filter @internal/dashboard-agent-db run db:migrate
 
 # The playground: a project with realistic data + example conversations
 pnpm --filter webapp run db:seed:agent-examples
-# Keep its telemetry fresh while you play (Ctrl-C safe):
-pnpm --filter webapp run db:seed:agent-examples -- --heartbeat
 ```
+
+The report's liveness finding goes stale within the hour — re-seed, or run
+`-- --degrade`, shortly before you look.
 
 `apps/webapp/.env` needs: `DASHBOARD_AGENT_ENABLED=1`, `ANTHROPIC_API_KEY`,
 `DASHBOARD_AGENT_SECRET_KEY=<a dev env key of the trigger project the agent
-task runs in>`. Optional, for email alerts:
+task runs in>`. **Export `ANTHROPIC_API_KEY` in your shell too** — the agent's
+turns and the wake narration are both LLM calls, and without it a watch fires
+silently. Optional, for email alerts:
 
 ```bash
 docker run -d --name mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
@@ -55,6 +58,17 @@ pnpm --filter webapp run db:seed:agent-examples -- --recover   # prod recovers
 ```
 
 That pair is how you demo the whole watch-fires-alert loop to yourself.
+
+For the rest — a queue that drains, grows, stalls or breaches its SLA, an error
+that comes back, a run that fails and gets investigated — there is one command
+per scenario:
+
+```bash
+pnpm --filter webapp run scenarios:watch -- --help
+```
+
+Walkthroughs, with the dashboard clicks and the exact wording to expect, are in
+[SCENARIOS.md](./SCENARIOS.md).
 
 ---
 
@@ -198,6 +212,7 @@ spending a token), and every card state lives in the gallery at
 | an error page | "Ping me if this error comes back" | pending watch; recurrence wakes the chat |
 | anywhere | "How many runs failed yesterday, by task?" | TRQL answer, chart on request |
 | anywhere | "What alerts do I have?" | the agent lists your subscriptions |
+| terminal | `scenarios:watch -- --help` | one command per watch condition — see [SCENARIOS.md](./SCENARIOS.md) |
 
 The panel's History also ships seeded example conversations — every flow
 readable without spending a token — and there's a component gallery at
