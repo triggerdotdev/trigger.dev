@@ -351,6 +351,7 @@ async function generateAndSaveTitle(
 
 import {
   agentPageContextSchema,
+  formatTriggerUri,
   investigationStateSchema,
   isWatchKind,
   resolveWatchResult,
@@ -593,7 +594,48 @@ function investigationInstruction(action: WatchWakeAction): string {
   )}.`;
 }
 
-function wakePrompt(action: WatchWakeAction): string {
+/**
+ * The watched object as a `trigger://` markdown link the narration can embed —
+ * the wake runs with no tools, so the link has to be handed to it ready-made.
+ * Needs the tenancy from the wake's metadata; without it there is no link.
+ */
+function wakeSubjectLink(
+  action: WatchWakeAction,
+  tenancy: { projectRef?: string; environmentId?: string } | undefined
+): string | undefined {
+  const projectRef = tenancy?.projectRef;
+  const environmentId = tenancy?.environmentId;
+  if (!projectRef || !environmentId) return undefined;
+
+  const spec = action.spec;
+  const target =
+    "queue" in spec && spec.queue
+      ? { kind: "queue" as const, projectRef, environmentId, name: spec.queue }
+      : "runId" in spec && spec.runId
+        ? { kind: "run" as const, projectRef, environmentId, runId: spec.runId }
+        : "fingerprint" in spec && spec.fingerprint
+          ? { kind: "error" as const, projectRef, environmentId, fingerprint: spec.fingerprint }
+          : "report" in spec && spec.report
+            ? { kind: "report" as const, projectRef, environmentId, key: spec.report }
+            : undefined;
+  if (!target) return undefined;
+
+  const label =
+    target.kind === "queue"
+      ? target.name
+      : target.kind === "run"
+        ? target.runId
+        : target.kind === "error"
+          ? "this error"
+          : "the report";
+  return `[${label}](${formatTriggerUri(target)})`;
+}
+
+function wakePrompt(
+  action: WatchWakeAction,
+  tenancy?: { projectRef?: string; environmentId?: string }
+): string {
+  const subjectLink = wakeSubjectLink(action, tenancy);
   return [
     WAKE_INSTRUCTION,
     `Resolution: ${wakeResolution(action)} — ${wakeOutcome(action)}.`,
@@ -603,6 +645,9 @@ function wakePrompt(action: WatchWakeAction): string {
       : undefined,
     action.note ? `Why the user asked for it: ${action.note}` : undefined,
     `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,
+    subjectLink
+      ? `When you point at the watched object, link it: ${subjectLink} — use this exact markdown link, not a bare name.`
+      : undefined,
     wakeStartsInvestigation(action) ? investigationInstruction(action) : undefined,
   ]
     .filter(Boolean)
@@ -723,7 +768,13 @@ async function narrateWatchWake(args: {
     // reads back the same cached prefix a normal turn would.
     messages: [
       ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
-      { role: "user" as const, content: wakePrompt(action) },
+      {
+        role: "user" as const,
+        content: wakePrompt(action, {
+          projectRef: args.clientData?.projectRef,
+          environmentId: args.clientData?.environmentId,
+        }),
+      },
     ],
     ...resolved.toAISDKTelemetry(),
   });

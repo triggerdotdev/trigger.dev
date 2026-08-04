@@ -45,8 +45,48 @@ export function clampCadence(kind: WatchKind, minutes: number): number {
   return options.find((option) => option >= minutes) ?? options[options.length - 1]!;
 }
 
-/** Swap the condition for its sibling variant (§3), carrying everything else. */
+/**
+ * The note, restated from the spec. The note is "why the user asked for it" and
+ * the wake narration quotes it — so once the user CHANGES the condition (or its
+ * number), the original words no longer describe the watch and must be rewritten.
+ * Edits that keep the condition (window, cadence) keep the user's own words.
+ */
+export function noteFor(spec: WatchSpec): string {
+  switch (spec.kind) {
+    case "run_start":
+      return `tell me when run ${spec.runId} starts`;
+    case "run_finished":
+      return `tell me when run ${spec.runId} finishes`;
+    case "run_failed":
+      return `tell me if run ${spec.runId} fails`;
+    case "backlog_drain":
+      return `tell me when the ${spec.queue} queue drains`;
+    case "queue_depth_above":
+      return `tell me if the ${spec.queue} queue grows above ${spec.threshold}`;
+    case "queue_depth_below":
+      return `tell me when the ${spec.queue} queue is back below ${spec.threshold}`;
+    case "queue_stalled":
+      return `tell me if the ${spec.queue} queue stops moving`;
+    case "queue_oldest_age":
+      return `tell me if runs in ${spec.queue} wait longer than ${spec.thresholdMinutes} minutes`;
+    case "error_recurrence":
+      return `ping me if error ${spec.fingerprint} happens again`;
+    case "health_recovery":
+      return "tell me when health is back to normal";
+  }
+}
+
+/**
+ * Swap the condition for its sibling variant (§3), carrying everything else —
+ * except the note, which is restated to describe the NEW condition.
+ */
 export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
+  const next = variantSpec(draft, kind);
+  if (next === draft.spec) return draft;
+  return { ...draft, spec: { ...next, note: noteFor(next) } as WatchSpec };
+}
+
+function variantSpec(draft: WatchDraft, kind: WatchKind): WatchSpec {
   const { spec } = draft;
   const common = {
     note: spec.note,
@@ -59,11 +99,11 @@ export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
     case "run_failed":
     case "run_start": {
       const runId = "runId" in spec ? spec.runId : "";
-      return { ...draft, spec: { ...common, kind, runId } as WatchSpec };
+      return { ...common, kind, runId } as WatchSpec;
     }
     case "backlog_drain": {
       const queue = "queue" in spec ? spec.queue : "";
-      return { ...draft, spec: { ...common, kind, queue } as WatchSpec };
+      return { ...common, kind, queue } as WatchSpec;
     }
     case "queue_depth_above":
     case "queue_depth_below": {
@@ -71,24 +111,24 @@ export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
       // The number carries across the two threshold questions: someone who typed
       // 500 for "above" means the same 500 when they flip to "back below".
       const threshold = "threshold" in spec ? spec.threshold : WATCH_DEFAULT_QUEUE_THRESHOLD;
-      return { ...draft, spec: { ...common, kind, queue, threshold } as WatchSpec };
+      return { ...common, kind, queue, threshold } as WatchSpec;
     }
     case "queue_stalled": {
       const queue = "queue" in spec ? spec.queue : "";
       // K is not user-facing in this iteration (§3): the default is the product
       // decision, and the card never shows a field for it.
       const ticks = "ticks" in spec ? spec.ticks : WATCH_STALL_TICKS_DEFAULT;
-      return { ...draft, spec: { ...common, kind, queue, ticks } as WatchSpec };
+      return { ...common, kind, queue, ticks } as WatchSpec;
     }
     case "queue_oldest_age": {
       const queue = "queue" in spec ? spec.queue : "";
       const thresholdMinutes =
         "thresholdMinutes" in spec ? spec.thresholdMinutes : WATCH_DEFAULT_QUEUE_AGE_MINUTES;
-      return { ...draft, spec: { ...common, kind, queue, thresholdMinutes } as WatchSpec };
+      return { ...common, kind, queue, thresholdMinutes } as WatchSpec;
     }
     // The kinds with no second question keep the draft untouched.
     default:
-      return draft;
+      return draft.spec;
   }
 }
 
@@ -125,7 +165,9 @@ export function withThreshold(draft: WatchDraft, threshold: number): WatchDraft 
   if (draft.spec.kind !== "queue_depth_above" && draft.spec.kind !== "queue_depth_below") {
     return draft;
   }
-  return { ...draft, spec: { ...draft.spec, threshold } };
+  // The note quotes the number, so a new number restates the note.
+  const spec = { ...draft.spec, threshold };
+  return { ...draft, spec: { ...spec, note: noteFor(spec) } };
 }
 
 /**
@@ -134,7 +176,9 @@ export function withThreshold(draft: WatchDraft, threshold: number): WatchDraft 
  */
 export function withAgeMinutes(draft: WatchDraft, thresholdMinutes: number): WatchDraft {
   if (draft.spec.kind !== "queue_oldest_age") return draft;
-  return { ...draft, spec: { ...draft.spec, thresholdMinutes } };
+  // The note quotes the number, so a new number restates the note.
+  const spec = { ...draft.spec, thresholdMinutes };
+  return { ...draft, spec: { ...spec, note: noteFor(spec) } };
 }
 
 /**

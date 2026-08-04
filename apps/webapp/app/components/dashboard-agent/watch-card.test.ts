@@ -131,15 +131,24 @@ describe("condition variants (§3)", () => {
     expect(variantsOf(watchDraftFor(healthWatchRecommendation("warn")))).toHaveLength(1);
   });
 
-  it("carries the subject, window and note across a swap", () => {
+  it("carries the subject and window across a swap, and restates the note", () => {
     const draft = withWindow(runDraft(), 6);
     const failed = withVariant(draft, "run_failed");
+    // The note is "why the user asked for it" and the wake quotes it — words
+    // describing the OLD condition must not survive a condition change.
     expect(failed.spec).toMatchObject({
       kind: "run_failed",
       runId: "run_abc123",
       maxHours: 6,
-      note: draft.spec.note,
+      note: "tell me if run run_abc123 fails",
     });
+  });
+
+  it("restates the note when the threshold number changes", () => {
+    const above = withThreshold(withVariant(queueDraft(), "queue_depth_above"), 500);
+    expect(above.spec.note).toBe("tell me if the email-sends queue grows above 500");
+    const age = withAgeMinutes(withVariant(queueDraft(), "queue_oldest_age"), 90);
+    expect(age.spec.note).toBe("tell me if runs in email-sends wait longer than 90 minutes");
   });
 
   it("gives the threshold variant a usable default", () => {

@@ -746,7 +746,8 @@
     @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
-    @apply bg-transparent;
+    /* 12px, chat-only: code examples read denser than the 14px prose around them. */
+    @apply bg-transparent text-xs;
   }
   & [data-code-block] .line {
     @apply leading-relaxed;
