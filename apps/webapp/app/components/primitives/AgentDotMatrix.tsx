@@ -118,11 +118,7 @@ export type DotMatrixPalette = {
 
 export const DOT_MATRIX_PALETTES = {
   mono: { stops: ["#e2e8f0", "#ffffff", "#94a3b8"], glow: "#ffffff" },
-  /**
-   * `mono` mirrored for light surfaces, where the white ramp would vanish. Each
-   * stop's contrast against white matches that stop's contrast against dark
-   * (14.0 / 17.2 / 6.7), so the ramp keeps mono's shape.
-   */
+  /** `mono` mirrored for light surfaces, where the white ramp would vanish. */
   monoLight: { stops: ["#2b2c2f", "#1a1b1f", "#585c64"], glow: "#1a1b1f" },
   trigger: { stops: ["#41ff54", "#a4ff53", "#e7ff52"], glow: "#86ff53" },
   aurora: { stops: ["#ff3cac", "#784ba0", "#2b86c5"], glow: "#9c64bf" },
@@ -639,11 +635,7 @@ export function AgentDotMatrix({
   );
 }
 
-/**
- * The agent's monochrome logo. Use this instead of `palette="mono"` by hand: the
- * mono ramp is white-based and would be invisible on the light theme, and the
- * matrix draws on canvas so it can't read the theme from a CSS variable.
- */
+/** The agent's monochrome logo. Use this rather than `palette="mono"`, which is invisible on light. */
 export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "restColor" | "mode">) {
   const mode = useThemeMode();
   const light = mode === "light";
@@ -652,8 +644,6 @@ export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "rest
       {...props}
       mode={mode}
       palette={light ? "monoLight" : "mono"}
-      // One step off the surface's extreme. Pure white and black are reserved for
-      // the animated peak, so a resting logo is calm and a thinking one glows.
       restColor={light ? "#1a1b1f" : "#d7d9dd"}
     />
   );

@@ -62,11 +62,9 @@ import {
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
 
-/** What the agent is asked when it's opened from a deployment setup panel. */
 const ASK_AGENT_DEPLOY_PROMPT =
   "I'm trying to deploy my tasks to this environment. Walk me through it and tell me if anything about this project or environment is going to get in the way.";
 
-/** Docs links shown when the agent isn't available. */
 function DeployDocsLinks() {
   return (
     <>

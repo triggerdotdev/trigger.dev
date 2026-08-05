@@ -1,11 +1,3 @@
-/**
- * Canned transcripts for the state gallery (`/storybook/agent-ui`). A `DemoChat`
- * is an ordered list of items rendered through the production renderers; nothing
- * here is persisted, fetched, or sent.
- *
- * Keep each chat one coherent story. Variation matrices belong to the gallery, not
- * to a chat, where stacked variants read as a bug.
- */
 import type { UIMessage } from "@ai-sdk/react";
 import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
@@ -44,11 +36,9 @@ import {
   type DemoWatch,
 } from "./fixtures";
 
-/** The flows the demo chats are grouped by. */
 export type DemoFlow = "investigate" | "navigation" | "prompts" | "watch" | "reports" | "base";
 
 export type DemoItem =
-  /** Real messages, rendered by the production message renderer. */
   | { kind: "messages"; messages: UIMessage[] }
   | { kind: "investigation"; investigation: DemoInvestigation; expanded?: boolean }
   | { kind: "report"; report: ReportViewModel; sourceUri?: string }
@@ -61,43 +51,29 @@ export type DemoItem =
       context?: AgentPageContext;
       dismissedIds?: string[];
     }
-  /** A demo-voice aside explaining what is on screen. */
   | { kind: "note"; text: string }
-  /** A context banner rendered inline, for a case that needs one mid-transcript. */
   | { kind: "banner"; projectSlug: string; environmentSlug: string; currentPage: string };
 
 export type DemoChat = {
-  /** Always `demo:`-prefixed. */
   id: string;
-  /** History-list title. */
   title: string;
   flow: DemoFlow;
-  /** One line describing what the chat shows. */
   summary: string;
   items: DemoItem[];
-  /** The same `activity` prop the production message renderer takes. */
   activity?: TurnActivity;
-  /** Render the error row, with a retry affordance. */
   error?: string;
-  /** Text the composer starts with. */
   draft?: string;
-  /** Context banner for this chat. Defaults to the panel's real one. */
   banner?: { projectSlug: string; environmentSlug: string; currentPage: string };
-  /** Watch chips shown under the banner, as the panel header would. */
   headerWatches?: DemoWatch[];
-  /** Marks the transcript as replayed from the store rather than live. */
   resumed?: boolean;
   lastMessageAt: string;
 };
 
-// `currentPage` is the human label the banner shows (`page-label.ts`), not a path.
 const PROD_BANNER = {
   projectSlug: "demo-storefront",
   environmentSlug: "prod",
   currentPage: "Runs",
 };
-
-// Investigate
 
 const investigateStreaming: DemoChat = {
   id: demoId("investigate-streaming"),
@@ -400,8 +376,6 @@ const investigateDirtyCommit: DemoChat = {
   ],
 };
 
-// Navigation
-
 const navigateFilteredRuns: DemoChat = {
   id: demoId("navigate-filtered-runs"),
   title: "Failed runs in the last 24h",
@@ -479,8 +453,6 @@ const navigateRejectedIntent: DemoChat = {
   ],
 };
 
-// Prompts
-
 const promptsPageAware: DemoChat = {
   id: demoId("prompts-page-aware"),
   title: "What should I look at here?",
@@ -497,8 +469,6 @@ const promptsPageAware: DemoChat = {
     },
   ],
 };
-
-// Watch
 
 const watchCreatedAndWake: DemoChat = {
   id: demoId("watch-created-and-wake"),
@@ -591,8 +561,6 @@ const watchExpiryAndCancel: DemoChat = {
     },
   ],
 };
-
-// Reports
 
 const reportHealthy: DemoChat = {
   id: demoId("report-healthy"),
@@ -735,8 +703,6 @@ const docsAnswer: DemoChat = {
   ],
 };
 
-// Base states
-
 const baseStreaming: DemoChat = {
   id: demoId("base-streaming"),
   title: "Summarize today's failures",
@@ -793,8 +759,6 @@ const baseToolInFlight: DemoChat = {
             { rows: [{ "count()": 4812 }] },
             "run-query-done"
           ),
-          // A real tool name, so the pending pill shows its phrase rather than the
-          // unknown-tool fallback.
           pendingToolPart(
             "get_queue",
             { queue: DEMO_WORLD.queue, period: "1h" },
@@ -854,8 +818,6 @@ const baseResumed: DemoChat = {
           textPart(
             `Yes — same error, same task, three weeks ago. \`${DEMO_WORLD.taskId}\` hit the same rate limit on 6 July and it was diagnosed then too; the card below is that diagnosis, replayed from this conversation rather than re-run. The retry config hasn't changed since, which is why it came back.`
           ),
-          // Two revisions of one block plus a legacy block with no envelope: the
-          // renderer keeps revision 1 and renders the legacy card in order.
           renderViewPart(
             [demoDiagnosisBlockFirstPass, demoDiagnosisBlockRevised, demoLegacyDiagnosisBlock],
             "render-view-resumed"
@@ -888,10 +850,8 @@ const baseComposerDraft: DemoChat = {
   summary:
     "A question half typed and left there: the conversation is still empty (suggested prompts on screen) and the composer holds the unsent draft, cursor mid-word.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
-  // Unfinished mid-word on purpose: this is a draft, not a prefill.
   draft: "why did the send-order-receipt run from last nig",
   lastMessageAt: "2026-07-27T10:28:00.000Z",
-  // Empty on purpose: an unsent draft means nothing has been said yet.
   items: [],
 };
 
@@ -959,8 +919,6 @@ const baseInvestigationDeepLink: DemoChat = {
     { kind: "intent", intent: demoIntents.navigateToRun },
   ],
 };
-
-// Registry
 
 export const demoChats: DemoChat[] = [
   investigateStreaming,

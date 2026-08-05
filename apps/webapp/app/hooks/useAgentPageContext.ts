@@ -3,10 +3,8 @@ import type { AgentPageContext } from "~/components/dashboard-agent/page-context
 import type { Handle } from "~/utils/handle";
 
 /**
- * What the dashboard agent knows about the page the user is on. A route describes itself by
- * exporting `handle = { agentPageContext }` (see `Handle`). Matches are walked leaf-to-root and
- * the deepest mapper that returns something wins, so a child page overrides its parent. Pages
- * with no mapper fall back to the path.
+ * The page context the dashboard agent sees. Routes opt in with `handle = { agentPageContext }`.
+ * The deepest mapper that returns something wins; pages with no mapper fall back to the path.
  */
 export function useAgentPageContext(): AgentPageContext {
   const matches = useMatches();

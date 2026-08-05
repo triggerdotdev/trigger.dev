@@ -7,12 +7,6 @@ import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard"
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import { GalleryPage, noop } from "../storybook.agent-ui/gallery";
 
-// View blocks: the envelope rules every card obeys, the actions block, the diagnosis
-// card and the chart card. The shell and the manifest live in `../storybook.agent-ui`.
-
-// Diagnosis fixtures written for this page, covering the card's own range (fully
-// populated, thin, and the middle) which no demo conversation needs.
-
 const fullDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
   runId: "run_a1b2c3d4e5",
@@ -95,8 +89,6 @@ const lowConfidenceDiagnosis: DiagnosisBlock = {
   ],
 };
 
-// ViewBlocks collapses same-(type, id) blocks to the highest revision, so a
-// re-emitted diagnosis replaces the earlier one instead of stacking cards.
 const revisedDiagnosis: ViewBlock[] = [
   {
     ...lowConfidenceDiagnosis,
@@ -122,7 +114,6 @@ const revisedDiagnosis: ViewBlock[] = [
   },
 ];
 
-// The watch offer as buttons. The first action is the one to take.
 const offerActionsBlock: ViewBlock = {
   type: "actions",
   id: "actions-offer",
@@ -149,8 +140,6 @@ const offerActionsBlock: ViewBlock = {
   ],
 };
 
-// One card per category, cycling the three confidence levels, so every badge colour
-// pair is on screen at once. Bodies come from one demo fixture, so only badges vary.
 const DIAGNOSIS_CATEGORIES: DiagnosisBlock["category"][] = [
   "user_code_error",
   "configuration",
@@ -170,14 +159,12 @@ const badgeMatrixBlocks: DiagnosisBlock[] = DIAGNOSIS_CATEGORIES.map((category, 
   ...demoFixtures.demoDiagnosisBlockFirstPass,
   category,
   confidence: CONFIDENCES[i % CONFIDENCES.length]!,
-  // The badges are the subject; strip everything that would make each card tall.
   evidence: [],
   nextSteps: [],
   actions: undefined,
   impact: undefined,
 }));
 
-/** The demo chart card's frame around an empty result set. */
 function EmptyChartCard() {
   return (
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">

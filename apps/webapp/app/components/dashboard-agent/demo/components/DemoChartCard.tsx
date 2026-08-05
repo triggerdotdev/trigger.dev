@@ -1,9 +1,3 @@
-/**
- * A chart block rendered from canned rows. The real `AgentChart` fetches
- * `/resources/metric`; demo mode does no network, so this hands the same
- * `QueryResultsChart` the fixture rows directly. The frame mirrors `AgentChart` so
- * the card reads identically in the panel.
- */
 import type { AgentIntent, ChartAction } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { AGENT_CHART_PLOT_CLASS, ChartActions } from "../../AgentChart";
@@ -15,7 +9,6 @@ export function DemoChartCard({
   onIntent,
 }: {
   title?: string;
-  /** The row under the chart, when this chart ranks something. */
   actions?: ChartAction[];
   onIntent?: (intent: AgentIntent) => void;
 }) {

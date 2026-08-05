@@ -42,10 +42,7 @@ export type MiniLineChartProps = {
    * throttled magnitude carried by the tooltip.
    */
   throttled?: number[];
-  /**
-   * Tooltip wording for the overlay buckets. Defaults to "throttled"; pass null to
-   * omit the overlay line from the tooltip.
-   */
+  /** Tooltip wording for the overlay buckets. Null omits the overlay line. */
   overlayLabel?: string | null;
   /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
   bucketStartMs?: number;

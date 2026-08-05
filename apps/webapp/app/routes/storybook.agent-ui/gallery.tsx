@@ -12,27 +12,12 @@ import {
   type GallerySection,
 } from "./manifest";
 
-/**
- * The shared shell every dashboard-agent gallery page renders through.
- *
- * `./manifest.ts` decides what a page contains. A manifest row with no renderer shows
- * a loud placeholder instead of vanishing. The screenshot script walks the same
- * manifest and captures each section by its `id`.
- *
- * The parent `storybook` route gates every page on admin.
- */
-
 export const noop = () => undefined;
 
-/** Panel width, matching `DashboardAgent`'s default panel size. */
 export const PANEL = "w-[380px]";
 
-// The chat panel's own background, so each state is judged on the surface it ships
-// on rather than against a darker page.
 const CANVAS = "bg-background-bright";
 
-// The frame a harness draws around transcript content to stand in for the panel. Its
-// fill is the canvas colour, so the border is all that separates the two.
 export const PANEL_FRAME = "rounded-lg border border-border-bright bg-background-bright";
 
 export function Missing({ what }: { what: string }) {
@@ -43,23 +28,14 @@ export function Missing({ what }: { what: string }) {
   );
 }
 
-/**
- * Stand-in for the panel's URI resolver. In the app the host resolves against the real
- * environment; here a fixture resolver keeps the seam without a project route.
- */
 export function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
   if (!parsed.success) return null;
   return { label: uri.split("/").slice(-1)[0]!, url: "#resolved-by-the-host" };
 }
 
-/** States that are wider than the panel. */
 const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
 
-/**
- * One state. The `id` is the deep-link anchor and the screenshot target, and the
- * element is width-fitted so a capture hugs the component instead of the page.
- */
 function Section({
   section,
   states,
@@ -96,7 +72,6 @@ function ThemeToggle() {
   );
 }
 
-/** The other gallery pages, so the set is navigable without the storybook nav. */
 function PageLinks({ page }: { page: GalleryPageId }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -142,11 +117,6 @@ function Nav({ page }: { page: GalleryPageId }) {
   );
 }
 
-/**
- * A gallery page: the manifest's sections for `page`, rendered from `states`. Fixtures
- * come from the same data the demo conversations use, so the gallery can't drift from
- * the panel.
- */
 export function GalleryPage({
   page,
   states,

@@ -22,24 +22,11 @@ import { cn } from "~/utils/cn";
 import { chatMessages, investigationBlock } from "./fixtures";
 import { fixtureResolveUri, GalleryPage, Missing, noop, PANEL_FRAME } from "./gallery";
 
-// The chat chrome gallery: hero, prompts, transcript, wake banners, watch chips and
-// the context banner. The card catalogs are on their own pages, see `./manifest.ts`.
-
 const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
 
-/**
- * `DashboardAgentMessages` in isolation. Its root is `flex-1 overflow-y-auto`, which
- * in a plain block parent resolves to content height with nothing to scroll, so the
- * whole transcript is visible and screenshotable.
- */
 function MessageHarness({
   chatId,
-  /** Render the panel's error row and its retry affordance. */
   withError = false,
-  /**
-   * Keep only the first N turns of the fixture. Used to isolate one state from a
-   * conversation that goes on to show others.
-   */
   take,
 }: {
   chatId: string;
@@ -63,14 +50,6 @@ function MessageHarness({
   );
 }
 
-/**
- * A label sheet, not a transcript: a real turn shows one progress line, relabelled as
- * it goes, so the phrasing has to hold up read as a set. The last tool is one the
- * label map doesn't know, showing the `Running <name>` fallback.
- *
- * Labels come from `liveProgress`, the same decision the panel makes, so the sheet
- * can't drift from what ships.
- */
 const PENDING_PILL_TOOLS: { tool: string; input: unknown }[] = [
   { tool: "render_view", input: { blocks: [{ type: "diagnosis" }] } },
   { tool: "get_report", input: { window: "24h" } },
@@ -105,12 +84,6 @@ function PendingPillsHarness() {
   );
 }
 
-/**
- * The real `DashboardAgentSuggestedPrompts`, fed a fixture page context. Chips come
- * from the registry resolver, so ordering and the cap match the panel. Passing
- * `dismissedIds` puts the component in controlled mode, keeping the gallery out of
- * localStorage.
- */
 function PromptsHarness({
   context,
   promoted,
@@ -139,12 +112,6 @@ function PromptsHarness({
   );
 }
 
-/**
- * The real blank-state hero. `fullscreen` switches the wrapping `AgentPanelColumn` to
- * the takeover's centred column, the same component the panel uses, so the reading
- * width is the real one. The empty-chat state passes no composer because its composer
- * is docked below.
- */
 function HeroHarness({
   context,
   promoted,
@@ -191,11 +158,6 @@ function HeroHarness({
   );
 }
 
-/**
- * A live investigation through the production renderer. The card carries no spinner of
- * its own: the turn's single progress line sits at the bottom of the transcript
- * wearing the card's phrase, which is why the spinner never restarts.
- */
 function LiveInvestigationHarness() {
   const messages: UIMessage[] = [
     demoFixtures.userMessage("live-inv-q", "Why did this run fail?"),
@@ -217,7 +179,6 @@ function LiveInvestigationHarness() {
   );
 }
 
-// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in production.
 const promotedPrompt: SuggestedPrompt = {
   id: "sp:promo-storybook",
   label: "Try the new health report",
@@ -225,13 +186,10 @@ const promotedPrompt: SuggestedPrompt = {
   source: "promoted",
 };
 
-// Dismiss whatever the resolver puts first, so the state still shows a real chip
-// having been removed when the registry's wording changes.
 const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
   .slice(0, 1)
   .map((prompt) => prompt.id);
 
-/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
 function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   return {
     id: watch.id,
@@ -244,10 +202,6 @@ function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   };
 }
 
-// Wake fixtures live here rather than in the demo conversations: a wake is a message
-// id plus the watch it names, and no demo chat carries one.
-
-/** A wake narration, in the shape the panel merges live stream and history into. */
 function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
   return {
     id: `wake:watch:${watchId}:${outcome}`,
@@ -256,7 +210,6 @@ function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string
   };
 }
 
-/** One watch per presentation category the banner can reach. */
 const wakeWatches: WakeWatch[] = [
   {
     id: "watch_health",
@@ -292,7 +245,6 @@ const wakeWatches: WakeWatch[] = [
   },
 ];
 
-/** One wake through the production renderer, with the watches the panel would have. */
 function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
   return (
     <div className={PANEL_FRAME}>
@@ -301,7 +253,6 @@ function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeW
   );
 }
 
-// Keyed by `sectionId`, so the manifest drives what renders.
 const STATES: Record<string, React.ReactNode> = {
   "hero-panel": <HeroHarness context={demoPageContexts.other} />,
   "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
@@ -322,8 +273,6 @@ const STATES: Record<string, React.ReactNode> = {
   "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
   "messages-tool-pending-pills": <PendingPillsHarness />,
   "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
-  // Two turns only: the resumed chat's third turn is a live `chart` block, and
-  // the real AgentChart has no environment to query outside a project route.
   "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
   "messages-investigation-live": <LiveInvestigationHarness />,
   "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,

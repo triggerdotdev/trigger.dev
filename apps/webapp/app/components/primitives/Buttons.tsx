@@ -106,8 +106,6 @@ const theme = {
   },
   docs: {
     textColor:
-      // Monochrome on the dark themes; light keeps the docs-blue ink, because a
-      // text-bright label on white reads as a plain grey button, not a link.
       "text-callout-docs-text/70 dark:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
       "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
@@ -115,15 +113,10 @@ const theme = {
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
   },
-  // Reserved for the AI agent's "Ask Trigger" affordance: secondary styling with a
-  // softened trigger-green border.
+  // The AI agent's "Ask Trigger" affordance.
   "ask-ai": {
-    // On light hover the ink flips dark: dark ink on the pale green tint is ~13:1,
-    // where white would be ~1.4:1 even on the full green.
     textColor:
       "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
-    // The trigger-green /25 border washes out on white, so the light theme darkens
-    // it to the success token, which clears 3:1 there.
     button:
       "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
@@ -147,18 +140,13 @@ function createVariant(sizeName: Size, themeName: Theme) {
   };
 }
 
-// The ask-ai button always leads with the square agent logo, so it supplies its
-// own leading icon and its padding is tuned around it: small = 16px logo, 4px
-// left / 6px right; medium 32/16 -> 8px; large 40/20 -> 10px. Pass an explicit
-// `LeadingIcon` (e.g. an <AgentMonoLogo active />) to animate it.
+// ask-ai supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
 function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
   const base = createVariant(sizeName, "ask-ai");
   return {
     ...base,
     button: cn(base.button, opticalPadding),
     iconSpacing: "gap-x-1.5",
-    // The button is `bg-secondary`: charcoal on dark, white on light. The logo has
-    // to follow the theme or it disappears on one of them.
     defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
   };
 }

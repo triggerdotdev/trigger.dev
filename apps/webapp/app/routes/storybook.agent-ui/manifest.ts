@@ -1,30 +1,15 @@
-/**
- * The gallery's table of contents: one row per state. `gallery.tsx` renders a page
- * from it and shows a "no renderer" placeholder for a row it can't render, and
- * `scripts/agent-ui-screenshots.ts` walks it to capture every state.
- *
- * Keep this file free of imports and JSX. The screenshot script is plain node and
- * cannot import a Remix route module, only this.
- *
- * `sectionId` is the section's DOM id and the screenshot filename, so it must be URL-
- * and filename-safe and stable: a rename breaks deep links and orphans screenshots.
- * Groups are the screenshot directories, so those are stable too. Which page a group
- * lives on is not.
- */
+// Keep this file free of imports and JSX: the screenshot script is plain node and
+// cannot import a Remix route module.
 
-/** A storybook page in the "Trigger Agent" nav section. */
 export type GalleryPageId = "chat" | "view-blocks" | "report" | "investigation" | "watch";
 
 export type GalleryPage = {
   id: GalleryPageId;
-  /** Route slug under `/storybook`. */
   slug: string;
-  /** Page heading, and the label in the storybook nav. */
   title: string;
   blurb: string;
 };
 
-/** Page order in the nav. */
 export const GALLERY_PAGES: GalleryPage[] = [
   {
     id: "chat",
@@ -61,7 +46,6 @@ export const GALLERY_PAGES: GalleryPage[] = [
   },
 ];
 
-/** The gallery's grouping inside a page. Screenshots land in a directory per group. */
 export type GalleryGroup =
   | "diagnosis"
   | "view-blocks"
@@ -78,20 +62,14 @@ export type GalleryGroup =
   | "banner";
 
 export type GallerySection = {
-  /** DOM id, deep-link anchor and screenshot filename. Stable. */
+  /** DOM id, deep-link anchor and screenshot filename. Renaming breaks both. */
   sectionId: string;
-  /** Human label, shown above the state and in the nav. */
   title: string;
   group: GalleryGroup;
-  /**
-   * A state that only exists after a click (an expandable card's details, say).
-   * The screenshot script clicks the first element inside the section whose text
-   * matches, then captures. Rendering ignores it.
-   */
+  /** A state that only exists after a click. The screenshot script clicks matching text first. */
   expandText?: string;
 };
 
-/** Group order within its page. */
 export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: string }[] = [
   { group: "hero", page: "chat", label: "Blank-state hero" },
   { group: "prompts", page: "chat", label: "Suggested prompts" },
@@ -109,7 +87,6 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
 ];
 
 export const MANIFEST: GallerySection[] = [
-  // Both widths the hero ships at: the 380px side panel and the fullscreen column.
   { sectionId: "hero-panel", title: "Side panel (380px) — no page context", group: "hero" },
   {
     sectionId: "hero-panel-contextual",
@@ -128,7 +105,6 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "prompts-promoted", title: "Promoted chip on top", group: "prompts" },
   { sectionId: "prompts-dismissed", title: "After a dismissal", group: "prompts" },
 
-  // Message-level states, through the production renderer.
   {
     sectionId: "messages-streaming-text",
     title: "Text part still streaming, with activity row",
@@ -174,13 +150,11 @@ export const MANIFEST: GallerySection[] = [
     group: "intents",
   },
 
-  // One per presentation category: the banner plus the prose the agent wrote.
   { sectionId: "wake-positive", title: "Positive", group: "wakes" },
   { sectionId: "wake-attention", title: "Attention", group: "wakes" },
   { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
   { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
 
-  // The real panel component, fed every status at once.
   { sectionId: "watches-live", title: "All four states, cancellable", group: "watches" },
 
   { sectionId: "banner-prod", title: "Production environment", group: "banner" },
@@ -243,8 +217,6 @@ export const MANIFEST: GallerySection[] = [
     title: "Concluded, collapsed",
     group: "investigation",
   },
-  // The two concluded endings: a verdict resting on source it read, so "Show code" is
-  // offered, and one from telemetry alone.
   {
     sectionId: "investigation-card-concluded-code-grounded",
     title: "Concluded, code-grounded — source citation and Show code",
@@ -268,8 +240,6 @@ export const MANIFEST: GallerySection[] = [
     group: "investigation",
   },
 
-  // The configuration card is ephemeral and never enters the transcript, so these
-  // states plus the blocks a submitted card leaves behind are all a user can see.
   { sectionId: "watch-card-compact", title: "Compact — the recommendation", group: "watch-card" },
   { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
   { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
@@ -297,17 +267,14 @@ export const MANIFEST: GallerySection[] = [
   },
 ];
 
-/** Groups on a page, in group order. */
 export function groupsOnPage(page: GalleryPageId) {
   return GALLERY_GROUPS.filter((entry) => entry.page === page);
 }
 
-/** Sections in a group, in manifest order. */
 export function sectionsInGroup(group: GalleryGroup): GallerySection[] {
   return MANIFEST.filter((section) => section.group === group);
 }
 
-/** Sections on a page, in group order then manifest order. */
 export function sectionsOnPage(page: GalleryPageId): GallerySection[] {
   return groupsOnPage(page).flatMap((entry) => sectionsInGroup(entry.group));
 }

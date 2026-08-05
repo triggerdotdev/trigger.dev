@@ -1,13 +1,3 @@
-/**
- * How an honoured intent appears in the transcript, plus the demo interceptor's
- * inline outcome line.
- *
- * The bubble is the user's only record that the agent moved their screen, so it
- * states the action in the past tense and shows the deep link it used. In demo mode
- * the link is a button: clicking it reports what would have happened and navigates
- * nowhere. Honoured versus rejected is carried by the icon colour alone, the same
- * rule the run status cells follow.
- */
 import {
   ArrowTopRightOnSquareIcon,
   CheckCircleIcon,
@@ -19,11 +9,6 @@ import { AgentStatusIcon } from "../../agent-badges";
 import { ChatNote, ChatStatusLine } from "../../chat-layout";
 import type { DemoIntent } from "../fixtures/intents";
 
-/**
- * A neutral inline note in the demo interceptor's voice, never the agent's.
- * Unlabelled on purpose, so fixture chats present as real ones. The format itself
- * is `ChatNote` in the chat layout library; this is the demo's name for it.
- */
 export const DemoNote = ChatNote;
 
 export function DemoIntentBubble({
@@ -31,7 +16,6 @@ export function DemoIntentBubble({
   onIntercept,
 }: {
   intent: DemoIntent;
-  /** Called instead of acting. The host renders the result as a `DemoNote`. */
   onIntercept?: (message: string) => void;
 }) {
   const rejected = !intent.executable;

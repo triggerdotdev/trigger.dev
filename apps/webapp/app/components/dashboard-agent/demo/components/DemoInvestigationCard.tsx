@@ -1,9 +1,3 @@
-/**
- * Demo-only investigation card. The view catalog has no `investigation` block yet,
- * so this renders the proposed payload from `../fixtures/investigation`. It borrows
- * `RunDiagnosisCard`'s anatomy rather than inventing a visual language, and its
- * props stand in for the eventual payload contract.
- */
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { Evidence } from "@internal/dashboard-agent-contracts";
 import { useState } from "react";
@@ -46,10 +40,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/**
- * One citation. The `trigger://` URI is shown verbatim rather than as a link; in
- * the real card the host resolves it to a dashboard path.
- */
 function EvidenceItem({ evidence, stacked }: { evidence: Evidence; stacked?: boolean }) {
   return (
     <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
@@ -81,9 +71,6 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
-        // Stacked, not two-column: under the hypothesis indent the content column
-        // would be too narrow for identifiers and excerpts. The wide gap is the only
-        // thing separating one citation from the next.
         <ul className="space-y-5 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} stacked />
@@ -96,7 +83,6 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
 
 export function DemoInvestigationCard({
   investigation,
-  /** Start expanded, for the demo chats that show the detail view. */
   defaultExpanded = false,
 }: {
   investigation: DemoInvestigation;

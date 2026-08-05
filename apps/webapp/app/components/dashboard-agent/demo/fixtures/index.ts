@@ -1,4 +1,3 @@
-/** Every fixture in one place, so there is one source of dummy data. */
 export * from "./blocks";
 export * from "./chart";
 export * from "./intents";

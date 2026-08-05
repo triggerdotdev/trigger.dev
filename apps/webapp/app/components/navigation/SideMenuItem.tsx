@@ -246,7 +246,6 @@ export const SideMenuItemButton = forwardRef<
     icon: RenderIcon;
     name: string;
     trailing?: ReactNode;
-    /** Overrides the icon's default dimmed/hover colour, for an accented entry. */
     iconClassName?: string;
   } & ButtonHTMLAttributes<HTMLButtonElement>
 >(function SideMenuItemButton(

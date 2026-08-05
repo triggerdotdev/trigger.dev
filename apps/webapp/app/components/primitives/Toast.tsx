@@ -43,9 +43,8 @@ export function Toast() {
     );
   }, [toastMessage]);
 
-  // Sonner stamps its own `data-theme` (default "light") on the toast list, and the
-  // app's theme selectors remap tokens for any subtree carrying that attribute, so
-  // an unthemed Toaster forces every toast light. Pass the app's mode through.
+  // Sonner stamps its own `data-theme` (default "light") on the toast list and the
+  // app's theme selectors follow it, so an unthemed Toaster forces every toast light.
   return <Toaster theme={mode} />;
 }
 
@@ -90,10 +89,7 @@ export function ToastUI({
   toastWidth?: string | number;
   title?: string;
   action?: ToastMessageAction;
-  /**
-   * A caller-rendered action for toasts shown from client code. `action` stays the
-   * serializable server-message shape.
-   */
+  /** Caller-rendered action for client-side toasts. `action` stays the serializable server shape. */
   actionNode?: React.ReactNode;
 }) {
   return (
@@ -102,8 +98,6 @@ export function ToastUI({
         "self-end rounded-md border border-grid-bright bg-background-dimmed",
         variant === "success" && "border-success",
         variant === "error" && "border-error",
-        // The agent's toast wears the Ask Trigger button's border, and on the
-        // dark themes its surface too.
         variant === "agent" && "border-[#41FF54]/25 light:border-success/60 dark:bg-secondary"
       )}
       style={{

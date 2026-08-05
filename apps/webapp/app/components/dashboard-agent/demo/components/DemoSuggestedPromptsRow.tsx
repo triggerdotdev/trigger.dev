@@ -1,9 +1,3 @@
-/**
- * The page-aware prompt row. The production `DashboardAgentSuggestedPrompts` is a
- * static list with no promoted chip and no dismissal, so this demo row shows how a
- * promoted chip is distinguished and what dismissing one leaves behind. It renders
- * the same `SuggestedPrompt[]` the registry produces, capped the same way.
- */
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import {
   SUGGESTED_PROMPT_CAP,
@@ -12,10 +6,6 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 
-/**
- * The identity a page kind carries, when it carries one. Section pages have only a
- * kind and fall through to that.
- */
 function pageSubject(page: AgentPageContext["page"]): string | undefined {
   switch (page.kind) {
     case "run":
@@ -56,7 +46,6 @@ function pageSubject(page: AgentPageContext["page"]): string | undefined {
   }
 }
 
-/** One line describing the page the chips were derived from. */
 function contextLine(context: AgentPageContext): string {
   const { page, signals } = context;
   const subject = pageSubject(page);
@@ -78,7 +67,6 @@ export function DemoSuggestedPromptsRow({
   onDismiss,
 }: {
   prompts: SuggestedPrompt[];
-  /** Shown above the chips, so the context that produced them is visible. */
   context?: AgentPageContext;
   dismissedIds?: string[];
   onSelect?: (prompt: SuggestedPrompt) => void;

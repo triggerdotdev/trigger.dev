@@ -1,12 +1,4 @@
-/**
- * Investigation fixtures, and the proposed shape of the investigation payload.
- *
- * The view-block catalog has no `investigation` member yet; the contracts package
- * freezes only its identity rule (block `id` is the `investigationId`, `revision`
- * climbs as the investigation progresses). `DemoInvestigation` is written to be
- * liftable into `blocks.ts` verbatim once the block exists, so keep it in the
- * shape we intend to ship. The card is `../components/DemoInvestigationCard`.
- */
+// Block `id` is the `investigationId` and `revision` climbs. The contracts package freezes that.
 import type { Evidence } from "@internal/dashboard-agent-contracts";
 import {
   DEMO_WORLD,
@@ -19,64 +11,38 @@ import {
   demoSpanUri,
 } from "../ids";
 
-/** `testing` is live while the investigation runs; the two verdicts are terminal. */
 export type DemoHypothesisVerdict = "testing" | "validated" | "invalidated";
 
 export type DemoHypothesis = {
   id: string;
-  /** The claim, as a falsifiable sentence. */
   statement: string;
   verdict: DemoHypothesisVerdict;
-  /** Why the verdict, in one sentence. Absent while `testing`. */
   finding?: string;
-  /** The citations that settled it. */
   evidence: Evidence[];
 };
 
-/**
- * `concluded` has a cause and a fix. `inconclusive` means the evidence ran out and
- * the card must not invent a fix. `in_progress` is still testing hypotheses.
- */
 export type DemoInvestigationOutcome = "in_progress" | "concluded" | "inconclusive";
 
-/** The report view model's severity ladder minus `ok`. */
 export type DemoInvestigationSeverity = "info" | "warn" | "crit";
 
-/**
- * A caveat qualifies the whole card. With `dirty_commit` the source read is the
- * nearest snapshot rather than the deployed code, so every source citation on the
- * card inherits the hedge.
- */
 export type DemoInvestigationCaveat = {
   kind: "dirty_commit";
   message: string;
 };
 
 export type DemoInvestigation = {
-  /** Doubles as the block `id` under the frozen identity rule. */
   investigationId: string;
-  /** Which revision of the card this is. Climbs; the renderer keeps the highest. */
   revision: number;
   outcome: DemoInvestigationOutcome;
   severity: DemoInvestigationSeverity;
   confidence: "high" | "medium" | "low";
-  /** The run (or other resource) under investigation. */
   runId?: string;
-  /** Short headline, e.g. "send-order-receipt is failing on every retry". */
   title: string;
-  /**
-   * The collapsed view's first block. Concluded: severity + cause in one or two
-   * sentences. Inconclusive: what we established instead ("What we know").
-   */
   headline: string;
-  /** Remediation prose. Present only when `outcome === "concluded"`. */
   remediation?: string;
-  /** Present only when `outcome === "inconclusive"`. Never alongside a fix. */
   checkNext?: string[];
-  /** What the agent is doing right now. Present while `in_progress`. */
   progress?: string;
   hypotheses: DemoHypothesis[];
-  /** Citations that back the headline itself, beyond the per-hypothesis ones. */
   evidence: Evidence[];
   caveat?: DemoInvestigationCaveat;
   startedAt: string;
@@ -140,7 +106,6 @@ const deploymentEvidence: Evidence = {
   excerpt: "first failure 09:02, deploy 14:11 the previous day — no overlap",
 };
 
-/** Revision 0: hypotheses posed, nothing settled yet. */
 export const demoInvestigationStreamingRev0: DemoInvestigation = {
   investigationId: INVESTIGATION_ID,
   revision: 0,
@@ -177,7 +142,6 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:06.000Z",
 };
 
-/** The card's first frame: no hypotheses yet, so the disclosure is empty. */
 export const demoInvestigationEarly: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-early"),
   revision: 0,
@@ -195,7 +159,6 @@ export const demoInvestigationEarly: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:03.000Z",
 };
 
-/** Revision 1: one hypothesis settled, the other still open. Same id. */
 export const demoInvestigationStreamingRev1: DemoInvestigation = {
   ...demoInvestigationStreamingRev0,
   revision: 1,
@@ -286,10 +249,6 @@ export const demoInvestigationConcluded: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:24.000Z",
 };
 
-/**
- * Concluded from telemetry alone. No file was read, so the card must cite no
- * source and offer no "Show code".
- */
 export const demoInvestigationConcludedNoCode: DemoInvestigation = {
   investigationId: demoId("investigation-queue-saturation"),
   revision: 2,
@@ -402,11 +361,6 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
   updatedAt: "2026-07-27T09:41:38.000Z",
 };
 
-/**
- * Inconclusive because a tool failed, not because the evidence was thin. The card
- * must name what it could not read: an untestable hypothesis stays `testing`, never
- * `invalidated`, and the missing read leads "What to check next".
- */
 export const demoInvestigationDegraded: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-degraded"),
   revision: 1,
@@ -432,7 +386,6 @@ export const demoInvestigationDegraded: DemoInvestigation = {
     {
       id: demoId("hyp-retry-window"),
       statement: "The retry schedule keeps every attempt inside one rate-limit window.",
-      // Evidence we couldn't get leaves a hypothesis untested, never disproved.
       verdict: "testing",
       finding: "The run's spans are no longer retained, so the attempt timings can't be read.",
       evidence: [],
@@ -443,10 +396,6 @@ export const demoInvestigationDegraded: DemoInvestigation = {
   updatedAt: "2026-07-27T10:31:14.000Z",
 };
 
-/**
- * The concluded card, hedged. The wording is the point: it qualifies the source
- * citation without qualifying the telemetry evidence.
- */
 export const demoInvestigationDirtyCommit: DemoInvestigation = {
   ...demoInvestigationConcluded,
   investigationId: demoId("investigation-order-receipt-dirty"),
@@ -469,7 +418,6 @@ export const demoInvestigations = {
   dirtyCommit: demoInvestigationDirtyCommit,
 } as const;
 
-/** The show-code follow-up: a fenced diff citing `file:line@sha`. */
 export const demoShowCodeMarkdown = `Here's the change, against \`${DEMO_WORLD.sourcePath}:14-20@${DEMO_WORLD.sourceSha.slice(0, 7)}\`:
 
 \`\`\`diff

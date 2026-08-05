@@ -1,9 +1,3 @@
-/**
- * View-block fixtures, typed against the contracts package schemas. Enveloped
- * fixtures use the strict emit-side types so the compiler proves the envelope is
- * complete. The legacy fixture is typed `ViewBlock` and carries no envelope on
- * purpose, covering the pre-envelope transcript path.
- */
 import {
   VIEW_BLOCK_VERSION,
   type EnvelopedChartBlock,
@@ -18,7 +12,6 @@ const envelope = (id: string, revision = 0) => ({
   version: VIEW_BLOCK_VERSION,
 });
 
-/** First pass: a plausible cause, medium confidence, thin evidence. */
 export const demoDiagnosisBlockFirstPass: EnvelopedDiagnosisBlock = {
   ...envelope("diagnosis-order-receipt", 0),
   type: "diagnosis",
@@ -46,10 +39,6 @@ export const demoDiagnosisBlockFirstPass: EnvelopedDiagnosisBlock = {
   ],
 };
 
-/**
- * The same block re-emitted with better information. Same `id`, higher `revision`,
- * so the renderer collapses it latest-wins.
- */
 export const demoDiagnosisBlockRevised: EnvelopedDiagnosisBlock = {
   ...demoDiagnosisBlockFirstPass,
   ...envelope("diagnosis-order-receipt", 1),
@@ -84,7 +73,6 @@ export const demoDiagnosisBlockRevised: EnvelopedDiagnosisBlock = {
   ],
 };
 
-/** A chart block, exactly as the agent would emit one. */
 export const demoChartBlock: EnvelopedChartBlock = {
   ...envelope("chart-failures-by-task", 0),
   type: "chart",
@@ -98,8 +86,6 @@ export const demoChartBlock: EnvelopedChartBlock = {
   groupByColumn: "task_identifier",
   stacked: false,
   aggregation: "sum",
-  // The buttons act on the task the chart ranks first. The ask is phrased as the
-  // user's own follow-up, because that is what it becomes.
   actions: [
     {
       label: `Investigate ${DEMO_WORLD.taskId}`,
@@ -119,11 +105,7 @@ export const demoChartBlock: EnvelopedChartBlock = {
   ],
 };
 
-/**
- * A block from a transcript written before the envelope existed: no `id`,
- * `revision` or `version`. It must still parse and render, and can never be
- * revised. This fixture pins that rule.
- */
+// No envelope on purpose: the pre-envelope transcript path must still render.
 export const demoLegacyDiagnosisBlock: ViewBlock = {
   type: "diagnosis",
   runId: DEMO_WORLD.priorRunId,
@@ -136,7 +118,6 @@ export const demoLegacyDiagnosisBlock: ViewBlock = {
   nextSteps: ["Nothing to do — kept as a fixture for the pre-envelope render path."],
 };
 
-/** Every block fixture, for the schema test and the storybook gallery. */
 export const demoViewBlocks = {
   diagnosisFirstPass: demoDiagnosisBlockFirstPass,
   diagnosisRevised: demoDiagnosisBlockRevised,

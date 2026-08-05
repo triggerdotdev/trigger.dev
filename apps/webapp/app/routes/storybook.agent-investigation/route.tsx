@@ -7,19 +7,8 @@ import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCar
 import { investigationBlock } from "../storybook.agent-ui/fixtures";
 import { fixtureResolveUri, GalleryPage, noop } from "../storybook.agent-ui/gallery";
 
-// The investigation card, one state per ending it can reach. The shell and the manifest
-// live in `../storybook.agent-ui`. The unfinished state shows no progress line because
-// progress belongs to the transcript, one line per turn.
-
 const { demoInvestigations } = demoFixtures;
 
-/**
- * The actions the executor would attach to a settled card. Written out here because
- * they are server-decided and the fixtures don't carry them. "Show code" hangs on a
- * source citation read at the pinned commit, which is what separates the two concluded
- * states below. Both actions target URIs the card already cites, the way the executor
- * builds them: an action can only target evidence the investigation resolved.
- */
 const citedUri = (
   fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations],
   kind: string
@@ -45,7 +34,6 @@ const codeGroundedCapabilities: InvestigationCapabilities = {
   ],
 };
 
-// No source was read, so there is no code to show, only a follow-up that needs none.
 const notCodeGroundedCapabilities: InvestigationCapabilities = {
   version: INVESTIGATION_CAPABILITIES_VERSION,
   actions: [

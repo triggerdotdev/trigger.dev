@@ -1,55 +1,10 @@
-/**
- * The dashboard agent screenshot pack.
- *
- * Walks two things against a running local webapp and writes a PNG per state:
- *
- *   a) the storybook state gallery, one capture per row of
- *      `app/routes/storybook.agent-ui/manifest.ts`, which this script imports so
- *      the two can never disagree about what exists;
- *   b) every conversation in the panel's history, opened in the real panel on a
- *      real env page. Point it at a project whose org already has chats.
- *
- * Both phases run in dark and light. The theme layer is attribute-driven, so light
- * is produced by setting `data-theme` after load, and it has to be re-applied after
- * every navigation because a fresh document comes back dark.
- *
- * Usage
- * -----
- *   # terminal 1, from the repo root, with DASHBOARD_AGENT_ENABLED=1 in
- *   # apps/webapp/.env
- *   pnpm run dev --filter webapp
- *
- *   # terminal 2, from apps/webapp
- *   SCREENSHOT_ENV_PATH=/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs \
- *     pnpm run agent-ui:screenshots
- *
- * Environment
- * -----------
- *   BASE_URL             default http://localhost:3030
- *   SCREENSHOT_EMAIL     default local@trigger.dev. Must be an admin; the
- *                        storybook route redirects everyone else.
- *   SCREENSHOT_ENV_PATH  an env-scoped dashboard path whose org has chats.
- *                        Omit to skip phase (b).
- *   SCREENSHOT_THEMES    default "dark,light"
- *   SCREENSHOT_OUT       default apps/webapp/screenshots/agent-ui
- *   SCREENSHOT_SCALE     device pixel ratio, default 2
- *   SCREENSHOT_HEADED    "1" to watch it run
- *
- * Output
- * ------
- *   {out}/{theme}/{group}/{sectionId}.png plus {out}/manifest.json listing
- *   every attempted capture, failures included.
- *
- * A failed capture is logged and the walk continues, but the exit code is non-zero
- * if anything failed, so this is usable as a check.
- */
+// Writes a PNG per storybook gallery state and per stored chat, in dark and light.
+// Run with `pnpm run agent-ui:screenshots`; configuration is the SCREENSHOT_* env vars below.
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { GALLERY_PAGES, MANIFEST, sectionsOnPage } from "../app/routes/storybook.agent-ui/manifest";
 
-// The package script runs from apps/webapp; tolerate a run from the repo root
-// too, so `tsx apps/webapp/scripts/agent-ui-screenshots.ts` works as well.
 const WEBAPP_ROOT = process.cwd().endsWith(path.join("apps", "webapp"))
   ? process.cwd()
   : path.resolve(process.cwd(), "apps", "webapp");
@@ -72,7 +27,6 @@ const CHAT_GROUP = "chats";
 
 const PANEL_SELECTOR = "#dashboard-agent-panel";
 
-/** The route each gallery page lives at, e.g. `/storybook/agent-ui`. */
 const galleryPath = (slug: string) => `/storybook/${slug}`;
 
 type Capture = {
@@ -80,7 +34,6 @@ type Capture = {
   group: string;
   sectionId: string;
   title: string;
-  /** Relative to the output directory, so the manifest travels with the pack. */
   file: string;
   ok: boolean;
   error?: string;
@@ -92,7 +45,6 @@ function log(message: string) {
   process.stdout.write(`${message}\n`);
 }
 
-/** Filename- and anchor-safe slug for a chat title. */
 function slugify(value: string): string {
   return (
     value
@@ -102,10 +54,7 @@ function slugify(value: string): string {
   );
 }
 
-/**
- * Freeze everything that moves. Spinners, the panel's slide-in and the chip
- * pulse would otherwise make every run produce different bytes.
- */
+// Freeze motion so repeated runs produce the same bytes.
 async function freezeMotion(page: Page) {
   await page.addStyleTag({
     content: `*, *::before, *::after {
@@ -126,7 +75,6 @@ async function applyTheme(page: Page, theme: string) {
   }, theme);
 }
 
-/** Load a path, apply the theme, and wait for the page to stop moving. */
 async function open(page: Page, pathname: string, theme: string) {
   await page.goto(`${BASE_URL}${pathname}`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle").catch(() => {
@@ -137,10 +85,7 @@ async function open(page: Page, pathname: string, theme: string) {
   await page.waitForTimeout(400);
 }
 
-/**
- * Local dev sends no email: `sendMagicLinkEmail` redirects straight to the
- * magic link when NODE_ENV is development, so submitting the form logs us in.
- */
+// Local dev redirects straight to the magic link, so submitting the form logs us in.
 async function login(page: Page) {
   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
   if (!new URL(page.url()).pathname.startsWith("/login")) {
@@ -172,10 +117,6 @@ async function capture(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Phase (a): the gallery
-// ---------------------------------------------------------------------------
-
 async function shootGallery(page: Page, theme: string) {
   for (const galleryPage of GALLERY_PAGES) {
     await shootGalleryPage(page, theme, galleryPage);
@@ -202,7 +143,6 @@ async function shootGalleryPage(
   for (const section of sectionsOnPage(galleryPage.id)) {
     const target = page.locator(`#${section.sectionId}`);
     if (section.expandText) {
-      // A state that only exists after a click, e.g. a tool row's output tab.
       await target
         .getByText(section.expandText, { exact: true })
         .first()
@@ -221,11 +161,6 @@ async function shootGalleryPage(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Phase (b): the stored conversations, in the real panel
-// ---------------------------------------------------------------------------
-
-/** Open the panel if it isn't already, and return it. */
 async function openPanel(page: Page): Promise<Locator> {
   const panel = page.locator(PANEL_SELECTOR);
   if (!(await panel.count())) {
@@ -243,19 +178,14 @@ async function openPanel(page: Page): Promise<Locator> {
   return panel;
 }
 
-/** Switch the panel to its history list. */
 async function showHistory(page: Page, panel: Locator) {
   const rows = panel.locator("ol > li");
-  if (await rows.count()) return; // already listing
+  if (await rows.count()) return;
   await panel.getByRole("button", { name: "History" }).click();
   await rows.first().waitFor({ state: "visible", timeout: 15_000 });
 }
 
-/**
- * The history rows, as `{ index, title }`. Indices rather than text: the row
- * button's accessible name includes a timestamp, and clicking by index survives
- * titles that share a prefix.
- */
+// Indices, not text: a row's accessible name carries a timestamp and titles can share a prefix.
 async function chatRows(panel: Locator): Promise<{ index: number; title: string }[]> {
   const rows = panel.locator("ol > li");
   const count = await rows.count();
@@ -285,8 +215,7 @@ async function shootChats(page: Page, theme: string) {
   log(`  ${rows.length} conversations`);
 
   for (const { index, title } of rows) {
-    // Re-resolve every time: opening a chat leaves the history view, and the
-    // panel can remount when the layout resizes.
+    // Re-resolve every time: opening a chat leaves the history view and the panel can remount.
     panel = await openPanel(page);
     await showHistory(page, panel);
     await panel.locator("ol > li").nth(index).locator("button").first().click();
@@ -300,8 +229,6 @@ async function shootChats(page: Page, theme: string) {
     });
   }
 }
-
-// ---------------------------------------------------------------------------
 
 function summarise() {
   const failed = captures.filter((c) => !c.ok);
@@ -342,8 +269,7 @@ async function main() {
     const context = await browser.newContext({
       viewport: { width: 1600, height: 1000 },
       deviceScaleFactor: SCALE,
-      // The app renders relative timestamps ("2 hours ago") — pinning the zone
-      // keeps captures comparable between machines.
+      // Pin the zone so relative timestamps are comparable between machines.
       timezoneId: "UTC",
       locale: "en-US",
     });

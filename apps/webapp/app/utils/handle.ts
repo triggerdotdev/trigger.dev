@@ -4,10 +4,8 @@ import type { AgentPageContext } from "~/components/dashboard-agent/page-context
 export type Handle = {
   scripts?: ExternalScriptsFunction;
   /**
-   * Describes this page to the dashboard agent. `matchData` is this route's own
-   * loader data as it arrives on the route match, so a typedjson route sees the
-   * serialized shape. Return undefined to fall through to a parent route's
-   * mapper. Read via `useAgentPageContext()`.
+   * Describes this page to the dashboard agent. `matchData` is the raw route match data, so a
+   * typedjson route sees the serialized shape. Return undefined to fall through to the parent.
    */
   agentPageContext?: (matchData: unknown) => AgentPageContext | undefined;
 };

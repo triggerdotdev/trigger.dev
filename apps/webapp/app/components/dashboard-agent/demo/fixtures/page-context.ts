@@ -1,8 +1,4 @@
-/**
- * Page-context and suggested-prompt fixtures: one `AgentPageContext` per page
- * kind, plus the chip set the resolver should produce for it. `resolver.test.ts`
- * uses these contexts as its inputs, so changing one changes that test.
- */
+// Inputs shared with `resolver.test.ts`.
 import type {
   AgentPageContext,
   AgentPageSignal,
@@ -35,7 +31,7 @@ export const demoConcurrencySaturationSignal: AgentPageSignal = {
   severity: "crit",
 };
 
-/** Priority order. `SIGNAL_PRIORITY` in the registry mirrors this. */
+// Priority order. `SIGNAL_PRIORITY` in the registry mirrors this.
 export const demoSignalsByPriority: AgentPageSignal[] = [
   demoFreshFailureSignal,
   demoWaitingRunSignal,
@@ -95,7 +91,6 @@ export const demoDeploymentPageContext: AgentPageContext = {
   signals: [],
 };
 
-/** An unclassified route: the agent still gets the path. */
 export const demoOtherPageContext: AgentPageContext = {
   page: { kind: "other", path: "/orgs/demo/projects/demo/env/prod/settings" },
   signals: [],
@@ -113,8 +108,6 @@ export const demoPageContexts = {
 } as const;
 
 export type DemoPageContextKey = keyof typeof demoPageContexts;
-
-// Chips. Never more than SUGGESTED_PROMPT_CAP, `promoted` always first.
 
 const prompt = (
   id: string,
@@ -134,10 +127,6 @@ const DEFAULT_PROMPTS: SuggestedPrompt[] = [
   ),
 ];
 
-/**
- * The chip set per page. The first entry of a contextual set fills the promoted
- * slot, derived from the page's strongest signal.
- */
 export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
   failedRun: [
     prompt(
@@ -247,10 +236,8 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
   other: DEFAULT_PROMPTS,
 };
 
-/** Chips the user has dismissed. The row must not offer them again. */
 export const demoDismissedPromptIds: string[] = [demoId("prompt-watch-retry")];
 
-/** What the row shows after the dismissal above, still capped. */
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun
   .filter((p) => !demoDismissedPromptIds.includes(p.id))
   .slice(0, SUGGESTED_PROMPT_CAP);

@@ -159,7 +159,6 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
-  // Trigger Agent section
   {
     sectionTitle: "Trigger Agent",
     name: "Chat UI",

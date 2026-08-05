@@ -212,8 +212,7 @@ const popoverArrowTriggerVariants = {
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
   primary: {
-    // White ink, not text-bright: indigo is theme-stable, and text-bright flips
-    // dark on the light theme.
+    // White ink, not text-bright, which flips dark on the light theme.
     trigger:
       "bg-indigo-600 border border-indigo-500 text-white hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
     text: "text-white",

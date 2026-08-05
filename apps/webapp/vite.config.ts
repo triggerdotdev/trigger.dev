@@ -32,8 +32,7 @@ export default defineConfig({
   server: {
     cors: false,
     watch: {
-      // Seeder scripts live next to the app but are not app code — editing or
-      // running them must not full-reload every open dashboard tab.
+      // Seeder scripts are not app code; running them must not full-reload the dashboard.
       ignored: ["**/seed-*.mts"],
     },
     warmup: {
