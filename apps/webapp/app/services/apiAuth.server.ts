@@ -13,7 +13,8 @@ import {
   findEnvironmentByPublicApiKey,
   toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
-import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
+import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
 import { safeEnvironmentLogFields } from "./safeEnvironmentLog";
@@ -411,6 +412,11 @@ export type AuthenticationResult =
   | {
       type: "personalAccessToken";
       result: PersonalAccessTokenAuthenticationResult;
+      /**
+       * Claims of the delegated user-actor token the caller presented, if any. A UAT authenticates
+       * as its user, so it rides on this variant; its environment scope is enforced on resolution.
+       */
+      userActor?: UserActorClaims;
     }
   | {
       type: "organizationAccessToken";
@@ -535,7 +541,29 @@ export async function authenticateRequest<
   return;
 }
 
+/**
+ * Resolve the environment a request targets, and enforce the caller's environment scope.
+ *
+ * Every route that turns an authentication result into an environment goes through here, so the
+ * user-actor token's `environmentId` claim is checked once, at the seam — a new endpoint can't
+ * forget it.
+ */
 export async function authenticatedEnvironmentForAuthentication(
+  auth: AuthenticationResult,
+  projectRef: string,
+  slug: string,
+  branch?: string
+): Promise<AuthenticatedEnvironment> {
+  const environment = await resolveEnvironmentForAuthentication(auth, projectRef, slug, branch);
+
+  if (auth.type === "personalAccessToken") {
+    assertUserActorEnvironment(auth.userActor, environment.id);
+  }
+
+  return environment;
+}
+
+async function resolveEnvironmentForAuthentication(
   auth: AuthenticationResult,
   projectRef: string,
   slug: string,

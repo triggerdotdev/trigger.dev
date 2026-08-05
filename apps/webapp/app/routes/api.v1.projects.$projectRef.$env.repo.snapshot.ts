@@ -5,6 +5,7 @@ import {
   resolveDashboardAgentRepoSnapshot,
   resolveRunCommit,
 } from "~/services/dashboardAgent.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
@@ -12,8 +13,8 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 // by the dashboard agent's code tools. With `?runId=run_...` it pins to the
 // commit that run's deployed version came from (run-SHA pinning); without it,
 // the tracked branch head. The GitHub token never leaves the server, only the
-// short-lived signed URL is returned. Auth mirrors the worker-by-tag route: a
-// delegated user-actor token authenticates as its user (identity-only).
+// short-lived signed URL is returned. A delegated user-actor token authenticates as its user and
+// is gated on that user's env-tier role, like the JWT exchange.
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -38,6 +39,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       env,
       triggerBranch
     );
+
+    // The signed URL exposes the project's whole source tree, so gate it like the environment's
+    // other secrets: env-tier `read:apiKeys`, the same check the JWT exchange applies.
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authentication.authenticationResult.type,
+      organizationId: runtimeEnv.organizationId,
+      projectId: runtimeEnv.project.id,
+      envType: runtimeEnv.type,
+      resource: "apiKeys",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const runId = new URL(request.url).searchParams.get("runId") ?? undefined;
 

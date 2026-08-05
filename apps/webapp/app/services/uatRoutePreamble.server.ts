@@ -24,7 +24,13 @@ export async function authenticateUatOrApiRequest(
     const claims = await verifyUserActorToken(env.SESSION_SECRET, bearer);
     if (!claims) return undefined;
     return {
-      authenticationResult: { type: "personalAccessToken", result: { userId: claims.userId } },
+      // The claims ride on the authentication result too: resolving an environment from it
+      // enforces the token's environment scope, so no route has to remember to.
+      authenticationResult: {
+        type: "personalAccessToken",
+        result: { userId: claims.userId },
+        userActor: claims,
+      },
       userActor: claims,
     };
   }
