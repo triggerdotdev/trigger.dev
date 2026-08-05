@@ -3,7 +3,12 @@ import type { Watch } from "@internal/dashboard-agent-db";
 import { describe, expect, it } from "vitest";
 
 import {
+  runWatchBatchTick,
   runWatchTick,
+  type WatchBatchCheckEntry,
+  type WatchBatchCheckResponse,
+  type WatchBatchTickDeps,
+  type WatchBatchTickPayload,
   type WatchTickDeps,
   type WatchTickPayload,
   type WatchTickStore,
@@ -68,11 +73,16 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
   } as Watch;
 }
 
-// A store over one row, guarded exactly like the real queries: the generation
-// claim only lands on an `active` row still on the previous generation, the
-// condition transition only applies to an `active` row, and the release / delivered
-// marks only to the claim whose fencing token the row still carries.
-function fakeStore(row: Watch) {
+// A store over one or more rows, guarded exactly like the real queries: the
+// generation claim only lands on an `active` row still on the previous generation,
+// the condition transition only applies to an `active` row, and the release /
+// delivered marks only to the claim whose fencing token the row still carries.
+//
+// Several rows is what a batch tick needs — one run resolves a whole group, and the
+// isolation between its watches is only real if they are real, separate rows.
+function fakeStore(first: Watch, ...rest: Watch[]) {
+  const rows = [first, ...rest];
+  const byId = new Map(rows.map((row) => [row.id, row]));
   let claimSeq = 0;
   const calls = {
     claims: [] as unknown[],
@@ -83,10 +93,14 @@ function fakeStore(row: Watch) {
     checks: [] as unknown[],
   };
   const store: WatchTickStore = {
-    getWatch: async () => ({ ...row }),
+    getWatch: async ({ id }) => {
+      const row = byId.get(id);
+      return row ? { ...row } : null;
+    },
     claimWatchTick: async (params) => {
       calls.claims.push(params);
-      if (row.status !== "active") return null;
+      const row = byId.get(params.id);
+      if (!row || row.status !== "active") return null;
       // Resumable, exactly like the real query: the previous generation (fresh) or
       // this one (a retry resuming its own generation), never one further ahead.
       if (row.tickCount !== params.generation - 1 && row.tickCount !== params.generation) {
@@ -98,6 +112,8 @@ function fakeStore(row: Watch) {
     },
     claimWatchDelivery: async (params) => {
       calls.deliveryClaims.push(params);
+      const row = byId.get(params.id);
+      if (!row) return null;
       const stale =
         row.deliveryStatus === "delivering" &&
         (row.deliveryClaimedAt ?? row.createdAt).getTime() <= params.staleBefore.getTime();
@@ -110,6 +126,8 @@ function fakeStore(row: Watch) {
     },
     releaseWatchDelivery: async (params) => {
       calls.released.push(params);
+      const row = byId.get(params.id);
+      if (!row) return null;
       // Fenced: only the deliverer whose token the row still holds may release it.
       if (row.deliveryStatus !== "delivering" || row.deliveryClaimId !== params.claimId)
         return null;
@@ -120,7 +138,8 @@ function fakeStore(row: Watch) {
     },
     transitionWatchCondition: async (params) => {
       calls.transition.push(params);
-      if (row.status !== "active") return null;
+      const row = byId.get(params.id);
+      if (!row || row.status !== "active") return null;
       // Mirrors the query layer: the two-value status is DERIVED from the
       // resolution (§7.5), never passed in alongside it.
       const status = watchResolutionToWireStatus(params.resolution);
@@ -135,6 +154,8 @@ function fakeStore(row: Watch) {
     },
     markWatchDelivered: async (params) => {
       calls.delivered.push(params);
+      const row = byId.get(params.id);
+      if (!row) return null;
       // Same fence: a mark from a taken-over deliverer completes nothing.
       if (row.deliveryStatus !== "delivering" || row.deliveryClaimId !== params.claimId)
         return null;
@@ -144,13 +165,14 @@ function fakeStore(row: Watch) {
     },
     recordWatchCheck: async (params) => {
       calls.checks.push(params);
-      if (row.status !== "active") return null;
+      const row = byId.get(params.id);
+      if (!row || row.status !== "active") return null;
       row.lastCheckedAt = NOW;
       if (params.lastResult !== undefined) row.lastResult = params.lastResult;
       return { tickCount: row.tickCount, lastCheckedAt: row.lastCheckedAt };
     },
   };
-  return { store, calls, row };
+  return { store, calls, row: first, rows, byId };
 }
 
 type FetchCall = { url: string; init: RequestInit | undefined };
@@ -1053,5 +1075,445 @@ describe("the resolution model", () => {
       verified: false,
       reason: "unverified_at_expiry",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The batch tick — one run per (environment, cadence), for the whole group.
+//
+// What is under test here is only what batching added: isolation between the
+// watches of one run, the chain's own scheduling, and the fact that two overlapping
+// runs still wake a chat exactly once. The per-watch algorithm is the same
+// `runWatchLifecycle` the tests above drive, and is deliberately not re-tested.
+// ---------------------------------------------------------------------------
+
+describe("runWatchBatchTick", () => {
+  const ENVIRONMENT = "env_1";
+  const CADENCE = 5;
+
+  function batchPayload(
+    tick: number,
+    overrides: Partial<WatchBatchTickPayload> = {}
+  ): WatchBatchTickPayload {
+    return {
+      environmentId: ENVIRONMENT,
+      cadenceMinutes: CADENCE,
+      apiOrigin: "http://localhost:3030",
+      token: "batch_token",
+      epoch: 3,
+      tick,
+      ...overrides,
+    };
+  }
+
+  /** A group of watches, each on its own chat so their wakes are distinguishable. */
+  function group(count: number, overrides: Partial<Watch> = {}): Watch[] {
+    return Array.from({ length: count }, (_, index) =>
+      watchRow({
+        id: `watch_${index + 1}`,
+        chatId: `chat_${index + 1}`,
+        environmentId: ENVIRONMENT,
+        spec: { ...watchRow().spec, checkEveryMinutes: CADENCE } as Watch["spec"],
+        ...overrides,
+      })
+    );
+  }
+
+  /** One entry of a batch answer, satisfied unless told otherwise. */
+  function entry(
+    watch: Watch,
+    overrides: Partial<WatchBatchCheckEntry> = {}
+  ): WatchBatchCheckEntry {
+    return {
+      watchId: watch.id,
+      token: `token_${watch.id}`,
+      tick: watch.tickCount + 1,
+      result: "satisfied",
+      ...overrides,
+    };
+  }
+
+  function batchDeps(parts: {
+    store: WatchTickStore;
+    response: WatchBatchCheckResponse | (() => Promise<WatchBatchCheckResponse>);
+    deliver: WatchBatchTickDeps["deliver"];
+    notifyFired?: WatchBatchTickDeps["notifyFired"];
+    reschedule?: WatchBatchTickDeps["reschedule"];
+    now?: Date;
+  }): WatchBatchTickDeps {
+    return {
+      store: parts.store,
+      checkBatch: async () =>
+        typeof parts.response === "function" ? parts.response() : parts.response,
+      deliver: parts.deliver,
+      notifyFired: parts.notifyFired ?? (async () => {}),
+      notifyInvestigate: async () => {},
+      reschedule: parts.reschedule ?? (async () => {}),
+      now: () => parts.now ?? NOW,
+    };
+  }
+
+  it("resolves every watch of the group from ONE check call, and reschedules once", async () => {
+    const rows = group(3);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!, rows[2]!);
+    const { appends, deliver } = fakeDeliver();
+    const triggers: Array<{ payload: WatchBatchTickPayload; options: Record<string, unknown> }> =
+      [];
+    let checkCalls = 0;
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: async () => {
+          checkCalls++;
+          return { watches: rows.map((row) => entry(row)), continues: true };
+        },
+        deliver,
+        reschedule: async (payload, options) => void triggers.push({ payload, options }),
+      })
+    );
+
+    // ONE call for three watches — that is the whole point of the shape.
+    expect(checkCalls).toBe(1);
+    expect(result.outcome).toBe("ticked");
+    expect(result.results.map((one) => one.outcome)).toEqual(["fired", "fired", "fired"]);
+    // Three wakes, one per chat, and three delivery marks.
+    expect(appends.map((append) => append.chatId)).toEqual(["chat_1", "chat_2", "chat_3"]);
+    expect(calls.delivered).toHaveLength(3);
+    expect(rows.map((row) => row.status)).toEqual(["fired", "fired", "fired"]);
+
+    // ONE reschedule for the group, keyed on the chain's epoch and generation.
+    expect(result.rescheduled).toBe(true);
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]?.payload).toEqual(batchPayload(8));
+    expect(triggers[0]?.options).toEqual({
+      delay: "5m",
+      idempotencyKey: "watch-batch:env_1:5:3:tick:8",
+    });
+  });
+
+  it("one watch failing costs only that watch, and the chain still ticks on", async () => {
+    const rows = group(3);
+    const { store } = fakeStore(rows[0]!, rows[1]!, rows[2]!);
+    const appends: string[] = [];
+    const triggers: unknown[] = [];
+
+    const batch = batchDeps({
+      store,
+      response: { watches: rows.map((row) => entry(row)), continues: true },
+      // The middle watch's append fails, the way a session that won't take a record
+      // fails: for that watch and nobody else.
+      deliver: async ({ chatId }) => {
+        if (chatId === "chat_2") throw new Error("session append failed");
+        appends.push(chatId);
+      },
+      reschedule: async (payload, options) => void triggers.push({ payload, options }),
+    });
+
+    // The run fails — the wake it lost has to be retried — but only after everything
+    // else has been resolved and the chain's next tick is booked.
+    await expect(runWatchBatchTick(batchPayload(7), batch)).rejects.toThrow(
+      "1 of 3 watches failed their tick"
+    );
+
+    // The other two were resolved and woken.
+    expect(appends).toEqual(["chat_1", "chat_3"]);
+    expect(rows[0]).toMatchObject({ status: "fired", deliveryStatus: "delivered" });
+    expect(rows[2]).toMatchObject({ status: "fired", deliveryStatus: "delivered" });
+
+    // The failed one is terminal with its wake owed — the state the retry (and the
+    // sweep) recovers — because the failed append gave its claim back.
+    expect(rows[1]).toMatchObject({ status: "fired", deliveryStatus: "pending" });
+
+    // The chain survived the poison watch: the reschedule happened before the throw.
+    expect(triggers).toHaveLength(1);
+  });
+
+  it("a watch whose wake is owed is redelivered by the group's own tick", async () => {
+    // What the retry of the run above sees: the row is terminal now, so it is no
+    // longer in the group's active set and only a deliver-only entry reaches it.
+    const [owed] = group(1, {
+      status: "fired",
+      deliveryStatus: "pending",
+      firedAt: NOW,
+      lastResult: { runs: 2 },
+    });
+    const { store, calls } = fakeStore(owed!);
+    const { appends, deliver } = fakeDeliver();
+
+    const result = await runWatchBatchTick(
+      batchPayload(8),
+      batchDeps({
+        store,
+        response: {
+          watches: [{ watchId: owed!.id, token: "t", tick: 0, deliverOnly: true }],
+          continues: true,
+        },
+        deliver,
+      })
+    );
+
+    expect(result.results).toEqual([{ watchId: "watch_1", outcome: "delivered_only" }]);
+    // No check was decided and no generation claimed — only the wake.
+    expect(calls.claims).toHaveLength(0);
+    expect(calls.transition).toHaveLength(0);
+    expect(appends).toHaveLength(1);
+    expect(owed!.deliveryStatus).toBe("delivered");
+  });
+
+  it("evaluates the window boundary inside the batch: a pending final check expires the watch", async () => {
+    // The row is past its deadline, so the lifecycle treats this as the window's last
+    // evaluation and §7.4 resolves the pending answer `window_completed` — the same
+    // answer a per-watch tick past the deadline would have reached.
+    const rows = group(2);
+    rows[0]!.expiresAt = new Date(NOW.getTime() - 1000);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!);
+    const { appends, deliver } = fakeDeliver();
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: {
+          watches: [
+            entry(rows[0]!, { result: "pending", facts: { pending: 7 } }),
+            entry(rows[1]!, { result: "pending" }),
+          ],
+          continues: true,
+        },
+        deliver,
+      })
+    );
+
+    // The boundary watch resolved; its neighbour, still inside its window, did not.
+    expect(result.results.map((one) => one.outcome)).toEqual(["expired", "pending"]);
+    expect(rows[0]?.status).toBe("expired");
+    expect(rows[1]?.status).toBe("active");
+    expect(calls.transition).toHaveLength(1);
+    expect(calls.transition[0]).toMatchObject({ resolution: "window_completed" });
+    expect(appends[0]?.action.facts).toMatchObject({
+      verified: true,
+      reason: "not_met_by_expiry",
+      pending: 7,
+    });
+  });
+
+  it("a boundary check that is satisfied still fires, inside a batch too", async () => {
+    const [watch] = group(1);
+    watch!.expiresAt = new Date(NOW.getTime() - 1000);
+    const { store, calls } = fakeStore(watch!);
+    const { appends, deliver } = fakeDeliver();
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: { watches: [entry(watch!, { facts: { pending: 0 } })], continues: true },
+        deliver,
+      })
+    );
+
+    expect(result.results[0]?.outcome).toBe("fired");
+    expect(calls.transition[0]).toMatchObject({ resolution: "condition_met" });
+    expect(appends[0]?.action.type).toBe("watch.fired");
+  });
+
+  it("two overlapping batch runs wake each chat exactly once", async () => {
+    // A duplicated schedule, or a retry overlapping its own attempt: both runs get the
+    // same verdicts, both claim the same generation (the claim is resumable), and both
+    // reach every watch's transition. Only the guarded transition and the fenced
+    // delivery claim keep that from being two wakes each.
+    const rows = group(2);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!);
+    const { appends, deliver } = fakeDeliver();
+    const fired: string[] = [];
+    const batch = batchDeps({
+      store,
+      response: { watches: rows.map((row) => entry(row)), continues: true },
+      deliver,
+      notifyFired: async ({ watchId }) => void fired.push(watchId),
+    });
+
+    const [first, second] = await Promise.all([
+      runWatchBatchTick(batchPayload(7), batch),
+      runWatchBatchTick(batchPayload(7), batch),
+    ]);
+
+    // Both runs reached both delivery claims — that is the race.
+    expect(calls.deliveryClaims).toHaveLength(4);
+    expect(calls.transition).toHaveLength(4);
+    // One wake per chat, one delivery mark per watch, one alert per watch.
+    expect(appends.map((append) => append.chatId).sort()).toEqual(["chat_1", "chat_2"]);
+    expect(calls.delivered).toHaveLength(2);
+    expect(fired.sort()).toEqual(["watch_1", "watch_2"]);
+    expect(rows.map((row) => row.deliveryStatus)).toEqual(["delivered", "delivered"]);
+
+    // Each run reports what it saw: the winner fired it, the loser found the wake
+    // already taken.
+    const outcomes = [...first!.results, ...second!.results].map((one) => one.outcome);
+    expect(outcomes.filter((outcome) => outcome === "fired")).toHaveLength(2);
+    expect(outcomes.filter((outcome) => outcome === "already_delivering")).toHaveLength(2);
+  });
+
+  it("a stale run owns nothing: no checks, no wakes, no reschedule", async () => {
+    const rows = group(2);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!);
+    const { appends, deliver } = fakeDeliver();
+    const triggers: unknown[] = [];
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: { stale: true },
+        deliver,
+        reschedule: async () => void triggers.push(1),
+      })
+    );
+
+    expect(result).toEqual({ outcome: "stale", results: [], rescheduled: false });
+    expect(calls.claims).toHaveLength(0);
+    expect(appends).toHaveLength(0);
+    expect(triggers).toHaveLength(0);
+    expect(rows.map((row) => row.status)).toEqual(["active", "active"]);
+  });
+
+  it("stops the chain when the group has nothing left to watch", async () => {
+    const [watch] = group(1);
+    const { store } = fakeStore(watch!);
+    const { deliver } = fakeDeliver();
+    const triggers: unknown[] = [];
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        // The check resolved the last watch and says the group is empty now.
+        response: { watches: [entry(watch!)], continues: false },
+        deliver,
+        reschedule: async () => void triggers.push(1),
+      })
+    );
+
+    expect(result.rescheduled).toBe(false);
+    expect(triggers).toHaveLength(0);
+    expect(watch!.status).toBe("fired");
+  });
+
+  it("a revoked watch inside a batch is skipped, and its neighbours are not", async () => {
+    const rows = group(2);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!);
+    const { appends, deliver } = fakeDeliver();
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: {
+          watches: [
+            { ...entry(rows[0]!), result: undefined, code: "access_revoked" },
+            entry(rows[1]!),
+          ],
+          continues: true,
+        },
+        deliver,
+      })
+    );
+
+    expect(result.results.map((one) => one.outcome)).toEqual(["revoked", "fired"]);
+    // The revoked row was never transitioned and never narrated.
+    expect(calls.transition).toHaveLength(1);
+    expect(appends.map((append) => append.chatId)).toEqual(["chat_2"]);
+  });
+
+  it("throws when the batch check itself can't be read, before anything is scheduled", async () => {
+    const rows = group(2);
+    const { store, calls } = fakeStore(rows[0]!, rows[1]!);
+    const { deliver } = fakeDeliver();
+    const triggers: unknown[] = [];
+
+    await expect(
+      runWatchBatchTick(
+        batchPayload(7),
+        batchDeps({
+          store,
+          response: async () => {
+            throw new Error("the batch check returned 500");
+          },
+          deliver,
+          reschedule: async () => void triggers.push(1),
+        })
+      )
+    ).rejects.toThrow("the batch check returned 500");
+
+    // Nothing was decided for the group, and nothing was rescheduled as if it had
+    // been: the run is retried instead.
+    expect(calls.checks).toHaveLength(0);
+    expect(triggers).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The hand-off — how a watch stops polling for itself and joins its group.
+// ---------------------------------------------------------------------------
+
+describe("the hand-off to a batch chain", () => {
+  it("a pending check that reports a chain stops rescheduling the per-watch tick", async () => {
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "pending", batched: true } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
+
+    expect(result).toEqual({ outcome: "handed_off", tickCount: 4 });
+    // The check still happened and was recorded — only the chain stops.
+    expect(calls.checks).toHaveLength(1);
+    expect(triggers).toHaveLength(0);
+    expect(row.status).toBe("active");
+    expect(appends).toHaveLength(0);
+  });
+
+  it("a failed check that reports a chain hands over too", async () => {
+    const { store, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch } = fakeFetch(() => ({
+      status: 503,
+      body: { error: "clickhouse is down", batched: true },
+    }));
+    const { deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
+
+    expect(result).toEqual({ outcome: "handed_off", tickCount: 4 });
+    expect(triggers).toHaveLength(0);
+    expect(row.lastResult).toMatchObject({ checkFailed: true });
+  });
+
+  it("keeps its own chain when no chain is polling the group yet", async () => {
+    const { store } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "pending", batched: false } }));
+    const { deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
+
+    expect(result).toEqual({ outcome: "pending", tickCount: 4 });
+    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:5");
+  });
+
+  // A resolved watch has nothing to hand over: it is done.
+  it("resolves as usual even when the answer reports a chain", async () => {
+    const { store, row } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", batched: true } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+
+    expect(result).toEqual({ outcome: "fired" });
+    expect(row.status).toBe("fired");
+    expect(appends).toHaveLength(1);
   });
 });
