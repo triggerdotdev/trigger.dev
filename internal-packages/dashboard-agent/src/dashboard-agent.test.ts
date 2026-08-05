@@ -23,7 +23,10 @@ import {
   dashboardAgentStoreKey,
   DEFAULT_EVAL_SAMPLE_RATE,
   evalSampleRate,
+  extractToolActivity,
+  MAX_EVAL_TOOL_OUTPUT_CHARS,
   sanitizeReplayedToolInputs,
+  truncateEvalToolOutput,
   TURN_FAILED_MESSAGE,
   turnFailureMessageId,
   type DashboardAgentEvalTrigger,
@@ -1003,6 +1006,57 @@ describe("sanitizeReplayedToolInputs", () => {
     expect(parts[1]!.input).toEqual({});
     expect(parts[2]!.input).toEqual({ runId: "r1" });
     expect(parts[3]).toBe((messages[1] as { content: unknown[] }).content[3]);
+  });
+});
+
+describe("the eval judge payload", () => {
+  it("passes a small tool output through untouched", () => {
+    const output = { type: "json", value: { runs: [{ id: "run_1" }] } };
+    expect(truncateEvalToolOutput(output)).toBe(output);
+    expect(truncateEvalToolOutput(undefined)).toBeUndefined();
+  });
+
+  it("caps a large tool output at the prefix, and says it is one", () => {
+    const output = { type: "json", value: { content: "x".repeat(50_000) } };
+    const capped = truncateEvalToolOutput(output) as {
+      truncated: boolean;
+      outputPrefix: string;
+      note: string;
+    };
+
+    expect(capped.truncated).toBe(true);
+    expect(capped.outputPrefix).toHaveLength(MAX_EVAL_TOOL_OUTPUT_CHARS);
+    expect(capped.note).toContain("truncated");
+    expect(JSON.stringify(capped).length).toBeLessThan(MAX_EVAL_TOOL_OUTPUT_CHARS + 200);
+  });
+
+  it("caps every tool result it pairs up, and keeps the inputs", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolCallId: "tc1", toolName: "read_file", input: { path: "a.ts" } },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tc1",
+            toolName: "read_file",
+            output: { type: "json", value: { content: "y".repeat(80_000) } },
+          },
+        ],
+      },
+    ] as Parameters<typeof extractToolActivity>[0];
+
+    const activity = extractToolActivity(messages);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]!.input).toEqual({ path: "a.ts" });
+    expect(activity[0]!.output).toMatchObject({ truncated: true });
+    // The prompt line the judge actually receives, unindented.
+    expect(JSON.stringify(activity).length).toBeLessThan(2_000);
   });
 });
 

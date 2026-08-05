@@ -278,9 +278,28 @@ function extractText(message: UIMessage): string {
     .trim();
 }
 
+/**
+ * Cap on each tool output in the eval payload. The judge only has to check the
+ * answer against the result, which a prefix supports — a run trace or a file read
+ * is tens of thousands of characters of it.
+ */
+export const MAX_EVAL_TOOL_OUTPUT_CHARS = 1500;
+
+/** Marks the prefix as a prefix, so the judge doesn't read a cut result as the whole one. */
+export function truncateEvalToolOutput(output: unknown): unknown {
+  if (output === undefined) return output;
+  const serialized = JSON.stringify(output);
+  if (serialized === undefined || serialized.length <= MAX_EVAL_TOOL_OUTPUT_CHARS) return output;
+  return {
+    truncated: true,
+    outputPrefix: serialized.slice(0, MAX_EVAL_TOOL_OUTPUT_CHARS),
+    note: `[truncated: the first ${MAX_EVAL_TOOL_OUTPUT_CHARS} of ${serialized.length} characters of this tool's output]`,
+  };
+}
+
 // Pair this turn's tool-calls with their results — the ground truth the eval
 // judge checks the answer against.
-function extractToolActivity(
+export function extractToolActivity(
   messages: ModelMessage[]
 ): Array<{ toolName: string; input?: unknown; output?: unknown }> {
   const byId = new Map<string, { toolName: string; input?: unknown; output?: unknown }>();
@@ -297,7 +316,7 @@ function extractToolActivity(
         byId.set(part.toolCallId, { toolName: String(part.toolName ?? ""), input: part.input });
       } else if (part.type === "tool-result" && part.toolCallId) {
         const existing = byId.get(part.toolCallId);
-        if (existing) existing.output = part.output;
+        if (existing) existing.output = truncateEvalToolOutput(part.output);
       }
     }
   }

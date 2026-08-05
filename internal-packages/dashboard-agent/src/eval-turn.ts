@@ -144,7 +144,9 @@ export const evalTurn = task({
       system: JUDGE_SYSTEM,
       prompt: [
         `User question:\n${payload.userText || "(none)"}`,
-        `Tools the agent called (ground truth):\n${JSON.stringify(payload.toolActivity, null, 2)}`,
+        // Unindented, and each output already capped at the source: pretty-printing an
+        // untruncated turn of tool traffic was most of the judge's bill.
+        `Tools the agent called (ground truth):\n${JSON.stringify(payload.toolActivity)}`,
         `Agent answer:\n${payload.assistantText || "(empty)"}`,
         "Evaluate this turn.",
       ].join("\n\n"),
