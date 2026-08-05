@@ -1,13 +1,6 @@
 /**
- * The serializable subset of the runs-page filters the agent may carry: enough to
- * reproduce a runs list URL, nothing more. The webapp's `TaskRunListSearchFilters`
- * owns the URL params, but it pulls in webapp enums, so this is a loose
- * dependency-free mirror of the navigable fields.
- *
- * Every value is a string or string[], so it maps 1:1 onto URL search params and a
- * new run status never breaks a stored transcript. Pagination is excluded: a
- * cursor is not a filter and does not survive replay. Unknown keys are stripped on
- * parse, so a filter the host doesn't understand degrades to no filter.
+ * Dependency-free mirror of the webapp's `TaskRunListSearchFilters`. Values stay
+ * strings so they map 1:1 onto URL search params; pagination is excluded.
  */
 import { z } from "zod";
 
@@ -21,10 +14,9 @@ export const runFiltersSchema = z.object({
   queues: stringOrStringArray,
   /** Relative window shorthand, e.g. "1h", "24h", "7d". */
   period: z.string().optional(),
-  /** Absolute window bounds as ISO strings, which JSON round-trips cleanly. */
+  /** Absolute window bounds as ISO strings. */
   from: z.string().optional(),
   to: z.string().optional(),
-  /** Free-text run search (run id, task, tag). */
   search: z.string().optional(),
   rootOnly: z.boolean().optional(),
   batchId: z.string().optional(),

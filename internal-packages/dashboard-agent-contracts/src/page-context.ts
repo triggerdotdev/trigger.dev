@@ -1,11 +1,4 @@
-/**
- * Page context — what the user is looking at when they open the panel.
- *
- * `page` classifies the route with just enough identity to act on. `signals` are
- * observations the host already derived from the page's data, so the agent
- * doesn't re-query to notice the obvious. Both are advisory: the agent still
- * verifies with tools before asserting anything.
- */
+/** Advisory only: the agent still verifies with tools before asserting anything. */
 import { runFiltersSchema } from "./run-filters.js";
 import { z } from "zod";
 
@@ -14,12 +7,12 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("run"),
     runId: z.string(),
-    /** Run status as the dashboard displays it. Plain string: a new status must not break stored context. */
+    // Statuses stay plain strings throughout this union: a new status must not
+    // break stored context.
     status: z.string(),
     taskId: z.string(),
     queue: z.string().optional(),
   }),
-  /** Plural kinds are lists, singular kinds are one thing. */
   z.object({ kind: z.literal("errors") }),
   z.object({ kind: z.literal("error"), fingerprint: z.string() }),
   z.object({ kind: z.literal("queues") }),
@@ -32,31 +25,19 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("deployment"),
     version: z.string(),
-    /** `WorkerDeploymentStatus`. Plain string: a new status must not break stored context. */
+    /** `WorkerDeploymentStatus`. */
     status: z.string().optional(),
   }),
-  // The rest of the environment's sections.
-  //
-  // A singular kind exists only where the detail page asks a different question
-  // than its list (`task` vs `tasks`). Otherwise the detail page reuses the
-  // section's kind with an optional identity field rather than doubling the
-  // union: `{ kind: "sessions", sessionId }` is the session detail page.
-  //
-  // Every field beyond `kind` is optional and comes from what the page's loader
-  // already returned.
-
-  /** The tasks list, and the tasks activity dashboard. */
+  // A detail page reuses its section's kind with an optional identity field
+  // rather than adding a union member, except where it asks a different question.
   z.object({ kind: z.literal("tasks") }),
   z.object({
     kind: z.literal("task"),
     taskId: z.string(),
-    /** `TaskTriggerSource` — STANDARD, SCHEDULED or AGENT. Plain string by convention. */
+    /** `TaskTriggerSource` — STANDARD, SCHEDULED or AGENT. */
     triggerSource: z.string().optional(),
-    /** The queue this task runs on, when it has one of its own. */
     queue: z.string().optional(),
-    /** The queue is paused, so nothing on it will start. */
     queuePaused: z.boolean().optional(),
-    /** Schedule counts, for a scheduled task: none attached, or none enabled, means it never runs. */
     schedules: z.object({ total: z.number(), active: z.number() }).optional(),
   }),
   /** There is no `schedules` list kind: that listing lives on the tasks page. */
@@ -64,22 +45,19 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     kind: z.literal("schedule"),
     scheduleId: z.string(),
     taskId: z.string(),
-    /** Disabled schedules don't fire. */
     active: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("batches"),
-    /** The newest batch on an unfiltered list, when that batch didn't come out clean. */
     latestFailedBatchId: z.string().optional(),
   }),
   z.object({
     kind: z.literal("batch"),
     batchId: z.string(),
-    /** `BatchTaskRunStatus`. Plain string: a new status must not break stored context. */
+    /** `BatchTaskRunStatus`. */
     status: z.string().optional(),
     failedRunCount: z.number().optional(),
   }),
-  /** The test page, with the task being tested when one is selected. */
   z.object({
     kind: z.literal("test"),
     taskId: z.string().optional(),
@@ -87,7 +65,6 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("alerts"),
-    /** Channels configured for this environment, and how many are switched off. */
     channelCount: z.number().optional(),
     disabledChannelCount: z.number().optional(),
   }),
@@ -98,11 +75,9 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("settings") }),
   z.object({
     kind: z.literal("waitpoints"),
-    /** One token, on the token detail page. */
     tokenId: z.string().optional(),
-    /** `WAITING`, `COMPLETED` or `TIMED_OUT`, for a single token. */
+    /** `WAITING`, `COMPLETED` or `TIMED_OUT`. */
     status: z.string().optional(),
-    /** List counts: tokens that timed out, and tokens still waiting past their timeout. */
     timedOutCount: z.number().optional(),
     overdueCount: z.number().optional(),
   }),
@@ -112,12 +87,10 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     /** `PENDING`, `COMPLETED` or `ABORTED`. */
     status: z.string().optional(),
     failedRunCount: z.number().optional(),
-    /** List count: actions still in flight. */
     pendingCount: z.number().optional(),
   }),
   z.object({
     kind: z.literal("branches"),
-    /** No more branches can be created on this plan. */
     atLimit: z.boolean().optional(),
   }),
   z.object({ kind: z.literal("logs") }),
@@ -129,7 +102,6 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("query") }),
   z.object({
     kind: z.literal("dashboards"),
-    /** The dashboard's own title, when the user is on one rather than the chooser. */
     title: z.string().optional(),
   }),
   z.object({ kind: z.literal("agents"), agentId: z.string().optional() }),
@@ -139,21 +111,18 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     slug: z.string().optional(),
     /** A version override is pinned, so runs don't use the current version. */
     overridden: z.boolean().optional(),
-    /** List count: prompts with an override pinned. */
     overriddenCount: z.number().optional(),
   }),
   z.object({ kind: z.literal("models"), modelId: z.string().optional() }),
   z.object({
     kind: z.literal("sessions"),
     sessionId: z.string().optional(),
-    /** The session's current run and how it ended, on the session detail page. */
     runId: z.string().optional(),
     runStatus: z.string().optional(),
-    /** List count: sessions that expired instead of closing. */
     expiredCount: z.number().optional(),
   }),
 
-  /** Anything unclassified: carry the raw path so the agent isn't blind. */
+  /** Anything unclassified: carries the raw path. */
   z.object({ kind: z.literal("other"), path: z.string() }),
 ]);
 
@@ -161,18 +130,14 @@ export type AgentPage = z.infer<typeof agentPageSchema>;
 export type AgentPageKind = AgentPage["kind"];
 
 export const agentPageSignalSchema = z.discriminatedUnion("kind", [
-  /** A run on this page failed recently enough to be the reason the user is here. */
   z.object({ kind: z.literal("fresh_failure"), runId: z.string(), failedAt: z.string() }),
-  /** A run is sitting in the queue rather than executing. */
   z.object({ kind: z.literal("waiting_run"), runId: z.string(), queue: z.string().optional() }),
-  /** A run is running well past its task's usual duration. */
   z.object({
     kind: z.literal("slow_run"),
     runId: z.string(),
     durationMs: z.number().nonnegative(),
     baselineP95Ms: z.number().nonnegative(),
   }),
-  /** Concurrency is pinned, so work is queueing behind the limit. */
   z.object({ kind: z.literal("concurrency_saturation"), severity: z.enum(["warn", "crit"]) }),
 ]);
 
@@ -187,22 +152,16 @@ export const agentPageContextSchema = z.object({
 export type AgentPageContext = z.infer<typeof agentPageContextSchema>;
 
 /**
- * The per-turn client data the webapp sends with a chat turn, a superset of the
- * webapp's own `DashboardAgentClientData`. Every field added here must stay
- * optional: a resumed chat replays metadata stored before the field existed.
+ * Every field added here must stay optional: a resumed chat replays metadata
+ * stored before the field existed.
  */
 export const dashboardAgentClientDataSchema = z.object({
   userId: z.string(),
   organizationId: z.string(),
   projectId: z.string().optional(),
-  /**
-   * RuntimeEnvironment id: the `{env}` component of every `trigger://` URI the
-   * turn produces.
-   */
+  /** RuntimeEnvironment id: the `{env}` component of every `trigger://` URI. */
   environmentId: z.string().optional(),
-  /** Human-readable current page path, as sent today. */
   currentPage: z.string().optional(),
-  /** Structured view of the same page, when the host can classify it. */
   pageContext: agentPageContextSchema.optional(),
 });
 

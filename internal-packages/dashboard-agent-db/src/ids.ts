@@ -1,10 +1,7 @@
 import { randomInt } from "node:crypto";
 
-/**
- * Friendly ids for rows this package creates itself. Same shape as the platform's
- * `generateFriendlyId` (`prefix_` plus 21 lowercase alphanumeric chars, look-alikes
- * removed), but on `node:crypto` so this leaf package stays dependency-free.
- */
+// Same shape as the platform's `generateFriendlyId`, on `node:crypto` so this leaf
+// package stays dependency-free.
 const ALPHABET = "123456789abcdefghijkmnopqrstuvwxyz";
 const SIZE = 21;
 
@@ -18,5 +15,5 @@ export function generateId(prefix: string, size: number = SIZE): string {
 
 export const generateInvestigationId = () => generateId("inv");
 export const generateWatchId = () => generateId("watch");
-/** Fencing token for one wake-delivery claim (`wdc_…`). */
+/** Fencing token for one wake-delivery claim. */
 export const generateWatchDeliveryClaimId = () => generateId("wdc");

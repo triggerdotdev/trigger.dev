@@ -1,26 +1,15 @@
-/**
- * Evidence — one citation backing something the agent claims.
- *
- * Every citation points at a real resource through a `trigger://` URI. There is
- * no free-form `reference: string` field: a string pointer like "src/foo.ts:12"
- * can't be resolved, linked, or validated. If it can't be expressed as a URI, it
- * isn't evidence.
- */
+/** Every citation must be a `trigger://` URI. There is no free-form reference field. */
 import { z } from "zod";
 import { safeParseTriggerUri, triggerUriKindSchema, triggerUriSchema } from "./trigger-uri.js";
 
 export const evidenceSchema = z
   .object({
-    /** What kind of resource this cites. Mirrors the URI's resource kinds. */
     kind: triggerUriKindSchema,
     uri: triggerUriSchema,
-    /** Short human label, e.g. "run_abc123 failed span" or "processOrder.ts:42". */
     label: z.string(),
-    /** Optional verbatim snippet (error message, log line, source lines). */
     excerpt: z.string().optional(),
   })
-  // The renderer picks its icon and label from `kind`, so a citation must not
-  // claim one resource type while pointing at another.
+  // `kind` must match the URI's kind: the renderer keys its icon off `kind`.
   .superRefine((evidence, ctx) => {
     const parsed = safeParseTriggerUri(evidence.uri);
     if (parsed.success && parsed.data.kind !== evidence.kind) {
@@ -36,14 +25,8 @@ export type Evidence = z.infer<typeof evidenceSchema>;
 export type EvidenceKind = Evidence["kind"];
 
 /**
- * The model-facing input shape of evidence. The strict schema above is what gets
- * persisted and rendered. The model can't build a canonical URI, because the
- * grammar embeds the environment id it never sees, so at the tool boundary it
- * cites what the read tools gave it and the executor canonicalizes.
- *
- * A kind whose URI needs one bare id cites it as `uri`. The kinds needing more
- * than one part carry those parts as named fields rather than squeezed into a
- * string, because "src/foo.ts:12" in a single `uri` field can't be canonicalized.
+ * Model-facing input shape. The model cites bare ids and the executor
+ * canonicalizes them into the strict schema above.
  */
 const evidenceLabelShape = {
   label: z.string().describe('Short human label, e.g. "run_abc123 failed span".'),

@@ -1,17 +1,6 @@
 /**
- * View blocks — the fixed catalog the agent renders UI from, by emitting a spec
- * via the `render_view` tool rather than markup. The webapp maps each block
- * `type` to a React component. Add a block by adding a union member here plus a
- * renderer entry there.
- *
- * Three schema sets, on purpose:
- * - body only (`*BlockBodySchema`, `viewBlockInputSchema`): the model-facing
- *   tool input. Identity is system-owned, so the model never supplies
- *   `id`/`revision`/`version` and the executor stamps the envelope on.
- * - envelope required (`*BlockSchema`, `viewBlockSchema`): emit, persist, revise.
- * - envelope optional (`legacy*BlockSchema`): reading stored transcripts. Blocks
- *   written before the envelope existed have none and must keep parsing forever.
- *   A stored block with no `id` is non-revisable and renders in transcript order.
+ * Three schema sets per block: body only (model input), envelope required
+ * (emit/persist), envelope optional (`legacy*`, which must keep parsing forever).
  */
 import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
 import { agentIntentSchema } from "./intent.js";
@@ -20,20 +9,9 @@ import { triggerUriSchema } from "./trigger-uri.js";
 import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
-// ---------------------------------------------------------------------------
-// Envelope
-// ---------------------------------------------------------------------------
-
 /**
- * Identity and revision metadata on every emitted block. Blocks sharing an `id`
- * are one block over time: the renderer keeps the highest `revision`. `version`
- * is the payload schema version, so a renderer can tell an old payload shape
- * from a new one.
- *
- * Frozen id semantics; stored transcripts depend on them. A report block's `id`
- * is its producing tool call and its revision is always 0. An investigation
- * block's `id` is the `investigationId` and its revision climbs — the only
- * progressive block.
+ * Blocks sharing an `id` are one block over time; the renderer keeps the highest
+ * `revision`. Id semantics are frozen: stored transcripts depend on them.
  */
 export const blockEnvelopeSchema = z.object({
   id: z.string(),
@@ -49,15 +27,9 @@ const optionalEnvelopeShape = {
   version: z.number().int().positive().optional(),
 };
 
-/** Current payload version for the blocks in this file. */
 export const VIEW_BLOCK_VERSION = 1;
 
-// ---------------------------------------------------------------------------
-// diagnosis
-// ---------------------------------------------------------------------------
-
-// The "why did this run fail?" failure card. `type` is the discriminant the
-// render registry keys off.
+// `type` is the discriminant the webapp's render registry keys off.
 export const diagnosisBlockBodySchema = z.object({
   type: z.literal("diagnosis"),
   runId: z.string().describe("The run this diagnoses, e.g. run_abc123."),
@@ -129,16 +101,9 @@ export const diagnosisBlockBodySchema = z.object({
     .describe("Optional call-to-action buttons rendered under the card."),
 });
 
-// ---------------------------------------------------------------------------
-// chart
-// ---------------------------------------------------------------------------
-
 /**
- * A chart action's intent. Mirrors `agentIntentSchema`, except the navigate
- * `target` is a plain string here: the model can't always build a canonical URI,
- * and a malformed target must cost one button rather than the whole tool call.
- * The `render_view` executor drops navigate actions that don't parse as a
- * trigger:// URI.
+ * Mirrors `agentIntentSchema` but with a lenient string navigate `target`. The
+ * `render_view` executor drops navigate actions that don't parse as a trigger:// URI.
  */
 const chartActionIntentSchema = z.union([
   z.object({
@@ -163,9 +128,8 @@ export const chartActionSchema = z.object({
 
 export type ChartAction = z.infer<typeof chartActionSchema>;
 
-// The chart block carries the TRQL query, not the rows: the panel runs it
-// through the dashboard's own query execution, so the chart is live and matches
-// the Query page. The config mirrors the dashboard's chart builder.
+// Carries the TRQL query, not the rows: the panel runs it through the dashboard's
+// own query execution.
 export const chartBlockBodySchema = z.object({
   type: z.literal("chart"),
   title: z.string().optional().describe("Optional chart title."),
@@ -218,14 +182,9 @@ export const chartBlockBodySchema = z.object({
     ),
 });
 
-// ---------------------------------------------------------------------------
-// actions
-// ---------------------------------------------------------------------------
-
 /**
- * An action's intent. Same lenient navigate `target` as
- * `chartActionIntentSchema`, for the same reason. `propose_fix` is absent on
- * purpose: it is reserved and not executable, so a button can never carry it.
+ * Same lenient navigate `target` as `chartActionIntentSchema`. `propose_fix` is
+ * absent on purpose: it is reserved, so a button can never carry it.
  */
 const actionIntentSchema = z.union([
   z.object({
@@ -252,7 +211,6 @@ export const actionsBlockActionSchema = z.object({
 
 export type ActionsBlockAction = z.infer<typeof actionsBlockActionSchema>;
 
-/** A standalone row of buttons: the agent's offer, clickable. */
 const actionsBlockBodySchema = z.object({
   type: z.literal("actions"),
   actions: z
@@ -264,31 +222,13 @@ const actionsBlockBodySchema = z.object({
     ),
 });
 
-// ---------------------------------------------------------------------------
-// report
-// ---------------------------------------------------------------------------
-
 /**
- * The report card's payload: a whole `ReportViewModel` as the reports API
- * returns it. The webapp's `app/presenters/v3/reports/report-view-model.ts` owns
- * the shape and this is the wire contract for it, mirrored by hand because this
- * package is a zod-only leaf and must never import the webapp. Hence the
- * leniency: objects `passthrough()`, arrays default to empty, and only the
- * fields the card renders are named, so a presenter that grows a field still
- * validates and an older stored transcript still renders.
- *
- * Two rules the other blocks don't share: the report is absent from
- * `viewBlockInputSchema` because the host builds it from the `get_report` tool
- * call, and its `revision` is fixed at 0 because every render is a separate
- * historical snapshot that latest-wins must not collapse.
+ * Hand-mirrored wire contract for the webapp's `ReportViewModel`, which owns the
+ * shape. The leniency below is deliberate: a presenter may grow a field.
  */
 export const reportSeveritySchema = z.enum(["ok", "warn", "crit"]);
 
-/**
- * Formatting hint for a metric value. An unknown unit falls back to `count`
- * rather than failing the block: units are presentation-only and the report side
- * is free to add one.
- */
+/** An unknown unit falls back to `count` rather than failing the whole block. */
 export const reportUnitSchema = z.enum(["ms", "count", "ratio", "perMin"]).catch("count");
 
 /** A message-catalog code (`report-messages.ts` resolves it to a string). */
@@ -326,12 +266,11 @@ export const reportMetricSchema = z
   })
   .passthrough();
 
-/** A recommendation or hedge: a code plus an optional key into `vm.links`. */
+/** `link` is a key into `vm.links`. */
 export const reportRecommendationSchema = z
   .object({ code: reasonCodeSchema, link: z.string().optional() })
   .passthrough();
 
-/** A ruled-out cause, or a supporting observation, with its evidence. */
 const codeWithEvidenceSchema = z
   .object({ code: reasonCodeSchema, evidence: z.record(z.number()).optional() })
   .passthrough();
@@ -367,7 +306,6 @@ export const reportSummaryStatementSchema = z
   })
   .passthrough();
 
-/** A footer line: an action, or the "do nothing" option (which carries a value). */
 export const reportFooterEntrySchema = z
   .object({
     code: reasonCodeSchema,
@@ -384,12 +322,10 @@ export const reportViewModelSchema = z
   .object({
     /** "health" | "cost" | … — also the key into the message catalog. */
     title: z.string(),
-    /** The environment the report is about, e.g. "prod". */
     scope: z.string(),
-    /** "last 1h". */
     period: z.string(),
     baselineLabel: z.string().optional(),
-    /** ISO string, set by the presenter. Never read from the renderer's clock. */
+    /** ISO, set by the presenter. Never read from the renderer's clock. */
     generatedAt: z.string(),
     windowMinutes: z.number(),
     summary: z
@@ -400,11 +336,7 @@ export const reportViewModelSchema = z
       .passthrough(),
     findings: z.array(reportFindingSchema).default([]),
     metrics: z.array(reportMetricSchema).default([]),
-    /**
-     * The dense structured payload for agents. Free-form by design; the card only
-     * reads `trustworthy` (false means the telemetry is stale, so the numbers are
-     * informational only).
-     */
+    /** Free-form. The card reads only `trustworthy`. */
     facts: z.record(z.unknown()).default({}),
     links: z.array(reportLinkSchema).default([]),
     footer: z.array(reportFooterEntrySchema).default([]),
@@ -420,41 +352,25 @@ export type ReportUnit = z.infer<typeof reportUnitSchema>;
 const reportBlockBodySchema = z.object({
   type: z.literal("report"),
   vm: reportViewModelSchema,
-  /**
-   * The `trigger://…/report/{key}` URI this snapshot came from. Optional because
-   * building it needs environment context the producer may not have; a card
-   * without one shows no source line.
-   */
+  /** Where this snapshot came from. Optional: the producer may lack env context. */
   reportUri: triggerUriSchema.optional(),
-  /** When the snapshot was taken. `vm.generatedAt`, carried up for the header. */
+  /** `vm.generatedAt`, carried up for the header. */
   asOf: z.string(),
 });
 
-// ---------------------------------------------------------------------------
-// investigation
-// ---------------------------------------------------------------------------
-
 /**
- * The investigation card's payload: the state of one investigation, and the
- * card's props.
- *
- * The `investigationId` and `revision` are deliberately absent. Identity lives
- * in the block envelope, stamped by the `render_view` executor after it commits
- * the revision, so the model can neither invent an id nor claim a revision it
- * didn't earn.
+ * `investigationId` and `revision` are absent on purpose: identity lives in the
+ * block envelope, stamped by the `render_view` executor after it commits.
  */
 export const investigationOutcomeSchema = z.enum(["in_progress", "concluded", "inconclusive"]);
 
-/** The report's severity ladder minus `ok`: an investigation means something was wrong. */
 export const investigationSeveritySchema = z.enum(["info", "warn", "crit"]);
 
 /** `testing` is live; the other two are terminal. */
 export const hypothesisVerdictSchema = z.enum(["testing", "validated", "invalidated"]);
 
-// Two variants that differ only in their evidence element: strict
-// (`evidenceSchema`, canonical URIs, persisted and rendered) and input
-// (`evidenceRefSchema`, the bare ids the model writes). Parametrized so they
-// can't drift apart.
+// Parametrized so the strict (canonical URIs) and input (bare ids) variants can't
+// drift apart.
 const investigationHypothesisSchemaWith = <T extends z.ZodTypeAny>(evidence: T) =>
   z
     .object({
@@ -472,7 +388,6 @@ const investigationHypothesisSchemaWith = <T extends z.ZodTypeAny>(evidence: T) 
       evidence: z.array(evidence).default([]).describe("The citations that settled it."),
     })
     .superRefine((hypothesis, ctx) => {
-      // A validated hypothesis with no finding is an assertion, not a conclusion.
       if (hypothesis.verdict === "validated" && !hypothesis.finding?.trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -486,11 +401,7 @@ export const investigationHypothesisSchema = investigationHypothesisSchemaWith(e
 export const investigationHypothesisInputSchema =
   investigationHypothesisSchemaWith(evidenceRefSchema);
 
-/**
- * A caveat qualifies the whole card. `dirty_commit` is the one v1 case: the
- * source we read is the nearest repository snapshot, not provably the deployed
- * code, so every source citation inherits the hedge.
- */
+/** `dirty_commit`: the source read is the nearest snapshot, not provably the deployed code. */
 export const investigationCaveatSchema = z.object({
   kind: z.literal("dirty_commit"),
   message: z.string(),
@@ -547,13 +458,11 @@ const investigationStateSchemaWith = <H extends z.ZodTypeAny, E extends z.ZodTyp
       caveat: investigationCaveatSchema
         .optional()
         .describe("A hedge that qualifies the whole card."),
-      /** Optional timestamps for the record. The card doesn't render them. */
       startedAt: z.string().optional(),
       updatedAt: z.string().optional(),
     })
     .superRefine((investigation, ctx) => {
-      // Remediation XOR checkNext, decided by the outcome: a concluded
-      // investigation offers a fix, an inconclusive one offers what to check.
+      // Remediation XOR checkNext, decided by the outcome.
       if (investigation.remediation !== undefined && investigation.outcome !== "concluded") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -578,19 +487,15 @@ export const investigationStateSchema = investigationStateSchemaWith(
   investigationHypothesisSchema,
   evidenceSchema
 );
-/** The model-facing variant: evidence cites bare resource ids (`evidenceRefSchema`). */
+/** Model-facing variant: evidence cites bare resource ids. */
 export const investigationStateInputSchema = investigationStateSchemaWith(
   investigationHypothesisInputSchema,
   evidenceRefSchema
 );
 
 /**
- * The ending for a card nobody concluded. There is no "cancelled" or "expired"
- * outcome: a forced settle keeps every established fact and only stops the card
- * claiming work is still happening.
- *
- * It lives here rather than in the agent because both settles use it: the turn's
- * own, and the webapp's between-turns sweep over rows whose turn never came back.
+ * Shared by both settle paths: the turn's own, and the webapp's between-turns
+ * sweep. There is no "cancelled" or "expired" outcome.
  */
 export const UNSETTLED_INVESTIGATION_NOTE =
   "The investigation didn't conclude within this turn, so the cause isn't established. What's below is what was checked.";
@@ -600,33 +505,21 @@ export function forceSettledInvestigationState(state: InvestigationState): Inves
   return {
     ...rest,
     outcome: "inconclusive",
-    // Nothing was settled, so the card can't keep claiming it was.
     confidence: "low",
     headline: `${state.headline.trim()} ${UNSETTLED_INVESTIGATION_NOTE}`.trim(),
   };
 }
 
 /**
- * The card's typed next actions, and the one thing on an investigation block the
- * model does not write. Only the executor knows whether a file was really read
- * at the deployed snapshot, so it decides which actions a card offers and grounds
- * each one in a canonical URI. Hence the strict `agentIntentSchema` rather than
- * the chart block's lenient one.
- *
- * `version` is the action vocabulary version, separate from the block's payload
- * version: a host that doesn't know a `kind` skips that action, and a card from
- * before capabilities existed has none, so the field stays optional forever.
+ * Action vocabulary version, separate from the block payload version. A host that
+ * doesn't know a `kind` skips that action.
  */
 export const INVESTIGATION_CAPABILITIES_VERSION = 1;
 
 export const investigationActionKindSchema = z.enum([
-  /** Open the cited source location in the conversation. Concluded cards only. */
   "show_code",
-  /** Watch for the same failure happening again. */
   "watch_recurrence",
-  /** Go look at the other runs that hit this. */
   "view_similar",
-  /** Keep asking about this investigation. */
   "ask_follow_up",
 ]);
 
@@ -648,26 +541,16 @@ const investigationBlockBodySchema = z.object({
   capabilities: investigationCapabilitiesSchema.optional(),
 });
 
-// No `capabilities` here on purpose: anything the model sends is stripped at
-// this boundary, so it can't fake a button.
+// No `capabilities` here on purpose: anything the model sends is stripped at this
+// boundary, so it can't fake a button.
 const investigationBlockBodyInputSchema = z.object({
   type: z.literal("investigation"),
   investigation: investigationStateInputSchema,
 });
 
-// ---------------------------------------------------------------------------
-// watch_result
-// ---------------------------------------------------------------------------
-
 /**
- * The persisted trace of a submitted watch card. `watching` confirms a running
- * watch; `already_true` and `impossible` mean the immediate check answered the
- * request outright, so no watch exists and there is nothing to cancel.
- *
- * The wording is frozen at append time: the block carries final English rather
- * than a message key, so a later copy change never rewrites what a user was
- * told. Host-emitted only, so it is absent from `viewBlockInputSchema` like
- * `report` and the model can't claim a watch that doesn't exist.
+ * Host-emitted only, so it is absent from `viewBlockInputSchema`. Wording is
+ * frozen at append time: the block carries final English, not a message key.
  */
 export const watchResultOutcomeSchema = z.enum(["watching", "already_true", "impossible"]);
 export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
@@ -675,15 +558,12 @@ export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
 const watchResultBlockBodySchema = z.object({
   type: z.literal("watch_result"),
   outcome: watchResultOutcomeSchema,
-  /** The fact, first: "Watching email-sends until the queue drains." */
   headline: z.string(),
-  /** The lifetime sentence. Null on a one-shot result — nothing is watching. */
+  /** Null on a one-shot result: nothing is watching. */
   lifetime: z.string().nullable().default(null),
-  /** An aside, e.g. that the creation-time check couldn't run. */
   detail: z.string().nullable().default(null),
-  /** The follow-ups that were actually set up, one short line each. */
   followUp: z.array(z.string()).max(4).default([]),
-  /** The live watch this confirms, for the chip it pairs with. Null one-shot. */
+  /** The live watch this confirms. Null on a one-shot result. */
   watchId: z.string().nullable().default(null),
 });
 
@@ -694,14 +574,9 @@ export const legacyWatchResultBlockSchema =
 export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
 export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
 
-// ---------------------------------------------------------------------------
-// Model-facing input schemas (no envelope)
-// ---------------------------------------------------------------------------
-
 /**
- * What the `render_view` tool accepts from the model: bodies only, with identity
- * assigned by the executor. `report` and `watch_result` are host-emitted and so
- * absent here.
+ * What `render_view` accepts from the model. `report` and `watch_result` are
+ * host-emitted and so absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -727,31 +602,22 @@ export type InvestigationActionKind = z.infer<typeof investigationActionKindSche
 export type InvestigationCapabilities = z.infer<typeof investigationCapabilitiesSchema>;
 export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 
-// ---------------------------------------------------------------------------
-// Strict (emit / persist) schemas — envelope required
-// ---------------------------------------------------------------------------
-
 export const diagnosisBlockSchema = diagnosisBlockBodySchema.merge(blockEnvelopeSchema);
 export const chartBlockSchema = chartBlockBodySchema.merge(blockEnvelopeSchema);
 export const actionsBlockSchema = actionsBlockBodySchema.merge(blockEnvelopeSchema);
 
-/**
- * An investigation at one point in time. `id` is the `investigationId` and
- * `revision` is the one the store committed, so re-emitting the same
- * investigation replaces the card instead of stacking a second one.
- */
+/** `id` is the `investigationId`, so re-emitting replaces the card instead of stacking. */
 export const investigationBlockSchema = investigationBlockBodySchema.merge(blockEnvelopeSchema);
 
 /**
- * A report snapshot. `id` is the `get_report` tool call that produced it and
- * `revision` is pinned to 0 by the type, so nothing can emit a revised report
- * and collapse two snapshots into one card.
+ * `id` is the producing `get_report` call. `revision` is pinned to 0 so
+ * latest-wins can't collapse two snapshots into one card.
  */
 export const reportBlockSchema = reportBlockBodySchema
   .merge(blockEnvelopeSchema)
   .extend({ revision: z.literal(0) });
 
-/** Validate here before persisting or emitting a block to a renderer. */
+/** Validate with this before persisting or emitting a block. */
 export const viewBlockSchema = z.discriminatedUnion("type", [
   diagnosisBlockSchema,
   chartBlockSchema,
@@ -767,10 +633,6 @@ export type EnvelopedActionsBlock = z.infer<typeof actionsBlockSchema>;
 export type EnvelopedReportBlock = z.infer<typeof reportBlockSchema>;
 export type EnvelopedInvestigationBlock = z.infer<typeof investigationBlockSchema>;
 export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
-
-// ---------------------------------------------------------------------------
-// Lenient (read) schemas — envelope optional
-// ---------------------------------------------------------------------------
 
 export const legacyDiagnosisBlockSchema = diagnosisBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyChartBlockSchema = chartBlockBodySchema.extend(optionalEnvelopeShape);
@@ -790,10 +652,8 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 /**
- * The renderer-facing types are the lenient ones, and keep the plain names,
- * because a renderer sees both a freshly emitted enveloped block and a
- * pre-envelope one replayed from a transcript. `EnvelopedViewBlock` is assignable
- * to `ViewBlock`, so a strict producer feeds a lenient consumer without a cast.
+ * The plain names are the lenient types, because a renderer sees both enveloped
+ * and pre-envelope blocks. `EnvelopedViewBlock` is assignable to `ViewBlock`.
  */
 export type DiagnosisBlock = z.infer<typeof legacyDiagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof legacyChartBlockSchema>;
@@ -802,17 +662,15 @@ export type ReportBlock = z.infer<typeof legacyReportBlockSchema>;
 export type InvestigationBlock = z.infer<typeof legacyInvestigationBlockSchema>;
 export type ViewBlock = z.infer<typeof legacyViewBlockSchema>;
 
-/** Lenient parse of one stored block. */
 export function parseStoredViewBlock(value: unknown): ViewBlock {
   return legacyViewBlockSchema.parse(value);
 }
 
-/** Lenient parse of one stored block, zod `safeParse` shape. */
 export function safeParseStoredViewBlock(value: unknown) {
   return legacyViewBlockSchema.safeParse(value);
 }
 
-/** A block with no `id` can't be addressed by a later revision, so it renders once. */
+/** A block with no `id` can't be addressed by a later revision. */
 export function isRevisableBlock(block: ViewBlock): boolean {
   return typeof block.id === "string" && block.id.length > 0;
 }

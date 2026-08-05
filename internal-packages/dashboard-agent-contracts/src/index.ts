@@ -1,11 +1,6 @@
 /**
- * `@internal/dashboard-agent-contracts` — the interfaces the dashboard agent, the
- * webapp, and the agent's datastore all speak.
- *
- * This package is a leaf, forever: zod is its only dependency. It must never
- * import `ai`, `@trigger.dev/sdk`, a database package, or anything from the
- * webapp, so both the task bundle and the webapp bundle can import it without
- * dragging a runtime along.
+ * Leaf package: zod is the only allowed dependency. Never import `ai`, the SDK, a
+ * database package, or anything from the webapp.
  */
 export * from "./blocks.js";
 export * from "./evidence.js";

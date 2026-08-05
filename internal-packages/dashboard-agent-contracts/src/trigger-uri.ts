@@ -1,32 +1,6 @@
 /**
- * `trigger://` URIs — the single stable way the dashboard agent points at a
- * resource, so links survive renames, route changes, and transcript replay.
- *
- * The v1 grammar is frozen. Adding a resource kind is additive; changing an
- * existing one invalidates stored transcripts.
- *
- * ```
- * trigger://{proj}/{env}/run/{id}
- * trigger://{proj}/{env}/run/{id}/span/{spanId}
- * trigger://{proj}/{env}/error/{fingerprint}
- * trigger://{proj}/{env}/queue/{name}
- * trigger://{proj}/{env}/deployment/{version}
- * trigger://{proj}/{env}/report/{key}
- * trigger://{proj}/{env}/source/{sha}/{path}?line={n}
- * trigger://{proj}/{env}/investigation/{id}
- * ```
- *
- * `{proj}` is the project's external ref (`proj_…`), the same value the public
- * API takes as `projectRef`.
- *
- * `{env}` is the RuntimeEnvironment id, not its name or slug. It is the only
- * environment identifier that is globally unique, stable across renames, covers
- * preview-branch environments, and carries no secret. Names and slugs are
- * display-only and must not appear in a URI.
- *
- * Any segment carrying an arbitrary value is percent-encoded. A source `{path}`
- * keeps its `/` separators but encodes each segment, so a nested path stays
- * readable while a `/` inside a filename still round-trips.
+ * The grammar is frozen: stored transcripts hold these URIs. `{env}` is the
+ * RuntimeEnvironment id, never a name or slug.
  */
 import { z } from "zod";
 
@@ -34,7 +8,7 @@ import { z } from "zod";
 export type TriggerUri = string & { readonly __brand: "TriggerUri" };
 
 export type ParsedTriggerUri =
-  // The runs collection. Filters ride in the intent, not the URI.
+  // Runs-list filters ride in the intent, not the URI.
   | { kind: "runs"; projectRef: string; environmentId: string }
   | { kind: "run"; projectRef: string; environmentId: string; runId: string }
   | { kind: "span"; projectRef: string; environmentId: string; runId: string; spanId: string }
@@ -53,7 +27,7 @@ export type ParsedTriggerUri =
     }
   | { kind: "investigation"; projectRef: string; environmentId: string; investigationId: string };
 
-/** The resource kinds in the v1 grammar. Doubles as the evidence `kind` enum. */
+/** Doubles as the evidence `kind` enum. */
 export const TRIGGER_URI_KINDS = [
   "runs",
   "run",
@@ -83,11 +57,7 @@ export class TriggerUriError extends Error {
 
 const SCHEME = "trigger://";
 
-/**
- * Non-throwing parse, zod's `safeParse` shape. Use this for untrusted input (a
- * model tool call, a stored transcript) and {@link parseTriggerUri} when a
- * malformed URI would be a bug.
- */
+/** Use this for untrusted input; {@link parseTriggerUri} when malformed is a bug. */
 export function safeParseTriggerUri(input: string): TriggerUriParseResult {
   if (typeof input !== "string" || input.length === 0) {
     return fail("expected a non-empty string");
@@ -210,7 +180,6 @@ export function safeParseTriggerUri(input: string): TriggerUriParseResult {
   }
 }
 
-/** Throwing parse. Throws {@link TriggerUriError} on anything malformed. */
 export function parseTriggerUri(input: string): ParsedTriggerUri {
   const result = safeParseTriggerUri(input);
 
@@ -225,7 +194,6 @@ export function isTriggerUri(input: string): input is TriggerUri {
   return safeParseTriggerUri(input).success;
 }
 
-/** Serialize a parsed URI back to its canonical string form. */
 export function formatTriggerUri(parsed: ParsedTriggerUri): TriggerUri {
   const prefix = `${SCHEME}${segment(parsed.projectRef, "projectRef")}/${segment(
     parsed.environmentId,
@@ -272,10 +240,7 @@ export function formatTriggerUri(parsed: ParsedTriggerUri): TriggerUri {
   }
 }
 
-/**
- * Zod schema for a `trigger://` URI. Validates the grammar and brands the output,
- * so a `uri` field can't be filled with an arbitrary string or a dashboard URL.
- */
+/** Validates the grammar and brands the output, so a `uri` field can't hold any string. */
 export const triggerUriSchema = z
   .string()
   .superRefine((value, ctx) => {

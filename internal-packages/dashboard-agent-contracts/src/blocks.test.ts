@@ -15,7 +15,6 @@ import {
   type ViewBlock,
 } from "./blocks.js";
 
-// A diagnosis block exactly as stored before the envelope existed.
 const legacyDiagnosis = {
   type: "diagnosis",
   runId: "run_abc123",
@@ -36,7 +35,6 @@ const legacyDiagnosis = {
   actions: [{ label: "View run", kind: "view_run", target: "run_abc123" }],
 };
 
-// A chart block exactly as stored before the envelope existed.
 const legacyChart = {
   type: "chart",
   title: "Failures per hour",
@@ -53,7 +51,6 @@ const legacyChart = {
 
 const envelope = { id: "toolcall_1", revision: 0, version: VIEW_BLOCK_VERSION };
 
-// A health report as the reports API returns it, trimmed to one finding.
 const reportVm = {
   title: "health",
   scope: "prod",
@@ -298,7 +295,6 @@ describe("report block", () => {
     expect(parsed.vm).toEqual(reportVm);
     expect(parsed.asOf).toBe("2026-07-27T10:15:00.000Z");
     expect(parsed.reportUri).toBe("trigger://proj_abc/env_abc/report/health");
-    // A JSON round-trip is how it reaches a transcript.
     expect(reportBlockSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
@@ -342,14 +338,12 @@ describe("report block", () => {
       ...reportBlock,
       vm: {
         ...reportVm,
-        // A field the presenter grew after this transcript was written.
         confidence: "high",
         metrics: [{ id: "spend", value: 12, unit: "usd", severity: "ok" }],
       },
     };
     const parsed = reportBlockSchema.parse(evolved);
     expect(parsed.vm.confidence).toBe("high");
-    // An unknown unit degrades to `count` instead of failing the whole block.
     expect(parsed.vm.metrics[0]!.unit).toBe("count");
   });
 
@@ -360,10 +354,6 @@ describe("report block", () => {
     expect(reportBlockSchema.safeParse({ ...reportBlock, vm: null }).success).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// investigation
-// ---------------------------------------------------------------------------
 
 const runEvidence = {
   kind: "run" as const,
@@ -403,7 +393,6 @@ describe("investigation block", () => {
     expect(strict.id).toBe("inv_abc123");
     expect(strict.revision).toBe(2);
     expect(strict.investigation.remediation).toBeDefined();
-    // A JSON round-trip is how it reaches a transcript.
     expect(investigationBlockSchema.parse(JSON.parse(JSON.stringify(strict)))).toEqual(strict);
   });
 
@@ -411,7 +400,6 @@ describe("investigation block", () => {
     expect(viewBlockSchema.safeParse(investigationBlock).success).toBe(true);
     const lenient: ViewBlock = investigationBlockSchema.parse(investigationBlock);
     expect(lenient.type).toBe("investigation");
-    // A pre-envelope stored block still parses.
     expect(parseStoredViewBlock(investigationBody).id).toBeUndefined();
   });
 
@@ -465,7 +453,6 @@ describe("investigation block", () => {
       viewBlockInputSchema.safeParse({ type: "investigation", investigation: withoutFinding })
         .success
     ).toBe(false);
-    // A hypothesis still being tested doesn't need one.
     expect(
       viewBlockInputSchema.safeParse({
         type: "investigation",
@@ -480,7 +467,6 @@ describe("investigation block", () => {
   });
 
   it("the model-facing input accepts bare resource ids; the strict schema still demands trigger:// URIs", () => {
-    // Input boundary: the model cites by bare id, the executor canonicalizes.
     expect(
       viewBlockInputSchema.safeParse({
         type: "investigation",
@@ -490,7 +476,6 @@ describe("investigation block", () => {
         },
       }).success
     ).toBe(true);
-    // Persist/emit boundary: anything that isn't a canonical URI stays rejected.
     expect(
       investigationStateSchema.safeParse({
         ...concludedInvestigation,
@@ -504,7 +489,6 @@ describe("investigation block", () => {
     const rev1 = investigationBlockSchema.parse({ ...investigationBlock, revision: 1 });
     expect(rev0.id).toBe(rev1.id);
     expect(rev1.revision).toBeGreaterThan(rev0.revision);
-    // Unlike a report, whose revision is pinned to 0.
     expect(
       investigationBlockSchema.safeParse({ ...investigationBlock, revision: -1 }).success
     ).toBe(false);
@@ -527,9 +511,7 @@ describe("investigation evidence refs (the model-facing boundary)", () => {
         label: "the retry config",
       }).success
     ).toBe(true);
-    // The commit is optional — the executor pins it to the turn's snapshot.
     expect(withEvidence({ kind: "source", path: "src/a.ts", label: "a file" }).success).toBe(true);
-    // A path:line string in `uri` is exactly what couldn't be canonicalized.
     expect(withEvidence({ kind: "source", uri: "src/a.ts:42", label: "a file" }).success).toBe(
       false
     );
@@ -591,8 +573,6 @@ describe("investigation capabilities", () => {
         ...investigationBlock,
         capabilities: { version: 1, actions: [action] },
       });
-    // Nothing here comes from the model, so a navigate target must already be a
-    // canonical URI. Unlike a chart action, there is no lenient string to allow.
     expect(
       withAction({
         kind: "view_similar",

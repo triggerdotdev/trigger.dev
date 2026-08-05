@@ -145,7 +145,6 @@ describe("watchIdentity", () => {
     expect(watchIdentity(specs.backlog_drain)).toBe("backlog_drain:email-sends");
     expect(watchIdentity(specs.queue_depth_above)).toBe("queue_depth_above:email-sends:500");
     expect(watchIdentity(specs.queue_depth_below)).toBe("queue_depth_below:email-sends:100");
-    // `ticks` tunes the same question, so it is not part of the identity.
     expect(watchIdentity(specs.queue_stalled)).toBe("queue_stalled:email-sends");
     expect(watchIdentity(specs.queue_oldest_age)).toBe("queue_oldest_age:email-sends:5");
     expect(watchIdentity(specs.error_recurrence)).toBe("error_recurrence:a1b2c3");
@@ -223,10 +222,6 @@ describe("enums", () => {
   });
 });
 
-/* ------------------------------------------------------------------ *
- * The resolution model
- * ------------------------------------------------------------------ */
-
 describe("queue_depth_above", () => {
   it("requires a non-negative integer threshold", () => {
     expect(watchSpecSchema.safeParse({ ...specs.queue_depth_above, threshold: 0 }).success).toBe(
@@ -244,7 +239,6 @@ describe("queue_depth_above", () => {
     expect(watchIdentity({ ...specs.queue_depth_above, threshold: 5000 })).not.toBe(
       watchIdentity(specs.queue_depth_above)
     );
-    // …but not the cadence or the note, same as every other kind.
     expect(
       watchIdentity({ ...specs.queue_depth_above, checkEveryMinutes: 60, note: "other" })
     ).toBe(watchIdentity(specs.queue_depth_above));
@@ -299,7 +293,6 @@ describe("the queue pack (TRI-12890)", () => {
     expect(watchIdentity({ ...specs.queue_oldest_age, thresholdMinutes: 30 })).not.toBe(
       watchIdentity(specs.queue_oldest_age)
     );
-    // …and the stall sensitivity as not part of it.
     expect(watchIdentity({ ...specs.queue_stalled, ticks: 8 })).toBe(
       watchIdentity(specs.queue_stalled)
     );
@@ -313,13 +306,11 @@ describe("the queue pack (TRI-12890)", () => {
       "queue_stalled",
       "queue_oldest_age",
     ]);
-    // Every queue kind opens the same family, whichever one is current.
     for (const kind of ["queue_depth_below", "queue_stalled", "queue_oldest_age"] as const) {
       expect(watchConditionVariants(kind)).toContain("backlog_drain");
       expect(watchConditionVariants(kind)).toContain(kind);
     }
     expect(watchConditionVariants("run_finished")).toEqual(["run_finished", "run_failed"]);
-    // The kinds with no second question offer only themselves.
     expect(watchConditionVariants("health_recovery")).toEqual(["health_recovery"]);
     expect(watchConditionVariants("error_recurrence")).toEqual(["error_recurrence"]);
   });
@@ -343,7 +334,6 @@ describe("the queue pack (TRI-12890)", () => {
     expect(
       resolveWatchResult({ kind: "queue_oldest_age", resolution: "window_completed" })
     ).toMatchObject({ category: "positive", headlineKey: "queue_wait_under_sla" });
-    // A queue that no longer exists is nobody's fault, for all three.
     for (const kind of ["queue_depth_below", "queue_stalled", "queue_oldest_age"] as const) {
       expect(resolveWatchResult({ kind, resolution: "condition_impossible" })).toMatchObject({
         category: "neutral",
@@ -352,8 +342,6 @@ describe("the queue pack (TRI-12890)", () => {
     }
   });
 
-  // The agent's wake and the webapp's kick both ask this, so neither can invent
-  // its own idea of bad news.
   it("answers the attention question for every surface, and never for an unknown kind", () => {
     expect(
       watchResultNeedsAttention({ kind: "backlog_drain", resolution: "window_completed" })
@@ -361,7 +349,6 @@ describe("the queue pack (TRI-12890)", () => {
     expect(watchResultNeedsAttention({ kind: "backlog_drain", resolution: "condition_met" })).toBe(
       false
     );
-    // Refined by the observed outcome, exactly as the mapping is.
     expect(
       watchResultNeedsAttention({
         kind: "run_finished",
@@ -402,8 +389,6 @@ describe("resolutions", () => {
     expect(watchResolutions).not.toContain("unavailable");
   });
 
-  // The wire keeps its two-value encoding, so persisted wake ids, delivery ids
-  // and banner render keys stay valid.
   it("encodes onto the stable two-value wire status", () => {
     expect(watchResolutionToWireStatus("condition_met")).toBe("fired");
     expect(watchResolutionToWireStatus("window_completed")).toBe("expired");
@@ -459,8 +444,6 @@ describe("resolveWatchResult", () => {
     }
   });
 
-  // One resolution, two opposite presentations: why the resolution alone is
-  // insufficient.
   it("splits run_finished on the observed final status", () => {
     const ok = resolveWatchResult({
       kind: "run_finished",
@@ -487,7 +470,6 @@ describe("resolveWatchResult", () => {
     expect(failed).toMatchObject({ category: "attention", headlineKey: "run_failed" });
   });
 
-  // A failed run must never wear a success check.
   it("gives the failed run a non-success icon", () => {
     const failed = resolveWatchResult({
       kind: "run_finished",
@@ -514,7 +496,6 @@ describe("resolveWatchResult", () => {
   });
 
   it("does not infer tone from a good-news kind list", () => {
-    // Same resolution, opposite categories — proof the mapping is per kind.
     expect(
       resolveWatchResult({ kind: "backlog_drain", resolution: "window_completed" }).category
     ).toBe("attention");
@@ -530,8 +511,6 @@ describe("resolveWatchResult", () => {
   });
 
   it("says the condition could not be confirmed when the final read failed", () => {
-    // The kinds whose observation carries a required number: it is part of the
-    // question, so even an unverified observation has to state it.
     const required: Partial<Record<WatchKind, Record<string, number>>> = {
       queue_depth_above: { threshold: 500 },
       queue_depth_below: { threshold: 100 },

@@ -1,35 +1,24 @@
-/**
- * Agent intents — what the agent wants the host to do next. The host decides
- * whether to honour an intent; emitting one is a request, never an action.
- */
+/** An intent is a request to the host, never an action. The host decides. */
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
 import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
 export const agentIntentSchema = z.discriminatedUnion("kind", [
-  /** Take the user to a resource, optionally with runs-list filters applied. */
   z.object({
     kind: z.literal("navigate"),
     target: triggerUriSchema,
     filters: runFiltersSchema.optional(),
   }),
-  /** Hand a follow-up question back into the conversation. */
   z.object({ kind: z.literal("ask"), prompt: z.string() }),
-  /** Start watching a condition. */
   z.object({ kind: z.literal("watch"), spec: watchSpecSchema }),
-  /**
-   * Reserved: nothing may emit or execute this until write actions ship. It is in
-   * the union now so the wire format is frozen and a later intent still parses.
-   * Hosts should reject it explicitly rather than ignore it.
-   */
+  /** Reserved: nothing may emit or execute this until write actions ship. */
   z.object({ kind: z.literal("propose_fix"), investigationId: z.string() }),
 ]);
 
 export type AgentIntent = z.infer<typeof agentIntentSchema>;
 export type AgentIntentKind = AgentIntent["kind"];
 
-/** True for the intents a host may act on today. */
 export function isExecutableIntent(intent: AgentIntent): boolean {
   return intent.kind !== "propose_fix";
 }

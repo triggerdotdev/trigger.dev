@@ -1,20 +1,13 @@
 /**
- * Watches — "tell me when X happens". The agent proposes a WatchSpec, the host
- * persists it and polls the condition on the spec's cadence until it fires,
- * expires, or is cancelled.
- *
- * Cadence limits live in the schema: run-state watches may poll every minute
- * because a run flipping state is cheap to check, while aggregate conditions are
- * floored at 5 minutes so a watch can't become a hot loop over analytics data.
+ * Cadence limits are enforced by the schema: run-state watches may poll every
+ * minute, aggregate conditions are floored at 5.
  */
 import { z } from "zod";
 
-/** Run-state conditions can be checked every minute. */
 export const runStateCadenceSchema = z.object({
   checkEveryMinutes: z.union([z.literal(1), z.literal(5), z.literal(15), z.literal(60)]),
 });
 
-/** Aggregate conditions are floored at 5 minutes. A 1-minute value fails validation. */
 export const standardCadenceSchema = z.object({
   checkEveryMinutes: z.union([z.literal(5), z.literal(15), z.literal(60)]),
 });
@@ -26,7 +19,6 @@ export type StandardCadence = z.infer<typeof standardCadenceSchema>;
 export const WATCH_MAX_HOURS = 24;
 
 export const watchCommonSchema = z.object({
-  /** How long to keep checking before expiring, in hours. At most 24. */
   maxHours: z.number().positive().max(WATCH_MAX_HOURS),
   /** Why this watch exists, in the user's terms. Shown when it fires. */
   note: z.string(),
@@ -34,19 +26,15 @@ export const watchCommonSchema = z.object({
 
 export type WatchCommon = z.infer<typeof watchCommonSchema>;
 
-/** Hard ceiling on a queue-depth threshold — a queue watch is not a query. */
+/** Hard ceiling on a queue-depth threshold. */
 export const WATCH_MAX_QUEUE_THRESHOLD = 1_000_000;
 
-/**
- * `queue_stalled` counts consecutive checks that saw no progress. Three at the
- * 5-minute floor is ~15 minutes of a queue not moving: long enough to outlast one
- * slow dequeue cycle, short enough to still be news. The card doesn't offer it.
- */
+/** Consecutive no-progress checks `queue_stalled` waits for. Not offered by the card. */
 export const WATCH_STALL_TICKS_DEFAULT = 3;
 export const WATCH_STALL_TICKS_MIN = 2;
 export const WATCH_STALL_TICKS_MAX = 12;
 
-/** Ceiling on the `queue_oldest_age` SLA. Beyond a day the window itself expires first. */
+/** Ceiling on the `queue_oldest_age` SLA. */
 export const WATCH_MAX_QUEUE_AGE_MINUTES = 24 * 60;
 
 export const watchSpecSchema = z.union([
@@ -56,15 +44,13 @@ export const watchSpecSchema = z.union([
   watchCommonSchema
     .extend({ kind: z.literal("run_finished"), runId: z.string() })
     .merge(runStateCadenceSchema),
-  // "Tell me if it fails" rather than "tell me when it lands": the same read,
-  // the opposite question, so a successful completion makes it impossible.
+  // The inverse of `run_finished`: a successful completion makes it impossible.
   watchCommonSchema
     .extend({ kind: z.literal("run_failed"), runId: z.string() })
     .merge(runStateCadenceSchema),
   watchCommonSchema
     .extend({ kind: z.literal("backlog_drain"), queue: z.string() })
     .merge(standardCadenceSchema),
-  // Satisfied when the queue's pending count rises above `threshold`.
   watchCommonSchema
     .extend({
       kind: z.literal("queue_depth_above"),
@@ -72,8 +58,7 @@ export const watchSpecSchema = z.union([
       threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
     })
     .merge(standardCadenceSchema),
-  // Satisfied when the pending count comes back down below `threshold`. Not the
-  // same question as `backlog_drain`: a busy queue may never reach zero.
+  // Not the same question as `backlog_drain`: a busy queue may never reach zero.
   watchCommonSchema
     .extend({
       kind: z.literal("queue_depth_below"),
@@ -81,10 +66,8 @@ export const watchSpecSchema = z.union([
       threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
     })
     .merge(standardCadenceSchema),
-  // The one stateful kind: satisfied when the depth has failed to decrease for
-  // `ticks` consecutive checks. The streak lives in the facts each check emits and
-  // is handed to the next as `previous`. An `unavailable` tick freezes the streak
-  // rather than resetting it.
+  // The one stateful kind: the streak lives in each check's facts and is handed to
+  // the next as `previous`. An `unavailable` tick freezes it rather than resetting.
   watchCommonSchema
     .extend({
       kind: z.literal("queue_stalled"),
@@ -97,8 +80,6 @@ export const watchSpecSchema = z.union([
         .default(WATCH_STALL_TICKS_DEFAULT),
     })
     .merge(standardCadenceSchema),
-  // "Runs wait longer than N minutes." Reads the oldest still-waiting run's age
-  // off the same seam as the queue page's Oldest wait block.
   watchCommonSchema
     .extend({
       kind: z.literal("queue_oldest_age"),
@@ -106,8 +87,8 @@ export const watchSpecSchema = z.union([
       thresholdMinutes: z.number().int().positive().max(WATCH_MAX_QUEUE_AGE_MINUTES),
     })
     .merge(standardCadenceSchema),
-  // `since`, the timestamp recurrence is measured from, is server-set when the
-  // watch is persisted, so it is absent here: nothing may backdate the window.
+  // `since` is absent on purpose: it is server-set at persist time, so nothing can
+  // backdate the recurrence window.
   watchCommonSchema
     .extend({ kind: z.literal("error_recurrence"), fingerprint: z.string() })
     .merge(standardCadenceSchema),
@@ -136,16 +117,13 @@ export const WATCH_KINDS = [
   "health_recovery",
 ] as const satisfies readonly WatchKind[];
 
-/** Whether a string names a watch kind this build knows how to present. */
 export function isWatchKind(kind: string): kind is WatchKind {
   return (WATCH_KINDS as readonly string[]).includes(kind);
 }
 
 /**
- * The condition a watch is watching, as a stable string scoped to one
- * environment. Two watches with the same identity should be deduplicated.
- * Cadence, note and maxHours are not part of it, so re-asking with a different
- * cadence updates the existing watch instead of creating a second one.
+ * The dedup key for a watched condition, scoped to one environment. Cadence, note
+ * and maxHours are deliberately not part of it.
  */
 export function watchIdentity(spec: WatchSpec): string {
   switch (spec.kind) {
@@ -155,17 +133,15 @@ export function watchIdentity(spec: WatchSpec): string {
       return `${spec.kind}:${spec.runId}`;
     case "backlog_drain":
       return `backlog_drain:${spec.queue}`;
-    // The threshold is part of the identity: "above 500" and "above 5000" are two
-    // different questions about the same queue.
+    // The threshold is part of the identity.
     case "queue_depth_above":
       return `queue_depth_above:${spec.queue}:${spec.threshold}`;
     case "queue_depth_below":
       return `queue_depth_below:${spec.queue}:${spec.threshold}`;
-    // `ticks` is not in the identity: like the cadence it only tunes how sensitive
-    // the same "is this queue moving?" question is.
+    // `ticks` is not in the identity: like the cadence, it only tunes sensitivity.
     case "queue_stalled":
       return `queue_stalled:${spec.queue}`;
-    // The SLA is the question: 5 minutes and 30 minutes are different promises.
+    // The SLA is part of the identity.
     case "queue_oldest_age":
       return `queue_oldest_age:${spec.queue}:${spec.thresholdMinutes}`;
     case "error_recurrence":
@@ -180,13 +156,8 @@ export function watchIdentity(spec: WatchSpec): string {
 }
 
 /**
- * The outcome of one poll:
- * - `pending` — not yet, keep checking.
- * - `satisfied` — the condition happened; fire and notify.
- * - `terminal_unsatisfied` — it can never happen now (e.g. waiting for a run to
- *   start that got cancelled). Stop checking; this is not a failure.
- * - `unavailable` — the check itself couldn't run (data source down, permission
- *   lost). Keep the watch alive and retry.
+ * `terminal_unsatisfied` means it can never happen now, so stop checking.
+ * `unavailable` means the check itself couldn't run: keep the watch alive and retry.
  */
 export const watchCheckResults = [
   "pending",
@@ -199,16 +170,8 @@ export const watchCheckResultSchema = z.enum(watchCheckResults);
 export type WatchCheckResult = z.infer<typeof watchCheckResultSchema>;
 
 /**
- * How a watch ended. Three values, not two: a watch resolves and reports once.
- *
- * - `condition_met`: the condition became true inside the window.
- * - `window_completed`: the window ran out with the condition still not true.
- *   That is an answer, not silence, and gets reported.
- * - `condition_impossible`: it can no longer become true.
- *
- * The resolution alone does not decide what the user sees; see
- * {@link resolveWatchResult}. `unavailable` is not here, because a check that
- * couldn't run resolves nothing.
+ * `window_completed` is an answer and gets reported. The resolution alone does not
+ * decide what the user sees; see {@link resolveWatchResult}.
  */
 export const watchResolutions = [
   "condition_met",
@@ -219,20 +182,16 @@ export const watchResolutionSchema = z.enum(watchResolutions);
 export type WatchResolution = z.infer<typeof watchResolutionSchema>;
 
 /**
- * The wire encoding of a resolution. Wake action ids
- * (`wake:watch:{id}:{fired|expired}`), delivery ids and banner render keys keep
- * their two-value suffix so persisted wakes and dedup keys stay valid. The
- * resolution itself travels in the action's facts, never in the id.
+ * Wake action ids, delivery ids and banner render keys keep this two-value suffix
+ * so persisted wakes and dedup keys stay valid. The resolution travels in the facts.
  */
 export function watchResolutionToWireStatus(resolution: WatchResolution): "fired" | "expired" {
   return resolution === "condition_met" ? "fired" : "expired";
 }
 
 /**
- * Turns a tick into a resolution. A check landing on the deadline may still
- * resolve `condition_met` or `condition_impossible`: the final evaluation is a
- * real one. Only a `pending` or `unavailable` result at the boundary becomes
- * `window_completed`; before it, both resolve nothing and the watch retries.
+ * A check landing on the deadline may still resolve `condition_met` or
+ * `condition_impossible`. Only `pending`/`unavailable` there become `window_completed`.
  */
 export function watchResolutionForCheck(
   result: WatchCheckResult,
@@ -262,14 +221,9 @@ export const watchDeliveryStatuses = ["not_required", "pending", "delivered"] as
 export const watchDeliveryStatusSchema = z.enum(watchDeliveryStatuses);
 export type WatchDeliveryStatus = z.infer<typeof watchDeliveryStatusSchema>;
 
-/* ------------------------------------------------------------------ *
- * Observed outcome — what the resolving check saw
- * ------------------------------------------------------------------ */
-
 /**
- * The run statuses that count as a failure for presentation. `run_finished`
- * resolves `condition_met` on any terminal status, so this set, not the
- * resolution, is what separates "run finished" from "run failed".
+ * `run_finished` resolves `condition_met` on any terminal status, so this set, not
+ * the resolution, separates "run finished" from "run failed".
  */
 export const WATCH_FAILED_RUN_STATUSES = [
   "COMPLETED_WITH_ERRORS",
@@ -280,12 +234,11 @@ export const WATCH_FAILED_RUN_STATUSES = [
   "INTERRUPTED",
 ] as const;
 
-/** Ended on purpose. Neither a success nor a failure, so its own presentation. */
+/** Neither a success nor a failure, so its own presentation. */
 export const WATCH_CANCELLED_RUN_STATUSES = ["CANCELED"] as const;
 
 export type WatchRunDisposition = "succeeded" | "failed" | "cancelled" | "unknown";
 
-/** Classify a run's final status for presentation. */
 export function watchRunDisposition(status: string | null | undefined): WatchRunDisposition {
   if (!status) return "unknown";
   if (status === "COMPLETED_SUCCESSFULLY") return "succeeded";
@@ -295,40 +248,34 @@ export function watchRunDisposition(status: string | null | undefined): WatchRun
 }
 
 /**
- * What the resolving check observed, per kind: the second half of a resolved
- * result. Stored next to the resolution and frozen with the facts, so every
- * delivery surface reads one set of observations instead of re-reading the source.
- *
- * `verified` is common to all of them. False means the window completed while the
- * source was unavailable, so the presentation says the condition couldn't be
- * confirmed rather than claiming it didn't happen.
+ * Frozen with the facts next to the resolution, so no delivery surface re-reads the
+ * source. `verified: false` means the window completed with the source unavailable.
  */
 export const watchObservedOutcomeSchema = z.union([
   z.object({
     kind: z.literal("run_start"),
     verified: z.boolean().default(true),
-    /** The run's status at the resolving check. */
     status: z.string().nullable().default(null),
     started: z.boolean().default(false),
   }),
   z.object({
     kind: z.literal("run_finished"),
     verified: z.boolean().default(true),
-    /** The final status. The observation the presentation splits on. */
+    /** The observation the presentation splits on. */
     finalStatus: z.string().nullable().default(null),
     durationMs: z.number().nullable().default(null),
   }),
   z.object({
     kind: z.literal("run_failed"),
     verified: z.boolean().default(true),
-    /** The final status. Null while it is still running. */
+    /** Null while the run is still going. */
     finalStatus: z.string().nullable().default(null),
     durationMs: z.number().nullable().default(null),
   }),
   z.object({
     kind: z.literal("backlog_drain"),
     verified: z.boolean().default(true),
-    /** The depth the resolving check read. Null when it could not be read. */
+    /** Null when the depth could not be read. */
     depth: z.number().nullable().default(null),
   }),
   z.object({
@@ -349,13 +296,12 @@ export const watchObservedOutcomeSchema = z.union([
     depth: z.number().nullable().default(null),
     /** Consecutive checks that saw no progress, as of this one. */
     notDecreasingStreak: z.number().default(0),
-    /** The streak length the watch is waiting for. */
     ticks: z.number(),
   }),
   z.object({
     kind: z.literal("queue_oldest_age"),
     verified: z.boolean().default(true),
-    /** The oldest still-waiting run's age. Null when nothing was waiting, or unreadable. */
+    /** Null when nothing was waiting, or it was unreadable. */
     ageMs: z.number().nullable().default(null),
     thresholdMinutes: z.number(),
   }),
@@ -374,38 +320,24 @@ export const watchObservedOutcomeSchema = z.union([
 
 export type WatchObservedOutcome = z.infer<typeof watchObservedOutcomeSchema>;
 
-/* ------------------------------------------------------------------ *
- * The resolved-result mapping — (kind + resolution + observed outcome)
- * ------------------------------------------------------------------ */
-
 /**
- * The presentation classification. Declared per kind, never inferred from a
- * "good news kind" list: `window_completed` is bad news for a drain watch and
- * good news for an error-recurrence one.
+ * Declared per kind, never inferred: `window_completed` is bad news for a drain
+ * watch and good news for an error-recurrence one.
  */
 export const watchPresentationCategories = ["positive", "attention", "neutral"] as const;
 export const watchPresentationCategorySchema = z.enum(watchPresentationCategories);
 export type WatchPresentationCategory = z.infer<typeof watchPresentationCategorySchema>;
 
-/** The visual accent. Same four tokens the agent surfaces already speak. */
 export const watchPresentationTones = ["success", "warning", "error", "neutral"] as const;
 export const watchPresentationToneSchema = z.enum(watchPresentationTones);
 export type WatchPresentationTone = z.infer<typeof watchPresentationToneSchema>;
 
-/**
- * The icon, named by meaning rather than glyph, so a surface with a different
- * icon set still shows the same thing. It follows the presentation outcome, not
- * the bare resolution: a failed run never wears a success check.
- */
+/** Named by meaning, not glyph. Follows the presentation outcome, not the resolution. */
 export const watchSemanticIcons = ["success", "attention", "error", "waiting", "info"] as const;
 export const watchSemanticIconSchema = z.enum(watchSemanticIcons);
 export type WatchSemanticIcon = z.infer<typeof watchSemanticIconSchema>;
 
-/**
- * Which sentence to say. The English wording is the host's job (the webapp's
- * `watch-presentation.ts`); this only fixes the set of things a resolved watch can
- * mean, so a second surface can't invent another meaning.
- */
+/** The English wording lives in the webapp's `watch-presentation.ts`. */
 export const watchHeadlineKeys = [
   // run_start
   "run_started",
@@ -449,7 +381,6 @@ export const watchHeadlineKeys = [
 export const watchHeadlineKeySchema = z.enum(watchHeadlineKeys);
 export type WatchHeadlineKey = z.infer<typeof watchHeadlineKeySchema>;
 
-/** One resolved result, as every surface consumes it. */
 export type WatchResolvedPresentation = {
   category: WatchPresentationCategory;
   tone: WatchPresentationTone;
@@ -484,13 +415,8 @@ const WAITING: Omit<WatchResolvedPresentation, "headlineKey"> = {
 };
 
 /**
- * The per-kind mapping as a total `Record` over `kind × resolution`, so adding a
- * watch kind or a resolution fails to compile until every cell is filled in.
- * There is no default to fall through to that could present a failure as a
- * success.
- *
- * Cells the observed outcome refines carry the default here and are overridden in
- * {@link resolveWatchResult}.
+ * Total over `kind × resolution` on purpose: adding either fails to compile until
+ * every cell is filled. Cells refined by the observed outcome carry the default.
  */
 const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedPresentation>> = {
   run_start: {
@@ -499,15 +425,13 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
     condition_impossible: { ...NEUTRAL, headlineKey: "run_never_starts" },
   },
   run_finished: {
-    // Refined below by the observed final status: a completion with a failure
-    // presents as attention, however cleanly it resolved.
+    // Refined below by the observed final status.
     condition_met: { ...POSITIVE, headlineKey: "run_finished" },
     window_completed: { ...WAITING, headlineKey: "run_still_running" },
     condition_impossible: { ...NEUTRAL, headlineKey: "run_gone" },
   },
-  // The inverse question about the same run, so a window that ran out without a
-  // failure is the good news. `condition_impossible` means it can no longer fail,
-  // refined below into the success headline when a final status proves it.
+  // The inverse question, so the presentation inverts too. `condition_impossible`
+  // is refined below into the success headline when a final status proves it.
   run_failed: {
     condition_met: { ...ATTENTION_ERROR, headlineKey: "run_failed" },
     window_completed: { ...POSITIVE, headlineKey: "run_no_failure" },
@@ -518,8 +442,6 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
     window_completed: { ...ATTENTION_WARN, headlineKey: "queue_not_drained" },
     condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
   },
-  // The inverted comparison inverts the presentation: crossing the threshold is
-  // the bad news, and the quiet window is the good one.
   queue_depth_above: {
     condition_met: { ...ATTENTION_WARN, headlineKey: "queue_above_threshold" },
     window_completed: { ...POSITIVE, headlineKey: "queue_stayed_below" },
@@ -530,8 +452,6 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
     window_completed: { ...ATTENTION_WARN, headlineKey: "queue_still_above" },
     condition_impossible: { ...NEUTRAL, headlineKey: "queue_gone" },
   },
-  // A window that ran out without a stall means the queue kept moving, which is
-  // the answer rather than silence.
   queue_stalled: {
     condition_met: { ...ATTENTION_WARN, headlineKey: "queue_stalled" },
     window_completed: { ...POSITIVE, headlineKey: "queue_kept_moving" },
@@ -545,8 +465,7 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
   error_recurrence: {
     condition_met: { ...ATTENTION_ERROR, headlineKey: "error_recurred" },
     window_completed: { ...POSITIVE, headlineKey: "error_quiet" },
-    // The fingerprint is gone from the environment, so it can't come back under
-    // this identity: the same good news as staying quiet.
+    // The fingerprint is gone, so it can't recur under this identity.
     condition_impossible: { ...NEUTRAL, headlineKey: "error_quiet" },
   },
   health_recovery: {
@@ -557,10 +476,8 @@ const RESOLVED_RESULTS: Record<WatchKind, Record<WatchResolution, WatchResolvedP
 };
 
 /**
- * The one place a resolved watch becomes something to show, from the resolution
- * plus the observed outcome and never the resolution alone. The kind comes from
- * the spec, the resolution from the lifecycle, the outcome from the resolving
- * check, and no surface may substitute its own third input.
+ * The only place a resolved watch becomes something to show. No surface may
+ * present from the resolution alone.
  */
 export function resolveWatchResult(args: {
   kind: WatchKind;
@@ -569,14 +486,12 @@ export function resolveWatchResult(args: {
 }): WatchResolvedPresentation {
   const { kind, resolution, outcome } = args;
 
-  // A window that completed without a usable final read is its own answer: the
-  // condition could not be confirmed, which is not "it didn't happen".
+  // Unconfirmed is not "it didn't happen".
   if (resolution === "window_completed" && outcome && outcome.verified === false) {
     return { ...NEUTRAL, headlineKey: "unverified_at_window_end" };
   }
 
-  // A run that finished is not automatically good news. `unknown` keeps the plain
-  // "finished" headline: claiming a failure nobody observed is the worse mistake.
+  // `unknown` keeps the plain "finished" headline: never claim an unobserved failure.
   if (kind === "run_finished" && resolution === "condition_met") {
     const disposition = watchRunDisposition(
       outcome?.kind === "run_finished" ? outcome.finalStatus : null
@@ -585,8 +500,6 @@ export function resolveWatchResult(args: {
     if (disposition === "cancelled") return { ...NEUTRAL, headlineKey: "run_cancelled" };
   }
 
-  // A failure watch that can never be satisfied because the run succeeded is good
-  // news, not the neutral "it's gone" the default assumes.
   if (kind === "run_failed" && resolution === "condition_impossible") {
     const disposition = watchRunDisposition(
       outcome?.kind === "run_failed" ? outcome.finalStatus : null
@@ -599,11 +512,8 @@ export function resolveWatchResult(args: {
 }
 
 /**
- * Whether a resolved watch is an attention outcome, which is what the
- * "investigate attention outcomes" consent covers. The agent's wake and the
- * webapp's kick both call this, so neither can substitute its own judgement about
- * what counts as bad news. Lenient on `kind`: a kind this build doesn't know has
- * no mapping and so never starts anything.
+ * What the "investigate attention outcomes" consent covers. Both the agent's wake
+ * and the webapp's kick must call this rather than judge for themselves.
  */
 export function watchResultNeedsAttention(args: {
   kind: string;
@@ -619,25 +529,20 @@ export function watchResultNeedsAttention(args: {
   return category === "attention";
 }
 
-/* ------------------------------------------------------------------ *
- * The configuration card — what the dashboard's `Watch…` entry offers
- * ------------------------------------------------------------------ */
-
 /**
- * The follow-up section of the card. In-chat delivery is always on and absent
- * here, so there is nothing to toggle. The two that remain are independent
- * opt-ins, never a radio group: email must not replace the chat.
+ * In-chat delivery is always on and absent here. These two are independent
+ * opt-ins, never a radio group.
  */
 export const watchFollowUpSchema = z.object({
   /** Open an investigation when the outcome is an attention one. */
   investigateOnAttention: z.boolean().default(false),
-  /** Attach an external delivery subscription (email) to this watch. */
+  /** Attach an external delivery subscription (email). */
   notifyExternally: z.boolean().default(false),
 });
 
 export type WatchFollowUp = z.infer<typeof watchFollowUpSchema>;
 
-/** What the card submits: the configured spec plus its follow-up opt-ins. */
+/** What the card submits. */
 export const watchDraftSchema = z.object({
   spec: watchSpecSchema,
   followUp: watchFollowUpSchema,
@@ -648,27 +553,18 @@ export type WatchDraft = z.infer<typeof watchDraftSchema>;
 /** The window lengths the card offers, in hours. Capped by {@link WATCH_MAX_HOURS}. */
 export const WATCH_WINDOW_HOURS_OPTIONS = [0.5, 1, 2, 6, 12, 24] as const;
 
-/** Run-state kinds may poll every minute; aggregates are floored at 5. */
 const RUN_STATE_KINDS = ["run_start", "run_finished", "run_failed"] as const;
 
-/** Whether a kind reads one run row (cheap) rather than an aggregate. */
 export function isRunStateWatchKind(kind: WatchKind): boolean {
   return (RUN_STATE_KINDS as readonly string[]).includes(kind);
 }
 
-/**
- * The cadences the card may offer for a kind — the SCHEMA's limits, surfaced so
- * the picker can't render an option that would then fail validation.
- */
+/** Must stay in step with the cadence schemas, or the picker offers invalid options. */
 export function watchCadenceOptions(kind: WatchKind): readonly number[] {
   return isRunStateWatchKind(kind) ? [1, 5, 15, 60] : [5, 15, 60];
 }
 
-/**
- * The condition variants offered side by side under Customize: one family per
- * array, in the order the picker lists them, always including the kind asked
- * about. Swapping within a family keeps the subject.
- */
+// One family per array, in the order the picker lists them.
 const RUN_CONDITION_VARIANTS = ["run_finished", "run_failed"] as const;
 const QUEUE_CONDITION_VARIANTS = [
   "backlog_drain",
@@ -683,16 +579,10 @@ export function watchConditionVariants(kind: WatchKind): readonly WatchKind[] {
   if ((QUEUE_CONDITION_VARIANTS as readonly string[]).includes(kind)) {
     return QUEUE_CONDITION_VARIANTS;
   }
-  // The kinds with no second question: the picker shows the condition as a fact.
   return [kind];
 }
 
-/** The default threshold a `queue_depth_above` / `queue_depth_below` variant starts on. */
 export const WATCH_DEFAULT_QUEUE_THRESHOLD = 100;
 
-/**
- * The default SLA an age variant starts on, in minutes. The same number the queue
- * page tints its Oldest wait block at, so the card can't recommend an SLA the page
- * doesn't consider late.
- */
+/** In minutes. Must match the threshold the queue page tints Oldest wait at. */
 export const WATCH_DEFAULT_QUEUE_AGE_MINUTES = 5;
