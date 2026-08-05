@@ -9,6 +9,6 @@ Meet the dashboard agent: a chat in every environment that answers questions abo
 
 **Watch…** on a run, queue, error or the health report tells you when things change: a run finishes, a queue clears or grows past a number you pick, an error comes back, an environment recovers. The answer arrives in the chat and, if you want, by email, Slack or webhook — and the agent can look into bad news on its own.
 
-The health report reads the same everywhere — dashboard, terminal, editor: same sections, same wording, and a marker instead of colour where colour isn't available. If a message to the agent fails, the chat says so and keeps saying so when you reopen it.
+The health report reads the same everywhere — dashboard, terminal, editor: same sections, same wording, and a marker instead of colour where colour isn't available. Its "stale data" mark is amber rather than blue, and its metric rows stay inside the panel when the chat is narrow. If a message to the agent fails, the chat says so and keeps saying so when you reopen it.
 
 Separately: a queue's wait times, peak depth, throughput and throttling can now be read from the API, and the Docs button has been removed from page headers.
