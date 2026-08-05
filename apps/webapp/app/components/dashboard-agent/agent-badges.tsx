@@ -48,7 +48,8 @@ export function AgentBadge({
     <Badge
       variant="small"
       className={cn(
-        "px-1.5 [&>span]:flex [&>span]:items-center [&>span]:gap-1",
+        // `contrast-chip`: the tinted chip gains a ring as interface contrast rises.
+        "contrast-chip px-1.5 [&>span]:flex [&>span]:items-center [&>span]:gap-1",
         TONE_BADGE[tone],
         className
       )}
