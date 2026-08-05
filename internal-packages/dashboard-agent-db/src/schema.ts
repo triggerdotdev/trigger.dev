@@ -172,9 +172,7 @@ export const investigations = dashboardAgentSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    index("investigations_chat_idx").on(t.chatId),
-  ]
+  (t) => [index("investigations_chat_idx").on(t.chatId)]
 );
 
 /** `active` is the only non-terminal status; the other three are immutable. */

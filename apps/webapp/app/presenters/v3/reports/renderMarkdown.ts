@@ -159,7 +159,6 @@ function metricById(metrics: Metric[], id: string): Metric | undefined {
   return metrics.find((m) => m.id === id);
 }
 
-
 function deltaSegment(metric: Metric): string {
   if (metric.severity === "ok" || !metric.delta || metric.delta.dir === "flat") return "";
   const arrow = metric.delta.dir === "up" ? "↑" : "↓";
@@ -251,7 +250,6 @@ function renderMetricRow(metric: Metric, cols: Cols, vm: ReportViewModel): strin
   return line.replace(/\s+$/, "");
 }
 
-
 function compactFact(metric: Metric): string | undefined {
   switch (metric.id) {
     case "pending":
@@ -283,7 +281,6 @@ function compactFacts(finding: Finding, metrics: Metric[]): string {
     .join(" · ");
 }
 
-
 function readTokens(_finding: Finding, metrics: Metric[]): Record<string, string | number> {
   const triggered = metricById(metrics, "triggered");
   return {
@@ -303,7 +300,6 @@ function attributionLine(finding: Finding, cols: Cols): string | undefined {
   const label = `worst ${a.dim}`.padEnd(cols.label);
   return `  ${label}${" ".repeat(COL_GAP)}${a.key} — ${Math.round(a.share * 100)}% of ${a.of}`;
 }
-
 
 function renderDegradedSection(finding: Finding, vm: ReportViewModel): string[] {
   const msg = reportMessages(vm.title);
