@@ -105,9 +105,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
     expect(renderReportMarkdown(vm)).toMatchInlineSnapshot(`
       "/report health        prod · last 1h · vs your 7d normal
 
-      🟡 Flow slowing  ·  🟢 Execution healthy  ·  🟢 data fresh
-
-      FLOW        🟡 at your env concurrency limit (last 40 min)
+      🟡 Flow slowing — at your env concurrency limit for the last 40 min
 
         concurrency     100/100           ▁▅▆█████   40 min at limit
 
@@ -115,18 +113,16 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
 
         start latency   p95 42s   ↑ 6×    ▁▁▂▄▆▆▇█   (normal ~7s)
 
-        worst queue     email-sends — 82% of pending
-
-        read: limit saturated → incoming work exceeds capacity → backlog grows
+        why:  82% of pending is email-sends
               runs are finishing at ~820/min
               nothing dead-lettered
 
-      EXECUTION   🟢 the runs that DO start are fine
+      🟢 EXECUTION   the runs that DO start are fine
 
-        failures 1.3% (normal ~1.1%) · durations normal
-        read: runs are completing normally
+      🟢 LIVENESS    fresh — telemetry current, updated 4s ago
 
-      LIVENESS    🟢 fresh — telemetry current, updated 4s ago
+        read: limit saturated → incoming work exceeds capacity → backlog grows
+              runs are completing normally
 
       → Raise the env concurrency limit
         Read concurrency docs
@@ -148,13 +144,22 @@ describe("health (Golden B — healthy)", () => {
     expect(renderReportMarkdown(vm)).toMatchInlineSnapshot(`
       "/report health        prod · last 1h · vs your 7d normal
 
-      🟢 Flow healthy  ·  🟢 Execution healthy  ·  🟢 data fresh
+      🟢 Flow healthy — starting normally
 
-      FLOW        🟢 starting normally — pending 84 (normal ~120) · starts p95 6s
+        start latency   p95 6s      → flat   ██▅▅▂▁▁▂   (normal ~7s)
 
-      EXECUTION   🟢 completing normally — failures 0.9% (normal ~1.1%) · durations normal
+        pending         84          → flat   ██▄▄▂▃▃▁   (normal ~120)
 
-      LIVENESS    🟢 fresh — telemetry current, updated 2s ago
+        throughput      0/min
+          done          1,000/min
+          triggered     1,000/min
+
+      🟢 EXECUTION   the runs that DO start are fine
+
+      🟢 LIVENESS    fresh — telemetry current, updated 2s ago
+
+        read: runs are starting on time
+              runs are completing normally
 
       → nothing to do"
     `);
@@ -176,11 +181,12 @@ describe("snapshot fallback path flags the estimated backlog trend", () => {
     },
   };
 
-  it("renders an (estimated) caveat on the proxy series, not a bare sparkline", () => {
+  it("renders an estimated caveat on the proxy series, not a bare sparkline", () => {
     const vm = interpret(snapshot);
     expect(vm.findings.find((f) => f.type === "flow")!.reason).toBe("backlog");
     const md = renderReportMarkdown(vm);
-    expect(md).toContain("(estimated)"); // the human surface signals the trend is a proxy
+    // the human surface signals the trend is a proxy
+    expect(md).toContain("(estimated from a proxy signal)");
   });
 });
 
@@ -509,7 +515,8 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
     // just repeat that), and no stale causal evidence (anomaly window) survives.
     const md = renderReportMarkdown(stale);
     expect(md).toContain("🔴 Flow unknown — data stale");
-    expect(md).toContain("🔴 flow can't be assessed");
+    expect(md).toContain("🔴 EXECUTION   execution can't be assessed");
+    expect(md).toContain("🚩 stale data"); // the report flags itself untrustworthy
     expect(md).not.toContain("(last 40 min)"); // anomaly window gone
   });
 
@@ -530,9 +537,9 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
 });
 
 describe("freshness unknown is distinct from lagging", () => {
-  it("renders 'data freshness unknown' in the summary, not 'data lagging'", () => {
+  it("renders the liveness section as 'freshness unknown', not 'data lagging'", () => {
     const md = renderReportMarkdown(interpret({ ...INPUT_A, liveness: { telemetryAgeMs: null } }));
-    expect(md).toContain("data freshness unknown");
+    expect(md).toContain("⚪ LIVENESS    freshness unknown");
     expect(md).not.toContain("data lagging");
   });
 
