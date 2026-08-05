@@ -3,62 +3,59 @@
  * happen, so proving a flow locally is a verb rather than hand-run Redis and
  * ClickHouse surgery.
  *
- *   pnpm --filter webapp run scenarios:watch -- queue:fill email-sends 400
- *   pnpm --filter webapp run scenarios:watch -- queue:drain email-sends
- *   pnpm --filter webapp run scenarios:watch -- error:recur
- *   pnpm --filter webapp run scenarios:watch -- run:fail 90
- *   pnpm --filter webapp run scenarios:watch -- health:recover
  *   pnpm --filter webapp run scenarios:watch -- --help
+ *   pnpm --filter webapp run scenarios:watch -- queue:fill email-sends 400 --project my-app
+ *   pnpm --filter webapp run scenarios:watch -- error:recur --project my-app --env dev
  *
- * It runs on top of the seeded `agent-examples` stand (`db:seed:agent-examples`)
- * and only ever moves the things a watch reads:
+ * It targets any local project and environment (`--project`, `--env`) and only
+ * ever moves the things a watch reads: the run-queue depth in Redis (both keys —
+ * a watch checks the per-queue one, the health report prefers the env-level one),
+ * failed runs in ClickHouse, queue metrics, and real runs through the public API.
  *
- * - the run-queue depth in Redis, both keys, through the seeder's own staging
- *   (`seed-agent-examples-redis.mts`) — a watch checks the PER-QUEUE key, the
- *   report prefers the env-level one, so both have to agree;
- * - one fresh occurrence of the seeded 429 error group in ClickHouse;
- * - a real run in the separate `hello-world` references project, triggered
- *   through the public API, for the run-finished / run-failed watches;
- * - the health report's live window, by delegating to the seeder's own
- *   `--degrade` / `--recover`.
+ * Every verb is idempotent: re-running one leaves the same state, not more of it.
+ * Each one prints what to do in the dashboard next.
  *
- * Nothing here wipes the stand, and every verb is idempotent — re-running one
- * leaves the same state, not more of it. Each verb prints what to do in the
- * dashboard next.
+ * Node 20 is the version these scripts are run on.
  *
- * Walkthroughs, dashboard clicks and expected wording:
- * `internal-packages/dashboard-agent/SCENARIOS.md`.
+ * Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md
  */
-import { ClickHouse } from "@internal/clickhouse";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-// oxlint-disable import/default -- deliberate CommonJS interop, as in the seeder:
-// this entry is ESM, tsx compiles the app's `.ts` to CommonJS, and an ESM importer
-// reaches a CommonJS module's exports only through `default`.
+import { ClickHouse, TASK_RUN_COLUMNS } from "@internal/clickhouse";
+import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
+import { randomUUID } from "node:crypto";
+// oxlint-disable import/default -- deliberate CommonJS interop: this entry is ESM,
+// tsx compiles the app's `.ts` to CommonJS, and an ESM importer reaches a CommonJS
+// module's exports only through `default`.
 import dbServer from "./app/db.server";
-import {
-  openRedis,
-  queueDepthKey,
-  envQueueKey,
-  stageRedisDepth,
-} from "./seed-agent-examples-redis.mjs";
+import errorFingerprinting from "./app/utils/errorFingerprinting";
+import eventCommon from "./app/v3/eventRepository/common.server";
 
 const { prisma } = dbServer;
-
-/** The seeded stand. Must match `seed-agent-examples.mts`. */
-const STAND_PROJECT_REF = "proj_agentexamplesseed01";
-/** The references repo's `hello-world` project, created by `pnpm run db:seed`. */
-const HELLO_WORLD_PROJECT_REF = "proj_rrkpdguyagvsoktglnod";
-/** The two tasks the run watches need. The guidebook carries their source. */
-const SLOW_FAIL_TASK_ID = "slow-fail";
-const SLOW_SUCCEED_TASK_ID = "slow-succeed";
-/** Default sleep for those tasks, long enough to arm a watch while the run is up. */
-const DEFAULT_RUN_SECONDS = 60;
+const { calculateErrorFingerprint } = errorFingerprinting;
+const { generateTraceId, generateSpanId } = eventCommon;
 
 const APP_ORIGIN = process.env.APP_ORIGIN ?? "http://localhost:3030";
 
+/** Default sleep for the run verbs, long enough to arm a watch while the run is up. */
+const DEFAULT_RUN_SECONDS = 60;
+/** Task ids the run verbs trigger unless `--task` says otherwise. */
+const DEFAULT_FAIL_TASK = "slow-fail";
+const DEFAULT_SUCCEED_TASK = "slow-succeed";
+
+/** The failure the error verb writes. One shape, so its fingerprint is stable. */
+const SCENARIO_ERROR = {
+  type: "BUILT_IN_ERROR",
+  name: "ProviderError",
+  message: "429 Too Many Requests (rate_limit_exceeded)",
+  stackTrace: `ProviderError: 429 Too Many Requests (rate_limit_exceeded)
+    at sendEmail (src/trigger/scenarioKit.ts:31:11)
+    at run (src/trigger/scenarioKit.ts:18:5)`,
+};
+const SCENARIO_ERROR_FINGERPRINT = calculateErrorFingerprint(SCENARIO_ERROR);
+const SCENARIO_TASK_ID = "scenario-kit-task";
+const SCENARIO_QUEUE_NAME = "scenario-kit";
+
 // ---------------------------------------------------------------------------
-// Prerequisites, each with an error that says what to run
+// Flags and failures
 // ---------------------------------------------------------------------------
 
 function fail(message: string): never {
@@ -89,98 +86,204 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Record<strin
   return { positional, flags };
 }
 
-type StandEnv = { id: string; slug: string; apiKey: string };
-type Stand = {
+// ---------------------------------------------------------------------------
+// Target: any local project + environment
+// ---------------------------------------------------------------------------
+
+type Target = {
   organizationId: string;
   projectId: string;
   projectSlug: string;
-  environment: StandEnv;
+  environmentId: string;
+  environmentSlug: string;
+  environmentType: string;
+  apiKey: string;
+  envConcurrencyLimit: number;
 };
 
-/**
- * The stand, for one environment. Prod by default: it's the environment the
- * seeded transcripts cite and the one the showcase watches are armed on.
- */
-async function resolveStand(envFlag: string | undefined): Promise<Stand> {
-  const type = (envFlag ?? "prod") === "dev" ? "DEVELOPMENT" : "PRODUCTION";
-  const project = await prisma.project.findFirst({ where: { externalRef: STAND_PROJECT_REF } });
-  if (!project) {
+const ENV_ALIASES: Record<string, string> = {
+  dev: "DEVELOPMENT",
+  development: "DEVELOPMENT",
+  staging: "STAGING",
+  prod: "PRODUCTION",
+  production: "PRODUCTION",
+  preview: "PREVIEW",
+};
+
+/** Resolves `--project` against the external ref, the slug and the name. */
+async function resolveTarget(
+  projectFlag: string | undefined,
+  envFlag: string | undefined
+): Promise<Target> {
+  if (!projectFlag) {
+    const projects = await prisma.project.findMany({
+      where: { deletedAt: null },
+      select: { slug: true },
+      take: 20,
+      orderBy: { createdAt: "desc" },
+    });
     fail(
-      `No "agent-examples" project. Seed the stand first:\n` +
-        `  pnpm --filter webapp run db:seed:agent-examples`
+      `Pass --project <ref-or-slug>. Local projects: ` +
+        `${projects.map((p: { slug: string }) => p.slug).join(", ") || "(none — run `pnpm run db:seed`)"}`
     );
   }
+  const project = await prisma.project.findFirst({
+    where: {
+      deletedAt: null,
+      OR: [{ externalRef: projectFlag }, { slug: projectFlag }, { name: projectFlag }],
+    },
+  });
+  if (!project) {
+    fail(`No project matched "${projectFlag}" (tried external ref, slug and name).`);
+  }
+
+  const alias = ENV_ALIASES[(envFlag ?? "dev").toLowerCase()];
   const environment = await prisma.runtimeEnvironment.findFirst({
-    where: { projectId: project.id, type },
+    where: {
+      projectId: project.id,
+      ...(alias ? { type: alias as never } : { slug: envFlag }),
+    },
   });
   if (!environment) {
-    fail(`The stand has no ${type} environment. Re-run db:seed:agent-examples.`);
+    const environments = await prisma.runtimeEnvironment.findMany({
+      where: { projectId: project.id },
+      select: { slug: true, type: true },
+    });
+    fail(
+      `No "${envFlag ?? "dev"}" environment on ${project.slug}. It has: ` +
+        environments.map((e: { slug: string; type: string }) => `${e.slug} (${e.type})`).join(", ")
+    );
   }
+
   return {
     organizationId: project.organizationId,
     projectId: project.id,
     projectSlug: project.slug,
-    environment: { id: environment.id, slug: environment.slug, apiKey: environment.apiKey },
+    environmentId: environment.id,
+    environmentSlug: environment.slug,
+    environmentType: environment.type,
+    apiKey: environment.apiKey,
+    envConcurrencyLimit: environment.maximumConcurrencyLimit,
   };
 }
 
-async function requireQueue(stand: Stand, name: string) {
+async function requireQueue(target: Target, name: string) {
   const queue = await prisma.taskQueue.findFirst({
-    where: { runtimeEnvironmentId: stand.environment.id, name },
+    where: { runtimeEnvironmentId: target.environmentId, name },
     select: { name: true },
   });
   if (queue) return;
   const queues = await prisma.taskQueue.findMany({
-    where: { runtimeEnvironmentId: stand.environment.id },
+    where: { runtimeEnvironmentId: target.environmentId },
     select: { name: true },
   });
   fail(
-    `No queue "${name}" in ${stand.environment.slug}. The stand has: ` +
-      `${queues.map((row: { name: string }) => row.name).join(", ") || "(none — re-seed)"}`
+    `No queue "${name}" in ${target.projectSlug}/${target.environmentSlug}. It has: ` +
+      `${queues.map((row: { name: string }) => row.name).join(", ") || "(none — trigger a run first)"}`
   );
 }
 
-function clickhouse(): ClickHouse {
-  const url = process.env.CLICKHOUSE_URL ?? process.env.EVENTS_CLICKHOUSE_URL;
-  if (!url) {
-    fail("CLICKHOUSE_URL not set. Is `pnpm run docker` up and apps/webapp/.env in place?");
-  }
-  const parsed = new URL(url);
-  // Never echo the URL — it carries credentials.
-  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
-  if (!localHosts.has(parsed.hostname)) {
-    fail(`Refusing to run against a non-local ClickHouse host: ${parsed.hostname}`);
-  }
-  parsed.searchParams.delete("secure");
-  return new ClickHouse({ url: parsed.toString(), name: "watch-scenarios" });
+/** The queue the health verbs write metrics for: `--queue`, else any real queue. */
+async function pickMetricsQueue(target: Target, queueFlag: string | undefined): Promise<string> {
+  if (queueFlag) return queueFlag;
+  const queue = await prisma.taskQueue.findFirst({
+    where: { runtimeEnvironmentId: target.environmentId },
+    select: { name: true },
+    orderBy: { name: "asc" },
+  });
+  return queue?.name ?? SCENARIO_QUEUE_NAME;
 }
 
-type RawCommand = {
-  command: (a: { query: string }) => Promise<unknown>;
-  query: (a: { query: string; format: string }) => Promise<{ json: () => Promise<unknown> }>;
+// ---------------------------------------------------------------------------
+// Redis: the run-queue depth keys
+// ---------------------------------------------------------------------------
+
+type RedisLike = {
+  del: (key: string) => Promise<unknown>;
+  zadd: (key: string, ...args: Array<string | number>) => Promise<unknown>;
+  zcard: (key: string) => Promise<number>;
+  quit: () => Promise<unknown>;
 };
 
-function rawClient(ch: ClickHouse): RawCommand {
-  return (ch.writer as unknown as { client: RawCommand }).client;
+/** Members are staged in batches this size, so a 5k depth is a handful of ZADDs. */
+const ZADD_BATCH = 1_000;
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+
+function envQueueKey(organizationId: string, environmentId: string): string {
+  return `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
 }
 
-// ---------------------------------------------------------------------------
-// Queue depth: fill / grow / drain
-// ---------------------------------------------------------------------------
+/** The per-queue counter (`engine.lengthOfQueue`) — what a queue watch checks. */
+function queueDepthKey(
+  organizationId: string,
+  projectId: string,
+  environmentId: string,
+  queueName: string
+): string {
+  return `engine:runqueue:{org:${organizationId}}:proj:${projectId}:env:${environmentId}:queue:${queueName}`;
+}
 
-/** Reads both keys back, so the printed number is the one a watch will see. */
-async function reportDepths(stand: Stand, queueName: string) {
-  const redis = await openRedis();
-  if (!redis) {
-    fail(
-      "Redis is not local, so nothing was staged. Point RUN_ENGINE_RUN_QUEUE_REDIS_HOST at localhost."
-    );
+/** Opens a client against the local run-queue Redis. Refuses a non-local host. */
+async function openRedis(): Promise<RedisLike> {
+  const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
+  const port = Number(
+    process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
+  );
+  if (!LOCAL_HOSTS.has(host)) {
+    fail(`Refusing to stage Redis on a non-local host: ${host}`);
   }
+  const { createRedisClient } = await import("@internal/redis");
+  return createRedisClient({ host, port }) as unknown as RedisLike;
+}
+
+/** Replaces a zset with `depth` members. Scores are timestamps: the queue's ages. */
+async function writeZsetDepth(
+  redis: RedisLike,
+  key: string,
+  depth: number,
+  memberPrefix: string,
+  /** How old the oldest member is. The wait-limit watch reads the oldest score. */
+  ageMinutes = 0
+) {
+  await redis.del(key);
+  const oldest = Date.now() - ageMinutes * 60_000;
+  for (let i = 0; i < depth; i += ZADD_BATCH) {
+    const args: Array<string | number> = [];
+    for (let j = i; j < Math.min(depth, i + ZADD_BATCH); j++) {
+      args.push(oldest + j, `${memberPrefix}${j}`);
+    }
+    await redis.zadd(key, ...args);
+  }
+}
+
+/**
+ * Stages both keys to the same depth and reads them back, so the printed number
+ * is the one a watch will see.
+ */
+async function stageDepth(
+  target: Target,
+  queueName: string,
+  depth: number,
+  ageMinutes = 0
+): Promise<{ perQueue: number; env: number }> {
+  const redis = await openRedis();
   try {
-    const perQueue = await redis.zcard(
-      queueDepthKey(stand.organizationId, stand.projectId, stand.environment.id, queueName)
+    await writeZsetDepth(
+      redis,
+      envQueueKey(target.organizationId, target.environmentId),
+      depth,
+      "scenario_env_"
     );
-    const env = await redis.zcard(envQueueKey(stand.organizationId, stand.environment.id));
+    const perQueueKey = queueDepthKey(
+      target.organizationId,
+      target.projectId,
+      target.environmentId,
+      queueName
+    );
+    await writeZsetDepth(redis, perQueueKey, depth, "scenario_q_", ageMinutes);
+    const perQueue = await redis.zcard(perQueueKey);
+    const env = await redis.zcard(envQueueKey(target.organizationId, target.environmentId));
     await redis.quit();
     return { perQueue, env };
   } catch (error) {
@@ -191,20 +294,60 @@ async function reportDepths(stand: Stand, queueName: string) {
   }
 }
 
-async function queueFill(stand: Stand, queueName: string, depth: number, ageMinutes: number) {
-  await requireQueue(stand, queueName);
-  // The seeder's staging, with the cap lifted: a threshold watch reads the exact
-  // member count, so the per-queue key has to carry all of it.
-  await stageRedisDepth(
-    stand.organizationId,
-    stand.environment.id,
-    depth,
-    stand.environment.slug,
-    stand.projectId,
-    queueName,
-    { queueMemberCap: depth, ageMinutes }
-  );
-  const seen = await reportDepths(stand, queueName);
+// ---------------------------------------------------------------------------
+// ClickHouse
+// ---------------------------------------------------------------------------
+
+type RawCommand = {
+  command: (a: { query: string }) => Promise<unknown>;
+  query: (a: { query: string; format: string }) => Promise<{ json: () => Promise<unknown> }>;
+};
+
+function clickhouse(): ClickHouse {
+  const url = process.env.CLICKHOUSE_URL ?? process.env.EVENTS_CLICKHOUSE_URL;
+  if (!url) {
+    fail("CLICKHOUSE_URL not set. Is `pnpm run docker` up and apps/webapp/.env in place?");
+  }
+  const parsed = new URL(url);
+  // Never echo the URL — it carries credentials.
+  if (!LOCAL_HOSTS.has(parsed.hostname)) {
+    fail(`Refusing to run against a non-local ClickHouse host: ${parsed.hostname}`);
+  }
+  parsed.searchParams.delete("secure");
+  return new ClickHouse({ url: parsed.toString(), name: "watch-scenarios" });
+}
+
+function rawClient(ch: ClickHouse): RawCommand {
+  return (ch.writer as unknown as { client: RawCommand }).client;
+}
+
+/** Blocks until no mutation is outstanding — an insert mid-mutation resurrects rows. */
+async function waitForMutations(raw: RawCommand, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await raw.query({
+      query: `SELECT count() AS pending FROM system.mutations
+              WHERE is_done = 0 AND database = 'trigger_dev'`,
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as Array<{ pending: string | number }>;
+    if (Number(rows[0]?.pending ?? 0) === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  console.warn("Mutations still running after the wait — reads may lag a little.");
+}
+
+function chDateTime(date: Date): string {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+// ---------------------------------------------------------------------------
+// Queue depth: fill / grow / drain
+// ---------------------------------------------------------------------------
+
+async function queueFill(target: Target, queueName: string, depth: number, ageMinutes: number) {
+  await requireQueue(target, queueName);
+  const seen = await stageDepth(target, queueName, depth, ageMinutes);
   if (seen.perQueue !== depth) {
     fail(`Staged ${depth} but ${queueName} reads ${seen.perQueue}. Redis did not take the write.`);
   }
@@ -225,18 +368,9 @@ ${ageLine}
   A queue watch checks every 5 minutes at the fastest, so allow one cadence.`);
 }
 
-async function queueDrain(stand: Stand, queueName: string) {
-  await requireQueue(stand, queueName);
-  await stageRedisDepth(
-    stand.organizationId,
-    stand.environment.id,
-    0,
-    stand.environment.slug,
-    stand.projectId,
-    queueName,
-    { queueMemberCap: 0 }
-  );
-  const seen = await reportDepths(stand, queueName);
+async function queueDrain(target: Target, queueName: string) {
+  await requireQueue(target, queueName);
+  const seen = await stageDepth(target, queueName, 0);
   if (seen.perQueue !== 0) {
     fail(`${queueName} still reads ${seen.perQueue}. Redis did not take the write.`);
   }
@@ -252,121 +386,138 @@ created against an already-empty queue one-shots with "That already happened".`)
 // Error recurrence
 // ---------------------------------------------------------------------------
 
-type ErrorGroupRow = {
-  task_identifier: string;
-  error_fingerprint: string;
-  task_version: string;
-  error_type: string;
-  error_message: string;
-};
-
 /**
- * A fresh occurrence of the stand's seeded 429 group, in both tables the error
- * pages and the recurrence watch read:
+ * One failed run for a fixed fingerprint, written to `task_runs_v2` so the error
+ * materialized views build the group themselves. No pre-seeded data needed: the
+ * first call creates the group, every later call is a fresh occurrence of it.
  *
- * - `error_occurrences_v1` gets a new minute row (SummingMergeTree, so a repeat
- *   in the same minute sums rather than duplicating — that's the idempotence);
- * - `errors_v1` is re-inserted from its own row with `last_seen` moved to now.
- *   Its aggregate-state columns are carried over verbatim, which an
- *   AggregatingMergeTree merges back into one group rather than a second one.
- *
- * `error_recurrence` stamps its `since` when the watch is persisted, so this has
- * to run AFTER the watch exists — an occurrence written first is invisible to it.
+ * `error_recurrence` stamps its `since` when the watch is persisted, so run this
+ * once to create the group, arm the watch, then run it again.
  */
-async function errorRecur(stand: Stand) {
+async function errorRecur(target: Target, taskFlag: string | undefined) {
+  const taskIdentifier = taskFlag ?? (await pickErrorTask(target));
   const ch = clickhouse();
-  const raw = rawClient(ch);
-  const env = stand.environment.id;
+  const now = Date.now();
+  const runId = randomUUID().replaceAll("-", "");
+  const row: Record<string, unknown> = {
+    environment_id: target.environmentId,
+    organization_id: target.organizationId,
+    project_id: target.projectId,
+    run_id: runId,
+    updated_at: now,
+    created_at: now,
+    status: "COMPLETED_WITH_ERRORS",
+    environment_type: target.environmentType,
+    friendly_id: `run_${randomUUID().replaceAll("-", "").slice(0, 21)}`,
+    attempt: 1,
+    engine: "V2",
+    task_identifier: taskIdentifier,
+    queue: SCENARIO_QUEUE_NAME,
+    schedule_id: "",
+    batch_id: "",
+    completed_at: now,
+    started_at: now - 1_000,
+    executed_at: now - 1_000,
+    delay_until: null,
+    queued_at: now - 2_000,
+    expired_at: null,
+    usage_duration_ms: 1_000,
+    cost_in_cents: 0,
+    base_cost_in_cents: 0,
+    output: null,
+    // The replication path wraps the run error in `{ data }`; the error-group
+    // materialized views read `error.data.name` / `.message` / `.stack`.
+    error: { data: SCENARIO_ERROR },
+    error_fingerprint: SCENARIO_ERROR_FINGERPRINT,
+    tags: [],
+    task_version: "20260101.1",
+    sdk_version: "4.0.0",
+    cli_version: "4.0.0",
+    machine_preset: "small-1x",
+    root_run_id: "",
+    parent_run_id: "",
+    depth: 0,
+    span_id: generateSpanId(),
+    trace_id: generateTraceId(),
+    idempotency_key: "",
+    idempotency_key_user: "",
+    idempotency_key_scope: "",
+    expiration_ttl: "",
+    is_test: false,
+    _version: String(now),
+    _is_deleted: 0,
+    concurrency_key: "",
+    bulk_action_group_ids: [],
+    worker_queue: "main",
+    region: "",
+    plan_type: "",
+    max_duration_in_seconds: null,
+    trigger_source: "API",
+    root_trigger_source: "API",
+    task_kind: "",
+    is_warm_start: null,
+  };
 
-  const found = await raw.query({
-    query: `SELECT task_identifier, error_fingerprint, any(task_version) AS task_version,
-                   any(error_type) AS error_type, any(error_message) AS error_message
-            FROM trigger_dev.error_occurrences_v1
-            WHERE environment_id = '${env}'
-            GROUP BY task_identifier, error_fingerprint
-            ORDER BY max(minute) DESC
-            LIMIT 1`,
-    format: "JSONEachRow",
-  });
-  const rows = (await found.json()) as ErrorGroupRow[];
-  const group = rows[0];
-  if (!group) {
+  const [error] = await ch.taskRuns.insertCompactArrays(
+    [TASK_RUN_COLUMNS.map((column) => row[column])] as never,
+    {
+      params: {
+        clickhouse_settings: { async_insert: 0, insert_deduplication_token: `scenario:${runId}` },
+      },
+    }
+  );
+  if (error) {
     await ch.close();
-    fail(
-      `No error group in ${stand.environment.slug}. Seed the stand first:\n` +
-        `  pnpm --filter webapp run db:seed:agent-examples`
-    );
+    fail(`task_runs_v2 insert failed: ${error.message}`);
   }
 
-  await raw.command({
-    query: `INSERT INTO trigger_dev.error_occurrences_v1
-            SELECT organization_id, project_id, environment_id, task_identifier, error_fingerprint,
-                   task_version, toStartOfMinute(now()) AS minute,
-                   error_type, error_message, stack_trace, toUInt64(1) AS count
-            FROM trigger_dev.error_occurrences_v1
-            WHERE environment_id = '${env}' AND error_fingerprint = '${group.error_fingerprint}'
-            ORDER BY minute DESC
-            LIMIT 1`,
-  });
-
-  // FINAL, so the row selected is the merged group rather than one partial part
-  // of it — an unmerged part would carry a fraction of the counts forward.
-  await raw.command({
-    query: `INSERT INTO trigger_dev.errors_v1
-            SELECT organization_id, project_id, environment_id, task_identifier, error_fingerprint,
-                   error_type, error_message, sample_stack_trace,
-                   toDateTime(now()) AS last_seen_date,
-                   first_seen,
-                   now64(3) AS last_seen,
-                   occurrence_count, affected_task_versions,
-                   sample_run_id, sample_friendly_id, status_distribution
-            FROM trigger_dev.errors_v1 FINAL
-            WHERE environment_id = '${env}' AND error_fingerprint = '${group.error_fingerprint}'
-            LIMIT 1`,
-  });
-
+  // The groups are Aggregating/SummingMergeTrees; a read that follows straight
+  // away can't wait for a background merge.
+  const raw = rawClient(ch);
   for (const table of ["errors_v1", "error_occurrences_v1"]) {
     await raw.command({ query: `OPTIMIZE TABLE trigger_dev.${table} FINAL` });
   }
   await ch.close();
 
   console.log(`
-${group.error_type} on ${group.task_identifier} recurred just now.
-  fingerprint  ${group.error_fingerprint}
-  message      ${group.error_message}
+${SCENARIO_ERROR.name} on ${taskIdentifier} happened just now.
+  fingerprint  ${SCENARIO_ERROR_FINGERPRINT}
+  message      ${SCENARIO_ERROR.message}
 
 An armed "if it recurs" watch resolves on its next check (≤5 min) with
-"Error ${group.error_fingerprint.slice(0, 8)} happened again". Arm the watch FIRST — the
-watch only counts occurrences after the moment it was created.
+"Error ${SCENARIO_ERROR_FINGERPRINT.slice(0, 8)} happened again". The watch only counts
+occurrences after it was created, so: run this once, arm the watch, run it again.
 
   Errors → this group → Watch… (tick "Investigate attention outcomes" under
   Customize to get the investigation conducted for you when it fires).`);
+}
+
+/** Any task that has run in this environment, else the kit's own identifier. */
+async function pickErrorTask(target: Target): Promise<string> {
+  const task = await prisma.backgroundWorkerTask.findFirst({
+    where: { runtimeEnvironmentId: target.environmentId },
+    select: { slug: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return task?.slug ?? SCENARIO_TASK_ID;
 }
 
 // ---------------------------------------------------------------------------
 // Real runs, for the run watches
 // ---------------------------------------------------------------------------
 
-async function triggerHelloWorld(taskId: string, seconds: number) {
-  const project = await prisma.project.findFirst({
-    where: { externalRef: HELLO_WORLD_PROJECT_REF },
-  });
-  if (!project) {
-    fail(`No hello-world project. Run \`pnpm run db:seed\` first (it creates the References org).`);
-  }
-  const environment = await prisma.runtimeEnvironment.findFirst({
-    where: { projectId: project.id, type: "DEVELOPMENT" },
-    select: { apiKey: true, slug: true },
-  });
-  if (!environment?.apiKey) {
-    fail(`hello-world has no dev environment key. Re-run \`pnpm run db:seed\`.`);
-  }
-
+async function runScenario(
+  target: Target,
+  kind: "fail" | "succeed",
+  seconds: number,
+  taskFlag: string | undefined
+) {
+  const taskId = taskFlag ?? (kind === "fail" ? DEFAULT_FAIL_TASK : DEFAULT_SUCCEED_TASK);
   const response = await fetch(`${APP_ORIGIN}/api/v1/tasks/${taskId}/trigger`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${environment.apiKey}`,
+      authorization: `Bearer ${target.apiKey}`,
     },
     body: JSON.stringify({ payload: { seconds } }),
   }).catch((error: unknown) => {
@@ -380,53 +531,327 @@ async function triggerHelloWorld(taskId: string, seconds: number) {
   if (!response.ok || !body?.id) {
     fail(
       `Trigger failed (${response.status}): ${body?.error ?? "no run id"}\n` +
-        `Is the task deployed? \`${taskId}\` lives in the references repo — see\n` +
-        `internal-packages/dashboard-agent/SCENARIOS.md for its source, then run\n` +
-        `\`pnpm exec trigger dev --profile local\` in projects/hello-world.`
+        `\`${taskId}\` has to exist in ${target.projectSlug}/${target.environmentSlug} with a\n` +
+        `running \`trigger dev\`. The task source is in\n` +
+        `internal-packages/dashboard-agent/GUIDEBOOK.md, or pass --task <your-task>.`
     );
   }
-  return { runId: body.id, projectSlug: project.slug, envSlug: environment.slug };
-}
 
-async function runScenario(kind: "fail" | "succeed", seconds: number) {
-  const taskId = kind === "fail" ? SLOW_FAIL_TASK_ID : SLOW_SUCCEED_TASK_ID;
-  const { runId } = await triggerHelloWorld(taskId, seconds);
   console.log(`
-${taskId} is running for ~${seconds}s: ${runId}
+${taskId} is running for ~${seconds}s: ${body.id}
 
-Next, in the dashboard (hello-world project, dev):
-  Runs → ${runId} → Watch… → Customize
+Next, in the dashboard (${target.projectSlug}, ${target.environmentSlug}):
+  Runs → ${body.id} → Watch… → Customize
     "when it finishes"  → resolves ${
-      kind === "fail" ? `"Run ${runId} failed"` : `"Run ${runId} finished"`
+      kind === "fail" ? `"Run ${body.id} failed"` : `"Run ${body.id} finished"`
     }
     "if it fails"       → ${
       kind === "fail"
-        ? `resolves "Run ${runId} failed"; tick "Investigate attention outcomes" to get the failure investigated for you`
-        : `can't happen — when the run succeeds the watch resolves "Run ${runId} succeeded" instead`
+        ? `resolves "Run ${body.id} failed"; tick "Investigate attention outcomes" to get the failure investigated for you`
+        : `can't happen — when the run succeeds the watch resolves "Run ${body.id} succeeded" instead`
     }
   A run watch can check every minute, so pick a window with room for the sleep.`);
 }
 
 // ---------------------------------------------------------------------------
-// Health, delegated to the seeder
+// Health: flip the report between critical and ok
 // ---------------------------------------------------------------------------
 
-/** The seeder owns the flip: spawn it rather than re-derive its window arithmetic. */
-async function healthFlip(mode: "degrade" | "recover") {
-  const script = fileURLToPath(new URL("./seed-agent-examples.mts", import.meta.url));
-  const code = await new Promise<number>((resolve) => {
-    const child = spawn("pnpm", ["exec", "tsx", script, `--${mode}`], {
-      stdio: "inherit",
-      cwd: fileURLToPath(new URL(".", import.meta.url)),
+/**
+ * Every queue-metrics table the kit's rows reach. The rollups are fed by
+ * materialized views on insert, so deleting the raw landing table does nothing
+ * to what the report reads — each table has to be named.
+ */
+const METRIC_TABLES: Array<{ table: string; timeColumn: string; envQueuedColumn?: string }> = [
+  { table: "queue_metrics_raw_v1", timeColumn: "event_time", envQueuedColumn: "env_queued" },
+  { table: "queue_metrics_v1", timeColumn: "bucket_start", envQueuedColumn: "max_env_queued" },
+  { table: "queue_metrics_5m_v1", timeColumn: "bucket_start", envQueuedColumn: "max_env_queued" },
+  { table: "env_metrics_v1", timeColumn: "bucket_start", envQueuedColumn: "max_env_queued" },
+  { table: "queue_metrics_ck_v1", timeColumn: "bucket_start" },
+];
+
+/** The report reads a 1h window; 2h clears it with room for clock skew. */
+const FLIP_LOOKBACK_HOURS = 2;
+const LIVE_BUCKET_SEC = 10;
+const BASELINE_BUCKET_SEC = 300;
+const BASELINE_DAYS = 7;
+/** Minutes of pinned buckets `health:degrade` writes. */
+const DEGRADE_WINDOW_MINUTES = 35;
+/** Minutes of calm buckets `health:recover` writes, so the live window isn't empty. */
+const RECOVER_WINDOW_MINUTES = 10;
+/** The degraded story's numbers: the ceiling held, the backlog climbing. */
+const DEGRADED_PENDING = 4_800;
+const CALM_PENDING = 12;
+const BASELINE_RUNS_PER_MIN = 6;
+const DEGRADED_ARRIVALS_PER_MIN = 1_000;
+const DEGRADED_STARTS_PER_MIN = 820;
+const CALM_WAIT_MS = 2_500;
+const DEGRADED_WAIT_MS = 16_000;
+/**
+ * Above this env-level depth a bucket belongs to a pinned window, not the calm
+ * baseline. Used to purge earlier pinned windows that have aged out of the flip
+ * window — otherwise the degraded window is measured against itself.
+ */
+const DEGRADED_QUEUED_FLOOR = 200;
+/** Wait samples per bucket. A 5-minute baseline bucket needs proportionally more. */
+const LIVE_WAIT_SAMPLES = 4;
+const BASELINE_WAIT_SAMPLES = 16;
+
+type ChIds = { organization_id: string; project_id: string; environment_id: string };
+
+type BucketShape = {
+  envRunning: number;
+  envQueued: number;
+  startedPerMin: number;
+  arrivalsPerMin: number;
+  waitMs: number;
+  throttled: boolean;
+  waitSamples: number;
+  bucketSec: number;
+};
+
+/**
+ * A bucket emitter with the per-queue odometers in its closure: the rollup reads
+ * the counters as monotonic odometers, so a bucket can only be appended by an
+ * emitter that remembers where the last one left off.
+ */
+function createBucketEmitter(ids: ChIds, queueName: string, envLimit: number, epochMs: number) {
+  const odometers: Record<string, number> = { enqueue: 0, ack: 0, started: 0 };
+  // Strictly increasing for the life of the emitter, seeded from the wall clock so
+  // a later process's keys always sort after an earlier one's.
+  let key = Math.floor(epochMs / 1000) * 1_000_000;
+  const orderKey = () => ++key;
+
+  const counter = (
+    eventTime: string,
+    op: "enqueue" | "started" | "ack",
+    increment: number,
+    waitMs?: number
+  ): QueueMetricsRawV1Input[] => {
+    const rows: QueueMetricsRawV1Input[] = [];
+    // The first row of a counter has to establish a zero point before any delta
+    // can be attributed to it.
+    if (odometers[op] === 0) {
+      rows.push({
+        ...ids,
+        queue_name: queueName,
+        event_time: eventTime,
+        op,
+        cumulative: 0,
+        order_key: orderKey(),
+      });
+    }
+    odometers[op] += increment;
+    rows.push({
+      ...ids,
+      queue_name: queueName,
+      event_time: eventTime,
+      op,
+      cumulative: odometers[op],
+      order_key: orderKey(),
+      ...(waitMs !== undefined ? { wait_ms: waitMs } : {}),
     });
-    child.on("exit", (exitCode) => resolve(exitCode ?? 1));
-    child.on("error", () => resolve(1));
+    return rows;
+  };
+
+  return (bucketMs: number, shape: BucketShape): QueueMetricsRawV1Input[] => {
+    const eventTime = chDateTime(new Date(bucketMs));
+    const rows: QueueMetricsRawV1Input[] = [
+      {
+        ...ids,
+        queue_name: queueName,
+        event_time: eventTime,
+        op: "gauge",
+        running: Math.min(envLimit, shape.envRunning),
+        queued: shape.envQueued,
+        queue_limit: envLimit,
+        env_running: shape.envRunning,
+        env_queued: shape.envQueued,
+        env_limit: envLimit,
+        throttled: shape.throttled && shape.envQueued > 0 ? 1 : 0,
+      },
+    ];
+    const arrivals = Math.max(1, Math.round((shape.arrivalsPerMin * shape.bucketSec) / 60));
+    const started = Math.max(1, Math.round((shape.startedPerMin * shape.bucketSec) / 60));
+    rows.push(...counter(eventTime, "enqueue", arrivals));
+    rows.push(...counter(eventTime, "ack", started));
+    const perSample = Math.max(1, Math.round(started / shape.waitSamples));
+    for (let s = 0; s < shape.waitSamples; s++) {
+      rows.push(...counter(eventTime, "started", perSample, Math.round(shape.waitMs)));
+    }
+    return rows;
+  };
+}
+
+function calmShape(bucketSec: number, waitSamples: number, progress = 1): BucketShape {
+  return {
+    envRunning: 6,
+    // Decreasing on purpose: a rising series flags the throughput metric even at
+    // a depth of two runs.
+    envQueued: Math.max(0, Math.round(2 * (1 - progress))),
+    startedPerMin: BASELINE_RUNS_PER_MIN,
+    arrivalsPerMin: BASELINE_RUNS_PER_MIN,
+    waitMs: CALM_WAIT_MS,
+    throttled: false,
+    waitSamples,
+    bucketSec,
+  };
+}
+
+function pinnedShape(envLimit: number, progress: number): BucketShape {
+  return {
+    envRunning: envLimit,
+    envQueued: Math.round(60 + (DEGRADED_PENDING - 60) * progress),
+    startedPerMin: DEGRADED_STARTS_PER_MIN,
+    arrivalsPerMin: DEGRADED_ARRIVALS_PER_MIN,
+    waitMs: CALM_WAIT_MS + (DEGRADED_WAIT_MS - CALM_WAIT_MS) * progress,
+    throttled: true,
+    waitSamples: LIVE_WAIT_SAMPLES,
+    bucketSec: LIVE_BUCKET_SEC,
+  };
+}
+
+async function insertMetrics(ch: ClickHouse, rows: QueueMetricsRawV1Input[], nonce: string) {
+  const BATCH = 25_000;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const [error] = await ch.queueMetrics.insertRaw(rows.slice(i, i + BATCH), {
+      params: {
+        clickhouse_settings: { async_insert: 0, insert_deduplication_token: `${nonce}:${i}` },
+      },
+    });
+    if (error) fail(`queue_metrics_raw_v1 insert failed: ${error.message}`);
+  }
+}
+
+/** The rollups are AggregatingMergeTrees; a flip about to be read can't wait for merges. */
+async function optimizeRollups(ch: ClickHouse) {
+  const raw = rawClient(ch);
+  for (const { table } of METRIC_TABLES) {
+    if (table === "queue_metrics_raw_v1") continue;
+    await raw.command({ query: `OPTIMIZE TABLE trigger_dev.${table} FINAL` });
+  }
+}
+
+async function deleteFlipWindow(ch: ClickHouse, environmentId: string) {
+  const raw = rawClient(ch);
+  for (const { table, timeColumn } of METRIC_TABLES) {
+    await raw.command({
+      query: `ALTER TABLE trigger_dev.${table} DELETE WHERE environment_id = '${environmentId}'
+              AND ${timeColumn} > now() - INTERVAL ${FLIP_LOOKBACK_HOURS} HOUR
+              SETTINGS mutations_sync = 2`,
+    });
+  }
+  await waitForMutations(raw);
+}
+
+/**
+ * Drops pinned buckets an earlier degrade left behind the flip window. Hours of
+ * 10-second pinned buckets outnumber the 5-minute baseline, so the 7-day normals
+ * drift up to the anomaly's own numbers and it stops reading as degraded.
+ */
+async function purgePinnedBaseline(ch: ClickHouse, environmentId: string) {
+  const raw = rawClient(ch);
+  for (const { table, timeColumn, envQueuedColumn } of METRIC_TABLES) {
+    if (!envQueuedColumn) continue;
+    await raw.command({
+      query: `ALTER TABLE trigger_dev.${table} DELETE WHERE environment_id = '${environmentId}'
+              AND ${timeColumn} <= now() - INTERVAL ${FLIP_LOOKBACK_HOURS} HOUR
+              AND ${envQueuedColumn} >= ${DEGRADED_QUEUED_FLOOR}
+              SETTINGS mutations_sync = 2`,
+    });
+  }
+  await waitForMutations(raw);
+}
+
+/** Writes a 7-day calm baseline once — without it there is no "normal" to be anomalous against. */
+async function ensureBaseline(ch: ClickHouse, target: Target, queueName: string, ids: ChIds) {
+  const raw = rawClient(ch);
+  const result = await raw.query({
+    query: `SELECT count() AS buckets FROM trigger_dev.queue_metrics_v1
+            WHERE environment_id = '${target.environmentId}'
+              AND bucket_start <= now() - INTERVAL ${FLIP_LOOKBACK_HOURS} HOUR`,
+    format: "JSONEachRow",
   });
-  if (code !== 0) fail(`The seeder's --${mode} exited with ${code}.`);
+  const rows = (await result.json()) as Array<{ buckets: string | number }>;
+  if (Number(rows[0]?.buckets ?? 0) > 500) return;
+
+  const now = Date.now();
+  const emit = createBucketEmitter(ids, queueName, target.envConcurrencyLimit, now);
+  const buckets = (BASELINE_DAYS * 24 * 3600) / BASELINE_BUCKET_SEC;
+  const start =
+    Math.floor((now - BASELINE_DAYS * 24 * 3600_000) / 1000 / BASELINE_BUCKET_SEC) *
+    BASELINE_BUCKET_SEC *
+    1000;
+  const metricRows: QueueMetricsRawV1Input[] = [];
+  for (let b = 0; b < buckets; b++) {
+    const bucketMs = start + b * BASELINE_BUCKET_SEC * 1000;
+    if (bucketMs >= now - FLIP_LOOKBACK_HOURS * 3600_000) break;
+    metricRows.push(...emit(bucketMs, calmShape(BASELINE_BUCKET_SEC, BASELINE_WAIT_SAMPLES, 0.5)));
+  }
+  await insertMetrics(ch, metricRows, `scenario-baseline-${now}`);
+  console.log(`Wrote a ${BASELINE_DAYS}-day calm baseline (${metricRows.length} rows).`);
+}
+
+/** Writes a fresh live window ending now, in one mode or the other. */
+async function writeLiveWindow(
+  ch: ClickHouse,
+  target: Target,
+  queueName: string,
+  ids: ChIds,
+  mode: "degraded" | "calm"
+) {
+  const now = Date.now();
+  const emit = createBucketEmitter(ids, queueName, target.envConcurrencyLimit, now);
+  const minutes = mode === "calm" ? RECOVER_WINDOW_MINUTES : DEGRADE_WINDOW_MINUTES;
+  const buckets = Math.round((minutes * 60) / LIVE_BUCKET_SEC);
+  const nowBucket = Math.floor(now / 1000 / LIVE_BUCKET_SEC) * LIVE_BUCKET_SEC * 1000;
+  const rows: QueueMetricsRawV1Input[] = [];
+  for (let b = 0; b < buckets; b++) {
+    const bucketMs = nowBucket - (buckets - 1 - b) * LIVE_BUCKET_SEC * 1000;
+    const progress = buckets === 1 ? 1 : b / (buckets - 1);
+    rows.push(
+      ...emit(
+        bucketMs,
+        mode === "calm"
+          ? calmShape(LIVE_BUCKET_SEC, LIVE_WAIT_SAMPLES, progress)
+          : pinnedShape(target.envConcurrencyLimit, progress)
+      )
+    );
+  }
+  await insertMetrics(ch, rows, `scenario-${mode}-${now}`);
+  console.log(`Wrote ${minutes}m of ${mode} buckets (${rows.length} rows).`);
+}
+
+async function healthFlip(target: Target, mode: "degrade" | "recover", queueFlag?: string) {
+  const queueName = await pickMetricsQueue(target, queueFlag);
+  const ids: ChIds = {
+    organization_id: target.organizationId,
+    project_id: target.projectId,
+    environment_id: target.environmentId,
+  };
+  const ch = clickhouse();
+
+  if (mode === "degrade") {
+    // Merge first: a DELETE on `max_env_queued` only sees the value each part
+    // holds, so an unmerged pinned bucket would survive the purge.
+    await optimizeRollups(ch);
+    await purgePinnedBaseline(ch, target.environmentId);
+  }
+  await ensureBaseline(ch, target, queueName, ids);
+  await deleteFlipWindow(ch, target.environmentId);
+  await writeLiveWindow(ch, target, queueName, ids, mode === "degrade" ? "degraded" : "calm");
+  await optimizeRollups(ch);
+  await ch.close();
+
+  const depth = mode === "degrade" ? DEGRADED_PENDING : CALM_PENDING;
+  await stageDepth(target, queueName, depth);
+
   console.log(
-    mode === "recover"
-      ? `\nAn armed "when it recovers" watch resolves on its next check (≤5 min) with "Health recovered".`
-      : `\nAsk the agent "is anything wrong right now?" for the degraded report card.`
+    mode === "degrade"
+      ? `\n${target.environmentSlug} is pinned at its concurrency ceiling with ${depth} runs waiting.
+Ask the agent "is anything wrong right now?" for the degraded report card.`
+      : `\n${target.environmentSlug} is calm again (${depth} runs waiting).
+An armed "when it recovers" watch resolves on its next check (≤5 min) with "Health recovered".`
   );
 }
 
@@ -435,9 +860,9 @@ async function healthFlip(mode: "degrade" | "recover") {
 // ---------------------------------------------------------------------------
 
 function printHelp() {
-  console.log(`Watch / Investigate scenarios over the seeded agent-examples stand.
+  console.log(`Watch / Investigate scenarios, against any local project and environment.
 
-Usage: pnpm --filter webapp run scenarios:watch -- <verb> [args] [--env prod|dev]
+Usage: pnpm --filter webapp run scenarios:watch -- <verb> [args] --project <ref-or-slug> [--env dev]
 
 Verbs:
   queue:fill <queue> <depth> [--age-min N]
@@ -447,20 +872,26 @@ Verbs:
                     same thing, named for the "if it grows" watch.
   queue:drain <queue>
                     empty the queue. Arm the drain watch first.
-  error:recur       one fresh occurrence of the stand's seeded error group.
-                    Arm the recurrence watch first — it only counts what comes
-                    after it was created.
-  run:fail [sec]    trigger hello-world's ${SLOW_FAIL_TASK_ID} (default ${DEFAULT_RUN_SECONDS}s).
-  run:succeed [sec] trigger hello-world's ${SLOW_SUCCEED_TASK_ID} (default ${DEFAULT_RUN_SECONDS}s).
-  health:degrade    the stand's report goes critical (the seeder's --degrade).
-  health:recover    the stand's report goes ok (the seeder's --recover).
+  error:recur [--task <id>]
+                    one failed run for the kit's fingerprint. Run it once to
+                    create the group, arm the watch, run it again to recur.
+  run:fail [sec] [--task <id>]
+                    trigger ${DEFAULT_FAIL_TASK} (default ${DEFAULT_RUN_SECONDS}s).
+  run:succeed [sec] [--task <id>]
+                    trigger ${DEFAULT_SUCCEED_TASK} (default ${DEFAULT_RUN_SECONDS}s).
+  health:degrade [--queue <name>]
+                    the health report goes critical.
+  health:recover [--queue <name>]
+                    the health report goes ok.
 
-Prerequisites: \`pnpm run docker\`, \`pnpm run db:seed\`,
-\`pnpm --filter webapp run db:seed:agent-examples\`, a running webapp, a running
-\`trigger dev\` for the agent project, ANTHROPIC_API_KEY exported — and, for the
-run verbs, \`trigger dev\` in the references repo's projects/hello-world.
+Flags:
+  --project <ref-or-slug>  the local project to target (required).
+  --env <dev|staging|prod|slug>   default dev.
 
-Walkthroughs: internal-packages/dashboard-agent/SCENARIOS.md`);
+Prerequisites: \`pnpm run docker\`, migrations, a running webapp, ANTHROPIC_API_KEY
+exported — and, for the run verbs, a \`trigger dev\` with the named task.
+
+Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md`);
 }
 
 async function main() {
@@ -493,33 +924,30 @@ async function main() {
     return value;
   };
 
+  const target = await resolveTarget(flags.project, flags.env);
+
   switch (verb) {
     case "queue:fill":
     case "queue:grow":
-      await queueFill(
-        await resolveStand(flags.env),
-        requireQueueName(),
-        requireDepth(),
-        ageMinutes()
-      );
+      await queueFill(target, requireQueueName(), requireDepth(), ageMinutes());
       break;
     case "queue:drain":
-      await queueDrain(await resolveStand(flags.env), requireQueueName());
+      await queueDrain(target, requireQueueName());
       break;
     case "error:recur":
-      await errorRecur(await resolveStand(flags.env));
+      await errorRecur(target, flags.task);
       break;
     case "run:fail":
-      await runScenario("fail", seconds());
+      await runScenario(target, "fail", seconds(), flags.task);
       break;
     case "run:succeed":
-      await runScenario("succeed", seconds());
+      await runScenario(target, "succeed", seconds(), flags.task);
       break;
     case "health:degrade":
-      await healthFlip("degrade");
+      await healthFlip(target, "degrade", flags.queue);
       break;
     case "health:recover":
-      await healthFlip("recover");
+      await healthFlip(target, "recover", flags.queue);
       break;
     default:
       console.error(`Unknown verb: ${verb}\n`);
