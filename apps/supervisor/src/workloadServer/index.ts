@@ -60,6 +60,13 @@ const checkpointDeleteRequests = new Counter({
   registers: [register],
 });
 
+const checkpointCancelRequests = new Counter({
+  name: "checkpoint_cancel_requests_total",
+  help: "Checkpoint cancel requests attempted when a run continues, by outcome",
+  labelNames: ["result"],
+  registers: [register],
+});
+
 const WorkloadActionParams = z.object({
   runFriendlyId: z.string(),
   snapshotFriendlyId: z.string(),
@@ -281,6 +288,30 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     }
 
     checkpointDeleteRequests.inc({ result: "sent" });
+  }
+
+  private async cancelCheckpointsAfterReply(runFriendlyId: string): Promise<void> {
+    if (!this.checkpointClient) {
+      checkpointCancelRequests.inc({ result: "no_client" });
+      return;
+    }
+
+    if (this.snapshotService) {
+      checkpointCancelRequests.inc({ result: "not_applicable" });
+      return;
+    }
+
+    const [error, accepted] = await tryCatch(
+      this.checkpointClient.cancelCheckpoints({ runFriendlyId })
+    );
+
+    if (error || !accepted) {
+      checkpointCancelRequests.inc({ result: "http_error" });
+      this.logger.error("Failed to request checkpoint cancel", { runFriendlyId, error });
+      return;
+    }
+
+    checkpointCancelRequests.inc({ result: "sent" });
   }
 
   /**
@@ -643,6 +674,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
+
+                await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }
             ),
         }

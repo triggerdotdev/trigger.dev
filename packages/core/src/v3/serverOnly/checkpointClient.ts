@@ -13,6 +13,8 @@ export type CheckpointClientOptions = {
   orchestrator: CheckpointType;
 };
 
+const CANCEL_TIMEOUT_MS = 5_000;
+
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
 
@@ -149,6 +151,23 @@ export class CheckpointClient {
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Delete checkpoints request failed", {
+        runFriendlyId,
+        status: res.status,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  async cancelCheckpoints({ runFriendlyId }: { runFriendlyId: string }): Promise<boolean> {
+    const res = await fetch(
+      new URL(`/api/v1/runs/${runFriendlyId}/checkpoints/cancel`, this.opts.apiUrl),
+      { method: "POST", signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS) }
+    );
+
+    if (!res.ok) {
+      this.logger.error("[CheckpointClient] Cancel checkpoints request failed", {
         runFriendlyId,
         status: res.status,
       });
