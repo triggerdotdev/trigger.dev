@@ -59,7 +59,7 @@ export function loadTypescript(
       "The emitDecoratorMetadata() build extension requires the TypeScript JavaScript compiler API,",
       "which TypeScript 7 does not expose.",
       "",
-      "Install Microsoft's TypeScript 6 compatibility package alongside TypeScript 7:",
+      "Install the TypeScript 6 compatibility package alongside TypeScript 7:",
       "",
       "  npm install --save-dev @typescript/typescript6",
       "",
