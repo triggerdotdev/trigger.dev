@@ -1,21 +1,14 @@
 /**
- * What a submitted watch card leaves in the transcript (§2.2, binding).
+ * What a submitted watch card leaves in the transcript, in two flavours.
  *
- * Two flavours, one block:
+ * A confirmation states the watch's lifetime facts and is the only transcript record
+ * of the request. A one-shot result means the immediate check answered outright and
+ * no watch was created, so no chip appears, no wake arrives and there is nothing to
+ * cancel.
  *
- * - **Confirmation** — a watch is running. It states the four lifetime facts
- *   (what · how often it checks · that it reports once · when it gives up) and it
- *   is the ONLY transcript record of the request: there is no separate "please
- *   watch this" line above it, because that line would say the same thing twice.
- * - **One-shot result** — the immediate check answered outright, so no watch was
- *   created (§4.1). No chip will appear, no wake will arrive, and there is
- *   nothing to cancel.
- *
- * PURE COMPONENT: props in, markup out, so the panel and the gallery render it
- * from the same payload. The wording is not computed here — it was FROZEN into
- * the block at append time by `watch-presentation.ts`, the same way a resolved
- * watch's facts are frozen (§7.5), so a later copy change never rewrites what a
- * user was already told.
+ * Pure component: the wording is not computed here, it was frozen into the block at
+ * append time by `watch-presentation.ts`, so a later copy change never rewrites what
+ * a user was already told.
  */
 import { CheckCircleIcon, EyeIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import type { WatchResultBlock as WatchResultBlockPayload } from "@internal/dashboard-agent-contracts";
@@ -24,9 +17,9 @@ import { TONE_ICON_COLOR } from "./agent-badges";
 import { cn } from "~/utils/cn";
 
 /**
- * Icon and label per outcome. A confirmation is not "success" — nothing has
- * happened yet — so it wears the neutral watching eye rather than a check; the
- * check belongs to the one-shot that really did answer the question.
+ * Icon and label per outcome. A confirmation is not a success (nothing has happened
+ * yet) so it wears the neutral eye; the check belongs to the one-shot that did
+ * answer the question.
  */
 const OUTCOME = {
   watching: { label: "Watch", Icon: EyeIcon, tone: "neutral" },

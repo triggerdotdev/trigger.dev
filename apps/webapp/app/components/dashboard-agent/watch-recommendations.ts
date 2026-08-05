@@ -1,20 +1,11 @@
 /**
- * The condition each object recommends when its **Watch…** action opens (§2.1).
+ * The condition each object recommends when its Watch action opens: a run when it
+ * finishes, a queue on the wait SLA (or the drain, when the wait is already past
+ * it), an error if it happens again, a degraded health report when it recovers.
  *
- * Kept out of the routes and out of the button, exactly like `investigate-prompts.ts`:
- * these defaults are product decisions (which condition, how long, how often), and
- * they carry real identifiers, so they belong in one testable place.
- *
- * | Object | Recommendation |
- * |---|---|
- * | Run | when it finishes |
- * | Queue | if runs start waiting past the SLA — or, when the wait is already
- *   past it, when the backlog drains |
- * | Error | if it happens again |
- * | Health (degraded) | when it recovers |
- *
- * Every other variant is one tap deeper, under **Customize** — nothing here is a
- * menu of options.
+ * These defaults are product decisions and carry real identifiers, so they live in
+ * one testable place rather than in the routes or the button. Every other variant
+ * is one tap deeper under Customize.
  */
 import {
   WATCH_DEFAULT_QUEUE_AGE_MINUTES,
@@ -23,8 +14,8 @@ import {
 import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 
 /**
- * A run is the one object worth checking every minute: it is a single row read,
- * and a run that lands in ninety seconds should not be reported five minutes late.
+ * A run is the one object worth checking every minute: it is a single row read, and
+ * a run that lands in ninety seconds should not be reported five minutes late.
  */
 export function runWatchRecommendation(runFriendlyId: string): WatchSpec {
   return {
@@ -37,18 +28,13 @@ export function runWatchRecommendation(runFriendlyId: string): WatchSpec {
 }
 
 /**
- * A backlog is an aggregate, so the cadence starts at the 5-minute floor (§7.1).
+ * A backlog is an aggregate, so the cadence starts at the 5-minute floor.
  *
- * The recommendation is CONTEXTUAL, and it must be a FUTURE condition: a watch
- * whose condition is already true one-shots with "that already happened". On a
- * queue whose head-of-line run is already waiting past the threshold the page
- * tints warning at, the SLA breach is old news — the useful promise is the
- * recovery, "tell me when it drains". On a queue that is NOT late yet, the drain
- * may already be true (an empty queue) while "tell me if runs start waiting too
- * long" is the thing that hasn't happened. Everything else stays one tap deeper
- * under **Customize** (§2.1). The signal is threaded from the page, the same way
- * `degraded` is derived for the Investigate button; without it the recommendation
- * is the SLA.
+ * The recommendation must be a future condition: a watch whose condition is already
+ * true one-shots with "that already happened". A queue already waiting past the
+ * warning threshold gets the recovery ("when it drains"); a queue not late yet gets
+ * the SLA, since its drain may already be true. `oldestWaitMs` is threaded from the
+ * page; without it the recommendation is the SLA.
  */
 export function queueWatchRecommendation(
   queueName: string,
@@ -68,7 +54,7 @@ export function queueWatchRecommendation(
   return queueAgeWatchRecommendation(queueName);
 }
 
-/** "Runs wait longer than N minutes" — the SLA the queue page already calls late. */
+/** The wait SLA the queue page already calls late. */
 export function queueAgeWatchRecommendation(
   queueName: string,
   thresholdMinutes: number = WATCH_DEFAULT_QUEUE_AGE_MINUTES
@@ -84,9 +70,8 @@ export function queueAgeWatchRecommendation(
 }
 
 /**
- * A recurrence needs room to happen: an error that comes back in ten minutes was
- * never really fixed, but plenty come back within the working day — hence the
- * longer window than the other three.
+ * A recurrence needs room to happen, so the window is longer than the other three:
+ * plenty of errors come back within the working day rather than in ten minutes.
  */
 export function errorWatchRecommendation(errorFriendlyId: string): WatchSpec {
   return {
@@ -99,9 +84,8 @@ export function errorWatchRecommendation(errorFriendlyId: string): WatchSpec {
 }
 
 /**
- * Only offered on a DEGRADED report: "watch for a recovery" is meaningless while
- * everything is fine, and `fromSeverity` is the state the recovery is measured
- * from.
+ * Only offered on a degraded report: a recovery watch is meaningless while
+ * everything is fine. `fromSeverity` is the state the recovery is measured from.
  */
 export function healthWatchRecommendation(fromSeverity: "warn" | "crit"): WatchSpec {
   return {

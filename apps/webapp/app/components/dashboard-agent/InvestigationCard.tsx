@@ -1,28 +1,18 @@
 /**
- * The investigation card — the panel's rendering of an `investigation` view block.
+ * The panel's rendering of an `investigation` view block.
  *
- * The anatomy is the one the design review approved on `DemoInvestigationCard`
- * (bordered card, header strip with badges, `Section` bodies, collapsed verdict
- * with expandable hypotheses, progress line outside the card). The difference is
- * the data: this reads the validated contracts payload, and the demo card stays
- * where it is as the reviewed reference.
+ * The card shows no spinner of its own. The transcript has exactly one live
+ * progress element for the whole turn (see `progress-line.ts`), and a spinner
+ * here would restart its animation on every revision of the card.
  *
- * The card shows NO spinner of its own, not even while the investigation is
- * unfinished. The transcript has exactly one live progress element for the whole
- * turn and the card's `progress` phrase is one of the labels it wears (see
- * `progress-line.ts`); a row inside the card would be a second spinner, and one
- * that restarts its animation on every revision of the card.
+ * An investigation is the one progressive block: its `id` is the investigationId
+ * and its `revision` climbs, so re-emitting it replaces this card instead of
+ * stacking a second one (see `view-blocks.ts`).
  *
- * An investigation is the one *progressive* block: its `id` is the
- * investigationId and its `revision` climbs, so re-emitting it replaces this card
- * rather than stacking a second one (see `view-blocks.ts`).
- *
- * PURE COMPONENT, like `ReportView`: props in, markup out. No Remix hooks, no
- * loader data, no router context — which is what lets it render in the panel and
- * in the storybook gallery from the same fixture. `useState` for the disclosure
- * is local UI state, not host data. `trigger://` evidence URIs are resolved by
- * the HOST through `resolveUri`; without a resolver the raw URI is shown, which
- * is still the check that the agent cited something addressable.
+ * Pure component: props in, markup out, no Remix hooks or router context, so it
+ * renders in the panel and the gallery from the same fixture. `trigger://`
+ * evidence URIs are resolved by the host through `resolveUri`; without a
+ * resolver the raw URI is shown.
  */
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type {
@@ -83,16 +73,15 @@ function EvidenceItem({
   const resolved = resolveUri?.(evidence.uri) ?? null;
   return (
     <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
-      {/* `w-fit` is what keeps the badge its own size when it is a block child of
-          the stacked item — the Badge primitive is a grid, so it would otherwise
-          stretch the full width and read as a bar. */}
+      {/* `w-fit` keeps the badge its own size in the stacked item: the Badge
+          primitive is a grid and would otherwise stretch to full width. */}
       <CategoryBadge className="w-fit justify-self-start">{evidence.kind}</CategoryBadge>
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-text-bright">{evidence.label}</p>
         {resolved ? (
           <a
             href={resolved.url}
-            // The app's link token (theme-remapped), same as the report card's links.
+            // The app's link token (theme-remapped), as the report card uses.
             className="block break-all font-mono text-[10px] text-text-link transition hover:underline"
           >
             {resolved.label}
@@ -119,9 +108,6 @@ function HypothesisRow({
 }) {
   return (
     <li className="space-y-3 border-l-2 border-grid-bright pl-4">
-      {/* The "Testing" badge is the whole signal — no spinner beside it. The
-          transcript's one progress line already says the agent is working, and a
-          canvas here would restart on every revision of the card. */}
       <div className="flex flex-wrap items-center gap-2">
         <VerdictBadge verdict={hypothesis.verdict}>
           {VERDICT_LABELS[hypothesis.verdict]}
@@ -130,10 +116,9 @@ function HypothesisRow({
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
-        // Stacked, not two-column: nested under the hypothesis's indent the
-        // content column would be too narrow for identifiers and excerpts. The
-        // wide gap is deliberate — stacked items have no column to separate them,
-        // so the space between them is the only thing that says "next citation".
+        // Stacked, not two-column: nested under the hypothesis indent the content
+        // column would be too narrow for identifiers and excerpts. The wide gap is
+        // the only thing separating one citation from the next.
         <ul className="space-y-5 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} stacked resolveUri={resolveUri} />
@@ -145,13 +130,9 @@ function HypothesisRow({
 }
 
 /**
- * The card's footer actions — "Show code" and the follow-ups.
- *
- * Every one of them is server-decided: the executor only attaches an action when
- * the thing it offers really is available (a source location it saw read at the
- * pinned commit, an error group that exists). So there is nothing to validate — the
- * card hands the intent to the host, exactly like the chart's action row, and
- * renders nothing when there is no host to hand it to.
+ * The card's footer actions. Every action is server-decided: the executor only
+ * attaches one when what it offers exists, so there is nothing to validate here.
+ * The card hands the intent to the host and renders nothing without one.
  */
 function InvestigationActions({
   actions,
@@ -181,13 +162,12 @@ function InvestigationActions({
 
 export function InvestigationCard({
   block,
-  /** Start expanded — used by the gallery states that review the detail view. */
+  /** Start expanded: used by the gallery states that review the detail view. */
   defaultExpanded = false,
   resolveUri,
   /**
-   * Where the footer actions go. The card never navigates or asks on its own —
-   * it emits an intent and the host honours it (or doesn't), the same seam the
-   * chart's actions use. Without it the row isn't rendered.
+   * Where the footer actions go. The card never navigates or asks on its own: it
+   * emits an intent and the host honours it. Without it the row isn't rendered.
    */
   onIntent,
 }: {
@@ -210,8 +190,8 @@ export function InvestigationCard({
           </SeverityBadge>
           <ConfidenceBadge confidence={investigation.confidence} />
         </div>
-        {/* Its own truncating line — the badge row's right corner can't hold a
-              run id reliably at panel width (same rule as RunDiagnosisCard). */}
+        {/* Its own truncating line: a run id doesn't fit the badge row's right
+              corner at panel width (same rule as RunDiagnosisCard). */}
         {investigation.runId ? (
           <div className="truncate font-mono text-xs text-text-dimmed">{investigation.runId}</div>
         ) : null}
@@ -224,9 +204,8 @@ export function InvestigationCard({
           <p className="text-sm text-text-dimmed">{investigation.headline}</p>
         </Section>
 
-        {/* A fix is only ever shown for a concluded investigation; an
-            inconclusive one gets "What to check next" instead. The schema
-            enforces the exclusivity, so this can't render both. */}
+        {/* A fix is only shown for a concluded investigation; the schema enforces
+            the exclusivity with "What to check next". */}
         {concluded && investigation.remediation ? (
           <Section title="How to fix">
             <p className="text-sm text-text-dimmed">{investigation.remediation}</p>

@@ -7,15 +7,9 @@ import { AgentIcon, AGENT_ICON_ACCENT_CLASS, ASK_AGENT_LABEL } from "./agent-ide
 
 /**
  * The Free plan's message cap, at the bottom of the panel.
- *
- * Two states, both sitting where the composer sits so the transcript above is
- * untouched — the point of the cap is that the conversation you already had stays
- * readable:
- *
- * - {@link AgentQuotaNotice} while there are messages left: one dimmed line and
- *   an upgrade link, under the composer.
- * - {@link AgentUpgradeBlock} once the cap is reached: it replaces the composer,
- *   because a composer you can't send from is worse than no composer.
+ * {@link AgentQuotaNotice} sits under the composer while messages are left;
+ * {@link AgentUpgradeBlock} replaces the composer once the cap is reached.
+ * Both stay in the composer's slot so the transcript above is untouched.
  */
 
 /** The composer's own outer geometry, so the replacement lands in the same place. */

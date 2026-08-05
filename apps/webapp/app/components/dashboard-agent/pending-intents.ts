@@ -1,12 +1,10 @@
 /**
  * The intents the agent emitted as tool results that the host hasn't honoured
- * yet.
+ * yet. A tool that emits an intent performs nothing; the panel is what acts.
  *
- * A tool that emits an intent performs nothing — the panel is what acts, so what
- * the agent then narrates ("you're now on…", "I've filled in a watch") is what
- * actually happened. `seen` is mutated with the calls handled, and is seeded with
- * the transcript loaded at mount, so opening an old chat never re-fires on
- * history: only calls that land while this chat is open are honoured, once each.
+ * `seen` is mutated with the calls handled and is seeded with the transcript
+ * loaded at mount, so opening an old chat never re-fires on history: only calls
+ * that land while this chat is open are honoured, once each.
  */
 import { agentIntentSchema, type AgentIntent } from "@internal/dashboard-agent-contracts";
 
@@ -52,8 +50,7 @@ export function pendingNavigateIntents(
 
 /**
  * The watches `schedule_watch` proposed. The tool never creates one: the spec
- * comes back for the panel to open the configuration card pre-filled, so a
- * free-text ask lands on the same review card as the contextual action.
+ * comes back for the panel to open the configuration card pre-filled.
  */
 export function pendingWatchIntents(
   messages: ReadonlyArray<ToolMessage>,

@@ -1,13 +1,9 @@
 /**
- * What a tool call is called while it is still running.
+ * What a tool call is called while it is still running, for the pending pill.
  *
- * An in-flight tool call shows a pending pill, and the pill needs one short
- * phrase saying what the agent is doing — not the tool's identifier. The phrases
- * are written from the reader's side ("Reading the run", not "get_run"), present
- * tense, no trailing ellipsis: the pill adds that.
- *
- * A tool that isn't in the map keeps the old wording, `Running <name>`, so a new
- * tool is readable before anyone gets round to naming it here.
+ * Phrases are written from the reader's side ("Reading the run", not "get_run"),
+ * present tense, with no trailing ellipsis since the pill adds one. A tool that
+ * isn't in the map falls back to `Running <name>`.
  */
 
 const TOOL_LABELS: Record<string, string> = {
@@ -42,7 +38,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_code: "Searching the code",
 };
 
-/** The pending pill's label for a tool, by its name (no `tool-` prefix). */
+/** Takes the tool's name without the `tool-` prefix. */
 export function toolPendingLabel(toolName: string): string {
   return TOOL_LABELS[toolName] ?? `Running ${toolName}`;
 }

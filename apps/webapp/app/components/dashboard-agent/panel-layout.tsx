@@ -1,25 +1,15 @@
 /**
  * The agent panel's two shapes: the side panel and the fullscreen takeover.
  *
- * Fullscreen is a takeover, not a modal and not a route: the dashboard's side
- * nav stays where it is and the panel expands to fill everything right of it.
- * That means the page underneath is *hidden*, never unmounted — leaving the page
- * would throw away its filters, scroll position and any in-flight loader data,
- * and coming back would refetch all of it. `agentTakeoverClassName` and
- * `agentHiddenContentClassName` are the two halves of that: the panel floats
- * over the content area, the content stays mounted and inert behind it.
- *
- * Both classes are applied to wrappers that are always rendered, so toggling
- * fullscreen changes class names only. Nothing in the panel's subtree remounts,
- * which is what keeps the open chat's transport, session and transcript alive
- * across the toggle.
+ * Fullscreen is a takeover, not a modal and not a route. The page underneath is
+ * hidden, never unmounted, so its filters, scroll position and loader data survive.
+ * Both class helpers apply to wrappers that are always rendered, so toggling
+ * fullscreen changes class names only and nothing in the panel's subtree remounts:
+ * that is what keeps the open chat's transport, session and transcript alive.
  */
 import { cn } from "~/utils/cn";
 
-/**
- * Remembered per browser, like the panel's last-open chat: someone who works
- * fullscreen gets fullscreen the next time they open the panel.
- */
+/** Remembered per browser, like the panel's last-open chat. */
 export const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
 
 export function readAgentFullscreen(): boolean {
@@ -41,28 +31,25 @@ export function writeAgentFullscreen(fullscreen: boolean): void {
 }
 
 /**
- * The panel's own wrapper. In fullscreen it is lifted out of the resizable split
- * and pinned over the whole content area; otherwise it just fills its panel.
+ * The panel's own wrapper. In fullscreen it is pinned over the whole content area;
+ * otherwise it fills its panel.
  */
 export function agentTakeoverClassName(fullscreen: boolean): string {
   return fullscreen ? "absolute inset-0 z-10 bg-background-bright" : "h-full";
 }
 
 /**
- * The page content behind a takeover. `invisible` rather than `display: none`:
- * both keep it mounted, but only this one preserves the layout it has already
- * computed, so scroll positions and measured widths survive the round trip.
- * Invisible content is also inert to clicks and to the tab order.
+ * The page content behind a takeover. `invisible` rather than `display: none`: both
+ * keep it mounted, but only this one preserves the computed layout, so scroll
+ * positions and measured widths survive the round trip.
  */
 export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
 /**
- * The panel's content column: the transcript, the composer and the blank-state
- * hero. Full width in the side panel; in fullscreen it is capped and centred, so
- * a line of an answer stays a readable length instead of running the width of a
- * monitor.
+ * The panel's content column. Full width in the side panel; capped and centred in
+ * fullscreen, so a line of an answer stays a readable length.
  */
 export function AgentPanelColumn({
   fullscreen,

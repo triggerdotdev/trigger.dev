@@ -16,17 +16,7 @@ import {
   type ResolvedPromptSlot,
 } from "./suggested-prompts";
 
-/**
- * How a prompt's slot becomes a button. The single mapping from meaning to
- * variant, so a new slot is styled here and nowhere else:
- *
- * - `promoted` / `investigate` — something to do about a problem, so they get
- *   the indigo primary the rest of the app uses for the main action.
- * - `watch` — "tell me when this changes", a standing offer: secondary.
- * - `explain` — the evergreen question, the quietest of the set: tertiary.
- * - `docs` — a documentation question, so it gets the docs variant, the same
- *   style every "read the docs" button in the dashboard has.
- */
+/** The only slot-to-button-style mapping: a new slot is styled here and nowhere else. */
 export const PROMPT_SLOT_BUTTON: Record<
   ResolvedPromptSlot,
   { variant: ButtonVariant; icon: RenderIcon }
@@ -42,15 +32,9 @@ export const PROMPT_SLOT_BUTTON: Record<
 /**
  * The suggested prompts on a blank chat, as a wrapping row of buttons.
  *
- * Everything shown here comes from the registry (`suggested-prompts/`) resolved
- * against the page the user is on — there is no hardcoded list. Clicking a
- * button sends its `prompt` (the full question), not its `label` (the short
- * button text).
- *
- * Previously dismissed prompts stay hidden (the stored ids are read on mount),
- * but a button carries no dismiss control of its own: an "x" on a button in a
- * wrapping row reads as a close, not as "don't offer this again". Dismissals are
- * therefore only ever written by surfaces that show prompts as rows.
+ * Prompts come from the `suggested-prompts/` registry resolved against the
+ * current page; there is no hardcoded list. Dismissed prompts stay hidden, but
+ * this surface never writes dismissals: only the row surfaces do.
  */
 export function DashboardAgentSuggestedPrompts({
   onSelect,
@@ -60,19 +44,17 @@ export function DashboardAgentSuggestedPrompts({
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
-  /** What the user is looking at. Omitted (no route mapper) means defaults only. */
+  /** What the user is looking at. Omitted means defaults only. */
   pageContext?: AgentPageContext;
   /** The product-controlled promoted prompt, when one is configured. */
   promoted?: SuggestedPrompt;
   /**
    * Controlled dismissals. Normally omitted: the component reads its own
-   * localStorage. Passing this makes it stateless, which is what the storybook
-   * gallery and tests want.
+   * localStorage. Passing this makes it stateless, for the gallery and tests.
    */
   dismissedIds?: string[];
 }) {
-  // Read once on mount: localStorage isn't reactive, and re-reading per render
-  // would make the resolved set churn.
+  // Read once on mount: re-reading per render would make the resolved set churn.
   const [storedDismissedIds] = useState<string[]>(() =>
     dismissedIds !== undefined ? [] : readDismissedPromptIds()
   );

@@ -8,15 +8,9 @@ import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts
 /**
  * The blank state: what the panel shows before there is a conversation.
  *
- * Centred in whatever space it is given — the 380px side panel or the fullscreen
- * takeover — because a blank state has nothing to anchor to the top. The order is
- * icon, title, subtitle, the field you type in, then the prompts, so the eye
- * lands on the thing to do.
- *
- * `composer` is passed in rather than mounted here: the draft state puts its
- * composer *inside* the hero (there is nothing else on screen to dock it to),
- * while a chat that happens to have no messages keeps its own docked composer at
- * the bottom of the panel and passes nothing.
+ * `composer` is passed in rather than mounted here. The draft state puts its
+ * composer inside the hero; a chat with no messages keeps its own docked
+ * composer at the bottom of the panel and passes nothing.
  */
 export function DashboardAgentHero({
   onSelect,
@@ -31,7 +25,7 @@ export function DashboardAgentHero({
   promoted?: SuggestedPrompt;
   /** Controlled dismissals — see `DashboardAgentSuggestedPrompts`. */
   dismissedIds?: string[];
-  /** The composer, when this hero owns it (the draft state). */
+  /** The composer, when this hero owns it. */
   composer?: React.ReactNode;
 }) {
   return (

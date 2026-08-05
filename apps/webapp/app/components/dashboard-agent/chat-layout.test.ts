@@ -1,11 +1,8 @@
 /**
  * Keeps the chat layout library the only place transcript layout is decided.
- *
- * Source-level on purpose: the rule being enforced is "a consumer doesn't type
- * spacing classes", which is a property of the source, not of the rendered DOM.
- * Only the regions a consumer marks as transcript-level are checked — a panel
- * header or an empty state above/below the transcript is not the library's
- * business.
+ * Asserted at source level: the rule is "a consumer doesn't type spacing
+ * classes", a property of the source rather than of the rendered DOM. Only the
+ * regions a consumer marks as transcript-level are checked.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,9 +18,8 @@ const LIBRARY = "chat-layout.tsx";
 const REGION = /#region chat-layout transcript([\s\S]*?)#endregion chat-layout transcript/g;
 
 /**
- * Tailwind spacing utilities: padding, margin, gap and the `space-*` rhythm
- * helpers. Matched only at a class-name boundary so `gap-2` is caught but
- * `min-w-0`, `overflow-y-auto` and prose like "space-y" in a comment are not.
+ * Tailwind spacing utilities, matched only at a class-name boundary so `gap-2`
+ * is caught but `min-w-0` and prose mentioning "space-y" are not.
  */
 const SPACING_CLASS =
   /(?:^|[\s"'`])-?(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-[\w./[\]%-]+/;
@@ -54,10 +50,8 @@ describe("chat-layout enforcement", () => {
 
       for (const [i, region] of regions.entries()) {
         it(`renders no spinner of its own in transcript region ${i + 1}`, () => {
-          // Rule 4: the turn's one progress element is `ChatProgress`, and it is
-          // the only thing that renders the agent spinner. A consumer reaching for
-          // `AgentSpinner` is a second spinner — and one that restarts its
-          // animation whenever the phase that mounted it changes.
+          // `ChatProgress` is the turn's one progress element and the only thing
+          // that renders the agent spinner.
           expect(region).not.toContain("AgentSpinner");
         });
 
@@ -79,8 +73,7 @@ describe("chat-layout enforcement", () => {
     const source = read(LIBRARY);
 
     it("is the single owner of the transcript's padding and rhythm", () => {
-      // Pinned so a change to the transcript's geometry is a change to this
-      // test, not a silent drift in one consumer.
+      // Pinned so a geometry change lands here, not as drift in one consumer.
       expect(source).toContain('const TRANSCRIPT_INSET_X = "px-4"');
       expect(source).toContain('const TRANSCRIPT_INSET_Y = "py-4"');
       expect(source).toContain('const TURN_GAP = "space-y-4"');
@@ -105,17 +98,14 @@ describe("chat-layout enforcement", () => {
     });
 
     it("renders the agent spinner from exactly one micro-layout", () => {
-      // One live progress element per turn (rule 4) starts here: if two
-      // micro-layouts can show a spinner, two of them eventually do.
       const renderSites = [...source.matchAll(/<AgentSpinner\b/g)];
       expect(renderSites).toHaveLength(1);
       expect(source).toContain("export function ChatProgress(");
     });
 
     it("renders assistant text as prose, not as a card", () => {
-      // A box around every text answer made the whole transcript read as cards.
-      // Only ChatCardSlot content is boxed now, so nothing here may reintroduce
-      // the shared bubble.
+      // Only ChatCardSlot content is boxed, so nothing may reintroduce the
+      // shared bubble.
       expect(source).not.toContain("ChatBubble");
     });
 

@@ -7,8 +7,7 @@ import {
 } from "./report-block-adapter";
 import { blockIdentity, latestRevisionBlocks } from "./view-blocks";
 
-// A trimmed but real-shaped `ReportViewModel`, i.e. exactly what
-// `GET /api/v1/reports/health?format=json` returns.
+// A trimmed but real-shaped `ReportViewModel`.
 const vm = {
   title: "health",
   scope: "prod",
@@ -95,9 +94,8 @@ describe("reportBlockFromToolPart", () => {
   });
 
   it("accepts the curated tool output, which drops links and series", () => {
-    // The `get_report` tool curates its output for the model: same VM fields, but
-    // no `links` and no metric `series` (flagged `seriesOmitted`). The card must
-    // still build — it just renders without sparklines or link targets.
+    // The curated output drops `links` and metric `series`. The card still builds,
+    // just without sparklines or link targets.
     const { links, ...curated } = vm;
     const block = reportBlockFromToolPart(part({ output: { ...curated, seriesOmitted: true } }))!;
     expect(block.vm.links).toEqual([]);

@@ -1,8 +1,6 @@
 /**
- * The Free plan's cap on messages to the agent.
- *
- * Counted per USER across their chats in the org, not per chat: a per-chat cap
- * would be lifted by clicking "New chat", which isn't a cap at all.
+ * The Free plan's cap on messages to the agent. Counted per user across their
+ * chats in the org, not per chat, which "New chat" would reset.
  */
 export const FREE_PLAN_MESSAGE_LIMIT = 20;
 
@@ -17,11 +15,9 @@ export type MessageQuota =
 /**
  * Whether the cap applies, and what's left of it.
  *
- * **Fails open, deliberately.** `isFreePlan` is undefined when the plan isn't
- * known (self-hosted with no billing service, the billing call failed, the org
- * route data hasn't loaded), and `used` is undefined until the count arrives. In
- * both cases the answer is "no cap": a billing hiccup must never be what stops
- * someone using the product, and the cap is a nudge, not a security boundary.
+ * Fails open deliberately: an unknown plan or an unknown count means no cap. The
+ * cap is a nudge, not a security boundary, so a billing hiccup must never block
+ * someone from using the product.
  */
 export function resolveMessageQuota({
   isFreePlan,
@@ -39,7 +35,6 @@ export function resolveMessageQuota({
     : { kind: "within", used, limit, remaining };
 }
 
-/** How many of these messages the user sent. */
 export function countUserMessages(messages: { role: string }[]): number {
   return messages.reduce((total, message) => (message.role === "user" ? total + 1 : total), 0);
 }

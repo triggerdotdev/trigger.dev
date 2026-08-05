@@ -13,11 +13,9 @@ import { cn } from "~/utils/cn";
 import { ChatActionsRow } from "./chat-layout";
 import { renderableActions } from "./view-actions";
 
-// Render an agent "chart" block by running its TRQL query through the dashboard's
-// own /resources/metric endpoint (session-authed, returns rows + real column
-// metadata) and feeding the result into QueryResultsChart. So the chart is live
-// and matches the Query page exactly: the agent only emits the query + chart
-// config, never the rows. Runs against the project/env the panel is open in.
+// A chart block runs its TRQL query through /resources/metric (session-authed)
+// and feeds the result into QueryResultsChart, so the chart is live and matches
+// the Query page. The agent only emits the query and chart config, never rows.
 
 type MetricResponse =
   | { success: false; error: string }
@@ -30,28 +28,23 @@ type MetricResponse =
       };
     };
 
-// The chart block's schema (`chartBlockBodySchema` in
-// @internal/dashboard-agent-contracts) carries only `period` for the time window
-// — no scope, no explicit from/to, no height. So these are fixed here rather
-// than plumbed from the block. If the schema grows those fields, read them off
-// `block` instead of using these.
-const CHART_SCOPE = "environment"; // the panel is always open in one environment
-const CHART_FROM = null; // `period` is the only window the agent can ask for
+// `chartBlockBodySchema` carries only `period` for the time window, so scope and
+// from/to are fixed here. If the schema grows those fields, read them off `block`.
+const CHART_SCOPE = "environment";
+const CHART_FROM = null;
 const CHART_TO = null;
-// Fits the panel at its default width. `min-h-*` alongside the fixed height on
-// purpose: the chart measures its own container and draws nothing at zero
-// height, so a flex parent that squeezes the row (a card in a short turn, a
-// narrow panel) must not be able to collapse it below this.
+// `min-h-*` alongside the fixed height on purpose: the chart measures its own
+// container and draws nothing at zero height, so a squeezing flex parent must
+// not be able to collapse it below this.
 const CHART_HEIGHT_CLASS = "h-64 min-h-64";
-// Top padding inside the plot area. The chart's own top gridline/label sits
-// right on the container edge, so without this it touches the card header.
+// The chart's top gridline sits on the container edge, so without this padding
+// it touches the card header.
 const CHART_PADDING_CLASS = "px-2 pb-2 pt-4";
 /** The plot area's geometry, exported so the demo card can't drift from it. */
 export const AGENT_CHART_PLOT_CLASS = `w-full ${CHART_PADDING_CLASS} ${CHART_HEIGHT_CLASS}`;
 
-// Query errors come from ClickHouse via the metric endpoint and can carry SQL
-// and schema detail, so the panel shows a fixed message and the real one goes to
-// the console for whoever is debugging.
+// Query errors can carry SQL and schema detail, so the panel shows a fixed
+// message and the real one goes to the console.
 const CHART_ERROR_MESSAGE = "This chart's query couldn't run.";
 
 type ChartState =
@@ -65,12 +58,9 @@ type ChartState =
     };
 
 /**
- * The buttons under a ranking chart: act on the item the chart put on top.
- *
- * A card never navigates or asks on its own — it hands the block's intent to the
- * host, which submits an `ask` as the user's next message and resolves a
- * `navigate` before moving. Without an `onIntent` there is nothing to hand it to,
- * so the row isn't rendered rather than showing dead buttons.
+ * The buttons under a ranking chart. A card never navigates or asks on its own:
+ * it hands the block's intent to the host. Without an `onIntent` the row isn't
+ * rendered rather than showing dead buttons.
  */
 export function ChartActions({
   actions,
@@ -79,8 +69,7 @@ export function ChartActions({
   actions: ChartAction[];
   onIntent?: (intent: AgentIntent) => void;
 }) {
-  // Only navigate targets that really parse become buttons — see
-  // `renderableActions`, shared with the standalone `actions` block.
+  // Only navigate targets that parse become buttons. See `renderableActions`.
   const renderable = renderableActions(actions);
   if (!onIntent || renderable.length === 0) return null;
   return (

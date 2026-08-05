@@ -1,21 +1,13 @@
 /**
  * The banner above a wake narration.
  *
- * A wake arrives unprompted: nobody typed anything, the watch resolved and the
- * chat spoke. Rendered as plain assistant prose it would read like an answer to a
- * question the user never asked — so the narration gets a banner that states the
- * FACT before the text does, with the outcome carried by a coloured accent and
- * icon (the same rule the run status cells and the watch chips follow: the text
- * keeps its colour, the state is the icon's job).
+ * This component holds no kind-specific wording: tone, semantic icon and headline
+ * come from contracts and `watch-presentation.ts`. All it decides is which glyph a
+ * semantic icon draws and which frame a tone paints.
  *
- * **This component contains no kind-specific wording.** Category, tone, semantic
- * icon and headline key come from the exhaustive resolved-result mapping in
- * contracts; the final English comes from `watch-presentation.ts`. All this file
- * decides is which glyph a semantic icon draws and which frame a tone paints.
- *
- * A wake is identified by its message id — `wake:watch:{watchId}:{fired|expired}`.
- * That two-value suffix is the stable TRANSPORT encoding (§7.5): it is not the
- * outcome, it is how the wake is addressed. The outcome comes off the watch row.
+ * A wake is identified by its message id, `wake:watch:{watchId}:{fired|expired}`.
+ * That suffix is the transport encoding, not the outcome; the outcome comes off the
+ * watch row.
  */
 import {
   CheckCircleIcon,
@@ -36,9 +28,9 @@ import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-prese
 const WAKE_ID_PREFIX = "wake:watch:";
 
 /**
- * The wire encoding in a wake's message id. NOT the resolution — a
- * `window_completed` and a `condition_impossible` are both addressed as
- * `expired`, and the row is the authority on which one it was.
+ * The wire encoding in a wake's message id, not the resolution: `window_completed`
+ * and `condition_impossible` are both addressed as `expired`, and the row is the
+ * authority on which one it was.
  */
 export type WakeOutcome = "fired" | "expired";
 
@@ -53,9 +45,8 @@ export type WakeWatch = {
   /** What the resolving check observed — the other half of the headline. */
   observedOutcome?: WatchObservedOutcome | null;
   /**
-   * Why the watch ended, from its last result — `terminal_unsatisfied` when the
-   * condition became impossible. Only used to reconstruct a resolution for rows
-   * that predate the `resolution` column.
+   * Why the watch ended, from its last result. Only used to reconstruct a
+   * resolution for rows that predate the `resolution` column.
    */
   endedReason?: string | null;
 };
@@ -63,9 +54,9 @@ export type WakeWatch = {
 export type WakeRef = { watchId: string; outcome: WakeOutcome };
 
 /**
- * The watch a message narrates the wake of, or null when the message isn't a
- * wake. The id is `wake:watch:{watchId}:{outcome}`; a watch id never ends in an
- * outcome word, so splitting on the last colon is unambiguous.
+ * The watch a message narrates the wake of, or null when the message isn't a wake.
+ * A watch id never ends in an outcome word, so splitting on the last colon is
+ * unambiguous.
  */
 export function wakeRefFromMessageId(messageId: string): WakeRef | null {
   if (!messageId.startsWith(WAKE_ID_PREFIX)) return null;
@@ -84,8 +75,8 @@ export function findWakeWatch(watches: WakeWatch[] | undefined, watchId: string)
 
 /**
  * The watch's resolution, falling back to what the transport can prove for a row
- * written before the `resolution` column existed. `fired` is unambiguous;
- * `expired` splits on the last check's reason, exactly as the old banner did.
+ * written before the `resolution` column existed: `fired` is unambiguous, `expired`
+ * splits on the last check's reason.
  */
 export function wakeResolution(
   outcome: WakeOutcome,
@@ -98,10 +89,7 @@ export function wakeResolution(
     : "window_completed";
 }
 
-/**
- * What this banner shows. Exported for the tests and for any surface that wants
- * the same answer without the markup.
- */
+/** What this banner shows, without the markup. */
 export function wakePresentation(outcome: WakeOutcome, watch: WakeWatch | undefined) {
   if (!watch) return WATCH_PRESENTATION_FALLBACK;
   return presentResolvedWatch({
@@ -113,11 +101,10 @@ export function wakePresentation(outcome: WakeOutcome, watch: WakeWatch | undefi
 }
 
 /**
- * Semantic icon → glyph. The mapping lives here because the icon SET is this
- * app's; which icon a resolved result deserves was decided in contracts, and the
- * rule it encodes is that the icon follows the outcome, never the resolution — a
- * failed run gets `error`, not the success check its `condition_met` would
- * otherwise suggest.
+ * Semantic icon to glyph. Which icon a resolved result deserves is decided in
+ * contracts, and the rule there is that the icon follows the observed outcome, not
+ * the resolution: a failed run gets `error`, not the check its `condition_met`
+ * would suggest.
  */
 const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) => JSX.Element> = {
   success: CheckCircleIcon,
@@ -147,7 +134,7 @@ export function WakeBanner({
   outcome,
   watch,
 }: {
-  /** The wire encoding from the wake's message id (§7.5). */
+  /** The wire encoding from the wake's message id. */
   outcome: WakeOutcome;
   /** The watch that woke, when the host has it. Absent: the neutral fallback. */
   watch?: WakeWatch;

@@ -1,34 +1,24 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-/**
- * How close to the bottom counts as "following along". Generous, because a turn
- * streams in a line at a time and a few pixels of drift shouldn't stop the
- * transcript from following.
- */
+/** How close to the bottom counts as following along. */
 const NEAR_BOTTOM_PX = 120;
 
 type ScrollableMessage = { id: string; role?: string };
 
 /**
- * Sticky-bottom scrolling for the chat transcript.
+ * Sticky-bottom scrolling for the chat transcript. Three rules:
  *
- * Three rules, in order:
+ * 1. A message the user just sent always jumps to the bottom, however far up
+ *    they had scrolled.
+ * 2. Streamed content only follows while they are already near the bottom.
+ * 3. Mounting lands at the bottom: the panel remounts the chat on every page
+ *    navigation, and a restored transcript opening at the top reads as empty.
  *
- * 1. A message the user just sent always wins — the transcript jumps to the
- *    bottom however far up they had scrolled, whether the message came from the
- *    composer, a card's button or a prompt chip.
- * 2. New streamed content follows only while they are already near the bottom,
- *    so reading back through a transcript is never yanked away.
- * 3. Mounting lands at the bottom. The panel remounts the chat on every page
- *    navigation, and a restored transcript that opens at the top reads as an
- *    empty chat.
+ * The shared `useAutoScrollToBottom` can't do 1 or 3: it seeds its stickiness
+ * from the scroll position after the first paint, so a restored transcript sits
+ * at scrollTop 0, is judged not at the bottom, and never scrolls again.
  *
- * The shared `useAutoScrollToBottom` can't do (1) or (3): it seeds its
- * stickiness from the scroll position *after* the first paint, so a restored
- * transcript starts at scrollTop 0, is judged "not at the bottom", and never
- * scrolls again.
- *
- * @returns the ref for the content column *inside* the scroller.
+ * @returns the ref for the content column inside the scroller.
  */
 export function useTranscriptAutoScroll(
   messages: ReadonlyArray<ScrollableMessage>,
@@ -77,8 +67,8 @@ export function useTranscriptAutoScroll(
     container.scrollTop = container.scrollHeight;
   }, [messages, activity]);
 
-  // Content also grows without a message change — markdown finishing its lazy
-  // load, a card laying out. Follow that too, but only while following.
+  // Content also grows without a message change (lazy markdown, a card laying
+  // out). Follow that too, but only while following.
   useEffect(() => {
     const container = containerRef.current;
     const content = contentRef.current;

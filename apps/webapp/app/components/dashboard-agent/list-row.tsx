@@ -1,10 +1,6 @@
 /**
- * The panel's shared list view.
- *
- * Both lists in the panel — suggested prompts and chat history — are the same
- * thing: a selectable row with an optional hover action. Keeping the row and
- * list styling here is what makes the panel read as one system instead of two
- * lists that drifted apart.
+ * The panel's shared list view: a selectable row with an optional hover action,
+ * used by both suggested prompts and chat history.
  */
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "~/utils/cn";
@@ -14,11 +10,7 @@ export function AgentList({ children, className }: { children: ReactNode; classN
   return <ol className={cn("flex w-full flex-col gap-1.5", className)}>{children}</ol>;
 }
 
-/**
- * - `default` — a plain row.
- * - `promoted` — the product-chosen prompt.
- * - `selected` — the row the panel is currently showing (the open chat).
- */
+/** `promoted` is the product-chosen prompt; `selected` is the open chat. */
 export type AgentListRowVariant = "default" | "promoted" | "selected";
 
 const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
@@ -41,19 +33,13 @@ export function AgentListRow({
   label: ReactNode;
   /** Small right-aligned detail, e.g. when a chat was last active. */
   meta?: ReactNode;
-  /**
-   * Trailing icon for something ongoing in this row, e.g. a chat the agent is
-   * still working in. Sits before {@link meta}, inside the row's own button.
-   */
+  /** Trailing icon for something ongoing. Sits before {@link meta}, inside the button. */
   status?: ReactNode;
   variant?: AgentListRowVariant;
-  /**
-   * Something happened here the user hasn't seen. Brightens the label and adds
-   * the same indigo dot the launcher uses, so the two read as one signal.
-   */
+  /** Something happened here the user hasn't seen: bright label plus a dot. */
   unread?: boolean;
   onSelect: () => void;
-  /** Hover-revealed control, e.g. dismiss or delete. Use {@link AgentListRowAction}. */
+  /** Hover-revealed control. Use {@link AgentListRowAction}. */
   action?: ReactNode;
 }) {
   return (
@@ -92,10 +78,9 @@ export function AgentListRowAction({
   danger = false,
 }: {
   icon: ComponentType<{ className?: string }>;
-  /** Accessible name — the control is icon-only. */
+  /** Accessible name: the control is icon-only. */
   label: string;
   onClick: () => void;
-  /** Destructive actions go red on hover. */
   danger?: boolean;
 }) {
   return (

@@ -3,12 +3,9 @@ import { useEffect, useState } from "react";
 import { countUserMessages, resolveMessageQuota, type MessageQuota } from "./message-quota";
 
 /**
- * Whether the message cap applies to this org.
- *
- * Always undefined for now: plan detection belongs to the billing service and
- * will be wired up there (plan-defined limit, billing-period window). Undefined
- * means "no cap" (see `resolveMessageQuota`), so the whole quota surface —
- * counter, upgrade block, submit guard — stays built and tested but dormant
+ * Whether the message cap applies to this org. Always undefined for now: plan
+ * detection belongs to the billing service and will be wired up there. Undefined
+ * means no cap (see `resolveMessageQuota`), so the quota surface stays dormant
  * until billing supplies the answer.
  */
 function useIsFreePlan(): boolean | undefined {
@@ -18,14 +15,12 @@ function useIsFreePlan(): boolean | undefined {
 /**
  * The Free-plan message quota for the user, as the open chat sees it.
  *
- * Two halves, because a count that lags the conversation would let the cap be
- * walked past: the server counts the user's messages in every OTHER chat (one
- * aggregate, fetched once per chat — the panel remounts this chat's component on
- * every switch), and this chat's own messages are counted from the live
- * transcript, so the message just sent counts immediately.
+ * Counted in two halves so the total can't lag the conversation: the server
+ * aggregates the user's messages in every other chat (fetched once per chat,
+ * since the panel remounts on every switch), and this chat's own messages come
+ * from the live transcript, so the message just sent counts immediately.
  *
- * Nothing is fetched at all unless the org is on the Free plan: a paying org
- * never pays for a query it can't be limited by.
+ * Nothing is fetched unless the org is on the Free plan.
  */
 export function useAgentMessageQuota({
   actionPath,

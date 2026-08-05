@@ -1,16 +1,12 @@
 /**
- * The watch card's state machine — pure, so every rule the card enforces is
- * testable without a DOM.
+ * The watch card's state machine, kept pure so its rules are testable without a DOM.
  *
- * The card never invents a value the schema would then reject: switching to a
- * condition variant re-clamps the cadence (an aggregate kind is floored at 5
- * minutes), and the window is always one of the offered options. That is why the
- * option lists live in contracts (`watchCadenceOptions`, `WATCH_WINDOW_HOURS_OPTIONS`)
- * and are read from here rather than re-typed: a picker can't offer something
- * validation would refuse.
- *
- * Nothing here persists anything. A draft is client-side until `Start watching`
- * submits it (§2.2, transcript hygiene).
+ * The card never invents a value the schema would reject: switching condition
+ * variant re-clamps the cadence, and the window is always one of the offered
+ * options. The option lists are read from contracts (`watchCadenceOptions`,
+ * `WATCH_WINDOW_HOURS_OPTIONS`) rather than re-typed, so a picker cannot offer
+ * something validation would refuse. Nothing here persists: a draft is client-side
+ * until `Start watching` submits it.
  */
 import {
   WATCH_DEFAULT_QUEUE_AGE_MINUTES,
@@ -29,15 +25,14 @@ import {
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
 
-/** A brand-new draft: the recommendation, with both opt-ins off (§6). */
+/** A brand-new draft: the recommendation, with both opt-ins off. */
 export function watchDraftFor(spec: WatchSpec): WatchDraft {
   return { spec, followUp: { investigateOnAttention: false, notifyExternally: false } };
 }
 
 /**
- * The nearest cadence this kind is allowed to poll at. Used whenever the kind
- * changes under the user: a 1-minute run watch switched to a queue variant must
- * land on 5, not fail validation on submit.
+ * The nearest cadence this kind is allowed to poll at. A 1-minute run watch
+ * switched to a queue variant must land on 5, not fail validation on submit.
  */
 export function clampCadence(kind: WatchKind, minutes: number): number {
   const options = watchCadenceOptions(kind);
@@ -46,10 +41,9 @@ export function clampCadence(kind: WatchKind, minutes: number): number {
 }
 
 /**
- * The note, restated from the spec. The note is "why the user asked for it" and
- * the wake narration quotes it — so once the user CHANGES the condition (or its
- * number), the original words no longer describe the watch and must be rewritten.
- * Edits that keep the condition (window, cadence) keep the user's own words.
+ * The note, restated from the spec. The wake narration quotes the note, so
+ * changing the condition or its number must rewrite it. Edits that keep the
+ * condition (window, cadence) keep the user's own words.
  */
 export function noteFor(spec: WatchSpec): string {
   switch (spec.kind) {
@@ -77,8 +71,8 @@ export function noteFor(spec: WatchSpec): string {
 }
 
 /**
- * Swap the condition for its sibling variant (§3), carrying everything else —
- * except the note, which is restated to describe the NEW condition.
+ * Swap the condition for its sibling variant, carrying everything else except the
+ * note, which is restated to describe the new condition.
  */
 export function withVariant(draft: WatchDraft, kind: WatchKind): WatchDraft {
   const next = variantSpec(draft, kind);
@@ -115,8 +109,7 @@ function variantSpec(draft: WatchDraft, kind: WatchKind): WatchSpec {
     }
     case "queue_stalled": {
       const queue = "queue" in spec ? spec.queue : "";
-      // K is not user-facing in this iteration (§3): the default is the product
-      // decision, and the card never shows a field for it.
+      // Ticks are not user-facing: the card never shows a field for them.
       const ticks = "ticks" in spec ? spec.ticks : WATCH_STALL_TICKS_DEFAULT;
       return { ...common, kind, queue, ticks } as WatchSpec;
     }
@@ -157,9 +150,8 @@ export function withWindow(draft: WatchDraft, maxHours: number): WatchDraft {
 }
 
 /**
- * The threshold, as the user is typing it. Kept out of range checks on purpose —
- * an empty or half-typed field is not an error yet, it is a draft; `watchDraftError`
- * is what refuses to submit one.
+ * The threshold, as the user is typing it. No range checks here: a half-typed
+ * field is a draft, and `watchDraftError` is what refuses to submit it.
  */
 export function withThreshold(draft: WatchDraft, threshold: number): WatchDraft {
   if (draft.spec.kind !== "queue_depth_above" && draft.spec.kind !== "queue_depth_below") {
@@ -170,10 +162,7 @@ export function withThreshold(draft: WatchDraft, threshold: number): WatchDraft 
   return { ...draft, spec: { ...spec, note: noteFor(spec) } };
 }
 
-/**
- * The age SLA, in minutes, as the user is typing it. Same rule as the threshold:
- * a half-typed field is a draft, and `watchDraftError` is what refuses to submit it.
- */
+/** The age SLA in minutes, as the user is typing it. Same rule as the threshold. */
 export function withAgeMinutes(draft: WatchDraft, thresholdMinutes: number): WatchDraft {
   if (draft.spec.kind !== "queue_oldest_age") return draft;
   // The note quotes the number, so a new number restates the note.
@@ -182,19 +171,17 @@ export function withAgeMinutes(draft: WatchDraft, thresholdMinutes: number): Wat
 }
 
 /**
- * The two follow-up opt-ins, set INDEPENDENTLY (§2.2, binding). There is
- * deliberately no way to express "external instead of chat": in-chat delivery is
- * not in this shape at all, because it is not a choice.
+ * The two follow-up opt-ins, set independently. There is no way to express
+ * "external instead of chat": in-chat delivery is not a choice, so it is not here.
  */
 export function withFollowUp(draft: WatchDraft, patch: Partial<WatchFollowUp>): WatchDraft {
   return { ...draft, followUp: { ...draft.followUp, ...patch } };
 }
 
 /**
- * Why this draft can't be submitted, in the user's words — or null when it can.
- *
- * The schema is the authority (so the card and the server agree by construction);
- * this only translates its refusal into the one sentence the card shows inline.
+ * Why this draft can't be submitted, in the user's words, or null when it can.
+ * The schema is the authority, so the card and the server agree by construction;
+ * this only translates its refusal into the sentence the card shows inline.
  */
 export function watchDraftError(draft: WatchDraft): string | null {
   if (draft.spec.kind === "queue_depth_above" || draft.spec.kind === "queue_depth_below") {

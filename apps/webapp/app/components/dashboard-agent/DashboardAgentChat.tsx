@@ -20,8 +20,8 @@ import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
 // The persisted session for a chat: the session-scoped token plus the stream
-// cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
-// from replaying the previous turn.
+// cursor. Resuming with `lastEventId` stops the `.out` stream from replaying the
+// previous turn.
 export type DashboardAgentSession = {
   publicAccessToken: string;
   lastEventId?: string;
@@ -34,18 +34,16 @@ export type DashboardAgentClientData = {
   projectId?: string;
   environmentId?: string;
   currentPage?: string;
-  // What page the user is on, as facts rather than a path. Sent on create and
-  // on every turn, so the agent sees where the user is now — not where they
-  // were when the chat started.
+  // What page the user is on, as facts rather than a path. Sent on create and on
+  // every turn, so the agent sees where the user is now.
   pageContext?: AgentPageContext;
 };
 
 /**
- * A single conversation. The panel mounts this with `key={chatId}`, so each
- * chat gets its own transport constructed with its persisted session — the
- * resume cursor flows in declaratively via the `sessions` option rather than
- * an imperative setSession after the fact. A fresh chat passes no session and
- * starts a new run on first send.
+ * A single conversation. The panel mounts this with `key={chatId}`, so each chat
+ * gets its own transport built with its persisted session: the resume cursor flows
+ * in via the `sessions` option rather than an imperative setSession afterwards. A
+ * fresh chat passes no session and starts a new run on first send.
  */
 export function DashboardAgentChat({
   chatId,
@@ -78,8 +76,8 @@ export function DashboardAgentChat({
   actionPath: string;
   projectSlug: string;
   environmentSlug: string;
-  // Human label for the current page, for the context banner. The path the agent
-  // sees travels separately, in `clientData.currentPage`.
+  // Human label for the context banner. The path the agent sees travels
+  // separately, in `clientData.currentPage`.
   currentPage: string;
   // Cold start: send this first message through the transport once on mount to
   // trigger the turn. Undefined for head-started and resumed chats.
@@ -91,8 +89,8 @@ export function DashboardAgentChat({
   // Text dropped into the composer from outside (the launcher's `openWith`).
   // `seq` makes each request distinct so the same text can be sent twice.
   prefill?: { text: string; seq: number };
-  // The product-controlled promoted chip, from the feature flag. Only used for
-  // the suggested prompts on an empty chat.
+  // The promoted chip from the feature flag. Only used for the suggested prompts
+  // on an empty chat.
   promotedPrompt?: SuggestedPrompt;
   // This chat's active watches, from the panel's history load.
   watches: WatchChip[];
@@ -101,16 +99,15 @@ export function DashboardAgentChat({
   /** The ephemeral watch card, when one is open. Sits above the composer. */
   watchCard?: React.ReactNode;
   /**
-   * A message the SERVER appended outside a turn — the watch card's confirmation
-   * or one-shot result. It is already durable in the store; this puts it in the
-   * live transcript now instead of on the next open. `seq` makes each append
-   * distinct, so the effect applies it exactly once.
+   * A message the server appended outside a turn (the watch card's confirmation or
+   * one-shot result). Already durable in the store; this puts it in the live
+   * transcript now. `seq` makes each append distinct so it applies exactly once.
    */
   appendedMessage?: { message: UIMessage; seq: number };
   /**
-   * A card offered a watch. Every `watch` intent means the same thing — open the
-   * configuration card pre-filled with this spec — so the user reviews and
-   * submits it, and nothing is posted or persisted if they don't (§2.2).
+   * A card offered a watch. Every `watch` intent opens the configuration card
+   * pre-filled with this spec, so nothing is posted or persisted unless the user
+   * submits it.
    */
   onWatchIntent?: (spec: WatchSpec) => void;
   onCancelWatch: (watchId: string) => void;
@@ -118,8 +115,8 @@ export function DashboardAgentChat({
   onTurnSettled: () => void;
   /**
    * Whether a turn is in flight, for the History list's row marker. Only this
-   * component knows — the turn status is `useChat`'s, with nothing server-side
-   * to read it back from.
+   * component knows: the status is `useChat`'s, with nothing server-side to read
+   * it back from.
    */
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
@@ -127,8 +124,8 @@ export function DashboardAgentChat({
   const navigate = useNavigate();
   const toast = useToast();
 
-  // Put requested text in the composer rather than sending it: a chat is already
-  // open, so the user gets to read and edit before it goes.
+  // Put requested text in the composer rather than sending it, so the user can
+  // read and edit before it goes.
   const prefilledSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!prefill || prefilledSeq.current === prefill.seq) return;
@@ -139,12 +136,10 @@ export function DashboardAgentChat({
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
-    // New chats are created server-side (the `create` action owns the id and
-    // runs head start), so there's no client-driven head-start route here.
-    // Redirect only the `in`/append to the same-origin proxy, which mints +
-    // injects the delegated user token server-side. `baseURL` stays a string so
-    // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we
-    // never override it. The proxy forwards the same path on to the API.
+    // Only the `in`/append goes through the same-origin proxy, which injects the
+    // delegated user token server-side and forwards the same path to the API.
+    // `baseURL` stays a string so `out` (the long-lived SSE) keeps the SDK's
+    // realtime-host routing.
     fetch: (url, init, ctx) => {
       if (ctx.endpoint !== "in") return globalThis.fetch(url, init);
       const { pathname, search } = new URL(url);
@@ -157,8 +152,8 @@ export function DashboardAgentChat({
             publicAccessToken: session.publicAccessToken,
             lastEventId: session.lastEventId,
             // Head-started chats are mid-turn, so mark the session streaming to
-            // make the transport resume `session.out`. A settled session
-            // (history) stays false — its transcript loads from the store.
+            // make the transport resume `session.out`. A settled session stays
+            // false and loads its transcript from the store.
             isStreaming: streaming ?? false,
           },
         }
@@ -205,29 +200,25 @@ export function DashboardAgentChat({
     resume: !!session && !pendingFirstMessage,
   });
 
-  // The transcript in stable order. The store's copy is the base; live arrivals
-  // go after it, and a turn the stream replays goes back into its own slot — so
-  // a message sent right after a remount can't land between older turns. See
-  // `message-order.ts`.
+  // The transcript in stable order: the store's copy is the base, live arrivals go
+  // after it, and a replayed turn goes back into its own slot, so a message sent
+  // right after a remount can't land between older turns. See `message-order.ts`.
   const orderRef = useRef(createTranscriptOrder(initialMessages));
   const messages = orderTranscript(rawMessages, orderRef.current);
 
   // The Free plan's message cap. Read here rather than in the panel so it counts
-  // this chat's live transcript — including the turn just sent. `unlimited` on
-  // any paid plan, and on any plan we can't identify.
+  // this chat's live transcript, including the turn just sent.
   const quota = useAgentMessageQuota({ actionPath, chatId, messages });
   const atMessageCap = quota.kind === "reached";
 
   const isStreaming = status === "streaming";
-  // A turn is in flight from submit until it settles. Deriving the indicator
-  // from status (rather than from what the last part happens to be) keeps it up
-  // through long tool calls, where the agent is busy but silent.
+  // Derived from status rather than from the last part, so the indicator stays up
+  // through long tool calls where the agent is busy but silent.
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
 
-  // A server-appended block (the watch card's outcome) joins the live transcript
-  // in place. Applied once per `seq`: the append is already persisted, so
-  // replaying it would show the same confirmation twice.
+  // Applied once per `seq`: the append is already persisted, so replaying it would
+  // show the same confirmation twice.
   const appendedSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!appendedMessage || appendedSeq.current === appendedMessage.seq) return;
@@ -251,9 +242,8 @@ export function DashboardAgentChat({
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      // The composer is gone at the cap, but a suggested prompt or a card's
-      // action can still call this — so the cap is enforced here, not just in
-      // what's rendered.
+      // The composer is gone at the cap, but a suggested prompt or a card action
+      // can still call this, so the cap is enforced here too.
       if (!trimmed || isStreaming || atMessageCap) return;
       setInput("");
       void sendMessage({ text: trimmed });
@@ -262,8 +252,7 @@ export function DashboardAgentChat({
   );
 
   // Re-send the last thing the user asked. The failed turn produced nothing, so
-  // sending the same text again is the whole retry — no server-side state to
-  // unwind.
+  // there is no server-side state to unwind.
   const retry = useCallback(() => {
     const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
     const text = lastUserMessage?.parts
@@ -275,15 +264,13 @@ export function DashboardAgentChat({
     if (text) void sendMessage({ text });
   }, [messages, sendMessage, clearError]);
 
-  // Take the user where a `navigate` intent points. The target is a `trigger://`
-  // URI, so the path comes from the server (the route's `resolve` intent, which
-  // owns the environment scope the resolver needs); the intent's runs-list
-  // filters are applied on top. Same-origin, so this is a client-side navigation
-  // — the panel lives in the env layout and survives it.
-  // Sync facade over the same `resolve` action — evidence and card links render
-  // as raw URIs on first paint and become links once the server answers.
+  // Sync facade over the route's `resolve` action: card links render as raw URIs
+  // on first paint and become links once the server answers.
   const resolveUri = useTriggerUriResolver(actionPath);
 
+  // A `navigate` target is a `trigger://` URI, so the path comes from the server,
+  // which owns the environment scope. Same-origin, so the panel survives the
+  // client-side navigation.
   const goTo = useCallback(
     async (intent: Extract<AgentIntent, { kind: "navigate" }>) => {
       const body = new FormData();
@@ -303,16 +290,9 @@ export function DashboardAgentChat({
   );
 
   // What a card's action does. An `ask` goes back into the conversation as the
-  // user's own question.
-  //
-  // A `watch` does NOT: it opens the configuration card pre-filled with the spec
-  // the card offered. Every watch intent is treated this way, whatever offered it
-  // — so the user always sees what they are about to start, can change the window
-  // or the condition first, and an offer they walk away from leaves no trace. It
-  // used to post a visible "Watch this for me…" request and let the agent answer
-  // with schedule_watch; the card replaces that turn with 0 LLM.
-  //
-  // `propose_fix` is reserved and must never be executed.
+  // user's own question. A `watch` does not: it opens the configuration card
+  // pre-filled, so the user reviews it first and an abandoned offer leaves no
+  // trace. `propose_fix` is reserved and must never be executed.
   const handleIntent = useCallback(
     (intent: AgentIntent) => {
       switch (intent.kind) {
@@ -332,11 +312,10 @@ export function DashboardAgentChat({
     [submit, goTo, onWatchIntent]
   );
 
-  // The `navigate_to` tool answers with an intent and the agent then narrates it
-  // in the past tense ("you're now on…"), so the panel has to actually move.
-  // Seeded with the loaded transcript before the first render, so opening a chat
-  // whose history contains a navigation never navigates on replay — only calls
-  // that land while this chat is open are honoured, once each.
+  // The `navigate_to` tool answers with an intent the agent then narrates in the
+  // past tense, so the panel has to actually move. Seeded with the loaded
+  // transcript before the first render, so history never navigates on replay:
+  // only calls that land while this chat is open are honoured, once each.
   const navigatedRef = useRef<Set<string> | null>(null);
   if (navigatedRef.current === null) {
     navigatedRef.current = new Set();
@@ -349,11 +328,9 @@ export function DashboardAgentChat({
     if (target) void goTo(target);
   }, [messages, goTo]);
 
-  // `schedule_watch` proposes rather than creates: it answers with a watch intent
-  // and the panel opens the card pre-filled, so a free-text ask ("set up a watch
-  // then") is reviewed and confirmed like any other watch (§2.1 Path B). Seeded
-  // and deduped exactly like navigate, so reopening a chat whose history holds
-  // the call never reopens the card.
+  // `schedule_watch` proposes rather than creates: the panel opens the card
+  // pre-filled so a free-text ask is reviewed like any other watch. Seeded and
+  // deduped like navigate, so reopening a chat never reopens the card.
   const watchProposedRef = useRef<Set<string> | null>(null);
   if (watchProposedRef.current === null) {
     watchProposedRef.current = new Set();
@@ -371,8 +348,8 @@ export function DashboardAgentChat({
     aiStop();
   }, [transport, chatId, aiStop]);
 
-  // Tell the panel to refresh its history list once a turn settles, so the new
-  // chat appears and titles/timestamps stay current.
+  // Refresh the panel's history list once a turn settles, so a new chat appears
+  // and titles stay current.
   const prevStatus = useRef(status);
   useEffect(() => {
     const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
@@ -381,30 +358,24 @@ export function DashboardAgentChat({
     prevStatus.current = status;
   }, [status, onTurnSettled]);
 
-  // Report the turn's activity up, so the History list can mark this chat while
-  // it's working. Not cleared on unmount: opening History unmounts this chat but
-  // the turn carries on server-side, and it reports again when it remounts.
+  // Not cleared on unmount: opening History unmounts this chat but the turn
+  // carries on server-side, and it reports again when it remounts.
   useEffect(() => {
     onActivityChange?.(chatId, activity);
   }, [chatId, activity, onActivityChange]);
 
   return (
     <>
-      {/* What this chat is watching, at the top of the panel: a watch outcome
-          arrives in the transcript unprompted, so the chips are what explain
-          where those messages will come from. */}
-      {/* Chips are an offer to cancel, so only live watches get one; the full
-          list still flows to the messages for the wake banner's tone. */}
+      {/* Watch outcomes arrive in the transcript unprompted, so the chips explain
+          where those messages come from. A chip is an offer to cancel, so only
+          live watches get one; the full list still flows to the messages. */}
       <WatchChips
         watches={watches.filter((watch) => watch.status === "active")}
         onCancel={onCancelWatch}
       />
-      {/* A cold-start chat mounts with no messages and a first message about to
-          be sent, so the prompts would flash for a frame before the transcript
-          replaced them. Gate on that pending send. */}
+      {/* A cold-start chat mounts with no messages and a first message about to be
+          sent, so without the pending-send gate the prompts flash for a frame. */}
       {messages.length === 0 && !pendingFirstMessage ? (
-        // The blank state, minus the composer: this chat already has one docked
-        // below.
         <DashboardAgentHero
           onSelect={submit}
           pageContext={clientData.pageContext}
@@ -425,11 +396,9 @@ export function DashboardAgentChat({
       )}
       {/* Inset to line up with the docked composer below it. */}
       {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
-      {/* The Free plan's message cap occupies the composer slot: at the cap the
-          composer is replaced by the upgrade block (a composer you can't send
-          from is worse than none), and under it the composer is followed by the
-          remaining count. The transcript above is untouched either way — the
-          conversation you already had stays readable. */}
+      {/* At the message cap the composer is replaced by the upgrade block, since a
+          composer you can't send from is worse than none. The transcript above
+          stays readable either way. */}
       {quota.kind === "reached" ? (
         <AgentUpgradeBlock
           limit={quota.limit}

@@ -2,21 +2,15 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useSearchParams } from "@remix-run/react";
 
 /**
- * Opening the agent from OUTSIDE its provider.
+ * Opening the agent from outside its provider.
  *
- * `DashboardAgentProvider` is mounted by the environment layout, so anything
- * above that in the tree can't reach `openWith` through context. The side menu is
- * exactly that case: Help & Feedback lives in the app layout, one level up from
- * the environment layout, and its "Ask {agent}" item still has to open the panel.
+ * `DashboardAgentProvider` is mounted by the environment layout, so callers above
+ * it (the app layout's Help & Feedback menu) cannot reach `openWith` through
+ * context. This is a module-level one-hop bridge instead: the host registers a
+ * handler, callers anywhere publish a request.
  *
- * So this is a one-hop bridge. The host (`DashboardAgent`, inside the provider)
- * registers a handler; callers anywhere publish a request. Module-level rather
- * than another context, because the whole point is that the caller has no
- * provider above it.
- *
- * Availability is part of the contract: with no host mounted — the agent is
- * gated off, or the user is on a page outside an environment — there is nothing
- * to open, and every entry point hides itself rather than offering a dead click.
+ * Availability is part of the contract. With no host mounted there is nothing to
+ * open, and every entry point hides itself rather than offering a dead click.
  */
 
 export type DashboardAgentOpenRequest = {
@@ -33,10 +27,7 @@ function notifyAvailability() {
   for (const listener of availabilityListeners) listener();
 }
 
-/**
- * Register the mounted agent host. Called by `DashboardAgent` (via
- * {@link useDashboardAgentOpenRequests}); returns the unsubscribe.
- */
+/** Register the mounted agent host; returns the unsubscribe. */
 export function registerDashboardAgentHost(handler: Handler): () => void {
   handlers.add(handler);
   notifyAvailability();
@@ -49,7 +40,7 @@ export function registerDashboardAgentHost(handler: Handler): () => void {
 /**
  * Ask the agent to open, optionally with a first message. Returns false when no
  * host is mounted, so a caller that ignored {@link useDashboardAgentAvailable}
- * still fails quietly rather than pretending something happened.
+ * fails quietly.
  */
 export function requestDashboardAgent(prompt?: string): boolean {
   if (handlers.size === 0) return false;
@@ -75,19 +66,15 @@ export function useDashboardAgentAvailable(): boolean {
 
 /**
  * Deep-link parameters that open the agent with a question. `ask` is the current
- * one; `aiHelp` is what the CLI's `/projects/:ref/ai-help` link used to redirect
- * to (it fed the old docs chat) and is still honoured, because those links live
- * in people's terminal scrollback.
+ * one; `aiHelp` is still honoured because the CLI's old links live in people's
+ * terminal scrollback.
  */
 const DEEP_LINK_PARAMS = ["ask", "aiHelp"] as const;
 
 /**
- * The agent host's side of the bridge: honour outside requests, and the
- * `?ask=`/`?aiHelp=` deep link the CLI sends people to.
- *
- * Called by `DashboardAgent` so all of this logic stays in one place. `enabled`
- * is the host's access gate — while false nothing is registered, so every entry
- * point stays hidden.
+ * The agent host's side of the bridge: honour outside requests and the
+ * `?ask=`/`?aiHelp=` deep link. `enabled` is the host's access gate; while false
+ * nothing is registered, so every entry point stays hidden.
  */
 export function useDashboardAgentOpenRequests({
   enabled,

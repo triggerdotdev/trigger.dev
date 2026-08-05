@@ -3,14 +3,8 @@ import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
 
 /**
- * The dashboard's "Investigate" button: opens the agent panel with `prompt`
- * already in play.
- *
- * Renders nothing when the agent isn't available (no provider, or gated off) —
- * every entry point self-hides, so callers don't need their own gate.
- *
- * The magnifier matches the chat's investigate chip — like the Watch button's
- * eye, the glyph names the action, not the agent.
+ * Opens the agent panel with `prompt` already in play. Renders nothing when the
+ * agent isn't available, so callers don't need their own gate.
  */
 export function InvestigateButton({
   prompt,
@@ -44,7 +38,7 @@ export function InvestigateButton({
       type="button"
       variant={`${variant}/${size}`}
       LeadingIcon={MagnifyingGlassIcon}
-      // A primary button is already accented; everywhere else the glyph stays quiet.
+      // A primary button is already accented; elsewhere the glyph stays quiet.
       leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}

@@ -1,18 +1,7 @@
 /**
- * One badge for every label the agent's cards put in a chip, and the matching
- * status icons.
- *
- * Geometry and typography come from the `Badge` primitive's `small` variant, so
- * a category chip, a confidence chip and a severity chip are the same box. Only
- * colour and icon differ — that is the whole semantic distinction:
- *
- * - category / evidence type — neutral, no icon
- * - confidence — leveled (high / medium / low)
- * - severity, verdict — status colours
- *
- * The icon helpers exist so a status *line* can follow the same rule as the run
- * status cells do (`runs/v3/TaskRunStatus`): the text keeps the default colour
- * and the state is carried by a coloured icon.
+ * The badges the agent's cards use, and the matching status icons. Geometry
+ * comes from the `Badge` primitive's `small` variant, so every chip is the same
+ * box and only colour and icon differ.
  */
 import {
   CheckCircleIcon,
@@ -27,11 +16,10 @@ import { cn } from "~/utils/cn";
 
 export type AgentTone = "neutral" | "success" | "warning" | "error";
 
-// Semantic tokens, not raw palette classes: those are tuned for the dark theme
-// only, and these tokens are what the theme layer remaps (see tailwind.css).
-// The `system:` counterparts exist because the Badge primitive's `small` variant
-// paints a BLUE tinted chip on the system themes — without an explicit override
-// per tone, every agent badge turns blue there. Same chip language, tone colour.
+// Semantic tokens, not raw palette classes: raw ones are dark-theme only, and
+// the theme layer remaps these (see tailwind.css). The `system:` overrides are
+// required because the Badge `small` variant otherwise tints every chip blue on
+// the system themes.
 const TONE_BADGE: Record<AgentTone, string> = {
   neutral:
     "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500/10 system:text-text-dimmed",
@@ -52,8 +40,6 @@ export const TONE_ICON_COLOR: Record<AgentTone, string> = {
 
 type IconComponent = (props: { className?: string }) => JSX.Element;
 
-// Text case follows the Badge `small` convention used across the app:
-// Capitalized labels, never uppercase.
 export function AgentBadge({
   tone = "neutral",
   icon: Icon,
@@ -80,7 +66,7 @@ export function AgentBadge({
   );
 }
 
-/** A failure category, an evidence type — anything that classifies, not grades. */
+/** A failure category, an evidence type: anything that classifies, not grades. */
 export function CategoryBadge({
   className,
   children,
@@ -180,8 +166,8 @@ export function VerdictBadge({
 }
 
 /**
- * One evidence row: a fixed left column for the type badge, the rest for the
- * text. Shared so the diagnosis and investigation cards align identically.
+ * One evidence row: fixed left column for the type badge, the rest for text.
+ * Shared so the diagnosis and investigation cards align identically.
  */
 export const EVIDENCE_ROW_CLASS = "grid grid-cols-[6.5rem_1fr] items-start gap-x-3";
 

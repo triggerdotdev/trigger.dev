@@ -1,13 +1,10 @@
 // Envelope handling for the agent's view blocks. The envelope is defined by
-// `@internal/dashboard-agent-contracts` (`blockEnvelopeSchema`): `id` is stable
+// `blockEnvelopeSchema` in `@internal/dashboard-agent-contracts`: `id` is stable
 // identity within a conversation, `revision` increases when the agent re-emits
 // the same block with better information. Blocks replayed from a pre-envelope
-// transcript have neither, so everything here degrades to "render all, in
-// order". Reads defensively rather than trusting the parsed type, since blocks
+// transcript have neither, so everything here degrades to rendering all of them
+// in order. Reads defensively rather than trusting the parsed type, since blocks
 // arrive as tool output.
-//
-// Kept as pure functions, separate from the renderer, so the latest-wins
-// semantics can be tested without a DOM.
 
 type MaybeEnveloped = {
   type?: unknown;
@@ -41,9 +38,9 @@ export function blockKey(block: unknown, index: number): string {
 
 /**
  * Latest-wins within one blocks array: when several blocks share (type, id),
- * keep only the highest `revision` (ties keep the last one, i.e. the newest
- * emission) at that winner's position. Blocks without an envelope are all kept,
- * in order. Cross-message grouping is a later milestone.
+ * keep only the highest `revision`, at that winner's position. Ties keep the
+ * last one, the newest emission. Blocks without an envelope are all kept, in
+ * order. Cross-message grouping is a later milestone.
  */
 export function latestRevisionBlocks<T>(blocks: readonly T[]): T[] {
   if (!Array.isArray(blocks)) return [];

@@ -1,19 +1,10 @@
 /**
- * The parts a report card is built from: the severity vocabulary, the card
- * chrome (header line, headline, note blocks, footer line), the metric row, and
- * the sparkline that sits in it.
+ * The parts a report card is built from: severity vocabulary, card chrome, the
+ * metric row and its sparkline. Both report cards render this layout, so the
+ * pieces take resolved strings rather than metric objects.
  *
- * Both report cards (the real `ReportView` and the demo mockup) render the same
- * layout, so it lives here once. The pieces take already-resolved *strings*
- * rather than a metric object: the two cards read from different (structurally
- * identical) types and resolve their labels through different message catalogs,
- * and this way neither concern leaks into the layout.
- *
- * PURE, like `ReportView`: no Remix hooks, no loader data, no router context.
- * Notes use the app's `InfoIconTooltip` primitive and the sparkline reuses the
- * queue metrics `MiniLineChart`; both are router-agnostic. The footer's
- * `LinkButton`s are only ever given external URLs, which it renders as plain
- * anchors — an in-app destination stays an intent, so no router is needed.
+ * Keep this file pure: no Remix hooks, no loader data, no router context. Footer
+ * `LinkButton`s are only ever given external URLs, which render as plain anchors.
  */
 import {
   ArrowUpRightIcon,
@@ -36,8 +27,8 @@ import { AgentStatusIcon, type AgentTone } from "./agent-badges";
 /** Both cards' severity type (`Severity` / `ReportSeverity`) resolves to this. */
 export type ReportSeverityKey = "ok" | "warn" | "crit";
 
-// Semantic tokens, not raw palette classes — those are tuned for the dark theme
-// only, and these are what the theme layer remaps (see tailwind.css).
+// Semantic tokens, not raw palette classes: only these are remapped by the theme
+// layer (see tailwind.css).
 export const SEVERITY_TEXT: Record<ReportSeverityKey, string> = {
   ok: "text-success",
   warn: "text-warning",
@@ -63,11 +54,7 @@ const SEVERITY_ICON = {
   crit: ExclamationCircleIcon,
 } as const;
 
-/**
- * The state marker on a finding or a summary statement. A coloured icon rather
- * than a coloured dot, so severity survives a glance — same rule the run status
- * cells follow (`runs/v3/TaskRunStatus`).
- */
+/** The state marker on a finding or a summary statement. */
 export function ReportSeverityIcon({
   severity,
   className,
@@ -95,8 +82,8 @@ export function ReportCard({ children }: { children: ReactNode }) {
 }
 
 /**
- * The quiet top line: the report's name on the left, its scope / period /
- * baseline on the right. Anything urgent belongs in the headline below, not here.
+ * The quiet top line: the report's name, then its scope, period and baseline.
+ * Anything urgent belongs in the headline below.
  */
 export function ReportHeaderLine({
   name,
@@ -105,7 +92,7 @@ export function ReportHeaderLine({
 }: {
   name: string;
   meta: string;
-  /** State badges that sit next to the name (e.g. "stale data"). */
+  /** State badges that sit next to the name. */
   children?: ReactNode;
 }) {
   return (
@@ -117,15 +104,12 @@ export function ReportHeaderLine({
   );
 }
 
-/** The card body. The wide `space-y` is the point — the card is meant to breathe. */
+/** The card body. */
 export function ReportBody({ children, dimmed }: { children: ReactNode; dimmed?: boolean }) {
   return <div className={cn("space-y-4 px-3 py-3.5", dimmed && "opacity-80")}>{children}</div>;
 }
 
-/**
- * The verdict, as one sentence: severity icon, the coloured phrase that names
- * the state, then a plain continuation that says why.
- */
+/** The verdict as one sentence: icon, the coloured phrase, then why. */
 export function ReportHeadline({
   severity,
   phrase,
@@ -147,9 +131,8 @@ export function ReportHeadline({
 }
 
 /**
- * A finding other than the one in the headline: its state, its type, its
- * reason. Fixed columns, so the texts of consecutive lines (execution /
- * liveness) start on the same vertical.
+ * A finding other than the one in the headline. Fixed columns so consecutive
+ * lines start on the same vertical.
  */
 export function ReportFindingLine({
   severity,
@@ -176,18 +159,9 @@ export function ReportFindingLine({
 // --- prose highlighting -----------------------------------------------------
 
 /**
- * The highlight rules for report prose ("why:" lines, "read:" lines). Fixed and
- * deterministic — the same kind of thing is always emphasized the same way:
- *
- * 1. **Quantities** — numbers with their unit (`71%`, `~820/min`, `38 min`,
- *    `6×`) render bright and tabular. Numbers are what the user scans for.
- * 2. **Entities** — queue/task/run names the caller passes in render mono and
- *    bright, like code.
- * 3. **Verdict phrases** — the "whose problem is this" answers ("not your
- *    code", "not a code problem", "not the workers") render bright and medium:
- *    emphasis without another color (color stays reserved for severity).
- * 4. Everything else stays dimmed; causal arrows (→) are structure, not
- *    content, and stay dimmed too.
+ * Highlight rules for report prose. Quantities render bright and tabular,
+ * entities mono, verdict phrases bright and medium, everything else dimmed.
+ * Colour stays reserved for severity, so emphasis here is weight only.
  */
 const QUANTITY_RE = /~?\d[\d,.]*\s?(?:%|×|\/min|ms\b|s\b|min\b|h\b)?/g;
 
@@ -289,9 +263,8 @@ export function ReportProse({ text, entities }: { text: string; entities?: strin
 }
 
 /**
- * A labelled block of lines — "why:" (what owns the problem, what it isn't) and
- * "read:" (the plain-language interpretation). The label sits in its own column
- * so the lines hang together as one indented paragraph.
+ * A labelled block of lines. The label sits in its own column so the lines hang
+ * together as one indented paragraph.
  */
 export function ReportNoteBlock({ label, children }: { label: string; children: ReactNode }) {
   const lines = Children.toArray(children).filter(Boolean);
@@ -312,16 +285,10 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
 // --- footer -----------------------------------------------------------------
 
 /**
- * How a footer entry renders. One rule, applied by code rather than by URL, so
- * the same code always looks the same in both cards:
- *
- * - `action` — something happens when you press it: the violet primary button.
- *   Still a button when its href leaves the app (contacting us about a limit is
- *   an action even though it opens a web form); the arrow then says it leaves.
- * - `docs` — reading matter we wrote: the docs button.
- * - `reference` — a pointer with no action behind it (a status page): a text
- *   link with the external arrow. A button would promise something happens here.
- * - `note` — an option stated, not offered: prose.
+ * How a footer entry renders, keyed off the code rather than the URL so the same
+ * code looks the same in both cards. `action` is a primary button, `docs` the docs
+ * button, `reference` a text link because a button would promise an action, and
+ * `note` is prose for an option stated rather than offered.
  */
 export type ReportFooterStyle = "action" | "docs" | "reference" | "note";
 
@@ -331,7 +298,7 @@ const FOOTER_NOTE_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region
 /** Footer codes that only cite a place to look, with nothing to press. */
 const FOOTER_REFERENCE_CODES = new Set(["check_control_plane", "check_platform_status"]);
 
-/** A doc entry names itself one: `concurrency_docs`, `retries_docs`, … */
+/** A doc entry names itself one: `concurrency_docs`, `retries_docs`. */
 const FOOTER_DOCS_SUFFIX = "_docs";
 
 export function reportFooterStyle(code: string): ReportFooterStyle {
@@ -342,18 +309,13 @@ export function reportFooterStyle(code: string): ReportFooterStyle {
 }
 
 /**
- * The footer's recovery-watch offer, which no report emits as a footer entry —
- * the card adds it. Two codes because it is phrased two ways: as an addendum to
- * actions the user was just given, and as the only thing on offer when the
- * report has nothing for them to do.
+ * The recovery-watch offer. No report emits it; the card adds it. Two codes
+ * because it is phrased differently when it is the only thing on offer.
  */
 export const FOOTER_WATCH_CODE = "watch_recovery";
 export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
 
-/**
- * A dimmed line that accompanies a row entry — prose the old sentence footer
- * carried around the control, kept as a note under the row.
- */
+/** A dimmed line that accompanies a row entry. */
 const FOOTER_NOTE_LINES: Record<string, string> = {
   check_control_plane: "There's nothing to fix on your side.",
 };
@@ -367,10 +329,8 @@ function isRowEntry(item: ReportFooterItem): boolean {
 }
 
 /**
- * The footer. Every report ends the way the diagnosis card does: a "Next
- * steps" section heading, the controls (buttons, docs buttons, cited links) in
- * one wrapping row, and stated options ("or do nothing — …") as a dimmed line
- * under the row.
+ * The footer: a "Next steps" heading, the controls in one wrapping row, and
+ * stated options as a dimmed line under it.
  */
 export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
   const entries = items.filter((item) => item.node);
@@ -411,9 +371,8 @@ export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
 }
 
 /**
- * A footer entry that only cites a place to look — a status page, a resolved
- * resource. Underlined text, never a button: a button promises something
- * happens here.
+ * A footer entry that only cites a place to look. Underlined text, never a
+ * button: a button promises something happens here.
  */
 export function ReportFooterLink({
   href,
@@ -428,8 +387,7 @@ export function ReportFooterLink({
     <a
       href={href}
       {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
-      // The app's link token (readable on dark surfaces, theme-remapped) and
-      // the app-wide external-link marker — see HelpAndFeedbackPopover.
+      // The app's link token and the app-wide external-link marker.
       className="text-text-link underline decoration-text-link/40 underline-offset-2 transition hover:decoration-text-link"
     >
       {children}
@@ -451,7 +409,7 @@ export function ReportFooterNote({ children }: { children: ReactNode }) {
  */
 const INLINE_CONTROL = "inline-flex align-middle";
 
-/** An in-app footer action: it happens here, so it gets the primary button. */
+/** An in-app footer action. */
 export function ReportFooterAction({
   onClick,
   children,
@@ -468,10 +426,7 @@ export function ReportFooterAction({
   );
 }
 
-/**
- * A footer action that lives at a URL: the same button, as a link. `docs` gets
- * the docs variant; an action leaving the app carries the external arrow.
- */
+/** A footer action that lives at a URL: the same button, as a link. */
 export function ReportFooterActionLink({
   href,
   docs,
@@ -503,13 +458,13 @@ export function ReportProvenance({ uri }: { uri: string }) {
 
 // --- sparkline --------------------------------------------------------------
 
-/** The fixed sparkline column — this is what puts every sparkline on one line. */
+/** The fixed sparkline column. Keeps every sparkline aligned. */
 const SPARK_WIDTH_CLASS = "w-[6.5rem]";
 
 /** The chart's own width; the trailing peak label uses the column's remainder. */
 const SPARK_WIDTH = 72;
 
-/** The number of bars a 60-point series is condensed to — chunky, hoverable. */
+/** How many bars a series is condensed to, so each bar stays hoverable. */
 const MAX_BARS = 18;
 
 /** Average adjacent points down so each bar is wide enough to read and hover. */
@@ -545,20 +500,18 @@ function ReportSparkTooltip({
 }
 
 /**
- * A metric's series as the tasks-page mini bar chart (`ActivityBarChart`):
- * chunky severity-coloured bars with the shared baseline, dashed peak line and
- * trailing peak label. Bars inside the finding's anomaly window paint at full
- * strength; the rest recede to a muted tint of the same colour, so the breach
- * reads as one chart changing intensity, not a second series.
+ * A metric's series as an `ActivityBarChart`. Bars inside the anomaly window paint
+ * at full strength and the rest recede to a tint of the same colour, so the breach
+ * reads as one chart changing intensity rather than a second series.
  */
 export function ReportSparkline({
   points,
   severity,
-  /** Minutes the whole series covers — turns a bar into its tooltip time. */
+  /** Minutes the whole series covers. Turns a bar into its tooltip time. */
   windowMinutes,
   /**
-   * Length of the finding's anomaly window, when it runs to the end of the
-   * series. The matching trailing bars paint at full strength.
+   * Length of the anomaly window when it runs to the end of the series. The
+   * matching trailing bars paint at full strength.
    */
   anomalyMinutes,
   /** The metric's own formatter, used by the tooltip and the peak label. */
@@ -576,8 +529,8 @@ export function ReportSparkline({
 }) {
   const bars = condense(points, MAX_BARS);
   const windowMs = windowMinutes * 60_000;
-  // The view model carries buckets, not timestamps — synthesise them: the
-  // series ends now.
+  // The view model carries buckets, not timestamps, so synthesise them from now
+  // backwards.
   const barIntervalMs = bars.length > 0 ? windowMs / bars.length : windowMs;
   const startMs = Date.now() - windowMs;
 
@@ -623,23 +576,22 @@ export function ReportSparkline({
 // --- metric row -------------------------------------------------------------
 
 /**
- * LABEL | value | delta | sparkline, in fixed columns. The outer columns are the
- * point of the grid: every row's label starts and every row's chart starts on
- * the same vertical line, whatever the value's width.
+ * Label, value, delta and sparkline in fixed columns, so every row's label and
+ * chart start on the same vertical whatever the value's width.
  */
 const METRIC_ROW_CLASS = "grid grid-cols-[7rem_minmax(0,1fr)_2.75rem_6.5rem] items-center gap-x-2";
 
-// Labels are never truncated — the column is sized for the longest label and
-// anything longer wraps to a second line.
+// Labels are never truncated: the column is sized for the longest one and
+// anything longer wraps.
 const LABEL_CLASS = "text-xs uppercase leading-tight tracking-wide text-text-dimmed";
 
-/** A metric's movement against its baseline. Direction is an arrow, always. */
+/** A metric's movement against its baseline. Direction is always an arrow. */
 export type ReportDelta = { text: string; dir: "up" | "down" | "flat" };
 
 /**
  * A view model `Delta` as the row's arrow. A multiplier only reads as movement
- * once it rounds past 1×; below that, a metric with a baseline is simply flat,
- * and a metric without one has nothing to compare against.
+ * once it rounds past 1×; below that a metric with a baseline is flat, and one
+ * without a baseline has nothing to compare against.
  */
 export function reportDelta(
   delta: { dir: "up" | "down" | "flat"; mult?: number } | undefined,
@@ -657,19 +609,14 @@ export function ReportMetricRow({
   severity,
   /** A composite metric's parts, indented under it as their own rows. */
   subRows,
-  /** The movement against the baseline, e.g. "↑ 6×" or "→ flat". */
+  /** The movement against the baseline. */
   delta,
   /**
-   * The row's aside — its baseline, or "estimated". It goes in a tooltip rather
-   * than inline: as trailing text it broke the sparkline column and read like
-   * part of the value.
+   * The row's aside, such as its baseline. It goes in a tooltip because as
+   * trailing text it broke the sparkline column and read like part of the value.
    */
   note,
-  /**
-   * The finding-explaining row's annotation. Joins `note` in the info tooltip —
-   * the fact itself already leads the card's headline, so the row doesn't
-   * repeat it in the flow.
-   */
+  /** The finding-explaining row's annotation. Joins `note` in the info tooltip. */
   heroNote,
   series,
   windowMinutes,
@@ -729,13 +676,11 @@ export function ReportMetricRow({
       </li>
 
       {(subRows ?? []).map((sub) => (
-        // A sub-row keeps the grid's columns: its label sits in the LABEL
-        // column, indented to the middle of the parent label above it, and its
-        // number sits in the VALUE column — on the same vertical as the
-        // parent's +12/min and every other row's value.
+        // A sub-row keeps the grid's columns so its number stays on the same
+        // vertical as every other row's value.
         <li key={sub.label} className={METRIC_ROW_CLASS}>
-          {/* Indented under the parent label, but shallow enough that even
-              "triggered" stays inside the 7rem label column. */}
+          {/* Indented under the parent label, shallow enough to stay inside the
+              7rem label column. */}
           <span className={cn(LABEL_CLASS, "pl-6")}>{sub.label}</span>
           <span className="whitespace-nowrap text-sm tabular-nums text-text-dimmed">
             {sub.value}

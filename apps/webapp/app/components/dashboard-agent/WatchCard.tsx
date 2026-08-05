@@ -1,25 +1,14 @@
 /**
- * The watch configuration card (§2.2) — the one thing the universal **Watch…**
- * action opens.
+ * The watch configuration card, opened by the Watch action.
  *
- * Four rules it exists to keep:
+ * Rules it keeps: the card is ephemeral until submitted (it lives in the panel,
+ * not the transcript, and only a submitted outcome is persisted as a
+ * `watch_result` block); Customize expands in place, never a modal; in-chat
+ * delivery is stated as a line, so the two opt-ins stay independent checkboxes
+ * and never become a radio group.
  *
- * 1. **One block, not three pseudo-agent messages.** It renders as a system/form
- *    block (`ChatSystemBlock`), because it is deterministic UI and must not wear
- *    the agent's voice.
- * 2. **Ephemeral until submitted.** The card lives in the panel, not in the
- *    transcript. Abandoning it leaves no trace; validation and creation errors
- *    stay inside it; only a submitted outcome is persisted, by the server, as the
- *    `watch_result` block this card is replaced by.
- * 3. **Customize expands IN PLACE.** Same block, more of it — never a second
- *    surface, never a modal.
- * 4. **In-chat delivery is a fact, not a choice.** It is stated as a line. The
- *    two opt-ins beneath it are independent checkboxes and can never become a
- *    radio group, because there is no option to turn the chat off.
- *
- * PURE COMPONENT: draft in, markup and callbacks out. The draft's rules live in
- * `watch-card.ts` and the wording in `watch-presentation.ts`, so this file
- * decides layout and nothing else.
+ * Pure component: draft in, markup and callbacks out. Draft rules live in
+ * `watch-card.ts` and wording in `watch-presentation.ts`.
  */
 import { EyeIcon } from "@heroicons/react/20/solid";
 import {
@@ -68,12 +57,12 @@ const VARIANT_LABEL: Record<WatchKind, string> = {
   health_recovery: "when it recovers",
 };
 
-/** The in-flight glyph on the submit button. Hoisted so it keeps its identity. */
+/** Hoisted so the submit button's icon component keeps a stable identity. */
 function ButtonSpinner() {
   return <AgentSpinner size={14} />;
 }
 
-/** One choice in an inline picker. Selected is the accent; the rest are quiet. */
+/** One choice in an inline picker. */
 function Choice({
   selected,
   onSelect,
@@ -114,11 +103,11 @@ export function WatchCard({
   onChange,
   onSubmit,
   onCancel,
-  /** Start expanded — the gallery's Customize state, and a free-text pre-fill. */
+  /** Start expanded: the gallery's Customize state, and a free-text pre-fill. */
   defaultExpanded = false,
   /** The submit is in flight: the card stays, disabled, so nothing moves. */
   pending = false,
-  /** A refusal from the server (cap, duplicate, network). Stays in the card. */
+  /** A refusal from the server (cap, duplicate, network). */
   error,
 }: {
   draft: WatchDraft;
@@ -132,8 +121,7 @@ export function WatchCard({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { spec } = draft;
   const variants = variantsOf(draft);
-  // Local validation first: a draft the schema would refuse never reaches the
-  // server, and the same sentence appears whether it was caught here or there.
+  // Local validation first: a draft the schema would refuse never reaches the server.
   const localError = watchDraftError(draft);
   const blocked = localError !== null || pending;
 
@@ -143,8 +131,7 @@ export function WatchCard({
       icon={<EyeIcon className="size-3.5 shrink-0 text-text-dimmed" />}
       actions={
         <>
-          {/* One confirm, expanded or not — an expanded card is submitted as
-              shown, there is no separate "Done" collapse step. */}
+          {/* One confirm, expanded or not: an expanded card is submitted as shown. */}
           <Button
             variant="primary/small"
             disabled={blocked}
@@ -171,8 +158,6 @@ export function WatchCard({
         </>
       }
     >
-      {/* The compact card, always visible: what · the condition · the duration ·
-          where the answer lands. Four lines, in that order, expanded or not. */}
       <p className="truncate text-sm font-medium text-text-bright">
         Watch {watchSubjectLabel(spec)}
       </p>
@@ -186,8 +171,7 @@ export function WatchCard({
 
       {expanded ? (
         <div className="flex flex-col gap-3 pt-2">
-          {/* The condition variant (§3). Only rendered where a second question
-              exists — the kinds with none must not show an empty picker. */}
+          {/* Kinds with no second condition variant must not show an empty picker. */}
           {variants.length > 1 ? (
             <Field label="Tell me">
               {variants.map((kind) => (
@@ -208,8 +192,7 @@ export function WatchCard({
             </Field>
           )}
 
-          {/* ONE contextual parameter per condition, and only for the conditions
-              that have one. The stall count stays internal (§3). */}
+          {/* One contextual parameter per condition, only where one exists. */}
           {spec.kind === "queue_depth_above" || spec.kind === "queue_depth_below" ? (
             <Field label={spec.kind === "queue_depth_above" ? "Above" : "Below"}>
               <Input
@@ -217,8 +200,8 @@ export function WatchCard({
                 min={0}
                 variant="small"
                 className="w-28"
-                // A half-typed field must show empty, not "NaN" — it is a draft
-                // in progress, and `watchDraftError` is what refuses to submit it.
+                // A half-typed field must show empty, not "NaN"; `watchDraftError`
+                // is what refuses to submit it.
                 value={Number.isFinite(spec.threshold) ? String(spec.threshold) : ""}
                 onChange={(event) =>
                   onChange(withThreshold(draft, Number.parseInt(event.target.value, 10)))
@@ -257,8 +240,8 @@ export function WatchCard({
             ))}
           </Field>
 
-          {/* The cadence options come from the KIND's schema limits, so an
-              aggregate watch can never be offered a 1-minute hot loop (§7.1). */}
+          {/* Cadence options come from the kind's schema limits, so an aggregate
+              watch can never be offered a 1-minute hot loop. */}
           <Field label="Checking">
             {watchCadenceOptions(spec.kind).map((minutes) => (
               <Choice
@@ -271,8 +254,8 @@ export function WatchCard({
             ))}
           </Field>
 
-          {/* Two INDEPENDENT opt-ins under a fixed delivery line — never a radio
-              group, so "email instead of chat" is not expressible (§2.2). */}
+          {/* Two independent opt-ins under a fixed delivery line, never a radio
+              group, so "email instead of chat" is not expressible. */}
           <Field label="When there's an answer">
             <div className="flex flex-col gap-1.5">
               <CheckboxWithLabel
@@ -294,8 +277,7 @@ export function WatchCard({
         </div>
       ) : null}
 
-      {/* Errors live and die with the card: nothing is persisted, and the user
-          fixes the draft in place rather than starting again (§2.2 step 5). */}
+      {/* Errors live and die with the card: nothing is persisted. */}
       {localError || error ? (
         <p className="pt-1 text-xs text-error">{localError ?? error}</p>
       ) : null}

@@ -30,19 +30,15 @@ export function DashboardAgentComposer({
   // Bump to move focus back to the textarea — e.g. text was just prefilled from
   // outside the panel. Focus also happens on mount (panel open, chat switch).
   focusKey?: string | number;
-  // The context chip. It describes the message about to be sent, so it belongs
-  // in the composer's footer rather than at the top of the panel.
+  // The context chip, describing the message about to be sent.
   context?: React.ReactNode;
-  // Where this composer is mounted. `docked` (the default) is the panel footer
-  // and renders exactly as it always has.
   layout?: DashboardAgentComposerLayout;
-  // Off only where a composer isn't the thing the user came for — the storybook
-  // gallery renders several at once and must not steal the page's focus.
+  // Off where several composers render at once (the storybook gallery) and must
+  // not fight over the page's focus.
   autoFocus?: boolean;
   /**
-   * A suggested prompt shown as the placeholder while the field is empty.
-   * Tab accepts it into the field as editable text — it is never sent on its
-   * own. Once anything is typed, Tab goes back to being Tab.
+   * A suggested prompt shown as the placeholder while the field is empty. Tab
+   * accepts it into the field as editable text; it is never sent on its own.
    */
   placeholderSuggestion?: string;
 }) {
@@ -59,12 +55,10 @@ export function DashboardAgentComposer({
   const isHero = layout === "hero";
 
   const sendButton = isStreaming ? (
-    // Grey, not red: stopping is a normal thing to do mid-answer, not a
-    // destructive action.
     <Button
       variant="minimal/small"
-      // Filled neutral, not transparent: a white glyph needs a surface on the
-      // light theme too. Raw charcoal is deliberately theme-stable here.
+      // Filled neutral, not transparent: the white glyph needs a surface on the
+      // light theme too, so the charcoal here is deliberately theme-stable.
       className="aspect-square h-7 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
       aria-label="Stop generating"
       tooltip="Stop generating"
@@ -84,16 +78,15 @@ export function DashboardAgentComposer({
   );
 
   return (
-    // No top border: the transcript scrolls behind the footer, which is what the
-    // gradient in `ChatTranscript`'s scroller edge is for.
+    // No top border: the transcript scrolls behind the footer, which the
+    // gradient on `ChatTranscript`'s scroller edge covers.
     <div
       className={cn(
         "flex shrink-0 flex-col gap-1.5",
         isHero ? "w-full" : "bg-background-bright px-3 pb-3 pt-1"
       )}
     >
-      {/* In the hero the context chip rides on the field's own bottom row, next
-          to the send button, so the field reads as one block. */}
+      {/* In the hero the context chip rides on the field's own bottom row instead. */}
       {isHero ? null : context}
       <div
         className={cn(
@@ -102,9 +95,8 @@ export function DashboardAgentComposer({
         )}
       >
         <div className={isHero ? "flex flex-col gap-1.5" : "flex items-end gap-1"}>
-          {/* Docked: one text line tall at rest (matches the button height),
-              growing with content up to the cap. Hero: three lines at rest, the
-              same growth. rows + field-sizing-content do the work. */}
+          {/* rows + field-sizing-content set the resting height (docked: one
+              line, matching the button; hero: three) and grow it to the cap. */}
           <textarea
             ref={ref}
             rows={isHero ? 3 : 1}
@@ -115,9 +107,8 @@ export function DashboardAgentComposer({
                 e.preventDefault();
                 onSubmit();
               }
-              // Tab accepts the suggested placeholder into the field (still
-              // editable, not sent). Only while empty — with text present, Tab
-              // keeps its normal focus behavior.
+              // Tab accepts the suggested placeholder into the field. Only while
+              // empty, so with text present Tab keeps its normal focus behavior.
               if (e.key === "Tab" && !e.shiftKey && placeholderSuggestion && value === "") {
                 e.preventDefault();
                 onChange(placeholderSuggestion);

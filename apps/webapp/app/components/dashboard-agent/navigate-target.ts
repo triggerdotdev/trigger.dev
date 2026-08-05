@@ -1,10 +1,9 @@
 /**
  * Where a navigate goes, as a dashboard path.
  *
- * A `trigger://` target is resolved server-side (`resolveTriggerUri.server.ts`,
- * reached through the panel's `resolve` action) — this module handles the two
- * client-side halves: the runs-list filters a navigate intent carries, and links
- * that arrived as absolute URLs into our own origin.
+ * A `trigger://` target is resolved server-side in `resolveTriggerUri.server.ts`.
+ * This module handles the client-side halves: the runs-list filters a navigate
+ * intent carries, and links that arrived as absolute URLs into our own origin.
  */
 import { type RunFilters } from "@internal/dashboard-agent-contracts";
 
@@ -42,10 +41,8 @@ export function appendRunFilters(path: string, filters?: RunFilters): string {
 
 /**
  * The path to navigate to for a link into our own origin, or null when the link
- * leaves the dashboard (those keep their new tab).
- *
- * The agent cites dashboard resources as absolute URLs, and an absolute URL is
- * rendered as an external link — a new tab for a page that belongs in this one.
+ * leaves the dashboard (those keep their new tab). The agent cites dashboard
+ * resources as absolute URLs, which would otherwise render as external links.
  */
 export function sameOriginPath(href: string, origin: string): string | null {
   let url: URL;

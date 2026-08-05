@@ -1,20 +1,14 @@
 /**
- * The words a resolved watch is said in. One module, all of them.
+ * The words a resolved watch is said in. The contracts package owns the mapping
+ * from resolution and observed outcome to category, tone, icon and headline key;
+ * this module owns the final English and the value formatting.
  *
- * Two layers, one meaning (§5.2). Contracts owns the **exhaustive resolved-result
- * mapping** — resolution + observed outcome → presentation category, tone,
- * semantic icon and headline *key*. This module owns the **final English**: the
- * headline sentences, the immediate-check outcomes, and the identity / duration /
- * value formatting that goes into them.
+ * Pure, no React, so the banner, the toast and the email all render its output.
+ * Components must contain no kind-specific wording of their own: a sentence about
+ * a queue or a run belongs here.
  *
- * It is pure and has no React in it, so the banner, the toast and the email
- * template can all render its output. **Components contain no kind-specific
- * wording of their own** — if a component is writing a sentence about a queue or
- * a run, the sentence belongs here.
- *
- * Headlines are FACT FIRST (§5.3): "email-sends queue drained", not "Watch update
- * — all clear". The `WATCH UPDATE` micro-label carries the "this is a wake"
- * signal, so the headline itself is free to just say what happened.
+ * Headlines state the fact first. The micro-label carries the "this is a wake"
+ * signal.
  */
 import {
   isWatchKind,
@@ -31,7 +25,7 @@ import {
 /** The micro-label above a wake headline. Not part of the fact. */
 export const WATCH_UPDATE_LABEL = "Watch update";
 
-/** Fingerprints are hashes — show just enough of one to tell them apart. */
+/** Fingerprints are hashes, so show just enough to tell them apart. */
 const FINGERPRINT_CHARS = 8;
 
 /* ------------------------------------------------------------------ *
@@ -39,13 +33,10 @@ const FINGERPRINT_CHARS = 8;
  * ------------------------------------------------------------------ */
 
 /**
- * The value half of a watch `identity` (`{kind}:{value}`) — the run id, the queue
- * name, the fingerprint. Taken from the identity rather than the spec because the
- * identity is the store's own dedup key: a surface reading it can never disagree
- * with the store about what is being watched.
- *
- * The threshold kinds append their threshold to the identity, so only the first
- * segment is the queue name.
+ * The value half of a watch `identity` (`{kind}:{value}`). Read from the identity
+ * rather than the spec because the identity is the store's dedup key, so a surface
+ * can never disagree with the store about what is being watched. The threshold
+ * kinds append their threshold, so only the first segment is the queue name.
  */
 const IDENTITY_KINDS_WITH_TRAILING_VALUE = new Set([
   "queue_depth_above",
@@ -74,7 +65,7 @@ function queueName(identity: string, kind: string): string {
   return value ? `${value} queue` : "The queue";
 }
 
-/** The bare queue name, for the sentences that read better without the word "queue". */
+/** The bare queue name, for sentences that read better without the word "queue". */
 function bareQueueName(identity: string, kind: string): string {
   return watchIdentityValue(kind, identity) || "this queue";
 }
@@ -102,9 +93,8 @@ export function formatWatchDuration(ms: number | null | undefined): string | nul
 }
 
 /**
- * A wait, in the words the queue page's Oldest wait block uses: whole minutes once
- * it is minutes. An SLA is stated in minutes, so the wait it is compared against
- * must not arrive with false seconds-precision next to it.
+ * A wait, in whole minutes once it is minutes. An SLA is stated in minutes, so the
+ * wait it is compared against must not carry false seconds-precision.
  */
 export function formatWatchWait(ms: number | null | undefined): string | null {
   if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
@@ -147,11 +137,8 @@ export type WatchResolvedInput = {
 
 /**
  * The final English for one headline key. Every kind-specific sentence in the
- * product is in this switch and nowhere else.
- *
- * The strings state the FACT, and the depth/threshold numbers come from the
- * frozen observation — never from a fresh read, so the sentence a retry produces
- * is the sentence the first attempt produced (§7.5).
+ * product is in this switch and nowhere else. Numbers come from the frozen
+ * observation, never a fresh read, so a retry produces the same sentence.
  */
 function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
   const { kind, identity, observed } = input;
@@ -183,8 +170,7 @@ function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
     case "queue_drained":
       return `${queueName(identity, kind)} drained`;
     case "queue_not_drained": {
-      // The observed depth makes the fact concrete. Without it, stay vague
-      // rather than invent a number.
+      // Without an observed depth, stay vague rather than invent a number.
       const depth = observed?.kind === "backlog_drain" ? observed.depth : null;
       return depth === null
         ? `${queueName(identity, kind)} still hasn't drained`
@@ -220,7 +206,7 @@ function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
     }
 
     case "queue_stalled": {
-      // The depth makes "stuck" concrete. Without it, say the fact we do have.
+      // Without an observed depth, say only the fact we do have.
       const depth = observed?.kind === "queue_stalled" ? observed.depth : null;
       return depth === null
         ? `${queueName(identity, kind)} isn't moving`
@@ -259,8 +245,8 @@ function headlineFor(key: WatchHeadlineKey, input: WatchResolvedInput): string {
     case "health_unavailable":
       return "Health couldn't be read";
 
-    // Honest by design: the window ran out while the source was unreadable, so
-    // this says nothing about the condition itself.
+    // The window ran out while the source was unreadable, so this deliberately
+    // says nothing about the condition itself.
     case "unverified_at_window_end":
       return "The watch ended without a confirmed answer";
 
@@ -280,13 +266,12 @@ export type WatchPresentation = WatchResolvedPresentation & {
 };
 
 /**
- * Present one resolved watch. The single entry point for the banner, the toast
- * and the email — they render this and add nothing of their own.
+ * Present one resolved watch. The single entry point for the banner, the toast and
+ * the email; they render this and add nothing of their own.
  */
 export function presentResolvedWatch(input: WatchResolvedInput): WatchPresentation {
   // A kind the store knows and this build doesn't must not crash a banner or
-  // silence an email — it degrades to the neutral fallback, which claims
-  // nothing about the outcome.
+  // silence an email, so it degrades to the fallback, which claims no outcome.
   if (!isWatchKind(input.kind)) return WATCH_PRESENTATION_FALLBACK;
 
   const resolved = resolveWatchResult({
@@ -302,8 +287,8 @@ export function presentResolvedWatch(input: WatchResolvedInput): WatchPresentati
 }
 
 /**
- * The same presentation for a watch whose row this surface couldn't load — the
- * banner's fallback (§5.2). It never guesses an outcome.
+ * The presentation for a watch whose row this surface couldn't load. It never
+ * guesses an outcome.
  */
 export const WATCH_PRESENTATION_FALLBACK: WatchPresentation = {
   category: "neutral",
@@ -315,13 +300,12 @@ export const WATCH_PRESENTATION_FALLBACK: WatchPresentation = {
 };
 
 /* ------------------------------------------------------------------ *
- * The one-shot result block (§2.2 / §4.1)
+ * The one-shot result block
  * ------------------------------------------------------------------ */
 
 /**
  * What the immediate check answered with, when it answered outright. No watch
- * exists in either case: the check IS the delivery, and there will be no chip and
- * no wake.
+ * exists in either case: the check is the delivery, so there is no chip and no wake.
  */
 export function immediateWatchMessage(result: string): string {
   switch (result) {
@@ -329,8 +313,8 @@ export function immediateWatchMessage(result: string): string {
       return "That already happened, so there's nothing left to watch.";
     case "terminal_unsatisfied":
       return "That can't happen any more, so there's nothing to watch.";
-    // Not one-shot outcomes — the watch is created and running — but worded here
-    // so a confirmation can never fall through to nothing.
+    // Not one-shot outcomes: the watch is created and running. Worded here so a
+    // confirmation can never fall through to nothing.
     case "unavailable":
       return "We couldn't check that just now. Watching anyway.";
     default:
@@ -339,8 +323,8 @@ export function immediateWatchMessage(result: string): string {
 }
 
 /**
- * The four lifetime facts a confirmation always states (§5.1.4): what · how often
- * it checks · that it reports once · when it gives up.
+ * The lifetime facts a confirmation always states: how often it checks, that it
+ * reports once, and when it gives up.
  */
 export function watchLifetimeSentence(args: {
   checkEveryMinutes: number;
@@ -352,24 +336,21 @@ export function watchLifetimeSentence(args: {
 }
 
 /**
- * The icon a surface should draw, keyed by MEANING. Exported so the mapping from
- * semantic icon to a concrete glyph lives in the component that owns the icon
- * set, and the choice itself stays here.
+ * The icon a surface should draw, keyed by meaning. Re-exported so the mapping to
+ * a concrete glyph lives in the component that owns the icon set.
  */
 export type { WatchSemanticIcon };
 
 /* ------------------------------------------------------------------ *
- * The configuration card (§2.2)
+ * The configuration card
  * ------------------------------------------------------------------ */
 
-/** Fixed, always on: the card states it as a fact, not as a choice (§2.2). */
+/** Fixed and always on: the card states it as a fact, not as a choice. */
 export const WATCH_IN_CHAT_DELIVERY_LINE = "When there's an answer: tell me in chat";
 
 /**
- * WHAT is being watched, as the card's title names it — from the SPEC, because
- * the card exists before any watch row does. The `{kind}:{value}` identity
- * formatting above is the same answer read off the store; this is the same answer
- * read off the draft.
+ * What is being watched, as the card's title names it. Read from the spec rather
+ * than the identity because the card exists before any watch row does.
  */
 export function watchSubjectLabel(spec: WatchSpec): string {
   switch (spec.kind) {
@@ -391,9 +372,8 @@ export function watchSubjectLabel(spec: WatchSpec): string {
 }
 
 /**
- * The condition line: "Until the queue drains", "If it fails". Written as the
- * user would read it under the subject, so the two lines together are one
- * sentence without repeating the subject.
+ * The condition line. Written to read under the subject, so the two lines together
+ * are one sentence without repeating the subject.
  */
 export function watchConditionLabel(spec: WatchSpec): string {
   switch (spec.kind) {
@@ -420,7 +400,7 @@ export function watchConditionLabel(spec: WatchSpec): string {
   }
 }
 
-/** The Watch button's tooltip — same imperative form as Investigate's. */
+/** The Watch button's tooltip. */
 export function watchTooltipLabel(spec: WatchSpec): string {
   switch (spec.kind) {
     case "run_start":
@@ -446,7 +426,7 @@ export function watchTooltipLabel(spec: WatchSpec): string {
   }
 }
 
-/** "For 1 hour · checking every 5 min" — the duration line of the card. */
+/** The duration line of the card. */
 export function watchDurationLabel(spec: WatchSpec): string {
   return `For ${formatWatchWindow(spec.maxHours)} · checking ${formatWatchCadence(
     spec.checkEveryMinutes
@@ -480,7 +460,7 @@ function watchConditionClause(spec: WatchSpec): string {
 }
 
 /* ------------------------------------------------------------------ *
- * The persisted blocks (§2.2)
+ * The persisted blocks
  * ------------------------------------------------------------------ */
 
 /** The follow-up lines a confirmation states, for the opt-ins that took effect. */
@@ -497,14 +477,13 @@ export function watchFollowUpLines(followUp: {
 }
 
 /**
- * The CONFIRMATION block: a watch is running. It states the four lifetime facts
- * (§5.1.4) and nothing else — no separate request line, because this block is the
- * transcript record of the request.
+ * The confirmation block: a watch is running. It states the lifetime facts and
+ * nothing else, because this block is the transcript record of the request.
  */
 export function watchConfirmationBlockBody(args: {
   spec: WatchSpec;
   watchId: string;
-  /** The creation-time check couldn't run. Said plainly rather than hidden. */
+  /** The creation-time check couldn't run. Stated plainly rather than hidden. */
   unavailable?: boolean;
   followUp?: { investigateOnAttention?: boolean; notifyExternally?: boolean };
 }): {
@@ -531,9 +510,8 @@ export function watchConfirmationBlockBody(args: {
 }
 
 /**
- * The ONE-SHOT RESULT block: the immediate check answered outright, so no watch
- * was created. No lifetime — there is nothing running to have one — and no
- * follow-ups, because there is no later outcome to follow up on.
+ * The one-shot result block: the immediate check answered outright, so no watch was
+ * created. Nothing is running, so there is no lifetime and no follow-ups.
  */
 export function watchOneShotBlockBody(args: {
   spec: WatchSpec;

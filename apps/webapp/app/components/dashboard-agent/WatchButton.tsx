@@ -5,21 +5,15 @@ import { useDashboardAgent } from "./dashboardAgentLauncher";
 import { watchTooltipLabel } from "./watch-presentation";
 
 /**
- * The universal **Watch…** action (§2.1).
+ * The universal Watch action, used by runs, queues, errors and health.
  *
- * One entry, four objects — run, queue, error, health. The ENTRY is universal and
- * the RECOMMENDATION is contextual: the caller passes the spec its object
- * recommends (a run → when it finishes, a queue → when it drains, an error → if
- * it happens again, a degraded health report → when it recovers), and every other
- * variant lives one tap deeper under **Customize**. That is why there is no
- * per-object label prop worth setting and no secondary "other options" entry.
+ * The entry is universal and the recommendation is contextual: the caller passes the
+ * spec its object recommends, and every other variant lives one tap deeper under
+ * Customize. Unlike `InvestigateButton` this posts nothing, it opens the panel with
+ * the card pre-filled, so an abandoned card leaves no trace in the transcript.
  *
- * Unlike `InvestigateButton` this posts NOTHING: it opens the panel with the card
- * pre-filled, and an abandoned card leaves no trace in the transcript.
- *
- * Self-hiding, like every agent entry point: no provider (or the agent gated off)
- * renders nothing, so callers need no gate of their own. The eye glyph matches
- * the chat's Watch block — the watch is the object, not the agent.
+ * Self-hiding like every agent entry point: with no provider it renders nothing, so
+ * callers need no gate of their own.
  */
 export function WatchButton({
   spec,
@@ -48,14 +42,13 @@ export function WatchButton({
     <Button
       type="button"
       variant={`${variant}/${size}`}
-      // The same eye the chat's Watch block wears — a watch is the object here,
+      // The same eye the chat's Watch block wears: the watch is about the object,
       // not the agent, so the button doesn't carry the agent's glyph.
       LeadingIcon={EyeIcon}
       leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}
-      // Same imperative form as the Investigate tooltip.
       tooltip={tooltip ?? watchTooltipLabel(spec)}
       onClick={() => agent.openWithWatch(spec)}
     >

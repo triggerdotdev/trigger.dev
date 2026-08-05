@@ -33,10 +33,7 @@ const PROCESS_LABELS: Record<ChatProcess, string> = {
   watching: "Watch active",
 };
 
-/**
- * `thinking` outranks the rest: a turn in flight is the thing that's about to
- * change, an investigation or a watch just sits there.
- */
+/** `thinking` outranks the rest: a turn in flight is what's about to change. */
 function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess | null {
   if (isThinking) return "thinking";
   if (chat.hasOpenInvestigation) return "investigating";
@@ -47,14 +44,12 @@ function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess
 function ProcessIcon({ process }: { process: ChatProcess }) {
   const label = PROCESS_LABELS[process];
   // No custom tooltip: the row is a button, so a tooltip trigger here would nest
-  // one button in another. `title` says the same thing.
+  // one button in another.
   return (
     <span title={label} aria-label={label} role="img" className="shrink-0 text-text-dimmed">
       {process === "investigating" ? (
         <MagnifyingGlassIcon className="size-3.5" />
       ) : (
-        // Thinking and watching both spin — "something is going on here"; the
-        // hover title says which.
         <AgentSpinner size={14} />
       )}
     </span>
@@ -62,9 +57,8 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
 }
 
 /**
- * Chats with an unread wake go to the top — a watch that fired is the reason to
- * open the panel at all. Everything else keeps the server's order (pinned first,
- * then most recent), so this is a stable sort on one key.
+ * Chats with an unread wake go first. Everything else keeps the server's order
+ * (pinned, then most recent), so this must stay a stable sort on one key.
  */
 function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
   return [...chats].sort(
@@ -72,8 +66,7 @@ function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
   );
 }
 
-/** Units the row's age can be shown in. Months and years would read as "1.8mo" for
- *  eight weeks, which is worse than "8w" — weeks are the coarsest useful unit. */
+/** Weeks are the coarsest unit: months would render as "1.8mo" for eight weeks. */
 const AGE_UNITS = ["w", "d", "h", "m"] as const;
 
 /** "2m", "3d", "8w" — the project's short duration style, one unit only. */
@@ -90,11 +83,7 @@ export function chatAge(lastMessageAt: string, now: number = Date.now()): string
   });
 }
 
-/**
- * The chat list, as the body of the header's title dropdown. Rows keep the
- * panel's list language (unread dot, process icon, hover delete) — only the
- * container changed from a full panel view to a popover menu.
- */
+/** The chat list, as the body of the header's title dropdown. */
 export function DashboardAgentHistoryMenu({
   chats,
   currentChatId,
@@ -105,15 +94,14 @@ export function DashboardAgentHistoryMenu({
   chats: DashboardAgentChat[];
   currentChatId: string;
   /**
-   * The chat with a turn in flight, if any. Client-side only — nothing marks a
-   * live turn server-side, so this is knowable for the open chat alone.
+   * The chat with a turn in flight. Client-side only: nothing marks a live turn
+   * server-side, so only the open chat can be known.
    */
   thinkingChatId?: string | null;
   onSelect: (chatId: string) => void;
   onDelete: (chatId: string) => void;
 }) {
-  // Deleting a chat is irreversible, so it goes through a confirm step. Holding
-  // the whole chat lets the dialog name what's being deleted.
+  // Holds the whole chat so the confirm dialog can name what's being deleted.
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
   const now = Date.now();
 
@@ -134,8 +122,7 @@ export function DashboardAgentHistoryMenu({
                   key={chat.id}
                   label={chat.title}
                   unread={chat.hasUnreadWake ?? false}
-                  // null keeps the leading slot so every title starts at the
-                  // same x whether or not this chat has a status.
+                  // null keeps the leading slot so every title starts at the same x.
                   status={process ? <ProcessIcon process={process} /> : null}
                   meta={age}
                   variant={chat.id === currentChatId ? "selected" : "default"}

@@ -1,20 +1,11 @@
 /**
- * Stable transcript order.
+ * Stable transcript order. The stored copy of a chat is the base order; anything
+ * that arrives live goes strictly after it, in the order it first appeared.
  *
- * The stored copy of a chat is the base order; anything that arrives live goes
- * strictly after it, in the order it first appeared. Two things make that
- * necessary:
- *
- * - The panel remounts the chat on every page navigation, seeded with the
- *   store's transcript. That copy can lag the turn that just finished (the
- *   loader reads `messages` and the stream cursor separately), so the stream can
- *   replay a turn the base already has — or one it doesn't.
- * - A message sent right after the remount (a card's Investigate button) is
- *   appended locally, so a replay landing afterwards used to render *after* it,
- *   putting the user's own message in the middle of the transcript.
- *
- * Keying the order by message id fixes both: a replayed turn goes back into its
- * own slot, and live messages stay in arrival order at the end.
+ * Ordering is keyed by message id because the stored copy can lag the turn that
+ * just finished, so the stream may replay a turn the base already has. Keying by
+ * id puts a replayed turn back in its own slot instead of after a message the
+ * user sent locally in the meantime.
  */
 
 export type TranscriptOrder = {
@@ -24,7 +15,7 @@ export type TranscriptOrder = {
   live: Map<string, number>;
 };
 
-/** The order to rank against: the stored transcript, as loaded. */
+/** The order to rank against: the stored transcript as loaded. */
 export function createTranscriptOrder(base: ReadonlyArray<{ id: string }>): TranscriptOrder {
   return {
     base: new Map(base.map((message, index) => [message.id, index])),
@@ -51,8 +42,7 @@ export function orderTranscript<T extends Orderable>(
       order.live.set(message.id, order.live.size);
     }
     const existing = chosen.get(message.id);
-    // The later copy wins — a streamed copy is the fresher one — unless it has
-    // no parts yet, when the copy we already have is the one that says something.
+    // The later (streamed) copy wins, unless it has no parts yet.
     if (existing && partCount(message) === 0 && partCount(existing) > 0) continue;
     chosen.set(message.id, message);
   }

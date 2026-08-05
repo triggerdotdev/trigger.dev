@@ -1,20 +1,17 @@
 /**
- * Completed `get_report` tool call -> report block.
+ * Completed `get_report` tool call to report block.
  *
- * The agent doesn't describe a report, it *fetches* one: `get_report` returns the
- * whole `ReportViewModel` (the same JSON `GET /api/v1/reports/:key?format=json`
- * serves). This adapter turns that tool part into a `report` view block so the
- * card renders the EXACT snapshot the model was grounded on — the model never
- * restates a number, so the card and the answer can't disagree.
+ * `get_report` returns the whole `ReportViewModel` (the same JSON
+ * `GET /api/v1/reports/:key?format=json` serves), and this turns that tool part into
+ * a `report` view block, so the card renders the exact snapshot the model was
+ * grounded on and the two cannot disagree.
  *
- * Deliberately pure and synchronous: no React, no fetch, no clock. Identity comes
- * from the tool call (`id = toolCallId`, `revision = 0`), which is what makes
- * every report an immutable historical snapshot — two reports in one conversation
- * have different ids and therefore never collapse into one card.
+ * Pure and synchronous: no React, no fetch, no clock. Identity comes from the tool
+ * call (`id = toolCallId`, `revision = 0`), which makes every report an immutable
+ * snapshot: two reports in one conversation never collapse into one card.
  *
- * Every failure mode returns `null`. A malformed or half-streamed tool part must
- * degrade to "no card" (the caller then shows the pending pill or the raw tool
- * row), never to a crash or a card full of blanks.
+ * Every failure mode returns `null` so a malformed or half-streamed part degrades to
+ * "no card" rather than to a crash or a card full of blanks.
  */
 import {
   VIEW_BLOCK_VERSION,
@@ -48,11 +45,11 @@ export function reportBlockFromToolPart(part: unknown): EnvelopedReportBlock | n
   const p = (part ?? {}) as MaybeToolPart;
 
   if (p.type !== REPORT_TOOL_PART_TYPE) return null;
-  // Only a finished call has a snapshot. The in-flight states fall back to the
-  // pending pill, `output-error` to the generic tool row so the failure is visible.
+  // Only a finished call has a snapshot. In-flight states fall back to the pending
+  // pill, `output-error` to the generic tool row so the failure stays visible.
   if (p.state !== "output-available") return null;
-  // Identity is the tool call's. Without it the block couldn't be keyed stably
-  // across re-renders, so we'd rather render nothing than a card that remounts.
+  // Without the tool call id the block can't be keyed stably across re-renders, so
+  // render nothing rather than a card that remounts.
   if (typeof p.toolCallId !== "string" || p.toolCallId.length === 0) return null;
 
   const output = normalizeOutput(p.output);

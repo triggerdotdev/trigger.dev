@@ -1,10 +1,6 @@
 import { cn } from "~/utils/cn";
 
-/**
- * What the agent is answering about, as a chip. It sits directly above the
- * composer rather than at the top of the panel: it describes the message you are
- * about to send, so it belongs next to where you type it.
- */
+/** What the agent is answering about, as a chip above the composer. */
 export function DashboardAgentContextBanner({
   projectSlug,
   environmentSlug,
@@ -13,7 +9,7 @@ export function DashboardAgentContextBanner({
 }: {
   projectSlug: string;
   environmentSlug: string;
-  // A human label for the page ("Runs", "Run detail"), not a path — see
+  // A human label for the page ("Runs", "Run detail"), not a path; see
   // `page-label.ts`. The agent still receives the full pathname separately.
   currentPage: string;
   className?: string;

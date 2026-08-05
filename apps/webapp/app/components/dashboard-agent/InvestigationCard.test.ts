@@ -2,13 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * `InvestigationCard` is a pure component: props in, markup out. That's what
- * lets the same card render in the panel, in the storybook gallery, and in any
- * future host — and it's easy to break with one convenient `useLoaderData`. So
- * it's asserted here rather than left to review (same guard as `ReportView`).
- *
- * The one hook it may use is `useState`, for the hypotheses disclosure: that's
- * local UI state, not host data.
+ * `InvestigationCard` is a pure component: props in, markup out, so the same
+ * card renders in the panel, the storybook gallery and any future host. The one
+ * hook it may use is `useState`, for the hypotheses disclosure.
  */
 const source = readFileSync(new URL("./InvestigationCard.tsx", import.meta.url), "utf8");
 
@@ -33,20 +29,18 @@ describe("InvestigationCard purity", () => {
   });
 
   it("hands its actions to the host as intents, and never composes its own", () => {
-    // The actions row is exactly the chart's seam: the button emits the block's
-    // intent and the host decides. So the card reads `capabilities.actions` and
-    // calls `onIntent` — it never builds a prompt or a target itself.
+    // The button emits the block's intent and the host decides: the card reads
+    // `capabilities.actions` and calls `onIntent`, never building an intent itself.
     expect(source).toMatch(/capabilities\?\.actions/);
     expect(source).toMatch(/onIntent\(action\.intent\)/);
     expect(source).not.toMatch(/kind:\s*"(ask|navigate)"/);
-    // The same row component the rest of the chat uses, so there's one button row.
     expect(source).toMatch(/ChatActionsRow/);
   });
 
   it("renders no spinner — the transcript owns the one live progress element", () => {
     // The card is re-emitted as the investigation progresses, so a spinner inside
-    // it restarts its animation on every revision. The transcript's single
-    // progress line wears the card's `progress` phrase instead (progress-line.ts).
+    // it would restart on every revision. The transcript's progress line wears
+    // the card's `progress` phrase instead.
     expect(source).not.toMatch(/AgentSpinner|ChatProgress|ChatPendingTool/);
   });
 

@@ -9,9 +9,9 @@ import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { DashboardAgentHistoryMenu, type DashboardAgentChat } from "./DashboardAgentHistory";
 
 /**
- * New chat — the same ⌘J that opens the panel: contextual, registered ONCE in
- * `DashboardAgent` (closed → open, open → new chat). This constant is display
- * only; nothing else may register it or the keystroke would fire twice.
+ * New chat is the same key that opens the panel, registered once in
+ * `DashboardAgent`. This constant is display only; registering it anywhere else
+ * makes the keystroke fire twice.
  */
 export const NEW_CHAT_SHORTCUT: Shortcut = {
   modifiers: ["mod"],
@@ -21,11 +21,8 @@ export const NEW_CHAT_SHORTCUT: Shortcut = {
 
 /**
  * The panel's title bar. Exactly as tall as the dashboard's own title bar
- * (`NavBar`), so the two dividers are one continuous line across the split.
- *
- * The chat's name is the history dropdown: the thing you're looking at is also
- * how you get to the others, which is one control instead of a name plus a
- * History button.
+ * (`NavBar`), so the two dividers form one continuous line across the split.
+ * The chat's name doubles as the history dropdown.
  */
 export function DashboardAgentHeader({
   title,
@@ -41,21 +38,20 @@ export function DashboardAgentHeader({
   isFullscreen,
   onClose,
 }: {
-  // The active chat's title (the panel owns resolving it). Titles are written by
-  // the agent, so they can be long — truncate and keep the full text in a
-  // tooltip.
+  // The active chat's title. Agent-written, so it can be long: truncated here
+  // with the full text in a tooltip.
   title: string;
   chats: DashboardAgentChat[];
   currentChatId: string;
   thinkingChatId?: string | null;
   onNewChat: () => void;
-  /** Hidden on a blank draft — "new chat" from a new chat is a no-op. */
+  /** Hidden on a blank draft, where a new chat would be a no-op. */
   showNewChat: boolean;
   /** Opening the dropdown is the moment to refresh the list. */
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
-  /** Swap between the side panel and the fullscreen takeover. */
+  /** Swap between the side panel and fullscreen. */
   onToggleFullscreen: () => void;
   isFullscreen: boolean;
   onClose: () => void;
@@ -63,7 +59,7 @@ export function DashboardAgentHeader({
   const [isHistoryOpen, setHistoryOpen] = useState(false);
 
   return (
-    // border-box, so h-10 + the 1px border is the same 40px as NavBar's
+    // border-box: h-10 plus the 1px border is the same 40px as NavBar's
     // grid-rows-[auto_1px].
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
       <Popover
@@ -130,8 +126,8 @@ export function DashboardAgentHeader({
             )
           }
         />
-        {/* Esc is handled by the panel (only while focus is inside it), so the
-            key is shown here rather than registered as a global shortcut. */}
+        {/* Esc is handled by the panel while focus is inside it, so the key is
+            shown here rather than registered as a global shortcut. */}
         <Button
           variant="minimal/small"
           className="aspect-square h-6 p-1"

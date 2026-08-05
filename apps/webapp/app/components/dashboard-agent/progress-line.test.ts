@@ -148,23 +148,18 @@ describe("liveProgress", () => {
     );
   });
 
-  /**
-   * The point of the whole module: one element, mounted once. Whatever phase the
-   * turn is in, the decision stays non-null — so the host never unmounts (and so
-   * never restarts) the spinner mid-turn — and only the label changes.
-   */
+  // One element, mounted once: the decision stays non-null through every phase of
+  // the turn so the host never unmounts the spinner. Only the label changes.
   it("stays non-null through a whole turn: activity → tool → card → tool → done", () => {
     const submitted: unknown[] = [{ role: "user", parts: [{ type: "text", text: "why failed?" }] }];
 
     const phases = [
-      // 1. Submitted, nothing back yet.
       { messages: submitted, activity: "thinking" as const },
-      // 2. First tool in flight.
       {
         messages: [...submitted, assistant([pendingTool("get_run")])],
         activity: "working" as const,
       },
-      // 3. The tool landed; the model is composing prose.
+      // The tool landed; the model is composing prose.
       {
         messages: [
           ...submitted,
@@ -175,7 +170,6 @@ describe("liveProgress", () => {
         ],
         activity: "working" as const,
       },
-      // 4. The investigation card is live.
       {
         messages: [
           ...submitted,
@@ -183,7 +177,7 @@ describe("liveProgress", () => {
         ],
         activity: "working" as const,
       },
-      // 5. Another tool runs under the live card.
+      // Another tool runs under the live card.
       {
         messages: [
           ...submitted,
@@ -192,7 +186,7 @@ describe("liveProgress", () => {
         ],
         activity: "working" as const,
       },
-      // 6. A revision with a new phrase.
+      // A revision with a new phrase.
       {
         messages: [
           ...submitted,
@@ -222,8 +216,7 @@ describe("liveProgress", () => {
       "investigation",
     ]);
 
-    // The turn ends: the verdict lands and the activity signal drops. Only now
-    // does the element go away.
+    // The turn ends: the verdict lands, the activity signal drops, the element goes.
     expect(
       liveProgress([...submitted, assistant([investigationPart("inv_1", 2, "concluded")])], null)
     ).toBeNull();

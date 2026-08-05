@@ -1,13 +1,7 @@
 /**
- * The agent's offer, as buttons.
- *
- * When an answer ends in "want me to set up a watch?", this block is what makes
- * that a click instead of a typed reply: the `watch` intent opens the watch
- * configuration card pre-filled, `ask` sends the labelled question as the user's
- * next message. The block only emits an intent — the host decides whether to
- * honour it, so without `onIntent` there is nothing to render.
- *
- * PURE COMPONENT: props in, markup out.
+ * The agent's offer, as buttons. The block only emits an intent; the host
+ * decides whether to honour it, so without `onIntent` there is nothing to
+ * render.
  */
 import type {
   ActionsBlock as ActionsBlockPayload,

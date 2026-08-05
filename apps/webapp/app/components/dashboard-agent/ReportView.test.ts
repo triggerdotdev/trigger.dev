@@ -2,10 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * `ReportView` is a pure component: props in, markup out. That's the property
- * that lets the same card render in the panel, in the storybook gallery, and in
- * any future host — and it's easy to break with one convenient `useLoaderData`.
- * So it's asserted here rather than left to review.
+ * `ReportView` is a pure component: props in, markup out, so the same card
+ * renders in the panel, the storybook gallery and any future host.
  */
 const source = readFileSync(new URL("./ReportView.tsx", import.meta.url), "utf8");
 
@@ -20,7 +18,6 @@ describe("ReportView purity", () => {
   });
 
   it("calls no React hook of its own", () => {
-    // A pure render needs no state, no effects, no context.
     expect(source).not.toMatch(/\buse[A-Z]\w*\(/);
   });
 });

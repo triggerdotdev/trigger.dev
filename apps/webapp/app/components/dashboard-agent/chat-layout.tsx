@@ -1,63 +1,26 @@
 /**
- * Chat layout — the one place transcript layout is decided.
- *
- * Every answer format the agent can produce gets a component here, and the chat
- * composes those components instead of writing its own spacing. If you are
- * building new chat content, you should not need to type a single padding,
- * margin or `space-y-*` class: pick the micro-layout that matches the format,
- * and the transcript's rules follow.
- *
- * ## Composition rules
- *
- * A transcript is:
+ * Chat layout: the one place transcript layout is decided. A turn body composes
+ * only the micro-layouts exported here.
  *
  *     ChatTranscript
  *       ChatTurn*                     one row of the transcript
  *         <body>                      one or more micro-layouts
  *
- * A turn body composes only these micro-layouts:
+ * ## Composition rules
  *
- *   - `ChatText`        — markdown / plain text (assistant) or the user bubble
- *   - `ChatCardSlot`    — a full-width block that owns its own internals: a rich
- *                         card (diagnosis, investigation, report, chart), a
- *                         callout, a chip row
- *   - `ChatProgress`    — the live progress line: a spinner and one line of text.
- *                         The transcript mounts exactly one, for the whole turn
- *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
- *   - `ChatNote`        — an inline system / interceptor note
- *   - `ChatSystemBlock` — a deterministic form/system block (the watch card and
- *                         the confirmation it becomes): canned, honestly canned
- *   - `ChatWakeSlot`    — an unprompted turn: its banner and the narration under
- *                         it, kept together as one unit
- *   - `ChatStatusLine`  — an icon and one line of status
- *   - `ChatActionsRow`  — a row of buttons
- *
- * 1. **Spacing belongs to the library.** A consumer never writes `p-*`, `px-*`,
- *    `py-*`, `m-*`, `gap-*` or `space-y-*` at transcript level. If a new format
- *    needs spacing that isn't here, add a micro-layout — don't inline classes at
- *    the call site. A unit test (`chat-layout.test.ts`) enforces this for the
- *    regions the consumers mark as transcript-level.
- * 2. **The inset has one owner.** `ChatTurn` owns the horizontal inset,
- *    `ChatTranscript` the vertical padding and the rhythm between turns. A
- *    micro-layout mounted inside a turn adds no inset of its own; the same
- *    micro-layout mounted anywhere else applies the inset itself (see
- *    `ChatInsetProvider`). That is why `ChatProgress` is aligned with the
- *    transcript wherever it is mounted, including under a card.
- * 3. **Cards own their insides, the library owns their placement.** Anything
- *    within a card's border — its header strip, section padding, internal
- *    rhythm — is the card's business and must stay in the card. Anything about
- *    how the card sits in the transcript — full width, inset, distance to its
- *    neighbours — is `ChatCardSlot`'s, and a card must not set it.
- * 4. **One live progress element per turn.** `ChatProgress` is the only thing in
- *    the transcript that renders `AgentSpinner`, and the transcript mounts one of
- *    them at a fixed position for the whole in-flight period — only its label
- *    changes as the turn moves from tool to tool, or into a live card (see
- *    `progress-line.ts`). Nothing else — no card, no tool part — may render a
- *    spinner of its own: the spinner is an animated canvas, so a second one is
- *    both a second focal point and an animation that restarts on every remount.
- * 5. **Role drives alignment and nothing else.** `role="user"` is right-aligned
- *    in a grey bubble; `role="assistant"` is left-aligned, full width and
- *    unboxed — plain prose, so the cards are the only things that read as cards.
+ * 1. Spacing belongs to this file. Consumers never write padding, margin, gap or
+ *    `space-y-*` at transcript level; add a micro-layout instead.
+ *    `chat-layout.test.ts` enforces this for regions marked transcript-level.
+ * 2. The inset has one owner. `ChatTurn` owns the horizontal inset,
+ *    `ChatTranscript` the vertical padding and turn rhythm. A micro-layout adds
+ *    the inset itself only when mounted outside a turn (`ChatInsetProvider`).
+ * 3. Cards own everything inside their border; `ChatCardSlot` owns how they sit
+ *    in the transcript.
+ * 4. One live progress element per turn. Only `ChatProgress` renders
+ *    `AgentSpinner`, and it stays mounted with only its label changing. A second
+ *    spinner is a second focal point and restarts its animation on every remount.
+ * 5. Role drives alignment only: user right-aligned in a bubble, assistant
+ *    left-aligned and unboxed so only cards read as cards.
  */
 import type { Ref } from "react";
 import { createContext, Suspense, useContext } from "react";
@@ -75,7 +38,7 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 /** Gap inside a single-line row (icon to text, button to button). */
 const ROW_GAP = "gap-2";
-/** Gap inside a chip (icon to label). Tighter than a row — same as a watch chip. */
+/** Gap inside a chip (icon to label). */
 const CHIP_GAP = "gap-1.5";
 /** Rhythm inside one unit — a banner and the text it introduces. */
 const UNIT_GAP = "space-y-1.5";
@@ -84,20 +47,16 @@ const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
 
 /**
- * The soft edge at the bottom of the scroller. There is no rule above the
- * composer — the transcript runs behind it — so this is what says the content
- * continues. Same idiom as the collapsed-content fade on the deployment page.
+ * The soft edge at the bottom of the scroller. The transcript runs behind the
+ * composer with no rule above it, so the fade is what signals more content.
  */
 const SCROLL_FADE = "h-6 bg-linear-to-t from-background-bright to-transparent";
 
 export type ChatRole = "user" | "assistant";
 
 /**
- * Whether the surrounding element already applied the transcript inset.
- *
- * Micro-layouts read this so the same component is correctly aligned both as a
- * turn body and when it is mounted loose in the transcript (a card rendering
- * `ChatProgress` under itself, for instance).
+ * Whether the surrounding element already applied the transcript inset, so a
+ * micro-layout stays aligned both inside a turn and mounted loose.
  */
 const ChatInsetContext = createContext(false);
 
@@ -112,11 +71,9 @@ function useInsetClass(): string | undefined {
 }
 
 /**
- * The scrolling column. One per chat panel: the vertical padding and the rhythm
- * between turns live here, so no consumer sets either.
- *
- * `contentRef` is attached to the padded column *inside* the scroller — that is
- * what `useTranscriptAutoScroll` expects (it walks up to find the scroller).
+ * The scrolling column, one per chat panel. `contentRef` must stay on the padded
+ * column inside the scroller: `useTranscriptAutoScroll` walks up from it to find
+ * the scroller.
  */
 export function ChatTranscript({
   children,
@@ -141,11 +98,9 @@ export function ChatTranscript({
 }
 
 /**
- * One turn: the row that carries the transcript's horizontal inset and, for an
- * assistant turn, the rhythm between the micro-layouts in its body.
- *
- * `bleed` drops the inset for content that is meant to span the panel edge to
- * edge — the context banner is the only such case today.
+ * One turn: carries the transcript's horizontal inset and, for an assistant turn,
+ * the rhythm between the micro-layouts in its body. `bleed` drops the inset for
+ * content that spans the panel edge to edge.
  */
 export function ChatTurn({
   role = "assistant",
@@ -172,18 +127,9 @@ export function ChatTurn({
 }
 
 /**
- * A text body.
- *
- * The assistant variant is the panel's markdown path, rendered as plain prose:
- * NOT a card. The agent answers in text most of the time, and a box around every
- * one of those answers made the transcript read as a stack of cards — so the box
- * is reserved for the things that really are cards (report, investigation,
- * diagnosis, chart), which mount through `ChatCardSlot`. A plain-text fallback
- * shows while the markdown renderer loads.
- *
- * The user variant is the one bubble left: grey, right-aligned, so a turn is
- * legible at a glance without competing with the accent the agent's own surfaces
- * use.
+ * A text body. The assistant variant is the markdown path, rendered unboxed so
+ * the box stays reserved for real cards mounted through `ChatCardSlot`. A
+ * plain-text fallback shows while the markdown renderer loads.
  */
 export function ChatText({ role = "assistant", text }: { role?: ChatRole; text: string }) {
   if (role === "user") {
@@ -204,28 +150,18 @@ export function ChatText({ role = "assistant", text }: { role?: ChatRole; text: 
 
 /**
  * Where a block that owns its own internals mounts: a rich card, a callout, a
- * chip row. Full width of the turn, no padding of its own — the card's border is
- * the boundary between the library's rules and the card's own.
+ * chip row. Full width of the turn, no padding of its own.
  */
 export function ChatCardSlot({ children }: { children: React.ReactNode }) {
   return <div className="min-w-0">{children}</div>;
 }
 
 /**
- * The live progress line: a spinner and one line of dimmed text, left-aligned.
- *
- * The transcript's ONE indicator that the agent is working, and the only place
- * `AgentSpinner` appears in it. Whatever the turn is doing — waiting on a tool,
- * streaming, running an investigation — it is this line, relabelled; the host keeps
- * the element mounted and swaps `children` (see `progress-line.ts`).
- *
- * It always carries the transcript's inset — either from the turn it sits in, or
- * by applying it itself when it is mounted loose (under a card, say). There is no
- * way to mount it flush against the panel edge, which is the point.
- *
- * The text wraps, so the spinner is pinned to the FIRST line (`items-start`) and
- * nudged down to sit optically centred against it — `items-center` floated it to
- * the middle of a two-line message.
+ * The live progress line: a spinner and one line of dimmed text. The only place
+ * `AgentSpinner` appears in the transcript. The host keeps it mounted for the
+ * whole turn and swaps `children` (see `progress-line.ts`). It always carries the
+ * transcript inset, from its turn or applied itself when mounted loose. The text
+ * wraps, so the spinner pins to the first line rather than centring on the block.
  */
 export function ChatProgress({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
@@ -241,18 +177,14 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * A tool-call row, and optionally a `ChatProgress` under it while the call is in
- * flight. Nothing but the row's placement lives here — the row itself is the
- * shared `ToolUseRow`.
+ * Placement for a tool-call row, plus an optional `ChatProgress` under it while
+ * the call is in flight. The row itself is the shared `ToolUseRow`.
  */
 export function ChatToolRow({ children }: { children: React.ReactNode }) {
   return <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>;
 }
 
-/**
- * An inline note in a voice that is not the agent's — a system aside, or the demo
- * interceptor saying what would have happened.
- */
+/** An inline note in a voice that is not the agent's. */
 export function ChatNote({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
   return (
@@ -268,12 +200,8 @@ export function ChatNote({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * An icon and one line of status. The text keeps the default colour — the state
- * is carried by the icon, the same rule the run status cells follow.
- *
- * `icon` is rendered as given (colour it at the call site, e.g. with
- * `AgentStatusIcon`); `children` is the line, plus anything that belongs under
- * it.
+ * An icon and one line of status. State is carried by the icon, not the text
+ * colour, so colour `icon` at the call site.
  */
 export function ChatStatusLine({
   icon,
@@ -291,9 +219,8 @@ export function ChatStatusLine({
 }
 
 /**
- * An unprompted turn: the banner that says what woke the chat, then the body it
- * introduces — tighter than the gap between two independent micro-layouts,
- * because the two read as one thing.
+ * An unprompted turn: the banner that says what woke the chat and the body it
+ * introduces, kept tighter than the normal turn-body gap so they read as one unit.
  */
 export function ChatWakeSlot({
   banner,
@@ -310,23 +237,15 @@ export function ChatWakeSlot({
   );
 }
 
-/** Rhythm between the lines inside a system block. Tighter than a turn body. */
+/** Rhythm between the lines inside a system block. */
 const BLOCK_LINE_GAP = "space-y-1";
 /** The system block's own padding. Owned here, never set by its contents. */
 const BLOCK_INSET = "px-3 py-2.5";
 
 /**
- * A deterministic **system/form block** — the third voice in the transcript.
- *
- * "Who is speaking" is binding (design §2.2): the agent's voice belongs only
- * where the model actually ran. A watch configuration card and the confirmation
- * it becomes are canned UI, so they must read as canned — a bordered block with a
- * micro-label, not prose in the agent's typography and not one of the rich cards
- * (those are answers; this is a form).
- *
- * Like every other micro-layout: the frame, the inset and the internal rhythm are
- * the library's, the contents are the consumer's. `actions` is the footer row, so
- * a consumer never has to reach for `ChatActionsRow` and its own top margin.
+ * A deterministic system/form block: the third voice in the transcript. Canned UI
+ * must not use the agent's voice, so it reads as a bordered block with a
+ * micro-label rather than prose or a rich card. `actions` is the footer row.
  */
 export function ChatSystemBlock({
   label,
@@ -336,7 +255,7 @@ export function ChatSystemBlock({
 }: {
   /** The micro-label that says this is the system, not the agent. */
   label: string;
-  /** Colour it at the call site — the state lives in the icon, not the text. */
+  /** Colour it at the call site: the state lives in the icon, not the text. */
   icon?: React.ReactNode;
   children: React.ReactNode;
   actions?: React.ReactNode;
@@ -361,7 +280,7 @@ export function ChatSystemBlock({
   );
 }
 
-/** A row of buttons — a card's footer intents, a retry, a dismiss. */
+/** A row of buttons. */
 export function ChatActionsRow({ children }: { children: React.ReactNode }) {
   return <div className="flex shrink-0 flex-wrap items-center gap-1">{children}</div>;
 }

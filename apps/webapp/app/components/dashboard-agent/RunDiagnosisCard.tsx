@@ -11,14 +11,10 @@ import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { isRunFriendlyId } from "./run-id";
 
-// The "why did this run fail?" failure card — the first block in the dashboard
-// agent's view catalog. Rendered from a `diagnosis` block the agent emits via
-// the render_view tool (see internal-packages/dashboard-agent tool-schemas).
-// Everything here is plain presentation of validated fields; no markup comes
-// from the model, so there's nothing to sanitize beyond outbound URLs.
+// The "why did this run fail?" card, rendered from a `diagnosis` block. Plain
+// presentation of validated fields: no markup comes from the model, so there is
+// nothing to sanitize beyond outbound URLs.
 
-// The category as one humanized sentence answering the triage question: whose
-// problem is this, roughly? Key words carry the weight, not a label prefix.
 function Em({ children }: { children: React.ReactNode }) {
   return <span className="font-semibold text-text-bright">{children}</span>;
 }
@@ -76,8 +72,7 @@ const CATEGORY_SENTENCES: Record<DiagnosisBlock["category"], React.ReactNode> = 
   ),
 };
 
-// Matches the app's link convention (TextLink `primary`), which holds up in both
-// themes.
+// Matches the app's link convention (TextLink `primary`), which holds up in both themes.
 const LINK_STYLE = "text-indigo-500 transition hover:text-indigo-400";
 
 const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string> = {
@@ -90,9 +85,8 @@ const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string
   historical_match: "History",
 };
 
-// Build a run-page path in the current org/project/env, or null when that route
-// context is absent (e.g. the storybook page) so the card degrades to plain
-// text rather than throwing.
+// Null when the route context is absent (e.g. the storybook page), so the card
+// degrades to plain text rather than throwing.
 function useRunPath(runId: string): string | null {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
@@ -101,8 +95,7 @@ function useRunPath(runId: string): string | null {
   return v3RunPath(organization, project, environment, { friendlyId: runId });
 }
 
-// Internal link to a run page, built from the canonical path builder so it stays
-// correct if the route shape changes. Falls back to plain text off-context.
+// Falls back to plain text off-context.
 function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
@@ -113,9 +106,8 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
   );
 }
 
-// Render an evidence `reference`: a run id links to its run page, an https URL
-// becomes an external link, everything else (error id, file:line, version) is
-// shown as monospace text.
+// A run id links to its run page, an https URL becomes an external link,
+// everything else (error id, file:line, version) is monospace text.
 function EvidenceReference({ reference }: { reference: string }) {
   if (isRunFriendlyId(reference)) {
     return <RunLink runId={reference} className="font-mono text-xs" />;
@@ -160,8 +152,8 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
 
 function RunActionButton({ runId, label }: { runId: string; label: string }) {
   const to = useRunPath(runId);
-  // Off-context (the storybook gallery) there is nowhere to go, but the gallery
-  // exists to review the real look — render the button enabled and inert.
+  // Off-context (the gallery) there is nowhere to go, but the gallery reviews the
+  // real look, so the button renders enabled and inert.
   if (!to) {
     return (
       <Button variant="primary/small" onClick={() => {}}>
@@ -188,13 +180,11 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
           <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
           <ConfidenceBadge confidence={block.confidence} />
         </div>
-        {/* The category as one humanized subtitle sentence; the key words are
-            bold, no label prefix. */}
         <p className="text-sm text-text-dimmed">
           {CATEGORY_SENTENCES[block.category] ?? block.category}
         </p>
-        {/* The run id gets its own truncating line — it never fits reliably in
-            the badge row's right corner at panel width. */}
+        {/* Its own truncating line: a run id doesn't fit the badge row's right
+            corner at panel width. */}
         {block.runId ? (
           <div className="truncate">
             <RunLink runId={block.runId} className="font-mono text-xs" />
@@ -211,8 +201,6 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {evidence.length > 0 ? (
           <Section title="Evidence">
-            {/* Two columns: the type badges line up in a fixed left column, the
-                detail and its reference line up in the second. */}
             <ul className="space-y-3">
               {evidence.map((item, i) => (
                 <li key={i} className={EVIDENCE_ROW_CLASS}>

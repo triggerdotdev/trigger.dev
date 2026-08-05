@@ -7,7 +7,7 @@ import type { Shortcut } from "~/hooks/useShortcutKeys";
 
 /**
  * Opens and closes the panel. Registered once, by `DashboardAgent`; the launcher
- * only shows it, so the tooltip and the binding can't drift apart.
+ * only displays it, so the tooltip and the binding can't drift apart.
  */
 export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
   modifiers: ["mod"],
@@ -21,20 +21,19 @@ type DashboardAgentContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
   /**
-   * Open the panel with `text` already in play: sent as the first message of a
-   * new chat when nothing is open, or dropped into the composer of the chat
-   * that's already open (so an in-progress conversation is never hijacked).
+   * Open the panel with `text` in play: sent as the first message of a new chat
+   * when nothing is open, otherwise dropped into the open chat's composer so an
+   * in-progress conversation is never hijacked.
    */
   openWith: (text: string) => void;
   /**
-   * Open the panel with a watch CARD pre-filled — the universal `Watch…` entry
-   * (§2.1). Deliberately not `openWith`: a card is not a message. Nothing is
-   * posted to the transcript and nothing is persisted until the card is
-   * submitted, so an abandoned card leaves no trace.
+   * Open the panel with a watch card pre-filled. Deliberately not `openWith`: a
+   * card is not a message, so nothing is posted to the transcript or persisted
+   * until the card is submitted and an abandoned card leaves no trace.
    */
   openWithWatch: (spec: WatchSpec) => void;
   /**
-   * Watch wakes the user hasn't seen. Polled only while the panel is closed —
+   * Watch wakes the user hasn't seen. Polled only while the panel is closed;
    * with it open the chat itself is the notification, so this stays at 0.
    */
   unreadWakes: number;
@@ -57,8 +56,7 @@ export function DashboardAgentLauncher() {
   }
 
   const { open, setOpen, unreadWakes } = agent;
-  // The open panel has its own Close button and Esc — a second toggle in the
-  // page header would just be noise.
+  // The open panel has its own Close button and Esc, so the header toggle goes.
   if (open) {
     return null;
   }
@@ -87,7 +85,7 @@ export function DashboardAgentLauncher() {
           </Button>
           {hasUnread && (
             <span
-              // Ringed so the dot reads on the header background as well as the button.
+              // Ringed so the dot reads on the header background and the button.
               className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed"
             />
           )}

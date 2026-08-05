@@ -1,11 +1,9 @@
 // One human label for "where the user is", used by the context banner.
 //
-// Two sources, on purpose. The structured page context
-// (`useAgentPageContext()`) is the good one: a route that describes itself
-// yields a `page.kind` we can label exactly. Everything else falls back to the
-// URL, which the panel already has. The full pathname keeps going to the agent
-// untouched in `clientData.currentPage` — this module only produces display
-// text.
+// Two sources: a route that describes itself yields a `page.kind` we can label
+// exactly, everything else falls back to the URL. This module only produces
+// display text; the full pathname still goes to the agent untouched in
+// `clientData.currentPage`.
 
 import type { AgentPage, AgentPageContext } from "./page-context-types";
 
@@ -49,9 +47,8 @@ const KIND_LABELS: Record<Exclude<AgentPage["kind"], "other">, string> = {
   sessions: "Sessions",
 };
 
-// The dashboard's env-level sections, keyed by their first path segment. Only
-// the ones whose label isn't just the prettified segment need an entry, but
-// listing them all keeps the wording deliberate rather than incidental.
+// The dashboard's env-level sections, keyed by their path segment. Only the ones
+// whose label isn't the prettified segment strictly need an entry.
 const SECTION_LABELS: Record<string, string> = {
   agents: "Agents",
   alerts: "Alerts",
@@ -111,10 +108,7 @@ export function pageLabelFromPath(pathname: string): string {
   return last ? (SECTION_LABELS[last] ?? prettifySegment(last)) : FALLBACK_LABEL;
 }
 
-/**
- * The banner's label for the current page: the structured page kind when the
- * route classified itself, else the path.
- */
+/** The banner's label: the structured page kind when there is one, else the path. */
 export function agentPageLabel(
   pageContext: AgentPageContext | undefined,
   pathname: string
@@ -123,7 +117,7 @@ export function agentPageLabel(
   if (page && page.kind !== "other") {
     return KIND_LABELS[page.kind] ?? pageLabelFromPath(pathname);
   }
-  // An `other` page carries the raw path it couldn't classify; prefer it over
-  // the location when present, since it's what the agent was told.
+  // An `other` page carries the raw path it couldn't classify. Prefer it over the
+  // location, since it's what the agent was told.
   return pageLabelFromPath(page?.kind === "other" && page.path ? page.path : pathname);
 }

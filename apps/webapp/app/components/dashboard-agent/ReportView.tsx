@@ -1,27 +1,15 @@
 /**
- * The report card — the panel's rendering of a `report` view block.
+ * The report card: the panel's rendering of a `report` view block.
  *
- * A report is a snapshot of a `ReportViewModel`: numbers plus message *codes*,
- * never prose. Every string on this card is resolved through the report's own
- * message catalog (`report-messages.ts`), which is also what the markdown and
- * ANSI renderers use — so the chat card, the CLI and the agent's own grounding
- * can't drift into three different vocabularies.
+ * A report carries numbers plus message codes, never prose. Strings are resolved
+ * through the report's own message catalog (`report-messages.ts`), shared with
+ * the markdown and ANSI renderers so the card, the CLI and the agent's grounding
+ * use one vocabulary.
  *
- * The layout reads top to bottom as one argument: a quiet header line, one
- * headline that names the state, the metric grid that proves it, "why:" for what
- * owns it, "read:" for what it means, and a footer that puts the actions in a
- * sentence. The pieces live in `report-sparkline.tsx`, shared with the demo card.
- *
- * PURE COMPONENT, on purpose: props in, no Remix hooks, no loader data, no
- * router context. That's what lets it render identically in the panel, in the
- * storybook gallery, and (later) in any other host. Two consequences:
- *
- * - `trigger://` URIs are resolved by the HOST via the `resolveUri` prop. The
- *   card knows a URI is a resource pointer; only the host knows the environment
- *   it should resolve against.
- * - Footer actions inside the app don't navigate. They emit an `AgentIntent` and
- *   the host decides whether to honour it — the same contract the rest of the
- *   agent uses. Only entries whose target is an external URL are real links.
+ * Pure component: props in, no Remix hooks, no loader data, no router context, so
+ * it renders identically in any host. That means the host resolves `trigger://`
+ * URIs via `resolveUri`, and in-app footer actions emit an `AgentIntent` instead
+ * of navigating. Only entries whose target is an external URL are real links.
  */
 import {
   isTriggerUri,
@@ -34,8 +22,8 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { type ReactNode } from "react";
 import { Badge } from "~/components/primitives/Badge";
-// Imported for its registration side effect as much as its value: each report's
-// catalog registers itself under the report's title on import.
+// Imported for its registration side effect too: each report's catalog registers
+// itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { reportIsTrustworthy } from "./report-block-adapter";
@@ -70,10 +58,9 @@ const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
 // --- messages ---------------------------------------------------------------
 
 /**
- * Codes resolve through the report's own catalog. A report with no registered
- * catalog (an old transcript, a report that hasn't shipped its messages) falls
- * back to showing the raw codes — thin, but never a crash and never invented
- * prose.
+ * Fallback for a report with no registered catalog (an old transcript, a report
+ * that hasn't shipped its messages): show the raw codes rather than crash or
+ * invent prose.
  */
 const PASSTHROUGH_MESSAGES: ReportMessages = {
   metricLabel: (id) => id,
@@ -93,8 +80,8 @@ function messagesFor(title: string): ReportMessages {
 }
 
 // --- formatting -------------------------------------------------------------
-// The markdown renderer keeps its formatters private, so these mirror them. If
-// they ever become shared, this is the block that goes.
+// Mirrors of the markdown renderer's private formatters. If those ever become
+// shared, this block goes.
 
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -157,9 +144,8 @@ function findingTokens(vm: ReportViewModelPayload): Record<string, string | numb
 // --- links ------------------------------------------------------------------
 
 /**
- * What a `vm.links` entry points at. A report link is either an external doc URL
- * or a `trigger://` URI naming a resource in the environment — the card treats
- * them differently because only the host can turn a URI into a route.
+ * What a `vm.links` entry points at: an external doc URL or a `trigger://` URI.
+ * They differ because only the host can turn a URI into a route.
  */
 type LinkTarget =
   | { kind: "none" }
@@ -177,12 +163,9 @@ function classifyLink(
 }
 
 /**
- * One footer entry, rendered the way its code says (`reportFooterStyle`): a
- * primary button for something that happens, the docs button for something to
- * read, a text link for a place to look, prose for an option.
- *
- * An in-app action emits a `navigate` intent — or an `ask`, when the report named
- * no target, so the user can still pull the "how" out of the agent.
+ * One footer entry, rendered the way its code says (`reportFooterStyle`). An
+ * in-app action emits a `navigate` intent, or an `ask` when the report named no
+ * target, so the user can still get the "how" from the agent.
  */
 function footerEntryNode({
   code,
@@ -202,14 +185,13 @@ function footerEntryNode({
 
   if (style === "note") return <ReportFooterNote>{label}</ReportFooterNote>;
 
-  // A settings-page action the host resolved for us wins over everything: the
-  // user can self-serve it right there (e.g. raising the env concurrency limit
-  // on the Concurrency page).
+  // A settings-page action the host resolved wins over everything: the user can
+  // self-serve it there (e.g. raising the env concurrency limit).
   if (style === "action" && pagePath) {
     return <ReportFooterActionLink href={pagePath}>{label}</ReportFooterActionLink>;
   }
 
-  // A docs entry is ALWAYS the docs button, whatever shape its link arrived in —
+  // A docs entry is always the docs button, whatever shape its link arrived in:
   // external URL, resolved resource, or nothing (then its canonical docs page).
   if (style === "docs") {
     const href =
@@ -245,8 +227,7 @@ function footerEntryNode({
     return <ReportFooterNote>{label}</ReportFooterNote>;
   }
 
-  // An action whose target is a URL stays a button — contacting us about a limit
-  // is an action even though it opens a web form; the arrow says it leaves.
+  // An action whose target is a URL stays a button; the arrow says it leaves.
   const actionHref =
     target.kind === "external"
       ? target.url
@@ -272,8 +253,8 @@ function lowerFirst(text: string): string {
 }
 
 /**
- * Canonical docs pages for footer codes whose report entry carries no URL —
- * without one the entry silently degrades to prose, which reads as a bug.
+ * Canonical docs pages for footer codes whose report entry carries no URL.
+ * Without one the entry degrades to prose, which reads as a bug.
  */
 const DOCS_URL_FALLBACK: Record<string, string> = {
   concurrency_docs: "https://trigger.dev/docs/queue-concurrency",
@@ -283,8 +264,8 @@ const DOCS_URL_FALLBACK: Record<string, string> = {
 
 /**
  * Canonical destinations for action codes whose report entry carries no URL, so
- * the button opens the page directly instead of falling back to asking the agent
- * how to get there. Unknown codes keep the `ask` fallback.
+ * the button opens the page instead of asking the agent how to get there.
+ * Unknown codes keep the `ask` fallback.
  */
 const ACTION_URL_FALLBACK: Record<string, string> = {
   contact_us_raise_limit: "https://trigger.dev/contact",
@@ -350,9 +331,8 @@ function MetricRow({
 }
 
 /**
- * A finding's evidence: its metric grid, then the "why:" block — who owns the
- * problem, and what it isn't. The finding's own verdict is a headline or a
- * finding line above; this is only what backs it up.
+ * A finding's evidence: its metric grid, then the "why:" block. The verdict
+ * itself is the headline or finding line above.
  */
 function FindingBody({
   vm,
@@ -369,9 +349,9 @@ function FindingBody({
     .map((id) => vm.metrics.find((m) => m.id === id))
     .filter((m): m is ReportMetricPayload => m !== undefined);
 
-  // The anomaly window describes the finding's *driving* metric — the first id,
-  // since degraded findings list theirs in causal order — so only that one
-  // sparkline highlights it.
+  // The anomaly window describes the finding's driving metric, which is the first
+  // id (degraded findings list theirs in causal order), so only that sparkline
+  // highlights it.
   const anomalyMinutes = finding.anomalyWindow?.touchesEnd
     ? finding.anomalyWindow.minutes
     : undefined;
@@ -440,10 +420,9 @@ export function ReportView({
   /** Host-supplied `trigger://` resolver. Without one, resource links stay intents. */
   resolveUri,
   /**
-   * Host-supplied dashboard paths for footer actions that live on a settings
-   * page rather than behind a URI (keyed by footer code, e.g. raise_env_limit
-   * → the environment's Concurrency page). The component stays pure — only the
-   * host knows the org/project/env slugs.
+   * Host-supplied dashboard paths for footer actions that live on a settings page
+   * rather than behind a URI, keyed by footer code. Only the host knows the
+   * org/project/env slugs.
    */
   pagePaths,
 }: {
@@ -465,9 +444,9 @@ export function ReportView({
   const otherFindings = vm.findings.filter((_, i) => i !== heroIndex);
   const heroStatement = vm.summary.statements.find((s) => s.findingType === hero?.type);
 
-  // The headline speaks for the hero finding. When its statement carries a reason
-  // of its own (stale telemetry, no freshness signal) that statement IS the whole
-  // sentence — the finding's reason would only repeat it.
+  // The headline speaks for the hero finding. When its statement carries its own
+  // reason (stale telemetry, no freshness signal) that statement is the whole
+  // sentence; the finding's reason would only repeat it.
   const headlinePhrase = hero
     ? messages.statementMessage(hero.type, hero.severity, heroStatement?.reason)
     : messages.statementMessage(vm.title, severity);
@@ -489,8 +468,8 @@ export function ReportView({
     .filter((finding) => finding.read !== undefined)
     .map((finding) => fillTokens(messages.readMessage(finding.read!), tokens));
 
-  // "Tell me when this recovers" — only offered when there is something to
-  // recover from, and only for the health report, whose watch kind exists.
+  // Only offered when there is something to recover from, and only for the health
+  // report, which is the one with a recovery watch kind.
   const recoveryWatch: AgentIntent | null =
     vm.title === "health" && (severity === "warn" || severity === "crit")
       ? {
@@ -525,13 +504,11 @@ export function ReportView({
   if (recoveryWatch && onIntent) {
     const watchItem: ReportFooterItem = {
       code: FOOTER_WATCH_CODE,
-      // The label is the universal one (§2.1, binding): the ENTRY is the same
-      // everywhere and only the pre-filled recommendation is contextual, so a
-      // per-object CTA ("Watch recovery") would break the pattern.
+      // The label is deliberately the same everywhere; only the pre-filled spec is
+      // contextual, so a per-object label would break the pattern.
       node: <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>Watch…</ReportFooterAction>,
     };
-    // The watch joins the other buttons in the row, BEFORE the trailing
-    // "or do nothing" prose.
+    // The watch joins the other buttons, before the trailing prose entry.
     const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
     if (noteIndex !== -1) {
       footerItems.splice(noteIndex, 0, watchItem);
@@ -541,7 +518,7 @@ export function ReportView({
   }
 
   // Resources the report cites, resolved to dashboard links by the host. Cited,
-  // not offered — so a text link (our docs still get the docs button).
+  // not offered, so a text link; our docs still get the docs button.
   for (const link of vm.links) {
     if (footerLinkKeys.has(link.key)) continue;
     const target = classifyLink(link.url, resolveUri);

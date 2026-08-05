@@ -56,9 +56,9 @@ describe("the recommendations", () => {
     expect(healthWatchRecommendation("warn").kind).toBe("health_recovery");
   });
 
-  // The recommendation must be a FUTURE condition: once runs are already late,
-  // "if runs wait too long" is already true and would one-shot — the useful
-  // promise flips to the recovery, "when it drains".
+  // The recommendation must be a future condition. Once runs are already late,
+  // "if runs wait too long" is already true and would one-shot, so the useful
+  // promise flips to the recovery.
   it("switches the queue recommendation to the drain once runs are already late", () => {
     const late = queueWatchRecommendation("email-sends", {
       oldestWaitMs: OLDEST_WAIT_WARNING_MS,
@@ -107,8 +107,8 @@ describe("cadence limits", () => {
   });
 
   it("re-clamps when the kind changes under the user", () => {
-    // A 1-minute run watch switched to the queue variant must LAND on 5, not
-    // carry a cadence the aggregate schema would then reject.
+    // A 1-minute run watch switched to the queue variant must land on 5, not
+    // carry a cadence the aggregate schema would reject.
     const swapped = withVariant(withCadence(runDraft(), 1), "backlog_drain");
     expect(swapped.spec.checkEveryMinutes).toBe(5);
     expect(watchSpecSchema.safeParse(swapped.spec).success).toBe(true);
@@ -125,8 +125,7 @@ describe("condition variants (§3)", () => {
       "queue_stalled",
       "queue_oldest_age",
     ]);
-    // One entry means "no second question": the card states the condition instead
-    // of rendering a picker.
+    // One entry means the card states the condition instead of rendering a picker.
     expect(variantsOf(watchDraftFor(errorWatchRecommendation("error_a1")))).toHaveLength(1);
     expect(variantsOf(watchDraftFor(healthWatchRecommendation("warn")))).toHaveLength(1);
   });
@@ -134,8 +133,8 @@ describe("condition variants (§3)", () => {
   it("carries the subject and window across a swap, and restates the note", () => {
     const draft = withWindow(runDraft(), 6);
     const failed = withVariant(draft, "run_failed");
-    // The note is "why the user asked for it" and the wake quotes it — words
-    // describing the OLD condition must not survive a condition change.
+    // The wake quotes the note, so wording describing the old condition must not
+    // survive a condition change.
     expect(failed.spec).toMatchObject({
       kind: "run_failed",
       runId: "run_abc123",
@@ -185,7 +184,6 @@ describe("condition variants (§3)", () => {
   it("keeps the stall count internal — the default, never a field", () => {
     const stalled = withVariant(queueDraft(), "queue_stalled");
     expect(stalled.spec).toMatchObject({ ticks: WATCH_STALL_TICKS_DEFAULT });
-    // No setter exists for it, and the number setters leave it alone.
     expect(withThreshold(stalled, 5)).toEqual(stalled);
     expect(withAgeMinutes(stalled, 5)).toEqual(stalled);
   });
@@ -327,7 +325,6 @@ describe("the persisted blocks (§2.2)", () => {
       watchId: "watch_1",
     });
     expect(body.outcome).toBe("watching");
-    // what · how often it checks · that it reports once · when it gives up
     expect(body.headline).toBe("Watching email-sends until the queue drains.");
     expect(body.lifetime).toBe(
       "Checking every 5 min for up to 1 hour. It reports once, then stops."

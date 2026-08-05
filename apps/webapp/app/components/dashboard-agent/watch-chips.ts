@@ -1,17 +1,15 @@
 /**
- * The pure text of the watch UI: what a chip is labelled, what its tooltip says,
- * and how an immediate outcome is worded.
+ * The pure text of the watch UI: a chip's label and its tooltip.
  *
- * A chip has one line of room in a 380px panel, so the label names the *thing*
- * being watched (the run, the queue, the error) and the icon carries the state.
- * The label comes from the watch `identity` — the same dedup key the store uses —
- * so two chips can never disagree with the store about what they watch.
+ * A chip has one line of room in a 380px panel, so the label names the thing being
+ * watched and the icon carries the state. The label comes from the watch `identity`,
+ * the same dedup key the store uses, so a chip cannot disagree with the store about
+ * what it watches.
  */
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 
-// The immediate-check outcomes moved to the presenter: they are user-facing
-// wording, and §5.2 keeps all of that in one place. Re-exported so chip callers
-// don't have to know it moved.
+// The immediate-check wording lives in the presenter with the rest of the
+// user-facing copy. Re-exported here for chip callers.
 export { immediateWatchMessage } from "./watch-presentation";
 
 import { formatWatchCadence, watchIdentityValue } from "./watch-presentation";
@@ -43,8 +41,8 @@ export function watchChipLabel(watch: { kind: string; identity: string; note: st
     case "backlog_drain":
     case "queue_stalled":
       return value || fallbackLabel(watch);
-    // `queue_depth_above:{queue}:{threshold}` and friends — the chip names the
-    // queue; the number is in the tooltip's note, where there is room for it.
+    // Identity is `{kind}:{queue}:{number}` here. The chip names the queue; the
+    // number goes in the tooltip's note, where there is room for it.
     case "queue_depth_above":
     case "queue_depth_below":
     case "queue_oldest_age":

@@ -27,9 +27,8 @@ export type { TurnActivity };
 
 export type DashboardAgentMessagesProps = {
   messages: UIMessage[];
-  // What the turn is doing right now, or null when nothing is in flight. A turn
-  // spends most of its time streaming tool calls, so the indicator has to stay
-  // up for the whole turn — not just the initial submit.
+  // What the turn is doing right now, or null when nothing is in flight. Stays
+  // up for the whole turn, not just the initial submit.
   activity: TurnActivity | null;
   error?: Error;
   onRetry?: () => void;
@@ -41,26 +40,22 @@ export type DashboardAgentMessagesProps = {
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
   /**
-   * The chat's watches, when the host has them. A wake message names the watch
-   * it came from, so this is what lets its banner say *what* was being watched
-   * and colour the outcome by kind. Without it a wake still gets a banner, in
-   * kind-agnostic wording.
+   * The chat's watches, when the host has them. Lets a wake banner name what was
+   * being watched. Without it the banner falls back to kind-agnostic wording.
    */
   watches?: WakeWatch[];
 };
 
-// The shared MessageBubble renders `step-start` parts as a dashed "step"
-// separator — useful in the run inspector / playground, just noise in this
-// simple chat. Drop them before rendering (reference preserved when there are
-// none, so memoization still holds for those messages).
+// `step-start` parts render as a dashed separator in the shared bubble, which is
+// noise here. The message reference is preserved when there are none, so
+// memoization still holds.
 function stripStepParts(message: UIMessage): UIMessage {
   if (!message.parts?.some((p) => p.type === "step-start")) return message;
   return { ...message, parts: message.parts.filter((p) => p.type !== "step-start") };
 }
 
-// A completed render_view tool part carries a `{ blocks }` view spec the agent
-// composed (see the dashboard-agent view catalog). We render those blocks as
-// rich cards instead of the generic tool row.
+// A completed render_view tool part carries a `{ blocks }` view spec, rendered as
+// cards instead of the generic tool row.
 function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | null {
   const p = part as { type: string; output?: { blocks?: unknown[] } };
   if (p.type !== "tool-render_view") return null;
@@ -68,18 +63,11 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
 }
 
 /**
- * The blocks one part contributes, or null when it isn't a card at all.
- *
- * Two sources, one renderer:
- * - `render_view` — blocks the model composed.
- * - `get_report` — a snapshot block the host builds from the tool's own output,
- *   so the card shows the numbers the model was grounded on rather than numbers
- *   it retyped.
- *
- * Both replace the generic tool row: a rendered card already says everything the
- * raw JSON would. A `get_report` part that can't be adapted returns null and
- * falls through — to the pending pill while it is still streaming, to the tool row
- * once it has failed, so the failure stays visible.
+ * The blocks one part contributes, or null when it isn't a card at all. Sources
+ * are `render_view` (blocks the model composed) and `get_report` (a snapshot the
+ * host builds from the tool output, so the card shows the numbers the model was
+ * grounded on). A `get_report` part that can't be adapted returns null and falls
+ * through to the tool row, keeping a failure visible.
  */
 function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   const spec = viewSpecFor(part);
@@ -91,13 +79,9 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
 }
 
 /**
- * Blocks the HOST wrote, with no tool behind them.
- *
- * The watch card's confirmation and its one-shot result are deterministic facts
- * the webapp decided (§2.2) — there is no model turn and no tool call to hang
- * them off, so they travel as a plain `data-view` part and render through exactly
- * the same `ViewBlocks` catalog as everything else. Same envelope, same
- * latest-wins, one renderer.
+ * Blocks the host wrote, with no tool behind them. The watch card's confirmation
+ * and one-shot result have no model turn to hang off, so they travel as a plain
+ * `data-view` part and render through the same `ViewBlocks` catalog.
  */
 function hostViewBlocks(part: UIMessage["parts"][number]): unknown[] | null {
   const p = part as { type: string; data?: { blocks?: unknown[] } };
@@ -114,12 +98,11 @@ function investigationRef(block: unknown): InvestigationRef | null {
 }
 
 /**
- * Latest-wins across the WHOLE transcript, not just within one tool call: an
- * investigation renders at least twice (in_progress, then the verdict), each
- * from its own render_view part, so without this the user sees the working
- * copy stacked above the finished card. Returns, per investigation id, the one
- * occurrence (`messageId:partIndex`) allowed to render — the highest revision,
- * last occurrence winning a tie.
+ * Latest-wins across the whole transcript: an investigation renders at least
+ * twice (in_progress, then the verdict) from separate render_view parts, so
+ * without this the working copy stacks above the finished card. Returns, per
+ * investigation id, the one occurrence (`messageId:partIndex`) allowed to
+ * render — highest revision, last occurrence wins a tie.
  */
 export function winningInvestigationOccurrences(messages: UIMessage[]): Map<string, string> {
   const best = new Map<string, { revision: number; occurrence: string }>();
@@ -155,28 +138,14 @@ function withoutSupersededInvestigations(
 }
 
 // #region chat-layout transcript
-// Everything from here down composes via ./chat-layout only — see rule 1 there.
-// `chat-layout.test.ts` fails if a spacing utility class appears in this region.
+// Everything below composes via ./chat-layout only. `chat-layout.test.ts` fails
+// if a spacing utility class appears in this region.
 
-/**
- * One assistant part in the chat panel.
- *
- * Everything the panel styles itself is handled here; the rest falls through to
- * the shared `renderPart` so agent output still looks the same across the app.
- * The differences: text is always the rendered markdown (no raw toggle) at the
- * dashboard's default size, and tool calls never show their mechanics at all —
- * while running they are spoken for by the turn's one progress line ("Reading the
- * queue…", mounted at the end of the transcript), and once they land they leave NO
- * row: the answer is the prose and the cards, not the input/output plumbing. The
- * one exception is a FAILED call, which keeps its error row — a silent failure
- * would read as the agent ignoring the question. Citations are handled a level up,
- * where a run of them can be grouped into one row.
- */
 /**
  * Rewrite `[label](trigger://…)` links in prose to their resolved dashboard
  * paths. Markdown renderers won't link an unknown scheme, so a raw trigger://
- * target renders dead; while the resolver hasn't answered (or can't), the link
- * degrades to its plain label — never a dead href.
+ * target renders dead; while the resolver hasn't answered the link degrades to
+ * its plain label, never a dead href.
  */
 const TRIGGER_MD_LINK = /\[([^\]]+)\]\((trigger:\/\/[^\s)]+)\)/g;
 function resolveTriggerLinks(
@@ -209,11 +178,10 @@ function renderDashboardPart(
   }
 
   if (type.startsWith("tool-")) {
-    // An in-flight call renders nothing HERE. The turn has exactly one live
-    // progress element, mounted once at the bottom of the transcript, and this
-    // call's phrase is simply the label it wears while the call runs (see
-    // `liveProgress`). Rendering a line per part is what used to remount — and so
-    // restart — the spinner's animation at every phase change.
+    // An in-flight call renders nothing here: the turn has one live progress
+    // element at the bottom of the transcript (see `liveProgress`), and a line
+    // per part would remount it, restarting the spinner at every phase change.
+    // A failed call keeps its error row so the failure stays visible.
     if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) return null;
     if (p.state === "output-error") return renderPart(part, i);
     return null;
@@ -236,12 +204,9 @@ function citationFor(part: UIMessage["parts"][number]): { url: string; label: st
 }
 
 /**
- * One citation, as a button.
- *
- * A citation into our own dashboard is a place in this app, so it navigates in
- * place — as an absolute URL it would otherwise render as an external link and
- * open a second copy of the dashboard in a new tab. Real external links keep
- * their new tab.
+ * One citation, as a button. A same-origin citation navigates in place; as an
+ * absolute URL it would open a second copy of the dashboard in a new tab. Real
+ * external links keep their new tab.
  */
 function CitationButton({ url, label }: { url: string; label: string }) {
   const navigate = useNavigate();
@@ -272,10 +237,6 @@ function userText(message: UIMessage): string {
   );
 }
 
-// Renders one message as one turn. A user turn is the accent bubble; assistant
-// parts go through the panel's own renderer, and a card-producing part
-// (render_view / get_report) becomes a catalog card instead of a tool row. A
-// wake — an assistant turn nobody asked for — keeps the same body under a banner.
 const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
@@ -329,10 +290,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       continue;
     }
 
-    // Citations arrive one part each, but they read as a list of sources — so a
-    // run of consecutive ones becomes one wrapping row of docs buttons rather
-    // than a stack of full-width lines. A lone citation is that row with one
-    // button in it.
+    // Citations arrive one part each. A run of consecutive ones becomes one
+    // wrapping row of docs buttons rather than a stack of full-width lines.
     if (citationFor(part)) {
       const start = i;
       const buttons: React.ReactNode[] = [];
@@ -350,9 +309,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, resolveUri));
   }
 
-  // A wake narration is identified by the message id the agent wrote it under,
-  // so nothing about the parts has to change: same prose, with a banner above it
-  // saying the watch — not the user — started this turn.
+  // A wake narration is identified by its message id: same body, with a banner
+  // saying the watch, not the user, started this turn.
   const wake = wakeRefFromMessageId(message.id);
   if (wake) {
     return (
@@ -372,9 +330,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
 });
 
 /**
- * The turns of a conversation, without the transcript around them — for a host
- * that owns its own `ChatTranscript` and interleaves other content between
- * turns (the demo playbook does exactly this).
+ * The turns of a conversation, without the transcript around them, for a host
+ * that owns its own `ChatTranscript` and interleaves other content between turns.
  */
 export function DashboardAgentTurns({
   messages,
@@ -391,16 +348,13 @@ export function DashboardAgentTurns({
   // it must be computed on the exact parts the turns will render.
   const stripped = messages.map(stripStepParts);
 
-  // The turn's ONE live progress element. It is the last child of this fragment,
-  // which is a fixed slot: adding turns above it, a tool starting or landing, a
-  // card going live — none of that moves it, so React keeps the same
-  // `ChatProgress` (and the same animating spinner canvas) mounted for the whole
-  // turn and only the label changes underneath. Mounting a line per phase, which
-  // is what this replaced, restarted the animation at every hand-off.
+  // The turn's one live progress element, kept as the last child of this
+  // fragment so it never remounts as turns and cards arrive above it. Only its
+  // label changes, so the spinner animation runs uninterrupted for the turn.
   const progress = liveProgress(stripped, activity);
 
-  // Across the whole transcript, one card per investigation: the latest
-  // revision renders where it landed; earlier working copies disappear.
+  // One card per investigation across the transcript: the latest revision renders
+  // where it landed, earlier working copies disappear.
   const investigationWinners = winningInvestigationOccurrences(stripped);
 
   return (
@@ -455,8 +409,7 @@ export function DashboardAgentTurns({
   );
 }
 
-// The conversation in its own scroll column. Layout — the inset, the rhythm
-// between turns, where a card or a progress line sits — is `./chat-layout`'s;
+// The conversation in its own scroll column. Layout belongs to `./chat-layout`;
 // this component only decides what each part turns into.
 export function DashboardAgentMessages(props: DashboardAgentMessagesProps) {
   const rootRef = useTranscriptAutoScroll(props.messages, props.activity);

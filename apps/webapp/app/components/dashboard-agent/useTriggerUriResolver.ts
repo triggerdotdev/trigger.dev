@@ -4,11 +4,10 @@ import type { ResolvedUri } from "./ReportView";
 
 /**
  * A synchronous `resolveUri` for the cards, backed by the panel's async
- * `resolve` action. Resolution needs the server (environment scope, connected
- * repository), but the cards read links during render — so the first render of
- * a URI returns null (the card shows the raw URI), the answer is fetched once,
- * and the re-render turns it into a link. Failures cache as null, so a URI the
- * server can't resolve is asked about exactly once.
+ * `resolve` action. Resolution needs the server but the cards read links during
+ * render, so the first render of a URI returns null (the card shows the raw URI),
+ * the answer is fetched once, and the re-render turns it into a link. Failures
+ * cache as null, so an unresolvable URI is asked about exactly once.
  */
 export function useTriggerUriResolver(actionPath: string): (uri: string) => ResolvedUri | null {
   const [resolved, setResolved] = useState<Record<string, ResolvedUri | null>>({});

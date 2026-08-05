@@ -1,16 +1,10 @@
 /**
- * #13 The dashboard-wide signal that a watch woke a chat while the panel was
- * closed. The launcher's dot is easy to miss, so a wake also raises a toast.
+ * The dashboard-wide signal that a watch woke a chat while the panel was closed.
  *
- * Persistent by design: a wake is the answer to a question the user asked
- * minutes or hours ago, so it waits until it's dismissed rather than expiring on
- * a 5s timer. Dismissing does NOT mark the chat read — reading happens in the
- * panel, so the dot survives a swatted toast.
- *
- * The content is the standard `Callout` in its `agent` variant (the launcher's
- * chat icon, the agent's indigo accent), inside the sonner shell the app's other
- * toasts use — so a wake looks like everything else the dashboard says, not like
- * a one-off panel.
+ * Persistent by design: a wake answers a question asked minutes or hours ago, so it
+ * waits until dismissed rather than expiring on a timer. Dismissing does not mark
+ * the chat read (reading happens in the panel), so the launcher's dot survives a
+ * swatted toast.
  */
 import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
@@ -28,15 +22,14 @@ export const WAKE_TOAST_MAX_INDIVIDUAL = 3;
 export type WatchWake = {
   watchId: string;
   chatId: string;
-  /** The wire encoding off the row (§7.5). Not the outcome — see `resolution`. */
+  /** The wire encoding off the row. Not the outcome; see `resolution`. */
   outcome: "fired" | "expired";
   note: string;
   /**
-   * What actually happened, frozen on the row by the resolving check. The toast
-   * states the FACT ("email-sends queue drained"), not "Watch update" — same
-   * headline the banner and the email use, from the same presenter, so the three
-   * can never disagree. Absent on a row written before the resolution model, and
-   * the presenter falls back rather than guessing.
+   * What actually happened, frozen on the row by the resolving check. The toast,
+   * the banner and the email take their headline from the same presenter so they
+   * cannot disagree. Absent on a row written before the resolution model, where the
+   * presenter falls back rather than guessing.
    */
   kind?: string;
   identity?: string;
@@ -47,10 +40,9 @@ export type WatchWake = {
 };
 
 /**
- * The toast's title: the fact, or the neutral fallback when this wake predates
- * the resolution model. Never a kind-specific sentence written here — the
- * wording is `watch-presentation.ts`'s, and this only decides which watch to ask
- * it about.
+ * The toast's title: the fact, or the neutral fallback when this wake predates the
+ * resolution model. The wording is `watch-presentation.ts`'s; this only decides
+ * which watch to ask it about.
  */
 export function watchWakeToastTitle(wake: WatchWake): string {
   if (!wake.kind || !wake.identity) return WATCH_PRESENTATION_FALLBACK.headline;
@@ -73,8 +65,6 @@ function WakeToastUI({
   message: string;
   onOpenChat: () => void;
 }) {
-  // The standard toast, in its agent status: success's layout, the agent's
-  // glyph and the Ask Trigger border.
   return (
     <ToastUI
       variant="agent"
@@ -109,8 +99,7 @@ function show(node: (t: string) => React.ReactElement, id: string) {
 
 /**
  * One persistent toast for a single wake. `onOpenChat` is given the chat the wake
- * happened in — the toast is about that conversation, so it must open that one
- * rather than whichever chat the panel had last.
+ * happened in, not whichever chat the panel had open last.
  */
 export function showWatchWakeToast(wake: WatchWake, onOpenChat: (chatId: string) => void) {
   show(
