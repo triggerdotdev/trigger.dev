@@ -32,6 +32,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -82,6 +83,7 @@ const ActionBody = z.object({
     "delete",
     "read",
     "resolve",
+    "resolve-many",
     "watch-cancel",
     "watch-create",
   ]),
@@ -94,6 +96,8 @@ const ActionBody = z.object({
   pinned: z.enum(["true", "false"]).optional(),
   // A `trigger://` URI, for `resolve`.
   uri: z.string().optional(),
+  // A JSON array of `trigger://` URIs, for `resolve-many`.
+  uris: z.string().optional(),
   // The watch to cancel, for `watch-cancel`.
   watchId: z.string().min(1).optional(),
   // The configured card, for `watch-create`: a JSON `WatchDraft`.
@@ -206,6 +210,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     unreadWakes,
   });
 };
+
+/** Only a source URI needs the connected repository, so a batch without one skips the read. */
+async function findRepositoryForSourceUris(projectId: string, uris: string[]) {
+  if (!uris.some((uri) => uri.includes("/source/"))) return null;
+
+  const connected = await $replica.connectedGithubRepository.findFirst({
+    where: {
+      projectId,
+      repository: { installation: { deletedAt: null, suspendedAt: null } },
+    },
+    select: { repository: { select: { fullName: true } } },
+  });
+  return connected?.repository ?? null;
+}
 
 function messageTooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
@@ -335,21 +353,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const environment = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!environment) return json({ error: "Environment not found" }, { status: 404 });
 
-    // Only a source URI needs the connected repository.
-    const repository = uri.includes("/source/")
-      ? await $replica.connectedGithubRepository.findFirst({
-          where: {
-            projectId: project.id,
-            repository: { installation: { deletedAt: null, suspendedAt: null } },
-          },
-          select: { repository: { select: { fullName: true } } },
-        })
-      : null;
+    const repository = await findRepositoryForSourceUris(project.id, [uri]);
 
-    const resolved = resolveTriggerUri(
-      { ...environment, repository: repository?.repository ?? null },
-      uri
-    );
+    const resolved = resolveTriggerUri({ ...environment, repository }, uri);
     if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
 
     return json({
@@ -357,6 +363,43 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       label: resolved.label,
       external: resolved.external ?? false,
     });
+  }
+
+  // The card's citations in one request: one environment lookup and one repo lookup for the
+  // whole batch, same environment scope as `resolve`.
+  if (parsed.data.intent === "resolve-many") {
+    let uris: string[];
+    try {
+      const list = JSON.parse(parsed.data.uris ?? "") as unknown;
+      if (!Array.isArray(list) || list.some((uri) => typeof uri !== "string")) {
+        return json({ error: "uris is required" }, { status: 400 });
+      }
+      uris = [...new Set(list as string[])];
+    } catch {
+      return json({ error: "uris is required" }, { status: 400 });
+    }
+
+    if (uris.length === 0) return json({ error: "uris is required" }, { status: 400 });
+    if (uris.length > MAX_URIS_PER_RESOLVE_REQUEST) {
+      return json({ error: "Too many links in one request" }, { status: 400 });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const repository = await findRepositoryForSourceUris(project.id, uris);
+    const scope = { ...environment, repository };
+
+    // A null entry is the definitive "nothing to open": the client caches it.
+    const resolved: Record<string, { path: string; label: string; external: boolean } | null> = {};
+    for (const uri of uris) {
+      const hit = resolveTriggerUri(scope, uri);
+      resolved[uri] = hit
+        ? { path: hit.url, label: hit.label, external: hit.external ?? false }
+        : null;
+    }
+
+    return json({ resolved });
   }
 
   // The configuration card's submit path. The environment comes from the URL and goes
