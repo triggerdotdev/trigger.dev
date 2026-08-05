@@ -701,9 +701,7 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks). Theme-mapped --muted, because a hardcoded
-     charcoal chip reads as a black blob in light-mode prose. Fenced blocks stay
-     dark via shiki. */
+  /* Theme-mapped, not raw charcoal: fenced blocks stay dark via shiki. */
   & code:not(pre code) {
     @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
     background-color: var(--muted);
@@ -726,8 +724,6 @@
   & table {
     @apply w-full my-2 border-collapse;
   }
-  /* Theme-mapped, not raw charcoal: a charcoal header is a black bar in
-     light-mode prose. */
   & th,
   & td {
     @apply border border-grid-bright px-2 py-1 text-left;
@@ -746,7 +742,6 @@
     @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
-    /* 12px, chat-only: code examples read denser than the 14px prose around them. */
     @apply bg-transparent text-xs;
   }
   & [data-code-block] .line {
