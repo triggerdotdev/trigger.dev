@@ -925,10 +925,7 @@ describe("the resolution model", () => {
   });
 
   it("only a pending or unavailable boundary check becomes window_completed", async () => {
-    for (const body of [
-      { result: "pending" as const, facts: { pending: 7 } },
-      undefined,
-    ]) {
+    for (const body of [{ result: "pending" as const, facts: { pending: 7 } }, undefined]) {
       const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
       const { fetch } = fakeFetch(() =>
         body ? { body } : { status: 500, body: { error: "clickhouse is down" } }

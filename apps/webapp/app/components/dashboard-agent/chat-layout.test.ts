@@ -101,6 +101,5 @@ describe("chat-layout enforcement", () => {
       expect(source).toContain("bg-background-raised");
       expect(source).not.toMatch(/bg-indigo-\d/);
     });
-
   });
 });
