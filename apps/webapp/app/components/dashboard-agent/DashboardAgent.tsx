@@ -19,6 +19,7 @@ import {
   readAgentFullscreen,
   writeAgentFullscreen,
 } from "./panel-layout";
+import { startWakePolling } from "./wake-poll";
 import {
   showWatchWakesSummaryToast,
   showWatchWakeToast,
@@ -26,12 +27,10 @@ import {
   type WatchWake,
 } from "./WatchWakeToast";
 
-const UNREAD_POLL_INTERVAL_MS = 60_000;
-
-// Added to each delay so open tabs never settle into polling on the same second.
-const UNREAD_POLL_JITTER_MS = 15_000;
-
 const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
+
+// Shorter than the poll interval, so a stuck request is dropped before the next tick.
+const UNREAD_REQUEST_TIMEOUT_MS = 30_000;
 
 /** `hasAccess` is a UI gate only; the resource routes enforce the same check server-side. */
 export function DashboardAgent({
@@ -143,7 +142,10 @@ export function DashboardAgent({
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(`${actionPath}?unread=1`);
+        // Bounded, so one stuck request can't hold the poll's in-flight guard.
+        const res = await fetch(`${actionPath}?unread=1`, {
+          signal: AbortSignal.timeout(UNREAD_REQUEST_TIMEOUT_MS),
+        });
         if (!res.ok) return;
         const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
         if (cancelled) return;
@@ -168,31 +170,18 @@ export function DashboardAgent({
       }
     };
 
-    let timer: number | undefined;
-    function schedule() {
-      timer = window.setTimeout(
-        tick,
-        UNREAD_POLL_INTERVAL_MS + Math.random() * UNREAD_POLL_JITTER_MS
-      );
-    }
-    async function tick() {
-      // A hidden tab asks nothing; `onVisible` catches it up.
-      if (!document.hidden) await load();
-      if (!cancelled) schedule();
-    }
-    const onVisible = () => {
-      if (document.hidden || cancelled) return;
-      window.clearTimeout(timer);
-      void tick();
-    };
+    const stop = startWakePolling({
+      load,
+      isHidden: () => document.hidden,
+      onVisibilityChange: (listener) => {
+        document.addEventListener("visibilitychange", listener);
+        return () => document.removeEventListener("visibilitychange", listener);
+      },
+    });
 
-    void load();
-    schedule();
-    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisible);
+      stop();
     };
   }, [hasAccess, actionPath, setPanelOpen, openChat]);
 
