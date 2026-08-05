@@ -1,8 +1,6 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { readFile } from "node:fs/promises";
-import typescriptPkg from "typescript";
-
-const { transpileModule, ModuleKind } = typescriptPkg;
+import { loadTypescript } from "./internal/loadTypescript.js";
 
 const decoratorMatcher = new RegExp(/((?<![(\s]\s*['"])@\w[.[\]\w\d]*\s*(?![;])[((?=\s)])/);
 
@@ -10,6 +8,8 @@ export function emitDecoratorMetadata(): BuildExtension {
   return {
     name: "emitDecoratorMetadata",
     onBuildStart(context) {
+      const { transpileModule, ModuleKind } = loadTypescript(context.workingDir);
+
       context.registerPlugin({
         name: "emitDecoratorMetadata",
         async setup(build) {

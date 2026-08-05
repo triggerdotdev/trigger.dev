@@ -1513,6 +1513,9 @@ importers:
       '@types/resolve':
         specifier: ^1.20.6
         version: 1.20.6
+      '@typescript/typescript6':
+        specifier: 6.0.2
+        version: 6.0.2
       esbuild:
         specifier: ^0.23.0
         version: 0.23.0
@@ -1528,6 +1531,12 @@ importers:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+      typescript5:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
+      typescript7:
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
 
   packages/cli-v3:
     dependencies:
@@ -15352,6 +15361,11 @@ packages:
 
   typescript@5.6.1-rc:
     resolution: {integrity: sha512-E3b2+1zEFu84jB0YQi9BORDjz9+jGbwwy1Zi3G0LUNw7a7cePUrHMRNy8aPh53nXpkFGVHSxIZo5vKTfYaFiBQ==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -31586,6 +31600,8 @@ snapshots:
       rxjs: 7.8.2
 
   typescript@5.6.1-rc: {}
+
+  typescript@5.9.3: {}
 
   typescript@6.0.3: {}
 
