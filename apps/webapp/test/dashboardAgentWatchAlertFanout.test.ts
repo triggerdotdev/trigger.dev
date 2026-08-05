@@ -23,6 +23,8 @@ const WEBHOOK_CHANNEL = {
 
 const ctx = vi.hoisted(() => ({
   channels: [] as Array<{ id: string; type: string; properties: unknown }>,
+  /** Set to model replica lag: what the replica still sees. Null means "same as primary". */
+  replicaChannels: null as Array<{ id: string; type: string; properties: unknown }> | null,
   gateAllowed: true,
   webhookFails: false,
 }));
@@ -37,6 +39,11 @@ const safeWebhookFetch = vi.hoisted(() =>
 );
 
 vi.mock("~/db.server", () => {
+  const channelReader = (rows: () => Array<{ id: string; type: string; properties: unknown }>) => ({
+    findMany: async () => rows(),
+    findFirst: async ({ where }: { where: { id: string } }) =>
+      rows().find((channel) => channel.id === where.id) ?? null,
+  });
   const db = {
     runtimeEnvironment: {
       findFirst: async () => ({
@@ -51,11 +58,6 @@ vi.mock("~/db.server", () => {
         },
       }),
     },
-    projectAlertChannel: {
-      findMany: async () => ctx.channels,
-      findFirst: async ({ where }: { where: { id: string } }) =>
-        ctx.channels.find((channel) => channel.id === where.id) ?? null,
-    },
     organizationIntegration: {
       findFirst: async () => ({
         id: "int_1",
@@ -65,7 +67,14 @@ vi.mock("~/db.server", () => {
       }),
     },
   };
-  return { prisma: db, $replica: db, sqlDatabaseSchema: undefined };
+  return {
+    prisma: { ...db, projectAlertChannel: channelReader(() => ctx.channels) },
+    $replica: {
+      ...db,
+      projectAlertChannel: channelReader(() => ctx.replicaChannels ?? ctx.channels),
+    },
+    sqlDatabaseSchema: undefined,
+  };
 });
 
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
@@ -111,6 +120,7 @@ const payload = {
 
 beforeEach(() => {
   ctx.channels = [EMAIL_CHANNEL, SLACK_CHANNEL, WEBHOOK_CHANNEL];
+  ctx.replicaChannels = null;
   ctx.gateAllowed = true;
   ctx.webhookFails = false;
   enqueue.mockClear();
@@ -193,6 +203,18 @@ describe("dashboard agent watch alert per-channel delivery", () => {
     expect(bodies[1].id).toBe(bodies[0].id);
     expect(bodies[0].created).toBe(payload.firedAt);
     expect(bodies[1].created).toBe(bodies[0].created);
+  });
+
+  test("an unsubscribe the replica hasn't caught up on still stops the email", async () => {
+    ctx.channels = [];
+    ctx.replicaChannels = [EMAIL_CHANNEL];
+
+    await new DeliverDashboardAgentWatchChannelAlertService().call({
+      ...payload,
+      channelId: "chan_email",
+    });
+
+    expect(sendAlertEmail).not.toHaveBeenCalled();
   });
 
   test("an unsubscribed channel delivers nothing", async () => {

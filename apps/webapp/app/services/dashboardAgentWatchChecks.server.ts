@@ -4,7 +4,7 @@
  */
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { ReportPresenter } from "~/presenters/v3/reports/ReportPresenter.server";
 import { engine } from "~/v3/runEngine.server";
@@ -46,6 +46,30 @@ export async function readWatchRun(
 /** One Postgres point-read: does this queue exist in the environment? */
 export async function watchQueueExists(environmentId: string, queueName: string): Promise<boolean> {
   const queue = await $replica.taskQueue.findFirst({
+    where: { runtimeEnvironmentId: environmentId, name: queueName },
+    select: { id: true },
+  });
+  return queue !== null;
+}
+
+/** The same run read on the primary, for a target that may have been created a moment ago. */
+export async function readWatchRunOnPrimary(
+  runFriendlyId: string,
+  environmentId: string
+): Promise<WatchRunRow | null> {
+  const run = await runStore.findRunOnPrimary(
+    { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
+    { select: WATCH_RUN_SELECT }
+  );
+  return run ?? null;
+}
+
+/** The same queue read on the primary. */
+export async function watchQueueExistsOnPrimary(
+  environmentId: string,
+  queueName: string
+): Promise<boolean> {
+  const queue = await prisma.taskQueue.findFirst({
     where: { runtimeEnvironmentId: environmentId, name: queueName },
     select: { id: true },
   });
@@ -288,5 +312,20 @@ export function watchCheckDeps(
     readErrorRecurrence: (fingerprint, since) =>
       readWatchErrorRecurrence(environment, fingerprint, since),
     readHealth: () => readWatchHealth(environment),
+  };
+}
+
+/**
+ * Creation-time deps. The target reads go to the primary, so a run or queue created moments
+ * ago is visible instead of failing as a non-existent target inside the replication window.
+ */
+export function watchCreationCheckDeps(
+  environment: AuthenticatedEnvironment,
+  now: Date = new Date()
+): WatchCheckDeps {
+  return {
+    ...watchCheckDeps(environment, now),
+    readRun: (runId) => readWatchRunOnPrimary(runId, environment.id),
+    queueExists: (queue) => watchQueueExistsOnPrimary(environment.id, queue),
   };
 }

@@ -180,9 +180,10 @@ export class DeliverDashboardAgentWatchAlertService {
 /** One channel's delivery. A retry here can only re-send this channel. */
 export class DeliverDashboardAgentWatchChannelAlertService {
   async call(payload: DashboardAgentWatchChannelAlertPayload): Promise<void> {
-    // Re-read the channel rather than trusting the fan-out's snapshot: an
-    // unsubscribe between fan-out and delivery should stop the alert.
-    const channel = await $replica.projectAlertChannel.findFirst({
+    // Re-read the channel rather than trusting the fan-out's snapshot: an unsubscribe
+    // between fan-out and delivery should stop the alert. The primary, since the
+    // unsubscribe writes there and replica lag would send the mail anyway.
+    const channel = await prisma.projectAlertChannel.findFirst({
       where: {
         id: payload.channelId,
         projectId: payload.projectId,

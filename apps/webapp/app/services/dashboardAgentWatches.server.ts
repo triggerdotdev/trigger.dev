@@ -41,7 +41,7 @@ import {
   type WatchCheckDeps,
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
-import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
+import { watchCreationCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
 import {
   mintDashboardAgentWatchBatchToken,
   mintDashboardAgentWatchToken,
@@ -214,7 +214,8 @@ export async function createDashboardAgentWatch(params: {
 }): Promise<CreateDashboardAgentWatchResult> {
   const { environment, userId, chatId, spec } = params;
   const now = params.now ?? new Date();
-  const buildCheckDeps = params.deps?.checkDeps ?? watchCheckDeps;
+  // Creation reads the target on the primary; the polling checks stay on the replica.
+  const buildCheckDeps = params.deps?.checkDeps ?? watchCreationCheckDeps;
   const scheduleTick = params.deps?.scheduleTick ?? scheduleWatchTick;
   const isDashboardAgentConfigured = params.deps?.configured ?? isDashboardAgentConfiguredDefault;
   const checkDeps = buildCheckDeps(environment, now);
