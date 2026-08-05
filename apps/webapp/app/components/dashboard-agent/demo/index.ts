@@ -5,8 +5,8 @@
  * components with no transport, no LLM and no writes, so every v1 state can be
  * reviewed as UI. The state gallery (`/storybook/agent-ui`) is the consumer.
  *
- * The panel itself never renders any of this: its example conversations are real
- * stored chats, seeded by `pnpm --filter webapp run db:seed:agent-examples`.
+ * The panel itself never renders any of this: its conversations are real stored
+ * chats.
  *
  * This module must stay free of server imports — the isolation test in
  * `demo.test.ts` asserts that.

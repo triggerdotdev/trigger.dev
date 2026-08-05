@@ -1,7 +1,7 @@
 import { ClickHouse } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
 // App modules compile to CommonJS under tsx (webapp has no "type": "module"), so
-// import them as default bindings and destructure — same pattern as seed-agent-examples.
+// import them as default bindings and destructure.
 import dbServer from "./app/db.server";
 import organizationServer from "./app/models/organization.server";
 import projectServer from "./app/models/project.server";

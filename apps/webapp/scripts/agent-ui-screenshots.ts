@@ -8,8 +8,7 @@
  *      imports so the two can never disagree about what exists;
  *   b) every conversation in the panel's history, opened in the real panel on a
  *      real env page, so the review also sees the components in their actual
- *      container. Point it at the seeded `agent-examples` project
- *      (`pnpm --filter webapp run db:seed:agent-examples`) for the examples.
+ *      container. Point it at a project whose org already has chats.
  *
  * Both phases run in dark and light. The app pins `data-theme="dark"` on
  * `<html>` in `root.tsx` and has no theme switch yet, so light is produced by
@@ -282,9 +281,8 @@ async function shootChats(page: Page, theme: string) {
 
   if (rows.length === 0) {
     throw new Error(
-      "No conversations in the panel history. Seed the examples with " +
-        "`pnpm --filter webapp run db:seed:agent-examples` and point " +
-        "SCREENSHOT_ENV_PATH at that project."
+      "No conversations in the panel history. Point SCREENSHOT_ENV_PATH at a " +
+        "project whose org has chats, or talk to the agent there first."
     );
   }
   log(`  ${rows.length} conversations`);
