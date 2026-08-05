@@ -237,16 +237,15 @@ async function evaluateGroup(
     return pending;
   };
 
-  // Built from the first authorization that passes. Every row in the group names the
-  // same environment (the ones that don't were dropped before this), so the readers
-  // are the same object whoever proved access to it — and building them once is what
-  // makes the report a single load.
+  // Built from the first authorization that passes, then shared — every row in the
+  // group names the same environment, so the readers are the same whoever proved
+  // access to it, and `shareReads` is what turns that into one read per source.
   let readers: WatchCheckDeps | undefined;
 
-  const evaluateOne = async (watch: Watch): Promise<WatchBatchCheckEntry> => {
-    const token = await mintToken(watch);
-    const base = { watchId: watch.id, token, tick: watch.tickCount + 1 };
-
+  const evaluateOne = async (
+    watch: Watch,
+    base: { watchId: string; token: string; tick: number }
+  ): Promise<WatchBatchCheckEntry> => {
     const authorization = await authorizeOnce(watch);
     if (!authorization.ok) {
       // Cancel before returning, and before anything is read: a watch must not
@@ -255,7 +254,7 @@ async function evaluateGroup(
       return { ...base, code: "access_revoked", error: "Access to this environment was revoked" };
     }
 
-    readers ??= buildCheckDeps(authorization.environment, now);
+    readers ??= shareReads(buildCheckDeps(authorization.environment, now));
 
     const since = watch.spec.since ? new Date(watch.spec.since) : watch.createdAt;
     const final = watch.expiresAt.getTime() <= now.getTime();
@@ -289,8 +288,12 @@ async function evaluateGroup(
   };
 
   return mapWithConcurrency(due, deps.concurrency ?? EVALUATION_CONCURRENCY, async (watch) => {
+    // Minted outside the isolation boundary: it is a pure signing call, so a failure
+    // here is the whole batch's problem rather than one watch's, and the catch below
+    // needs a token it can't fail to have.
+    const base = { watchId: watch.id, token: await mintToken(watch), tick: watch.tickCount + 1 };
     try {
-      return await evaluateOne(watch);
+      return await evaluateOne(watch, base);
     } catch (error) {
       logger.error("Dashboard agent watch batch: a watch couldn't be evaluated", {
         watchId: watch.id,
@@ -299,15 +302,47 @@ async function evaluateGroup(
       });
       // `unavailable`, which is never read as true and never as false: the watch
       // keeps its state and is checked again next tick.
-      return {
-        watchId: watch.id,
-        token: await mintToken(watch),
-        tick: watch.tickCount + 1,
-        result: "unavailable" as const,
-        error: (error as Error).message,
-      };
+      return { ...base, result: "unavailable" as const, error: (error as Error).message };
     }
   });
+}
+
+/**
+ * Wrap a batch's readers so each distinct read happens ONCE.
+ *
+ * Building the readers once is not enough on its own: `readHealth()` is a function,
+ * and ten watches calling it is ten report loads. Inside one tick every reader's
+ * answer is a pure function of its arguments — `now` is fixed for the batch, and the
+ * environment doesn't change under it — so the answer is cached on those arguments and
+ * the group shares it. The health report is the read this exists for; the queue and
+ * recurrence reads benefit whenever two watches watch the same thing.
+ *
+ * A failed read is cached too. A reader that threw would throw for every watch in the
+ * group anyway (they share the source), and each of them still gets its own
+ * `unavailable` out of it — caching only stops the group from hammering a source that
+ * is already down.
+ */
+function shareReads(readers: WatchCheckDeps): WatchCheckDeps {
+  const cache = new Map<string, Promise<unknown>>();
+  const once = <A extends unknown[], R>(name: string, read: (...args: A) => Promise<R>) => {
+    return (...args: A): Promise<R> => {
+      const key = `${name}:${JSON.stringify(args)}`;
+      const cached = cache.get(key);
+      if (cached) return cached as Promise<R>;
+      const pending = read(...args);
+      cache.set(key, pending);
+      return pending;
+    };
+  };
+
+  return {
+    readRun: once("readRun", readers.readRun),
+    queueExists: once("queueExists", readers.queueExists),
+    readQueueDepth: once("readQueueDepth", readers.readQueueDepth),
+    readQueueOldestAge: once("readQueueOldestAge", readers.readQueueOldestAge),
+    readErrorRecurrence: once("readErrorRecurrence", readers.readErrorRecurrence),
+    readHealth: once("readHealth", readers.readHealth),
+  };
 }
 
 /** `mapper` over `items`, at most `limit` in flight. Order is preserved. */

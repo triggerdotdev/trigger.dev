@@ -11,10 +11,15 @@
 // (`scheduleTick`).
 import {
   appendChatMessage,
+  armWatchBatch,
   cancelWatch,
   chatExists,
+  claimWatchBatchTick,
   claimWatchDelivery,
   claimWatchTick,
+  listActiveWatchesForBatch,
+  listWatchBatchGroupsToArm,
+  stopWatchBatch,
   countUnreadWatchWakes,
   createChat,
   createDashboardAgentDb,
@@ -100,17 +105,27 @@ const SESSION_SECRET = "test-session-secret-for-watch-tokens";
 process.env.SESSION_SECRET = SESSION_SECRET;
 
 const {
+  armDashboardAgentWatchBatch,
   authorizeWatchEnvironment,
   createDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
+  watchBatchStaleMs,
 } = await import("~/services/dashboardAgentWatches.server");
 const { action: checkAction } =
   await import("~/routes/api.v1.dashboard-agent.watches.$watchId.check");
 const { action: createAction } = await import("~/routes/api.v1.dashboard-agent.watches");
-const { sweepDashboardAgentWatches, WATCH_DELIVERY_GRACE_MS, WATCH_EXPIRY_GRACE_MS } =
-  await import("~/services/dashboardAgentWatchSweep.server");
-const { signDashboardAgentWatchToken } = await import("~/services/dashboardAgentWatchToken.server");
+const { action: batchCheckAction } =
+  await import("~/routes/api.v1.dashboard-agent.watches.batch-check");
+const {
+  rearmDashboardAgentWatchBatches,
+  sweepDashboardAgentWatches,
+  WATCH_DELIVERY_GRACE_MS,
+  WATCH_EXPIRY_GRACE_MS,
+} = await import("~/services/dashboardAgentWatchSweep.server");
+const { runWatchBatchCheck } = await import("~/services/dashboardAgentWatchBatch.server");
+const { signDashboardAgentWatchBatchToken, signDashboardAgentWatchToken } =
+  await import("~/services/dashboardAgentWatchToken.server");
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -2035,6 +2050,666 @@ describe("the queue pack creation", () => {
       });
       const afterGap = await getWatch(ctx.agentDb, { id: created.watchId });
       expect(previousCheckFacts(afterGap?.lastResult)).toEqual(facts);
+    }
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Batching — one polling loop and one set of reads per (environment, cadence).
+//
+// Against the real registry table and the real guarded SQL, because that is where
+// "exactly one chain per group" and "a zombie chain claims nothing" actually live.
+// ---------------------------------------------------------------------------
+
+/** A health-recovery watch: the one whose check reads the shared report. */
+const HEALTH: WatchSpec = {
+  kind: "health_recovery",
+  report: "health",
+  fromSeverity: "warn",
+  checkEveryMinutes: 5,
+  maxHours: 6,
+  note: "tell me when health recovers",
+};
+
+describe("the batch chain registry", () => {
+  postgresTest("arms one chain per group, and only one", async ({ prisma, postgresContainer }) => {
+    await boot(prisma, postgresContainer.getConnectionUri());
+    const seeded = await seed(prisma, "batcharm");
+    const now = new Date();
+
+    const scheduled: Array<{ epoch: number; tick: number }> = [];
+    const arm = () =>
+      armDashboardAgentWatchBatch({
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        now,
+        deps: {
+          schedule: async (params) =>
+            void scheduled.push({ epoch: params.epoch, tick: params.tick }),
+        },
+      });
+
+    // The first arm starts a chain at generation 1 of epoch 1.
+    expect(await arm()).toEqual({ running: true });
+    expect(scheduled).toEqual([{ epoch: 1, tick: 1 }]);
+
+    // Everything after it joins the live chain instead of starting a second one —
+    // that IS the batching: N watches, one run per cadence.
+    expect(await arm()).toEqual({ running: true });
+    expect(await arm()).toEqual({ running: true });
+    expect(scheduled).toHaveLength(1);
+  });
+
+  postgresTest(
+    "a chain whose run died is re-armed on a fresh epoch, and the zombie claims nothing",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchdead");
+      const group = { environmentId: seeded.environment.id, cadenceMinutes: 5 };
+
+      const scheduled: Array<{ epoch: number; tick: number }> = [];
+      const arm = (now: Date) =>
+        armDashboardAgentWatchBatch({
+          ...group,
+          now,
+          deps: {
+            schedule: async (params) =>
+              void scheduled.push({ epoch: params.epoch, tick: params.tick }),
+          },
+        });
+
+      const armedAt = new Date();
+      await arm(armedAt);
+      // The chain ticks once, then its run dies.
+      expect(
+        await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 1, generation: 1 })
+      ).toMatchObject({ epoch: 1, generation: 1 });
+
+      // Inside the heartbeat window nothing is re-armed.
+      await arm(new Date(armedAt.getTime() + 60_000));
+      expect(scheduled).toHaveLength(1);
+
+      // Past it, a new epoch takes over.
+      await arm(new Date(armedAt.getTime() + watchBatchStaleMs(5) + 60_000));
+      expect(scheduled).toEqual([
+        { epoch: 1, tick: 1 },
+        { epoch: 2, tick: 1 },
+      ]);
+
+      // The zombie wakes up and tries to tick epoch 1 again: it owns nothing.
+      expect(await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 1, generation: 2 })).toBe(
+        null
+      );
+      // And the replacement's own chain is unharmed.
+      expect(
+        await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 2, generation: 1 })
+      ).toMatchObject({ epoch: 2, generation: 1 });
+    }
+  );
+
+  postgresTest(
+    "a chain that couldn't be triggered is not left marked as running",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchfail");
+      const group = { environmentId: seeded.environment.id, cadenceMinutes: 5 };
+
+      // Nothing polls the group, and the caller is told so — a per-watch tick keeps
+      // its own chain alive rather than handing over to a chain that doesn't exist.
+      expect(
+        await armDashboardAgentWatchBatch({
+          ...group,
+          deps: {
+            schedule: async () => {
+              throw new Error("the trigger failed");
+            },
+          },
+        })
+      ).toEqual({ running: false });
+
+      // The row is stopped, so the very next arm can try again immediately.
+      const scheduled: number[] = [];
+      expect(
+        await armDashboardAgentWatchBatch({
+          ...group,
+          deps: { schedule: async (params) => void scheduled.push(params.epoch) },
+        })
+      ).toEqual({ running: true });
+      expect(scheduled).toEqual([2]);
+    }
+  );
+
+  postgresTest(
+    "the re-arm backstop finds groups with active watches and no chain",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchrearm");
+      await seedChat(seeded);
+      const created = await create({
+        seeded,
+        spec: HEALTH,
+        checkDeps: { readHealth: async () => null },
+      });
+      expect(created.ok).toBe(true);
+
+      // The watch exists and nothing is polling its group.
+      const groups = await listWatchBatchGroupsToArm(ctx.agentDb, {
+        staleBefore: new Date(),
+      });
+      expect(groups).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
+
+      const armed: Array<{ environmentId: string; cadenceMinutes: number }> = [];
+      expect(
+        await rearmDashboardAgentWatchBatches({
+          configured: () => true,
+          arm: async (params) => {
+            armed.push({
+              environmentId: params.environmentId,
+              cadenceMinutes: params.cadenceMinutes,
+            });
+            return { running: true };
+          },
+        })
+      ).toEqual({ stale: 1, armed: 1, failed: 0 });
+      expect(armed).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
+
+      // Once a chain is heartbeating, the group is no longer stale.
+      await armWatchBatch(ctx.agentDb, {
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        staleBefore: new Date(),
+      });
+      expect(
+        await listWatchBatchGroupsToArm(ctx.agentDb, {
+          staleBefore: new Date(Date.now() - watchBatchStaleMs(60)),
+        })
+      ).toEqual([]);
+    }
+  );
+
+  postgresTest(
+    "groups are per environment and per cadence, never mixed",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchgroup");
+      await seedChat(seeded, "chat_1");
+      await seedChat(seeded, "chat_2");
+      // Two cadences in one environment: 5 (health) and 1 (run_start).
+      expect((await create({ seeded, chatId: "chat_1", spec: HEALTH })).ok).toBe(true);
+      expect((await create({ seeded, chatId: "chat_2", spec: RUN_START })).ok).toBe(true);
+
+      const five = await listActiveWatchesForBatch(ctx.agentDb, {
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+      });
+      const one = await listActiveWatchesForBatch(ctx.agentDb, {
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 1,
+      });
+
+      expect(five.map((watch) => watch.chatId)).toEqual(["chat_1"]);
+      expect(one.map((watch) => watch.chatId)).toEqual(["chat_2"]);
+      // Each cadence gets its own chain.
+      expect(
+        (await listWatchBatchGroupsToArm(ctx.agentDb, { staleBefore: new Date() })).sort(
+          (a, b) => a.cadenceMinutes - b.cadenceMinutes
+        )
+      ).toEqual([
+        { environmentId: seeded.environment.id, cadenceMinutes: 1 },
+        { environmentId: seeded.environment.id, cadenceMinutes: 5 },
+      ]);
+    }
+  );
+});
+
+describe("the batch check", () => {
+  /** Three health watches in one environment, one per chat, all on cadence 5. */
+  async function healthGroup(seeded: Seeded, count = 3) {
+    const ids: string[] = [];
+    for (let index = 0; index < count; index++) {
+      const chatId = `chat_${index + 1}`;
+      await seedChat(seeded, chatId);
+      const created = await create({
+        seeded,
+        chatId,
+        spec: HEALTH,
+        // `warn` keeps every one of them pending, so nothing resolves and the group
+        // stays whole for the assertions below.
+        checkDeps: { readHealth: async () => ({ trustworthy: true, severity: "warn" }) },
+      });
+      if (!created.ok || !created.watching) throw new Error("the watch wasn't created");
+      ids.push(created.watchId);
+    }
+    return ids;
+  }
+
+  /**
+   * A SECOND user's watch in the same environment and cadence. Authorization is
+   * memoized per user, so this is what proves the memo is per user and not per group.
+   */
+  async function otherUsersWatch(seeded: Seeded, prisma: PrismaClient) {
+    const user = await prisma.user.create({
+      data: {
+        email: `other_${seeded.organization.slug}@example.com`,
+        authenticationMethod: "MAGIC_LINK",
+      },
+    });
+    await prisma.orgMember.create({
+      data: { organizationId: seeded.organization.id, userId: user.id, role: "MEMBER" },
+    });
+    await createChat(ctx.agentDb, {
+      id: "chat_other",
+      organizationId: seeded.organization.id,
+      userId: user.id,
+    });
+    const created = await createDashboardAgentWatch({
+      environment: authenticated(seeded),
+      userId: user.id,
+      chatId: "chat_other",
+      spec: HEALTH,
+      deps: {
+        configured: () => true,
+        checkDeps: () =>
+          fakeCheckDeps({ readHealth: async () => ({ trustworthy: true, severity: "warn" }) }),
+        scheduleTick: async () => {},
+      },
+    });
+    if (!created.ok || !created.watching) throw new Error("the watch wasn't created");
+    return { userId: user.id, watchId: created.watchId };
+  }
+
+  /** A chain armed straight in the registry, so a tick can claim its generation. */
+  async function armChain(seeded: Seeded, cadenceMinutes = 5) {
+    const row = await armWatchBatch(ctx.agentDb, {
+      environmentId: seeded.environment.id,
+      cadenceMinutes,
+      staleBefore: new Date(),
+    });
+    if (!row) throw new Error("the chain wasn't armed");
+    return row;
+  }
+
+  postgresTest(
+    "authorizes once and loads the shared report once for the whole group",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchcheck");
+      const ids = await healthGroup(seeded);
+      const chain = await armChain(seeded);
+
+      let healthReads = 0;
+      let authorizations = 0;
+
+      const response = await runWatchBatchCheck(
+        {
+          environmentId: seeded.environment.id,
+          cadenceMinutes: 5,
+          epoch: chain.epoch,
+          tick: 1,
+        },
+        {
+          authorize: async () => {
+            authorizations++;
+            return { ok: true, environment: authenticated(seeded) };
+          },
+          checkDeps: () =>
+            fakeCheckDeps({
+              readHealth: async () => {
+                healthReads++;
+                return { trustworthy: true, severity: "warn" };
+              },
+            }),
+        }
+      );
+
+      // THE point of the change: three watches, one authorization, one report load.
+      expect(authorizations).toBe(1);
+      expect(healthReads).toBe(1);
+
+      // And a verdict per watch, each with its own generation to claim.
+      expect(response.watches?.map((entry) => entry.watchId).sort()).toEqual([...ids].sort());
+      expect(response.watches?.every((entry) => entry.result === "pending")).toBe(true);
+      expect(response.watches?.every((entry) => entry.tick === 1)).toBe(true);
+      expect(response.watches?.every((entry) => entry.token.length > 0)).toBe(true);
+      expect(response.continues).toBe(true);
+      expect(response.stale).toBeUndefined();
+
+      // Every row records what its check saw, exactly as the single endpoint does.
+      for (const id of ids) {
+        expect((await getWatch(ctx.agentDb, { id }))?.lastResult).toMatchObject({
+          result: "pending",
+          final: false,
+        });
+      }
+    }
+  );
+
+  postgresTest(
+    "authorizes each distinct user, so sharing readers never shares access",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchusers");
+      await healthGroup(seeded, 2);
+      const other = await otherUsersWatch(seeded, prisma);
+
+      const chain = await armChain(seeded);
+      const authorized: string[] = [];
+
+      await runWatchBatchCheck(
+        { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch, tick: 1 },
+        {
+          authorize: async (watch) => {
+            authorized.push(watch.userId);
+            return { ok: true, environment: authenticated(seeded) };
+          },
+          checkDeps: () => fakeCheckDeps(),
+        }
+      );
+
+      // Two users, two authorizations — memoized per user, never skipped.
+      expect(authorized.sort()).toEqual([other.userId, seeded.user.id].sort());
+    }
+  );
+
+  postgresTest(
+    "cancels a watch whose user lost access, and still answers for its neighbours",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchrevoked");
+      const ids = await healthGroup(seeded, 2);
+      const chain = await armChain(seeded);
+
+      const response = await runWatchBatchCheck(
+        { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch, tick: 1 },
+        {
+          authorize: async () => ({ ok: false, reason: "access_revoked" }),
+          checkDeps: () => fakeCheckDeps(),
+        }
+      );
+
+      // Both are refused, and neither is narrated: a cancellation is silent.
+      expect(response.watches?.every((entry) => entry.code === "access_revoked")).toBe(true);
+      for (const id of ids) {
+        expect(await getWatch(ctx.agentDb, { id })).toMatchObject({
+          status: "cancelled",
+          cancelReason: "access_revoked",
+          deliveryStatus: "not_required",
+        });
+      }
+    }
+  );
+
+  postgresTest(
+    "checks what is due, skips what isn't, and never skips a window boundary",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchdue");
+      const [fresh, overdue, boundary] = await healthGroup(seeded, 3);
+      const chain = await armChain(seeded);
+      const now = new Date();
+
+      // `fresh` was checked seconds ago: a cadence hasn't elapsed.
+      await recordWatchCheck(ctx.agentDb, { id: fresh!, lastCheckedAt: now });
+      // `overdue` was checked ten minutes ago — two cadences.
+      await recordWatchCheck(ctx.agentDb, {
+        id: overdue!,
+        lastCheckedAt: new Date(now.getTime() - 10 * 60_000),
+      });
+      // `boundary` was checked seconds ago too, but its window closes before the next
+      // tick would come round — so §7.4's final evaluation must still happen.
+      await recordWatchCheck(ctx.agentDb, { id: boundary!, lastCheckedAt: now });
+      await prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches set expires_at = now() + interval '1 minute' where id = $1`,
+        boundary
+      );
+
+      const response = await runWatchBatchCheck(
+        { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch, tick: 1 },
+        {
+          now: () => now,
+          authorize: async () => ({ ok: true, environment: authenticated(seeded) }),
+          checkDeps: () => fakeCheckDeps(),
+        }
+      );
+
+      expect(response.watches?.map((entry) => entry.watchId).sort()).toEqual(
+        [boundary!, overdue!].sort()
+      );
+      // The group is still whole, so the chain keeps ticking.
+      expect(response.continues).toBe(true);
+    }
+  );
+
+  postgresTest(
+    "a stale tick claims nothing and checks nothing",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchstale");
+      const ids = await healthGroup(seeded, 1);
+      const chain = await armChain(seeded);
+
+      // Generation 1 runs…
+      const group = { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch };
+      expect((await runWatchBatchCheck({ ...group, tick: 1 })).stale).toBeUndefined();
+      // …and 2 after it, so a late duplicate of 1 owns nothing.
+      expect((await runWatchBatchCheck({ ...group, tick: 2 })).stale).toBeUndefined();
+
+      const late = await runWatchBatchCheck({ ...group, tick: 1 });
+      expect(late).toEqual({ stale: true });
+
+      // A zombie from an older epoch is equally powerless.
+      expect(await runWatchBatchCheck({ ...group, epoch: chain.epoch - 1, tick: 1 })).toEqual({
+        stale: true,
+      });
+      expect((await getWatch(ctx.agentDb, { id: ids[0]! }))?.status).toBe("active");
+    }
+  );
+
+  postgresTest(
+    "stops the chain when the group's last watch is gone",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchempty");
+      const ids = await healthGroup(seeded, 1);
+      const chain = await armChain(seeded);
+      await cancelWatch(ctx.agentDb, { id: ids[0]!, reason: "user" });
+
+      const response = await runWatchBatchCheck({
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        epoch: chain.epoch,
+        tick: 1,
+      });
+
+      expect(response).toMatchObject({ watches: [], continues: false });
+
+      // The chain is stopped, so a watch created next arms a fresh epoch rather than
+      // joining a loop that has already ended.
+      const rearmed = await armWatchBatch(ctx.agentDb, {
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        // Deliberately in the past: only a STOPPED chain can be re-armed this way.
+        staleBefore: new Date(Date.now() - 60 * 60_000),
+      });
+      expect(rearmed).toMatchObject({ epoch: chain.epoch + 1, status: "running" });
+    }
+  );
+
+  postgresTest(
+    "hands the group's owed wakes back for redelivery",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchowed");
+      const ids = await healthGroup(seeded, 2);
+      const chain = await armChain(seeded);
+
+      // One of them resolved and its wake never landed — the state a batch run that
+      // failed one append leaves behind.
+      await transitionWatchCondition(ctx.agentDb, {
+        id: ids[0]!,
+        resolution: "condition_met",
+        lastResult: { verified: true },
+      });
+
+      const response = await runWatchBatchCheck({
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        epoch: chain.epoch,
+        tick: 1,
+      });
+
+      const owed = response.watches?.filter((entry) => entry.deliverOnly === true) ?? [];
+      expect(owed.map((entry) => entry.watchId)).toEqual([ids[0]!]);
+      // Delivery-only entries decide nothing, so they carry no generation.
+      expect(owed[0]?.tick).toBe(0);
+      // The other one was checked normally.
+      expect(
+        response.watches?.filter((entry) => !entry.deliverOnly).map((entry) => entry.watchId)
+      ).toEqual([ids[1]!]);
+    }
+  );
+
+  postgresTest(
+    "one watch that throws mid-evaluation costs only that watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchthrow");
+      const mine = await healthGroup(seeded, 2);
+      const theirs = await otherUsersWatch(seeded, prisma);
+      const chain = await armChain(seeded);
+
+      const response = await runWatchBatchCheck(
+        { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch, tick: 1 },
+        {
+          authorize: async (watch) => {
+            // Not a refusal — a broken authorization READ, which is the failure that
+            // happens before any reader is built and is not shared with other users.
+            if (watch.userId === theirs.userId) throw new Error("the authorization query failed");
+            return { ok: true, environment: authenticated(seeded) };
+          },
+          checkDeps: () => fakeCheckDeps(),
+          // Serialized, so the failure can't be masked by ordering.
+          concurrency: 1,
+        }
+      );
+
+      const byId = new Map(response.watches?.map((entry) => [entry.watchId, entry]));
+      // The broken one is `unavailable`: never read as true, never as false, and the
+      // row keeps its state for the next tick.
+      expect(byId.get(theirs.watchId)).toMatchObject({ result: "unavailable" });
+      expect((await getWatch(ctx.agentDb, { id: theirs.watchId }))?.status).toBe("active");
+      // Its neighbours were answered.
+      for (const id of mine) {
+        expect(byId.get(id)).toMatchObject({ result: "pending" });
+      }
+    }
+  );
+});
+
+describe("the batch check endpoint's authorization", () => {
+  function batchRequest(body: unknown, token?: string) {
+    return new Request("https://app.trigger.dev/api/v1/dashboard-agent/watches/batch-check", {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  const batchToken = (environmentId: string, cadenceMinutes: number) =>
+    signDashboardAgentWatchBatchToken(SESSION_SECRET, {
+      environmentId,
+      cadenceMinutes,
+      expiresAt: new Date(Date.now() + 60 * 60_000),
+    });
+
+  postgresTest("refuses a missing or bad token", async ({ prisma, postgresContainer }) => {
+    await boot(prisma, postgresContainer.getConnectionUri());
+    const body = { environmentId: "env_1", cadenceMinutes: 5, epoch: 1, tick: 1 };
+
+    expect(
+      (await batchCheckAction({ request: batchRequest(body), params: {}, context: {} })).status
+    ).toBe(401);
+    // A watch token is not a chain token, however valid it is.
+    const watchToken = await signDashboardAgentWatchToken(SESSION_SECRET, {
+      watchId: "watch_1",
+      expiresAt: new Date(Date.now() + 60 * 60_000),
+    });
+    expect(
+      (await batchCheckAction({ request: batchRequest(body, watchToken), params: {}, context: {} }))
+        .status
+    ).toBe(401);
+  });
+
+  postgresTest(
+    "refuses a token minted for another group",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const token = await batchToken("env_1", 5);
+
+      // Right environment, wrong cadence.
+      const wrongCadence = await batchCheckAction({
+        request: batchRequest(
+          { environmentId: "env_1", cadenceMinutes: 15, epoch: 1, tick: 1 },
+          token
+        ),
+        params: {},
+        context: {},
+      });
+      expect(wrongCadence.status).toBe(403);
+      expect(await wrongCadence.json()).toMatchObject({ code: "group_mismatch" });
+
+      // Right cadence, wrong environment.
+      const wrongEnvironment = await batchCheckAction({
+        request: batchRequest(
+          { environmentId: "env_2", cadenceMinutes: 5, epoch: 1, tick: 1 },
+          token
+        ),
+        params: {},
+        context: {},
+      });
+      expect(wrongEnvironment.status).toBe(403);
+    }
+  );
+
+  postgresTest(
+    "answers a group it does own, through the real registry",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchroute");
+      const chain = await armWatchBatch(ctx.agentDb, {
+        environmentId: seeded.environment.id,
+        cadenceMinutes: 5,
+        staleBefore: new Date(),
+      });
+      const token = await batchToken(seeded.environment.id, 5);
+
+      const response = await batchCheckAction({
+        request: batchRequest(
+          {
+            environmentId: seeded.environment.id,
+            cadenceMinutes: 5,
+            epoch: chain!.epoch,
+            tick: 1,
+          },
+          token
+        ),
+        params: {},
+        context: {},
+      });
+
+      expect(response.status).toBe(200);
+      // No watches in the group, so the chain is told to stop.
+      expect(await response.json()).toMatchObject({ watches: [], continues: false });
+      expect(
+        await stopWatchBatch(ctx.agentDb, {
+          environmentId: seeded.environment.id,
+          cadenceMinutes: 5,
+          epoch: chain!.epoch,
+        })
+      ).toBe(null);
     }
   );
 });
