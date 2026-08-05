@@ -43,7 +43,8 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -77,8 +78,10 @@ const Params = z.object({
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     authorization: { action: "read", resource: { type: "members" } },
@@ -138,8 +141,10 @@ const SetRoleSchema = z.object({
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     // No top-level authorization — different intents have different
