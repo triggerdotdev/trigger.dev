@@ -226,14 +226,21 @@ function getEvalTrigger(): DashboardAgentEvalTrigger {
   );
 }
 
-// Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Anything
-// unparseable or out of range falls back to 1 rather than silently dropping
-// evals. Read per turn so the rate can change without a redeploy.
-function evalSampleRate(): number {
+/**
+ * Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Read per turn
+ * so the rate can change without a redeploy.
+ *
+ * The judge is a full model call per turn, and nothing reads `chat_turn_evals`
+ * yet, so the default samples a tenth — including when the value is unparseable,
+ * where the old fallback of 1 quietly turned a typo into full-rate billing.
+ */
+export const DEFAULT_EVAL_SAMPLE_RATE = 0.1;
+
+export function evalSampleRate(): number {
   const raw = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
-  if (raw === undefined || raw.trim() === "") return 1;
+  if (raw === undefined || raw.trim() === "") return DEFAULT_EVAL_SAMPLE_RATE;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return 1;
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return DEFAULT_EVAL_SAMPLE_RATE;
   return parsed;
 }
 

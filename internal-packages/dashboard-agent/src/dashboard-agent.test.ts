@@ -21,6 +21,8 @@ import {
   dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
+  DEFAULT_EVAL_SAMPLE_RATE,
+  evalSampleRate,
   sanitizeReplayedToolInputs,
   TURN_FAILED_MESSAGE,
   turnFailureMessageId,
@@ -1051,8 +1053,22 @@ describe("per-turn eval sampling", () => {
     expect(calls[0]?.options.idempotencyKey).toBe("eval:chat_rate_one:0");
   });
 
-  it("falls back to sampling every turn when the rate is unparseable", async () => {
-    expect(await turnAtRate("not-a-number", "chat_rate_bad")).toHaveLength(1);
+  it("defaults to a tenth of turns when the rate is unset", () => {
+    delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    expect(evalSampleRate()).toBe(DEFAULT_EVAL_SAMPLE_RATE);
+    expect(DEFAULT_EVAL_SAMPLE_RATE).toBe(0.1);
+  });
+
+  it("falls back to the default rate when the value is unparseable or out of range", () => {
+    for (const raw of ["not-a-number", "", "  ", "-1", "2"]) {
+      process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = raw;
+      expect(evalSampleRate()).toBe(DEFAULT_EVAL_SAMPLE_RATE);
+    }
+  });
+
+  it("honours a parseable rate", () => {
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "0.5";
+    expect(evalSampleRate()).toBe(0.5);
   });
 });
 
