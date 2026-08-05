@@ -14,7 +14,7 @@
  *    burn the watch's lifetime on a broken data source) and never `satisfied`.
  * 2. **`facts` are the numbers the wake narration reads.** They are computed
  *    here, deterministically, so the model never has to derive a duration or a
- *    depth itself. Durations carry their BASIS (VERDICTS.md §4): a wait is only
+ *    depth itself. Durations carry their BASIS: a wait is only
  *    labelled a queue wait when `queuedAt` exists.
  * 3. **`observed` is what the check SAW**, in the contracts' per-kind shape. It is
  *    the second half of a resolved result: the resolution says how the watch
@@ -212,7 +212,7 @@ const FINAL_STATUSES = new Set([
 /**
  * Statuses whose `queuedAt` is a stale leftover from the FIRST enqueue
  * (resume/retry re-enqueues don't restamp it), so a wait computed from it isn't
- * this attempt's queue wait — VERDICTS.md §4.
+ * this attempt's queue wait.
  */
 const STALE_QUEUED_AT_STATUSES = new Set(["WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED"]);
 

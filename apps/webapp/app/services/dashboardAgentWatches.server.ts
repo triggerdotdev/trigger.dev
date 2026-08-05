@@ -80,7 +80,7 @@ export type WatchAuthorization =
  * project, an archived environment, a revoked feature flag. The caller cancels the
  * watch on that answer, so a watch can only ever narrow, never widen.
  *
- * OSS caveat (VERDICTS): the self-hosted RBAC fallback ability is permissive, so
+ * OSS caveat: the self-hosted RBAC fallback ability is permissive, so
  * the membership-scoped query — not `ability.can(...)` — is the tenant floor here,
  * exactly as it is on the PAT-authenticated API routes.
  */

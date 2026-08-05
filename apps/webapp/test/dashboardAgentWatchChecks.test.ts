@@ -4,7 +4,7 @@
 // What's pinned here is the four-valued contract: satisfied / pending /
 // terminal_unsatisfied, and the rule that a broken data source is `unavailable`
 // and never a verdict. Plus the wait LABEL, which must never call a
-// time-from-creation a queue wait (VERDICTS.md §4).
+// time-from-creation a queue wait.
 import { describe, expect, it } from "vitest";
 import {
   checkWatch,

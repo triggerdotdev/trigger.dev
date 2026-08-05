@@ -7,7 +7,7 @@
  *
  * It NEVER computes a per-run start eta. There is no deterministic per-run position source:
  * queue order is offset by priority, sharded by concurrency key, and selected fair-randomly
- * across queues (see internal-packages/dashboard-agent/VERDICTS.md §2). `perRunStartEta`
+ * across queues, and the enqueue fast path skips the zset entirely. `perRunStartEta`
  * ships as an explicit `{ supported: false }` so a consumer can't read absence as "unknown".
  *
  * The cause tree mirrors the health report's FLOW analyzer
@@ -119,7 +119,7 @@ export type WaitingRunDiagnosis = {
     isWaiting: boolean;
     /**
      * False when `queuedAt` can't be read as this run's queue wait — resumed/retried runs keep a
-     * stale `queuedAt` (VERDICTS.md §4), so the number is reported but flagged, never trusted.
+     * stale `queuedAt`, so the number is reported but flagged, never trusted.
      */
     queueWaitReliable: boolean;
   };
@@ -218,7 +218,7 @@ export function buildDiagnosis(
 }
 
 // ---------------------------------------------------------------------------
-// The run's waiting label (VERDICTS.md §4 — never mislabel a delay as queue latency).
+// The run's waiting label. A delay is never labelled as queue latency.
 // ---------------------------------------------------------------------------
 
 function describeRun(run: WaitingRunRow, now: Date): WaitingRunDiagnosis["run"] {

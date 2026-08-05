@@ -52,7 +52,8 @@ const BodySchema = z.object({
   /**
    * Echoes of the turn's environment, if the caller sends them. Not overrides:
    * they're only ever checked against the token's environment scope, which is the
-   * canonical `RuntimeEnvironment.id` (VERDICTS §3).
+   * canonical `RuntimeEnvironment.id`. Not the slug: `(projectId, slug)` is not
+   * unique, because every developer gets their own `dev` environment row.
    */
   projectRef: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
