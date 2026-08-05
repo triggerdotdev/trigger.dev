@@ -1198,6 +1198,10 @@ export const dashboardAgent = chat.agent({
     // it runs while the model answers and is finished by the time the turn
     // settles. Not awaited — `onBeforeTurnComplete` does that. A failure only
     // costs the generated name, so it never reaches the turn.
+    //
+    // The gate is the transcript length at the START of a turn — one message means
+    // nothing has been answered yet. A later turn can't re-title anyway:
+    // `setChatTitleIfDefault` only writes over the default name.
     if (uiMessages.length <= 1 && !pendingTitles.has(chatId)) {
       const store = getStore();
       pendingTitles.set(
