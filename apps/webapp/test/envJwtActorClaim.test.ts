@@ -63,7 +63,6 @@ describe("env JWT exchange — act claim", () => {
     const claims = await mintedClaims();
 
     expect(claims.act).toEqual({ sub: "usr_42", client: "personal-access-token" });
-    // Authorization is unchanged: the JWT still authorizes as the environment.
     expect(claims.sub).toBe(environment.id);
   });
 

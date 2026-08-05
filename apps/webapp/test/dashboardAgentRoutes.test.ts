@@ -1,10 +1,5 @@
-// The two routes the dashboard agent's tools fetch, driven through their real exported
-// loaders. Container-free: only peripherals are mocked, so what runs for real is each
-// loader's decision logic: param validation, the queue-name convention, the commit 404,
-// and the exact JSON body the tools curate.
 import { describe, expect, it, vi } from "vitest";
 
-// Holders wired per test into the mocked singletons.
 const ctx = vi.hoisted(() => ({
   environment: {
     id: "env_1",
@@ -15,7 +10,6 @@ const ctx = vi.hoisted(() => ({
     project: { id: "project_1", slug: "my-project", externalRef: "proj_1" },
     organization: { id: "org_1", slug: "my-org" },
   } as any,
-  // resolveRunCommit's answer for the next call.
   runCommit: undefined as undefined | { sha: string; version: string; dirty: boolean },
   deployment: undefined as any,
   summaryRows: [] as any[],
@@ -37,7 +31,6 @@ vi.mock("~/db.server", async () => ({
   sqlDatabaseSchema: undefined,
 }));
 
-// The shared UAT preamble: a valid delegated token resolving to a user.
 vi.mock("~/services/uatRoutePreamble.server", () => ({
   authenticateUatOrApiRequest: async () => ({
     authenticationResult: { type: "personalAccessToken", result: { userId: "user_1" } },
@@ -53,13 +46,10 @@ vi.mock("~/services/apiAuth.server", async (importOriginal) => {
   };
 });
 
-// The run to deployed-commit resolver.
 vi.mock("~/services/dashboardAgent.server", () => ({
   resolveRunCommit: async () => ctx.runCommit ?? null,
 }));
 
-// Bearer/JWT auth for the api-builder route, with a permissive ability so the
-// `read` on the queue_metrics query table passes.
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
     authenticateBearer: async () => ({
@@ -72,8 +62,6 @@ vi.mock("~/services/rbac.server", () => ({
   },
 }));
 
-// The two queue-metric readers, returning the tuple the real client returns and capturing
-// the params, so the tests can assert the window and queue name the route derived.
 const chCalls = vi.hoisted(() => ({ summary: undefined as any, trend: undefined as any }));
 
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
@@ -118,7 +106,6 @@ describe("GET /api/v1/projects/:projectRef/:env/runs/:runId/commit", () => {
         pullRequestNumber: 412,
         pullRequestTitle: "Batch the receipt sends",
         pullRequestState: "merged",
-        // Not curated into the response.
         ghUserAvatarUrl: "https://example.invalid/avatar.png",
       },
     };
@@ -214,7 +201,6 @@ describe("GET /api/v1/queues/:queueParam/metrics", () => {
     // 600 starts over a 60 minute window.
     expect(body.startedPerMin).toBe(10);
     expect(body.throttledCount).toBe(37);
-    // Oldest bucket first, regardless of the row order ClickHouse returned.
     expect(body.depthTrend).toEqual([10, 120]);
   });
 

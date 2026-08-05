@@ -80,9 +80,8 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
       share: 0.82,
       of: "pending",
     });
-    expect(flow.exclusions).toEqual([]); // env-limit saturation rules nothing out...
+    expect(flow.exclusions).toEqual([]);
     expect(flow.observations).toEqual([
-      // ...it states supporting facts instead.
       { code: "not_workers_platform", evidence: { finishedPerMin: 820 } },
       { code: "nothing_dead_lettered", evidence: { dlq: 0 } },
     ]);
@@ -92,8 +91,6 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
   });
 
   it("footer = raise the limit (self-serve) + docs + do-nothing (drains)", () => {
-    // Raising the env limit is self-serve, so the action button leads to the environment's
-    // Concurrency page, with the docs alongside.
     expect(vm.footer).toEqual([
       { code: "raise_env_limit", link: "concurrency" },
       { code: "concurrency_docs", link: "concurrency" },
@@ -185,7 +182,6 @@ describe("snapshot fallback path flags the estimated backlog trend", () => {
     const vm = interpret(snapshot);
     expect(vm.findings.find((f) => f.type === "flow")!.reason).toBe("backlog");
     const md = renderReportMarkdown(vm);
-    // the human surface signals the trend is a proxy
     expect(md).toContain("(estimated from a proxy signal)");
   });
 });
@@ -198,14 +194,12 @@ describe("liveness trust guard (telemetry freshness)", () => {
     expect(execution.reason).toBe("unknown");
     expect(execution.read).toBe("data_stale");
     expect(vm.summary.severity).toBe("crit");
-    // Footer points at the pipeline, not "raise the env limit" off stale data.
     expect(vm.footer).toEqual([{ code: "check_control_plane", link: "status" }]);
   });
 
   it("no freshness signal is 'unknown', NOT stale — it does not trust-guard execution", () => {
     const unknown: HealthInput = {
       ...INPUT_A,
-      // healthy execution so we can see the guard did not fire.
       failures: { rate: 0.009, normalRate: 0.011, series: [0.009] },
       liveness: { telemetryAgeMs: null },
     };
@@ -213,21 +207,19 @@ describe("liveness trust guard (telemetry freshness)", () => {
     const execution = vm.findings.find((f) => f.type === "execution")!;
     const liveness = vm.findings.find((f) => f.type === "liveness")!;
     expect(liveness.reason).toBe("freshness_unknown");
-    expect(liveness.severity).toBe("ok"); // no signal is NEUTRAL, not a warning
+    expect(liveness.severity).toBe("ok");
     expect(execution.reason).not.toBe("unknown");
   });
 
   it("no freshness signal is never TRUSTWORTHY, even though the human verdict stays neutral", () => {
-    // The human summary may stay green for an idle env, but the machine field must not claim
-    // trust it doesn't have: a "health recovered" watch would otherwise fire off silence.
+    // The machine field must not claim trust it lacks: a health-recovery watch would fire off silence.
     const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
-    expect(vm.summary.severity).toBe("ok"); // human side unchanged
+    expect(vm.summary.severity).toBe("ok");
     expect(vm.facts).toMatchObject({
       trustworthy: false,
       telemetry: "none",
       untrustworthyReason: "telemetry_absent",
     });
-    // ...and a lagging-but-present signal is still trustworthy: lagging is a real state.
     expect(interpret({ ...INPUT_B, liveness: { telemetryAgeMs: 120_000 } }).facts).toMatchObject({
       trustworthy: true,
       telemetry: "lagging",
@@ -235,12 +227,9 @@ describe("liveness trust guard (telemetry freshness)", () => {
   });
 
   it("a healthy but idle env (no telemetry signal) reads overall green, not yellow", () => {
-    // Golden B is all-healthy; drop its telemetry signal -> the verdict must stay ok, since
-    // "freshness unknown" is neutral and must not drag a fine env into a yellow report.
     const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
     expect(vm.summary.severity).toBe("ok");
     expect(vm.findings.find((f) => f.type === "liveness")!.reason).toBe("freshness_unknown");
-    // ...but the marker is neutral, not a confident green: the state is genuinely unknown.
     const md = renderReportMarkdown(vm);
     expect(md).toContain("⚪");
     expect(md).not.toContain("🟡");
@@ -254,10 +243,7 @@ describe("isPendingIncreasing", () => {
   });
 });
 
-/**
- * Fixed-priority cause tree: the first discriminator that fires wins. Each case starts from
- * Golden A and overrides only flow evidence so the intended discriminator matches.
- */
+/** Fixed-priority cause tree: the first discriminator that fires wins. */
 describe("flow cause tree — cause selection per discriminator", () => {
   const withFlow = (
     flowEvidence: Partial<HealthInput["flowEvidence"]>,
@@ -276,7 +262,6 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("dequeue_stall — capacity idle while the backlog grows", () => {
-    // running far below the limit (0.1) with a rising backlog + elevated latency.
     expect(flowReason(withFlow({ runningSeries: Array(9).fill(10) }))).toBe("dequeue_stall");
   });
 
@@ -287,8 +272,6 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("selects queue throttling over dequeue stall when both shapes match", () => {
-    // low running (would look like a stall) but the queue is throttling: the known config
-    // bottleneck must win, not "it's on our side".
     expect(flowReason(withFlow({ runningSeries: Array(9).fill(10), throttledShare: 0.5 }))).toBe(
       "queue_limit_throttling"
     );
@@ -306,8 +289,7 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("trigger_surge — new volume with no baseline (multiplier can't be computed)", () => {
-    // normal 0 makes a multiplier meaningless, so an absolute rate selects "new volume" instead
-    // of dropping to the v1 fallback, which left a spike from a zero baseline invisible.
+    // A zero baseline makes the multiplier meaningless, so an absolute rate selects new volume.
     const input = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       { triggeredPerMin: 5000, normalTriggeredPerMin: 0 }
@@ -318,8 +300,6 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("does not select trigger_spike when completions keep pace and pending falls", () => {
-    // 3x the normal trigger rate, but the backlog is draining, so the spike is not the cause of
-    // degradation (elevated latency is). Blaming it would contradict its own read.
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
@@ -336,11 +316,10 @@ describe("flow cause tree — cause selection per discriminator", () => {
       },
     };
     expect(flowReason(input)).not.toBe("trigger_spike");
-    expect(flowReason(input)).toBe("start_latency"); // falls through to the v1 symptom
+    expect(flowReason(input)).toBe("start_latency");
   });
 
   it("does not select trigger_surge when new volume is draining", () => {
-    // No baseline and high volume, but completions outpace triggers and the backlog falls.
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
@@ -367,8 +346,7 @@ describe("flow cause tree — cause selection per discriminator", () => {
 });
 
 describe("env_limit_saturation read does not claim a start lag that isn't there", () => {
-  // Pinned concurrency and rising backlog, but start latency is still healthy: saturation can
-  // grow a backlog before p95 crosses its threshold, so the read must not assert "starts lag".
+  // Saturation can grow a backlog before p95 crosses its threshold, so the read must not assert "starts lag".
   const input: HealthInput = {
     ...INPUT_A,
     startLatency: { p95Ms: 6000, normalP95Ms: 7000, series: [6000, 6100, 6000, 5900, 6000] },
@@ -402,8 +380,8 @@ describe("trigger spike does not exonerate user code", () => {
   it("reports execution is healthy but never claims 'NOT a code problem'", () => {
     expect(spike.findings.find((f) => f.type === "flow")!.reason).toBe("trigger_spike");
     const md = renderReportMarkdown(spike);
-    expect(md).toContain("runs that start are completing normally"); // flow exclusion (proven fact)
-    expect(md).not.toContain("NOT a code problem"); // a code path may BE flooding the queue
+    expect(md).toContain("runs that start are completing normally");
+    expect(md).not.toContain("NOT a code problem");
   });
 
   it("dequeue_stall (platform-side) still reads 'NOT a code problem'", () => {
@@ -422,7 +400,7 @@ describe("ANSI render (terminal)", () => {
   it("uses glyphs + ANSI colour, never the markdown status emoji", () => {
     expect(ansi).toMatch(/\x1b\[\d+m/); // an ANSI SGR colour code
     expect(ansi).toMatch(/[✓⚠✕]/); // severity glyphs (not emoji)
-    expect(ansi).not.toMatch(/[🟢🟡🔴]/u); // emoji are the markdown surface only
+    expect(ansi).not.toMatch(/[🟢🟡🔴]/u);
   });
 });
 
@@ -443,16 +421,12 @@ describe("exclusions are proven, not assumed", () => {
     );
 
   it("dequeue_stall claims not-your-code AND not-your-config (both proven: healthy exec, no pin, no throttle)", () => {
-    // dequeue_stall only fires with no env-pin and no throttling, so "limits aren't the
-    // bottleneck" is genuinely proven here (a throttled shape selects queue_limit_throttling).
     const codes = exclusionCodes(withFlow({ runningSeries: Array(9).fill(10) }));
     expect(codes).toContain("not_your_code");
     expect(codes).toContain("not_your_config");
   });
 
   it("trigger_spike observes healthy execution without ruling out user code", () => {
-    // A backing-up spike with healthy execution is an observation, not the exclusion
-    // "not_your_code": a code path fanning out task.trigger could itself be the cause.
     const healthyInput = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       {
@@ -467,7 +441,6 @@ describe("exclusions are proven, not assumed", () => {
     expect(observationCodes(healthyInput)).toContain("execution_healthy");
     expect(exclusionCodes(healthyInput)).not.toContain("not_your_code");
 
-    // Execution failing -> can't even observe that execution is healthy.
     const degradedInput = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       {
@@ -491,12 +464,12 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
 
   it("marks flow unknown + crit and strips its action / attribution / exclusions / anomaly window", () => {
     expect(flow.reason).toBe("unknown");
-    expect(flow.severity).toBe("crit"); // consistent across summary / section glyph / JSON
+    expect(flow.severity).toBe("crit");
     expect(flow.recommendation).toBeUndefined();
     expect(flow.attribution).toBeUndefined();
     expect(flow.exclusions).toBeUndefined();
     expect(flow.observations).toBeUndefined();
-    expect(flow.anomalyWindow).toBeUndefined(); // no stale causal evidence left in the VM
+    expect(flow.anomalyWindow).toBeUndefined();
   });
 
   it("marks execution unknown + crit too", () => {
@@ -505,23 +478,18 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
   });
 
   it("strips stale-derived metric annotations so format=json can't leak them", () => {
-    // Golden A sets concurrency.annotation ("pinned 40 of last 60 min") before the guard runs;
-    // a stale feed must not surface that narrative on the raw JSON metrics.
     expect(stale.metrics.every((m) => m.annotation === undefined)).toBe(true);
   });
 
   it("renders both sections red as unknown, with no stale causal verdict", () => {
-    // The unknown headline already says "data stale"; there's no `read:` line to render (it would
-    // just repeat that), and no stale causal evidence (anomaly window) survives.
     const md = renderReportMarkdown(stale);
     expect(md).toContain("🔴 Flow unknown — data stale");
     expect(md).toContain("🔴 EXECUTION   execution can't be assessed");
-    expect(md).toContain("🚩 stale data"); // the report flags itself untrustworthy
-    expect(md).not.toContain("(last 40 min)"); // anomaly window gone
+    expect(md).toContain("🚩 stale data");
+    expect(md).not.toContain("(last 40 min)");
   });
 
   it("drops the CH-derived link from the VM when telemetry is stale", () => {
-    // flow's "concurrency" link is gone; only liveness' control-plane link may remain.
     expect(stale.links.map((l) => l.key)).not.toContain("concurrency");
   });
 
@@ -531,7 +499,6 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
       telemetry: "stale",
       untrustworthyReason: "telemetry_stale",
     });
-    // fresh input is trustworthy.
     expect(interpret(INPUT_A).facts).toMatchObject({ trustworthy: true, telemetry: "fresh" });
   });
 });
@@ -548,7 +515,7 @@ describe("freshness unknown is distinct from lagging", () => {
     const unknown = interpret({ ...INPUT_A, liveness: { telemetryAgeMs: null } }).findings.find(
       (f) => f.type === "flow"
     )!;
-    expect(unknown.severity).toBe(fresh.severity); // warn, unaffected by unknown freshness
+    expect(unknown.severity).toBe(fresh.severity);
   });
 
   it("marks the liveness metric availability 'unknown' so value 0 isn't read as fresh", () => {
@@ -577,8 +544,7 @@ describe("zero baseline is not a false green (absolute floors)", () => {
 });
 
 describe("an unmeasurable backlog is not a healthy backlog", () => {
-  // The depth couldn't be measured, so `now` is a placeholder: the verdict must be "can't say",
-  // never a confident green and never actionable.
+  // The depth couldn't be measured, so `now` is a placeholder, not a reading.
   const unmeasured: HealthInput = {
     ...INPUT_B,
     pending: { now: 0, series: [], estimated: true, availability: "unknown" },
@@ -602,7 +568,7 @@ describe("an unmeasurable backlog is not a healthy backlog", () => {
     });
     const pending = vm.metrics.find((m) => m.id === "pending")!;
     expect(pending.availability).toBe("unknown");
-    expect(pending.severity).toBe("ok"); // not classified — it isn't a measurement
+    expect(pending.severity).toBe("ok");
     expect(vm.footer.map((f) => f.code)).not.toContain("do_nothing_drains");
   });
 
@@ -616,7 +582,6 @@ describe("an unmeasurable backlog is not a healthy backlog", () => {
 
 describe("gappy telemetry cannot read as a full window", () => {
   // 60 expected buckets at a 1-minute cadence, but only 2 arrived, both pinned at the limit.
-  // Counting received rows made this read as "pinned 60 of last 60 min".
   const gappy: HealthInput = {
     ...INPUT_A,
     flowEvidence: {
@@ -632,15 +597,14 @@ describe("gappy telemetry cannot read as a full window", () => {
     const flow = vm.findings.find((f) => f.type === "flow")!;
     expect(flow.reason).not.toBe("env_limit_saturation");
     expect(flow.reason).not.toBe("dequeue_stall");
-    expect(flow.anomalyWindow).toBeUndefined(); // no confident duration
+    expect(flow.anomalyWindow).toBeUndefined();
     const concurrency = vm.metrics.find((m) => m.id === "concurrency")!;
-    expect(concurrency.annotation).toBeUndefined(); // never "pinned 60 of last 60 min"
+    expect(concurrency.annotation).toBeUndefined();
     expect(renderReportMarkdown(vm)).not.toContain("pinned 60");
   });
 
   it("counts a duration at the real cadence, and a gap breaks the run", () => {
-    // Full coverage at a 1-minute cadence, but one bucket is missing in the middle: the trailing
-    // pinned run is 3 buckets = 3 min, not "the whole window".
+    // One bucket is missing in the middle, so the trailing pinned run is 3 buckets, not the whole window.
     const cadence = 60_000;
     const start = Date.parse("2026-07-20T11:00:00Z");
     // 34 of 60 buckets pinned, over the pinned-share threshold; the rest busy but not pinned.
@@ -659,7 +623,7 @@ describe("gappy telemetry cannot read as a full window", () => {
     });
     const flow = vm.findings.find((f) => f.type === "flow")!;
     expect(flow.reason).toBe("env_limit_saturation");
-    expect(flow.anomalyWindow).toEqual({ minutes: 3, touchesEnd: true }); // gap broke the 4th
+    expect(flow.anomalyWindow).toEqual({ minutes: 3, touchesEnd: true });
   });
 });
 

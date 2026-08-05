@@ -9,7 +9,6 @@ import {
   v3RunSpanPath,
 } from "~/utils/pathBuilder";
 
-// The scope a URI is read against, the same shape an AuthenticatedEnvironment has.
 const scope: TriggerUriScope = {
   id: "env_1234",
   slug: "prod",
@@ -56,8 +55,6 @@ describe("resolveTriggerUri", () => {
   });
 
   it("resolves a queue to the queues list filtered to its name", () => {
-    // A URI carries the rename-stable queue name and the detail route is keyed by
-    // friendlyId, so the filtered list is the target that needs no lookup.
     const uri = formatTriggerUri({ kind: "queue", ...uriScope, name: "task/send email" });
     expect(resolveTriggerUri(scope, uri)).toEqual({
       label: "task/send email",
@@ -116,8 +113,6 @@ describe("resolveTriggerUri", () => {
   });
 });
 
-// A source URI pins the commit and the repo-relative path, and the scope's repository says
-// where that lives.
 describe("resolveTriggerUri: source URIs", () => {
   const sha = "a".repeat(40);
   const sourceUri = (path: string, line?: number) =>
@@ -166,11 +161,9 @@ describe("resolveTriggerUri: source URIs", () => {
   });
 
   it("returns null rather than guessing when there's no repository to open", () => {
-    // No connection at all: the card keeps the label, with no link.
     expect(resolveTriggerUri(scope, sourceUri("src/a.ts"))).toBeNull();
     expect(resolveTriggerUri(withRepo(null), sourceUri("src/a.ts"))).toBeNull();
     expect(resolveTriggerUri(withRepo({ fullName: "" }), sourceUri("src/a.ts"))).toBeNull();
-    // Not GitHub, not a repository path, not a repo name.
     expect(
       resolveTriggerUri(
         withRepo({ remoteUrl: "https://gitlab.com/acme/orders" }),

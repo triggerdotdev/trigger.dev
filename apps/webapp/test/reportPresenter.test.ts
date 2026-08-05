@@ -4,7 +4,6 @@ import { type ReportLoader } from "~/presenters/v3/reports/report-registry";
 import { type ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
-/** The presenter only ever reads `environment.id` for its single-flight key. */
 function env(id: string): AuthenticatedEnvironment {
   return { id } as unknown as AuthenticatedEnvironment;
 }
@@ -41,7 +40,6 @@ function deferred(): Deferred {
   return { promise, resolve, reject };
 }
 
-/** A loader whose `load` blocks on a gate, so concurrency is observable. */
 function gatedRegistry(): {
   registry: Record<string, ReportLoader<unknown>>;
   loadCalls: () => number;
@@ -86,7 +84,6 @@ describe("ReportPresenter — single-flight + TTL cache", () => {
     const [ra, rb, rc] = await Promise.all([a, b, c]);
 
     expect(loadCalls()).toBe(1);
-    // Same promise, so literally the same object — not just an equal one.
     expect(ra).toBe(rb);
     expect(rb).toBe(rc);
   });
@@ -135,7 +132,6 @@ describe("ReportPresenter — single-flight + TTL cache", () => {
     await expect(failing).rejects.toThrow("clickhouse exploded");
     expect(loadCalls()).toBe(1);
 
-    // A cached rejected promise would re-throw here without ever calling `load` again.
     nextGate();
     const retried = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
     gate().resolve();
@@ -177,7 +173,6 @@ describe("ReportPresenter — single-flight + TTL cache", () => {
     gate().resolve();
     await other;
 
-    // Same period, same report, different environment — a second load, not a cache hit.
     expect(loadCalls()).toBe(2);
   });
 
@@ -188,7 +183,7 @@ describe("ReportPresenter — single-flight + TTL cache", () => {
     await expect(
       presenter.call({ environment: env("env_1"), key: "nope" })
     ).resolves.toBeUndefined();
-    // `Object.hasOwn`, not `in` — a prototype key must not resolve to a loader.
+    // `Object.hasOwn`, not `in`: a prototype key must not resolve to a loader.
     await expect(
       presenter.call({ environment: env("env_1"), key: "toString" })
     ).resolves.toBeUndefined();

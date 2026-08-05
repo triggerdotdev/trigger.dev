@@ -92,8 +92,7 @@ describe("PUBLIC_JWT authentication — actor claim", () => {
   });
 
   it("does not let act widen authorization", async () => {
-    // Authorization comes from sub + scopes only. An act claim stuffed with
-    // extra scopes is identity data and grants nothing.
+    // The act claim is identity data: authorization comes from sub + scopes only.
     const forged = claims({
       act: { sub: "usr_42", client: "dashboard-agent", scopes: ["admin"] },
     });

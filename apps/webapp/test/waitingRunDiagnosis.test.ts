@@ -42,7 +42,6 @@ function signals(overrides: Partial<WaitingRunQueueSignals> = {}): WaitingRunQue
   };
 }
 
-/** Plain fake readers; the repo forbids mocking frameworks. */
 function deps(runRow: WaitingRunRow | null, queueSignals: WaitingRunQueueSignals | null) {
   const asked: string[] = [];
   const injected: WaitingRunDeps = {
@@ -132,14 +131,12 @@ describe("computeWaitingRunDiagnosis", () => {
 
   describe("throttled queue", () => {
     it("selects `throttled` when a quarter of the window throttled", async () => {
-      // 5 of 15 buckets throttled = 0.33 share: past the throttled threshold (0.25), below the
-      // sustained/pinned threshold (0.5).
+      // 5 of 15 buckets throttled = 0.33: past the throttled threshold (0.25), below the pinned one (0.5).
       const throttledSeries = Array.from({ length: 15 }, (_, i) => (i < 5 ? 3 : 0));
       const result = await diagnose(run(), signals({ throttledSeries }));
 
       expect(result?.diagnosis.cause).toBe("throttled");
       expect(result?.queue.throttled.buckets).toBe(5);
-      // A throttled queue still drains at its throttled rate, so the ETA stands.
       expect(result?.drainEta).toEqual({ minutes: 6, basis: "observed_dequeue_rate" });
     });
 
@@ -164,7 +161,7 @@ describe("computeWaitingRunDiagnosis", () => {
         run(),
         signals({
           startedCount: 0,
-          envRunning: 2, // 2% of a 100 limit — capacity is free but nothing is dequeuing
+          envRunning: 2, // 2% of a 100 limit
           depthSeries: [50, 80, 120, 200, 320],
           sampleBuckets: 5,
         })
@@ -224,8 +221,6 @@ describe("computeWaitingRunDiagnosis", () => {
         run({ status: "PENDING", queuedAt: null, delayUntil: new Date(NOW.getTime() - 60_000) }),
         signals()
       );
-      // The delay passed but the run wasn't enqueued, so the label says the delay elapsed
-      // rather than hiding it behind "time from creation".
       expect(result?.run.waitingBasis).toBe("delay_until");
       expect(result?.run.waitingLabel).toContain("not yet enqueued");
     });

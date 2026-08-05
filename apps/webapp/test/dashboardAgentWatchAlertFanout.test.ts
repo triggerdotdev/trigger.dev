@@ -1,9 +1,3 @@
-// Watch alert fan-out: one delivery job per channel, so a retry can only re-send the
-// channel that failed.
-//
-// Real service code with mocked IO only: the Prisma reads, the feature gate, the email
-// transport, the Slack client and the webhook fetch. The alerts worker is stubbed globally
-// by test/setup.ts, so the fan-out's enqueues land on a spy.
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type * as OrgIntegrationModule from "~/models/orgIntegration.server";
 import type * as SecretStoreModule from "~/services/secrets/secretStore.server";
@@ -30,7 +24,6 @@ const WEBHOOK_CHANNEL = {
 const ctx = vi.hoisted(() => ({
   channels: [] as Array<{ id: string; type: string; properties: unknown }>,
   gateAllowed: true,
-  /** Fails every webhook POST while set, to drive the retry. */
   webhookFails: false,
 }));
 
@@ -75,7 +68,6 @@ vi.mock("~/db.server", () => {
   return { prisma: db, $replica: db, sqlDatabaseSchema: undefined };
 });
 
-// The gate's one IO dependency, so the real gate code runs.
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.gateAllowed,
 }));
@@ -144,7 +136,6 @@ describe("dashboard agent watch alert fan-out", () => {
     }
     expect(calls[2].payload).toMatchObject({ ...payload, channelId: "chan_webhook" });
 
-    // The fan-out itself sends nothing.
     expect(sendAlertEmail).not.toHaveBeenCalled();
     expect(postMessage).not.toHaveBeenCalled();
     expect(safeWebhookFetch).not.toHaveBeenCalled();
@@ -170,13 +161,11 @@ describe("dashboard agent watch alert per-channel delivery", () => {
   test("a failing webhook retry re-sends only the webhook", async () => {
     const service = new DeliverDashboardAgentWatchChannelAlertService();
 
-    // Email and Slack succeed on the first pass.
     await service.call({ ...payload, channelId: "chan_email" });
     await service.call({ ...payload, channelId: "chan_slack" });
     expect(sendAlertEmail).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenCalledTimes(1);
 
-    // The webhook fails, then the job retries.
     ctx.webhookFails = true;
     await expect(service.call({ ...payload, channelId: "chan_webhook" })).rejects.toThrow(
       /Failed to send watch alert webhook/
@@ -185,7 +174,6 @@ describe("dashboard agent watch alert per-channel delivery", () => {
       /Failed to send watch alert webhook/
     );
 
-    // Nothing else went out again.
     expect(sendAlertEmail).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(safeWebhookFetch).toHaveBeenCalledTimes(2);

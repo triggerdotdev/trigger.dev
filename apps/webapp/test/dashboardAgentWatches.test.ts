@@ -1,9 +1,3 @@
-// Watch creation and the private check endpoint, against a real Postgres running both
-// schemas, so the guardrails under test are the real ones: the partial unique index
-// behind dedup, the active-watch limit, the status-guarded transitions, and the
-// membership-scoped authorization SQL.
-//
-// Only the ClickHouse and run-queue readers and the tick trigger are injected.
 import {
   appendChatMessage,
   armWatchBatch,
@@ -44,21 +38,13 @@ import {
   type WatchRunRow,
 } from "~/services/dashboardAgentWatchChecks";
 
-// Holders, wired per test into the mocked singletons.
 const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
   agentDb: undefined as unknown as DashboardAgentDb,
   canAccess: true,
-  /**
-   * The delegated user-actor the create endpoint sees, if any. `environmentId` is the
-   * environment scope the turn's token was minted with, and the authority the endpoint
-   * binds a watch to.
-   */
   actor: undefined as undefined | { userId: string; client?: string; environmentId?: string },
 }));
 
-// The create endpoint accepts only a dashboard-agent user-actor token, so the tests
-// drive the claims it would resolve.
 vi.mock("~/services/uatRoutePreamble.server", () => ({
   authenticateUatOrApiRequest: async () =>
     ctx.actor
@@ -72,7 +58,6 @@ vi.mock("~/services/uatRoutePreamble.server", () => ({
       : undefined,
 }));
 
-// The authorization query runs for real against the container.
 vi.mock("~/db.server", () => {
   const proxy = new Proxy(
     {},
@@ -81,20 +66,16 @@ vi.mock("~/db.server", () => {
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
 
-// The agent store — a real Drizzle client on the same container.
 vi.mock("~/services/dashboardAgentDb.server", () => ({
   get dashboardAgentDb() {
     return ctx.agentDb;
   },
 }));
 
-// The feature gate is a peripheral here; toggled per test to prove it's consulted.
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.canAccess,
 }));
 
-// Pinned here and handed to the signer, so the suite never imports the env schema just
-// to read one value.
 const SESSION_SECRET = "test-session-secret-for-watch-tokens";
 process.env.SESSION_SECRET = SESSION_SECRET;
 
@@ -121,10 +102,7 @@ const { runWatchBatchCheck } = await import("~/services/dashboardAgentWatchBatch
 const { signDashboardAgentWatchBatchToken, signDashboardAgentWatchToken } =
   await import("~/services/dashboardAgentWatchToken.server");
 
-/**
- * Apply the dashboard-agent schema by replaying every migration in the folder, in
- * order, so a new migration can't leave this suite on a stale schema.
- */
+/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
 async function applyAgentSchema(prisma: PrismaClient) {
   const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
   const migrations = readdirSync(folder)
@@ -141,12 +119,10 @@ async function applyAgentSchema(prisma: PrismaClient) {
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 
-/** Both schemas live, both clients pointed at this test's database clone. */
 async function boot(prisma: PrismaClient, connectionUri: string) {
   ctx.prisma = prisma;
   await applyAgentSchema(prisma);
-  // A pool, not a single connection: the limit test fires concurrent creates and the
-  // advisory lock they serialize on only means anything across connections.
+  // A pool, not a single connection: the concurrent-create test needs the advisory lock to span connections.
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 8 });
   ctx.agentDb = agentDbClient.db;
 }
@@ -179,7 +155,6 @@ async function seed(prisma: PrismaClient, slugBase: string) {
 
 type Seeded = Awaited<ReturnType<typeof seed>>;
 
-/** The already-authorized environment the service takes. */
 function authenticated(seeded: Seeded) {
   return {
     id: seeded.environment.id,
@@ -244,10 +219,7 @@ const BACKLOG: WatchSpec = {
   note: "tell me when it drains",
 };
 
-/**
- * A run that exists for the target validation and is gone by the time the immediate
- * check reads it, giving the `condition_impossible` one-shot.
- */
+/** A run that exists for target validation and is gone when the immediate check reads it. */
 function readRunOnce(first: WatchRunRow) {
   let calls = 0;
   return async () => (calls++ === 0 ? first : null);
@@ -312,12 +284,9 @@ describe("createDashboardAgentWatch", () => {
       expect(result.identity).toBe("run_start:run_1");
       expect(result.immediate).toBeUndefined();
 
-      // The first tick carries the generation it will claim, so it can't be confused
-      // with a reschedule of the same generation.
       expect(scheduled).toHaveLength(1);
       expect(scheduled[0]!.watchId).toBe(result.watchId);
       expect(scheduled[0]!.tick).toBe(1);
-      // The token travels in the payload; it is never stored on the row.
       expect(scheduled[0]!.token.startsWith("tr_daw_")).toBe(true);
 
       const row = await getWatch(ctx.agentDb, { id: result.watchId });
@@ -329,8 +298,6 @@ describe("createDashboardAgentWatch", () => {
         organizationId: seeded.organization.id,
         userId: seeded.user.id,
         tickCount: 0,
-        // Off unless the user asked for it, and the project's external ref is on the row
-        // so a wake can scope an investigation the way a turn does.
         investigateOnAttention: false,
         projectRef: seeded.project.externalRef,
       });
@@ -350,7 +317,6 @@ describe("createDashboardAgentWatch", () => {
       if (!result.ok || !result.watching) return;
       const row = await getWatch(ctx.agentDb, { id: result.watchId });
       expect(row?.investigateOnAttention).toBe(true);
-      // It is an action flag, not identity: the dedup string is unchanged.
       expect(result.identity).toBe("run_start:run_1");
     }
   );
@@ -383,8 +349,6 @@ describe("createDashboardAgentWatch", () => {
     }
   );
 
-  // The immediate check answers the request outright, as a one-shot result block rather
-  // than a watch that resolves in the same breath.
   postgresTest(
     "answers with a one-shot result and writes no row when the condition already holds",
     async ({ prisma, postgresContainer }) => {
@@ -406,14 +370,9 @@ describe("createDashboardAgentWatch", () => {
       expect(result.ok).toBe(true);
       if (!result.ok || result.watching) throw new Error("expected a one-shot result");
       expect(result.immediate.result).toBe("satisfied");
-      // The observation travels with it, so the caller can word the block without going
-      // back to the source.
       expect(result.immediate.observed).toMatchObject({ kind: "run_start", started: true });
-      // Nothing to wait for, so no tick is scheduled at all.
       expect(ticks).toBe(0);
 
-      // No row, so no chip, no delivery claim, and no wake that could tell the user the
-      // same thing a second time.
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
       expect(
         await listActiveWatchesForChats({
@@ -434,7 +393,6 @@ describe("createDashboardAgentWatch", () => {
 
       const result = await create({
         seeded,
-        // Validated as existing, then gone by the time the check reads it.
         checkDeps: { readRun: readRunOnce(runRow({ status: "QUEUED" })) },
       });
 
@@ -445,8 +403,6 @@ describe("createDashboardAgentWatch", () => {
     }
   );
 
-  // The guardrails come before the immediate check, so the refusal doesn't depend on
-  // whether the condition happens to be true right now.
   postgresTest(
     "refuses a duplicate before running the immediate check",
     async ({ prisma, postgresContainer }) => {
@@ -469,7 +425,6 @@ describe("createDashboardAgentWatch", () => {
       });
 
       expect(second).toMatchObject({ ok: false, code: "duplicate" });
-      // One read for target validation, and no check after the refusal.
       expect(checks).toBe(1);
     }
   );
@@ -489,8 +444,6 @@ describe("createDashboardAgentWatch", () => {
       });
 
       expect(result).toMatchObject({ ok: false, code: "internal" });
-      // Cancelled, not resolved: nobody evaluated the condition, so there is nothing to
-      // narrate, and a cancellation is always silent.
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
       const rows = await ctx.prisma.$queryRawUnsafe<
         { status: string; cancel_reason: string; delivery_status: string }[]
@@ -540,7 +493,6 @@ describe("createDashboardAgentWatch", () => {
       expect(second).toMatchObject({ ok: false, code: "duplicate" });
       if (!second.ok && first.ok) expect(second.existingId).toBe(first.watchId);
 
-      // A different environment is a different thing to watch, same spec or not.
       const otherEnv = await prisma.runtimeEnvironment.create({
         data: {
           slug: "stg",
@@ -582,9 +534,6 @@ describe("createDashboardAgentWatch", () => {
       const seeded = await seed(prisma, "race");
       await seedChat(seeded);
 
-      // Four different conditions, so dedup can't be what rejects any of them. Only the
-      // count-then-insert guardrail can, and it has to hold when all four read the count
-      // at the same time.
       const results = await Promise.all(
         ["run_1", "run_2", "run_3", "run_4"].map((runId) =>
           create({ seeded, spec: { ...RUN_START, runId } })
@@ -600,8 +549,6 @@ describe("createDashboardAgentWatch", () => {
   );
 });
 
-// The agent-facing adapter. Only the refusals go through the route here; the happy path
-// would trigger the real watcher task, covered by the service-level tests above.
 describe("the createWatch endpoint's authorization", () => {
   function post(body: unknown) {
     return createAction({
@@ -666,8 +613,6 @@ describe("the createWatch endpoint's authorization", () => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "noscope");
       await seedChat(seeded, "chat_1");
-      // A turn minted without an environment. There is nothing this endpoint would trust
-      // as a fallback, so the watch is refused.
       ctx.actor = { userId: seeded.user.id, client: "dashboard-agent" };
 
       const response = await post(validBody("chat_1"));
@@ -705,8 +650,6 @@ describe("the createWatch endpoint's authorization", () => {
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "binding");
-      // A second project and environment in the same org, so the org cross-check can't be
-      // what refuses anything below.
       const otherProject = await prisma.project.create({
         data: {
           name: `${seeded.project.slug}_b`,
@@ -727,7 +670,6 @@ describe("the createWatch endpoint's authorization", () => {
         },
       });
 
-      // The chat's stored snapshot names project/env A…
       await createChat(ctx.agentDb, {
         id: "chat_1",
         organizationId: seeded.organization.id,
@@ -739,15 +681,12 @@ describe("the createWatch endpoint's authorization", () => {
           },
         },
       });
-      // …and the current turn is in project/env B.
       ctx.actor = {
         userId: seeded.user.id,
         client: "dashboard-agent",
         environmentId: otherEnvironment.id,
       };
 
-      // The snapshot's project mismatches the token's environment. If the snapshot were
-      // the authority this request would have been accepted.
       const response = await post({
         ...validBody("chat_1"),
         projectRef: seeded.project.externalRef,
@@ -764,8 +703,6 @@ describe("the createWatch endpoint's authorization", () => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "crossorg");
       const other = await seed(prisma, "otherorg");
-      // The user is a member of both orgs, so the environment authorizes and only the
-      // chat/environment org cross-check stands between them.
       await prisma.orgMember.create({
         data: {
           organizationId: other.organization.id,
@@ -775,7 +712,6 @@ describe("the createWatch endpoint's authorization", () => {
       });
       await seedChat(seeded, "chat_1");
 
-      // A token minted in the other org's environment for a chat in this one.
       ctx.actor = {
         userId: seeded.user.id,
         client: "dashboard-agent",
@@ -809,7 +745,6 @@ describe("the chat cascade and the list view", () => {
         cancelledWatches: 1,
       });
 
-      // The chat is gone and its watch went with it: neither half can land alone.
       expect(
         await chatExists(ctx.agentDb, {
           chatId: "chat_1",
@@ -822,7 +757,6 @@ describe("the chat cascade and the list view", () => {
         cancelReason: "chat_deleted",
         deliveryStatus: "not_required",
       });
-      // Another chat's watch is untouched.
       expect(await getWatch(ctx.agentDb, { id: theirs.watchId })).toMatchObject({
         status: "active",
       });
@@ -857,7 +791,6 @@ describe("the chat cascade and the list view", () => {
         note: RUN_START.note,
       });
 
-      // Terminal watches drop off the chips.
       if (a.ok) await cancelWatch(ctx.agentDb, { id: a.watchId, reason: "user" });
       if (b.ok) await cancelWatch(ctx.agentDb, { id: b.watchId, reason: "user" });
       expect(
@@ -893,11 +826,8 @@ describe("unread watch wakes", () => {
       if (!created.ok) return;
 
       const scope = { organizationId: seeded.organization.id, userId: seeded.user.id };
-      // The toast feed lists recent deliveries, read or not, inside a window.
       const recent = { ...scope, deliveredAfter: new Date(Date.now() - 15 * 60 * 1000) };
 
-      // Terminal but undelivered: the chat has no message to open yet, so the launcher's
-      // dot and the toast stay quiet.
       if (!created.watching) throw new Error("expected a watch");
       await transitionWatchCondition(ctx.agentDb, {
         id: created.watchId,
@@ -967,7 +897,6 @@ describe("authorizeWatchEnvironment", () => {
         await authorizeWatchEnvironment({
           userId: seeded.user.id,
           organizationId: seeded.organization.id,
-          // A snapshot/row mismatch must never resolve.
           projectId: other.project.id,
           environmentId: seeded.environment.id,
         })
@@ -976,11 +905,7 @@ describe("authorizeWatchEnvironment", () => {
   );
 });
 
-// The backstop, against the real query layer. What these pin is the wiring: which rows
-// the sweep can see, and that a finalization goes through the same authorization a
-// tick's check does.
 describe("the watch sweep", () => {
-  /** An overdue active watch: created normally, then backdated past its deadline. */
   async function overdueWatch(seeded: Seeded, chatId = "chat_1") {
     const created = await create({ seeded, chatId });
     if (!created.ok) throw new Error("the watch wasn't created");
@@ -991,7 +916,6 @@ describe("the watch sweep", () => {
     return created.watchId;
   }
 
-  /** The seams: real store, injected readers, and a recorded delivery. */
   function sweepDeps(args: {
     seeded: Seeded;
     checkDeps?: Partial<WatchCheckDeps>;
@@ -1028,8 +952,6 @@ describe("the watch sweep", () => {
         sweepDeps({
           seeded,
           delivered,
-          // The condition became true right at the deadline, so the sweep's last check has
-          // to see it, exactly as the tick's final check would.
           checkDeps: {
             readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }),
           },
@@ -1041,7 +963,6 @@ describe("the watch sweep", () => {
         status: "fired",
         deliveryStatus: "pending",
       });
-      // The wake is handed to the watcher task, which owns the session append.
       expect(delivered).toEqual([watchId]);
     }
   );
@@ -1060,7 +981,6 @@ describe("the watch sweep", () => {
       expect(result).toMatchObject({ overdue: 1, expired: 1, failed: 0 });
       const row = await getWatch(ctx.agentDb, { id: watchId });
       expect(row).toMatchObject({ status: "expired", deliveryStatus: "pending" });
-      // The check ran, so the narration may say the condition didn't happen.
       expect(row?.lastResult).toMatchObject({ verified: true, reason: "not_met_by_expiry" });
       expect(delivered).toEqual([watchId]);
     }
@@ -1083,7 +1003,6 @@ describe("the watch sweep", () => {
       expect(await getWatch(ctx.agentDb, { id: watchId })).toMatchObject({
         status: "cancelled",
         cancelReason: "access_revoked",
-        // A cancellation is never narrated.
         deliveryStatus: "not_required",
       });
       expect(delivered).toEqual([]);
@@ -1115,8 +1034,6 @@ describe("the watch sweep", () => {
       await seedChat(seeded);
       const watchId = await overdueWatch(seeded);
 
-      // First sweep: the row expires with its delivery owed and the wake fails to
-      // schedule. It is no longer `active`, so only the delivery query can see it.
       const delivered: string[] = [];
       await expect(
         sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, failDelivery: true }))
@@ -1127,14 +1044,11 @@ describe("the watch sweep", () => {
       });
       expect(delivered).toEqual([]);
 
-      // The retry, once the delivery grace has passed. Nothing re-decides the outcome; the
-      // wake is handed over, once.
       const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
       const second = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
       expect(second).toMatchObject({ undelivered: 1, redelivered: 1, failed: 0 });
       expect(delivered).toEqual([watchId]);
 
-      // Delivered for real (the watcher task marks it), so a third sweep sees nothing.
       await markWatchDelivered(ctx.agentDb, { id: watchId });
       const third = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
       expect(third).toMatchObject({ undelivered: 0, redelivered: 0 });
@@ -1152,9 +1066,6 @@ describe("the watch sweep", () => {
 
       await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
 
-      // The watcher claimed the wake and hasn't marked it delivered. The outcome is past
-      // the delivery grace, but a fresh claim is somebody's to hold and the sweep must not
-      // take it away.
       await ctx.prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches
          set delivery_status = 'delivering',
@@ -1167,8 +1078,6 @@ describe("the watch sweep", () => {
         undelivered: 0,
       });
 
-      // The claim is stale: that deliverer died and nothing else will pick the wake up, so
-      // the sweep does.
       await ctx.prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches
          set delivery_claimed_at = now() - interval '1 hour' where id = $1`,
@@ -1182,9 +1091,6 @@ describe("the watch sweep", () => {
     }
   );
 
-  // An immediate answer never becomes a row, so there is no inline outcome for the sweep
-  // to recover: the one-shot result block is the complete delivery. What the sweep owns
-  // is the wake for a watch that ran and resolved, covered above.
   postgresTest(
     "leaves nothing owed for a request the immediate check already answered",
     async ({ prisma, postgresContainer }) => {
@@ -1216,8 +1122,6 @@ describe("the watch sweep", () => {
       await seedChat(seeded);
       const watchId = await overdueWatch(seeded);
 
-      // The configuration vanished after the watch was created. The row must still be
-      // finalized, or it holds a watch slot and blocks re-asking forever.
       const delivered: string[] = [];
       const unconfigured = await sweepDashboardAgentWatches({
         ...sweepDeps({ seeded, delivered }),
@@ -1238,7 +1142,6 @@ describe("the watch sweep", () => {
         deliveryStatus: "pending",
       });
 
-      // Configured again: the outcome the user was promised is handed over.
       const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
       const restored = await sweepDashboardAgentWatches(
         sweepDeps({ seeded, delivered, now: later })
@@ -1268,7 +1171,6 @@ describe("the watch sweep", () => {
         overdue: 0,
       });
 
-      // Past the grace, the backstop takes over.
       const later = new Date(Date.now() + WATCH_EXPIRY_GRACE_MS + 60_000);
       expect(
         await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }))
@@ -1285,7 +1187,6 @@ describe("the watch sweep", () => {
       await seedChat(seeded, "chat_2");
       await seedChat(seeded, "chat_3");
 
-      // Three rows, one per outcome the retention has to distinguish.
       const old = await overdueWatch(seeded, "chat_1");
       const recent = await overdueWatch(seeded, "chat_2");
       await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
@@ -1300,8 +1201,7 @@ describe("the watch sweep", () => {
       const active = await create({ seeded, chatId: "chat_3" });
       if (!active.ok || !active.watching) throw new Error("expected an active watch");
 
-      // Only the first is past the window. Backdate every timestamp the age is measured
-      // from, so `greatest(...)` really is old.
+      // Backdate every timestamp the age is measured from, so `greatest(...)` really is old.
       await ctx.prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches
          set created_at = now() - interval '30 days',
@@ -1311,7 +1211,6 @@ describe("the watch sweep", () => {
          where id = $1`,
         old
       );
-      // The active row is ancient too: status, not age, is what protects it.
       await ctx.prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches set created_at = now() - interval '30 days' where id = $1`,
         active.watchId
@@ -1335,8 +1234,6 @@ describe("the watch sweep", () => {
       await seedChat(seeded);
       const watchId = await overdueWatch(seeded);
 
-      // Resolved a month ago and still `pending`: retention must leave it for the delivery
-      // half, or the user never gets an outcome they were promised.
       await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
       await ctx.prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches
@@ -1367,29 +1264,20 @@ describe("the tick claim", () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      // A claim whose check never ran must leave no trace of an observation: the expiry
-      // narration reports `lastCheckedAt` as when the watch was last looked at, and a
-      // failed claim's timestamp would be a lie.
       const claimed = await claimWatchTick(ctx.agentDb, { id: created.watchId, generation: 1 });
       expect(claimed).toMatchObject({ tickCount: 1, lastCheckedAt: null, lastResult: null });
 
-      // The check that did run writes the pair together.
       await recordWatchCheck(ctx.agentDb, { id: created.watchId, lastResult: { pending: 4 } });
       const row = await getWatch(ctx.agentDb, { id: created.watchId });
       expect(row?.lastCheckedAt).toBeInstanceOf(Date);
       expect(row?.lastResult).toMatchObject({ pending: 4 });
-      // And the claim is still the only writer of the counter.
       expect(row?.tickCount).toBe(1);
     }
   );
 });
 
-// The delivery claim's fencing token. The status alone can't say whose claim is in the
-// row, and a deliverer that hangs past the stale window is taken over, so without the
-// token its release would hand the new owner's claim back to `pending` and its late mark
-// would close out a delivery it never made.
+// The delivery claim's fencing token: a hung deliverer is taken over, so an unfenced release or mark would touch the new owner's claim.
 describe("the delivery claim", () => {
-  /** A resolved watch with its wake owed, and the current staleness cutoff. */
   async function firedWatch(seeded: Seeded) {
     const created = await create({ seeded });
     expect(created.ok).toBe(true);
@@ -1407,7 +1295,6 @@ describe("the delivery claim", () => {
     return new Date(Date.now() - WATCH_DELIVERY_CLAIM_STALE_MS);
   }
 
-  /** Age the claim past the stale window, as if the deliverer holding it died. */
   async function ageClaim(watchId: string) {
     await ctx.prisma.$executeRawUnsafe(
       `update trigger_dashboard_agent.watches
@@ -1424,21 +1311,16 @@ describe("the delivery claim", () => {
       await seedChat(seeded);
       const watchId = await firedWatch(seeded);
 
-      // A claims and hangs.
       const a = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
       expect(a).not.toBeNull();
       if (!a) return;
 
-      // Five minutes later B takes the abandoned claim over, on a new token.
       await ageClaim(watchId);
       const b = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
       expect(b).not.toBeNull();
       if (!b) return;
       expect(b.claimId).not.toBe(a.claimId);
 
-      // A wakes up, its append fails, and it releases a claim that is no longer its own,
-      // so nothing moves. Without the token this would put the row back to `pending` while
-      // B is still appending.
       expect(
         await releaseWatchDelivery(ctx.agentDb, { id: watchId, claimId: a.claimId })
       ).toBeNull();
@@ -1447,12 +1329,10 @@ describe("the delivery claim", () => {
         deliveryClaimId: b.claimId,
       });
 
-      // So C finds a claim that is fresh and somebody's to hold, and delivers nothing.
       expect(
         await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() })
       ).toBeNull();
 
-      // B is the only deliverer, and its mark closes the row out exactly once.
       expect(
         await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: b.claimId })
       ).toMatchObject({ deliveryStatus: "delivered" });
@@ -1476,8 +1356,6 @@ describe("the delivery claim", () => {
       expect(b).not.toBeNull();
       if (!b) return;
 
-      // A's mark must not finish B's delivery, which would leave the wake never appended
-      // and the row closed. Nor may the inline path's unfenced mark touch a live claim.
       expect(await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: a.claimId })).toBeNull();
       expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toBeNull();
       expect(await getWatch(ctx.agentDb, { id: watchId })).toMatchObject({
@@ -1485,7 +1363,6 @@ describe("the delivery claim", () => {
         deliveredAt: null,
       });
 
-      // B still owns the delivery and can still complete it.
       expect(
         await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: b.claimId })
       ).toMatchObject({ deliveryStatus: "delivered" });
@@ -1500,13 +1377,10 @@ describe("the delivery claim", () => {
       await seedChat(seeded);
       const watchId = await firedWatch(seeded);
 
-      // The one caller that never claims: an outcome resolved inline with nothing to narrate
-      // later. It closes out an owed, unclaimed row and nothing else.
       expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toMatchObject({
         deliveryStatus: "delivered",
       });
       expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toBeNull();
-      // A delivered wake can't be re-claimed either.
       expect(
         await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() })
       ).toBeNull();
@@ -1514,9 +1388,6 @@ describe("the delivery claim", () => {
   );
 });
 
-// The delete/create race. The chat lock makes both orderings end the same way, and the
-// invariant is one-sided: an active watch on a deleted chat has nowhere to deliver
-// anything, so it must never exist.
 describe("deleting a chat while a watch is being created", () => {
   postgresTest("holds in both orders", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
@@ -1528,8 +1399,6 @@ describe("deleting a chat while a watch is being created", () => {
 
       const creating = () => create({ seeded, chatId });
       const deleting = () => deleteChatWithWatches({ chatId, userId: seeded.user.id });
-      // Both orderings: whichever takes the lock first, the other must not leave a live
-      // watch behind.
       const [a, b] = deleteFirst
         ? await Promise.all([deleting(), creating()])
         : await Promise.all([creating(), deleting()]);
@@ -1625,16 +1494,11 @@ describe("the check endpoint", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    // The real readers run on this path, and no such run exists in this environment, so
-    // the honest answer is that it can never start.
     expect(body.result).toBe("terminal_unsatisfied");
 
     const row = await getWatch(ctx.agentDb, { id: watch.watchId });
     expect(row?.lastCheckedAt).not.toBeNull();
-    // The generation claim is the task's, not this endpoint's, so the counter is
-    // untouched here.
     expect(row?.tickCount).toBe(0);
-    // Still active: the fire/expire transition belongs to the watcher task.
     expect(row?.status).toBe("active");
   });
 
@@ -1646,7 +1510,6 @@ describe("the check endpoint", () => {
       await seedChat(seeded);
       const watch = await activeWatch(seeded);
 
-      // Backdate the deadline: the row is the authority on expiry.
       await prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches set expires_at = now() - interval '1 minute' where id = $1`,
         watch.watchId
@@ -1680,7 +1543,6 @@ describe("the check endpoint", () => {
       const watch = await activeWatch(seeded);
       const token = await tokenFor(watch.watchId, watch.expiresAt);
 
-      // Membership gone, so the tick must observe nothing at all.
       await prisma.orgMember.deleteMany({ where: { userId: seeded.user.id } });
 
       const response = await checkAction({
@@ -1696,10 +1558,8 @@ describe("the check endpoint", () => {
       expect(row).toMatchObject({
         status: "cancelled",
         cancelReason: "access_revoked",
-        // Cancellation is never notified.
         deliveryStatus: "not_required",
       });
-      // No check ran, so nothing was recorded.
       expect(row?.tickCount).toBe(0);
       expect(row?.lastResult).toBeNull();
     }
@@ -1727,9 +1587,6 @@ describe("the check endpoint", () => {
   });
 });
 
-// The transcript append behind the configuration card's submit path. The confirmation and
-// the one-shot result block are host-decided facts, written with no turn and no LLM, so
-// the append has to be atomic and owner-scoped.
 describe("appendChatMessage", () => {
   postgresTest(
     "appends in order without rewriting the transcript",
@@ -1791,7 +1648,6 @@ describe("appendChatMessage", () => {
   );
 });
 
-// The card's second run condition, end to end through the real creation path.
 describe("run_failed creation", () => {
   const RUN_FAILED: WatchSpec = {
     kind: "run_failed",
@@ -1817,8 +1673,6 @@ describe("run_failed creation", () => {
       if (!failed.ok || !failed.watching) return;
       expect(failed.identity).toBe("run_failed:run_1");
 
-      // "When it finishes" and "if it fails" are different questions about the same run, so
-      // the second is not a duplicate of the first.
       const finished = await create({
         seeded,
         spec: { ...RUN_FAILED, kind: "run_finished" } as WatchSpec,
@@ -1848,7 +1702,6 @@ describe("run_failed creation", () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      // The one-shot path: it can never fail now, so there is nothing to watch.
       expect(result.watching).toBe(false);
       if (result.watching) return;
       expect(result.immediate.result).toBe("terminal_unsatisfied");
@@ -1857,9 +1710,6 @@ describe("run_failed creation", () => {
   );
 });
 
-// The queue pack through the real creation path: three more questions about one queue,
-// each with its own identity, plus the stateful check reading its previous facts off the
-// row.
 describe("the queue pack creation", () => {
   const QUEUE = "task/my-task";
 
@@ -1897,7 +1747,6 @@ describe("the queue pack creation", () => {
       const seeded = await seed(prisma, "queuepack");
       await seedChat(seeded);
 
-      // A backed-up queue: nothing here is already true, so all three are watching.
       const busy = {
         readQueueDepth: async () => ({
           depth: 780,
@@ -1914,7 +1763,6 @@ describe("the queue pack creation", () => {
       const stalled = await create({ seeded, spec: STALLED, checkDeps: busy });
       expect(stalled.ok && stalled.watching).toBe(true);
       if (!stalled.ok || !stalled.watching) return;
-      // The stall sensitivity is not in the identity: one queue, one "is it moving?".
       expect(stalled.identity).toBe(`queue_stalled:${QUEUE}`);
 
       const age = await create({ seeded, spec: AGE, checkDeps: busy });
@@ -1922,8 +1770,6 @@ describe("the queue pack creation", () => {
       if (!age.ok || !age.watching) return;
       expect(age.identity).toBe(`queue_oldest_age:${QUEUE}:5`);
 
-      // Three distinct questions, so no dedup between them, but the chat cap is 3 so a
-      // fourth queue question is refused rather than silently dropped.
       const drain = await create({
         seeded,
         spec: { ...BELOW, kind: "backlog_drain" } as WatchSpec,
@@ -1950,7 +1796,6 @@ describe("the queue pack creation", () => {
       if (same.ok) return;
       expect(same.code).toBe("duplicate");
 
-      // "Longer than 30 minutes" is a different promise about the same queue.
       const other = await create({ seeded, spec: { ...AGE, thresholdMinutes: 30 } as WatchSpec });
       expect(other.ok && other.watching).toBe(true);
       if (!other.ok || !other.watching) return;
@@ -1975,7 +1820,6 @@ describe("the queue pack creation", () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      // The one-shot path: it is already below, so there is nothing to watch.
       expect(result.watching).toBe(false);
       if (result.watching) return;
       expect(result.immediate.result).toBe("satisfied");
@@ -1983,9 +1827,6 @@ describe("the queue pack creation", () => {
     }
   );
 
-  // The stateful seam against the real column: the streak lives in the facts
-  // `recordWatchCheck` already persists, with no new column, and the check endpoint hands
-  // the next check whatever `previousCheckFacts` reads back off it.
   postgresTest(
     "round-trips the stall state through the row's existing facts column",
     async ({ prisma, postgresContainer }) => {
@@ -2003,7 +1844,6 @@ describe("the queue pack creation", () => {
       expect(created.ok && created.watching).toBe(true);
       if (!created.ok || !created.watching) return;
 
-      // What the check endpoint writes after a pending tick.
       const facts = { queue: QUEUE, depth: 42, notDecreasingStreak: 2, ticks: 3 };
       await recordWatchCheck(ctx.agentDb, {
         id: created.watchId,
@@ -2024,8 +1864,6 @@ describe("the queue pack creation", () => {
       const row = await getWatch(ctx.agentDb, { id: created.watchId });
       expect(previousCheckFacts(row?.lastResult)).toEqual(facts);
 
-      // And after a failed tick, which is what the watcher task parks: the gap is unwrapped,
-      // so the last real observation is still the previous one.
       await recordWatchCheck(ctx.agentDb, {
         id: created.watchId,
         lastResult: { checkFailed: true, detail: "clickhouse down", previous: facts },
@@ -2036,11 +1874,6 @@ describe("the queue pack creation", () => {
   );
 });
 
-// Batching: one polling loop and one set of reads per (environment, cadence), against the
-// real registry table and guarded SQL, because that is where "exactly one chain per group"
-// and "a zombie chain claims nothing" live.
-
-/** A health-recovery watch: the one whose check reads the shared report. */
 const HEALTH: WatchSpec = {
   kind: "health_recovery",
   report: "health",
@@ -2068,12 +1901,9 @@ describe("the batch chain registry", () => {
         },
       });
 
-    // The first arm starts a chain at generation 1 of epoch 1.
     expect(await arm()).toEqual({ running: true });
     expect(scheduled).toEqual([{ epoch: 1, tick: 1 }]);
 
-    // Everything after it joins the live chain instead of starting a second one. That is
-    // the batching: N watches, one run per cadence.
     expect(await arm()).toEqual({ running: true });
     expect(await arm()).toEqual({ running: true });
     expect(scheduled).toHaveLength(1);
@@ -2099,27 +1929,22 @@ describe("the batch chain registry", () => {
 
       const armedAt = new Date();
       await arm(armedAt);
-      // The chain ticks once, then its run dies.
       expect(
         await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 1, generation: 1 })
       ).toMatchObject({ epoch: 1, generation: 1 });
 
-      // Inside the staleness window nothing is re-armed.
       await arm(new Date(armedAt.getTime() + 60_000));
       expect(scheduled).toHaveLength(1);
 
-      // Past it, a new epoch takes over.
       await arm(new Date(armedAt.getTime() + watchBatchStaleMs(5) + 60_000));
       expect(scheduled).toEqual([
         { epoch: 1, tick: 1 },
         { epoch: 2, tick: 1 },
       ]);
 
-      // The zombie wakes up and tries to tick epoch 1 again: it owns nothing.
       expect(await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 1, generation: 2 })).toBe(
         null
       );
-      // And the replacement's own chain is unharmed.
       expect(
         await claimWatchBatchTick(ctx.agentDb, { ...group, epoch: 2, generation: 1 })
       ).toMatchObject({ epoch: 2, generation: 1 });
@@ -2133,8 +1958,6 @@ describe("the batch chain registry", () => {
       const seeded = await seed(prisma, "batchfail");
       const group = { environmentId: seeded.environment.id, cadenceMinutes: 5 };
 
-      // Nothing polls the group and the caller is told so, keeping a per-watch tick's own
-      // chain alive rather than handing over to a chain that doesn't exist.
       expect(
         await armDashboardAgentWatchBatch({
           ...group,
@@ -2146,7 +1969,6 @@ describe("the batch chain registry", () => {
         })
       ).toEqual({ running: false });
 
-      // The row is stopped, so the very next arm can try again immediately.
       const scheduled: number[] = [];
       expect(
         await armDashboardAgentWatchBatch({
@@ -2171,7 +1993,6 @@ describe("the batch chain registry", () => {
       });
       expect(created.ok).toBe(true);
 
-      // The watch exists and nothing is polling its group.
       const groups = await listWatchBatchGroupsToArm(ctx.agentDb);
       expect(groups).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
 
@@ -2190,9 +2011,7 @@ describe("the batch chain registry", () => {
       ).toEqual({ stale: 1, armed: 1, failed: 0 });
       expect(armed).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
 
-      // Once a chain is armed the group is no longer stale, and the window is the group's own
-      // cadence, so a five-minute group goes stale 17 minutes later rather than whenever the
-      // slowest cadence would have.
+      // The staleness window is the group's own cadence: a five-minute group goes stale 17 minutes later.
       await armWatchBatch(ctx.agentDb, {
         environmentId: seeded.environment.id,
         cadenceMinutes: 5,
@@ -2214,7 +2033,6 @@ describe("the batch chain registry", () => {
       const seeded = await seed(prisma, "batchgroup");
       await seedChat(seeded, "chat_1");
       await seedChat(seeded, "chat_2");
-      // Two cadences in one environment: 5 (health) and 1 (run_start).
       expect((await create({ seeded, chatId: "chat_1", spec: HEALTH })).ok).toBe(true);
       expect((await create({ seeded, chatId: "chat_2", spec: RUN_START })).ok).toBe(true);
 
@@ -2229,7 +2047,6 @@ describe("the batch chain registry", () => {
 
       expect(five.map((watch) => watch.chatId)).toEqual(["chat_1"]);
       expect(one.map((watch) => watch.chatId)).toEqual(["chat_2"]);
-      // Each cadence gets its own chain.
       expect(
         (await listWatchBatchGroupsToArm(ctx.agentDb)).sort(
           (a, b) => a.cadenceMinutes - b.cadenceMinutes
@@ -2243,7 +2060,6 @@ describe("the batch chain registry", () => {
 });
 
 describe("the batch check", () => {
-  /** Three health watches in one environment, one per chat, all on cadence 5. */
   async function healthGroup(seeded: Seeded, count = 3) {
     const ids: string[] = [];
     for (let index = 0; index < count; index++) {
@@ -2262,10 +2078,6 @@ describe("the batch check", () => {
     return ids;
   }
 
-  /**
-   * A second user's watch in the same environment and cadence, proving the authorization
-   * memo is per user and not per group.
-   */
   async function otherUsersWatch(seeded: Seeded, prisma: PrismaClient) {
     const user = await prisma.user.create({
       data: {
@@ -2297,7 +2109,6 @@ describe("the batch check", () => {
     return { userId: user.id, watchId: created.watchId };
   }
 
-  /** A chain armed straight in the registry, so a tick can claim its generation. */
   async function armChain(seeded: Seeded, cadenceMinutes = 5) {
     const row = await armWatchBatch(ctx.agentDb, {
       environmentId: seeded.environment.id,
@@ -2341,11 +2152,9 @@ describe("the batch check", () => {
         }
       );
 
-      // Three watches, one authorization, one report load.
       expect(authorizations).toBe(1);
       expect(healthReads).toBe(1);
 
-      // And a verdict per watch, each with its own generation to claim.
       expect(response.watches?.map((entry) => entry.watchId).sort()).toEqual([...ids].sort());
       expect(response.watches?.every((entry) => entry.result === "pending")).toBe(true);
       expect(response.watches?.every((entry) => entry.tick === 1)).toBe(true);
@@ -2353,7 +2162,6 @@ describe("the batch check", () => {
       expect(response.continues).toBe(true);
       expect(response.stale).toBeUndefined();
 
-      // Every row records what its check saw, exactly as the single endpoint does.
       for (const id of ids) {
         expect((await getWatch(ctx.agentDb, { id }))?.lastResult).toMatchObject({
           result: "pending",
@@ -2385,7 +2193,6 @@ describe("the batch check", () => {
         }
       );
 
-      // Two users, two authorizations: memoized per user, never skipped.
       expect(authorized.sort()).toEqual([other.userId, seeded.user.id].sort());
     }
   );
@@ -2406,7 +2213,6 @@ describe("the batch check", () => {
         }
       );
 
-      // Both are refused, and neither is narrated: a cancellation is silent.
       expect(response.watches?.every((entry) => entry.code === "access_revoked")).toBe(true);
       for (const id of ids) {
         expect(await getWatch(ctx.agentDb, { id })).toMatchObject({
@@ -2427,15 +2233,12 @@ describe("the batch check", () => {
       const chain = await armChain(seeded);
       const now = new Date();
 
-      // `fresh` was checked seconds ago: a cadence hasn't elapsed.
       await recordWatchCheck(ctx.agentDb, { id: fresh!, lastCheckedAt: now });
-      // `overdue` was checked ten minutes ago, two cadences.
       await recordWatchCheck(ctx.agentDb, {
         id: overdue!,
         lastCheckedAt: new Date(now.getTime() - 10 * 60_000),
       });
-      // `boundary` was checked seconds ago too, but its window closes before the next tick
-      // would come round, so its final evaluation must still happen.
+      // `boundary`'s window closes before the next tick, so its final evaluation must still happen.
       await recordWatchCheck(ctx.agentDb, { id: boundary!, lastCheckedAt: now });
       await prisma.$executeRawUnsafe(
         `update trigger_dashboard_agent.watches set expires_at = now() + interval '1 minute' where id = $1`,
@@ -2454,7 +2257,6 @@ describe("the batch check", () => {
       expect(response.watches?.map((entry) => entry.watchId).sort()).toEqual(
         [boundary!, overdue!].sort()
       );
-      // The group is still whole, so the chain keeps ticking.
       expect(response.continues).toBe(true);
     }
   );
@@ -2467,7 +2269,6 @@ describe("the batch check", () => {
       const ids = await healthGroup(seeded, 1);
       const chain = await armChain(seeded);
 
-      // Generation 1 runs, then 2, so a late duplicate of 1 owns nothing.
       const group = { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch };
       expect((await runWatchBatchCheck({ ...group, tick: 1 })).stale).toBeUndefined();
       expect((await runWatchBatchCheck({ ...group, tick: 2 })).stale).toBeUndefined();
@@ -2475,7 +2276,6 @@ describe("the batch check", () => {
       const late = await runWatchBatchCheck({ ...group, tick: 1 });
       expect(late).toEqual({ stale: true });
 
-      // A zombie from an older epoch is equally powerless.
       expect(await runWatchBatchCheck({ ...group, epoch: chain.epoch - 1, tick: 1 })).toEqual({
         stale: true,
       });
@@ -2501,8 +2301,6 @@ describe("the batch check", () => {
 
       expect(response).toMatchObject({ watches: [], continues: false });
 
-      // The chain is stopped, so the next watch arms a fresh epoch rather than joining a
-      // loop that has already ended.
       const rearmed = await armWatchBatch(ctx.agentDb, {
         environmentId: seeded.environment.id,
         cadenceMinutes: 5,
@@ -2521,8 +2319,6 @@ describe("the batch check", () => {
       const ids = await healthGroup(seeded, 2);
       const chain = await armChain(seeded);
 
-      // One of them resolved and its wake never landed, the state a batch run that failed
-      // one append leaves behind.
       await transitionWatchCondition(ctx.agentDb, {
         id: ids[0]!,
         resolution: "condition_met",
@@ -2538,9 +2334,7 @@ describe("the batch check", () => {
 
       const owed = response.watches?.filter((entry) => entry.deliverOnly === true) ?? [];
       expect(owed.map((entry) => entry.watchId)).toEqual([ids[0]!]);
-      // Delivery-only entries decide nothing, so they carry no generation.
       expect(owed[0]?.tick).toBe(0);
-      // The other one was checked normally.
       expect(
         response.watches?.filter((entry) => !entry.deliverOnly).map((entry) => entry.watchId)
       ).toEqual([ids[1]!]);
@@ -2556,20 +2350,16 @@ describe("the batch check", () => {
       const chain = await armChain(seeded);
       const group = { environmentId: seeded.environment.id, cadenceMinutes: 5 };
 
-      // The group's only watch resolved, and its wake hasn't landed.
       await transitionWatchCondition(ctx.agentDb, {
         id: ids[0]!,
         resolution: "condition_met",
         lastResult: { verified: true },
       });
 
-      // Stopping now would strand that wake: the run retrying the failed delivery
-      // would find the chain gone and claim nothing.
       const first = await runWatchBatchCheck({ ...group, epoch: chain.epoch, tick: 1 });
       expect(first.continues).toBe(true);
       expect(first.watches?.map((entry) => entry.deliverOnly)).toEqual([true]);
 
-      // Once the wake has landed there is genuinely nothing left, and the chain stops.
       const claim = await claimWatchDelivery(ctx.agentDb, {
         id: ids[0]!,
         staleBefore: new Date(Date.now() - WATCH_DELIVERY_CLAIM_STALE_MS),
@@ -2578,7 +2368,6 @@ describe("the batch check", () => {
 
       const second = await runWatchBatchCheck({ ...group, epoch: chain.epoch, tick: 2 });
       expect(second).toMatchObject({ watches: [], continues: false });
-      // Stopped, so a repeat stop finds nothing left to stop.
       expect(await stopWatchBatch(ctx.agentDb, { ...group, epoch: chain.epoch })).toBe(null);
     }
   );
@@ -2596,23 +2385,17 @@ describe("the batch check", () => {
         { environmentId: seeded.environment.id, cadenceMinutes: 5, epoch: chain.epoch, tick: 1 },
         {
           authorize: async (watch) => {
-            // Not a refusal but a broken authorization read, the failure that happens before
-            // any reader is built and is not shared with other users.
             if (watch.userId === theirs.userId) throw new Error("the authorization query failed");
             return { ok: true, environment: authenticated(seeded) };
           },
           checkDeps: () => fakeCheckDeps(),
-          // Serialized, so the failure can't be masked by ordering.
           concurrency: 1,
         }
       );
 
       const byId = new Map(response.watches?.map((entry) => [entry.watchId, entry]));
-      // The broken one is `unavailable`: never read as true or false, and the row keeps its
-      // state for the next tick.
       expect(byId.get(theirs.watchId)).toMatchObject({ result: "unavailable" });
       expect((await getWatch(ctx.agentDb, { id: theirs.watchId }))?.status).toBe("active");
-      // Its neighbours were answered.
       for (const id of mine) {
         expect(byId.get(id)).toMatchObject({ result: "pending" });
       }
@@ -2646,7 +2429,6 @@ describe("the batch check endpoint's authorization", () => {
     expect(
       (await batchCheckAction({ request: batchRequest(body), params: {}, context: {} })).status
     ).toBe(401);
-    // A watch token is not a chain token, however valid it is.
     const watchToken = await signDashboardAgentWatchToken(SESSION_SECRET, {
       watchId: "watch_1",
       expiresAt: new Date(Date.now() + 60 * 60_000),
@@ -2663,7 +2445,6 @@ describe("the batch check endpoint's authorization", () => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const token = await batchToken("env_1", 5);
 
-      // Right environment, wrong cadence.
       const wrongCadence = await batchCheckAction({
         request: batchRequest(
           { environmentId: "env_1", cadenceMinutes: 15, epoch: 1, tick: 1 },
@@ -2675,7 +2456,6 @@ describe("the batch check endpoint's authorization", () => {
       expect(wrongCadence.status).toBe(403);
       expect(await wrongCadence.json()).toMatchObject({ code: "group_mismatch" });
 
-      // Right cadence, wrong environment.
       const wrongEnvironment = await batchCheckAction({
         request: batchRequest(
           { environmentId: "env_2", cadenceMinutes: 5, epoch: 1, tick: 1 },
@@ -2715,7 +2495,6 @@ describe("the batch check endpoint's authorization", () => {
       });
 
       expect(response.status).toBe(200);
-      // No watches in the group, so the chain is told to stop.
       expect(await response.json()).toMatchObject({ watches: [], continues: false });
       expect(
         await stopWatchBatch(ctx.agentDb, {

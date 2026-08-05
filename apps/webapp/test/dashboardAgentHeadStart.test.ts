@@ -6,8 +6,6 @@ import {
   type DashboardAgentSessionOutWriter,
 } from "~/services/dashboardAgentHeadStart.server";
 
-// A fake `session.out` writer. The failure path is pure ordering and chunk shape, which is
-// what these assert.
 function createFakeWriter(
   opts: { failChunk?: Error; failTurnComplete?: Error } = {}
 ): DashboardAgentSessionOutWriter & { calls: string[]; chunks: UIMessageChunk[] } {
@@ -35,8 +33,6 @@ describe("writeHeadStartFailureToSessionOut", () => {
     await writeHeadStartFailureToSessionOut(writer);
 
     expect(writer.calls).toEqual(["chunk", "turn-complete"]);
-    // The shape the chat.agent runtime emits on a failed turn, which the transport turns
-    // into the error the chat renders.
     expect(writer.chunks).toEqual([{ type: "error", errorText: HEAD_START_FAILURE_ERROR_TEXT }]);
   });
 
@@ -47,7 +43,6 @@ describe("writeHeadStartFailureToSessionOut", () => {
 
     const errorText = (writer.chunks[0] as { errorText: string }).errorText;
     expect(errorText).not.toMatch(/api|key|token|anthropic/i);
-    // Tells the user the turn is retryable.
     expect(errorText).toMatch(/again/i);
   });
 
@@ -55,8 +50,7 @@ describe("writeHeadStartFailureToSessionOut", () => {
     const chunkError = new Error("s2 append failed");
     const writer = createFakeWriter({ failChunk: chunkError });
 
-    // A resumed stream only terminates on turn-complete, so it is written even when the
-    // error chunk didn't land.
+    // A resumed stream only terminates on turn-complete, so it is written even when the error chunk didn't land.
     await expect(writeHeadStartFailureToSessionOut(writer)).rejects.toBe(chunkError);
 
     expect(writer.calls).toEqual(["chunk", "turn-complete"]);

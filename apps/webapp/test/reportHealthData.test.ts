@@ -8,12 +8,6 @@ import {
 import { interpret } from "~/presenters/v3/reports/health/health";
 import { renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
 
-/**
- * Exercises `loadHealthInput`'s orchestration through its query seam (`HealthDeps`): source
- * selection, snapshot fallback, dlq parsing, window-from-timeRange. The runner is injected at the
- * IO boundary; SQL translation and ClickHouse aggregation are covered elsewhere.
- */
-
 const NOW = new Date("2026-07-22T12:00:00.000Z");
 
 const fakeEnv = {
@@ -58,7 +52,7 @@ function makeDeps(opts: {
     if (query.includes("FROM queue_metrics")) return wrap(opts.worst);
     if (query.includes("task_identifier")) return wrap([]);
     if (query.includes("FROM runs") && query.includes("timeBucket")) return wrap(opts.runsSeries);
-    return wrap(opts.runs); // runs scalar (live + baseline)
+    return wrap(opts.runs);
   };
   const lengthOfEnvQueue = opts.redisThrows
     ? async () => {
@@ -136,7 +130,7 @@ describe("loadHealthInput — orchestration (query seam)", () => {
       makeDeps({
         runs: RUNS_SCALAR,
         runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
-        envSeries: [], // pipeline hasn't populated env_metrics for this env yet
+        envSeries: [],
       })
     );
 
@@ -152,7 +146,6 @@ describe("loadHealthInput — orchestration (query seam)", () => {
       makeDeps({
         runs: RUNS_SCALAR,
         runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
-        // The shape ClickHouse returns before the table exists.
         throwOnEnv: new Error(
           "Unable to query clickhouse: Code: 60. DB::Exception: Table trigger_dev.env_metrics_v1 does not exist. (UNKNOWN_TABLE)"
         ),
@@ -162,13 +155,12 @@ describe("loadHealthInput — orchestration (query seam)", () => {
 
     expect(input.flowSource).toBe("snapshot+runs");
     expect(input.pending.estimated).toBe(true);
-    expect(input.pending.now).toBe(12); // Redis measured it, so the depth is trustworthy
+    expect(input.pending.now).toBe(12);
     expect(input.pending.availability).toBe("measured");
   });
 
   it("an UNEXPECTED env_metrics failure + Redis down never becomes 'backlog 0'", async () => {
-    // Falling back to the snapshot on any error let a failed Redis call read as depth 0, which
-    // produced a confident, actionable green flow verdict during two outages.
+    // Falling back to the snapshot on any error let a failed Redis call read as a confident depth 0.
     const input = await loadHealthInput(
       fakeEnv,
       "1h",
@@ -181,14 +173,13 @@ describe("loadHealthInput — orchestration (query seam)", () => {
       })
     );
 
-    expect(input.pending.availability).toBe("unknown"); // couldn't measure ≠ measured zero
+    expect(input.pending.availability).toBe("unknown");
 
     const vm = interpret(input);
     const flow = vm.findings.find((f) => f.type === "flow")!;
     expect(flow.reason).toBe("flow_unmeasured");
-    expect(flow.severity).not.toBe("crit"); // not a fabricated alarm either
-    expect(flow.recommendation).toBeUndefined(); // nothing actionable off a failed measurement
-    // Untrustworthy twice over: no depth, and no telemetry heartbeat on the snapshot path.
+    expect(flow.severity).not.toBe("crit");
+    expect(flow.recommendation).toBeUndefined();
     expect(vm.facts).toMatchObject({ trustworthy: false, telemetry: "none" });
     expect(vm.footer).toEqual([{ code: "nothing_to_do" }]);
 
@@ -207,14 +198,14 @@ describe("loadHealthInput — orchestration (query seam)", () => {
         runsSeries: [
           { t: "a", triggered: 100, completed: 10, finished: 10, start_latency_p95: 3000 },
         ],
-        envSeries: [], // pipeline hasn't reached this env
+        envSeries: [],
         redisThrows: true,
       })
     );
 
     expect(input.flowSource).toBe("snapshot+runs");
     expect(input.pending.availability).toBe("unknown");
-    expect(input.pending.now).toBe(90); // last proxy point, explicitly estimated — never a bare 0
+    expect(input.pending.now).toBe(90);
     expect(
       interpret(input).findings.find((f) => f.type === "flow")!.recommendation
     ).toBeUndefined();
@@ -304,7 +295,7 @@ describe("loadHealthInput — orchestration (query seam)", () => {
     );
     expect(input.flowSource).toBe("queue_metrics_v1");
     expect(input.pending.now).toBe(900);
-    expect(input.pending.availability).toBe("measured"); // env_metrics measured it, so it stands
+    expect(input.pending.availability).toBe("measured");
   });
 
   it("worst-queue share divides by the env-wide total, not just the top 20 rows", async () => {
@@ -328,7 +319,6 @@ describe("loadHealthInput — orchestration (query seam)", () => {
     );
 
     expect(input.flowEvidence.worstQueue).toEqual({ name: "email-sends", share: 0.2 });
-    // ...and 20% is below the attribution threshold, so no queue gets named.
     const flow = interpret(input).findings.find((f) => f.type === "flow")!;
     expect(flow.attribution).toBeUndefined();
   });
@@ -350,7 +340,6 @@ describe("loadHealthInput — orchestration (query seam)", () => {
   });
 
   it("carries bucket cadence + timestamps so a gappy series can't read as a full window", async () => {
-    // A 60-minute window of env_metrics buckets at the schema's cadence, but only two rows arrived.
     const input = await loadHealthInput(
       fakeEnv,
       "1h",
@@ -368,18 +357,15 @@ describe("loadHealthInput — orchestration (query seam)", () => {
 
     const sampling = input.flowEvidence.sampling!;
     expect(sampling.bucketMinutes).toBeGreaterThan(0);
-    // Far more buckets expected than the two that arrived: the coverage the analyzer needs.
     expect(sampling.expectedBuckets).toBeGreaterThan(10);
     expect(input.flowEvidence.runningBucketsMs).toHaveLength(2);
-    // Two pinned samples must not be read as a pinned window.
     const vm = interpret(input);
     expect(vm.findings.find((f) => f.type === "flow")!.reason).not.toBe("env_limit_saturation");
     expect(vm.metrics.find((m) => m.id === "concurrency")!.annotation).toBeUndefined();
   });
 
   it("a quiet snapshot env with only an old run is not reported as a stale pipeline", async () => {
-    // 10-minute-old run, no env_metrics heartbeat. Run activity is not telemetry freshness: an
-    // idle env with a healthy pipeline must not be told to "check the control plane".
+    // Run activity is not telemetry freshness: an idle env with a healthy pipeline must not be told to check the control plane.
     const OLD_RUN = "2026-07-22 11:50:00";
     const input = await loadHealthInput(
       fakeEnv,
@@ -388,18 +374,18 @@ describe("loadHealthInput — orchestration (query seam)", () => {
       makeDeps({
         runs: [{ ...RUNS_SCALAR[0], last_activity: OLD_RUN }],
         runsSeries: [{ t: "a", triggered: 2, completed: 2, finished: 2, start_latency_p95: 1000 }],
-        envSeries: [], // no heartbeat on this path
+        envSeries: [],
         pendingNow: 0,
       })
     );
 
-    expect(input.liveness.telemetryAgeMs).toBeNull(); // genuinely unknown, not 10 minutes stale
+    expect(input.liveness.telemetryAgeMs).toBeNull();
 
     const vm = interpret(input);
     const liveness = vm.findings.find((f) => f.type === "liveness")!;
     expect(liveness.reason).toBe("freshness_unknown");
     expect(liveness.severity).toBe("ok");
-    expect(liveness.recommendation).toBeUndefined(); // no "check control plane"
+    expect(liveness.recommendation).toBeUndefined();
     expect(vm.footer).not.toEqual([{ code: "check_control_plane", link: "status" }]);
   });
 
@@ -427,7 +413,7 @@ describe("loadHealthInput — orchestration (query seam)", () => {
     );
 
     expect(input.throughput.finishedPerMin).toBeCloseTo(100);
-    expect(input.throughput.completedPerMin).toBeCloseTo(80); // execution-side metric, unchanged
+    expect(input.throughput.completedPerMin).toBeCloseTo(80);
     // net = finished minus triggered = 0: the queue is keeping pace, not losing 20/min.
     const throughput = interpret(input).metrics.find((m) => m.id === "throughput")!;
     expect(throughput.value).toBeCloseTo(0);

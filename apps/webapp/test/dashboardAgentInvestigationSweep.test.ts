@@ -1,10 +1,3 @@
-// The between-turns investigation backstop, against a real Postgres running the
-// dashboard-agent schema, so what is under test is the real SQL: the predicate and
-// `updated_at` window that decide which cards are stale, and the jsonb merge that settles
-// one without fighting a live revision.
-//
-// The queries are injected only in the tests needing a state the real ones can't produce:
-// a row concluded between the list and the write, and a settle that throws.
 import {
   createChat,
   createDashboardAgentDb,
@@ -39,10 +32,7 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
 const { sweepDashboardAgentInvestigations, INVESTIGATION_STALE_MS } =
   await import("~/services/dashboardAgentInvestigationSweep.server");
 
-/**
- * Apply the dashboard-agent schema by replaying every migration in the folder, in
- * order, so a new migration can't leave this suite on a stale schema.
- */
+/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
 async function applyAgentSchema(prisma: PrismaClient) {
   const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
   const migrations = readdirSync(folder)
@@ -89,7 +79,6 @@ async function seedChat(id: string, options: { deleted?: boolean } = {}) {
   }
 }
 
-/** An open card, exactly as a turn writes one before it has an answer. */
 function openState(overrides: Partial<InvestigationState> = {}): InvestigationState {
   return investigationStateSchema.parse({
     outcome: "in_progress",
@@ -112,7 +101,6 @@ function openState(overrides: Partial<InvestigationState> = {}): InvestigationSt
   });
 }
 
-/** Create an investigation and force its `updated_at` to simulate age. */
 async function seedInvestigation(args: {
   chatId: string;
   state: InvestigationState;
@@ -156,20 +144,16 @@ describe("the dashboard agent investigation sweep", () => {
       expect(result).toMatchObject({ stale: 1, settled: 1, alreadySettled: 0, failed: 0 });
 
       const row = await getInvestigation(ctx.agentDb, { id });
-      // Still a valid card: the merge can't produce a state the surfaces reject.
       const state = investigationStateSchema.parse(row?.state);
       expect(state.outcome).toBe("inconclusive");
       expect(state.confidence).toBe("low");
-      // The same ending the turn-level settle writes, word for word.
       expect(state.headline).toBe(
         `Checking whether the failures share a payload. ${UNSETTLED_INVESTIGATION_NOTE}`
       );
-      // Nothing is claimed as done, and nothing established is lost.
       expect(state.progress).toBeUndefined();
       expect(state.remediation).toBeUndefined();
       expect(state.hypotheses).toHaveLength(1);
       expect(state.title).toBe("send-order-receipt keeps failing");
-      // A revision, like every other write to the card.
       expect(row?.revision).toBe(1);
     }
   );
@@ -179,8 +163,7 @@ describe("the dashboard agent investigation sweep", () => {
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       await seedChat("chat_fix");
-      // An in_progress card should never carry remediation, but if one does the settle must
-      // strip it: an inconclusive card may not offer a fix.
+      // An inconclusive card may not offer a fix, so the settle strips remediation.
       const id = await seedInvestigation({
         chatId: "chat_fix",
         state: { ...openState(), remediation: "Raise the timeout." } as InvestigationState,
@@ -225,7 +208,6 @@ describe("the dashboard agent investigation sweep", () => {
 
       expect(await sweepDashboardAgentInvestigations()).toMatchObject({ stale: 0, settled: 0 });
       const row = await getInvestigation(ctx.agentDb, { id });
-      // Untouched: no second revision, and no note appended to the real answer.
       expect(row?.revision).toBe(0);
       expect(investigationStateSchema.parse(row?.state).headline).toBe(
         "Not established: the failures span two versions."
@@ -262,7 +244,6 @@ describe("the dashboard agent investigation sweep", () => {
       });
       expect(stale.map((row) => row.id)).toEqual([id]);
 
-      // The turn comes back between the list and the write, with a real answer.
       const concluded = await upsertInvestigationRevision(ctx.agentDb, {
         id,
         chatId: "chat_race",
@@ -278,11 +259,9 @@ describe("the dashboard agent investigation sweep", () => {
       });
       expect(concluded.ok).toBe(true);
 
-      // The sweep still has the pre-conclusion rows in hand.
       const result = await sweepDashboardAgentInvestigations({ listStale: async () => stale });
       expect(result).toMatchObject({ stale: 1, settled: 0, alreadySettled: 1, failed: 0 });
 
-      // The answer stands, unedited.
       const row = await getInvestigation(ctx.agentDb, { id });
       const state = investigationStateSchema.parse(row?.state);
       expect(state.outcome).toBe("concluded");
@@ -318,13 +297,11 @@ describe("the dashboard agent investigation sweep", () => {
         })
       ).rejects.toThrow(/failed on 1 investigations/);
 
-      // Oldest first, and the failure didn't stop the one behind it.
       expect(attempted).toEqual([first, second]);
       expect(
         investigationStateSchema.parse((await getInvestigation(ctx.agentDb, { id: second }))?.state)
           .outcome
       ).toBe("inconclusive");
-      // The failed one is left exactly as it was, for the next sweep.
       const stuck = await getInvestigation(ctx.agentDb, { id: first });
       expect(stuck?.revision).toBe(0);
       expect(investigationStateSchema.parse(stuck?.state).outcome).toBe("in_progress");

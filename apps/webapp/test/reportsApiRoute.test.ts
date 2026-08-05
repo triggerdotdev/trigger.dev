@@ -12,11 +12,10 @@ import {
   ReportSearchParamsSchema,
 } from "~/presenters/v3/reports/reportsApi.server";
 
-// `everyResource(...)` tags its payload with this Symbol.for marker (see apiBuilder.server.ts),
-// so a test can read back exactly which resources the route will require.
+// `everyResource(...)` tags its payload with this Symbol.for marker (see apiBuilder.server.ts).
 const EVERY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.everyResource");
 
-/** ANSI CSI introducer — present in the coloured render, absent from markdown. */
+/** ANSI CSI introducer: present in the coloured render, absent from markdown. */
 const ESC = "\u001b[";
 
 function requiredResources(key: string): { type: string; id: string }[] {
@@ -28,7 +27,6 @@ function requiredResources(key: string): { type: string; id: string }[] {
   return resource.resources;
 }
 
-/** Exactly what the route's `everyResource` check does: every resource must be permitted. */
 function authorizes(scopes: string[], key: string): boolean {
   const ability = buildJwtAbility(scopes);
   const resources = requiredResources(key);
@@ -118,7 +116,6 @@ describe("api.v1.reports.$key — authorization", () => {
 });
 
 describe("reportQueryTables — scope derivation from the registry", () => {
-  // Stands in for a future report (cost, errors, …) that reads less than health does.
   const registry: Record<string, { tables: readonly ReportQueryTable[] }> = {
     health: { tables: ["runs", "env_metrics", "queue_metrics"] },
     narrow: { tables: ["runs"] },
@@ -157,7 +154,6 @@ describe("api.v1.reports.$key — formats", () => {
     const body = await response.text();
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toContain(ESC);
-    // Markdown swaps the severity glyphs for traffic-light emoji.
     expect(body).not.toContain("[");
   });
 
