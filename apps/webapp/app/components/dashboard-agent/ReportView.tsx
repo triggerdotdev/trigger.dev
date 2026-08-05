@@ -19,7 +19,6 @@ import {
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
 import { type ReactNode } from "react";
-import { Badge } from "~/components/primitives/Badge";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import {
   buildReportLayout,
@@ -30,6 +29,7 @@ import {
   type LayoutMetricRow,
 } from "~/presenters/v3/reports/report-layout";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
+import { AgentBadge } from "./agent-badges";
 import {
   FOOTER_WATCH_CODE,
   ReportBody,
@@ -377,11 +377,7 @@ export function ReportView({
   return (
     <ReportCard>
       <ReportHeaderLine name={layout.header.name} meta={layout.header.meta}>
-        {layout.trust ? (
-          <Badge variant="small" className="border-warning/40 text-warning">
-            {layout.trust.badge}
-          </Badge>
-        ) : null}
+        {layout.trust ? <AgentBadge tone="warning">{layout.trust.badge}</AgentBadge> : null}
       </ReportHeaderLine>
 
       <ReportBody dimmed={layout.trust !== undefined}>
