@@ -1,23 +1,19 @@
 /**
- * The Watch / Investigate scenario kit: one command per thing a watch can see
- * happen, so proving a flow locally is a verb rather than hand-run Redis and
- * ClickHouse surgery.
+ * The watch scenario kit: one command per thing a watch can see happen, so a flow
+ * can be proven locally without hand-run Redis and ClickHouse surgery.
  *
  *   pnpm --filter webapp run scenarios:watch -- --help
  *   pnpm --filter webapp run scenarios:watch -- queue:fill email-sends 400 --project my-app
  *   pnpm --filter webapp run scenarios:watch -- error:recur --project my-app --env dev
  *
- * It targets any local project and environment (`--project`, `--env`) and only
- * ever moves the things a watch reads: the run-queue depth in Redis (both keys —
- * a watch checks the per-queue one, the health report prefers the env-level one),
+ * It targets any local project and environment (`--project`, `--env`) and only ever
+ * moves the things a watch reads: run-queue depth in Redis (both keys, because a
+ * watch checks the per-queue one and the health report prefers the env-level one),
  * failed runs in ClickHouse, queue metrics, and real runs through the public API.
  *
  * Every verb is idempotent: re-running one leaves the same state, not more of it.
- * Each one prints what to do in the dashboard next.
  *
- * Node 20 is the version these scripts are run on.
- *
- * Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md
+ * Run these on Node 20. Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md
  */
 import { ClickHouse, TASK_RUN_COLUMNS } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";

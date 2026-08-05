@@ -106,8 +106,7 @@ const theme = {
   },
   docs: {
     textColor:
-      // System themes: monochrome label, the book icon keeps the blue
-      // Monochrome on the dark themes; light keeps the docs-blue ink — a
+      // Monochrome on the dark themes; light keeps the docs-blue ink, because a
       // text-bright label on white reads as a plain grey button, not a link.
       "text-callout-docs-text/70 dark:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
@@ -119,14 +118,12 @@ const theme = {
   // Reserved for the AI agent's "Ask Trigger" affordance: secondary styling with a
   // softened trigger-green border.
   "ask-ai": {
-    // Light hover fills with a pale brand-green tint and the ink flips DARK —
-    // dark ink on the pale green is ~13:1 (white would be ~1.4:1 even on the
-    // full green). Dark themes hover like the other grey buttons: a slight
-    // lift, ink stays bright.
+    // On light hover the ink flips dark: dark ink on the pale green tint is ~13:1,
+    // where white would be ~1.4:1 even on the full green.
     textColor:
       "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
-    // The trigger-green /25 border washes out on white, so the light theme
-    // darkens it (the unified success token clears 3:1 on white).
+    // The trigger-green /25 border washes out on white, so the light theme darkens
+    // it to the success token, which clears 3:1 there.
     button:
       "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
@@ -160,8 +157,8 @@ function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: nu
     ...base,
     button: cn(base.button, opticalPadding),
     iconSpacing: "gap-x-1.5",
-    // The button is `bg-secondary` — charcoal on dark, white on light — so the
-    // logo has to follow the theme or it disappears on one of them.
+    // The button is `bg-secondary`: charcoal on dark, white on light. The logo has
+    // to follow the theme or it disappears on one of them.
     defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
   };
 }

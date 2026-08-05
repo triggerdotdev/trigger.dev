@@ -3,18 +3,15 @@
  *
  * Walks two things against a running local webapp and writes a PNG per state:
  *
- *   a) the storybook state gallery — every page in `GALLERY_PAGES`, one capture
- *      per row of `app/routes/storybook.agent-ui/manifest.ts`, which this script
- *      imports so the two can never disagree about what exists;
+ *   a) the storybook state gallery, one capture per row of
+ *      `app/routes/storybook.agent-ui/manifest.ts`, which this script imports so
+ *      the two can never disagree about what exists;
  *   b) every conversation in the panel's history, opened in the real panel on a
- *      real env page, so the review also sees the components in their actual
- *      container. Point it at a project whose org already has chats.
+ *      real env page. Point it at a project whose org already has chats.
  *
- * Both phases run in dark and light. The app pins `data-theme="dark"` on
- * `<html>` in `root.tsx` and has no theme switch yet, so light is produced by
- * setting that attribute after load — the whole theme layer is attribute-driven
- * (see `app/tailwind.css`), so this is a real light render, not a filter. It is
- * re-applied after every navigation, since a fresh document comes back dark.
+ * Both phases run in dark and light. The theme layer is attribute-driven, so light
+ * is produced by setting `data-theme` after load, and it has to be re-applied after
+ * every navigation because a fresh document comes back dark.
  *
  * Usage
  * -----
@@ -29,8 +26,8 @@
  * Environment
  * -----------
  *   BASE_URL             default http://localhost:3030
- *   SCREENSHOT_EMAIL     default local@trigger.dev (must be an admin — the
- *                        storybook route redirects everyone else)
+ *   SCREENSHOT_EMAIL     default local@trigger.dev. Must be an admin; the
+ *                        storybook route redirects everyone else.
  *   SCREENSHOT_ENV_PATH  an env-scoped dashboard path whose org has chats.
  *                        Omit to skip phase (b).
  *   SCREENSHOT_THEMES    default "dark,light"
@@ -43,7 +40,7 @@
  *   {out}/{theme}/{group}/{sectionId}.png plus {out}/manifest.json listing
  *   every attempted capture, failures included.
  *
- * A failed capture is logged and the walk continues; the exit code is non-zero
+ * A failed capture is logged and the walk continues, but the exit code is non-zero
  * if anything failed, so this is usable as a check.
  */
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";

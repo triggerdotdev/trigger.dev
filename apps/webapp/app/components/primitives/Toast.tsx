@@ -43,10 +43,9 @@ export function Toast() {
     );
   }, [toastMessage]);
 
-  // Sonner stamps its own `data-theme` (default "light") on the toast list,
-  // and the app's theme selectors remap tokens for ANY subtree carrying that
-  // attribute — so an unthemed Toaster forces every toast light. Pass the app's
-  // mode through so the attribute agrees with the page (classic paints as dark).
+  // Sonner stamps its own `data-theme` (default "light") on the toast list, and the
+  // app's theme selectors remap tokens for any subtree carrying that attribute, so
+  // an unthemed Toaster forces every toast light. Pass the app's mode through.
   return <Toaster theme={mode} />;
 }
 
@@ -92,8 +91,8 @@ export function ToastUI({
   title?: string;
   action?: ToastMessageAction;
   /**
-   * A caller-rendered action (a button with an onClick) for toasts shown from
-   * client code — `action` stays the serializable server-message shape.
+   * A caller-rendered action for toasts shown from client code. `action` stays the
+   * serializable server-message shape.
    */
   actionNode?: React.ReactNode;
 }) {

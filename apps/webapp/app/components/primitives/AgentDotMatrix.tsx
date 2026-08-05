@@ -119,13 +119,9 @@ export type DotMatrixPalette = {
 export const DOT_MATRIX_PALETTES = {
   mono: { stops: ["#e2e8f0", "#ffffff", "#94a3b8"], glow: "#ffffff" },
   /**
-   * `mono` mirrored for light surfaces — the white ramp vanishes on white.
-   *
-   * Not just "dark ink": each stop is the cool grey whose contrast ratio against
-   * a white panel equals that stop's ratio against a dark one (14.0 / 17.2 / 6.7),
-   * so the ramp keeps mono's shape — the middle stop is still the extreme the
-   * head glows with, the third still the dim tail. The peak lands on
-   * charcoal-800, which is the light theme's own brightest text ink.
+   * `mono` mirrored for light surfaces, where the white ramp would vanish. Each
+   * stop's contrast against white matches that stop's contrast against dark
+   * (14.0 / 17.2 / 6.7), so the ramp keeps mono's shape.
    */
   monoLight: { stops: ["#2b2c2f", "#1a1b1f", "#585c64"], glow: "#1a1b1f" },
   trigger: { stops: ["#41ff54", "#a4ff53", "#e7ff52"], glow: "#86ff53" },
@@ -644,19 +640,9 @@ export function AgentDotMatrix({
 }
 
 /**
- * The agent's monochrome logo — the glyph that stands for the agent wherever it
- * appears (the ask-ai button, the panel's hero, the chat spinner).
- *
- * Use this instead of setting `palette="mono"` by hand: the mono ramp is
- * white-based, so on the light theme it would be white ink on a white panel.
- * The matrix draws on canvas and can't read a CSS variable, so the ink is
- * picked from the active theme here.
- *
- * The light theme is a MIRROR of the dark one, not a different look: `mode`
- * flips the ghost grid to black ink (and nudges the dots up 15%, since dark ink
- * reads optically smaller), `monoLight` mirrors the ramp's contrast ratios
- * against white, and the `opacityBase`/`opacityPeak` pair is untouched — so rest
- * dots, head and ghost grid keep exactly the relationships they have on dark.
+ * The agent's monochrome logo. Use this instead of `palette="mono"` by hand: the
+ * mono ramp is white-based and would be invisible on the light theme, and the
+ * matrix draws on canvas so it can't read the theme from a CSS variable.
  */
 export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "restColor" | "mode">) {
   const mode = useThemeMode();
@@ -666,9 +652,8 @@ export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "rest
       {...props}
       mode={mode}
       palette={light ? "monoLight" : "mono"}
-      // Rest ink is one step off the surface's extreme (charcoal-100 on dark,
-      // charcoal-800 on light) — pure white/black is reserved for the animated
-      // peak, so a resting logo is calm and a thinking one visibly glows.
+      // One step off the surface's extreme. Pure white and black are reserved for
+      // the animated peak, so a resting logo is calm and a thinking one glows.
       restColor={light ? "#1a1b1f" : "#d7d9dd"}
     />
   );

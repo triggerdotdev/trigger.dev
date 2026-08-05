@@ -79,18 +79,17 @@ export function SpinnerWhite({ className }: { className?: string }) {
 }
 
 /**
- * The dashboard agent's own spinner: the animated dot-matrix logo in the mono
- * palette. Use it wherever the AGENT is the one working — chat progress, pending
- * tools, thinking markers — so agent activity reads as the agent, not as generic
- * loading. `size` is the logo's pixel size (the matrix does not scale from CSS).
+ * The dashboard agent's spinner. Use it wherever the agent is the one working, so
+ * agent activity reads as the agent rather than as generic loading. `size` is the
+ * logo's pixel size; the matrix does not scale from CSS.
  */
 export function AgentSpinner({ size = 16 }: { size?: number }) {
   return (
     <AgentMonoLogo
       size={size}
       active
-      // A spinner is born spinning: resting on the playlist's first shape means
-      // the initial frame is already mid-cycle — no logo-head flash on mount.
+      // Resting on the playlist's first shape means the initial frame is already
+      // mid-cycle, so there is no logo-head flash on mount.
       restShape="square"
       decorative
     />
