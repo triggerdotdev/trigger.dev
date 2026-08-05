@@ -1,10 +1,7 @@
-// The deterministic watch checks, driven through their REAL functions with plain
-// fake readers injected (the waitingRunDiagnosis pattern — no mocks, no IO).
-//
-// What's pinned here is the four-valued contract: satisfied / pending /
-// terminal_unsatisfied, and the rule that a broken data source is `unavailable`
-// and never a verdict. Plus the wait LABEL, which must never call a
-// time-from-creation a queue wait.
+// The deterministic watch checks, driven through their real functions with fake
+// readers injected. Pins the four-valued contract, the rule that a broken data
+// source is `unavailable` and never a verdict, and the wait label, which must never
+// call a time-from-creation a queue wait.
 import { describe, expect, it } from "vitest";
 import {
   checkWatch,
@@ -120,8 +117,7 @@ describe("run_start", () => {
     );
 
     expect(outcome.result).toBe("satisfied");
-    // Queue wait = startedAt - queuedAt, labelled as a queue wait because
-    // queuedAt exists.
+    // Labelled a queue wait because queuedAt exists.
     expect(outcome.facts.waitMs).toBe(2 * 60_000);
     expect(outcome.facts.waitBasis).toBe("queued_at");
     expect(outcome.facts.waitLabel).toBe("queued for 2m");
@@ -139,9 +135,8 @@ describe("run_start", () => {
     expect(outcome.facts.queueWaitReliable).toBe(false);
   });
 
-  // A resume/retry doesn't restamp queuedAt, so the leftover value is not this
-  // attempt's queue entry — it must not be measured from, let alone worded as
-  // queue latency.
+  // A resume/retry doesn't restamp queuedAt, so the leftover value must not be
+  // measured from, let alone worded as queue latency.
   it("does not measure a resumed run's wait from its stale queuedAt", async () => {
     const outcome = await check(
       runStart,
@@ -261,8 +256,8 @@ describe("backlog_drain", () => {
     expect(outcome.facts.depth).toBe(42);
   });
 
-  // The one mistake this watch must never make: an analytics bucket that was
-  // empty minutes ago says nothing about the runs queued since.
+  // An analytics bucket that was empty minutes ago says nothing about the runs
+  // queued since.
   it("is unavailable — never drained — when a zero comes from a stale bucket", async () => {
     const asOf = new Date("2026-07-27T11:50:00.000Z");
     const outcome = await check(
@@ -286,8 +281,8 @@ describe("backlog_drain", () => {
     });
   });
 
-  // A stale non-zero depth is still evidence the queue wasn't empty — reported,
-  // and marked as the approximation it is.
+  // A stale non-zero depth still proves the queue wasn't empty, so it is reported
+  // and marked approximate.
   it("stays pending on a stale non-zero depth, marked approximate", async () => {
     const outcome = await check(
       backlogDrain,
@@ -367,8 +362,7 @@ describe("error_recurrence", () => {
     });
   });
 
-  // The creation-minute case: the count can't be split, so it's a lower bound and
-  // the facts say so rather than quoting a number the data can't support.
+  // The creation-minute count can't be split, so the facts say it's a lower bound.
   it("carries the precision of an occurrence in the watch's creation minute", async () => {
     const occurredAt = new Date("2026-07-27T11:00:40.000Z");
     const outcome = await check(
@@ -400,8 +394,8 @@ describe("error_recurrence", () => {
     expect(outcome.facts).toMatchObject({ countSince: 0, lastSeenAt: null });
   });
 
-  // Seen before the watch, not since: still pending, and the facts carry when it
-  // was last seen so the narration can say that instead of just "nothing".
+  // Seen before the watch but not since: still pending, and the facts carry when it
+  // was last seen.
   it("is pending when the error was last seen before `since`", async () => {
     const lastSeenAt = new Date("2026-07-27T10:30:00.000Z");
     const outcome = await check(
@@ -514,12 +508,8 @@ describe("health_recovery", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The observed outcome — the second half of a resolved result (§4.2).
-//
-// The resolution says HOW a watch ended; the observation says what was true when
-// it did. These pin the observations the presentation actually splits on.
-// ---------------------------------------------------------------------------
+// The observed outcome: the resolution says how a watch ended, the observation says
+// what was true when it did. These pin the observations presentation splits on.
 
 const queueAbove: WatchSpec = {
   kind: "queue_depth_above",
@@ -531,8 +521,8 @@ const queueAbove: WatchSpec = {
 };
 
 describe("run_finished — status awareness", () => {
-  // The reader PRESERVES the final status. Without it "finished" and "failed"
-  // are the same `condition_met` and the banner cannot tell them apart.
+  // The reader preserves the final status. Without it "finished" and "failed" are the
+  // same `condition_met` and the banner can't tell them apart.
   it("keeps the final status on a completion, whatever it was", async () => {
     for (const status of ["COMPLETED_SUCCESSFULLY", "COMPLETED_WITH_ERRORS", "CRASHED"]) {
       const outcome = await check(
@@ -601,9 +591,8 @@ describe("run_failed", () => {
     }
   });
 
-  // The asymmetry that makes this a separate kind: a success is not merely "not
-  // yet", it means the condition can NEVER become true — and the mapping presents
-  // that as good news rather than as a watch that ran out of road.
+  // A success is not merely "not yet": the condition can never become true, and the
+  // mapping presents that as good news rather than a watch that ran out of road.
   it("becomes impossible — not pending — once the run succeeds", async () => {
     const outcome = await check(
       runFailed,
@@ -663,8 +652,8 @@ describe("queue_depth_above", () => {
     expect(below.result).toBe("pending");
   });
 
-  // A quiet queue can grow at any moment — that is what this watch is for. Only
-  // the queue disappearing makes the condition impossible.
+  // A quiet queue can grow at any moment, so only the queue disappearing makes the
+  // condition impossible.
   it("stays pending on an empty queue and is terminal only when the queue is gone", async () => {
     const empty = await check(
       queueAbove,
@@ -679,8 +668,8 @@ describe("queue_depth_above", () => {
     expect(gone.result).toBe("terminal_unsatisfied");
   });
 
-  // The freshness fence is shared verbatim with backlog_drain: a stale empty
-  // bucket can no more prove "still below" than it can prove "drained".
+  // The freshness fence is shared with backlog_drain: a stale empty bucket can no more
+  // prove "still below" than it can prove "drained".
   it("refuses a stale zero, and marks a stale non-zero approximate", async () => {
     const stale = await check(
       queueAbove,
@@ -720,9 +709,7 @@ describe("queue_depth_above", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The queue pack (TRI-12890): back below N, stalled, oldest-wait SLA.
-// ---------------------------------------------------------------------------
+// The queue pack: back below N, stalled, oldest-wait SLA.
 
 const queueBelow: WatchSpec = {
   kind: "queue_depth_below",
@@ -762,8 +749,8 @@ describe("queue_depth_below", () => {
       threshold: 100,
     });
 
-    // "Back below 100" is the question "is it usable again", so 100 itself is an
-    // answer — unlike `above`, where the boundary is not yet a breach.
+    // "Back below 100" asks whether the queue is usable again, so 100 itself is an
+    // answer, unlike `above` where the boundary is not yet a breach.
     const boundary = await check(queueBelow, deps({ readQueueDepth: async () => live(100) }));
     expect(boundary.result).toBe("satisfied");
 
@@ -771,8 +758,7 @@ describe("queue_depth_below", () => {
     expect(over.result).toBe("pending");
   });
 
-  // The honesty rule: a stale reading that LOOKS low proves nothing about the runs
-  // queued after it — the same rule that stops a stale zero reading as "drained".
+  // A stale reading that looks low proves nothing about the runs queued after it.
   it("never satisfies off a stale reading, however low it looks", async () => {
     const outcome = await check(queueBelow, deps({ readQueueDepth: async () => stale(3) }));
     expect(outcome.result).toBe("unavailable");
@@ -780,8 +766,8 @@ describe("queue_depth_below", () => {
     expect(outcome.observed).toMatchObject({ kind: "queue_depth_below", verified: false });
   });
 
-  // A stale reading ABOVE the line is still evidence the queue wasn't quiet, so it
-  // stays pending rather than throwing away a usable "not yet".
+  // A stale reading above the line still proves the queue wasn't quiet, so it stays
+  // pending rather than throwing away a usable "not yet".
   it("stays pending on a stale reading that is still above the line", async () => {
     const outcome = await check(queueBelow, deps({ readQueueDepth: async () => stale(400) }));
     expect(outcome.result).toBe("pending");
@@ -808,8 +794,7 @@ describe("queue_stalled — the stateful check", () => {
   const depths = (depth: number) => deps({ readQueueDepth: async () => live(depth) });
 
   it("counts checks that watched the depth fail to fall, and fires at K", async () => {
-    // The first observation has nothing to compare against: a stall is a sequence,
-    // and one sample is not one.
+    // The first observation has nothing to compare against.
     const first = await check(queueStalled, depths(42));
     expect(first.result).toBe("pending");
     expect(first.facts).toMatchObject({ notDecreasingStreak: 0, previousDepth: null, ticks: 3 });
@@ -818,7 +803,7 @@ describe("queue_stalled — the stateful check", () => {
     expect(second.facts.notDecreasingStreak).toBe(1);
 
     const third = await check(queueStalled, depths(45), second.facts);
-    // Growing is not decreasing either — a queue going backwards is stuck too.
+    // Growing is not decreasing either: a queue going backwards is stuck too.
     expect(third.facts.notDecreasingStreak).toBe(2);
     expect(third.result).toBe("pending");
 
@@ -843,28 +828,27 @@ describe("queue_stalled — the stateful check", () => {
     expect(moved.result).toBe("pending");
   });
 
-  // The binding rule (§9.1): an `unavailable` tick never overwrites the previous
-  // observation, so the streak freezes across the gap — it neither grows nor resets.
+  // An `unavailable` tick never overwrites the previous observation, so the streak
+  // freezes across the gap: it neither grows nor resets.
   it("freezes the streak across a data gap and resumes counting after it", async () => {
     const first = await check(queueStalled, depths(42));
     const second = await check(queueStalled, depths(42), first.facts);
     expect(second.facts.notDecreasingStreak).toBe(1);
 
-    // The gap: the depth can't be read at all. This is what the tick parks on the
-    // row as `{ checkFailed: true, previous: <the last real facts> }`.
+    // The depth can't be read at all, which is what the tick parks on the row as
+    // `{ checkFailed: true, previous }`.
     const gap = await check(
       queueStalled,
       deps({ readQueueDepth: async () => null, queueExists: async () => true }),
       second.facts
     );
     expect(gap.result).toBe("unavailable");
-    // The streak is carried, not reset, so a window completion can still say how
-    // close it had come.
+    // Carried, not reset, so a window completion can still say how close it came.
     expect(gap.observed).toMatchObject({ verified: false, notDecreasingStreak: 1 });
 
     const parked = { checkFailed: true, detail: "clickhouse down", previous: second.facts };
     const resumed = await check(queueStalled, depths(42), previousCheckFacts(parked));
-    // 1 -> 2: the gap cost the streak nothing and gave it nothing.
+    // The gap cost the streak nothing and gave it nothing.
     expect(resumed.facts.notDecreasingStreak).toBe(2);
     expect(resumed.result).toBe("pending");
 
@@ -872,8 +856,7 @@ describe("queue_stalled — the stateful check", () => {
     expect(fires.result).toBe("satisfied");
   });
 
-  // A phantom sample would either invent a stall or wipe a real one, so a stale
-  // reading is not a sample at all.
+  // A stale reading is not a sample: it would either invent a stall or wipe a real one.
   it("refuses a stale reading outright rather than sampling it", async () => {
     const first = await check(queueStalled, depths(42));
     const outcome = await check(
@@ -895,8 +878,7 @@ describe("queue_stalled — the stateful check", () => {
   });
 
   it("starts over rather than trusting junk state", async () => {
-    // Facts from another kind, a truncated row, or a hand-edited blob: no depth
-    // means no comparison, not a comparison against zero.
+    // No depth means no comparison, not a comparison against zero.
     for (const previous of [null, {}, { depth: "42" }, { severity: "ok" }]) {
       const outcome = await check(queueStalled, depths(42), previous as Record<string, unknown>);
       expect(outcome.facts.notDecreasingStreak).toBe(0);
@@ -921,8 +903,7 @@ describe("previousCheckFacts", () => {
     expect(previousCheckFacts({ result: "pending", facts, observed: {}, final: false })).toEqual(
       facts
     );
-    // Nested gaps unwrap all the way down: two failed ticks in a row still leave
-    // the last real observation as the previous one.
+    // Two failed ticks in a row still leave the last real observation as the previous one.
     expect(
       previousCheckFacts({
         checkFailed: true,
@@ -969,16 +950,15 @@ describe("queue_oldest_age", () => {
     expect(under.result).toBe("pending");
   });
 
-  // Nothing waiting is not an SLA breach, and not impossible either: a run may be
-  // queued a minute from now.
+  // Nothing waiting is neither an SLA breach nor impossible: a run may be queued a
+  // minute from now.
   it("is pending on an empty queue", async () => {
     const outcome = await check(queueAge, age(null));
     expect(outcome.result).toBe("pending");
     expect(outcome.observed).toMatchObject({ ageMs: null, verified: true });
   });
 
-  // An age is wrong in BOTH directions once it is stale, so a stale reading is
-  // never an answer — neither over the SLA nor under it.
+  // A stale age is wrong in both directions, so it is never an answer.
   it("never satisfies, and never clears, off a stale reading", async () => {
     const stalePastSla = await check(queueAge, age(60 * 60_000, false));
     expect(stalePastSla.result).toBe("unavailable");

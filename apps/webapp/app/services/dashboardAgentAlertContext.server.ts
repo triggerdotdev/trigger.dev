@@ -1,17 +1,16 @@
 /**
- * The context resolution the agent's alert endpoints share: from the turn's
- * environment scope + a chat id to an authorized environment.
+ * The context resolution the agent's alert endpoints share: from the turn's environment
+ * scope and a chat id to an authorized environment.
  *
- * Identical order of authority to `api.v1.dashboard-agent.watches.ts` — the
- * environment comes from the token the dashboard minted for the current turn, the
- * chat must be a live chat owned by that user in that environment's org, and the
- * environment is re-authorized through the same path a background check uses. A
- * client-supplied `environmentId`/`projectRef` is only ever checked against the
- * token's scope, never used in its place, and the chat's stored context — a
- * snapshot from whenever the chat started — is not consulted at all.
+ * Same order of authority as the watches route. The environment comes from the token the
+ * dashboard minted for the current turn, the chat must be a live chat owned by that user
+ * in that environment's org, and the environment is re-authorized through the same path
+ * a background check uses. A client-supplied `environmentId` or `projectRef` is only
+ * checked against the token's scope, never used in its place, and the chat's stored
+ * context is not consulted at all.
  *
- * Separate module rather than a helper on `dashboardAgentWatchAlerts.server.ts` so
- * the alert service and the watches service don't import each other.
+ * A separate module so the alert service and the watches service don't import each
+ * other.
  */
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";

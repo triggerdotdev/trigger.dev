@@ -1,24 +1,13 @@
 /**
- * The investigation backstop — cards left `in_progress` between turns.
+ * The investigation backstop, for cards left `in_progress` between turns. A turn
+ * force-settles what it left open, but two rows escape that: a card whose turn died
+ * before its settle ran, and a card opened for a later turn whose follow-up never came.
+ * Both read the same to the user, a card spinning forever, so both get the same ending
+ * the turn-level settle gives: `inconclusive`, keeping the facts that were established
+ * and claiming nothing that wasn't proven.
  *
- * A turn settles what it left open: the agent force-settles every card still
- * `in_progress` when the turn completes, so a spinner never outlives the answer.
- * Two rows escape that, and both are this sweep's job:
- *
- *  - a card whose turn died before its own settle ran, and
- *  - a card opened for a LATER turn to finish — a wake's narration does exactly
- *    this, since the wake turn holds no delegated token — whose follow-up never
- *    came.
- *
- * Both look the same from here and both read the same to the user: a card
- * spinning forever, and a chat marked "Investigating…" in History forever. So they
- * get the same ending the turn-level settle gives, `inconclusive` with the
- * facts that were established kept — never a cause, never a fix, and never a
- * claim that anything was proven.
- *
- * Guarded, not coordinated: the settle is one statement conditional on the row
- * still being `in_progress`, so a turn that concludes the card first wins and the
- * sweep no-ops.
+ * Guarded, not coordinated: the settle is one statement conditional on the row still
+ * being `in_progress`, so a turn that concludes the card first wins.
  */
 
 import {
@@ -31,9 +20,9 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
 
 /**
- * How long a card may sit `in_progress` before the sweep settles it. A turn runs
- * for minutes and bumps `updated_at` on every revision, so this only has to
- * outlast the slowest live turn — it must never settle a card someone is writing.
+ * How long a card may sit `in_progress` before the sweep settles it. A turn bumps
+ * `updated_at` on every revision, so this only has to outlast the slowest live turn. It
+ * must never settle a card someone is writing.
  */
 export const INVESTIGATION_STALE_MS = 30 * 60 * 1000;
 
@@ -60,10 +49,9 @@ export type InvestigationSweepDeps = {
 /**
  * One sweep: settle every card that has been `in_progress` past the grace window.
  *
- * Each row is handled on its own — a single failure must not cost the rest of the
- * batch — and the run throws at the end if anything failed, so the job is retried
- * and the failures are visible. A row left behind stays exactly as it was, and the
- * next sweep picks it up again.
+ * Each row is handled on its own so a single failure doesn't cost the rest of the batch,
+ * and the run throws at the end if anything failed, so the job is retried. A row left
+ * behind stays as it was and the next sweep picks it up.
  */
 export async function sweepDashboardAgentInvestigations(
   deps: InvestigationSweepDeps = {}

@@ -1,10 +1,9 @@
-// Watch alert fan-out: one delivery job per channel, so a retry can only ever
-// re-send the channel that failed.
+// Watch alert fan-out: one delivery job per channel, so a retry can only re-send the
+// channel that failed.
 //
-// Real service code, mocked IO only: the Prisma reads, the feature gate, the
-// email transport, the Slack client and the webhook fetch. `~/v3/alertsWorker.server`
-// is already stubbed globally by test/setup.ts, so the fan-out's enqueues land on
-// a spy.
+// Real service code with mocked IO only: the Prisma reads, the feature gate, the email
+// transport, the Slack client and the webhook fetch. The alerts worker is stubbed globally
+// by test/setup.ts, so the fan-out's enqueues land on a spy.
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type * as OrgIntegrationModule from "~/models/orgIntegration.server";
 import type * as SecretStoreModule from "~/services/secrets/secretStore.server";

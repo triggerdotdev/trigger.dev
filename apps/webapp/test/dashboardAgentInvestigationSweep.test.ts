@@ -1,13 +1,10 @@
-// The between-turns investigation backstop, against a REAL Postgres.
+// The between-turns investigation backstop, against a real Postgres running the
+// dashboard-agent schema, so what is under test is the real SQL: the predicate and
+// `updated_at` window that decide which cards are stale, and the jsonb merge that settles
+// one without fighting a live revision.
 //
-// No fake datastore: the container runs the dashboard-agent schema, so what is
-// under test is the real SQL — the `outcome = 'in_progress'` predicate and the
-// `updated_at` window that decide which cards are stale, and the jsonb merge that
-// settles one without fighting a live revision.
-//
-// The one thing injected is the pair of queries themselves, and only in the tests
-// that need a state the real queries can't produce on their own: a row concluded
-// between the list and the write, and a settle that throws.
+// The queries are injected only in the tests needing a state the real ones can't produce:
+// a row concluded between the list and the write, and a settle that throws.
 import {
   createChat,
   createDashboardAgentDb,
@@ -43,9 +40,8 @@ const { sweepDashboardAgentInvestigations, INVESTIGATION_STALE_MS } =
   await import("~/services/dashboardAgentInvestigationSweep.server");
 
 /**
- * Apply the dashboard-agent schema by replaying its Drizzle migration SQL —
- * every migration in the folder, in order, so a new migration can never leave
- * this suite running against a stale schema.
+ * Apply the dashboard-agent schema by replaying every migration in the folder, in
+ * order, so a new migration can't leave this suite on a stale schema.
  */
 async function applyAgentSchema(prisma: PrismaClient) {
   const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
@@ -160,7 +156,7 @@ describe("the dashboard agent investigation sweep", () => {
       expect(result).toMatchObject({ stale: 1, settled: 1, alreadySettled: 0, failed: 0 });
 
       const row = await getInvestigation(ctx.agentDb, { id });
-      // Still a valid card — the merge can't produce a state the surfaces reject.
+      // Still a valid card: the merge can't produce a state the surfaces reject.
       const state = investigationStateSchema.parse(row?.state);
       expect(state.outcome).toBe("inconclusive");
       expect(state.confidence).toBe("low");
@@ -183,8 +179,8 @@ describe("the dashboard agent investigation sweep", () => {
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       await seedChat("chat_fix");
-      // An in_progress card should never carry remediation, but if one does the
-      // settle must strip it — an inconclusive card may not offer a fix.
+      // An in_progress card should never carry remediation, but if one does the settle must
+      // strip it: an inconclusive card may not offer a fix.
       const id = await seedInvestigation({
         chatId: "chat_fix",
         state: { ...openState(), remediation: "Raise the timeout." } as InvestigationState,

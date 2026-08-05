@@ -9,7 +9,7 @@ import {
   v3RunSpanPath,
 } from "~/utils/pathBuilder";
 
-// The scope a URI is read against — the same shape an AuthenticatedEnvironment has.
+// The scope a URI is read against, the same shape an AuthenticatedEnvironment has.
 const scope: TriggerUriScope = {
   id: "env_1234",
   slug: "prod",
@@ -56,7 +56,7 @@ describe("resolveTriggerUri", () => {
   });
 
   it("resolves a queue to the queues list filtered to its name", () => {
-    // A URI carries the rename-stable queue NAME; the detail route is keyed by
+    // A URI carries the rename-stable queue name and the detail route is keyed by
     // friendlyId, so the filtered list is the target that needs no lookup.
     const uri = formatTriggerUri({ kind: "queue", ...uriScope, name: "task/send email" });
     expect(resolveTriggerUri(scope, uri)).toEqual({
@@ -116,9 +116,7 @@ describe("resolveTriggerUri", () => {
   });
 });
 
-// A source URI is the investigation card's code grounding, so it has to open the
-// code: the URI pins the commit and the repo-relative path, and the scope's
-// repository (the project's GitHub connection, or a deployment's git remote) says
+// A source URI pins the commit and the repo-relative path, and the scope's repository says
 // where that lives.
 describe("resolveTriggerUri: source URIs", () => {
   const sha = "a".repeat(40);

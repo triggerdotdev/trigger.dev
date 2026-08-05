@@ -1,6 +1,6 @@
-// Watch tokens vs user-actor tokens. Both are HS256-signed with the same platform
-// secret, so the ONLY thing keeping them apart is the token grammar — that's what
-// these tests pin, from both directions and with the prefixes swapped by hand.
+// Watch tokens against user-actor tokens. Both are HS256-signed with the same platform
+// secret, so the token grammar is the only thing keeping them apart. These pin it from
+// both directions, including with the prefixes swapped by hand.
 import { signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { describe, expect, it } from "vitest";
 import {
@@ -49,8 +49,8 @@ describe("dashboard agent watch tokens", () => {
   });
 
   it("stays valid through the grace window and dies after it", async () => {
-    // expiresAt just passed: the token still verifies, because the final (expiry)
-    // check happens after the deadline.
+    // expiresAt just passed: the token still verifies, because the final check happens
+    // after the deadline.
     const justExpired = new Date(Date.now() - 60_000);
     const graceful = await signDashboardAgentWatchToken(SECRET, {
       watchId: "watch_abc",

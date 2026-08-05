@@ -1,13 +1,12 @@
 /**
- * Watches — the webapp half. Creation (with its guardrails), the re-authorization
- * a background check has to pass, and the chat-delete cascade.
+ * Watches, webapp half: creation and its guardrails, the re-authorization a
+ * background check has to pass, and the chat-delete cascade.
  *
- * The one invariant everything here serves: **a watch fires with exactly the
- * access its creator had, and no more.** The org/project/environment/user snapshot
- * on the row is immutable, every check re-authorizes that snapshot against the
- * user's CURRENT access, and losing access cancels the watch rather than
- * degrading it. Nothing in this file takes a project/environment from client
- * input — callers hand in an already-authorized `AuthenticatedEnvironment`.
+ * The invariant everything here serves: a watch fires with exactly the access its
+ * creator had, and no more. The org/project/environment/user snapshot on the row is
+ * immutable, every check re-authorizes it against the user's current access, and
+ * losing access cancels the watch. Nothing here takes a project or environment from
+ * client input.
  */
 
 import {
@@ -60,29 +59,22 @@ export const WATCH_TASK_ID = "dashboard-agent-watch";
 
 export { MAX_ACTIVE_WATCHES_PER_CHAT };
 
-// ---------------------------------------------------------------------------
-// Re-authorization — the gate every background check has to pass.
-// ---------------------------------------------------------------------------
-
 export type WatchAuthorization =
   | { ok: true; environment: AuthenticatedEnvironment }
   | { ok: false; reason: "access_revoked" };
 
 /**
- * Re-authorize a watch's initiating user against the watch's IMMUTABLE
+ * Re-authorize a watch's initiating user against the watch's immutable
  * project/environment, through the same checks an interactive dashboard request
- * makes: org membership, a live (non-archived) environment in a live project, the
- * per-member rule for dev environments, and the dashboard-agent feature gate.
+ * makes: org membership, a live environment in a live project, the per-member rule
+ * for dev environments, and the dashboard-agent feature gate. Deliberately one
+ * query plus the feature flag, because it runs on every tick.
  *
- * Deliberately one query plus the feature flag — it runs on every tick.
+ * Anything short of a full pass is `access_revoked`, and the caller cancels the
+ * watch on that answer, so a watch can only narrow, never widen.
  *
- * Anything short of a full pass is `access_revoked`: lost membership, a deleted
- * project, an archived environment, a revoked feature flag. The caller cancels the
- * watch on that answer, so a watch can only ever narrow, never widen.
- *
- * OSS caveat: the self-hosted RBAC fallback ability is permissive, so
- * the membership-scoped query — not `ability.can(...)` — is the tenant floor here,
- * exactly as it is on the PAT-authenticated API routes.
+ * The self-hosted RBAC fallback ability is permissive, so the membership-scoped
+ * query, not `ability.can(...)`, is the tenant floor here.
  */
 export async function authorizeWatchEnvironment(params: {
   userId: string;
@@ -90,14 +82,14 @@ export async function authorizeWatchEnvironment(params: {
   projectId: string;
   environmentId: string;
 }): Promise<WatchAuthorization> {
-  // The PRIMARY, not the replica: this is the authorization boundary every
-  // background tick passes through, and replica lag would extend access the user
-  // has already lost.
+  // The primary, not the replica: this is the authorization boundary every
+  // background tick passes through, and replica lag would extend access the user has
+  // already lost.
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id: params.environmentId,
-      // The watch's snapshot has to still describe this environment — a mismatch
-      // means the row is being used to reach somewhere it was never created for.
+      // The watch's snapshot has to still describe this environment. A mismatch means
+      // the row is being used to reach somewhere it was never created for.
       projectId: params.projectId,
       organizationId: params.organizationId,
       archivedAt: null,
@@ -114,8 +106,7 @@ export async function authorizeWatchEnvironment(params: {
 
   if (!environment) return { ok: false, reason: "access_revoked" };
 
-  // Primary for the same reason as the membership read above: this decides
-  // access for a background tick, and lag must not extend it.
+  // Primary for the same reason as the membership read above.
   const user = await prisma.user.findFirst({
     where: { id: params.userId },
     select: { admin: true },
@@ -136,11 +127,11 @@ export async function authorizeWatchEnvironment(params: {
 }
 
 /**
- * The same authorization, addressed by environment id alone — for the creation
- * path, where no watch row (and so no org/project snapshot to cross-check) exists
- * yet. The id lookup is unscoped on purpose and proves nothing; every membership,
- * dev-owner and feature-gate rule is applied by `authorizeWatchEnvironment` below
- * it, so an id the user can't reach still resolves to `null`.
+ * The same authorization addressed by environment id alone, for the creation path
+ * where no watch row (and so no snapshot to cross-check) exists yet. The id lookup
+ * is unscoped and proves nothing; `authorizeWatchEnvironment` below it applies every
+ * membership, dev-owner and feature-gate rule, so an id the user can't reach still
+ * resolves to `null`.
  */
 export async function authorizeWatchEnvironmentById(params: {
   userId: string;
@@ -161,10 +152,6 @@ export async function authorizeWatchEnvironmentById(params: {
   return authorization.ok ? authorization.environment : null;
 }
 
-// ---------------------------------------------------------------------------
-// Creation.
-// ---------------------------------------------------------------------------
-
 export type CreateWatchErrorCode =
   | "limit_reached"
   | "duplicate"
@@ -174,13 +161,11 @@ export type CreateWatchErrorCode =
   | "internal";
 
 /**
- * What creation answered with.
- *
- * Two shapes, because the resolution model gives the immediate check its own
- * ending: either a watch is now running (`watching: true`), or the check already
- * answered the request and **no watch row exists at all** (`watching: false`).
- * The second one is the ONE-SHOT RESULT BLOCK of §2.2/§4.1 — it never enters the
- * watch delivery state machine: no row, no claim, no chip, no wake.
+ * What creation answered with. Two shapes: either a watch is now running
+ * (`watching: true`), or the immediate check already answered the request and no
+ * watch row exists at all (`watching: false`). The second is a one-shot result
+ * block, and never enters the delivery state machine: no row, no claim, no chip,
+ * no wake.
  */
 export type CreateDashboardAgentWatchResult =
   | {
@@ -212,13 +197,12 @@ export type CreateDashboardAgentWatchResult =
     };
 
 /**
- * Cheap existence check for the thing a spec points at, in THIS environment. It
- * exists so a watch can't be created against a run or queue in someone else's
- * environment (or a typo), which would then poll for its whole lifetime and
- * expire with nothing to say.
+ * Existence check for the thing a spec points at, in this environment, so a watch
+ * can't be created against a run or queue elsewhere (or a typo) and then poll for
+ * its whole lifetime with nothing to say.
  *
- * `error_recurrence` has nothing to validate on purpose: a fingerprint with zero
- * occurrences so far is the normal case for "tell me if this comes back".
+ * `error_recurrence` has nothing to validate: a fingerprint with zero occurrences
+ * so far is the normal case for "tell me if this comes back".
  */
 async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promise<boolean> {
   switch (spec.kind) {
@@ -240,28 +224,22 @@ async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promi
 }
 
 /**
- * Create a watch for an ALREADY-AUTHORIZED context.
+ * Create a watch for an already-authorized context. The caller has resolved the
+ * environment and proven the chat belongs to this user.
  *
- * The caller (a UAT endpoint or a dashboard session action) has resolved the
- * environment and proven the chat belongs to this user; this function owns
- * everything after that.
+ * The order is load-bearing: cap, dedup, immediate check, create. The guardrails
+ * are consulted first, so "you already have three" and "you're already watching
+ * this" are answered the same way whether or not the condition happens to be true
+ * right now. Then the immediate check runs:
  *
- * The order is §4.4's, and it is load-bearing: **cap → dedup → immediate check →
- * create**. The guardrails are consulted first, so "you already have three" and
- * "you're already watching this" are answered the same way whether or not the
- * condition happens to be true right now. Then the immediate check runs, and:
+ * - `satisfied` or `terminal_unsatisfied`: no row is written. The check answered
+ *   the request, so there is no chip, no wake, and nothing to cancel.
+ * - `pending` or `unavailable`: the watch is created and the first tick scheduled.
+ *   `unavailable` is not a verdict, so it never resolves anything.
  *
- *   - `satisfied` / `terminal_unsatisfied` → **no row is written**. The check
- *     answered the request; the caller renders a one-shot result block and the
- *     agent answers from it. There is no chip, no wake, and nothing to cancel.
- *   - `pending` / `unavailable` → the watch is created and the first tick
- *     scheduled. `unavailable` is not a verdict, so it never resolves anything —
- *     the confirmation just says we couldn't check yet.
- *
- * A watch is never left active-but-unwatched: if the first tick can't be
- * scheduled, the row is CANCELLED (silent, no resolution, no wake — a scheduling
- * failure is not an answer about the user's condition) and a plain failure is
- * returned.
+ * A watch is never left active but unwatched: if the first tick can't be scheduled
+ * the row is cancelled, silently, because a scheduling failure is not an answer
+ * about the user's condition.
  */
 export async function createDashboardAgentWatch(params: {
   environment: AuthenticatedEnvironment;
@@ -269,9 +247,8 @@ export async function createDashboardAgentWatch(params: {
   chatId: string;
   spec: WatchSpec;
   /**
-   * Consent to investigate after an attention outcome (§6). Only ever true when
-   * the user asked for it at creation — it is never inferred here, and it is not
-   * part of the spec or the identity.
+   * Consent to investigate after an attention outcome. Only true when the user asked
+   * for it at creation, never inferred, and not part of the spec or the identity.
    */
   investigateOnAttention?: boolean;
   now?: Date;
@@ -308,8 +285,8 @@ export async function createDashboardAgentWatch(params: {
 
   const identity = watchIdentity(spec);
 
-  // The guardrails, before the check and before any write. Advisory (a plain
-  // read); `createWatch` below re-applies both atomically and stays the authority.
+  // Advisory only: `createWatch` below re-applies both guardrails atomically and
+  // stays the authority.
   const precheck = await precheckWatchCreation(dashboardAgentDb, {
     chatId,
     projectId: environment.projectId,
@@ -318,22 +295,20 @@ export async function createDashboardAgentWatch(params: {
   });
   if (!precheck.ok) return creationGuardrailError(precheck);
 
-  // `since` is SERVER-SET so the model can't backdate a recurrence window and
-  // make a pre-existing error look like a recurrence.
+  // `since` is server-set so the model can't backdate a recurrence window and make a
+  // pre-existing error look like a recurrence.
   const persistedSpec: PersistedWatchSpec =
     spec.kind === "error_recurrence" ? { ...spec, since: now.toISOString() } : spec;
 
-  // The creation-time check. Many watches are asked for after the condition has
-  // already happened, and answering in the same turn beats waiting a cadence —
-  // and under the resolution model that answer needs no watch at all.
+  // Many watches are asked for after the condition has already happened, so answer
+  // in the same turn instead of waiting a cadence.
   const immediate = await checkWatch(persistedSpec, checkDeps, { now, since: now }, (error) =>
     logger.error("Dashboard agent watch: immediate check failed", { chatId, identity, error })
   );
 
   if (immediate.result === "satisfied" || immediate.result === "terminal_unsatisfied") {
-    // The one-shot result block. Nothing is persisted here on purpose: no row
-    // means no chip, no delivery claim, and no wake that could tell the user a
-    // second time (§7.5).
+    // Nothing is persisted on purpose: no row means no chip, no delivery claim, and
+    // no wake that could tell the user a second time.
     return { ok: true, watching: false, identity, immediate };
   }
 
@@ -345,8 +320,8 @@ export async function createDashboardAgentWatch(params: {
     spec: persistedSpec,
     organizationId: environment.organizationId,
     projectId: environment.projectId,
-    // The external ref travels with the row so a wake can scope an investigation
-    // the same way a turn does — the agent can't translate the internal id.
+    // The external ref travels with the row so a wake can scope an investigation the
+    // same way a turn does. The agent can't translate the internal id.
     projectRef: environment.project.externalRef,
     environmentId: environment.id,
     userId,
@@ -356,7 +331,7 @@ export async function createDashboardAgentWatch(params: {
 
   if (!created.ok) {
     if (created.error === "chat_not_found") {
-      // The chat was deleted while this create was in flight — the query layer
+      // The chat was deleted while this create was in flight. The query layer
       // re-reads it under the per-chat lock, so nothing was written.
       return {
         ok: false,
@@ -375,9 +350,8 @@ export async function createDashboardAgentWatch(params: {
       watchId: watch.id,
       token,
       delayMinutes: spec.checkEveryMinutes,
-      // The GENERATION the first tick will claim: the row is on `tickCount`
-      // (0 here) and each invocation claims its own generation atomically, so the
-      // first one is `tickCount + 1`.
+      // The generation the first tick claims. Each invocation claims its own
+      // generation atomically, so the first is `tickCount + 1`.
       tick: watch.tickCount + 1,
     });
   } catch (error) {
@@ -385,10 +359,10 @@ export async function createDashboardAgentWatch(params: {
       id: watch.id,
       error,
     });
-    // Nothing will ever check this watch, so don't leave it sitting active and
-    // silently blocking a re-ask. CANCELLED, not resolved: the user's condition
-    // was never evaluated, and a resolution would have the agent narrate a verdict
-    // nobody measured. Cancellation is silent, so no wake is ever sent.
+    // Nothing will ever check this watch, so don't leave it active and silently
+    // blocking a re-ask. Cancelled rather than resolved: the condition was never
+    // evaluated, and a resolution would have the agent narrate a verdict nobody
+    // measured. Cancellation is silent, so no wake is sent.
     await cancelWatch(dashboardAgentDb, { id: watch.id, reason: "scheduling_failed" });
     return {
       ok: false,
@@ -431,12 +405,11 @@ function creationGuardrailError(
 
 /**
  * Trigger one tick of the watcher task in the agent's project, as the agent's own
- * environment (`DASHBOARD_AGENT_SECRET_KEY`) — the same credential and version
- * pinning `dashboardAgent.server.ts` uses for the agent itself.
+ * environment.
  *
- * The token travels in the payload rather than the database: it's a pure function
- * of `(SESSION_SECRET, watchId, expiresAt)`, so a re-schedule can always re-mint
- * an identical one (see `dashboardAgentWatchToken.server.ts`).
+ * The token travels in the payload rather than the database: it's a pure function of
+ * `(SESSION_SECRET, watchId, expiresAt)`, so a re-schedule can always re-mint an
+ * identical one.
  */
 export async function scheduleWatchTick(params: {
   watchId: string;
@@ -453,13 +426,11 @@ export async function scheduleWatchTick(params: {
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    // The watcher task's payload contract: the watch, its token, the origin to
-    // call the check endpoint on, and the tick generation this invocation owns.
     { watchId: params.watchId, token: params.token, apiOrigin, tick: params.tick },
     {
       delay: `${params.delayMinutes}m`,
-      // Keyed on the same generation the payload carries, so a retried schedule
-      // can't double-tick.
+      // Keyed on the same generation the payload carries, so a retried schedule can't
+      // double-tick.
       idempotencyKey: `watch:${params.watchId}:tick:${params.tick}`,
       // Pin to the same deployed agent version the chat runs on, when set.
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
@@ -467,36 +438,30 @@ export async function scheduleWatchTick(params: {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Batch chains — one polling loop per (environment, cadence).
-// ---------------------------------------------------------------------------
-
 /** The task that polls a whole (environment, cadence) group. */
 export const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
 
 /**
- * How long a chain may go without a heartbeat before it is treated as dead and
- * re-armed. Three cadences plus a flat two minutes: comfortably longer than a tick's
- * jitter and its retries, short enough that a group whose run really died is polling
- * again within a sweep or two.
+ * How long a chain may go silent before it is treated as dead and re-armed. Three
+ * cadences plus two minutes: longer than a tick's jitter and retries, short enough
+ * that a group whose run really died is polling again within a sweep or two.
  */
 export function watchBatchStaleMs(cadenceMinutes: number): number {
   return cadenceMinutes * 60_000 * 3 + 2 * 60_000;
 }
 
 /**
- * Make sure a chain is polling one (environment, cadence) group, and start one if
- * not.
+ * Make sure a chain is polling one (environment, cadence) group, and start one if not.
  *
- * `armWatchBatch` is the decision, in one statement: it hands back a row only when
- * THIS call armed the chain, so a group that is already being polled costs nothing and
- * a new watch simply joins the next tick. That is the batching — N watches in an
- * environment share one run, one authorization and one report read per cadence.
+ * `armWatchBatch` hands back a row only when this call armed the chain, so a group
+ * already being polled costs nothing and a new watch joins the next tick. That is the
+ * batching: N watches in an environment share one run, one authorization and one
+ * report read per cadence.
  *
- * The trigger comes after the row, and a trigger that fails un-arms it: a chain marked
- * running with no run behind it would leave its whole group unpolled until the re-arm
- * backstop noticed. `running: false` tells the caller nothing is polling the group
- * yet, so a per-watch tick keeps its own chain alive instead of handing over.
+ * The trigger comes after the row, and a trigger that fails un-arms it, because a
+ * chain marked running with no run behind it would leave its group unpolled until the
+ * re-arm backstop noticed. `running: false` tells the caller nothing is polling yet,
+ * so a per-watch tick keeps its own chain alive instead of handing over.
  */
 export async function armDashboardAgentWatchBatch(params: {
   environmentId: string;
@@ -527,8 +492,8 @@ export async function armDashboardAgentWatchBatch(params: {
       environmentId: params.environmentId,
       cadenceMinutes: params.cadenceMinutes,
       epoch: armed.epoch,
-      // The generation the first run of this epoch claims — the row is on
-      // `generation` (0 after an arm) and a claim lands on `generation + 1`.
+      // The generation the first run of this epoch claims. A claim lands on
+      // `generation + 1`.
       tick: armed.generation + 1,
       delayMinutes: params.cadenceMinutes,
     });
@@ -550,12 +515,10 @@ export async function armDashboardAgentWatchBatch(params: {
 }
 
 /**
- * Trigger one tick of a batch chain, as the agent's own environment — the same
- * credential and version pinning a per-watch tick uses.
+ * Trigger one tick of a batch chain, as the agent's own environment.
  *
- * The chain's token travels in the payload, like a watch's. It names the group and
- * nothing else; every watch inside is re-authorized against its own snapshot by the
- * batch check.
+ * The chain's token names the group and nothing else; every watch inside is
+ * re-authorized against its own snapshot by the batch check.
  */
 export async function scheduleWatchBatchTick(params: {
   environmentId: string;
@@ -586,8 +549,8 @@ export async function scheduleWatchBatchTick(params: {
     },
     {
       delay: `${params.delayMinutes}m`,
-      // The same key shape the chain uses for its own successors, epoch included —
-      // so a re-armed chain can never collide with its predecessor's keys.
+      // The same key shape the chain uses for its own successors, epoch included, so a
+      // re-armed chain can never collide with its predecessor's keys.
       idempotencyKey: `watch-batch:${params.environmentId}:${params.cadenceMinutes}:${params.epoch}:tick:${params.tick}`,
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
     }
@@ -595,21 +558,18 @@ export async function scheduleWatchBatchTick(params: {
 }
 
 /**
- * Hand a RESOLVED watch's wake to the watcher task.
+ * Hand a resolved watch's wake to the watcher task.
  *
- * The webapp decides outcomes (it owns the authorization and the check), the agent
- * project owns appending to a chat's `in` stream — so a wake the webapp resolved is
- * delivered by a delivery-only invocation of the same task a tick uses. It takes
- * the same durable path: append, then mark the delivery, with the stable action id
+ * The webapp decides outcomes, the agent project owns appending to a chat's `in`
+ * stream, so a wake the webapp resolved is delivered by a delivery-only invocation of
+ * the same task a tick uses: append, then mark the delivery, with the stable action id
  * doing the dedup if it runs twice.
  *
- * Keyed per watch (`watch:{id}:deliver`) with a short TTL, so repeated sweeps
- * inside one window collapse into one invocation while a later sweep can still try
- * again after a run failed for good.
+ * Keyed per watch with a short TTL, so repeated sweeps inside one window collapse into
+ * one invocation while a later sweep can still retry after a run failed for good.
  *
- * The token is the row's own deterministic one. Past the watch's grace window it is
- * expired, which costs nothing here: a delivery-only invocation never calls the
- * check endpoint, and the alert fan-out is enqueued by the caller.
+ * The token may be expired past the watch's grace window, which costs nothing: a
+ * delivery-only invocation never calls the check endpoint.
  */
 export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date }): Promise<void> {
   const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
@@ -633,15 +593,10 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
   );
 }
 
-// ---------------------------------------------------------------------------
-// Chat lifecycle + the list view.
-// ---------------------------------------------------------------------------
-
 /**
- * Delete a chat and end its watches in ONE transaction: the conversation they'd
- * wake is gone, so there's nowhere to deliver an outcome, and a half-applied
- * delete would leave live watches on a chat the user can't see. Owner-scoped, so
- * a chatId the caller doesn't own deletes nothing.
+ * Delete a chat and end its watches in one transaction: the conversation they'd wake
+ * is gone, and a half-applied delete would leave live watches on a chat the user
+ * can't see. Owner-scoped, so a chatId the caller doesn't own deletes nothing.
  */
 export async function deleteChatWithWatches(params: {
   chatId: string;
@@ -664,16 +619,16 @@ export type ChatWatchChip = {
   checkEveryMinutes: number;
   expiresAt: string;
   endedReason: string | null;
-  /** How the watch ended — what the wake banner presents. Null while active. */
+  /** How the watch ended. Null while active. */
   resolution: WatchResolution | null;
-  /** What the resolving check observed — the other half of the headline. */
+  /** What the resolving check observed, the other half of the headline. */
   observedOutcome: WatchObservedOutcome | null;
 };
 
 /**
- * Active watches for many chats in ONE query, keyed by chatId — the panel and
- * history list must not fan out a query per chat. The query layer re-scopes the
- * chat ids by org + user, so this is safe with ids from any source.
+ * Active watches for many chats in one query, keyed by chatId, so the panel and
+ * history list don't fan out a query per chat. The query layer re-scopes the chat ids
+ * by org and user, so this is safe with ids from any source.
  */
 export async function listActiveWatchesForChats(params: {
   chatIds: string[];
@@ -713,10 +668,9 @@ export function chatBelongsToUser(params: {
 export type { ChatWatchContext };
 
 /**
- * Ownership check for a chat — a live chat owned by this user — plus the org it
- * belongs to, which is the tenancy floor its watches can't leave. Deliberately no
- * project/environment: those come from the authorized request context, never from
- * the chat row (see `getChatWatchContext`).
+ * Ownership check for a chat, plus the org it belongs to, which is the tenancy floor
+ * its watches can't leave. Deliberately no project or environment: those come from
+ * the authorized request context, never from the chat row.
  */
 export function resolveChatWatchContext(params: {
   chatId: string;

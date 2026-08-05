@@ -1,11 +1,10 @@
-// The two routes the dashboard agent's M3 tools fetch, driven through their REAL
-// exported loaders. Container-free: only peripherals are mocked (auth, the run ->
-// commit resolver, ClickHouse, Prisma), so what runs for real is each loader's own
-// decision logic — param/search-param validation, the queue-name convention, the
-// commit 404, and the exact JSON body the tools curate.
+// The two routes the dashboard agent's tools fetch, driven through their real exported
+// loaders. Container-free: only peripherals are mocked, so what runs for real is each
+// loader's decision logic: param validation, the queue-name convention, the commit 404,
+// and the exact JSON body the tools curate.
 import { describe, expect, it, vi } from "vitest";
 
-// --- Holders wired per-test into the mocked singletons -------------------------
+// Holders wired per test into the mocked singletons.
 const ctx = vi.hoisted(() => ({
   environment: {
     id: "env_1",
@@ -54,7 +53,7 @@ vi.mock("~/services/apiAuth.server", async (importOriginal) => {
   };
 });
 
-// The run -> deployed-commit resolver (reads the primary + the deployment row).
+// The run to deployed-commit resolver.
 vi.mock("~/services/dashboardAgent.server", () => ({
   resolveRunCommit: async () => ctx.runCommit ?? null,
 }));
@@ -73,9 +72,8 @@ vi.mock("~/services/rbac.server", () => ({
   },
 }));
 
-// ClickHouse: the two queue-metric readers, returning the `[error, rows]` tuple
-// the real client returns. Captures the params so we can assert the window and
-// the queue name the route derived.
+// The two queue-metric readers, returning the tuple the real client returns and capturing
+// the params, so the tests can assert the window and queue name the route derived.
 const chCalls = vi.hoisted(() => ({ summary: undefined as any, trend: undefined as any }));
 
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({

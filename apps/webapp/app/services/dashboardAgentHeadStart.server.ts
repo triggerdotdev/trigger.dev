@@ -22,8 +22,7 @@ const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
 /**
  * Shown in the chat when the warm first turn never produced anything. Generic on
- * purpose — the underlying provider/network error is logged, not surfaced. The
- * user can just send the message again.
+ * purpose: the underlying provider error is logged, not surfaced.
  */
 export const HEAD_START_FAILURE_ERROR_TEXT =
   "The assistant couldn't start this response. Please send your message again.";
@@ -42,20 +41,14 @@ export type DashboardAgentSessionOutWriter = {
 /**
  * Surface a failed warm step 1 to the client as a visible error turn.
  *
- * `startHeadStart` has already dispatched `handover-skip`, so the agent run
- * exits without writing anything — nobody else will ever write to `session.out`
- * for this turn. The browser, which mounts as streaming and resumes
- * `session.out`, would otherwise hang on an empty stream and the turn would look
- * silently lost.
+ * `startHeadStart` has already dispatched `handover-skip`, so nobody else will write to
+ * `session.out` for this turn, and the browser resuming that stream would hang on an
+ * empty one.
  *
- * The shape mirrors what the chat.agent runtime emits on a failed turn (see
- * `packages/trigger-sdk/src/v3/chat.ts`): an `{ type: "error", errorText }` data
- * chunk — which the AI SDK transport turns into `useChat`'s `error`, rendered by
- * DashboardAgentMessages — followed by the `turn-complete` control record, which
- * is what actually closes the resumed stream (see `chat-client.ts`).
- *
- * `turn-complete` is written even if the error chunk fails, so a resumed stream
- * always terminates; the chunk's error still propagates to the caller for logging.
+ * The shape mirrors what the chat.agent runtime emits on a failed turn: an error data
+ * chunk, then the `turn-complete` control record that closes the resumed stream.
+ * `turn-complete` is written even if the error chunk fails, so a resumed stream always
+ * terminates; the chunk's error still propagates to the caller for logging.
  */
 export async function writeHeadStartFailureToSessionOut(
   writer: DashboardAgentSessionOutWriter
@@ -79,9 +72,8 @@ function singleChunkStream(chunk: UIMessageChunk): ReadableStream<UIMessageChunk
   });
 }
 
-// Writes as the agent's own environment (secret key auth) — `.out` appends are
-// PRIVATE-only, and this is the same credential the head start creates the
-// session with.
+// Writes as the agent's own environment: `.out` appends are private-only, and this is
+// the same credential the head start creates the session with.
 function createSessionOutWriter(
   chatId: string,
   accessToken: string
@@ -105,15 +97,13 @@ function createSessionOutWriter(
 }
 
 /**
- * Server-owned head start. The webapp generates the chatId and owns the chat
- * record, then kicks off step 1 here via `chat.startHeadStart` (the detached
- * flow): it creates the session (externalId = chatId), triggers the
- * handover-prepare run, and streams step 1 into `session.out` in the background.
- * The browser resumes that stream rather than streaming step 1 inline. Step 1
- * runs the agent's SCHEMA-ONLY tools + the shared model/prompt for the mode the
- * agent run will be in; the agent run picks up tool execution and step 2+.
+ * Server-owned head start. The webapp owns the chat record and kicks off step 1 here:
+ * `chat.startHeadStart` creates the session, triggers the handover-prepare run, and
+ * streams step 1 into `session.out` in the background for the browser to resume. Step 1
+ * runs the agent's schema-only tools with the shared model and prompt for the mode; the
+ * agent run picks up tool execution and step 2 onwards.
  *
- * `metadata` (the delegated UAT + context) is merged into the run's wire payload
+ * `metadata` (the delegated token and context) is merged into the run's wire payload
  * server-side, so it reaches the agent without touching the browser.
  */
 export async function startDashboardAgentHeadStart(params: {
@@ -132,8 +122,8 @@ export async function startDashboardAgentHeadStart(params: {
     messages: params.messages,
     metadata: params.metadata,
     triggerConfig: dashboardAgentTriggerConfig(),
-    // Scope session creation + the agent trigger to the agent's project/env. The
-    // Anthropic key here only powers the warm step-1 call.
+    // Scope session creation and the agent trigger to the agent's project and
+    // environment. The model key here only powers the warm step-1 call.
     apiClient: {
       baseURL: dashboardAgentApiOrigin(),
       accessToken: env.DASHBOARD_AGENT_SECRET_KEY,
@@ -146,12 +136,11 @@ export async function startDashboardAgentHeadStart(params: {
       }),
   });
 
-  // The webapp is long-lived, so step 1's drain + the handover dispatch run in
-  // the background after this resolves (createSession + trigger have completed).
-  // On failure startHeadStart has already fired handover-skip, so the agent run
-  // exits cleanly and nothing else will ever write to session.out for this turn —
-  // write an error turn ourselves so the client's resume shows a visible,
-  // retryable error instead of an empty chat.
+  // The webapp is long-lived, so step 1's drain and the handover dispatch run in the
+  // background after this resolves. On failure `startHeadStart` has already fired
+  // handover-skip, so nothing else will write to session.out for this turn: write an
+  // error turn ourselves so the client's resume shows a retryable error, not an empty
+  // chat.
   completion.catch(async (error) => {
     logger.error("Dashboard agent head start failed", { chatId: params.chatId, error });
 

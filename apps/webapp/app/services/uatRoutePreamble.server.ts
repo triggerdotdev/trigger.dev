@@ -3,21 +3,17 @@ import { env } from "~/env.server";
 import { authenticateRequest, type AuthenticationResult } from "~/services/apiAuth.server";
 
 /**
- * Shared auth preamble for the handful of `api.v1` routes that accept a delegated
- * user-actor token (`tr_uat_…`) as well as a PAT / org access token.
+ * Shared auth preamble for the `api.v1` routes that accept a delegated user-actor token
+ * as well as a PAT or org access token. `authenticateRequest` deliberately does not
+ * accept UATs, because a UAT is only valid on routes that opted in.
  *
- * `authenticateRequest` deliberately does NOT accept UATs — a UAT is only valid
- * on routes that opted in — so each of those routes resolved the token itself.
- * That preamble was identical in every copy, so it lives here once.
+ * A UAT authenticates as its user, exactly like a PAT, so the returned result is the
+ * `personalAccessToken` shape and every downstream lookup behaves the same. `userActor`
+ * is set only on the UAT path, carrying the token's scope cap for routes that ceiling a
+ * grant by it.
  *
- * A UAT authenticates as its user, exactly like a PAT (identity-only), so the
- * returned `AuthenticationResult` is the `personalAccessToken` shape and every
- * downstream env lookup / ability check behaves the same. `userActor` is set only
- * on the UAT path, carrying the token's scope cap for routes that ceiling a grant
- * by it (the env-JWT exchange).
- *
- * Returns `undefined` for no token, an unparseable token, and an invalid or
- * expired UAT alike — callers answer all of them with the same 401.
+ * Returns `undefined` for no token, an unparseable token, and an invalid or expired UAT
+ * alike; callers answer all of them with the same 401.
  */
 export type UatAuthentication = {
   authenticationResult: AuthenticationResult;

@@ -1,12 +1,9 @@
-// The investigate callback — the hop that turns a consented watch's wake into a
-// real investigating turn — driven through its REAL route action.
+// The investigate callback, the hop that turns a consented watch's wake into a real
+// investigating turn, driven through its real route action.
 //
-// Container-free: only peripherals are mocked (the watch token, the watch row, the
-// authorization, the token mint, and the session append), so what runs for real is
-// the endpoint's own decision logic — the row is the authority, the consent and the
-// outcome category gate the kick, and the kick is best-effort — plus the kick's own
-// payload: the action the agent receives and the metadata carrying the delegated
-// token.
+// Container-free: only peripherals are mocked, so what runs for real is the endpoint's
+// decision logic (the row is the authority, consent and the outcome category gate the
+// kick, and the kick is best-effort) plus the kick's payload.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const ctx = vi.hoisted(() => ({
@@ -55,9 +52,8 @@ vi.mock("~/services/dashboardAgentWatches.server", () => ({
       : { ok: false, reason: "access_revoked" },
 }));
 
-// The mint stays real in spirit and fake in fact: what matters is WHO it is minted
-// for and against WHICH environment, both of which the endpoint must take off the
-// row and nowhere else.
+// What matters is who the token is minted for and against which environment, both of
+// which the endpoint must take off the row and nowhere else.
 const mints = vi.hoisted(() => [] as Array<{ userId: string; environmentId?: string }>);
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.example.com",
@@ -89,7 +85,7 @@ vi.mock("@trigger.dev/core/v3", async (importOriginal) => ({
   },
 }));
 
-// --- The other half of the boundary: the browser's own path to `.in` -----------
+// The other half of the boundary: the browser's own path to `.in`.
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "user_1", admin: false, isImpersonating: false }),
 }));
@@ -171,7 +167,7 @@ describe("POST /api/v1/dashboard-agent/watches/:watchId/investigate", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, investigating: true });
 
-    // One record on the chat's `in` stream, carrying an action (not a message).
+    // One record on the chat's `in` stream, carrying an action rather than a message.
     expect(ctx.appends).toHaveLength(1);
     const append = ctx.appends[0]!;
     expect(append.sessionId).toBe("chat_1");
@@ -188,8 +184,8 @@ describe("POST /api/v1/dashboard-agent/watches/:watchId/investigate", () => {
     });
     expect(append.body.payload.action.observed.finalStatus).toBe("COMPLETED_WITH_ERRORS");
 
-    // The metadata IS the agent's clientData: the watch's immutable tenancy plus a
-    // delegated token, exactly the way a turn's `in` proxy injects one.
+    // The metadata is the agent's clientData: the watch's immutable tenancy plus a delegated
+    // token, the way a turn's `in` proxy injects one.
     expect(append.body.payload.metadata).toMatchObject({
       userId: "user_1",
       organizationId: "org_1",
@@ -199,8 +195,8 @@ describe("POST /api/v1/dashboard-agent/watches/:watchId/investigate", () => {
       environmentName: "prod",
       userActorToken: "uat_for_user_1",
     });
-    // Minted for the row's user, scoped to the row's environment — nothing a
-    // request body could name.
+    // Minted for the row's user, scoped to the row's environment, not anything a request
+    // body could name.
     expect(mints).toEqual([{ userId: "user_1", environmentId: "env_1" }]);
   });
 
@@ -297,8 +293,8 @@ describe("POST /api/v1/dashboard-agent/watches/:watchId/investigate", () => {
     expect(res.status).toBe(404);
   });
 
-  // The wake is already delivered by the time we're called, so a failed kick is a
-  // lost follow-up and never a reason for the caller to retry anything.
+  // The wake is already delivered by then, so a failed kick is a lost follow-up and never a
+  // reason for the caller to retry anything.
   it("does not fail when the kick itself fails", async () => {
     ctx.appendThrows = true;
 
@@ -309,10 +305,9 @@ describe("POST /api/v1/dashboard-agent/watches/:watchId/investigate", () => {
   });
 });
 
-// The trust boundary the investigate action relies on: actions are placed by the
-// server, and the dashboard's `in` proxy is the one path a browser can reach a
-// chat's `in` stream through — so it must not forward one, and above all must not
-// mint a delegated token for one.
+// The trust boundary the investigate action relies on: actions are placed by the server,
+// and the dashboard's `in` proxy is the one path a browser can reach a chat's `in` stream
+// through, so it must not forward an action and must not mint a delegated token for one.
 describe("the dashboard-agent in proxy", () => {
   const upstream = vi.fn(async () => new Response("{}", { status: 200 }));
 

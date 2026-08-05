@@ -1,19 +1,14 @@
 /**
- * Unsubscribe tokens — the credential in a watch alert email's "Turn off these
- * alerts" link.
+ * The credential in a watch alert email's "Turn off these alerts" link. Same
+ * construction as the watch token: HS256 over `SESSION_SECRET` with a disjoint prefix
+ * and `kind` claim, so no other token signed with that secret is accepted here.
  *
- * Same construction as the watch token (`dashboardAgentWatchToken.server.ts`):
- * HS256 over `SESSION_SECRET`, a disjoint routing prefix and a disjoint `kind`
- * claim, so no other SESSION_SECRET-signed token is accepted here and this one is
- * accepted nowhere else.
+ * It authorizes one action on one named channel and alert type, which is why it can be
+ * long-lived and needs no session: the worst a leaked link does is silence one alert
+ * type on one channel, re-enabled on the Alerts page.
  *
- * It authorizes exactly one action — "stop sending watch alerts to this channel" —
- * and names the channel and alert type it may act on. That's why it can be
- * long-lived and needs no session: the worst a leaked link does is silence one
- * alert type on one channel, which the recipient can re-enable on the Alerts page.
- *
- * Nothing is stored: the link is re-mintable from the channel id whenever an
- * email is sent.
+ * Nothing is stored; the link is re-minted from the channel id whenever an email is
+ * sent.
  */
 
 import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";

@@ -1,38 +1,25 @@
 /**
- * The watch backstop — expiry and lost deliveries, both driven from here.
+ * The watch backstop: expiry and lost deliveries. A watch normally ends on its own
+ * last tick, which depends on the tick chain still being alive. When it isn't, two
+ * things are left behind and both are this sweep's job: an `active` row past its
+ * deadline holding a chat watch slot, and a resolved row whose wake never reached
+ * the chat.
  *
- * A watch normally ends on its own last tick: the watcher task runs the final
- * check through the private check endpoint and resolves. That depends on the tick
- * chain still being alive, and it isn't always — a lost trigger, a run that
- * exhausted its retries, a session append that kept failing. Two things are then
- * left behind, and both are this sweep's job:
+ * The split between the halves is load-bearing. Finalization always runs, because it
+ * needs nothing but the database and the authorization checks, and a configuration
+ * that disappeared after the watches were created must not freeze every row as
+ * `active` forever. What can't be handed over is left owed for the delivery half.
  *
- *  - an `active` row past its deadline, holding one of the chat's three watch
- *    slots and joining dedup forever, and
- *  - a resolved row whose wake never reached the chat (`deliveryStatus = pending`),
- *    i.e. an outcome the user was promised and never got.
- *
- * The two halves have different dependencies, and that split is load-bearing:
- * finalizing a watch needs nothing but the database and the authorization checks,
- * while handing a wake over needs a configured agent project to hand it to. So the
- * finalization ALWAYS runs — a configuration that disappeared after the watches
- * were created (a rotated secret, a rollback) must not freeze every row as `active`
- * forever, holding the chat's watch slots. What can't be handed over is simply left
- * owed, and the delivery half picks it up when the configuration returns.
- *
- * It runs in the WEBAPP, not in the agent project, because finalizing a watch is
- * an authorization decision: the initiating user is re-authorized against the
- * watch's immutable project/environment, a user who lost access gets the watch
- * CANCELLED (never woken), and only an authorized watch gets its last check. The
- * agent project has none of that — it reads everything through the check endpoint
- * with a watch token it cannot mint. So the outcome is decided here and the one
- * thing the webapp can't do, appending to a chat's `in` stream, is handed back to
- * the watcher task as a delivery-only invocation.
+ * It runs in the webapp because finalizing a watch is an authorization decision: the
+ * initiating user is re-authorized against the watch's immutable project and
+ * environment, and a user who lost access gets the watch cancelled and never woken.
+ * The one thing the webapp can't do, appending to a chat's `in` stream, is handed
+ * back to the watcher task as a delivery-only invocation.
  *
  * Everything is guarded rather than coordinated: the transition is conditional on
  * `active`, the wake is claimed atomically before it is appended, and the action id
- * is stable — so the sweep racing a live tick resolves to exactly one winner, and a
- * re-run is a no-op.
+ * is stable, so the sweep racing a live tick resolves to one winner and a re-run is
+ * a no-op.
  */
 
 import {
@@ -77,9 +64,9 @@ import { logger } from "~/services/logger.server";
 export const WATCH_EXPIRY_GRACE_MS = 2 * 60 * 1000;
 
 /**
- * How long a resolved watch may owe its wake before the sweep recovers it. The
- * normal delivery is seconds; this window keeps the recovery from racing a
- * delivery that is still in flight (or being retried by the platform).
+ * How long a resolved watch may owe its wake before the sweep recovers it. The normal
+ * delivery is seconds; this window keeps the recovery from racing a delivery still in
+ * flight.
  */
 export const WATCH_DELIVERY_GRACE_MS = 5 * 60 * 1000;
 
@@ -87,17 +74,14 @@ export const WATCH_DELIVERY_GRACE_MS = 5 * 60 * 1000;
 const SWEEP_BATCH_LIMIT = 100;
 
 /**
- * How long a terminal watch is kept. A resolved watch is read by nothing once its
- * wake has landed — the outcome lives in the chat transcript from then on — so a
- * week is well past the point where anyone revisits the row, and still leaves any
- * post-incident look at "what did the watch actually see" plenty of room.
+ * How long a terminal watch is kept. Once its wake has landed the outcome lives in the
+ * chat transcript, so a week is well past the point where anyone revisits the row.
  */
 export const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Per-run cap for the retention delete, higher than the other two: it is one
- * statement rather than a row-at-a-time loop, and a backlog should drain in a few
- * runs rather than a few days.
+ * Per-run cap for the retention delete, higher than the other two: it is one statement
+ * rather than a row-at-a-time loop.
  */
 const RETENTION_BATCH_LIMIT = 500;
 
@@ -154,12 +138,10 @@ export type WatchSweepDeps = {
 };
 
 /**
- * Facts for a swept expiry, in the same shape the tick writes (the wake narration
- * reads these keys either way).
+ * Facts for a swept expiry, in the same shape the tick writes.
  *
- * `verified: false` means the condition itself couldn't be evaluated, so the
- * narration must not claim the thing didn't happen — it carries the last
- * observation we do have instead.
+ * `verified: false` means the condition couldn't be evaluated, so the narration must
+ * not claim the thing didn't happen. It carries the last observation instead.
  */
 function expiredFacts(
   watch: Watch,
@@ -180,12 +162,11 @@ function expiredFacts(
 }
 
 /**
- * How a FINAL check's verdict resolves the row — the window boundary of §7.4.
- *
- * The last evaluation is a real evaluation: a successful final read may still
- * resolve `condition_met` or `condition_impossible`, and only a `pending` or
- * `unavailable` result becomes `window_completed`. `watchResolutionForCheck`
- * owns that rule; this function only dresses it in the facts the surfaces read.
+ * How a final check's verdict resolves the row. The last evaluation is a real
+ * evaluation: a successful final read may still resolve `condition_met` or
+ * `condition_impossible`, and only `pending` or `unavailable` becomes
+ * `window_completed`. `watchResolutionForCheck` owns that rule; this only dresses it
+ * in the facts the surfaces read.
  */
 function resolutionFor(
   watch: Watch,
@@ -226,10 +207,8 @@ function resolutionFor(
         }),
       };
     default:
-      // The check couldn't run. The deadline still passed, so the window
-      // completes — but unverified, never as "it didn't happen". The observation
-      // carries `verified: false`, which is what makes the presentation say the
-      // condition couldn't be confirmed.
+      // The check couldn't run. The deadline still passed, so the window completes,
+      // but unverified rather than as "it didn't happen".
       return {
         resolution,
         observed: outcome.observed,
@@ -239,17 +218,15 @@ function resolutionFor(
 }
 
 /**
- * Finalize ONE overdue watch: re-authorize, run the last check, resolve, and hand
- * the wake to the watcher task.
+ * Finalize one overdue watch: re-authorize, run the last check, resolve, and hand the
+ * wake to the watcher task.
  *
  * The order is the point. Re-authorization comes first and a revoked user ends the
- * watch as `cancelled` with no wake at all — a watch must never outlive the access
- * it was created with, and a cancellation is never narrated. Only then does the
- * final check read anything, so the watch gets the same last look a tick past the
- * deadline would have given it.
+ * watch as `cancelled` with no wake at all, so a watch never outlives the access it
+ * was created with. Only then does the final check read anything.
  *
- * `canDeliver: false` stops at the resolution: the row is terminal with its wake
- * owed, which is exactly the state the delivery half recovers.
+ * `canDeliver: false` stops at the resolution, leaving the row terminal with its wake
+ * owed, which is the state the delivery half recovers.
  */
 export async function finalizeOverdueWatch(
   watch: Watch,
@@ -290,13 +267,12 @@ export async function finalizeOverdueWatch(
     lastResult: resolved.facts,
   });
 
-  // Guarded on `active`: a tick resolved it between the list and here, and that
-  // outcome (with its own delivery) stands.
+  // Guarded on `active`: if a tick resolved it between the list and here, that
+  // outcome and its delivery stand.
   if (!transitioned) return "already_resolved";
 
   if (resolved.resolution === "condition_met") {
-    // The configured alert channels. Keyed on the watch, so the wake's own
-    // notification can't double-alert it.
+    // Keyed on the watch, so the wake's own notification can't double-alert it.
     try {
       await enqueueWatchFiredAlert(transitioned, "fired");
     } catch (error) {
@@ -307,24 +283,19 @@ export async function finalizeOverdueWatch(
     }
   }
 
-  // The wake itself. Throws if it can't be scheduled, which leaves the row
-  // terminal with its delivery owed — recovered by the delivery half of the next
-  // sweep, same as when there is no agent project to hand it to at all.
+  // Throws if it can't be scheduled, which leaves the row terminal with its delivery
+  // owed, recovered by the delivery half of the next sweep.
   if (canDeliver) await deliver(transitioned);
   return watchResolutionToWireStatus(resolved.resolution);
 }
 
 /**
- * Recover ONE owed wake: hand it to the watcher task, whatever left it owed — a
- * delivery that failed, a deliverer that died mid-append, or an outcome that was
- * resolved inline by the turn that created the watch.
+ * Recover one owed wake: hand it to the watcher task, whatever left it owed.
  *
- * Unconditional on purpose. This sweep cannot tell whether the user was already
- * told: every proof available here (the chat's last message time above all) is
- * moved by a question, an error turn, or another watch's wake, so acting on it
- * loses outcomes. Whether the wake needs prose is decided where the transcript can
- * actually be read — the agent's wake narration skips it when the turn that created
- * the watch already answered inline, and the delivery is marked either way.
+ * Unconditional on purpose. This sweep cannot tell whether the user was already told:
+ * every proof available here is moved by a question, an error turn, or another watch's
+ * wake, so acting on it loses outcomes. Whether the wake needs prose is decided where
+ * the transcript can be read, and the delivery is marked either way.
  */
 export async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
   const deliver = deps.deliver ?? scheduleWatchDelivery;
@@ -334,10 +305,10 @@ export async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = 
 /**
  * One sweep: finalize what is overdue, then recover what was never delivered.
  *
- * Each row is handled on its own — a single failure must not cost the rest of the
- * batch — and the run throws at the end if anything failed, so the job is retried
- * and the failures are visible. A row left half-done is left in a state the next
- * sweep recovers: terminal with the delivery still owed.
+ * Each row is handled on its own so a single failure doesn't cost the rest of the
+ * batch, and the run throws at the end if anything failed, so the job is retried. A
+ * row left half-done is terminal with its delivery still owed, which the next sweep
+ * recovers.
  */
 export async function sweepDashboardAgentWatches(
   deps: WatchSweepDeps = {}
@@ -366,9 +337,8 @@ export async function sweepDashboardAgentWatches(
     failed: 0,
   };
 
-  // Whether there is an agent project to hand a wake to. It gates the hand-off
-  // only: the rows themselves still have to be finalized, or a configuration that
-  // vanished after the watches were created would leave every one of them active
+  // Gates the hand-off only: the rows still have to be finalized, or a configuration
+  // that vanished after the watches were created would leave every one of them active
   // and holding a slot forever.
   const canDeliver = configured();
   if (!canDeliver) {
@@ -403,8 +373,8 @@ export async function sweepDashboardAgentWatches(
     }
   }
 
-  // The delivery half. Skipped wholesale without an agent project — the rows keep
-  // their owed wake and the next configured sweep recovers them.
+  // Skipped wholesale without an agent project: the rows keep their owed wake and the
+  // next configured sweep recovers them.
   if (canDeliver) {
     const owed = await listAwaitingDelivery({
       olderThan: new Date(now.getTime() - WATCH_DELIVERY_GRACE_MS),
@@ -426,10 +396,9 @@ export async function sweepDashboardAgentWatches(
     }
   }
 
-  // Retention, last: it only touches rows both halves above are finished with, and
-  // it runs whether or not the agent is configured — an unconfigured deployment
-  // still shouldn't accumulate week-old rows. Its own try/catch, because losing a
-  // retention pass is the cheapest failure here and must not mask the others.
+  // Retention runs last, over rows both halves above are finished with, and whether or
+  // not the agent is configured. Its own try/catch, because losing a retention pass is
+  // the cheapest failure here and must not mask the others.
   try {
     result.purged = await purgeTerminal({
       before: new Date(now.getTime() - WATCH_RETENTION_MS),
@@ -447,10 +416,6 @@ export async function sweepDashboardAgentWatches(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// The batch-chain backstop.
-// ---------------------------------------------------------------------------
-
 export type WatchBatchRearmResult = {
   /** Groups with active watches and no live chain. */
   stale: number;
@@ -461,7 +426,7 @@ export type WatchBatchRearmResult = {
 export type WatchBatchRearmDeps = {
   now?: () => Date;
   limit?: number;
-  /** Groups whose chain is missing, stopped, or has stopped heartbeating. */
+  /** Groups whose chain is missing, stopped, or has gone silent. */
   listGroups?: (params: { now: Date; limit: number }) => Promise<WatchBatchGroup[]>;
   /** Start a chain for one group. */
   arm?: (params: {
@@ -476,21 +441,16 @@ export type WatchBatchRearmDeps = {
 const REARM_BATCH_LIMIT = 200;
 
 /**
- * Re-arm batch chains that died — the price of batching, paid back.
+ * Re-arm batch chains that died. A batch chain that dies costs its whole group its
+ * early answers, so any (environment, cadence) group that still has active watches but
+ * no chain running for it gets a fresh epoch here.
  *
- * A per-watch tick chain that died cost one watch its early answer, and the expiry
- * sweep above still ended it properly. A batch chain that dies costs its whole group
- * the same thing, so the blast radius needs a backstop of its own: any (environment,
- * cadence) group that still has active watches but no chain heartbeating for it gets a
- * fresh epoch here.
+ * The staleness window is the group's own cadence, so a one-minute group whose chain
+ * died is polling again in minutes rather than waiting out an hourly group's window.
  *
- * The staleness window is the group's OWN cadence (three of them plus two minutes), so
- * a one-minute group whose chain died is polling again in minutes rather than waiting
- * out an hourly group's window.
- *
- * Guarded, not coordinated, like everything else: `armWatchBatch` re-checks the same
- * heartbeat in the statement that arms, so this racing a chain that was only slow arms
- * nothing, and running it twice starts one chain.
+ * Guarded, not coordinated: `armWatchBatch` re-checks the same timestamp in the
+ * statement that arms, so this racing a chain that was only slow arms nothing, and
+ * running it twice starts one chain.
  */
 export async function rearmDashboardAgentWatchBatches(
   deps: WatchBatchRearmDeps = {}
@@ -504,8 +464,8 @@ export async function rearmDashboardAgentWatchBatches(
 
   const result: WatchBatchRearmResult = { stale: 0, armed: 0, failed: 0 };
 
-  // Nothing to trigger a chain into. The rows keep their active watches, and the
-  // expiry half above still finalizes them, so nothing is stranded indefinitely.
+  // Nothing to trigger a chain into. The expiry half above still finalizes the rows,
+  // so nothing is stranded indefinitely.
   if (!configured()) return result;
 
   const groups = await listGroups({ now, limit });
