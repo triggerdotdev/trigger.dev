@@ -1,7 +1,8 @@
 /**
- * Which organizations this browser has seen agent watches in. The wake feed costs a request per
- * open tab per minute, so only a browser that knows a watch exists polls it — and once it knows,
- * it keeps polling. Shared through `localStorage`, so a watch created in one tab wakes the others.
+ * Which organizations this browser has seen agent watches in. This is an accelerator, not the
+ * gate: a watch created in this tab starts the poll without a reload. The ungated signal is the
+ * unread count the page load carries — see {@link shouldPollWakeFeed}.
+ * Shared through `localStorage`, so a watch created in one tab wakes the others.
  */
 
 const STORAGE_KEY = "tdev:dashboard-agent:watching";
@@ -54,6 +55,17 @@ export function forgetWatchActivity(organizationId: string): void {
   } catch {
     // Same as the read.
   }
+}
+
+/**
+ * Whether this browser should poll the wake feed. `serverUnreadWakes` comes from the page load,
+ * so a fresh browser with an unread wake polls without ever opening the panel.
+ */
+export function shouldPollWakeFeed(params: {
+  serverUnreadWakes: number;
+  organizationId: string;
+}): boolean {
+  return params.serverUnreadWakes > 0 || hasWatchActivity(params.organizationId);
 }
 
 /** Fires when this browser learns of a watch, in this tab or — via `storage` — in another one. */

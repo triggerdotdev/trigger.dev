@@ -20,7 +20,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { startWakePolling } from "./wake-poll";
-import { hasWatchActivity, subscribeWatchActivity } from "./watch-activity";
+import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
   showWatchWakesSummaryToast,
   showWatchWakeToast,
@@ -38,10 +38,13 @@ export function DashboardAgent({
   children,
   hasAccess = false,
   promotedPrompt,
+  /** From the page load: unread wakes waiting for this user, whatever this browser remembers. */
+  initialUnreadWakes = 0,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
   promotedPrompt?: SuggestedPrompt;
+  initialUnreadWakes?: number;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -49,7 +52,8 @@ export function DashboardAgent({
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
 
   const [open, setOpen] = useState(false);
-  const [unreadWakes, setUnreadWakes] = useState(0);
+  // Seeded from the page load, so the launcher dot is right before the first poll answers.
+  const [unreadWakes, setUnreadWakes] = useState(initialUnreadWakes);
   const toastedWakes = useRef(new Set<string>());
   // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
   useEffect(() => {
@@ -137,15 +141,23 @@ export function DashboardAgent({
     setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // Nothing to be woken about means nothing to poll for. Once this browser has seen a watch it
-  // keeps polling, so a wake still reaches a tab that was open before the watch existed.
+  // Nothing to be woken about means nothing to poll for. The page load's unread count is the
+  // ungated signal; the browser's own memory of a watch starts the poll without a reload. Once
+  // either says yes this tab keeps polling, so a wake reaches a tab open before the watch existed.
   const [watching, setWatching] = useState(false);
   useEffect(() => {
-    if (hasWatchActivity(organization.id)) setWatching(true);
-    return subscribeWatchActivity(() => {
-      if (hasWatchActivity(organization.id)) setWatching(true);
-    });
-  }, [organization.id]);
+    const sync = () => {
+      if (
+        shouldPollWakeFeed({
+          serverUnreadWakes: initialUnreadWakes,
+          organizationId: organization.id,
+        })
+      )
+        setWatching(true);
+    };
+    sync();
+    return subscribeWatchActivity(sync);
+  }, [organization.id, initialUnreadWakes]);
 
   useEffect(() => {
     if (!hasAccess || !watching) return;

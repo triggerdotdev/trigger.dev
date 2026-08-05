@@ -1,8 +1,10 @@
+import { countUnreadWatchWakes } from "@internal/dashboard-agent-db";
 import { Outlet, useLoaderData } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
+import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
@@ -96,19 +98,37 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       })
     : null;
 
+  // One narrow read per page load, so the wake signal reaches a browser that has never opened
+  // the panel. The poll never asks for this — it costs nothing per tick.
+  let dashboardAgentUnreadWakes = 0;
+  if (hasDashboardAgentAccess) {
+    try {
+      dashboardAgentUnreadWakes = await countUnreadWatchWakes(dashboardAgentDb, {
+        organizationId: project.organization.id,
+        userId: user.id,
+      });
+    } catch (error) {
+      // The dashboard must load even when the agent's store doesn't answer.
+      logger.error("Failed to count dashboard agent wakes", { error });
+    }
+  }
+
   return {
     ...project,
     hasDashboardAgentAccess,
     promotedDashboardAgentPrompt,
+    dashboardAgentUnreadWakes,
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt } = useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt, dashboardAgentUnreadWakes } =
+    useLoaderData<typeof loader>();
   return (
     <DashboardAgent
       hasAccess={hasDashboardAgentAccess}
       promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
+      initialUnreadWakes={dashboardAgentUnreadWakes}
     >
       <Outlet />
     </DashboardAgent>

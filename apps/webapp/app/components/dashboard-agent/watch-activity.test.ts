@@ -17,8 +17,13 @@ const windowStub = {
     void storageListeners.delete(listener),
 };
 
-const { forgetWatchActivity, hasWatchActivity, rememberWatchActivity, subscribeWatchActivity } =
-  await import("./watch-activity");
+const {
+  forgetWatchActivity,
+  hasWatchActivity,
+  rememberWatchActivity,
+  shouldPollWakeFeed,
+  subscribeWatchActivity,
+} = await import("./watch-activity");
 
 /** What another tab writing the key looks like here. */
 function otherTabWrote(organizationId: string) {
@@ -89,5 +94,22 @@ describe("watch activity", () => {
 
     expect(hasWatchActivity("org_0")).toBe(false);
     expect(hasWatchActivity("org_11")).toBe(true);
+  });
+
+  describe("shouldPollWakeFeed", () => {
+    it("polls in a fresh browser the page load says has an unread wake", () => {
+      expect(shouldPollWakeFeed({ serverUnreadWakes: 1, organizationId: "org_1" })).toBe(true);
+    });
+
+    it("stays quiet when neither the page load nor this browser knows of anything", () => {
+      expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_1" })).toBe(false);
+    });
+
+    it("polls without a reload once this browser sees a watch", () => {
+      rememberWatchActivity("org_1");
+
+      expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_1" })).toBe(true);
+      expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_2" })).toBe(false);
+    });
   });
 });
