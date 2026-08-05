@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ReportPresenter } from "~/presenters/v3/reports/ReportPresenter.server";
+import {
+  createReportCache,
+  ReportPresenter,
+} from "~/presenters/v3/reports/ReportPresenter.server";
 import { type ReportLoader } from "~/presenters/v3/reports/report-registry";
 import { type ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -73,10 +76,10 @@ function gatedRegistry(): {
   };
 }
 
-describe("ReportPresenter — single-flight", () => {
+describe("ReportPresenter — single-flight + TTL cache", () => {
   it("collapses concurrent identical calls into one load", async () => {
     const { registry, loadCalls, gate } = gatedRegistry();
-    const presenter = new ReportPresenter(registry);
+    const presenter = new ReportPresenter(registry, createReportCache());
 
     const a = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
     const b = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
@@ -93,7 +96,7 @@ describe("ReportPresenter — single-flight", () => {
 
   it("does not collapse calls that differ by period or environment", async () => {
     const { registry, loadCalls, gate } = gatedRegistry();
-    const presenter = new ReportPresenter(registry);
+    const presenter = new ReportPresenter(registry, createReportCache());
 
     const calls = [
       presenter.call({ environment: env("env_1"), key: "gated", period: "1h" }),
@@ -107,13 +110,16 @@ describe("ReportPresenter — single-flight", () => {
     expect(loadCalls()).toBe(3);
   });
 
-  it("runs a fresh load once the previous one has settled", async () => {
+  it("runs a fresh load once the cached report has expired", async () => {
     const { registry, loadCalls, gate, nextGate } = gatedRegistry();
-    const presenter = new ReportPresenter(registry);
+    // 1ms window, so the second call is past it without waiting on the real TTL.
+    const presenter = new ReportPresenter(registry, createReportCache(1));
 
     const first = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
     gate().resolve();
     await first;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     nextGate();
     const second = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
@@ -125,7 +131,7 @@ describe("ReportPresenter — single-flight", () => {
 
   it("evicts a rejected in-flight entry so the next call retries", async () => {
     const { registry, loadCalls, gate, nextGate } = gatedRegistry();
-    const presenter = new ReportPresenter(registry);
+    const presenter = new ReportPresenter(registry, createReportCache());
 
     const failing = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
     gate().reject(new Error("clickhouse exploded"));
@@ -141,9 +147,46 @@ describe("ReportPresenter — single-flight", () => {
     expect(loadCalls()).toBe(2);
   });
 
+  it("serves a settled report from the cache instead of loading again", async () => {
+    const { registry, loadCalls, gate, nextGate } = gatedRegistry();
+    const presenter = new ReportPresenter(registry, createReportCache());
+
+    const first = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
+    gate().resolve();
+    await first;
+
+    // A second gate that is never opened: if this call loaded, it would hang.
+    nextGate();
+    const second = await presenter.call({
+      environment: env("env_1"),
+      key: "gated",
+      period: "1h",
+    });
+
+    expect(loadCalls()).toBe(1);
+    expect(second).toMatchObject({ title: "gated" });
+  });
+
+  it("never serves one environment's cached report to another", async () => {
+    const { registry, loadCalls, gate, nextGate } = gatedRegistry();
+    const presenter = new ReportPresenter(registry, createReportCache());
+
+    const first = presenter.call({ environment: env("env_1"), key: "gated", period: "1h" });
+    gate().resolve();
+    await first;
+
+    nextGate();
+    const other = presenter.call({ environment: env("env_2"), key: "gated", period: "1h" });
+    gate().resolve();
+    await other;
+
+    // Same period, same report, different environment — a second load, not a cache hit.
+    expect(loadCalls()).toBe(2);
+  });
+
   it("returns undefined for an unknown key without touching the registry", async () => {
     const { registry, loadCalls } = gatedRegistry();
-    const presenter = new ReportPresenter(registry);
+    const presenter = new ReportPresenter(registry, createReportCache());
 
     await expect(
       presenter.call({ environment: env("env_1"), key: "nope" })
