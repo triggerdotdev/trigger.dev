@@ -239,7 +239,7 @@ async function batchHydrateJoinRelation(
     return byParent;
   }
   const links = (await join.findMany({
-    where: { [joinParentField]: { in: parentIds } },
+    where: { [joinParentField]: { in: boundedIn(parentIds) } },
     select: { [joinParentField]: true, [joinTargetField]: true },
   })) as Record<string, string>[];
   if (links.length === 0) {
