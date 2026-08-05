@@ -26,7 +26,11 @@ mode: "wide"
 | `DATABASE_CONNECTION_LIMIT`                      | No       | 10                    | Max DB connections.                                                                                                |
 | `DATABASE_POOL_TIMEOUT`                          | No       | 60                    | DB pool timeout (s).                                                                                               |
 | `DATABASE_CONNECTION_TIMEOUT`                    | No       | 20                    | DB connect timeout (s).                                                                                            |
+| `DATABASE_WRITER_POOL_TIMEOUT`                   | No       | `DATABASE_POOL_TIMEOUT`       | Writer pool timeout (s); overrides the shared default for the writer only.                                 |
+| `DATABASE_WRITER_CONNECTION_TIMEOUT`             | No       | `DATABASE_CONNECTION_TIMEOUT` | Writer connect timeout (s); overrides the shared default for the writer only.                              |
 | `DATABASE_READ_REPLICA_URL`                      | No       | `DATABASE_URL`        | Read-replica DB string.                                                                                            |
+| `DATABASE_READ_REPLICA_POOL_TIMEOUT`             | No       | `DATABASE_POOL_TIMEOUT`       | Read-replica pool timeout (s); overrides the shared default for the replica only.                          |
+| `DATABASE_READ_REPLICA_CONNECTION_TIMEOUT`       | No       | `DATABASE_CONNECTION_TIMEOUT` | Read-replica connect timeout (s); overrides the shared default for the replica only.                       |
 | **Redis**                                        |          |                       |                                                                                                                    |
 | `REDIS_HOST`                                     | Yes      | —                     | Redis host.                                                                                                        |
 | `REDIS_PORT`                                     | Yes      | —                     | Redis port.                                                                                                        |
