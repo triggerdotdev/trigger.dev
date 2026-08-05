@@ -38,10 +38,8 @@ export function dashboardAgentApiOrigin(): string {
 // mint a token for themselves. The `in` proxy injects this into the turn's
 // metadata so the token reaches the agent without ever touching the browser.
 //
-// `environmentId` scopes the token to the environment the turn is being taken
-// in, resolved here from the URL against the user's own session. Endpoints that
-// bind something to one environment (watches, watch alerts) read it off the
-// token, so the agent can't name a different one in a request body.
+// Endpoints that bind something to one environment read `environmentId` off the token,
+// so the agent can't name a different one in a request body.
 export function mintDashboardAgentUserActorToken(
   userId: string,
   opts: { environmentId?: string } = {}
@@ -55,10 +53,8 @@ export function mintDashboardAgentUserActorToken(
   });
 }
 
-// The API's env routes key on the canonical env name (dev/staging/prod/preview),
-// not the dashboard URL slug (e.g. staging's slug is "stg"). Anything handing the
-// agent an environment maps from the type through here, so a tool built from an
-// injected token and a tool built from a kicked action address the same place.
+// The API's env routes key on the canonical env name, not the dashboard URL slug
+// (staging's slug is "stg"). Anything handing the agent an environment maps through here.
 const ENV_NAME_BY_TYPE: Record<string, string> = {
   DEVELOPMENT: "dev",
   STAGING: "staging",

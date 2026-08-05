@@ -16,30 +16,13 @@ import {
 } from "~/services/dashboardAgentWatchToken.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches/:watchId/check` — private per-watch check.
- * The watcher task calls it once per tick with the watch's token.
- *
- * Security model: the token only names a watch; the row is the authority on
- * lifecycle and on the immutable project/environment/user snapshot; the user is
- * re-authorized against that snapshot on every call, and a revoked user gets the
- * watch cancelled here before any environment data is read.
- *
- * The route never transitions the watch to fired/expired and never advances the
- * tick counter. The watcher task owns both, so exactly one component decides when
- * the user is told and nothing here can fork the tick chain.
- *
- * It also hands a watch over to its group's batch chain: it makes sure a chain is
- * running for the watch's (environment, cadence) group and answers
- * `batched: true` when one is, at which point the caller stops rescheduling its
- * own per-watch chain.
+ * Private per-watch check. The token only names a watch; the row is the authority on
+ * lifecycle and its snapshot, and this route transitions nothing and advances no tick.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
 
-/**
- * Best-effort: the verdict is what this route owes its caller, so a chain that
- * couldn't be armed returns `false` and the next check tries again.
- */
+/** Best-effort: a chain that couldn't be armed returns `false` and is retried next check. */
 async function ensureBatchChain(watch: {
   id: string;
   environmentId: string;
@@ -91,8 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // A valid token for a different watch is 403, not 401: the caller is
-  // authenticated, just not for this resource.
+  // A valid token for a different watch is 403, not 401.
   if (claims.watchId !== watchId) {
     return json({ error: "Not allowed for this watch", code: "watch_mismatch" }, { status: 403 });
   }
@@ -129,8 +111,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const now = new Date();
   const expired = watch.expiresAt.getTime() <= now.getTime();
   if (expired) {
-    // Past the deadline only the final evaluation is allowed, and only inside the
-    // grace window the token is valid for.
+    // Past the deadline only the final evaluation is allowed, inside the token's grace.
     const graceEnds = watch.expiresAt.getTime() + WATCH_TOKEN_GRACE_MS;
     if (body.final !== true || now.getTime() > graceEnds) {
       return json(
@@ -140,11 +121,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 
-  // Everything below reads or writes a tenant's data, so failures are logged with
-  // whose tick failed, then rethrown unchanged.
   try {
-    // Re-authorize the initiating user before any environment data is read, so a
-    // revoked user's tick can't observe anything.
+    // Re-authorize the initiating user before any environment data is read.
     const authorization = await authorizeWatchEnvironment({
       userId: watch.userId,
       organizationId: watch.organizationId,
@@ -153,8 +131,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!authorization.ok) {
-      // The watch must not survive the access it was created with. Cancellation is
-      // never notified, so `deliveryStatus` stays `not_required`.
+      // A watch must not outlive the access it was created with. Never notified.
       await cancelWatch(dashboardAgentDb, { id: watchId, reason: "access_revoked" });
       return json(
         { error: "Access to this environment was revoked", code: "access_revoked" },
@@ -166,8 +143,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const outcome = await checkWatch(
       watch.spec,
       watchCheckDeps(authorization.environment, now),
-      // `previous` is the last check's facts, off the row. A tick that couldn't read
-      // anything freezes a streak instead of resetting it.
+      // A tick that couldn't read anything freezes a streak instead of resetting it.
       { now, since, previous: previousCheckFacts(watch.lastResult) },
       (error) =>
         logger.error("Dashboard agent watch check failed", {
@@ -180,8 +156,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         })
     );
 
-    // Recorded even on the final evaluation: `lastResult` is what the notification
-    // reads. Guarded on `active`, so a concurrent fire/expire wins and this no-ops.
+    // Recorded even on the final evaluation. Guarded on `active`, so a concurrent
+    // fire/expire wins and this no-ops.
     await recordWatchCheck(dashboardAgentDb, {
       id: watchId,
       lastResult: {
@@ -194,8 +170,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     const batched = await ensureBatchChain(watch);
 
-    // `observed` travels with the verdict: the task writes it onto the row in the
-    // same statement as the resolution, so no delivery surface re-reads the source.
+    // `observed` travels with the verdict so no delivery surface re-reads the source.
     return json({
       result: outcome.result,
       facts: outcome.facts,

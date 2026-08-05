@@ -1,8 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { AuthenticatedEnvironment } from "./apiAuth.server";
 
-// All fields are optional: the middleware establishes an empty scope per request and each
-// entry point fills what it already knows, without extra queries.
+// Every field is optional: each entry point fills only what it already knows.
 export type TenantContext = {
   userId?: string;
   orgSlug?: string;
@@ -31,8 +30,7 @@ export const tenantContext = {
   },
 };
 
-// `actor` is the env JWT's delegation claim. It wins over `orgMember`, which only exists on
-// dev environments, so a call against a shared prod or staging env still gets attributed.
+// `actor` wins over `orgMember`, which only exists on dev environments.
 export function tenantContextFromAuthEnvironment(
   env: AuthenticatedEnvironment,
   actor?: { sub: string }

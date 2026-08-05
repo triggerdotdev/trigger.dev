@@ -93,9 +93,8 @@ const ActionBody = z.object({
   draft: z.string().optional(),
 });
 
-// History list by default. `?chatId=` returns the stored transcript plus session for
-// resume, `?unread=1` the unread wake count and recent wakes (polled while the panel
-// is closed, so it stays cheap), `?quota=1` the user's message count for the Free cap.
+// History list by default. `?chatId=` returns the stored transcript plus session,
+// `?unread=1` the unread wake count and recent wakes, `?quota=1` the message count.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -118,8 +117,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const searchParams = new URL(request.url).searchParams;
 
   if (searchParams.get("unread") === "1") {
-    // The list is recent deliveries, not unread ones: a wake the user happened to be
-    // reading when it landed still deserves its toast. The client dedupes by id.
+    // The list is recent deliveries, not unread ones. The client dedupes by id.
     const [unreadWakes, wakes] = await Promise.all([
       countUnreadWatchWakes(dashboardAgentDb, {
         organizationId: project.organizationId,
@@ -134,8 +132,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ unreadWakes, wakes });
   }
 
-  // The open chat is excluded and counted from the live transcript instead, so a
-  // turn that hasn't been persisted yet still counts against the cap.
+  // The open chat is excluded and counted from the live transcript instead, so an
+  // unpersisted turn still counts against the cap.
   if (searchParams.get("quota") === "1") {
     const used = await countUserMessages(dashboardAgentDb, {
       organizationId: project.organizationId,
@@ -159,8 +157,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // One query each for all the listed chats: the history list must not fan out a
-  // query per row.
+  // One query each for all the listed chats, never one per row.
   const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
     listActiveWatchesForChats({
       chatIds: chats.map((chat) => chat.id),
@@ -188,8 +185,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         ...chat,
         watches,
         hasUnreadWake: unreadChatIds.has(chat.id),
-        // `watches` also carries fired and expired rows (the wake banner needs
-        // their kind), so the running marker checks for active specifically.
+        // `watches` also carries fired and expired rows, so check for active here.
         hasActiveWatch: watches.some((watch) => watch.status === "active"),
         hasOpenInvestigation: investigatingChatIds.has(chat.id),
       };
@@ -220,9 +216,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const parsed = ActionBody.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) return json({ error: "Invalid request" }, { status: 400 });
 
-  // The server generates the chat id, so a client can never name another user's
-  // chat. Kicks off the first turn and returns the id plus token; the client
-  // mounts with that id and resumes the stream.
+  // The server generates the chat id, so a client can never name another user's chat.
   if (parsed.data.intent === "create") {
     if (!isDashboardAgentConfigured()) {
       return json({ error: "The dashboard agent is not configured." }, { status: 501 });
@@ -265,32 +259,29 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const headStarted = Boolean(env.ANTHROPIC_API_KEY);
       if (headStarted) {
-        // Head start runs step 1 with this first message and injects the delegated
-        // token and context into the run's payload server-side.
+        // Injects the delegated token and context into the run's payload server-side.
         await startDashboardAgentHeadStart({
           chatId,
           messages: [firstMessage],
           mode: repoSnapshot ? "code" : "assistant",
           metadata: {
-            // The agent validates run metadata against its clientDataSchema, so
-            // the per-turn clientData must be present alongside the injected
-            // auth and context fields.
+            // The agent validates run metadata against its clientDataSchema, so the
+            // per-turn clientData must accompany the injected auth and context fields.
             ...(clientData ?? {}),
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv?.id,
             }),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
-            // Same environment identity the `in` proxy injects, so every turn
-            // carries identical context.
+            // Same environment identity the `in` proxy injects.
             environmentId: runtimeEnv?.id,
             environmentName,
             ...(repoSnapshot ? { repoSnapshot } : {}),
           },
         });
       } else {
-        // Cold start: preload the session. The client sends the first message
-        // through the transport, where the `in` proxy injects the token.
+        // Cold start: the client sends the first message through the `in` proxy, which
+        // injects the token.
         await startDashboardAgentSession({ chatId, clientData });
       }
 
@@ -305,9 +296,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Turn a `trigger://` URI into the dashboard path it points at. Scoped by the
-  // environment in the URL: the resolver refuses a URI naming a different project
-  // or environment.
+  // Scoped by the environment in the URL: the resolver refuses a URI naming a
+  // different project or environment.
   if (parsed.data.intent === "resolve") {
     const uri = parsed.data.uri;
     if (!uri) return json({ error: "uri is required" }, { status: 400 });
@@ -315,8 +305,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const environment = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!environment) return json({ error: "Environment not found" }, { status: 404 });
 
-    // A source URI resolves to a GitHub blob link, so it needs the connected
-    // repository. Other kinds resolve to dashboard paths without it.
+    // Only a source URI needs the connected repository.
     const repository = uri.includes("/source/")
       ? await $replica.connectedGithubRepository.findFirst({
           where: {
@@ -340,13 +329,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
   }
 
-  // The configuration card's submit path. Nothing is written until this action runs,
-  // and it writes exactly one message: a confirmation, or a one-shot result when the
-  // immediate check already answered.
-  //
-  // The environment comes from the URL the user is on and goes through the same
-  // re-authorization a background tick passes. Never from the request body, never
-  // from the chat's stored context.
+  // The configuration card's submit path. The environment comes from the URL and goes
+  // through the same re-authorization a background tick passes, never from the body.
   if (parsed.data.intent === "watch-create") {
     let draft: WatchDraft;
     try {
@@ -370,9 +354,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
     }
 
-    // A watch is chat-bound, so a card submitted from a fresh panel needs a chat to
-    // belong to. Created with no first message and no agent run: the confirmation
-    // block below is the whole conversation until the user types.
+    // A watch is chat-bound, so a card submitted from a fresh panel creates a chat.
     let targetChatId = parsed.data.chatId;
     if (targetChatId) {
       if (
@@ -402,8 +384,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       investigateOnAttention: draft.followUp.investigateOnAttention,
     });
 
-    // Validation, cap and network errors stay inside the ephemeral card and persist
-    // nothing, so this returns before any append.
+    // Returns before any append, so a failed creation persists nothing.
     if (!result.ok) {
       const status =
         result.code === "limit_reached" || result.code === "duplicate"
@@ -423,8 +404,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       );
     }
 
-    // Attached after the watch exists, and a refusal never fails the creation: the
-    // in-dashboard signal still works and the confirmation just won't claim an email.
+    // Attached after the watch exists, and a refusal never fails the creation.
     let notifiedExternally = false;
     if (result.watching && draft.followUp.notifyExternally) {
       const subscribed = await subscribeUserToWatchAlerts({ userId, environment });
@@ -447,7 +427,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         });
 
     // `id` is the watch (or the identity, for a one-shot), so a retried submit
-    // replaces the block rather than stacking a second one.
+    // replaces the block.
     const message = {
       id: `watch-card:${result.watching ? result.watchId : result.identity}`,
       role: "assistant" as const,
@@ -491,9 +471,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Resume only: new chats come from the `create` intent. The transport falls
-      // back here to re-establish a session for an existing chat, so a
-      // client-supplied chatId must be checked against the caller first.
+      // Resume only, so a client-supplied chatId is checked against the caller first.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -527,8 +505,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Only mint a token for a chat the caller owns, so a client-supplied chatId
-      // can't reach someone else's session.
+      // Only mint a token for a chat the caller owns.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -573,8 +550,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "delete": {
-      // The org scope lives here: `deleteChatWithWatches` is owner-scoped but
-      // takes no org, so a chat from another org in the URL must 404 before it.
+      // `deleteChatWithWatches` is owner-scoped but takes no org, so the org scope has
+      // to be enforced here.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -584,15 +561,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
-      // A deleted chat has nowhere to deliver a watch outcome, so the delete and
-      // the watch cancellations land in one transaction.
+      // The delete and the watch cancellations land in one transaction.
       const { cancelledWatches } = await deleteChatWithWatches({ chatId, userId });
       return json({ ok: true, cancelledWatches });
     }
 
-    // Ownership goes through the chat: the watch must belong to the chat named in
-    // the request, and that chat to this user in this org, so a watch id alone can
-    // never cancel someone else's watch.
+    // Ownership goes through the chat: the watch must belong to the named chat, and
+    // that chat to this user in this org.
     case "watch-cancel": {
       const watchId = parsed.data.watchId;
       if (!watchId) return json({ error: "watchId is required" }, { status: 400 });
@@ -612,8 +587,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "Chat not found" }, { status: 404 });
       }
 
-      // A watch that already fired or expired keeps its outcome — `cancelWatch`
-      // only touches an active row, so this is a no-op then, not an error.
+      // `cancelWatch` only touches an active row, so an already-resolved watch keeps
+      // its outcome and this is a no-op.
       await cancelWatch(dashboardAgentDb, { id: watchId, reason: "user" });
       return json({ ok: true });
     }

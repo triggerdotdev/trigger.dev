@@ -1,16 +1,6 @@
 /**
- * Default IO wiring for the watch checks. Kept apart from
- * `dashboardAgentWatchChecks.ts` so the checks stay IO-independent.
- *
- * ClickHouse-first, with Postgres reserved for authoritative point-reads: run state is
- * transactional and must not come from an analytics rollup, and queue existence is one
- * Postgres read. Queue depth prefers the live run-queue counter with the ClickHouse
- * depth series as fallback. Error recurrence combines `errors_v1` for whether it
- * recurred with the per-minute rollup for the count.
- *
- * Readers throw on failure rather than swallowing it, because `checkWatch` turns a
- * throw into `unavailable`. A reader returning a made-up zero would fire a watch on a
- * broken data source.
+ * Default IO wiring for the watch checks. Run state and queue existence are authoritative
+ * Postgres point-reads, and readers throw rather than invent a zero on a broken source.
  */
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -66,9 +56,8 @@ export async function watchQueueExists(environmentId: string, queueName: string)
 const DEPTH_FALLBACK_MINUTES = 10;
 const DEPTH_FALLBACK_BUCKET_SECONDS = 60;
 /**
- * How far behind `now` the newest analytics bucket may end and still be read as "the
- * queue right now". One bucket of slack: anything older leaves a gap the rollup hasn't
- * covered, and runs queued in that gap would be invisible.
+ * How far behind `now` the newest analytics bucket may end and still count as current.
+ * One bucket of slack: anything older leaves runs queued in the gap invisible.
  */
 const DEPTH_FRESH_TOLERANCE_MS = DEPTH_FALLBACK_BUCKET_SECONDS * 1000;
 
@@ -82,13 +71,8 @@ function parseClickhouseDateTime(value: string): Date {
 }
 
 /**
- * Current pending count for one queue. The live run-queue counter is the truth;
- * ClickHouse is the fallback and reports the most recent bucket's peak depth, which can
- * only over-report within that bucket.
- *
- * The fallback's `current` is false unless the newest bucket reaches the present: a
- * rollup minutes behind may hold an empty bucket while runs piled up after it, and
- * `checkBacklogDrain` turns such a stale zero into `unavailable`.
+ * Current pending count for one queue. The live counter is the truth; the ClickHouse fallback
+ * reports the newest bucket's peak depth and is `current` only if it reaches the present.
  */
 export async function readWatchQueueDepth(
   environment: AuthenticatedEnvironment,
@@ -122,7 +106,7 @@ export async function readWatchQueueDepth(
   if (error) throw error;
   if (!rows || rows.length === 0) return null;
 
-  // Newest bucket wins: the closest thing the rollup has to "now".
+  // Newest bucket wins: the closest the rollup gets to now.
   const newest = rows.reduce((best, row) => (row.bucket > best.bucket ? row : best), rows[0]!);
   const bucketEnd = new Date(parseClickhouseDateTime(newest.bucket).getTime() + bucketMs);
   const current = bucketEnd.getTime() >= now.getTime() - DEPTH_FRESH_TOLERANCE_MS;
@@ -131,16 +115,8 @@ export async function readWatchQueueDepth(
 }
 
 /**
- * How long the oldest run still waiting in one queue has been waiting, composed the
- * same way the queue detail page's oldest-wait block does it: for a concurrency-keyed
- * queue the worst across keys with a live backlog (a lingering index entry whose
- * subqueue drained would over-report), otherwise the queue's own oldest message.
- *
- * Live-only on purpose. The analytics rollup has no general oldest-wait gauge, and an
- * age is the reading staleness corrupts in both directions, so a failure here is
- * `unavailable` and the reading is always `current`.
- *
- * Returns `null` when the queue can't be read at all, `ageMs: null` when it is empty.
+ * How long the oldest still-waiting run in a queue has waited: for a concurrency-keyed queue the
+ * worst across keys with a live backlog. `null` can't be read, `ageMs: null` is empty.
  */
 export async function readWatchQueueOldestAge(
   environment: AuthenticatedEnvironment,
@@ -173,13 +149,8 @@ type OrganizationClickhouse = Awaited<
 >;
 
 /**
- * The fingerprint's most recent occurrence at millisecond precision, from the
- * `errors_v1` aggregate.
- *
- * This is what makes "has it come back?" answerable exactly. The per-minute rollup can
- * only place an error in a minute, and the minute a watch is created in holds both the
- * error that prompted the watch and any recurrence seconds later, so the rollup alone
- * can neither confirm nor deny a recurrence in that first minute.
+ * The fingerprint's most recent occurrence at millisecond precision, from `errors_v1`. The
+ * per-minute rollup can't separate the prompting error from a recurrence in the same minute.
  */
 async function readErrorLastSeen(
   clickhouse: OrganizationClickhouse,
@@ -209,13 +180,8 @@ async function readErrorLastSeen(
 }
 
 /**
- * What we know about an error fingerprint relative to `since`, from two reads:
- *
- * - `errors_v1` decides whether it recurred, to the millisecond, so an occurrence 40
- *   seconds after the watch was created still counts.
- * - `error_occurrences_v1` supplies the count and, for minutes after the creation
- *   minute, when. Its creation-minute bucket can't be split between the original error
- *   and a recurrence, so those occurrences only make `countSince` a lower bound.
+ * What we know about a fingerprint relative to `since`. `errors_v1` decides whether it
+ * recurred; the rollup's count is a lower bound when the creation-minute bucket has hits.
  */
 export async function readWatchErrorRecurrence(
   environment: AuthenticatedEnvironment,
@@ -240,7 +206,7 @@ export async function readWatchErrorRecurrence(
   };
   if (lastSeenAt.getTime() <= since.getTime()) return notRecurred;
 
-  // Something landed after `since`. The rollup fills in the count and the minute.
+  // Something landed after `since`; the rollup fills in the count and the minute.
   const sinceMinuteMs = Math.floor(since.getTime() / MINUTE_MS) * MINUTE_MS;
   const queryBuilder = clickhouse.errors.createOccurrencesQueryBuilder("INTERVAL 1 MINUTE");
   queryBuilder.where("organization_id = {organizationId: String}", {
@@ -273,8 +239,8 @@ export async function readWatchErrorRecurrence(
     if (earliestAfterMs === null || bucketMs < earliestAfterMs) earliestAfterMs = bucketMs;
   }
 
-  // The earliest time we can prove an occurrence at: a bucket that starts after the
-  // creation minute, or the exact `last_seen` when that is the only evidence.
+  // The earliest provable occurrence: a bucket starting after the creation minute, or the
+  // exact `last_seen` when that is the only evidence.
   const useBucket = earliestAfterMs !== null && earliestAfterMs < lastSeenAt.getTime();
 
   return {
@@ -290,9 +256,8 @@ export async function readWatchErrorRecurrence(
 const HEALTH_SEVERITIES = new Set<string>(["ok", "warn", "crit"]);
 
 /**
- * The health report's current verdict, straight from the existing interpreter: the same
- * `summary.severity` the dashboard and `get_report` show, and the same
- * `facts.trustworthy` marker. No health reasoning is re-implemented here.
+ * The health report's current verdict, from the existing interpreter. No health reasoning
+ * is re-implemented here.
  */
 export async function readWatchHealth(
   environment: AuthenticatedEnvironment
@@ -305,14 +270,12 @@ export async function readWatchHealth(
 
   const trustworthy = (report.facts as { trustworthy?: unknown } | undefined)?.trustworthy;
   return {
-    // An absent trust marker counts as untrustworthy: recovery must never fire off a
-    // report that didn't state it was trustworthy.
+    // An absent trust marker counts as untrustworthy.
     trustworthy: trustworthy === true,
     severity: severity as WatchHealthSeverity,
   };
 }
 
-/** Wire the real readers for one environment. */
 export function watchCheckDeps(
   environment: AuthenticatedEnvironment,
   now: Date = new Date()

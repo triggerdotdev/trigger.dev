@@ -44,8 +44,7 @@ const ClaimsSchema = z.object({
       skipColumns: z.array(z.string()).optional(),
     })
     .optional(),
-  // Delegation stamped at env-JWT exchange time. Identity only: authorization
-  // comes from `sub` (the environment) and `scopes`, never from `act`.
+  // Identity only. Authorization comes from `sub` and `scopes`, never from `act`.
   act: z
     .object({
       sub: z.string(),

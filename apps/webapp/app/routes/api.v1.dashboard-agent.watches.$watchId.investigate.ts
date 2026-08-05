@@ -14,18 +14,8 @@ import {
 import { logger } from "~/services/logger.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches/:watchId/investigate` — the watcher task
- * tells us it has delivered the wake for a watch whose creator pre-approved an
- * investigation, so the agent can be sent off to actually conduct it.
- *
- * Same security model as the fired callback next door: the token only names a watch,
- * the row is the authority on what happened, and the watch's initiating user is
- * re-authorized against the row's immutable project/environment before anything is
- * minted, so an investigation never outlives the access the watch was created with.
- *
- * The caller's body is ignored, so a replay can only re-ask for what the row already
- * says, and the agent dedupes on the action's stable id. The consent, the outcome,
- * the user and the environment all come off the row, so the model cannot steer them.
+ * The watcher task reports a delivered wake for a pre-approved investigation. The caller's
+ * body is ignored: consent, outcome, user and environment all come off the row.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
@@ -64,8 +54,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Watch not found", code: "not_found" }, { status: 404 });
   }
 
-  // The row decides on all three counts: it has resolved, the user consented, and
-  // the outcome is one the consent covers.
   if (!isTerminalWatchStatus(watch.status)) {
     return json(
       { error: `This watch is ${watch.status}`, code: "not_resolved", status: watch.status },
@@ -74,7 +62,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   if (!watchWantsInvestigation(watch)) {
-    // Good news, neutral news, or no consent — the wake was the whole delivery.
+    // No consent, or an outcome consent doesn't cover: the wake was the whole delivery.
     return json({ ok: true, investigating: false });
   }
 
@@ -95,10 +83,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // Best-effort, and never an error to the caller: the wake is already delivered and
-  // marked by the time we are called, so a failed kick must not make the watcher
-  // retry. A turn that never starts, or dies mid-investigation, is settled by the
-  // stale-investigation sweep.
+  // Never an error to the caller: the wake is already delivered and marked, so a failed
+  // kick must not make the watcher retry. The stale-investigation sweep settles it.
   try {
     await kickWatchInvestigation({ watch, environment: authorization.environment });
   } catch (error) {

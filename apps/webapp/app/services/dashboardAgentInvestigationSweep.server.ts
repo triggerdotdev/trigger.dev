@@ -1,13 +1,6 @@
 /**
- * The investigation backstop, for cards left `in_progress` between turns. A turn
- * force-settles what it left open, but two rows escape that: a card whose turn died
- * before its settle ran, and a card opened for a later turn whose follow-up never came.
- * Both read the same to the user, a card spinning forever, so both get the same ending
- * the turn-level settle gives: `inconclusive`, keeping the facts that were established
- * and claiming nothing that wasn't proven.
- *
- * Guarded, not coordinated: the settle is one statement conditional on the row still
- * being `in_progress`, so a turn that concludes the card first wins.
+ * The investigation backstop, for cards left `in_progress`. They settle as `inconclusive`,
+ * conditional on the row still being `in_progress`, so a concluding turn wins the race.
  */
 
 import {
@@ -20,9 +13,8 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
 
 /**
- * How long a card may sit `in_progress` before the sweep settles it. A turn bumps
- * `updated_at` on every revision, so this only has to outlast the slowest live turn. It
- * must never settle a card someone is writing.
+ * How long a card may sit `in_progress` before the sweep settles it. Must outlast the
+ * slowest live turn, which bumps `updated_at` on every revision.
  */
 export const INVESTIGATION_STALE_MS = 30 * 60 * 1000;
 
@@ -47,11 +39,8 @@ export type InvestigationSweepDeps = {
 };
 
 /**
- * One sweep: settle every card that has been `in_progress` past the grace window.
- *
- * Each row is handled on its own so a single failure doesn't cost the rest of the batch,
- * and the run throws at the end if anything failed, so the job is retried. A row left
- * behind stays as it was and the next sweep picks it up.
+ * Settle every card `in_progress` past the grace window. Each row is handled on its own,
+ * and the run throws at the end if any failed so the job is retried.
  */
 export async function sweepDashboardAgentInvestigations(
   deps: InvestigationSweepDeps = {}

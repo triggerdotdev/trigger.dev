@@ -7,10 +7,7 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 
 /**
  * `DELETE /api/v1/dashboard-agent/alerts/:channelId` — stop alerting this channel
- * when a watch fires. Same semantics as the email's unsubscribe link.
- *
- * The channel is looked up scoped to the chat's project, so a channel id from
- * another project 404s rather than being touched.
+ * when a watch fires. The channel is looked up scoped to the chat's project.
  */
 
 const ParamsSchema = z.object({ channelId: z.string().min(1) });
@@ -34,7 +31,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
-  // The turn's environment scope — the authority for the chat's project below.
+  // The turn's environment scope is the authority for the chat's project below.
   const environmentId = authentication.userActor.environmentId;
   if (!environmentId) {
     return json(

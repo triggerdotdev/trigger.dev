@@ -18,16 +18,8 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
 
 /**
- * `GET /api/v1/dashboard-agent/alerts` — what alerts this chat's project sends
- * when a watch fires.
- * `POST /api/v1/dashboard-agent/alerts` — subscribe the user's email to them.
- *
- * Accepts only the dashboard agent's delegated user-actor token, like the watches
- * endpoint: POST creates something that later mails a person. The environment comes
- * from the token, not the body, via `resolveAgentAlertContext`.
- *
- * The feature-flag gate is enforced here and again at delivery, and its denial
- * carries a machine-readable `reason` so the agent can say why.
+ * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only
+ * the agent's delegated user-actor token is accepted, and the environment comes from it.
  */
 
 const ListQuerySchema = z.object({
@@ -39,16 +31,13 @@ const ListQuerySchema = z.object({
 const CreateBodySchema = z.object({
   chatId: z.string().min(1),
   channel: z.literal("email"),
-  /** Omit it: it defaults to, and may only be, the authenticated user's account email. */
+  /** May only be the authenticated user's own account email. */
   email: z.string().email().optional(),
   environmentId: z.string().min(1).optional(),
   projectRef: z.string().min(1).optional(),
 });
 
-/**
- * Shared preamble: a dashboard-agent token plus the environment scope it was minted
- * with. That scope is the authority here, so a token without one is unusable.
- */
+/** A token without an environment scope is unusable here. */
 async function authenticate(
   request: Request
 ): Promise<{ userId: string; environmentId: string } | { error: Response }> {
@@ -68,7 +57,7 @@ async function authenticate(
   return { userId: actor.userId, environmentId: actor.environmentId };
 }
 
-/** Context failures: a mismatched claim is the caller's error, the rest are 404s. */
+/** A mismatched claim is the caller's error, the rest are 404s. */
 function contextStatus(code: AgentAlertContextError) {
   return code === "environment_mismatch" ? 400 : 404;
 }
@@ -165,9 +154,8 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Alerts are not available here", code: gate.reason }, { status: 403 });
   }
 
-  // The agent may only subscribe the signed-in user's own account email, so a model
-  // can't be talked into mailing a watch to someone else. Read off the primary, not
-  // the replica: this is the identity the subscription is pinned to.
+  // Only the signed-in user's own account email may be subscribed. Read off the
+  // primary: this is the identity the subscription is pinned to.
   const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
   if (!user) {
     return json({ error: "User not found", code: "invalid_request" }, { status: 404 });
@@ -190,8 +178,7 @@ export async function action({ request }: ActionFunctionArgs) {
       name: `Watch alerts for ${email}`,
       alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
       environmentTypes: [environment.type],
-      // Stable per (email, project): asking twice re-enables the existing
-      // subscription instead of stacking duplicate channels.
+      // Stable per (email, project), so asking twice re-enables one channel.
       deduplicationKey: `dashboard-agent-watch:${email}`,
       channel: { type: "EMAIL", email },
     });

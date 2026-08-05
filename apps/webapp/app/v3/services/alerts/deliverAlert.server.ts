@@ -393,8 +393,7 @@ export class DeliverAlertService extends BaseService {
       }
       case "ERROR_GROUP":
       case "DASHBOARD_AGENT_WATCH": {
-        // Payload-carried alert types never create a ProjectAlert row, so this
-        // service never sees them.
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {
@@ -751,8 +750,7 @@ export class DeliverAlertService extends BaseService {
       }
       case "ERROR_GROUP":
       case "DASHBOARD_AGENT_WATCH": {
-        // Payload-carried alert types never create a ProjectAlert row, so this
-        // service never sees them.
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {
@@ -1030,8 +1028,7 @@ export class DeliverAlertService extends BaseService {
       }
       case "ERROR_GROUP":
       case "DASHBOARD_AGENT_WATCH": {
-        // Payload-carried alert types never create a ProjectAlert row, so this
-        // service never sees them.
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {

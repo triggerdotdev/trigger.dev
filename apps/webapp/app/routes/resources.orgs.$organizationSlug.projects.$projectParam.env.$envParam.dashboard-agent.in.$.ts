@@ -12,15 +12,8 @@ import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
-// Same-origin proxy for the chat append request, so every turn passes through the
-// dashboard session before reaching the agent. That hop mints a read-only delegated
-// token for the signed-in user and injects it into `payload.metadata`, so the token
-// never touches the browser and minting stays tied to the user's own session.
-//
-// The token is scoped to the environment in this URL, which is what the agent's
-// writing endpoints bind to, so a turn can only act in the environment the user is
-// looking at. Only `kind === "message"` turns carry metadata. Only the headers the
-// API needs are forwarded; the dashboard session cookie is dropped.
+// Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
+// to the environment in this URL, so the token never reaches the browser.
 
 const FORWARDED_HEADERS = [
   "authorization",
@@ -64,8 +57,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   const environmentName = dashboardAgentEnvironmentName(runtimeEnv?.type);
 
-  // A signed source-archive pointer when the project has a connected GitHub repo.
-  // Null otherwise, and the agent stays in assistant mode.
+  // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
   const raw = await request.text();
@@ -75,9 +67,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       kind?: string;
       payload?: { trigger?: string; metadata?: Record<string, unknown> };
     };
-    // Actions are placed by the server only: wakes and investigate kicks write to
-    // `.in` with an environment key. This proxy is the one path a browser can reach
-    // `.in` through, so refusing here keeps that boundary real.
+    // Actions are placed by the server only, and this proxy is the one path a browser
+    // can reach `.in` through.
     if (parsed.payload?.trigger === "action") {
       return json({ error: "Not allowed" }, { status: 403 });
     }
@@ -89,9 +80,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }),
         apiOrigin,
         projectRef: project.externalRef,
-        // `(projectId, slug)` isn't unique (dev is per-member) and names are
-        // display-only, so anything addressing one environment row uses this id.
-        // `environmentName` stays for the agent's name-addressed tools.
+        // `(projectId, slug)` isn't unique (dev is per-member), so anything addressing
+        // one environment row uses this id. `environmentName` is for name-addressed tools.
         environmentId: runtimeEnv?.id,
         environmentName,
         ...(repoSnapshot ? { repoSnapshot } : {}),

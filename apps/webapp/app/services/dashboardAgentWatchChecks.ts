@@ -1,15 +1,6 @@
 /**
- * Deterministic evaluation of one watch condition. No LLM, no transport: IO lives
- * behind `WatchCheckDeps` so tests inject fake readers.
- *
- * Rules that hold for every check:
- * - `unavailable` is never a verdict. A reader that throws yields `unavailable`,
- *   never `pending` (which would burn the watch's lifetime on a broken source).
- * - `facts` are computed here so the model never derives a duration itself.
- *   Durations carry their basis: a wait is only called a queue wait when
- *   `queuedAt` supports it.
- * - `observed` records what the check saw. The resolution says how the watch
- *   ended, the observation says what was true then, and presentation needs both.
+ * Deterministic evaluation of one watch condition, with IO behind `WatchCheckDeps`. `unavailable`
+ * is never a verdict, durations carry their basis, and `observed` is kept apart from the result.
  */
 
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
@@ -29,7 +20,7 @@ export type WatchRunRow = {
   createdAt: Date;
   /** Stamped when the run entered the queue. NULL while a run is delayed. */
   queuedAt: Date | null;
-  /** Set once the run is dequeued — the run has started. */
+  /** Set once the run is dequeued. */
   startedAt: Date | null;
   completedAt: Date | null;
   delayUntil: Date | null;
@@ -39,21 +30,15 @@ export type WatchQueueDepth = {
   /** Pending count for the queue, as of `asOf`. */
   depth: number;
   source: "live_queue" | "queue_metrics";
-  /**
-   * Whether the reading describes the queue right now. A stale reading can never
-   * answer "drained".
-   */
+  /** A stale reading can never answer "drained". */
   current: boolean;
   /** What instant the reading describes, when it isn't the live counter. */
   asOf?: Date;
 };
 
 /**
- * The oldest still-waiting run's age in one queue.
- *
- * A non-current age is wrong in both directions (the run may have started, or
- * aged past the SLA since), so `checkQueueOldestAge` refuses it outright rather
- * than comparing it to a threshold.
+ * The oldest still-waiting run's age in one queue. A non-current age is wrong in both
+ * directions, so `checkQueueOldestAge` refuses it rather than comparing it.
  */
 export type WatchQueueOldestAge = {
   /** Age of the oldest run still waiting, in ms. Null when nothing is waiting. */
@@ -65,19 +50,13 @@ export type WatchQueueOldestAge = {
 
 /** What we know about the watched error's occurrences relative to `since`. */
 export type WatchErrorRecurrence = {
-  /**
-   * The earliest occurrence proven to be after `since`, or null when nothing has
-   * recurred. Null with a `lastSeenAt` means "seen before, not since".
-   */
+  /** Earliest occurrence proven after `since`. Null with a `lastSeenAt` means not since. */
   occurredAt: Date | null;
   /** How precisely `occurredAt` is known: to the millisecond, or to its minute. */
   occurredAtPrecision: "exact" | "minute" | null;
   /** Occurrences after `since`. A lower bound when `countApproximate`. */
   countSince: number;
-  /**
-   * True when `countSince` can't be split exactly: occurrences in the minute the
-   * watch was created can't be told apart from the error that prompted it.
-   */
+  /** True when occurrences in the watch's creation minute can't be separated out. */
   countApproximate: boolean;
   /** The fingerprint's most recent occurrence, whenever it was. */
   lastSeenAt: Date | null;
@@ -92,9 +71,8 @@ export type WatchHealthSnapshot = {
 };
 
 /**
- * The readers a check may use. Each may throw — the caller turns that into
- * `unavailable`. Returning `null` means "the data source answered, and there is
- * nothing there", which each check interprets on its own terms.
+ * The readers a check may use. Each may throw, which the caller turns into `unavailable`.
+ * `null` means the source answered and there is nothing there.
  */
 export type WatchCheckDeps = {
   /** Run point-read by public run id, scoped to the watch's environment. */
@@ -105,43 +83,26 @@ export type WatchCheckDeps = {
   readQueueDepth: (queue: string) => Promise<WatchQueueDepth | null>;
   /** Age of the oldest run still waiting in the queue, right now. */
   readQueueOldestAge: (queue: string) => Promise<WatchQueueOldestAge | null>;
-  /**
-   * What's known about `fingerprint` relative to `since`. `null` means the
-   * fingerprint has no occurrences at all in this environment.
-   */
+  /** `null` means the fingerprint has no occurrences at all in this environment. */
   readErrorRecurrence: (fingerprint: string, since: Date) => Promise<WatchErrorRecurrence | null>;
   /** The health report's current verdict for the watch's environment. */
   readHealth: () => Promise<WatchHealthSnapshot | null>;
 };
 
 export type WatchCheckInput = {
-  /** Evaluation clock — injected so durations are testable. */
   now: Date;
-  /**
-   * The recurrence window's start for `error_recurrence`: the server-set
-   * `spec.since`, falling back to the watch row's `createdAt`. Never caller-set.
-   */
+  /** The recurrence window's start: the server-set `spec.since`, never caller-set. */
   since: Date;
   /**
-   * The previous check's facts, for the stateful kinds. State lives in the facts a
-   * check emits, which `recordWatchCheck` already persists on the row: no new
-   * column, and no check may keep state anywhere else. Extract it with
-   * {@link previousCheckFacts}.
-   *
-   * Absent (creation-time check, first tick, a stateless kind) means "no prior
-   * observation", never "zero".
+   * The previous check's facts, for the stateful kinds. A check's own facts are the only
+   * storage for its state. Absent means no prior observation, never zero.
    */
   previous?: Record<string, unknown> | null;
 };
 
 /**
- * The previous check's facts, dug out of whatever the row's `lastResult` holds.
- * Three shapes reach that column and this is the one place that knows all three:
- * raw facts, the check endpoint's envelope, and the failure wrapper.
- *
- * The failure wrapper is unwrapped rather than read: an `unavailable` tick
- * observed nothing, so the last real observation stays the previous one and a
- * streak neither grows nor resets across the gap.
+ * The previous check's facts out of `lastResult`, which holds raw facts, the check endpoint's
+ * envelope, or the failure wrapper. The wrapper is unwrapped, so a streak survives a gap.
  */
 export function previousCheckFacts(lastResult: unknown): Record<string, unknown> | null {
   if (!lastResult || typeof lastResult !== "object" || Array.isArray(lastResult)) return null;
@@ -157,15 +118,11 @@ export function previousCheckFacts(lastResult: unknown): Record<string, unknown>
 export type WatchCheckOutcome = {
   result: WatchCheckResult;
   facts: Record<string, unknown>;
-  /**
-   * What this check observed. Frozen onto the row by the resolving transition, so
-   * every delivery surface reads the same observation and none re-reads the source.
-   */
+  /** Frozen onto the row by the resolving transition, so no surface re-reads the source. */
   observed: WatchObservedOutcome;
 };
 
-// Run status vocabulary, mirroring ~/v3/taskStatus. Kept local so this module has
-// no server-side import.
+// Mirrors ~/v3/taskStatus. Kept local so this module has no server-side import.
 
 const FINAL_STATUSES = new Set([
   "CANCELED",
@@ -179,9 +136,8 @@ const FINAL_STATUSES = new Set([
 ]);
 
 /**
- * Statuses whose `queuedAt` is a stale leftover from the first enqueue
- * (resume/retry re-enqueues don't restamp it), so a wait computed from it isn't
- * this attempt's queue wait.
+ * Statuses whose `queuedAt` is a leftover from the first enqueue, since resume/retry
+ * re-enqueues don't restamp it, so a wait computed from it isn't this attempt's.
  */
 const STALE_QUEUED_AT_STATUSES = new Set(["WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED"]);
 
@@ -197,13 +153,8 @@ function formatMs(ms: number): string {
 export type WatchWaitBasis = "queued_at" | "delay_until" | "created_at";
 
 /**
- * The wait a run has accumulated, with the only label the data supports: a
- * `queuedAt` belonging to this attempt is a real queue wait, a future `delayUntil`
- * is a schedule rather than latency, otherwise time from creation, said out loud.
- *
- * A resumed/retried/paused run's `queuedAt` is a leftover from the first enqueue,
- * so it is not measured from at all: a number that isn't this attempt's queue wait
- * must never be worded as one.
+ * The wait a run has accumulated, labelled with what the data supports. A resumed, retried or
+ * paused run's stale `queuedAt` is never measured from.
  */
 export function describeRunWait(
   run: WatchRunRow,
@@ -237,8 +188,7 @@ export function describeRunWait(
     };
   }
 
-  // Either there is no `queuedAt`, or the one we have belongs to an earlier
-  // attempt. Both fall back to the run's age, and say that's what it is.
+  // No `queuedAt`, or one from an earlier attempt: fall back to the run's age.
   const waitMs = Math.max(0, end.getTime() - run.createdAt.getTime());
   const resumeOrRetry = run.queuedAt !== null;
   return {
@@ -252,10 +202,8 @@ export function describeRunWait(
 }
 
 /**
- * Satisfied the moment `startedAt` exists, whatever the run's current status is: a
- * run that started and then failed still started. Terminal with no `startedAt`
- * (cancelled or expired while queued) can never start, so it's
- * `terminal_unsatisfied`.
+ * Satisfied the moment `startedAt` exists, whatever the current status. Terminal with no
+ * `startedAt` can never start, so it is `terminal_unsatisfied`.
  */
 export async function checkRunStart(
   spec: Extract<WatchSpec, { kind: "run_start" }>,
@@ -264,8 +212,7 @@ export async function checkRunStart(
 ): Promise<WatchCheckOutcome> {
   const run = await deps.readRun(spec.runId);
   if (!run) {
-    // Existence was validated when the watch was created, so absence now means
-    // the run is gone from this environment — it can never start.
+    // Existence was validated at creation, so the run is gone and can never start.
     return {
       result: "terminal_unsatisfied",
       facts: { runId: spec.runId, reason: "run_not_found" },
@@ -301,9 +248,8 @@ export async function checkRunStart(
 }
 
 /**
- * Satisfied on any terminal status, and the observation preserves that status. The
- * resolution alone cannot tell "finished" from "failed": both are `condition_met`,
- * and only `observed.finalStatus` separates them.
+ * Satisfied on any terminal status. Finished and failed are both `condition_met`, so only
+ * `observed.finalStatus` separates them.
  */
 export async function checkRunFinished(
   spec: Extract<WatchSpec, { kind: "run_finished" }>,
@@ -320,8 +266,7 @@ export async function checkRunFinished(
   }
 
   const finished = isTerminalRunStatus(run.status);
-  // Execution duration only — startedAt -> completedAt. A run that never started
-  // has no duration, and the queue wait is reported separately.
+  // Execution duration only. The queue wait is reported separately.
   const durationMs =
     run.startedAt && run.completedAt
       ? Math.max(0, run.completedAt.getTime() - run.startedAt.getTime())
@@ -344,7 +289,7 @@ export async function checkRunFinished(
     observed: {
       kind: "run_finished",
       verified: true,
-      // Only a terminal status is a final status. A running run has no verdict yet.
+      // Only a terminal status is a final status.
       finalStatus: finished ? run.status : null,
       durationMs,
     },
@@ -352,9 +297,8 @@ export async function checkRunFinished(
 }
 
 /**
- * The same point read as `run_finished`, asked the other way round. A failing
- * terminal status satisfies it; a successful completion makes the condition
- * impossible rather than merely unmet, and so does a cancellation.
+ * A failing terminal status satisfies this; a successful completion or a cancellation makes
+ * the condition impossible rather than merely unmet.
  */
 export async function checkRunFailed(
   spec: Extract<WatchSpec, { kind: "run_failed" }>,
@@ -406,29 +350,19 @@ export async function checkRunFailed(
 }
 
 /**
- * The queue-depth read both threshold kinds share, resolved down to either a usable
- * reading or the outcome that replaces it.
- *
- * A queue that no longer exists can never be observed, so that is
- * `terminal_unsatisfied`; a depth we can't read is `unavailable`, never a number. A
- * stale analytics bucket says nothing about the runs queued after it, so a zero from
- * one is `unavailable`; a stale non-zero depth still proves the queue wasn't empty
- * and passes through marked approximate.
+ * The queue-depth read both threshold kinds share. A missing queue is `terminal_unsatisfied`,
+ * an unreadable or stale-low depth is `unavailable`, and a stale-high one is approximate.
  */
 async function readDepthOrOutcome(args: {
   queue: string;
   deps: WatchCheckDeps;
   /** The observation to record when there is no usable reading. */
   unobserved: (verified: boolean) => WatchObservedOutcome;
-  /**
-   * The line below which a reading claims the queue is quiet. A non-current reading
-   * at or under it is refused; one above it still proves the queue wasn't quiet and
-   * passes through marked approximate.
-   */
+  /** A non-current reading at or under this is refused; one above it passes through. */
   quietLine: number;
   /**
-   * Stateful kinds only: no non-current reading is usable at all, because a phantom
-   * sample would enter the streak as if it had been observed now.
+   * Stateful kinds only: no non-current reading is usable, because a phantom sample would
+   * enter the streak as if it had been observed now.
    */
   requireCurrent?: boolean;
 }): Promise<
@@ -439,8 +373,7 @@ async function readDepthOrOutcome(args: {
   const depth = await deps.readQueueDepth(queue);
 
   if (depth === null) {
-    // Distinguish "no such queue" from "couldn't read the depth" — only the
-    // former is terminal.
+    // Only a missing queue is terminal, not an unreadable depth.
     const exists = await deps.queueExists(queue);
     if (!exists) {
       return {
@@ -470,8 +403,8 @@ async function readDepthOrOutcome(args: {
     depthApproximate: !depth.current,
   };
 
-  // A claim of quiet needs a reading that describes now. Reading a stale empty
-  // bucket as "drained" is the one mistake these must never make.
+  // A claim of quiet needs a reading that describes now: a stale empty bucket is never
+  // read as drained.
   if (!depth.current && (args.requireCurrent || depth.depth <= quietLine)) {
     return {
       ok: false,
@@ -487,9 +420,8 @@ async function readDepthOrOutcome(args: {
 }
 
 /**
- * Satisfied when the queue's current pending count is 0. The observation carries
- * the depth read, so a window that completes without a drain can say how backed up
- * the queue still was without going back to the source.
+ * Satisfied when the queue's current pending count is 0. The observation carries the depth
+ * read, so a window completing without a drain needs no second read.
  */
 export async function checkBacklogDrain(
   spec: Extract<WatchSpec, { kind: "backlog_drain" }>,
@@ -512,12 +444,8 @@ export async function checkBacklogDrain(
 }
 
 /**
- * Satisfied when the pending count rises above `threshold`, on the shared depth
- * reader and its freshness fence.
- *
- * Deliberately no `terminal_unsatisfied` on a live queue: a quiet queue can grow at
- * any moment, which is what this watch is for. Only the queue disappearing makes
- * the condition impossible.
+ * Satisfied when the pending count rises above `threshold`. No `terminal_unsatisfied` on a
+ * live queue: only the queue disappearing makes the condition impossible.
  */
 export async function checkQueueDepthAbove(
   spec: Extract<WatchSpec, { kind: "queue_depth_above" }>,
@@ -550,13 +478,8 @@ export async function checkQueueDepthAbove(
 }
 
 /**
- * The mirror of `queue_depth_above`: satisfied when the pending count comes back
- * down to `threshold` or under it. "Back below N" is not "drained" — a busy queue
- * may never reach zero, and the question is whether it is usable again.
- *
- * The threshold is the quiet line for the freshness fence: a stale reading that
- * looks low proves nothing about the runs queued after it, so it is `unavailable`.
- * As with the `above` variant, only the queue disappearing is terminal.
+ * The mirror of `queue_depth_above`: satisfied at or under `threshold`, which is also the quiet
+ * line for the freshness fence. Only the queue disappearing is terminal.
  */
 export async function checkQueueDepthBelow(
   spec: Extract<WatchSpec, { kind: "queue_depth_below" }>,
@@ -605,18 +528,8 @@ function readStallState(
 }
 
 /**
- * Satisfied when the depth has failed to decrease for `ticks` consecutive checks
- * with runs still queued. Three rules keep the state honest:
- *
- * - The streak is emitted in the facts and handed back as `input.previous`, so the
- *   row's `lastResult` is the only storage and a re-run of the same generation
- *   recomputes the same answer.
- * - A data gap freezes the streak: `input.previous` is the last real observation,
- *   so the next usable reading compares against the depth before the gap.
- * - `requireCurrent` refuses a stale reading, which would either invent a stall or
- *   wipe a real one.
- *
- * An empty queue is not stalled, it drained, so depth 0 resets the streak.
+ * Satisfied when the depth fails to decrease for `ticks` consecutive checks with runs queued.
+ * The streak lives only in `input.previous`, a gap freezes it, and depth 0 resets it.
  */
 export async function checkQueueStalled(
   spec: Extract<WatchSpec, { kind: "queue_stalled" }>,
@@ -631,8 +544,7 @@ export async function checkQueueStalled(
       kind: "queue_stalled",
       verified,
       depth: null,
-      // Carry the streak through an unusable check so a window completion can still
-      // say how close it had come.
+      // Carry the streak through an unusable check.
       notDecreasingStreak: previous?.notDecreasingStreak ?? 0,
       ticks: spec.ticks,
     }),
@@ -671,11 +583,8 @@ export async function checkQueueStalled(
 }
 
 /**
- * Satisfied when the oldest run still waiting has been waiting longer than the SLA.
- *
- * Stricter than the depth reader: a non-current age is wrong in both directions, so
- * any stale reading is `unavailable` rather than compared. An empty queue is
- * `pending`, since something may be waiting a minute from now.
+ * Satisfied when the oldest waiting run has waited longer than the SLA. Any stale reading is
+ * `unavailable` rather than compared, and an empty queue is `pending`.
  */
 export async function checkQueueOldestAge(
   spec: Extract<WatchSpec, { kind: "queue_oldest_age" }>,
@@ -740,21 +649,16 @@ export async function checkQueueOldestAge(
 }
 
 /**
- * The model cites the API error id (`error_<fingerprint>`), but ClickHouse stores
- * the raw fingerprint — same normalization the errors API route uses. Raw
- * fingerprints pass through unchanged.
+ * The model cites the API error id (`error_<fingerprint>`) but ClickHouse stores the raw
+ * fingerprint. Same normalization the errors API route uses.
  */
 export function normalizeErrorFingerprint(fingerprint: string): string {
   return ErrorId.toId(fingerprint);
 }
 
 /**
- * Satisfied on the first occurrence proven to be after the server-set `since`.
- * `since` is never caller-set, so the model can't backdate the window and make a
- * pre-existing error look like a recurrence.
- *
- * The facts carry the precision of what they claim, so the wake narration can't
- * assert more than the data supports.
+ * Satisfied on the first occurrence proven to be after the server-set `since`, which is
+ * never caller-set. The facts carry the precision of what they claim.
  */
 export async function checkErrorRecurrence(
   spec: Extract<WatchSpec, { kind: "error_recurrence" }>,
@@ -808,10 +712,8 @@ export async function checkErrorRecurrence(
 }
 
 /**
- * Satisfied only when the health report is both trustworthy and `ok`. Stale
- * telemetry marks the report untrustworthy, and an untrustworthy report can never
- * fire a recovery: "looks fine" off stale data is the false all-clear this watch
- * exists to avoid.
+ * Satisfied only when the health report is both trustworthy and `ok`. An untrustworthy
+ * report can never fire a recovery.
  */
 export async function checkHealthRecovery(
   spec: Extract<WatchSpec, { kind: "health_recovery" }>,
@@ -835,8 +737,7 @@ export async function checkHealthRecovery(
   };
 
   if (!health.trustworthy) {
-    // An untrustworthy report is not an observation of the severity, so don't record
-    // one a window completion could then cite.
+    // An untrustworthy report is not an observation of the severity, so record none.
     return {
       result: "pending",
       facts: { ...facts, reason: "untrustworthy" },
@@ -851,10 +752,7 @@ export async function checkHealthRecovery(
   };
 }
 
-/**
- * Evaluate one watch. The single place a check failure becomes `unavailable`: every
- * reader may throw, and nothing here turns a broken data source into a verdict.
- */
+/** The single place a check failure becomes `unavailable`, never a verdict. */
 export async function checkWatch(
   spec: WatchSpec,
   deps: WatchCheckDeps,
@@ -899,9 +797,8 @@ export async function checkWatch(
 }
 
 /**
- * The "we saw nothing" observation for a check that couldn't run. `verified: false`
- * makes a window completion say the condition couldn't be confirmed, instead of
- * claiming it didn't happen.
+ * The observation for a check that couldn't run. `verified: false` means the condition
+ * couldn't be confirmed, not that it didn't happen.
  */
 export function unobservedOutcome(spec: WatchSpec): WatchObservedOutcome {
   switch (spec.kind) {

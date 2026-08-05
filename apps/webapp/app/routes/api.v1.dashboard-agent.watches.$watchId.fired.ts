@@ -11,17 +11,8 @@ import {
 import { logger } from "~/services/logger.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches/:watchId/fired` — the watcher task tells
- * us a watch fired, so the project's alert channels can be notified.
- *
- * Same security model as the check endpoint next door: the token only names a watch,
- * the row is the authority on whether it fired, and the watch's initiating user is
- * re-authorized against the row's immutable project/environment before anything is
- * sent, so an alert never outlives the access the watch was created with.
- *
- * The caller's body is ignored, so a replay can only re-announce what the row says,
- * and the alert job is keyed on the watch (`watch-alert:{watchId}`) so the fan-out
- * happens at most once.
+ * The watcher task reports a fired watch. The row is the authority on whether it fired, and
+ * the initiating user is re-authorized against its snapshot before any alert is sent.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
@@ -68,8 +59,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // The row is the first thing that knows whose request this is, so the logging
-  // boundary starts here. Failures are logged, then rethrown unchanged.
   try {
     const authorization = await authorizeWatchEnvironment({
       userId: watch.userId,
@@ -79,7 +68,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!authorization.ok) {
-      // Not cancelled here (the watch is already terminal) — just silence.
+      // Not cancelled here: the watch is already terminal.
       logger.info("Dashboard agent watch fired, but access was revoked; no alert", { watchId });
       return json(
         { error: "Access to this environment was revoked", code: "access_revoked" },

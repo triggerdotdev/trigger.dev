@@ -3,17 +3,8 @@ import { env } from "~/env.server";
 import { authenticateRequest, type AuthenticationResult } from "~/services/apiAuth.server";
 
 /**
- * Shared auth preamble for the `api.v1` routes that accept a delegated user-actor token
- * as well as a PAT or org access token. `authenticateRequest` deliberately does not
- * accept UATs, because a UAT is only valid on routes that opted in.
- *
- * A UAT authenticates as its user, exactly like a PAT, so the returned result is the
- * `personalAccessToken` shape and every downstream lookup behaves the same. `userActor`
- * is set only on the UAT path, carrying the token's scope cap for routes that ceiling a
- * grant by it.
- *
- * Returns `undefined` for no token, an unparseable token, and an invalid or expired UAT
- * alike; callers answer all of them with the same 401.
+ * Auth preamble for `api.v1` routes that opt into delegated user-actor tokens alongside a PAT
+ * or org token. A UAT authenticates as its user, so the result is the `personalAccessToken` shape.
  */
 export type UatAuthentication = {
   authenticationResult: AuthenticationResult;
@@ -33,7 +24,6 @@ export async function authenticateUatOrApiRequest(
     const claims = await verifyUserActorToken(env.SESSION_SECRET, bearer);
     if (!claims) return undefined;
     return {
-      // The env lookup keys purely on the user, identical to a PAT.
       authenticationResult: { type: "personalAccessToken", result: { userId: claims.userId } },
       userActor: claims,
     };

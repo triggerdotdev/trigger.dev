@@ -11,42 +11,18 @@ import {
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches` — programmatic watch creation, for callers
- * with no configuration card surface (MCP). The dashboard chat creates watches
- * through the `watch-create` card instead.
- *
- * Accepts only the dashboard agent's delegated user-actor token, and not a PAT: a
- * watch later runs in the background on a user's behalf, so the only trusted caller
- * is the agent acting for the signed-in user in a live chat.
- *
- * Order of authority:
- *
- *   - the environment comes from the token, minted for the environment this turn is
- *     taken in. A body `environmentId`/`projectRef` that disagrees is a 400, and a
- *     token with no environment scope can't create a watch. The chat's stored
- *     context is never used: it is a snapshot from when the chat started and would
- *     bind the watch to a stale environment.
- *   - the chat must be a live chat owned by that user, or a watch could later wake
- *     someone else's conversation. That read also yields the chat's org, which the
- *     token's environment must match.
- *   - the environment is re-authorized through the same path a background check
- *     uses, so a watch is only created for an environment its user can reach now.
+ * Programmatic watch creation (MCP). Only the agent's delegated user-actor token is
+ * accepted, and the environment comes from it, never the body or the chat's stored context.
  */
 
 const BodySchema = z.object({
   spec: watchSpecSchema,
   chatId: z.string().min(1),
-  /**
-   * Consent recorded at creation: after an attention outcome the wake turn may open
-   * an investigation. Off unless the caller sends it, and the agent may only send it
-   * on an explicit ask.
-   */
+  /** Consent for the wake turn to open an investigation. Off unless explicitly sent. */
   investigateOnAttention: z.boolean().optional(),
   /**
-   * Echoes of the turn's environment, never overrides: they are only checked against
-   * the token's environment scope. `environmentId` is the canonical
-   * `RuntimeEnvironment.id`, not a slug, because `(projectId, slug)` is not unique —
-   * every developer gets their own `dev` row.
+   * Only checked against the token's environment scope, never used in its place.
+   * `environmentId` is the canonical `RuntimeEnvironment.id`, not a slug.
    */
   projectRef: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
@@ -65,8 +41,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
-  // The environment this turn is scoped to. Absent means there is nothing to fall
-  // back to that we would trust.
+  // The environment this turn is scoped to. There is no trusted fallback.
   const environmentId = authentication.userActor.environmentId;
   if (!environmentId) {
     return json(
@@ -88,8 +63,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
   const parsed = parsedBody.data;
 
-  // A body naming a different environment than the turn is a bug or an attempt to
-  // move the watch. Refuse rather than silently picking one.
+  // Refuse a body naming a different environment rather than silently picking one.
   if (parsed.environmentId && parsed.environmentId !== environmentId) {
     return json(
       {
@@ -101,14 +75,13 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    // A chat this user doesn't own does not exist here, and nothing is written.
+    // A chat this user doesn't own does not exist here.
     const chat = await resolveChatWatchContext({ chatId: parsed.chatId, userId });
     if (!chat) {
       return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
     }
 
-    // The same authorization a background check applies, so a watch is only created
-    // for an environment its user can reach now.
+    // The same authorization a background check applies.
     const environment = await authorizeWatchEnvironmentById({ userId, environmentId });
     if (!environment) {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
@@ -158,8 +131,7 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    // One-shot: the immediate check answered the request, so there is no watch, no
-    // id, and nothing to cancel.
+    // One-shot: the immediate check answered, so there is no watch row and no id.
     if (!result.watching) {
       return json({
         watching: false,

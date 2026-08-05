@@ -4,19 +4,15 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 
 /**
- * Whether the in-dashboard AI agent is available to this user in this org. Gated by the
- * `hasDashboardAgentAccess` flag, defaulting to `DASHBOARD_AGENT_ENABLED` with a per-org
- * override winning. Admins and impersonators bypass it only under
- * `DASHBOARD_AGENT_ADMIN_PREVIEW`. Must stay server-side so a non-flagged user can't
- * start sessions.
+ * Whether the in-dashboard AI agent is available to this user in this org, per the
+ * `hasDashboardAgentAccess` flag with a per-org override winning. Must stay server-side.
  */
 export async function canAccessDashboardAgent(options: {
   userId: string;
   isAdmin: boolean;
   isImpersonating: boolean;
   organizationSlug: string;
-  // Pass the org's already-loaded `featureFlags` to skip an extra org lookup.
-  // Omitted means we query the org ourselves.
+  // The org's already-loaded `featureFlags`. Omitted means we query the org ourselves.
   orgFeatureFlags?: Record<string, unknown> | null;
 }): Promise<boolean> {
   // TEMPORARY (V1 rollout testing, TRI-12870): open to everyone. Flip back to

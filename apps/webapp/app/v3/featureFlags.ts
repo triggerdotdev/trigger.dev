@@ -40,10 +40,8 @@ export const FeatureFlagCatalog = {
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
   [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
-  // The dashboard agent's promoted suggested prompt, as a JSON string:
-  // {"id":"...","label":"...","prompt":"..."}. A string because this catalog is
-  // scalar-only (the admin flags UI has no object control). Validated where it's
-  // read, in `suggested-prompts/promotedPrompt.server.ts`.
+  // A JSON string because this catalog is scalar-only. Validated where it's read, in
+  // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),

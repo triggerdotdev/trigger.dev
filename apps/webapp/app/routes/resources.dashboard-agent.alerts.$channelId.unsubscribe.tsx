@@ -17,14 +17,8 @@ import { logger } from "~/services/logger.server";
 import { rootPath } from "~/utils/pathBuilder";
 
 /**
- * The "Turn off these alerts" link in a watch alert email.
- *
- * The signed token in the query string is the whole authorization: an email recipient
- * isn't necessarily signed in on the device they read it on. It names one channel and
- * one alert type, so this route can do exactly one thing.
- *
- * GET confirms and POST acts, so a link preview or mail scanner can't silently
- * unsubscribe someone.
+ * The unsubscribe link in a watch alert email. The signed token is the whole authorization
+ * and names one channel; GET confirms and POST acts, so a link preview can't unsubscribe.
  */
 
 const ParamsSchema = z.object({ channelId: z.string().min(1) });
@@ -46,8 +40,7 @@ async function authorize(request: Request, params: Record<string, unknown>) {
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const claims = await authorize(request, params);
-  // The token travels back into the form's action: Remix drops the current
-  // search params from a bare `<Form method="post">`, and the POST needs it too.
+  // The POST needs the token, and a bare `<Form method="post">` drops search params.
   return typedjson({
     valid: claims !== undefined,
     formAction: `${new URL(request.url).pathname}${new URL(request.url).search}`,
@@ -70,8 +63,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // Read only to name a tenant in the failure log below. The unsubscribe does its
-  // own scoped lookup.
+  // Read only for the failure log. The unsubscribe does its own scoped lookup.
   const channel = await prisma.projectAlertChannel.findFirst({
     where: { id: claims.channelId },
     select: { projectId: true },

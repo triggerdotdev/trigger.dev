@@ -38,15 +38,8 @@ import { alertsWorker } from "~/v3/alertsWorker.server";
 import { safeWebhookFetch } from "./safeWebhookFetch.server";
 
 /**
- * Deliver a fired dashboard-agent watch to the project's alert channels.
- *
- * Payload-carried, like the error-group alert: no `ProjectAlert` row, because the watch is
- * already a durable row with its own delivery state. The job ids are the dedupe.
- *
- * Two steps: a fan-out (`watch-alert:{watchId}`) resolves the environment, the gate and the
- * matching channels, then enqueues one delivery job per channel
- * (`watch-alert:{watchId}:channel:{channelId}`). A delivery job sends exactly one channel, so a
- * failing webhook can only re-send that webhook, not the email and Slack that already went out.
+ * Deliver a fired dashboard-agent watch to the project's alert channels. No `ProjectAlert` row:
+ * the job ids are the dedupe, and one job per channel keeps a failing webhook to itself.
  */
 export type DashboardAgentWatchAlertPayload = {
   watchId: string;
@@ -59,11 +52,7 @@ export type DashboardAgentWatchAlertPayload = {
   note: string;
   firedAt: string;
   facts: Record<string, unknown>;
-  /**
-   * How the watch ended and what the resolving check observed: the two halves the headline is
-   * built from. Optional so a job enqueued by an older build still delivers, falling back to
-   * `condition_met` with no observation, the only resolution that alerts today.
-   */
+  /** Optional so a job from an older build still delivers, falling back to `condition_met`. */
   resolution?: WatchResolution;
   observed?: WatchObservedOutcome;
 };
@@ -76,10 +65,7 @@ export type DashboardAgentWatchChannelAlertPayload = DashboardAgentWatchAlertPay
 /** Bumped when the webhook body's shape changes. */
 const WEBHOOK_VERSION = "2026-08-02";
 
-/**
- * Wording comes from the shared presenter so the email subject, the Slack line and the chat's
- * wake banner are the same sentence.
- */
+/** Wording comes from the shared presenter, so every surface says the same sentence. */
 function presentAlert(payload: DashboardAgentWatchAlertPayload) {
   return presentResolvedWatch({
     kind: payload.kind,
@@ -344,9 +330,8 @@ export class DeliverDashboardAgentWatchChannelAlertService {
     }
 
     const rawPayload = JSON.stringify({
-      // Stable across attempts, so a receiver can dedupe a redelivery. This
-      // deliberately differs from the error-group webhook, which still mints a
-      // nanoid per attempt.
+      // Stable across attempts, so a receiver can dedupe a redelivery. Unlike the
+      // error-group webhook, which mints a nanoid per attempt.
       id: `watch:${payload.watchId}:channel:${payload.channelId}`,
       created: new Date(payload.firedAt),
       webhookVersion: WEBHOOK_VERSION,
@@ -493,9 +478,8 @@ export class DeliverDashboardAgentWatchChannelAlertService {
 }
 
 /**
- * The check's facts, flattened for display. The bag is per-watch-kind and open-ended, so this
- * stays generic: labelled scalars, nested values as compact JSON, and a cap so a big bag can't
- * blow up an email or a Slack block.
+ * The check's facts, flattened for display. Generic because the bag is per-watch-kind and
+ * open-ended, and capped so a big bag can't blow up an email or a Slack block.
  */
 function factList(facts: Record<string, unknown>): Array<{ label: string; value: string }> {
   return Object.entries(facts)
