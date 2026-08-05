@@ -2,6 +2,7 @@ import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
+import { MAX_MESSAGE_CHARS, MESSAGE_CHARS_WARN_AT } from "./message-limits";
 
 export type DashboardAgentComposerLayout = "docked" | "hero";
 
@@ -82,7 +83,9 @@ export function DashboardAgentComposer({
             ref={ref}
             rows={isHero ? 3 : 1}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            // Clamped as well as `maxLength`, so a programmatic paste can't exceed the cap.
+            maxLength={MAX_MESSAGE_CHARS}
+            onChange={(e) => onChange(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
@@ -115,6 +118,18 @@ export function DashboardAgentComposer({
           )}
         </div>
       </div>
+      {/* Only near the limit: a normal message never sees a counter. */}
+      {value.length >= MESSAGE_CHARS_WARN_AT ? (
+        <p
+          className={cn(
+            "self-end text-xxs tabular-nums",
+            value.length >= MAX_MESSAGE_CHARS ? "text-error" : "text-text-dimmed"
+          )}
+          aria-live="polite"
+        >
+          {value.length} / {MAX_MESSAGE_CHARS}
+        </p>
+      ) : null}
     </div>
   );
 }

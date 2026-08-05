@@ -25,6 +25,13 @@ import {
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
+import {
+  checkMessageParts,
+  declaredBodyBytes,
+  exceedsMessageBodyBytes,
+  MESSAGE_TOO_LARGE_CODE,
+  MESSAGE_TOO_LARGE_ERROR,
+} from "~/components/dashboard-agent/message-limits";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -200,6 +207,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+function messageTooLarge() {
+  return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
+}
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -214,6 +225,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }))
   ) {
     return json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Refused before any lookup, so an oversized body costs nothing.
+  if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
+    return messageTooLarge();
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -237,6 +253,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "Invalid message" }, { status: 400 });
     }
     if (!firstMessage) return json({ error: "message is required" }, { status: 400 });
+
+    // A body under the byte cap can still be one huge part or hundreds of small ones.
+    if (
+      exceedsMessageBodyBytes(Buffer.byteLength(parsed.data.message ?? "", "utf8")) ||
+      checkMessageParts(firstMessage.parts) !== null
+    ) {
+      return messageTooLarge();
+    }
 
     let clientData: Record<string, unknown> | undefined;
     try {

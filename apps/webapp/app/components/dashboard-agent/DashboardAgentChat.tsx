@@ -11,6 +11,7 @@ import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
+import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
@@ -101,10 +102,19 @@ export function DashboardAgentChat({
     baseURL: apiOrigin,
     // Only `in` goes through the same-origin proxy, which injects the delegated user
     // token server-side. `baseURL` stays a string so `out` keeps the SDK's realtime routing.
-    fetch: (url, init, ctx) => {
+    fetch: async (url, init, ctx) => {
       if (ctx.endpoint !== "in") return globalThis.fetch(url, init);
       const { pathname, search } = new URL(url);
-      return globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      const res = await globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      // A refused message never succeeds on a retry, so it surfaces as the turn's error.
+      if (res.status === 413) {
+        const data = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? MESSAGE_TOO_LARGE_ERROR);
+      }
+      return res;
     },
     clientData,
     sessions: session

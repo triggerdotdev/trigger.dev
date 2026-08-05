@@ -1,4 +1,11 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  checkMessageParts,
+  declaredBodyBytes,
+  exceedsMessageBodyBytes,
+  MESSAGE_TOO_LARGE_CODE,
+  MESSAGE_TOO_LARGE_ERROR,
+} from "~/components/dashboard-agent/message-limits";
 import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
@@ -23,6 +30,10 @@ const FORWARDED_HEADERS = [
   "x-trigger-branch",
 ];
 
+function tooLarge() {
+  return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
+}
+
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
@@ -36,6 +47,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }))
   ) {
     return json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Refused before any lookup, so an oversized body costs nothing.
+  if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
+    return tooLarge();
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
@@ -61,11 +77,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
   const raw = await request.text();
+  // The header is advisory; the body it actually sent is what counts.
+  if (exceedsMessageBodyBytes(Buffer.byteLength(raw, "utf8"))) {
+    return tooLarge();
+  }
+
   let body = raw;
   try {
     const parsed = JSON.parse(raw) as {
       kind?: string;
-      payload?: { trigger?: string; metadata?: Record<string, unknown> };
+      payload?: {
+        trigger?: string;
+        metadata?: Record<string, unknown>;
+        message?: { parts?: unknown };
+      };
     };
     // Actions are placed by the server only, and this proxy is the one path a browser
     // can reach `.in` through.
@@ -73,6 +98,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Not allowed" }, { status: 403 });
     }
     if (parsed.kind === "message" && parsed.payload) {
+      // A body under the byte cap can still be one huge part or hundreds of small ones.
+      if (checkMessageParts(parsed.payload.message?.parts) !== null) {
+        return tooLarge();
+      }
       parsed.payload.metadata = {
         ...(parsed.payload.metadata ?? {}),
         userActorToken: await mintDashboardAgentUserActorToken(user.id, {
