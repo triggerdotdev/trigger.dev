@@ -1,12 +1,10 @@
 /**
- * Page context — what the user is looking at when they open the panel, plus the
- * notable things the host already knows about that page.
+ * Page context — what the user is looking at when they open the panel.
  *
- * `page` is the *what*: a coarse classification of the route with just enough
- * identity to act on. `signals` are the *why now*: pre-computed observations the
- * host derived from the page's own data, so the agent doesn't have to re-query to
- * notice the obvious. Both are advisory — the agent still verifies with tools
- * before asserting anything.
+ * `page` classifies the route with just enough identity to act on. `signals` are
+ * observations the host already derived from the page's data, so the agent
+ * doesn't re-query to notice the obvious. Both are advisory: the agent still
+ * verifies with tools before asserting anything.
  */
 import { runFiltersSchema } from "./run-filters.js";
 import { z } from "zod";
@@ -21,7 +19,7 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     taskId: z.string(),
     queue: z.string().optional(),
   }),
-  /** The errors list. Plural kinds are lists, singular kinds are one thing. */
+  /** Plural kinds are lists, singular kinds are one thing. */
   z.object({ kind: z.literal("errors") }),
   z.object({ kind: z.literal("error"), fingerprint: z.string() }),
   z.object({ kind: z.literal("queues") }),
@@ -37,18 +35,15 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     /** `WorkerDeploymentStatus`. Plain string: a new status must not break stored context. */
     status: z.string().optional(),
   }),
-  // -------------------------------------------------------------------------
   // The rest of the environment's sections.
   //
-  // A singular kind exists only where the detail page asks a DIFFERENT question
-  // than its list (`task` vs `tasks`, `batch` vs `batches`). Where the detail
-  // page asks the same question about one named thing, it reuses the section's
-  // kind with an optional identity field instead of doubling the union —
-  // `{ kind: "sessions", sessionId }` is the session detail page.
+  // A singular kind exists only where the detail page asks a different question
+  // than its list (`task` vs `tasks`). Otherwise the detail page reuses the
+  // section's kind with an optional identity field rather than doubling the
+  // union: `{ kind: "sessions", sessionId }` is the session detail page.
   //
-  // Every field beyond `kind` is optional and comes from data the page's loader
-  // already returned. A field that isn't in the loader is simply absent.
-  // -------------------------------------------------------------------------
+  // Every field beyond `kind` is optional and comes from what the page's loader
+  // already returned.
 
   /** The tasks list, and the tasks activity dashboard. */
   z.object({ kind: z.literal("tasks") }),
@@ -64,10 +59,7 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     /** Schedule counts, for a scheduled task: none attached, or none enabled, means it never runs. */
     schedules: z.object({ total: z.number(), active: z.number() }).optional(),
   }),
-  /**
-   * One schedule. There is no `schedules` list kind: the standalone listing was
-   * folded into the tasks page, which reports as `tasks`.
-   */
+  /** There is no `schedules` list kind: that listing lives on the tasks page. */
   z.object({
     kind: z.literal("schedule"),
     scheduleId: z.string(),
@@ -161,7 +153,7 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     expiredCount: z.number().optional(),
   }),
 
-  /** Anywhere we haven't classified: carry the raw path so the agent isn't blind. */
+  /** Anything unclassified: carry the raw path so the agent isn't blind. */
   z.object({ kind: z.literal("other"), path: z.string() }),
 ]);
 
@@ -195,20 +187,16 @@ export const agentPageContextSchema = z.object({
 export type AgentPageContext = z.infer<typeof agentPageContextSchema>;
 
 /**
- * The per-turn client data the webapp sends with a chat turn.
- *
- * This is a strict SUPERSET of the webapp's local `DashboardAgentClientData`
- * (apps/webapp/app/components/dashboard-agent/DashboardAgentChat.tsx): the
- * existing fields keep their exact shape and every field added here is OPTIONAL,
- * because a resumed chat replays metadata that was stored before these fields
- * existed. Never make a field here required.
+ * The per-turn client data the webapp sends with a chat turn, a superset of the
+ * webapp's own `DashboardAgentClientData`. Every field added here must stay
+ * optional: a resumed chat replays metadata stored before the field existed.
  */
 export const dashboardAgentClientDataSchema = z.object({
   userId: z.string(),
   organizationId: z.string(),
   projectId: z.string().optional(),
   /**
-   * RuntimeEnvironment id — the `{env}` component of every `trigger://` URI the
+   * RuntimeEnvironment id: the `{env}` component of every `trigger://` URI the
    * turn produces.
    */
   environmentId: z.string().optional(),

@@ -1,7 +1,7 @@
 /**
- * Suggested prompts — the chips offered in the panel. This file is SHAPE ONLY:
- * types, schema, and the display cap. No registry contents and no resolution
- * behavior live here; a host supplies a resolver matching {@link SuggestedPromptResolver}.
+ * Suggested prompts — the chips offered in the panel. Shape only: types, schema
+ * and the display cap. The registry contents and the resolution behavior live in
+ * the host, which supplies a {@link SuggestedPromptResolver}.
  */
 import type { AgentPageContext } from "./page-context.js";
 import { z } from "zod";
@@ -23,10 +23,7 @@ export const suggestedPromptSchema = z.object({
 
 export type SuggestedPrompt = z.infer<typeof suggestedPromptSchema>;
 
-/**
- * Never show more than this many chips at once: the promoted slot plus the four
- * slots the host's resolver fills (investigate, watch, explain, docs).
- */
+/** The promoted slot plus the four the host's resolver fills. */
 export const SUGGESTED_PROMPT_CAP = 5;
 
 export type SuggestedPromptResolver = (context: AgentPageContext) => SuggestedPrompt[];

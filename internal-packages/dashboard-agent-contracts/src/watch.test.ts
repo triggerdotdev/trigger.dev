@@ -145,8 +145,7 @@ describe("watchIdentity", () => {
     expect(watchIdentity(specs.backlog_drain)).toBe("backlog_drain:email-sends");
     expect(watchIdentity(specs.queue_depth_above)).toBe("queue_depth_above:email-sends:500");
     expect(watchIdentity(specs.queue_depth_below)).toBe("queue_depth_below:email-sends:100");
-    // `ticks` tunes the same question, so it is NOT in the identity — one queue has
-    // one "is this moving?" answer.
+    // `ticks` tunes the same question, so it is not part of the identity.
     expect(watchIdentity(specs.queue_stalled)).toBe("queue_stalled:email-sends");
     expect(watchIdentity(specs.queue_oldest_age)).toBe("queue_oldest_age:email-sends:5");
     expect(watchIdentity(specs.error_recurrence)).toBe("error_recurrence:a1b2c3");
@@ -300,7 +299,7 @@ describe("the queue pack (TRI-12890)", () => {
     expect(watchIdentity({ ...specs.queue_oldest_age, thresholdMinutes: 30 })).not.toBe(
       watchIdentity(specs.queue_oldest_age)
     );
-    // …and the stall sensitivity as NOT part of it.
+    // …and the stall sensitivity as not part of it.
     expect(watchIdentity({ ...specs.queue_stalled, ticks: 8 })).toBe(
       watchIdentity(specs.queue_stalled)
     );
@@ -353,9 +352,8 @@ describe("the queue pack (TRI-12890)", () => {
     }
   });
 
-  // The shared predicate behind the "investigate attention outcomes" consent: the
-  // agent's wake and the webapp's kick both ask this, so neither can invent its own
-  // idea of bad news.
+  // The agent's wake and the webapp's kick both ask this, so neither can invent
+  // its own idea of bad news.
   it("answers the attention question for every surface, and never for an unknown kind", () => {
     expect(
       watchResultNeedsAttention({ kind: "backlog_drain", resolution: "window_completed" })
@@ -404,8 +402,8 @@ describe("resolutions", () => {
     expect(watchResolutions).not.toContain("unavailable");
   });
 
-  // §7.5 binding: the wire keeps its as-built two-value encoding, so persisted
-  // wake ids, delivery ids and banner render keys stay valid.
+  // The wire keeps its two-value encoding, so persisted wake ids, delivery ids
+  // and banner render keys stay valid.
   it("encodes onto the stable two-value wire status", () => {
     expect(watchResolutionToWireStatus("condition_met")).toBe("fired");
     expect(watchResolutionToWireStatus("window_completed")).toBe("expired");
@@ -461,8 +459,8 @@ describe("resolveWatchResult", () => {
     }
   });
 
-  // §4.2: one resolution, two opposite presentations. This is the whole reason
-  // the resolution alone is insufficient.
+  // One resolution, two opposite presentations: why the resolution alone is
+  // insufficient.
   it("splits run_finished on the observed final status", () => {
     const ok = resolveWatchResult({
       kind: "run_finished",
@@ -489,7 +487,7 @@ describe("resolveWatchResult", () => {
     expect(failed).toMatchObject({ category: "attention", headlineKey: "run_failed" });
   });
 
-  // Binding (§4.2): "a failed run must never wear a success check".
+  // A failed run must never wear a success check.
   it("gives the failed run a non-success icon", () => {
     const failed = resolveWatchResult({
       kind: "run_finished",

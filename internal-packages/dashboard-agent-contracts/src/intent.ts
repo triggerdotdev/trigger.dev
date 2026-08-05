@@ -19,12 +19,9 @@ export const agentIntentSchema = z.discriminatedUnion("kind", [
   /** Start watching a condition. */
   z.object({ kind: z.literal("watch"), spec: watchSpecSchema }),
   /**
-   * RESERVED — DO NOT EMIT OR EXECUTE IN M0–M7.
-   *
-   * It exists in the union now so the wire format is frozen and stored intents
-   * from a future milestone still parse. Until write actions ship, nothing may
-   * produce this intent and hosts are expected to reject it explicitly rather
-   * than ignore it.
+   * Reserved: nothing may emit or execute this until write actions ship. It is in
+   * the union now so the wire format is frozen and a later intent still parses.
+   * Hosts should reject it explicitly rather than ignore it.
    */
   z.object({ kind: z.literal("propose_fix"), investigationId: z.string() }),
 ]);

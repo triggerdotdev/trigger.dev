@@ -1,30 +1,17 @@
 /**
- * View blocks — our small "generative UI" catalog. The agent renders rich,
- * on-brand UI by emitting a *spec* (a stack of blocks drawn from this fixed
- * catalog) via the `render_view` tool instead of inventing markup. The webapp has
- * a render registry mapping each block `type` to a React component (see
- * components/dashboard-agent/view-catalog.tsx). That gives us json-render's safety
- * (catalog blocks only, validated, no arbitrary HTML) without its zod 4 / React 19
- * dependency — we stay on the pinned zod 3.
+ * View blocks — the fixed catalog the agent renders UI from, by emitting a spec
+ * via the `render_view` tool rather than markup. The webapp maps each block
+ * `type` to a React component. Add a block by adding a union member here plus a
+ * renderer entry there.
  *
- * Add a block by adding a member to the unions below and a renderer entry in the
- * webapp registry.
- *
- * ## Three schema sets, on purpose
- *
- * | Schema | Envelope | Used by |
- * | --- | --- | --- |
- * | `*BlockBodySchema` / `viewBlockInputSchema` | absent | the `render_view` tool's inputSchema (model-facing) |
- * | `*BlockSchema` / `viewBlockSchema` | required | emitting, persisting, revising |
- * | `legacy*BlockSchema` / `legacyViewBlockSchema` | optional | reading anything already stored |
- *
- * **Lenient on parse, strict on emit.** Identity is system-owned: the model never
- * supplies `id`/`revision`/`version`, so the tool takes the body-only schema and
- * the executor/persistence layer stamps the envelope on. Stored transcripts from
- * before the envelope existed contain blocks with no envelope at all and must keep
- * parsing forever — that's what the lenient set is for. A stored block with no
- * `id` is a **non-revisable** block: it can never be replaced by a later revision
- * and is rendered in transcript order.
+ * Three schema sets, on purpose:
+ * - body only (`*BlockBodySchema`, `viewBlockInputSchema`): the model-facing
+ *   tool input. Identity is system-owned, so the model never supplies
+ *   `id`/`revision`/`version` and the executor stamps the envelope on.
+ * - envelope required (`*BlockSchema`, `viewBlockSchema`): emit, persist, revise.
+ * - envelope optional (`legacy*BlockSchema`): reading stored transcripts. Blocks
+ *   written before the envelope existed have none and must keep parsing forever.
+ *   A stored block with no `id` is non-revisable and renders in transcript order.
  */
 import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
 import { agentIntentSchema } from "./intent.js";
@@ -38,21 +25,15 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 /**
- * Identity and revision metadata attached to every emitted block.
+ * Identity and revision metadata on every emitted block. Blocks sharing an `id`
+ * are one block over time: the renderer keeps the highest `revision`. `version`
+ * is the payload schema version, so a renderer can tell an old payload shape
+ * from a new one.
  *
- * - `id` — stable within a conversation. Two blocks with the same `id` are the
- *   same block at different points in time; the renderer keeps the highest
- *   `revision` and drops the rest.
- * - `revision` — starts at 0 and only increases.
- * - `version` — the block *payload* schema version, so a renderer can tell an
- *   old-shaped payload from a new one. Starts at 1.
- *
- * Frozen id semantics (do not change; stored transcripts depend on them):
- * - A **report** block's `id` is the id of the tool call that produced it and its
- *   `revision` is always 0 — reports are immutable snapshots of a moment.
- * - An **investigation** block's `id` is the `investigationId` and its `revision`
- *   increases as the investigation progresses, so the panel shows one live card
- *   rather than a stack of near-duplicates. It is the only progressive block.
+ * Frozen id semantics; stored transcripts depend on them. A report block's `id`
+ * is its producing tool call and its revision is always 0. An investigation
+ * block's `id` is the `investigationId` and its revision climbs — the only
+ * progressive block.
  */
 export const blockEnvelopeSchema = z.object({
   id: z.string(),
@@ -75,9 +56,8 @@ export const VIEW_BLOCK_VERSION = 1;
 // diagnosis
 // ---------------------------------------------------------------------------
 
-// The "why did this run fail?" failure card. The agent gathers evidence with the
-// read tools, then fills these fields. `type` is the discriminant the render
-// registry keys off.
+// The "why did this run fail?" failure card. `type` is the discriminant the
+// render registry keys off.
 export const diagnosisBlockBodySchema = z.object({
   type: z.literal("diagnosis"),
   runId: z.string().describe("The run this diagnoses, e.g. run_abc123."),
@@ -154,17 +134,11 @@ export const diagnosisBlockBodySchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * A button under a chart. The chart answers "which task failed most"; the
- * actions are what to do about the winner — investigate it, or go look at its
- * runs. The card only *emits* the intent; the host decides whether to honour it,
- * the same rule every other intent follows.
- */
-/**
- * A chart action's intent. Mirrors `agentIntentSchema`, but the navigate
- * `target` is a plain string at this boundary — the model can't always build a
- * canonical URI (the grammar embeds ids it doesn't hold), and a malformed
- * target must cost one button, not the whole tool call. The `render_view`
- * executor drops navigate actions whose target isn't a valid trigger:// URI.
+ * A chart action's intent. Mirrors `agentIntentSchema`, except the navigate
+ * `target` is a plain string here: the model can't always build a canonical URI,
+ * and a malformed target must cost one button rather than the whole tool call.
+ * The `render_view` executor drops navigate actions that don't parse as a
+ * trigger:// URI.
  */
 const chartActionIntentSchema = z.union([
   z.object({
@@ -189,11 +163,9 @@ export const chartActionSchema = z.object({
 
 export type ChartAction = z.infer<typeof chartActionSchema>;
 
-// The chart block carries the TRQL query (not the rows): the panel runs it
-// through the dashboard's own query execution + QueryResultsChart, so the chart
-// is live and matches the Query page exactly. The agent describes the chart with
-// the SAME config the dashboard's chart builder uses (chartType + axis columns +
-// group/aggregation) and writes a query whose result columns map onto it.
+// The chart block carries the TRQL query, not the rows: the panel runs it
+// through the dashboard's own query execution, so the chart is live and matches
+// the Query page. The config mirrors the dashboard's chart builder.
 export const chartBlockBodySchema = z.object({
   type: z.literal("chart"),
   title: z.string().optional().describe("Optional chart title."),
@@ -236,11 +208,7 @@ export const chartBlockBodySchema = z.object({
     .enum(["sum", "avg", "count", "min", "max"])
     .optional()
     .describe("How to combine values that share an x point. Default sum."),
-  /**
-   * Optional and capped at three: a chart that ranks things gets a way to act on
-   * the winner. Older stored charts have no `actions` at all and must keep
-   * parsing, so this is additive and never required.
-   */
+  /** Optional forever: charts stored before `actions` existed must keep parsing. */
   actions: z
     .array(chartActionSchema)
     .max(3)
@@ -251,19 +219,13 @@ export const chartBlockBodySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// actions — an offer the user can click
+// actions
 // ---------------------------------------------------------------------------
 
 /**
- * An action's intent. Same boundary rule as `chartActionIntentSchema`: navigate
- * `target` is a plain string here because the model can't always build a
- * canonical URI, and a malformed target must cost one button rather than the
- * whole tool call — the renderer drops navigate actions whose target doesn't
- * parse. `watch` carries a full spec, so the click opens the watch card
- * pre-filled with what the model composed.
- *
- * `propose_fix` is absent, and that is the point: it is reserved and not
- * executable (see `isExecutableIntent`), so a button can never carry it.
+ * An action's intent. Same lenient navigate `target` as
+ * `chartActionIntentSchema`, for the same reason. `propose_fix` is absent on
+ * purpose: it is reserved and not executable, so a button can never carry it.
  */
 const actionIntentSchema = z.union([
   z.object({
@@ -290,11 +252,7 @@ export const actionsBlockActionSchema = z.object({
 
 export type ActionsBlockAction = z.infer<typeof actionsBlockActionSchema>;
 
-/**
- * A standalone row of buttons: the agent's offer, clickable. When an answer ends
- * in "want me to watch this?", this block is how that offer becomes a button
- * instead of something the user has to type a reply to.
- */
+/** A standalone row of buttons: the agent's offer, clickable. */
 const actionsBlockBodySchema = z.object({
   type: z.literal("actions"),
   actions: z
@@ -311,33 +269,25 @@ const actionsBlockBodySchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * The report card's payload: a whole `ReportViewModel` as returned by the
- * reports API (`GET /api/v1/reports/:key?format=json`).
+ * The report card's payload: a whole `ReportViewModel` as the reports API
+ * returns it. The webapp's `app/presenters/v3/reports/report-view-model.ts` owns
+ * the shape and this is the wire contract for it, mirrored by hand because this
+ * package is a zod-only leaf and must never import the webapp. Hence the
+ * leniency: objects `passthrough()`, arrays default to empty, and only the
+ * fields the card renders are named, so a presenter that grows a field still
+ * validates and an older stored transcript still renders.
  *
- * **The webapp's `app/presenters/v3/reports/report-view-model.ts` is the source
- * of truth for the shape; the schema below is the WIRE CONTRACT for it.** The
- * two are mirrored by hand on purpose — this package is a zod-only leaf and must
- * never import the webapp — so the schema is deliberately lenient: every object
- * `passthrough()`es unknown keys, arrays default to empty, and only the fields
- * the card actually renders are named. A presenter that grows a field keeps
- * validating here; a stored transcript from an older presenter keeps rendering.
- *
- * Two rules the report block does NOT share with the other blocks:
- *
- * 1. It is **not** in `viewBlockInputSchema`. The model never writes a report —
- *    the host builds the block from the completed `get_report` tool call, so the
- *    card and the model's grounding are the same snapshot and the model cannot
- *    reconstruct (or drift from) a single number.
- * 2. Its `revision` is fixed at `0`. Every render is a separate historical
- *    snapshot keyed by its tool-call id, so latest-wins can never collapse two
- *    report cards into one.
+ * Two rules the other blocks don't share: the report is absent from
+ * `viewBlockInputSchema` because the host builds it from the `get_report` tool
+ * call, and its `revision` is fixed at 0 because every render is a separate
+ * historical snapshot that latest-wins must not collapse.
  */
 export const reportSeveritySchema = z.enum(["ok", "warn", "crit"]);
 
 /**
- * Formatting hint for a metric value. Unknown units fall back to `count`
- * (`.catch`) rather than failing the block — units are presentation-only and the
- * report side is free to add one.
+ * Formatting hint for a metric value. An unknown unit falls back to `count`
+ * rather than failing the block: units are presentation-only and the report side
+ * is free to add one.
  */
 export const reportUnitSchema = z.enum(["ms", "count", "ratio", "perMin"]).catch("count");
 
@@ -439,7 +389,7 @@ export const reportViewModelSchema = z
     /** "last 1h". */
     period: z.string(),
     baselineLabel: z.string().optional(),
-    /** ISO string, set by the presenter — never read from the renderer's clock. */
+    /** ISO string, set by the presenter. Never read from the renderer's clock. */
     generatedAt: z.string(),
     windowMinutes: z.number(),
     summary: z
@@ -452,8 +402,8 @@ export const reportViewModelSchema = z
     metrics: z.array(reportMetricSchema).default([]),
     /**
      * The dense structured payload for agents. Free-form by design; the card only
-     * reads `trustworthy` (false = the telemetry behind the verdict is stale, so
-     * the numbers are informational only).
+     * reads `trustworthy` (false means the telemetry is stale, so the numbers are
+     * informational only).
      */
     facts: z.record(z.unknown()).default({}),
     links: z.array(reportLinkSchema).default([]),
@@ -472,11 +422,11 @@ const reportBlockBodySchema = z.object({
   vm: reportViewModelSchema,
   /**
    * The `trigger://…/report/{key}` URI this snapshot came from. Optional because
-   * it needs the project ref AND the RuntimeEnvironment id, which only a producer
-   * with environment context has; a card without one simply shows no source line.
+   * building it needs environment context the producer may not have; a card
+   * without one shows no source line.
    */
   reportUri: triggerUriSchema.optional(),
-  /** When the snapshot was taken — `vm.generatedAt`, carried up for the header. */
+  /** When the snapshot was taken. `vm.generatedAt`, carried up for the header. */
   asOf: z.string(),
 });
 
@@ -485,32 +435,26 @@ const reportBlockBodySchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * The investigation card's payload — the state of one investigation, as the
- * agent currently understands it.
+ * The investigation card's payload: the state of one investigation, and the
+ * card's props.
  *
- * Frozen by the design review of `DemoInvestigationCard` (see the demo card and
- * its fixtures in the webapp): this schema is that card's props, so a reviewed
- * layout and the shipped block can't drift.
- *
- * Two things are deliberately NOT in here: the `investigationId` and the
- * `revision`. Identity is system-owned — it lives in the block envelope, stamped
- * by the `render_view` executor after it commits the revision to the
- * investigations table. The model reports state only, so it can neither invent an
- * id nor claim a revision it didn't earn.
+ * The `investigationId` and `revision` are deliberately absent. Identity lives
+ * in the block envelope, stamped by the `render_view` executor after it commits
+ * the revision, so the model can neither invent an id nor claim a revision it
+ * didn't earn.
  */
 export const investigationOutcomeSchema = z.enum(["in_progress", "concluded", "inconclusive"]);
 
-/** Mirrors the report's severity ladder minus `ok` — an investigation exists because something was wrong. */
+/** The report's severity ladder minus `ok`: an investigation means something was wrong. */
 export const investigationSeveritySchema = z.enum(["info", "warn", "crit"]);
 
 /** `testing` is live; the other two are terminal. */
 export const hypothesisVerdictSchema = z.enum(["testing", "validated", "invalidated"]);
 
-// The hypothesis and state schemas exist in two variants that differ only in
-// their evidence element: strict (`evidenceSchema`, canonical trigger:// URIs —
-// persisted and rendered) and input (`evidenceRefSchema`, bare resource ids —
-// what the model writes; the executor builds the URIs). Parametrized so the two
-// can never drift apart.
+// Two variants that differ only in their evidence element: strict
+// (`evidenceSchema`, canonical URIs, persisted and rendered) and input
+// (`evidenceRefSchema`, the bare ids the model writes). Parametrized so they
+// can't drift apart.
 const investigationHypothesisSchemaWith = <T extends z.ZodTypeAny>(evidence: T) =>
   z
     .object({
@@ -545,7 +489,7 @@ export const investigationHypothesisInputSchema =
 /**
  * A caveat qualifies the whole card. `dirty_commit` is the one v1 case: the
  * source we read is the nearest repository snapshot, not provably the deployed
- * code, so every source citation inherits the hedge. Adding a kind is additive.
+ * code, so every source citation inherits the hedge.
  */
 export const investigationCaveatSchema = z.object({
   kind: z.literal("dirty_commit"),
@@ -609,8 +553,7 @@ const investigationStateSchemaWith = <H extends z.ZodTypeAny, E extends z.ZodTyp
     })
     .superRefine((investigation, ctx) => {
       // Remediation XOR checkNext, decided by the outcome: a concluded
-      // investigation offers a fix, an inconclusive one offers what to check, and
-      // neither is allowed to borrow the other's ending.
+      // investigation offers a fix, an inconclusive one offers what to check.
       if (investigation.remediation !== undefined && investigation.outcome !== "concluded") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -642,17 +585,12 @@ export const investigationStateInputSchema = investigationStateSchemaWith(
 );
 
 /**
- * The honest ending for a card nobody concluded.
+ * The ending for a card nobody concluded. There is no "cancelled" or "expired"
+ * outcome: a forced settle keeps every established fact and only stops the card
+ * claiming work is still happening.
  *
- * `inconclusive` is an answer (§4.1: there is no "cancelled" and no "expired"),
- * so a forced settle keeps every fact that was established — the evidence and the
- * hypotheses say what was checked — and only stops the card claiming work is still
- * happening. It invents nothing: no cause, and no fix (which the schema would
- * reject on an inconclusive card anyway).
- *
- * It lives here, not in the agent, because both settles use it: the turn's own
- * (in-process, on the state it holds) and the webapp's between-turns sweep (in
- * SQL, on a row whose turn never came back).
+ * It lives here rather than in the agent because both settles use it: the turn's
+ * own, and the webapp's between-turns sweep over rows whose turn never came back.
  */
 export const UNSETTLED_INVESTIGATION_NOTE =
   "The investigation didn't conclude within this turn, so the cause isn't established. What's below is what was checked.";
@@ -669,20 +607,15 @@ export function forceSettledInvestigationState(state: InvestigationState): Inves
 }
 
 /**
- * The card's typed next actions — and the one thing on an investigation block the
- * model does NOT write.
+ * The card's typed next actions, and the one thing on an investigation block the
+ * model does not write. Only the executor knows whether a file was really read
+ * at the deployed snapshot, so it decides which actions a card offers and grounds
+ * each one in a canonical URI. Hence the strict `agentIntentSchema` rather than
+ * the chart block's lenient one.
  *
- * The whole promise of "Show code" is that the code exists, was read, and is
- * pinned: only the executor knows whether a file was actually read this
- * investigation at the deployed snapshot, so it decides which actions a card
- * offers and grounds each one in an already-canonical `trigger://` URI. The model
- * can't ask for a button, and the button can't carry a target it invented — that
- * is why this uses the strict `agentIntentSchema` and not the chart block's
- * lenient `chartActionIntentSchema`.
- *
- * `version` is the action *vocabulary* version, separate from the block's payload
+ * `version` is the action vocabulary version, separate from the block's payload
  * version: a host that doesn't know a `kind` skips that action, and a card from
- * before capabilities existed simply has none (the field is optional, forever).
+ * before capabilities existed has none, so the field stays optional forever.
  */
 export const INVESTIGATION_CAPABILITIES_VERSION = 1;
 
@@ -715,34 +648,26 @@ const investigationBlockBodySchema = z.object({
   capabilities: investigationCapabilitiesSchema.optional(),
 });
 
-// No `capabilities` here on purpose: a field the model can't write is a field the
-// model can't fake. Anything it sends is stripped at this boundary.
+// No `capabilities` here on purpose: anything the model sends is stripped at
+// this boundary, so it can't fake a button.
 const investigationBlockBodyInputSchema = z.object({
   type: z.literal("investigation"),
   investigation: investigationStateInputSchema,
 });
 
 // ---------------------------------------------------------------------------
-// watch_result — what the configuration card leaves behind
+// watch_result
 // ---------------------------------------------------------------------------
 
 /**
- * The persisted trace of a submitted watch card (§2.2, binding). Only a SUBMITTED
- * outcome reaches the transcript, and it is one of two things:
+ * The persisted trace of a submitted watch card. `watching` confirms a running
+ * watch; `already_true` and `impossible` mean the immediate check answered the
+ * request outright, so no watch exists and there is nothing to cancel.
  *
- * - `watching` — the confirmation block. A watch is running; it states the four
- *   lifetime facts (what · how often it checks · that it reports once · when it
- *   gives up) and there is no separate request line, because this block IS the
- *   transcript record.
- * - `already_true` / `impossible` — the ONE-SHOT RESULT BLOCK. The immediate check
- *   answered the request outright, so no watch exists: no chip, no wake, nothing
- *   to cancel.
- *
- * The wording is FROZEN at append time, the same way a resolved watch's facts are
- * (§7.5): the block carries final English rather than a key, so a later copy
- * change never rewrites what a user was told. It is host-emitted only — absent
- * from `viewBlockInputSchema`, exactly like `report`, so the model can neither
- * fabricate a confirmation nor claim a watch that does not exist.
+ * The wording is frozen at append time: the block carries final English rather
+ * than a message key, so a later copy change never rewrites what a user was
+ * told. Host-emitted only, so it is absent from `viewBlockInputSchema` like
+ * `report` and the model can't claim a watch that doesn't exist.
  */
 export const watchResultOutcomeSchema = z.enum(["watching", "already_true", "impossible"]);
 export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
@@ -754,7 +679,7 @@ const watchResultBlockBodySchema = z.object({
   headline: z.string(),
   /** The lifetime sentence. Null on a one-shot result — nothing is watching. */
   lifetime: z.string().nullable().default(null),
-  /** An honest aside, e.g. that the creation-time check couldn't run (§4.1). */
+  /** An aside, e.g. that the creation-time check couldn't run. */
   detail: z.string().nullable().default(null),
   /** The follow-ups that were actually set up, one short line each. */
   followUp: z.array(z.string()).max(4).default([]),
@@ -774,10 +699,9 @@ export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * What the `render_view` tool accepts from the model: bodies only. Identity is
- * assigned by the executor, never by the model.
- *
- * `report` is absent on purpose — see `reportBlockSchema`.
+ * What the `render_view` tool accepts from the model: bodies only, with identity
+ * assigned by the executor. `report` and `watch_result` are host-emitted and so
+ * absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -813,17 +737,15 @@ export const actionsBlockSchema = actionsBlockBodySchema.merge(blockEnvelopeSche
 
 /**
  * An investigation at one point in time. `id` is the `investigationId` and
- * `revision` is the revision the store committed — so re-emitting the same
- * investigation with better information replaces the card instead of stacking a
- * second one (latest-wins in `latestRevisionBlocks`).
+ * `revision` is the one the store committed, so re-emitting the same
+ * investigation replaces the card instead of stacking a second one.
  */
 export const investigationBlockSchema = investigationBlockBodySchema.merge(blockEnvelopeSchema);
 
 /**
- * A report snapshot. `id` is the id of the `get_report` tool call that produced
- * it and `revision` is pinned to `0` by the type — the immutability rule is
- * enforced here rather than left to a comment, so nothing can emit a "revised"
- * report and collapse two snapshots into one card.
+ * A report snapshot. `id` is the `get_report` tool call that produced it and
+ * `revision` is pinned to 0 by the type, so nothing can emit a revised report
+ * and collapse two snapshots into one card.
  */
 export const reportBlockSchema = reportBlockBodySchema
   .merge(blockEnvelopeSchema)
@@ -868,11 +790,10 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 /**
- * The renderer-facing types are the LENIENT ones, and they keep the plain names
- * because a renderer must handle both shapes: a freshly emitted enveloped block
- * and a pre-envelope block replayed from a stored transcript. `EnvelopedViewBlock`
- * is assignable to `ViewBlock`, so a strict producer feeds a lenient consumer
- * without a cast.
+ * The renderer-facing types are the lenient ones, and keep the plain names,
+ * because a renderer sees both a freshly emitted enveloped block and a
+ * pre-envelope one replayed from a transcript. `EnvelopedViewBlock` is assignable
+ * to `ViewBlock`, so a strict producer feeds a lenient consumer without a cast.
  */
 export type DiagnosisBlock = z.infer<typeof legacyDiagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof legacyChartBlockSchema>;
@@ -891,10 +812,7 @@ export function safeParseStoredViewBlock(value: unknown) {
   return legacyViewBlockSchema.safeParse(value);
 }
 
-/**
- * A block with no `id` can't be addressed by a later revision, so it renders
- * once, in transcript order, and is never replaced.
- */
+/** A block with no `id` can't be addressed by a later revision, so it renders once. */
 export function isRevisableBlock(block: ViewBlock): boolean {
   return typeof block.id === "string" && block.id.length > 0;
 }

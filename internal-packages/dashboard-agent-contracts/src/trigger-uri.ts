@@ -1,11 +1,9 @@
 /**
- * `trigger://` URIs — the single, stable way the dashboard agent points at a
- * resource. Every evidence item, navigate intent, and stored reference uses one,
- * so links survive renames, page-route changes, and transcript replay.
+ * `trigger://` URIs — the single stable way the dashboard agent points at a
+ * resource, so links survive renames, route changes, and transcript replay.
  *
- * The v1 grammar is FROZEN. Adding a resource kind is additive (a new variant);
- * changing an existing one is a breaking change that invalidates stored
- * transcripts, so don't.
+ * The v1 grammar is frozen. Adding a resource kind is additive; changing an
+ * existing one invalidates stored transcripts.
  *
  * ```
  * trigger://{proj}/{env}/run/{id}
@@ -18,19 +16,17 @@
  * trigger://{proj}/{env}/investigation/{id}
  * ```
  *
- * `{proj}` is the project's external ref (`proj_…`) — rename-stable and the same
- * value the public API takes as `projectRef`.
+ * `{proj}` is the project's external ref (`proj_…`), the same value the public
+ * API takes as `projectRef`.
  *
- * `{env}` is the RuntimeEnvironment **id**, not its name or slug. It is the only
+ * `{env}` is the RuntimeEnvironment id, not its name or slug. It is the only
  * environment identifier that is globally unique, stable across renames, covers
- * preview-branch environments, and carries no secret. Environment names and
- * slugs are display-only and MUST NOT appear in a URI.
+ * preview-branch environments, and carries no secret. Names and slugs are
+ * display-only and must not appear in a URI.
  *
- * Every segment that can carry an arbitrary value (queue names, error
- * fingerprints, deployment versions, report keys) is a percent-encoded path
- * segment. A source `{path}` keeps its `/` separators but percent-encodes each
- * individual segment, so a nested path stays readable while a `/` inside a
- * single filename still round-trips.
+ * Any segment carrying an arbitrary value is percent-encoded. A source `{path}`
+ * keeps its `/` separators but encodes each segment, so a nested path stays
+ * readable while a `/` inside a filename still round-trips.
  */
 import { z } from "zod";
 
@@ -38,7 +34,7 @@ import { z } from "zod";
 export type TriggerUri = string & { readonly __brand: "TriggerUri" };
 
 export type ParsedTriggerUri =
-  // The runs *collection* — a navigate target; filters ride in the intent, not the URI.
+  // The runs collection. Filters ride in the intent, not the URI.
   | { kind: "runs"; projectRef: string; environmentId: string }
   | { kind: "run"; projectRef: string; environmentId: string; runId: string }
   | { kind: "span"; projectRef: string; environmentId: string; runId: string; spanId: string }
@@ -88,9 +84,9 @@ export class TriggerUriError extends Error {
 const SCHEME = "trigger://";
 
 /**
- * Non-throwing parse, zod's `safeParse` shape. {@link parseTriggerUri} is the
- * throwing wrapper — use that when a malformed URI is a bug, and this one when
- * it's untrusted input (a model tool call, a stored transcript).
+ * Non-throwing parse, zod's `safeParse` shape. Use this for untrusted input (a
+ * model tool call, a stored transcript) and {@link parseTriggerUri} when a
+ * malformed URI would be a bug.
  */
 export function safeParseTriggerUri(input: string): TriggerUriParseResult {
   if (typeof input !== "string" || input.length === 0) {
@@ -135,8 +131,7 @@ export function safeParseTriggerUri(input: string): TriggerUriParseResult {
     segments.push(decoded);
   }
 
-  // Collection kinds (`runs`) are exactly 3 segments; every resource kind
-  // carries at least one id segment after the kind.
+  // Collection kinds are exactly 3 segments; resource kinds add at least one id.
   if (segments.length < 3) {
     return fail("expected at least trigger://{proj}/{env}/{kind}");
   }
@@ -278,9 +273,8 @@ export function formatTriggerUri(parsed: ParsedTriggerUri): TriggerUri {
 }
 
 /**
- * Zod schema for a `trigger://` URI string. Validates the grammar and brands the
- * output, so schemas holding a `uri` field can't be filled with an arbitrary
- * string or a dashboard URL.
+ * Zod schema for a `trigger://` URI. Validates the grammar and brands the output,
+ * so a `uri` field can't be filled with an arbitrary string or a dashboard URL.
  */
 export const triggerUriSchema = z
   .string()

@@ -1,10 +1,10 @@
 /**
  * Evidence — one citation backing something the agent claims.
  *
- * Every piece of evidence points at a real resource through a `trigger://` URI.
- * There is deliberately no free-form `reference: string` field: a string pointer
- * ("run_abc", "src/foo.ts:12", a dashboard URL) can't be resolved, linked, or
- * validated, and it rots. If it can't be expressed as a URI, it isn't evidence.
+ * Every citation points at a real resource through a `trigger://` URI. There is
+ * no free-form `reference: string` field: a string pointer like "src/foo.ts:12"
+ * can't be resolved, linked, or validated. If it can't be expressed as a URI, it
+ * isn't evidence.
  */
 import { z } from "zod";
 import { safeParseTriggerUri, triggerUriKindSchema, triggerUriSchema } from "./trigger-uri.js";
@@ -13,15 +13,14 @@ export const evidenceSchema = z
   .object({
     /** What kind of resource this cites. Mirrors the URI's resource kinds. */
     kind: triggerUriKindSchema,
-    /** The resource itself. */
     uri: triggerUriSchema,
     /** Short human label, e.g. "run_abc123 failed span" or "processOrder.ts:42". */
     label: z.string(),
     /** Optional verbatim snippet (error message, log line, source lines). */
     excerpt: z.string().optional(),
   })
-  // A citation must not claim one resource type while pointing at another — the
-  // renderer picks its icon and label from `kind`, so a mismatch is a lie.
+  // The renderer picks its icon and label from `kind`, so a citation must not
+  // claim one resource type while pointing at another.
   .superRefine((evidence, ctx) => {
     const parsed = safeParseTriggerUri(evidence.uri);
     if (parsed.success && parsed.data.kind !== evidence.kind) {
@@ -37,20 +36,14 @@ export type Evidence = z.infer<typeof evidenceSchema>;
 export type EvidenceKind = Evidence["kind"];
 
 /**
- * The model-facing input shape of evidence.
+ * The model-facing input shape of evidence. The strict schema above is what gets
+ * persisted and rendered. The model can't build a canonical URI, because the
+ * grammar embeds the environment id it never sees, so at the tool boundary it
+ * cites what the read tools gave it and the executor canonicalizes.
  *
- * The strict schema above is what's persisted and rendered. The model can't
- * construct a canonical `trigger://` URI — the grammar embeds the environment
- * id, which the model never sees — so at the tool boundary it cites resources
- * by what the read tools gave it, and the executor (which has the project and
- * environment context) builds the canonical URI before anything is stored.
- *
- * A kind whose URI needs ONE bare id cites it as `uri`. The two kinds whose URI
- * needs more than one part carry those parts as named fields instead of being
- * squeezed into a string: a `span` names its run and span, and a `source` names
- * its path (plus the line, and the commit when it isn't the snapshot this turn
- * read). That's the whole point — a code-grounded cause has to survive the
- * boundary, and "src/foo.ts:12" in a single `uri` field can't be canonicalized.
+ * A kind whose URI needs one bare id cites it as `uri`. The kinds needing more
+ * than one part carry those parts as named fields rather than squeezed into a
+ * string, because "src/foo.ts:12" in a single `uri` field can't be canonicalized.
  */
 const evidenceLabelShape = {
   label: z.string().describe('Short human label, e.g. "run_abc123 failed span".'),
