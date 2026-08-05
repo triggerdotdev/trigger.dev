@@ -33,6 +33,7 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
+import { clampPriorityMs } from "../../v3/utils/priority";
 import {
   type IdempotencyKeyConcern,
   type ClaimedIdempotency,
@@ -887,7 +888,9 @@ export class RunEngineTriggerTaskService {
         ? clampMaxDuration(args.body.options.maxDuration)
         : undefined,
       machine: args.body.options?.machine,
-      priorityMs: args.body.options?.priority ? args.body.options.priority * 1_000 : undefined,
+      priorityMs: args.body.options?.priority
+        ? clampPriorityMs(args.body.options.priority)
+        : undefined,
       queueTimestamp:
         args.options.queueTimestamp ??
         (args.parentRun && args.body.options?.resumeParentOnCompletion
