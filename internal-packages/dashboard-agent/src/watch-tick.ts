@@ -26,10 +26,29 @@ import { logger, sessions, task, tasks } from "@trigger.dev/sdk";
 import type { WatchWakeAction } from "./dashboard-agent";
 
 /**
- * The watcher — one invocation is one tick of one watch ("tell me when X
- * happens"). Triggered by the webapp when the watch is created, and by itself
- * on every reschedule until the condition resolves or the watch runs out of
- * time.
+ * The watcher. Two tasks, one lifecycle.
+ *
+ * `watchTick` is one tick of ONE watch: the shape a watch is born into (the webapp
+ * triggers it when the watch is created) and the shape a wake hand-off takes. Its
+ * chain is deliberately short-lived — the first check hands the watch over to the
+ * batch (see `handOff` below) and stops rescheduling itself.
+ *
+ * `watchBatchTick` is one tick of a whole **(environment, cadence) group**, and it
+ * is where the polling actually happens. One run per group per cadence: the webapp
+ * authorizes the environment once, loads the shared expensive data once (the health
+ * report above all), evaluates every due condition, and hands back one verdict per
+ * watch. This task then runs the SAME per-watch lifecycle over those verdicts —
+ * claim, resolve, wake — concurrently and in isolation. N watches in one
+ * environment cost one authorization and one report read instead of N.
+ *
+ * Everything below the transport is shared: `runWatchLifecycle` is the algorithm,
+ * and the only difference between the two tasks is where the check answer comes
+ * from and who schedules the next tick.
+ *
+ * ---
+ *
+ * One invocation of `watchTick` is one tick of one watch ("tell me when X
+ * happens").
  *
  * There is NO model in a tick. The condition is evaluated by the webapp (which
  * has the data and the access checks); the tick's whole job is the lifecycle:
@@ -164,6 +183,27 @@ export type WatchTickDeps = WatchDeliveryDeps & {
   ) => Promise<unknown>;
 };
 
+/**
+ * The lifecycle's own seams — everything the algorithm needs that isn't the store.
+ * Both tasks build one of these: the per-watch tick posts to the check endpoint and
+ * reschedules itself, the batch reads a verdict the group's single check already
+ * produced and lets the batch do the rescheduling.
+ */
+export type WatchLifecycleDeps = WatchDeliveryDeps & {
+  store: WatchTickStore;
+  /**
+   * The verdict for this watch. `final` is decided by the CLAIMED row, so the
+   * implementation is told whether this is the window's boundary evaluation rather
+   * than deciding it.
+   */
+  check: (args: { watch: Watch; final: boolean }) => Promise<CheckOutcome>;
+  /**
+   * Keep this watch's chain alive after a check that resolved nothing. A no-op in
+   * the batch, where one reschedule covers the whole group.
+   */
+  onPending: (watch: Watch, tick: number) => Promise<void>;
+};
+
 /** What one tick did, for the run's output and the tests. */
 export type WatchTickOutcome =
   | "missing"
@@ -181,25 +221,41 @@ export type WatchTickOutcome =
   | "revoked"
   | "unavailable"
   | "pending"
+  // The check answered AND told us a batch chain is now polling this watch's
+  // (environment, cadence) group. The per-watch chain stops here rather than
+  // rescheduling itself — the group's single tick run has the watch from now on.
+  | "handed_off"
   | "fired"
   | "expired";
 
 export type WatchTickResult = { outcome: WatchTickOutcome; tickCount?: number };
 
-/** The check endpoint's answer, normalized. */
-type CheckOutcome =
+/**
+ * The check endpoint's answer, normalized.
+ *
+ * `handOff` is orthogonal to the verdict: it says a batch chain now polls this
+ * watch's group, so whoever asked should stop keeping its own chain alive. Only the
+ * per-watch check endpoint ever sets it.
+ */
+export type CheckOutcome =
   | {
       kind: "result";
       result: WatchCheckResult;
       facts?: Record<string, unknown>;
       /** What the check SAW — the second half of a resolved result (§4.2). */
       observed?: WatchObservedOutcome;
+      handOff?: boolean;
     }
   // The row is already over and the webapp knows it: the tick exits without
   // transitioning or delivering.
   | { kind: "revoked"; code?: string }
   // The check itself couldn't run. Never true, never false.
-  | { kind: "unavailable"; detail?: string; observed?: WatchObservedOutcome };
+  | {
+      kind: "unavailable";
+      detail?: string;
+      observed?: WatchObservedOutcome;
+      handOff?: boolean;
+    };
 
 /**
  * Codes that mean the ROW is no longer active, so there is nothing left for the
@@ -249,6 +305,8 @@ async function postCheck(
         observed?: WatchObservedOutcome;
         code?: string;
         error?: string;
+        /** A batch chain now polls this watch's group; stop the per-watch chain. */
+        batched?: boolean;
       }
     | undefined;
 
@@ -258,14 +316,26 @@ async function postCheck(
       kind: "unavailable",
       detail: body?.error ?? `status ${response.status}${body?.code ? ` (${body.code})` : ""}`,
       observed: body?.observed,
+      handOff: body?.batched === true,
     };
   }
 
   if (!body?.result) return { kind: "unavailable", detail: "the check returned no result" };
   if (body.result === "unavailable") {
-    return { kind: "unavailable", detail: body.error, observed: body.observed };
+    return {
+      kind: "unavailable",
+      detail: body.error,
+      observed: body.observed,
+      handOff: body.batched === true,
+    };
   }
-  return { kind: "result", result: body.result, facts: body.facts, observed: body.observed };
+  return {
+    kind: "result",
+    result: body.result,
+    facts: body.facts,
+    observed: body.observed,
+    handOff: body.batched === true,
+  };
 }
 
 /**
@@ -276,9 +346,15 @@ async function postCheck(
  * watch, so a later tick or invocation retry can repeat it harmlessly, and losing
  * the alert is better than losing the wake.
  */
-async function postFired(payload: WatchTickPayload): Promise<void> {
-  await postWatchCallback(payload, "fired");
+async function postFired(target: WatchCallbackTarget): Promise<void> {
+  await postWatchCallback(target, "fired");
 }
+
+/**
+ * What a per-watch callback needs. Its own type because a batch tick calls these
+ * for many watches, each with the token the batch check handed back for it.
+ */
+type WatchCallbackTarget = { apiOrigin: string; watchId: string; token: string };
 
 /**
  * Tell the webapp a consented watch has been woken, so it can send the agent off to
@@ -286,21 +362,21 @@ async function postFired(payload: WatchTickPayload): Promise<void> {
  * this call says only that the wake is delivered, and the endpoint decides whether
  * the outcome is one the consent covers.
  */
-async function postInvestigate(payload: WatchTickPayload): Promise<void> {
-  await postWatchCallback(payload, "investigate");
+async function postInvestigate(target: WatchCallbackTarget): Promise<void> {
+  await postWatchCallback(target, "investigate");
 }
 
 async function postWatchCallback(
-  payload: WatchTickPayload,
+  target: WatchCallbackTarget,
   path: "fired" | "investigate"
 ): Promise<void> {
-  const origin = payload.apiOrigin.replace(/\/$/, "");
+  const origin = target.apiOrigin.replace(/\/$/, "");
   const response = await fetch(
-    `${origin}/api/v1/dashboard-agent/watches/${encodeURIComponent(payload.watchId)}/${path}`,
+    `${origin}/api/v1/dashboard-agent/watches/${encodeURIComponent(target.watchId)}/${path}`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${payload.token}`,
+        Authorization: `Bearer ${target.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -500,15 +576,20 @@ export async function resolveAndDeliver(
 }
 
 /**
- * One tick. See the module comment for the invariants; the order of the branches
- * below IS the algorithm.
+ * One watch's tick, whoever is driving it. See the module comment for the
+ * invariants; the order of the branches below IS the algorithm.
+ *
+ * Shared verbatim by the per-watch task and the batch: batching changed WHERE the
+ * check answer comes from and who schedules the next tick, and deliberately nothing
+ * else — the claim, the resolution model, the boundary evaluation, the terminal
+ * transition and the fenced wake are all the same code on both paths.
  */
-export async function runWatchTick(
-  payload: WatchTickPayload,
-  deps: WatchTickDeps
+export async function runWatchLifecycle(
+  args: { watchId: string; tick: number; deliverOnly?: boolean },
+  deps: WatchLifecycleDeps
 ): Promise<WatchTickResult> {
   const now = deps.now?.() ?? new Date();
-  const watch = await deps.store.getWatch({ id: payload.watchId });
+  const watch = await deps.store.getWatch({ id: args.watchId });
 
   if (!watch) return { outcome: "missing" };
 
@@ -525,7 +606,7 @@ export async function runWatchTick(
 
   // Delivery-only invocations never decide anything: if the row isn't terminal,
   // there is nothing owed and this exits without claiming a generation.
-  if (payload.deliverOnly) {
+  if (args.deliverOnly) {
     logger.info("dashboard-agent watch delivery has nothing to deliver", {
       watchId: watch.id,
       status: watch.status,
@@ -541,13 +622,13 @@ export async function runWatchTick(
   // write it makes is guarded or keyed (see `claimWatchTick`).
   const claimed = await deps.store.claimWatchTick({
     id: watch.id,
-    generation: payload.tick,
+    generation: args.tick,
   });
 
   if (!claimed) {
     logger.info("dashboard-agent watch tick is stale; exiting", {
       watchId: watch.id,
-      tick: payload.tick,
+      tick: args.tick,
       tickCount: watch.tickCount,
     });
     return { outcome: "stale" };
@@ -559,7 +640,7 @@ export async function runWatchTick(
   // The ROW is the authority on expiry, not the check. Past the deadline this is
   // the last check the watch gets, and the endpoint is told so.
   const final = claimed.expiresAt.getTime() <= now.getTime();
-  const check = await postCheck(deps, payload, final);
+  const check = await deps.check({ watch: claimed, final });
 
   if (check.kind === "revoked") {
     // The row is cancelled or gone, so there is nothing to transition or deliver.
@@ -577,8 +658,9 @@ export async function runWatchTick(
         id: claimed.id,
         lastResult: { checkFailed: true, detail: check.detail, previous: claimed.lastResult },
       });
-      await scheduleNextTick(deps, payload, claimed);
-      return { outcome: "unavailable", tickCount: payload.tick };
+      if (check.handOff) return { outcome: "handed_off", tickCount: args.tick };
+      await deps.onPending(claimed, args.tick);
+      return { outcome: "unavailable", tickCount: args.tick };
     }
     // The final check couldn't run, but the deadline still passed: the watch
     // expires, and the narration says the condition couldn't be verified.
@@ -635,8 +717,34 @@ export async function runWatchTick(
   }
 
   await deps.store.recordWatchCheck({ id: claimed.id, lastResult: check.facts ?? {} });
-  await scheduleNextTick(deps, payload, claimed);
-  return { outcome: "pending", tickCount: payload.tick };
+  // The condition hasn't happened and the window is still open, so SOMETHING has to
+  // keep looking. A hand-off says the group's batch chain is already doing it.
+  if (check.handOff) return { outcome: "handed_off", tickCount: args.tick };
+  await deps.onPending(claimed, args.tick);
+  return { outcome: "pending", tickCount: args.tick };
+}
+
+/**
+ * One tick of one watch, over the per-watch check endpoint. The shape a watch is
+ * born into: the webapp triggers this when the watch is created, and its first
+ * check hands the watch over to the group's batch chain.
+ */
+export function runWatchTick(
+  payload: WatchTickPayload,
+  deps: WatchTickDeps
+): Promise<WatchTickResult> {
+  return runWatchLifecycle(
+    { watchId: payload.watchId, tick: payload.tick, deliverOnly: payload.deliverOnly },
+    {
+      store: deps.store,
+      deliver: deps.deliver,
+      notifyFired: deps.notifyFired,
+      notifyInvestigate: deps.notifyInvestigate,
+      now: deps.now,
+      check: ({ final }) => postCheck(deps, payload, final),
+      onPending: (watch) => scheduleNextTick(deps, payload, watch),
+    }
+  );
 }
 
 /**
@@ -663,6 +771,268 @@ async function scheduleNextTick(
       idempotencyKey: `watch:${watch.id}:tick:${next}`,
     }
   );
+}
+
+// ---------------------------------------------------------------------------
+// The batch tick — one run per (environment, cadence), for every watch in it.
+// ---------------------------------------------------------------------------
+
+/** What a batch tick carries: the group, the chain it belongs to, its generation. */
+export type WatchBatchTickPayload = {
+  environmentId: string;
+  cadenceMinutes: number;
+  apiOrigin: string;
+  /**
+   * The CHAIN's token, minted by the webapp for this (environment, cadence). Like a
+   * watch token it carries no authority beyond naming what it is for: the batch
+   * check re-authorizes every watch's own initiating user against that watch's own
+   * immutable project/environment, one authorization per distinct user.
+   */
+  token: string;
+  /** The chain incarnation this run belongs to. A mismatch means it owns nothing. */
+  epoch: number;
+  /** The tick generation this run owns inside `epoch`, starting at 1. */
+  tick: number;
+};
+
+/** One watch's verdict inside a batch answer. */
+export type WatchBatchCheckEntry = {
+  watchId: string;
+  /** The watch's own token — the fired / investigate callbacks are per watch. */
+  token: string;
+  /** The generation to claim for this watch (its `tickCount + 1` when listed). */
+  tick: number;
+  /**
+   * The row is already resolved and its wake is owed: no check ran and none is
+   * wanted, this entry exists so the group's own tick recovers the wake rather than
+   * leaving it to the webapp's five-minute delivery sweep.
+   */
+  deliverOnly?: boolean;
+  result?: WatchCheckResult;
+  facts?: Record<string, unknown>;
+  observed?: WatchObservedOutcome;
+  /** `access_revoked` / `cancelled` / `not_found`, instead of a result. */
+  code?: string;
+  error?: string;
+};
+
+/** What the batch check endpoint answers. */
+export type WatchBatchCheckResponse = {
+  /**
+   * This run's epoch/generation is not the chain's — a duplicate whose successor
+   * already ran, or a zombie from before a re-arm. It owns nothing and exits.
+   */
+  stale?: boolean;
+  watches?: WatchBatchCheckEntry[];
+  /** Whether the group still has active watches, i.e. whether to tick again. */
+  continues?: boolean;
+};
+
+export type WatchBatchTickDeps = {
+  store: WatchTickStore;
+  /** Every due watch's verdict, from ONE call. */
+  checkBatch: (payload: WatchBatchTickPayload) => Promise<WatchBatchCheckResponse>;
+  deliver: WatchDeliveryDeps["deliver"];
+  notifyFired: (target: { watchId: string; token: string }) => Promise<void>;
+  notifyInvestigate: (target: { watchId: string; token: string }) => Promise<void>;
+  reschedule: (
+    payload: WatchBatchTickPayload,
+    options: { delay: string; idempotencyKey: string }
+  ) => Promise<unknown>;
+  now?: () => Date;
+  /** How many watches are resolved at once. Defaults to {@link BATCH_CONCURRENCY}. */
+  concurrency?: number;
+};
+
+/** What one batch tick did, per watch and as a whole. */
+export type WatchBatchTickResult = {
+  outcome: "ticked" | "stale";
+  results: Array<{ watchId: string; outcome?: WatchTickOutcome; error?: string }>;
+  rescheduled: boolean;
+};
+
+/**
+ * How many watches a batch resolves at once. Small and constant: the point is that
+ * one slow condition can't serialize the group, not to fan out — every watch in the
+ * batch shares one database and one webapp, and the expensive reads already happened
+ * once, before this task saw the answer.
+ */
+const BATCH_CONCURRENCY = 8;
+
+/** `mapper` over `items`, at most `limit` in flight. Order is preserved. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * One tick of a whole (environment, cadence) group.
+ *
+ * The economics of the feature live in the first line: ONE call gets every due
+ * watch's verdict, so the environment is authorized once and the shared expensive
+ * reads (the health report above all) happen once no matter how many watches are
+ * watching. Everything after it is the per-watch lifecycle, unchanged.
+ *
+ * Three properties the shape has to keep, and how:
+ *
+ * - **Isolation.** Each watch is resolved inside its own try, so an exception, a
+ *   refusal, or a wake that wouldn't append is recorded against that watch and the
+ *   rest of the batch still resolves.
+ * - **The chain outlives a bad watch.** The reschedule happens BEFORE the failures
+ *   are rethrown, so a watch that fails every attempt can't take its group's polling
+ *   loop down with it — the run fails (visibly, and retried), the chain continues.
+ * - **No double-fire.** Nothing here is the guard: two overlapping batch runs both
+ *   reach the same watch's terminal transition and its delivery claim, and those —
+ *   the same guarded statements a per-watch tick relies on — pick one winner. The
+ *   chain's epoch/generation claim (in the batch check) only keeps the SCHEDULE
+ *   single-file.
+ */
+export async function runWatchBatchTick(
+  payload: WatchBatchTickPayload,
+  deps: WatchBatchTickDeps
+): Promise<WatchBatchTickResult> {
+  const response = await deps.checkBatch(payload);
+
+  if (response.stale) {
+    logger.info("dashboard-agent watch batch is stale; exiting", {
+      environmentId: payload.environmentId,
+      cadenceMinutes: payload.cadenceMinutes,
+      epoch: payload.epoch,
+      tick: payload.tick,
+    });
+    return { outcome: "stale", results: [], rescheduled: false };
+  }
+
+  const entries = response.watches ?? [];
+  const results = await mapWithConcurrency(
+    entries,
+    deps.concurrency ?? BATCH_CONCURRENCY,
+    (entry) => resolveBatchEntry(payload, deps, entry)
+  );
+
+  // Before the rethrow below: the chain has to survive a watch that keeps failing.
+  let rescheduled = false;
+  if (response.continues) {
+    const next = payload.tick + 1;
+    await deps.reschedule(
+      { ...payload, tick: next },
+      {
+        delay: `${payload.cadenceMinutes}m`,
+        // Keyed on the epoch as well as the generation, so a re-armed chain can
+        // never collide with the keys its predecessor already used.
+        idempotencyKey: `watch-batch:${payload.environmentId}:${payload.cadenceMinutes}:${payload.epoch}:tick:${next}`,
+      }
+    );
+    rescheduled = true;
+  }
+
+  const failed = results.filter((result) => result.error !== undefined);
+  if (failed.length > 0) {
+    // The retry re-runs the batch: the chain's claim is resumable, and the check
+    // hands back the owed wakes again. Same contract as a per-watch tick that died
+    // between its transition and its append.
+    throw new Error(
+      `${failed.length} of ${entries.length} watches failed their tick (${failed
+        .map((result) => result.watchId)
+        .join(", ")})`
+    );
+  }
+
+  return { outcome: "ticked", results, rescheduled };
+}
+
+/** One watch of a batch, on the shared lifecycle, isolated from its neighbours. */
+async function resolveBatchEntry(
+  payload: WatchBatchTickPayload,
+  deps: WatchBatchTickDeps,
+  entry: WatchBatchCheckEntry
+): Promise<{ watchId: string; outcome?: WatchTickOutcome; error?: string }> {
+  const target = { apiOrigin: payload.apiOrigin, watchId: entry.watchId, token: entry.token };
+  try {
+    const result = await runWatchLifecycle(
+      { watchId: entry.watchId, tick: entry.tick, deliverOnly: entry.deliverOnly },
+      {
+        store: deps.store,
+        deliver: deps.deliver,
+        notifyFired: () => deps.notifyFired(target),
+        notifyInvestigate: () => deps.notifyInvestigate(target),
+        now: deps.now,
+        check: async () => batchCheckOutcome(entry),
+        // The group's single reschedule covers every watch in it.
+        onPending: async () => {},
+      }
+    );
+    return { watchId: entry.watchId, outcome: result.outcome };
+  } catch (error) {
+    logger.error("dashboard-agent watch batch: a watch failed its tick", {
+      watchId: entry.watchId,
+      environmentId: payload.environmentId,
+      error: (error as Error).message,
+    });
+    return { watchId: entry.watchId, error: (error as Error).message };
+  }
+}
+
+/**
+ * A batch entry as the lifecycle's check answer. The batch check already applied the
+ * row's own authority — including whether this was the window's boundary evaluation
+ * — so this only re-shapes what it said.
+ */
+function batchCheckOutcome(entry: WatchBatchCheckEntry): CheckOutcome {
+  if (entry.code && REVOKED_CODES.has(entry.code)) return { kind: "revoked", code: entry.code };
+  if (!entry.result || entry.result === "unavailable") {
+    return { kind: "unavailable", detail: entry.error, observed: entry.observed };
+  }
+  return {
+    kind: "result",
+    result: entry.result,
+    facts: entry.facts,
+    observed: entry.observed,
+  };
+}
+
+/** POST the batch check, and refuse to guess at anything it didn't answer clearly. */
+async function postBatchCheck(payload: WatchBatchTickPayload): Promise<WatchBatchCheckResponse> {
+  const origin = payload.apiOrigin.replace(/\/$/, "");
+  const response = await fetch(`${origin}/api/v1/dashboard-agent/watches/batch-check`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${payload.token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      environmentId: payload.environmentId,
+      cadenceMinutes: payload.cadenceMinutes,
+      epoch: payload.epoch,
+      tick: payload.tick,
+    }),
+  });
+
+  const body = (await response.json().catch(() => undefined)) as
+    | (WatchBatchCheckResponse & { error?: string })
+    | undefined;
+
+  if (!response.ok) {
+    // Deliberately a throw, not an empty batch: a batch that can't be read is a
+    // failure to check the whole group, and the run must be retried rather than
+    // quietly reschedule as if nothing was due.
+    throw new Error(body?.error ?? `the batch check returned ${response.status}`);
+  }
+
+  return body ?? {};
 }
 
 // One connection pool per worker process for the watcher (separate from the
@@ -754,15 +1124,7 @@ export const watchTick = task({
   run: async (payload: WatchTickPayload): Promise<WatchTickResult> => {
     const { db } = getWatchDb();
     const result = await runWatchTick(payload, {
-      store: {
-        getWatch: (params) => getWatch(db, params),
-        claimWatchTick: (params) => claimWatchTick(db, params),
-        transitionWatchCondition: (params) => transitionWatchCondition(db, params),
-        claimWatchDelivery: (params) => claimWatchDelivery(db, params),
-        releaseWatchDelivery: (params) => releaseWatchDelivery(db, params),
-        markWatchDelivered: (params) => markWatchDelivered(db, params),
-        recordWatchCheck: (params) => recordWatchCheck(db, params),
-      },
+      store: watchStore(db),
       fetch: (input, init) => fetch(input, init),
       deliver: appendWakeToSession,
       notifyFired: () => postFired(payload),
@@ -776,6 +1138,51 @@ export const watchTick = task({
       tick: payload.tick,
       outcome: result.outcome,
       tickCount: result.tickCount,
+    });
+
+    return result;
+  },
+});
+
+/** The store bindings both tasks use. */
+function watchStore(db: DashboardAgentDbClient["db"]): WatchTickStore {
+  return {
+    getWatch: (params) => getWatch(db, params),
+    claimWatchTick: (params) => claimWatchTick(db, params),
+    transitionWatchCondition: (params) => transitionWatchCondition(db, params),
+    claimWatchDelivery: (params) => claimWatchDelivery(db, params),
+    releaseWatchDelivery: (params) => releaseWatchDelivery(db, params),
+    markWatchDelivered: (params) => markWatchDelivered(db, params),
+    recordWatchCheck: (params) => recordWatchCheck(db, params),
+  };
+}
+
+export const watchBatchTick = task({
+  id: "dashboard-agent-watch-batch",
+  // Same reasoning as the per-watch tick: every write is guarded or keyed, so a
+  // retry is safe and losing a wake is not. The reschedule happens before the
+  // failures are rethrown, so retrying can never be the thing that ends the chain.
+  retry: { maxAttempts: 5 },
+  run: async (payload: WatchBatchTickPayload): Promise<WatchBatchTickResult> => {
+    const { db } = getWatchDb();
+    const result = await runWatchBatchTick(payload, {
+      store: watchStore(db),
+      checkBatch: postBatchCheck,
+      deliver: appendWakeToSession,
+      notifyFired: (target) => postFired({ apiOrigin: payload.apiOrigin, ...target }),
+      notifyInvestigate: (target) => postInvestigate({ apiOrigin: payload.apiOrigin, ...target }),
+      reschedule: (next, options) =>
+        tasks.trigger<typeof watchBatchTick>("dashboard-agent-watch-batch", next, options),
+    });
+
+    logger.info("dashboard-agent watch batch ticked", {
+      environmentId: payload.environmentId,
+      cadenceMinutes: payload.cadenceMinutes,
+      epoch: payload.epoch,
+      tick: payload.tick,
+      outcome: result.outcome,
+      watches: result.results.length,
+      rescheduled: result.rescheduled,
     });
 
     return result;

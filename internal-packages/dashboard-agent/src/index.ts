@@ -10,7 +10,16 @@ export * from "./dashboard-agent.js";
 // watch. TYPE-ONLY on purpose — the webapp must trigger it by id
 // (`tasks.trigger<typeof watchTick>("dashboard-agent-watch", payload)`) and must
 // never import the task value.
-export type { WatchTickPayload, watchTick } from "./watch-tick.js";
+// The batch tick is the same deal: the webapp arms a chain and triggers it by id
+// (`dashboard-agent-watch-batch`), never by importing the task value.
+export type {
+  WatchBatchCheckEntry,
+  WatchBatchCheckResponse,
+  WatchBatchTickPayload,
+  watchBatchTick,
+  WatchTickPayload,
+  watchTick,
+} from "./watch-tick.js";
 
 // The view-catalog block types, for the webapp's render registry. They now live
 // in `@internal/dashboard-agent-contracts` (a zod-only leaf) and are re-exported
