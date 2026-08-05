@@ -151,12 +151,9 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      // The dashboard agent's backstops, on one cron: expire what is overdue
-      // (through the same authorization a check goes through), re-deliver wakes that
-      // never reached their chat, settle investigation cards whose turn never came
-      // back, and re-arm batch polling chains whose run died. See
-      // dashboardAgentWatchSweep.server.ts and
-      // dashboardAgentInvestigationSweep.server.ts.
+      // Dashboard agent backstops on one cron: expire overdue watches, re-deliver
+      // wakes that never reached their chat, settle stuck investigation cards, and
+      // re-arm batch polling chains whose run died.
       "dashboardAgent.sweepWatches": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
@@ -225,9 +222,8 @@ function initializeWorker() {
         await service.process(payload.bulkActionId);
       },
       "dashboardAgent.sweepWatches": async () => {
-        // Independent backstops: a failing watch sweep must not stop stuck
-        // investigation cards from being settled, so each runs on its own and the
-        // first failure is rethrown once both have had their turn.
+        // Each backstop runs independently so one failure doesn't skip the others.
+        // The first failure is rethrown after all three have had their turn.
         let failure: unknown;
 
         try {

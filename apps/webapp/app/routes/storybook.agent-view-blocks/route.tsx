@@ -7,17 +7,11 @@ import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard"
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import { GalleryPage, noop } from "../storybook.agent-ui/gallery";
 
-/**
- * View blocks: the envelope rules every card obeys, the actions block, the
- * diagnosis card and the chart card. The shell and the manifest live in
- * `../storybook.agent-ui`.
- */
+// View blocks: the envelope rules every card obeys, the actions block, the diagnosis
+// card and the chart card. The shell and the manifest live in `../storybook.agent-ui`.
 
-// ---------------------------------------------------------------------------
-// Diagnosis fixtures written for this page. The demo fixtures cover the cases
-// the panel actually shows; these cover the card's own range (a fully populated
-// card, a thin one, and the middle) which no conversation needs.
-// ---------------------------------------------------------------------------
+// Diagnosis fixtures written for this page, covering the card's own range (fully
+// populated, thin, and the middle) which no demo conversation needs.
 
 const fullDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
@@ -101,10 +95,8 @@ const lowConfidenceDiagnosis: DiagnosisBlock = {
   ],
 };
 
-// Blocks may carry an envelope: `id` identifies the block across turns and
-// `revision` says how fresh it is. ViewBlocks collapses same-(type, id) blocks
-// to the highest revision, so a re-emitted diagnosis replaces the earlier one
-// instead of stacking cards.
+// ViewBlocks collapses same-(type, id) blocks to the highest revision, so a
+// re-emitted diagnosis replaces the earlier one instead of stacking cards.
 const revisedDiagnosis: ViewBlock[] = [
   {
     ...lowConfidenceDiagnosis,
@@ -130,8 +122,7 @@ const revisedDiagnosis: ViewBlock[] = [
   },
 ];
 
-// The watch offer as buttons: the answer ends with one line of prose, this block
-// makes the offer a click. The first action is the one to take.
+// The watch offer as buttons. The first action is the one to take.
 const offerActionsBlock: ViewBlock = {
   type: "actions",
   id: "actions-offer",
@@ -158,12 +149,8 @@ const offerActionsBlock: ViewBlock = {
   ],
 };
 
-/**
- * The badge matrix: one card per diagnosis category, cycling through the three
- * confidence levels, so every badge colour pair on the card is on screen at
- * once and can be checked in both themes. Bodies are the demo fixture's, so the
- * only thing varying is the badges.
- */
+// One card per category, cycling the three confidence levels, so every badge colour
+// pair is on screen at once. Bodies come from one demo fixture, so only badges vary.
 const DIAGNOSIS_CATEGORIES: DiagnosisBlock["category"][] = [
   "user_code_error",
   "configuration",
@@ -210,7 +197,6 @@ function EmptyChartCard() {
 }
 
 const STATES: Record<string, React.ReactNode> = {
-  // --- Envelope & actions -------------------------------------------------
   "view-blocks-revisions": <ViewBlocks blocks={revisedDiagnosis} />,
   "view-blocks-mixed": (
     <ViewBlocks
@@ -223,7 +209,6 @@ const STATES: Record<string, React.ReactNode> = {
   ),
   "view-blocks-actions-offer": <ViewBlocks blocks={[offerActionsBlock]} onIntent={noop} />,
 
-  // --- Diagnosis card -----------------------------------------------------
   "diagnosis-full-high": <RunDiagnosisCard block={fullDiagnosis} />,
   "diagnosis-low-minimal": <RunDiagnosisCard block={lowConfidenceDiagnosis} />,
   "diagnosis-badge-matrix": (
@@ -236,7 +221,6 @@ const STATES: Record<string, React.ReactNode> = {
     </div>
   ),
 
-  // --- Chart card ---------------------------------------------------------
   "chart-with-actions": (
     <DemoChartCard actions={demoFixtures.demoChartBlock.actions ?? []} onIntent={noop} />
   ),

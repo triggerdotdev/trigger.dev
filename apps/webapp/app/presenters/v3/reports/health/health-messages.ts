@@ -1,11 +1,7 @@
 /**
- * The `health` report's PROSE — the single place its codes resolve to strings. Registered
- * under the "health" title so the generic renderer can look it up by `vm.title` without ever
- * importing health vocabulary. A future report (Cost, Regression) ships its own catalog the
- * same way; `report-messages.ts` stays report-agnostic infrastructure.
- *
- * Some strings carry {tokens} (e.g. {age}, {rate}) the renderer fills from the finding's
- * metrics / evidence — meaning lives here, numbers stay facts.
+ * The health report's prose: the single place its codes resolve to strings. Registered under the
+ * "health" title so the generic renderer looks it up by `vm.title` without importing health
+ * vocabulary. Some strings carry {tokens} the renderer fills from the finding's metrics.
  */
 
 import { type ReportMessages } from "../report-messages";
@@ -25,23 +21,22 @@ const METRIC_LABELS: Record<string, string> = {
 };
 
 /**
- * Finding headline — keyed by `${findingType}/${reason}`. Degraded = the cause,
- * healthy = reassurance. `@expanded` variants show a healthy finding expanded
- * (e.g. execution while flow is degraded).
+ * Finding headline, keyed by `${findingType}/${reason}`. A degraded finding names the cause, a
+ * healthy one reassures. `@expanded` variants show a healthy finding expanded.
  */
 const FINDING_REASONS: Record<string, string> = {
-  // flow — causes
+  // flow causes
   "flow/env_limit_saturation": "at your env concurrency limit",
   "flow/dequeue_stall": "capacity is free but nothing is dequeuing",
   "flow/queue_limit_throttling": "a queue is throttling at its own limit",
   "flow/trigger_spike": "a trigger spike is backing up the queue",
   "flow/trigger_surge": "a surge of new triggers is backing up the queue",
-  // flow — fallback symptoms (v1)
+  // flow fallback symptoms
   "flow/start_latency": "runs are slow to start",
   "flow/backlog": "backlog is growing",
   "flow/throughput_lag": "completion is falling behind triggers",
   "flow/degraded": "flow is degraded",
-  // flow — healthy (collapsed)
+  // flow healthy, collapsed
   "flow/healthy": "starting normally",
   // execution
   "execution/failures_up": "runs are failing more than usual",
@@ -52,7 +47,7 @@ const FINDING_REASONS: Record<string, string> = {
   "flow/flow_unmeasured": "flow can't be assessed — the queue depth couldn't be measured",
   "execution/healthy": "completing normally", // collapsed
   "execution/healthy@expanded": "the runs that DO start are fine",
-  // liveness = telemetry freshness ({age} filled by the renderer)
+  // liveness, which is telemetry freshness
   "liveness/fresh": "fresh — telemetry current, updated {age} ago",
   "liveness/lagging": "lagging — telemetry last updated {age} ago",
   "liveness/stale": "stale — no telemetry in {age}",
@@ -67,7 +62,7 @@ const READS: Record<string, string> = {
   queue_throttle_chain: "queue at its limit → its runs wait → backlog grows",
   spike_chain: "triggers jumped {mult}× → queue fills faster than it drains",
   surge_chain: "new triggers arriving with no prior baseline → queue fills faster than it drains",
-  // fallback symptoms (v1)
+  // fallback symptoms
   starting_normally: "runs are starting on time",
   lag_while_triggering_normal: "triggering normally, but starts lag → work is backing up",
   lag_and_failures: "runs are lagging AND failing — check the code path",
@@ -79,14 +74,14 @@ const READS: Record<string, string> = {
   flow_unmeasured: "the queue depth is unavailable — the backlog cannot be assessed",
 };
 
-/** Exclusion (ruled-out cause) — rendered under `read:`. {tokens} filled from evidence. */
+/** A ruled-out cause, rendered under `read:`. {tokens} are filled from evidence. */
 const EXCLUSIONS: Record<string, string> = {
   not_env_limit: "env concurrency limit is not the bottleneck",
   not_your_code: "not your code — failures and durations normal",
   not_your_config: "not your config — limits aren't the bottleneck",
 };
 
-/** Observation (supporting fact, not a ruled-out cause) — rendered under `read:` after exclusions. */
+/** A supporting fact rather than a ruled-out cause, rendered after the exclusions. */
 const OBSERVATIONS: Record<string, string> = {
   // "finishing", not "completing": the rate counts every terminal run (what leaves the queue).
   not_workers_platform: "runs are finishing at ~{rate}/min",
@@ -94,7 +89,7 @@ const OBSERVATIONS: Record<string, string> = {
   nothing_dead_lettered: "nothing dead-lettered",
 };
 
-/** Metric annotation shown on a cause line INSTEAD of "(normal ~x)". {tokens} filled by the renderer. */
+/** Metric annotation shown on a cause line in place of the normal baseline. */
 const ANNOTATIONS: Record<string, string> = {
   pinned_minutes: "{value} min at limit",
   idle_share: "idle — {value} running of {limit}",
@@ -103,7 +98,7 @@ const ANNOTATIONS: Record<string, string> = {
   surge_rate: "{value}/min, no prior baseline",
 };
 
-/** Headline statement — keyed by `${findingType}/${severity}`. */
+/** Headline statement, keyed by `${findingType}/${severity}`. */
 const STATEMENTS: Record<string, string> = {
   "flow/ok": "Flow healthy",
   "flow/warn": "Flow slowing",
@@ -116,9 +111,9 @@ const STATEMENTS: Record<string, string> = {
   "liveness/crit": "data stale",
 };
 
-/** Recommendation / footer codes -> calm, jargon-free action text. */
+/** Recommendation and footer codes resolved to action text. */
 const ACTIONS: Record<string, string> = {
-  // Review = open concrete data · Check = system state · Raise = a settings change
+  // Review opens concrete data, Check looks at system state, Raise is a settings change.
   review_start_latency: "Review start latency",
   review_failing_tasks: "Review failing tasks",
   review_slow_runs: "Review slow runs",
@@ -149,16 +144,16 @@ function findingReason(
 }
 
 function statementMessage(findingType: string, severity: Severity, reason?: ReasonCode): string {
-  // Stale telemetry makes a CH-derived verdict untrustworthy — say so, don't show a severity.
+  // Stale telemetry makes the derived verdict untrustworthy, so say so instead of a severity.
   if (reason === "unknown") {
     const label = findingType.charAt(0).toUpperCase() + findingType.slice(1);
     return `${label} unknown — data stale`;
   }
-  // Same for a missing depth signal: unknown, but the cause is a failed measurement, not staleness.
+  // A missing depth signal is also unknown, but from a failed measurement rather than staleness.
   if (reason === "flow_unmeasured") {
     return "Flow unknown — queue depth unavailable";
   }
-  // No freshness signal is NOT "data lagging" (a real severity) — it's genuinely unknown.
+  // No freshness signal is genuinely unknown, not the real severity of lagging data.
   if (findingType === "liveness" && reason === "freshness_unknown") {
     return "data freshness unknown";
   }

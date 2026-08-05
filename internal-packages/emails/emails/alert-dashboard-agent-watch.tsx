@@ -24,15 +24,11 @@ export const AlertDashboardAgentWatchEmailSchema = z.object({
   /** The watch kind, e.g. `run_finished`. */
   kind: z.string(),
   /**
-   * The fact headline, already rendered by the webapp's `watch-presentation.ts`
-   * — the SAME sentence the chat's wake banner shows, so chat and inbox read
-   * alike (§6). Optional so an older enqueue still renders something sane.
+   * The fact headline, already rendered by the webapp's `watch-presentation.ts`: the same
+   * sentence the chat's wake banner shows. Optional so an older enqueue still renders.
    */
   headline: z.string().optional(),
-  /**
-   * The presentation tone that headline was resolved with. Colours the accent
-   * only; the text keeps its colour, exactly as in the panel.
-   */
+  /** The tone the headline was resolved with. Colours the accent only, as in the panel. */
   tone: z.enum(["success", "warning", "error", "neutral"]).optional(),
   /** Why the watch exists, in the user's own words. */
   note: z.string(),
@@ -79,14 +75,8 @@ function formatFiredAt(firedAt: string) {
 }
 
 /**
- * The chat's wake banner, in email form.
- *
- * This template writes NO kind-specific wording of its own. The headline arrives
- * already rendered by the webapp's presenter, off the same resolved-result
- * mapping the panel's WakeBanner uses — so a failed run says "failed" in the
- * inbox too, and there is no good-news kind list anywhere.
- *
- * Only the accent colour is chosen here, because it is an email palette.
+ * The email palette for the accent. This template writes no kind-specific wording of its own:
+ * the headline arrives rendered by the webapp's presenter, so only the colour is chosen here.
  */
 const TONE_COLOR: Record<string, string> = {
   success: "#A8FF53",
@@ -135,8 +125,8 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
               />
             </Section>
             <Section>
-              {/* Fact first, exactly as in the panel: the micro-label carries
-                  the "this is a watch" signal, the headline carries the fact. */}
+              {/* Fact first, as in the panel: the micro-label says it's a watch, the
+                  headline carries the fact. */}
               <Text
                 className="text-[11px] uppercase tracking-widest m-0"
                 style={{ color: accentColor }}

@@ -13,10 +13,8 @@ import { logger } from "~/services/logger.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 /**
- * GET /api/v1/projects/:projectRef/:env/runs/:runId/waiting
- *
- * Thin adapter: authorize here, then hand off to the deterministic waiting-run diagnosis
- * (no LLM, transport-independent) so the same capability can back MCP later.
+ * Why a run is waiting. Authorizes here, then hands off to the transport-independent
+ * waiting-run diagnosis so the same capability can back MCP later.
  */
 
 const ParamsSchema = z.object({
@@ -28,9 +26,9 @@ const ParamsSchema = z.object({
 type Params = z.infer<typeof ParamsSchema>;
 
 /**
- * The bearer token already pins the environment, so the path segments are a consistency check,
- * not a lookup. A mismatch is treated as "not here" (404) rather than 400, so a token for one
- * environment can't probe another environment's paths.
+ * The bearer token already pins the environment, so the path segments are a consistency
+ * check. A mismatch is a 404, not a 400, so a token for one environment can't probe
+ * another environment's paths.
  */
 function environmentMatchesParams(environment: AuthenticatedEnvironment, params: Params): boolean {
   if (environment.project.externalRef !== params.projectRef) return false;
@@ -62,7 +60,7 @@ export const loader = createLoaderApiRoute(
     try {
       const diagnosis = await computeWaitingRunDiagnosis(
         {
-          // Already read by findResource — don't pay for the point-read twice.
+          // Already read by findResource, so don't pay for the point-read twice.
           readRun: async () => run,
           readQueueSignals: (queueName) => readQueueSignals(environment, queueName, now),
         },

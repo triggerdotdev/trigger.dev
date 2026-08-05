@@ -14,16 +14,14 @@ import { logger } from "~/services/logger.server";
  * `POST /api/v1/dashboard-agent/watches/:watchId/fired` — the watcher task tells
  * us a watch fired, so the project's alert channels can be notified.
  *
- * Same security model as the check endpoint next door: the TOKEN only names a
- * watch, the ROW is the authority on whether it actually fired, and the watch's
- * initiating USER is re-authorized against the row's immutable
- * project/environment before anything is sent — an alert must never outlive the
- * access the watch was created with.
+ * Same security model as the check endpoint next door: the token only names a watch,
+ * the row is the authority on whether it fired, and the watch's initiating user is
+ * re-authorized against the row's immutable project/environment before anything is
+ * sent, so an alert never outlives the access the watch was created with.
  *
- * The route asserts nothing beyond "this row is fired": the caller's body is
- * ignored entirely, so a replay can only ever re-announce what the row already
- * says. Repeat calls are harmless because the alert job is keyed on the watch
- * (`watch-alert:{watchId}`), so the fan-out happens at most once.
+ * The caller's body is ignored, so a replay can only re-announce what the row says,
+ * and the alert job is keyed on the watch (`watch-alert:{watchId}`) so the fan-out
+ * happens at most once.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
@@ -62,8 +60,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Watch not found", code: "not_found" }, { status: 404 });
   }
 
-  // The row decides. Anything that isn't a fired watch gets no alert, whatever
-  // the caller claims.
+  // Anything that isn't a fired watch gets no alert, whatever the caller claims.
   if (watch.status !== "fired" || !watch.firedAt) {
     return json(
       { error: `This watch is ${watch.status}`, code: "not_fired", status: watch.status },
@@ -71,9 +68,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // The row is the first thing here that knows whose request this is, so the
-  // boundary starts once it is in hand. Rethrown, so the caller sees exactly what
-  // it saw before: the failure is only named, not handled.
+  // The row is the first thing that knows whose request this is, so the logging
+  // boundary starts here. Failures are logged, then rethrown unchanged.
   try {
     const authorization = await authorizeWatchEnvironment({
       userId: watch.userId,

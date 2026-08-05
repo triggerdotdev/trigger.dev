@@ -93,11 +93,9 @@ const ActionBody = z.object({
   draft: z.string().optional(),
 });
 
-// History list, or — with ?chatId= — the stored transcript + session for resume,
-// or — with ?unread=1 — just the unread wake count plus the capped list of those
-// wakes (the launcher's dot and the wake toast poll it while the panel is closed,
-// so it must stay cheap), or — with ?quota=1 — how many messages the user has
-// sent, for the Free-plan cap.
+// History list by default. `?chatId=` returns the stored transcript plus session for
+// resume, `?unread=1` the unread wake count and recent wakes (polled while the panel
+// is closed, so it stays cheap), `?quota=1` the user's message count for the Free cap.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -120,9 +118,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const searchParams = new URL(request.url).searchParams;
 
   if (searchParams.get("unread") === "1") {
-    // The count drives the dot; the list drives one toast per wake. The list is
-    // RECENT deliveries rather than unread ones — a wake the user happened to be
-    // reading when it landed still deserves its toast (client dedupes by id).
+    // The list is recent deliveries, not unread ones: a wake the user happened to be
+    // reading when it landed still deserves its toast. The client dedupes by id.
     const [unreadWakes, wakes] = await Promise.all([
       countUnreadWatchWakes(dashboardAgentDb, {
         organizationId: project.organizationId,
@@ -137,10 +134,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ unreadWakes, wakes });
   }
 
-  // How many messages the user has sent, for the Free-plan cap. `chatId` is the
-  // chat the panel has open: its messages are excluded here and counted from the
-  // live transcript instead, so a turn that hasn't been persisted yet still
-  // counts. Cheap (one aggregate) and re-read as the user sends.
+  // The open chat is excluded and counted from the live transcript instead, so a
+  // turn that hasn't been persisted yet still counts against the cap.
   if (searchParams.get("quota") === "1") {
     const used = await countUserMessages(dashboardAgentDb, {
       organizationId: project.organizationId,
@@ -164,9 +159,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // Active-watch chips for the list, which chats woke unseen, and which are
-  // mid-investigation — one query each for ALL the listed chats, because the
-  // history list must not fan out a query per row.
+  // One query each for all the listed chats: the history list must not fan out a
+  // query per row.
   const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
     listActiveWatchesForChats({
       chatIds: chats.map((chat) => chat.id),
@@ -194,10 +188,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         ...chat,
         watches,
         hasUnreadWake: unreadChatIds.has(chat.id),
-        // Both are row markers in the history list: the chat has something
-        // running in it. Derived here so the list doesn't re-derive per render.
-        // The list now carries fired/expired watches too (the wake banner needs
-        // their kind), so "something is running" means active specifically.
+        // `watches` also carries fired and expired rows (the wake banner needs
+        // their kind), so the running marker checks for active specifically.
         hasActiveWatch: watches.some((watch) => watch.status === "active"),
         hasOpenInvestigation: investigatingChatIds.has(chat.id),
       };
@@ -228,10 +220,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const parsed = ActionBody.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) return json({ error: "Invalid request" }, { status: 400 });
 
-  // Create a new chat: the SERVER generates the id and owns the chat record, so
-  // a client can never name another user's chat. Kicks off the first turn (head
-  // start when configured, else a cold session) and returns the id + token. The
-  // client mounts with that id and resumes the stream.
+  // The server generates the chat id, so a client can never name another user's
+  // chat. Kicks off the first turn and returns the id plus token; the client
+  // mounts with that id and resumes the stream.
   if (parsed.data.intent === "create") {
     if (!isDashboardAgentConfigured()) {
       return json({ error: "The dashboard agent is not configured." }, { status: 501 });
@@ -274,32 +265,32 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const headStarted = Boolean(env.ANTHROPIC_API_KEY);
       if (headStarted) {
-        // Head start runs the warm step-1 with this first message and injects the
-        // delegated token + context into the run's payload server-side.
+        // Head start runs step 1 with this first message and injects the delegated
+        // token and context into the run's payload server-side.
         await startDashboardAgentHeadStart({
           chatId,
           messages: [firstMessage],
           mode: repoSnapshot ? "code" : "assistant",
           metadata: {
-            // The agent validates the run metadata against its clientDataSchema
-            // (userId, organizationId, …), so the per-turn clientData has to be
-            // present alongside the injected auth/context fields.
+            // The agent validates run metadata against its clientDataSchema, so
+            // the per-turn clientData must be present alongside the injected
+            // auth and context fields.
             ...(clientData ?? {}),
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv?.id,
             }),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
-            // Same canonical environment identity the `in` proxy injects, so turn
-            // 1 and turn N carry identical context.
+            // Same environment identity the `in` proxy injects, so every turn
+            // carries identical context.
             environmentId: runtimeEnv?.id,
             environmentName,
             ...(repoSnapshot ? { repoSnapshot } : {}),
           },
         });
       } else {
-        // Cold start: create the session (preload); the client sends the first
-        // message through the transport, where the `in` proxy injects the token.
+        // Cold start: preload the session. The client sends the first message
+        // through the transport, where the `in` proxy injects the token.
         await startDashboardAgentSession({ chatId, clientData });
       }
 
@@ -314,10 +305,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Turn a `trigger://` URI into the dashboard path it points at, so the panel
-  // can honour a `navigate` intent. Chat-independent (a card in any chat cites
-  // the same resources), and scoped by the environment in the URL — the resolver
-  // refuses a URI naming a different project or environment.
+  // Turn a `trigger://` URI into the dashboard path it points at. Scoped by the
+  // environment in the URL: the resolver refuses a URI naming a different project
+  // or environment.
   if (parsed.data.intent === "resolve") {
     const uri = parsed.data.uri;
     if (!uri) return json({ error: "uri is required" }, { status: 400 });
@@ -325,9 +315,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const environment = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!environment) return json({ error: "Environment not found" }, { status: 404 });
 
-    // A source URI resolves to a GitHub blob link, which needs the project's
-    // connected repository. Only fetched for source URIs — the other kinds
-    // resolve to dashboard paths without it.
+    // A source URI resolves to a GitHub blob link, so it needs the connected
+    // repository. Other kinds resolve to dashboard paths without it.
     const repository = uri.includes("/source/")
       ? await $replica.connectedGithubRepository.findFirst({
           where: {
@@ -351,15 +340,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
   }
 
-  // The configuration card's submit path (§7.6). The card is a deterministic UI
-  // block, not a chat turn: nothing is written until this action runs, and what it
-  // writes is the ONE thing the transcript keeps — a confirmation (a watch is
-  // running) or a one-shot result (the immediate check already answered).
+  // The configuration card's submit path. Nothing is written until this action runs,
+  // and it writes exactly one message: a confirmation, or a one-shot result when the
+  // immediate check already answered.
   //
-  // This is an ADAPTER (§7.3), so it authorizes and hands `createDashboardAgentWatch`
-  // an already-authorized context. The environment comes from the URL the user is
-  // on, resolved through the same re-authorization a background tick passes — never
-  // from the request body, and never from the chat's stored context.
+  // The environment comes from the URL the user is on and goes through the same
+  // re-authorization a background tick passes. Never from the request body, never
+  // from the chat's stored context.
   if (parsed.data.intent === "watch-create") {
     let draft: WatchDraft;
     try {
@@ -383,9 +370,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
     }
 
-    // A watch is chat-bound (§7.3), so a card submitted from a fresh panel needs a
-    // chat to belong to. Created here, with no first message and no agent run: the
-    // confirmation block below is the whole conversation until the user types.
+    // A watch is chat-bound, so a card submitted from a fresh panel needs a chat to
+    // belong to. Created with no first message and no agent run: the confirmation
+    // block below is the whole conversation until the user types.
     let targetChatId = parsed.data.chatId;
     if (targetChatId) {
       if (
@@ -415,8 +402,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       investigateOnAttention: draft.followUp.investigateOnAttention,
     });
 
-    // Validation, cap and network errors stay inside the ephemeral card and
-    // persist nothing (§2.2 step 5) — so this returns before any append.
+    // Validation, cap and network errors stay inside the ephemeral card and persist
+    // nothing, so this returns before any append.
     if (!result.ok) {
       const status =
         result.code === "limit_reached" || result.code === "duplicate"
@@ -436,9 +423,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       );
     }
 
-    // The external subscription is an EXTRA (§6): it is attached after the watch
-    // exists and its refusal never fails the creation — the in-dashboard signal
-    // always works, and the confirmation simply doesn't claim an email.
+    // Attached after the watch exists, and a refusal never fails the creation: the
+    // in-dashboard signal still works and the confirmation just won't claim an email.
     let notifiedExternally = false;
     if (result.watching && draft.followUp.notifyExternally) {
       const subscribed = await subscribeUserToWatchAlerts({ userId, environment });
@@ -460,9 +446,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
         });
 
-    // The block goes through the same envelope + `ViewBlocks` machinery every
-    // other card uses. `id` is the watch (or the identity, for a one-shot), so a
-    // retried submit replaces the block rather than stacking a second one.
+    // `id` is the watch (or the identity, for a one-shot), so a retried submit
+    // replaces the block rather than stacking a second one.
     const message = {
       id: `watch-card:${result.watching ? result.watchId : result.identity}`,
       role: "assistant" as const,
@@ -506,10 +491,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Resume-only: new chats are created via the `create` intent (server-owned
-      // id). The transport falls back here to re-establish a session for an
-      // existing chat (e.g. after its token expired), so verify ownership before
-      // issuing one — a client-supplied chatId must belong to the caller.
+      // Resume only: new chats come from the `create` intent. The transport falls
+      // back here to re-establish a session for an existing chat, so a
+      // client-supplied chatId must be checked against the caller first.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -543,8 +527,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Only mint a session token for a chat the caller owns, so a client-supplied
-      // chatId can't be used to get a token for someone else's session.
+      // Only mint a token for a chat the caller owns, so a client-supplied chatId
+      // can't reach someone else's session.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -578,8 +562,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ ok: true });
     }
 
-    // The user has this chat in front of them, so its watch wakes are seen. The
-    // update is owner-scoped, so a chatId the caller doesn't own is a no-op.
+    // The update is owner-scoped, so a chatId the caller doesn't own is a no-op.
     case "read": {
       await markChatRead(dashboardAgentDb, {
         chatId,
@@ -607,10 +590,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ ok: true, cancelledWatches });
     }
 
-    // Stop watching, from the chip's ×. Ownership goes through the chat: the watch
-    // must belong to the chat named in the request, and that chat must belong to
-    // this user in this org — so a watch id alone can never cancel someone else's
-    // watch.
+    // Ownership goes through the chat: the watch must belong to the chat named in
+    // the request, and that chat to this user in this org, so a watch id alone can
+    // never cancel someone else's watch.
     case "watch-cancel": {
       const watchId = parsed.data.watchId;
       if (!watchId) return json({ error: "watchId is required" }, { status: 400 });

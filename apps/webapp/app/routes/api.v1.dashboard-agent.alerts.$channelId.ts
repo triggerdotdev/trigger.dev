@@ -9,8 +9,8 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
  * `DELETE /api/v1/dashboard-agent/alerts/:channelId` — stop alerting this channel
  * when a watch fires. Same semantics as the email's unsubscribe link.
  *
- * The channel is looked up SCOPED to the chat's project, so a channel id from
- * another project resolves to a 404 rather than being touched.
+ * The channel is looked up scoped to the chat's project, so a channel id from
+ * another project 404s rather than being touched.
  */
 
 const ParamsSchema = z.object({ channelId: z.string().min(1) });
@@ -46,8 +46,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) return json({ error: "Invalid params" }, { status: 400 });
 
-  // The try guards the parse and nothing else: a malformed body is a 400, and the
-  // shape check below it answers for itself.
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -61,8 +59,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
   const body = parsedBody.data;
 
-  // Rethrown, so the caller sees exactly what it saw before: the failure is only
-  // named, not handled.
   try {
     const context = await resolveAgentAlertContext({
       userId,

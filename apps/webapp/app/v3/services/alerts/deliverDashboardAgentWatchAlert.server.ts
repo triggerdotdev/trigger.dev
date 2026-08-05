@@ -36,16 +36,13 @@ import { safeWebhookFetch } from "./safeWebhookFetch.server";
 /**
  * Deliver a fired dashboard-agent watch to the project's alert channels.
  *
- * Payload-carried, like the error-group alert: no `ProjectAlert` row. A watch is
- * already a durable row in the dashboard-agent database with its own delivery
- * state, so a second row tracking the same event would only be a thing to keep in
- * sync. The job ids are the dedupe.
+ * Payload-carried, like the error-group alert: no `ProjectAlert` row, because the watch is
+ * already a durable row with its own delivery state. The job ids are the dedupe.
  *
- * Two steps, as with the error-group path: a fan-out (`watch-alert:{watchId}`,
- * this payload) resolves the environment, the gate and the matching channels, then
- * enqueues one delivery job per channel (`watch-alert:{watchId}:channel:{channelId}`).
- * A delivery job sends exactly one channel, so a webhook failing can only ever
- * re-send that webhook — never the email and Slack that already went out.
+ * Two steps: a fan-out (`watch-alert:{watchId}`) resolves the environment, the gate and the
+ * matching channels, then enqueues one delivery job per channel
+ * (`watch-alert:{watchId}:channel:{channelId}`). A delivery job sends exactly one channel, so a
+ * failing webhook can only re-send that webhook, not the email and Slack that already went out.
  */
 export type DashboardAgentWatchAlertPayload = {
   watchId: string;
@@ -59,10 +56,9 @@ export type DashboardAgentWatchAlertPayload = {
   firedAt: string;
   facts: Record<string, unknown>;
   /**
-   * How the watch ended and what the resolving check observed — the two halves
-   * the headline is built from (§4.2). Optional so a job enqueued by an older
-   * build still delivers; absent, the headline falls back to `condition_met`
-   * with no observation, which is the only resolution that alerts today.
+   * How the watch ended and what the resolving check observed: the two halves the headline is
+   * built from. Optional so a job enqueued by an older build still delivers, falling back to
+   * `condition_met` with no observation, the only resolution that alerts today.
    */
   resolution?: WatchResolution;
   observed?: WatchObservedOutcome;
@@ -77,9 +73,8 @@ export type DashboardAgentWatchChannelAlertPayload = DashboardAgentWatchAlertPay
 const WEBHOOK_VERSION = "2026-08-02";
 
 /**
- * The one place this service words a watch result — and it doesn't word it
- * itself: it asks the shared presenter, so the email subject, the Slack line and
- * the chat's wake banner are the same sentence (§6, visual continuity).
+ * Wording comes from the shared presenter so the email subject, the Slack line and the chat's
+ * wake banner are the same sentence.
  */
 function presentAlert(payload: DashboardAgentWatchAlertPayload) {
   return presentResolvedWatch({
@@ -155,9 +150,8 @@ export class DeliverDashboardAgentWatchAlertService {
       return;
     }
 
-    // The gate, checked at DELIVERY and not only at subscribe time, so a plan
-    // change or a revoked feature flag stops the alerts without anyone having to
-    // clean up channels.
+    // Gate at delivery time, not only at subscribe time, so a plan change or a revoked
+    // feature flag stops the alerts without anyone cleaning up channels.
     const gate = await canUseDashboardAgentAlerts({
       userId: payload.userId,
       organizationId: payload.organizationId,
@@ -354,8 +348,8 @@ export class DeliverDashboardAgentWatchChannelAlertService {
           identity: payload.identity,
           kind: payload.kind,
           note: payload.note,
-          // `outcome` keeps its as-built two-value encoding for receivers that
-          // already parse it (§7.5); `resolution` and `observed` carry the model.
+          // `outcome` keeps its two-value encoding for receivers that already parse it;
+          // `resolution` and `observed` carry the detail.
           outcome: "fired",
           resolution: payload.resolution ?? "condition_met",
           observed: payload.observed ?? null,
@@ -483,9 +477,9 @@ export class DeliverDashboardAgentWatchChannelAlertService {
 }
 
 /**
- * The check's facts, flattened for display. The facts bag is per-watch-kind and
- * open-ended, so this stays dumb on purpose: labelled scalars, nested values as
- * compact JSON, and a cap so a big bag can't blow up an email or a Slack block.
+ * The check's facts, flattened for display. The bag is per-watch-kind and open-ended, so this
+ * stays generic: labelled scalars, nested values as compact JSON, and a cap so a big bag can't
+ * blow up an email or a Slack block.
  */
 function factList(facts: Record<string, unknown>): Array<{ label: string; value: string }> {
   return Object.entries(facts)

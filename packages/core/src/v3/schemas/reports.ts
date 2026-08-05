@@ -1,34 +1,22 @@
 import { z } from "zod";
 
 /**
- * The shared, versioned contract for the reports API (`GET /api/v1/reports/:key`).
- *
- * Canonical home for BOTH halves of that contract so the server, the API clients and the CLI
- * cannot drift:
- *
- *  - `ReportPeriodSchema` — the period grammar the endpoint accepts.
- *  - `ReportViewModel` — the `format=json` response body.
+ * The shared contract for the reports API (`GET /api/v1/reports/:key`): the period grammar the
+ * endpoint accepts and the `format=json` response body. Canonical home for both so the server,
+ * the API clients and the CLI can't drift.
  *
  * The view model is semantic, not a UI tree: numbers plus what they mean (codes, severities,
- * units, series), never formatted strings or layout. Reasons are codes; the renderer resolves
- * them to prose, so phrasing lives in one place.
+ * units, series), never formatted strings or layout. Reasons are codes the renderer resolves to
+ * prose, so phrasing lives in one place.
  */
-
-// ---------------------------------------------------------------------------
-// Period grammar
-// ---------------------------------------------------------------------------
 
 const PERIOD_UNIT_MS: Record<string, number> = { m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
 const MAX_PERIOD_MS = 90 * 864e5; // 90d
 
 /**
- * Period shorthand for a report's live window: a positive integer plus a unit — `m` (minutes),
- * `h` (hours), `d` (days) or `w` (weeks). Capped at 90d.
- *
- * Seconds are deliberately NOT accepted. Reports bucket their data by whole minutes, so a
- * sub-minute period could only ever be rounded up (or, for derived windows, down to zero) and
- * the answer would not mean what it says. `30s` is rejected rather than silently treated as
- * `1m`.
+ * Period shorthand for a report's live window: a positive integer plus `m`, `h`, `d` or `w`,
+ * capped at 90d. Seconds are rejected rather than silently rounded, because reports bucket by
+ * whole minutes and a sub-minute period would not mean what it says.
  */
 export const ReportPeriodSchema = z
   .string()
@@ -48,10 +36,6 @@ export type ReportPeriod = z.infer<typeof ReportPeriodSchema>;
 export const ReportFormatSchema = z.enum(["markdown", "json", "ansi"]);
 
 export type ReportFormat = z.infer<typeof ReportFormatSchema>;
-
-// ---------------------------------------------------------------------------
-// View model
-// ---------------------------------------------------------------------------
 
 export const ReportSeveritySchema = z.enum(["ok", "warn", "crit"]);
 export type ReportSeverity = z.infer<typeof ReportSeveritySchema>;
@@ -82,7 +66,7 @@ export const ReportMetricSeriesSchema = z.object({
 export type ReportMetricSeries = z.infer<typeof ReportMetricSeriesSchema>;
 
 export const ReportMetricSchema = z.object({
-  /** CODE, e.g. "start_latency_p95" — messages map -> label "start latency". */
+  /** A code, e.g. "start_latency_p95"; the messages map turns it into the label. */
   id: z.string(),
   value: z.number(),
   unit: ReportUnitSchema,
@@ -96,9 +80,9 @@ export const ReportMetricSchema = z.object({
   /** shown on a cause line INSTEAD of "(normal ~x)", e.g. "pinned 40 of last 60 min". */
   annotation: z.object({ code: ReportReasonCodeSchema, value: z.number().optional() }).optional(),
   /**
-   * Whether `value` is a real measurement. "unknown" = there was no signal, so `value` is a
-   * placeholder (e.g. liveness age 0) that a structured consumer must NOT read as a real 0 —
-   * the finding's reason carries the "unknown" meaning. Absent = measured (the common case).
+   * Whether `value` is a real measurement. "unknown" means there was no signal and `value` is a
+   * placeholder (e.g. liveness age 0) that a consumer must not read as a real 0; the finding's
+   * reason carries the meaning. Absent means measured.
    */
   availability: z.enum(["measured", "unknown"]).optional(),
   severity: ReportSeveritySchema,
@@ -128,9 +112,8 @@ export const ReportExclusionSchema = z.object({
 export type ReportExclusion = z.infer<typeof ReportExclusionSchema>;
 
 /**
- * A supporting fact backing the verdict — a measured observation, NOT a ruled-out cause,
- * e.g. "runs are completing at ~820/min". Kept separate from `ReportExclusion` so the two aren't
- * conflated (an exclusion answers "what it ISN'T"; an observation states "what IS true").
+ * A measured fact backing the verdict, e.g. "runs are completing at ~820/min". Separate from
+ * `ReportExclusion`, which states what the problem isn't.
  */
 export const ReportObservationSchema = z.object({
   code: ReportReasonCodeSchema,
@@ -142,29 +125,29 @@ export const ReportFindingSchema = z.object({
   /** "flow" | "execution" | "liveness" | future "infrastructure" | "billing" */
   type: z.string(),
   severity: ReportSeveritySchema,
-  /** CODE for the state/cause, e.g. "env_limit_saturation" | "healthy". */
+  /** Code for the state or cause, e.g. "env_limit_saturation" | "healthy". */
   reason: ReportReasonCodeSchema,
-  /** CODE for the "read:" line. Built last, may span findings. */
+  /** Code for the "read:" line. Built last, may span findings. */
   read: ReportReasonCodeSchema.optional(),
   /** metric ids this finding covers, in causal order when degraded. */
   metricIds: z.array(z.string()),
-  /** ONE primary action. */
+  /** A single primary action. */
   recommendation: ReportRecommendationSchema.optional(),
   /** optional parenthetical — same shape as recommendation. */
   hedge: ReportRecommendationSchema.optional(),
   /** contiguous breach window of the driving metric -> "(last 40 min)". */
   anomalyWindow: z.object({ minutes: z.number(), touchesEnd: z.boolean() }).optional(),
   /**
-   * which dimension/key owns the problem, only when share >= threshold. `of` is the
-   * denominator label the renderer prints (e.g. "pending" for flow, "failures" for execution)
-   * — so it never mislabels a failures share as "% of pending".
+   * Which dimension and key own the problem, only when share >= threshold. `of` is the
+   * denominator label the renderer prints ("pending" for flow, "failures" for execution), so a
+   * failures share is never labelled "% of pending".
    */
   attribution: z
     .object({ dim: z.string(), key: z.string(), share: z.number(), of: z.string() })
     .optional(),
-  /** ruled-out causes + evidence — rendered under the `read:` line ("not your code …"). */
+  /** Ruled-out causes and evidence, rendered under the `read:` line. */
   exclusions: z.array(ReportExclusionSchema).optional(),
-  /** supporting facts + evidence — rendered under the `read:` line after the exclusions. */
+  /** Supporting facts, rendered under the `read:` line after the exclusions. */
   observations: z.array(ReportObservationSchema).optional(),
 });
 export type ReportFinding = z.infer<typeof ReportFindingSchema>;
@@ -173,9 +156,8 @@ export const ReportSummaryStatementSchema = z.object({
   findingType: z.string(),
   severity: ReportSeveritySchema,
   /**
-   * Normally the statement renders from (findingType, severity). Exceptions carry a reason:
-   * stale telemetry marks flow AND execution "unknown" -> "Flow/Execution unknown — data stale";
-   * liveness with no signal is "freshness_unknown" -> "data freshness unknown".
+   * The statement normally renders from (findingType, severity). Exceptions carry a reason, e.g.
+   * stale telemetry marking both flow and execution "unknown".
    */
   reason: ReportReasonCodeSchema.optional(),
 });
@@ -188,7 +170,6 @@ export const ReportLinkSchema = z.object({
 });
 export type ReportLink = z.infer<typeof ReportLinkSchema>;
 
-/** a.k.a. ReportDocument — report-agnostic, render-agnostic. */
 export const ReportViewModelSchema = z.object({
   /** "health" | "cost" | … */
   title: z.string(),
@@ -198,7 +179,7 @@ export const ReportViewModelSchema = z.object({
   period: z.string(),
   /** "vs your 7d normal" */
   baselineLabel: z.string().optional(),
-  /** ISO string — passed in, never read from the clock inside interpret. */
+  /** ISO string. Passed in, never read from the clock inside interpret. */
   generatedAt: z.string(),
   /** live window length in minutes — lets the renderer say "of last 60 min". */
   windowMinutes: z.number(),

@@ -6,12 +6,9 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { demoChatById, type demoFixtures, type DemoItem } from "~/components/dashboard-agent/demo";
 
-/**
- * Fixture readers shared by the gallery pages.
- *
- * The message-level states already exist as demo chats, so the harnesses pull
- * their items rather than inventing transcripts.
- */
+// Fixture readers shared by the gallery pages. The message-level states already
+// exist as demo chats, so the harnesses pull their items instead of inventing
+// transcripts.
 
 export function chatItems<K extends DemoItem["kind"]>(
   chatId: string,
@@ -29,10 +26,9 @@ export function chatMessages(chatId: string, take?: number): UIMessage[] {
 }
 
 /**
- * A demo investigation fixture as the real `investigation` block: the demo type
- * carries its identity inline (`investigationId` + `revision`) where the block
- * carries it in the envelope, so the mapping is a move, not a rewrite — which is
- * the point of having reviewed the demo payload.
+ * A demo investigation fixture as the real `investigation` block. The demo type
+ * carries its identity inline where the block carries it in the envelope, so this
+ * moves those fields rather than rewriting the payload.
  */
 export function investigationBlock(
   fixture: (typeof demoFixtures.demoInvestigations)[keyof typeof demoFixtures.demoInvestigations],

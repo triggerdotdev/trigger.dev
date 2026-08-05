@@ -3,14 +3,10 @@ import type { AgentPageContext } from "~/components/dashboard-agent/page-context
 import type { Handle } from "~/utils/handle";
 
 /**
- * What the dashboard agent knows about the page the user is on.
- *
- * The single exposure mechanism is a route `handle`: a route that wants to
- * describe itself exports
- * `handle = { agentPageContext: (data) => ({ page, signals }) } satisfies Handle`
- * where `data` is that route's loader data. This walks the matches leaf-to-root
- * and uses the deepest mapper that returns something, so a child page overrides
- * its parent. Pages with no mapper fall back to the path.
+ * What the dashboard agent knows about the page the user is on. A route describes itself by
+ * exporting `handle = { agentPageContext }` (see `Handle`). Matches are walked leaf-to-root and
+ * the deepest mapper that returns something wins, so a child page overrides its parent. Pages
+ * with no mapper fall back to the path.
  */
 export function useAgentPageContext(): AgentPageContext {
   const matches = useMatches();
@@ -24,7 +20,7 @@ export function useAgentPageContext(): AgentPageContext {
       const context = mapper(match.data);
       if (context) return context;
     } catch {
-      // A broken mapper must never take the page down with it — fall through.
+      // A broken mapper must not take the page down with it.
     }
   }
 

@@ -6,7 +6,7 @@ import {
   type HealthInput,
 } from "~/presenters/v3/reports/health/health";
 
-/** Golden A — degraded: env concurrency-limit saturation, backlog drains. */
+/** Golden A, degraded: env concurrency-limit saturation, backlog drains. */
 const INPUT_A: HealthInput = {
   scope: "prod",
   period: "last 1h",
@@ -38,7 +38,7 @@ const INPUT_A: HealthInput = {
   },
 };
 
-/** Golden B — everything healthy. */
+/** Golden B, everything healthy. */
 const INPUT_B: HealthInput = {
   scope: "prod",
   period: "last 1h",
@@ -92,8 +92,8 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
   });
 
   it("footer = raise the limit (self-serve) + docs + do-nothing (drains)", () => {
-    // Raising the env limit is self-serve now — the action button leads to the
-    // environment's Concurrency page, with the docs alongside.
+    // Raising the env limit is self-serve, so the action button leads to the environment's
+    // Concurrency page, with the docs alongside.
     expect(vm.footer).toEqual([
       { code: "raise_env_limit", link: "concurrency" },
       { code: "concurrency_docs", link: "concurrency" },
@@ -192,14 +192,14 @@ describe("liveness trust guard (telemetry freshness)", () => {
     expect(execution.reason).toBe("unknown");
     expect(execution.read).toBe("data_stale");
     expect(vm.summary.severity).toBe("crit");
-    // #6: footer points at the pipeline, not "raise the env limit" off stale data.
+    // Footer points at the pipeline, not "raise the env limit" off stale data.
     expect(vm.footer).toEqual([{ code: "check_control_plane", link: "status" }]);
   });
 
   it("no freshness signal is 'unknown', NOT stale — it does not trust-guard execution", () => {
     const unknown: HealthInput = {
       ...INPUT_A,
-      // healthy execution so we can see the guard did NOT fire.
+      // healthy execution so we can see the guard did not fire.
       failures: { rate: 0.009, normalRate: 0.011, series: [0.009] },
       liveness: { telemetryAgeMs: null },
     };
@@ -212,8 +212,8 @@ describe("liveness trust guard (telemetry freshness)", () => {
   });
 
   it("no freshness signal is never TRUSTWORTHY, even though the human verdict stays neutral", () => {
-    // The human summary may stay green for an idle env (below), but the machine field must not
-    // claim trust it doesn't have: a "health recovered" watch would otherwise fire off silence.
+    // The human summary may stay green for an idle env, but the machine field must not claim
+    // trust it doesn't have: a "health recovered" watch would otherwise fire off silence.
     const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
     expect(vm.summary.severity).toBe("ok"); // human side unchanged
     expect(vm.facts).toMatchObject({
@@ -221,7 +221,7 @@ describe("liveness trust guard (telemetry freshness)", () => {
       telemetry: "none",
       untrustworthyReason: "telemetry_absent",
     });
-    // ...and a lagging-but-present signal IS still trustworthy (lagging is a real, readable state).
+    // ...and a lagging-but-present signal is still trustworthy: lagging is a real state.
     expect(interpret({ ...INPUT_B, liveness: { telemetryAgeMs: 120_000 } }).facts).toMatchObject({
       trustworthy: true,
       telemetry: "lagging",
@@ -234,7 +234,7 @@ describe("liveness trust guard (telemetry freshness)", () => {
     const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
     expect(vm.summary.severity).toBe("ok");
     expect(vm.findings.find((f) => f.type === "liveness")!.reason).toBe("freshness_unknown");
-    // ...but the marker is NEUTRAL (⚪), not a confident green — the state is genuinely unknown.
+    // ...but the marker is neutral, not a confident green: the state is genuinely unknown.
     const md = renderReportMarkdown(vm);
     expect(md).toContain("⚪");
     expect(md).not.toContain("🟡");
@@ -249,9 +249,8 @@ describe("isPendingIncreasing", () => {
 });
 
 /**
- * Fixed-priority cause tree: the first discriminator that fires wins. Each case starts
- * from Golden A and overrides ONLY flow evidence so the intended discriminator matches
- * (Golden A itself covers env_limit_saturation).
+ * Fixed-priority cause tree: the first discriminator that fires wins. Each case starts from
+ * Golden A and overrides only flow evidence so the intended discriminator matches.
  */
 describe("flow cause tree — cause selection per discriminator", () => {
   const withFlow = (
@@ -282,7 +281,7 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("selects queue throttling over dequeue stall when both shapes match", () => {
-    // low running (would look like a stall) BUT the queue is throttling — the known config
+    // low running (would look like a stall) but the queue is throttling: the known config
     // bottleneck must win, not "it's on our side".
     expect(flowReason(withFlow({ runningSeries: Array(9).fill(10), throttledShare: 0.5 }))).toBe(
       "queue_limit_throttling"
@@ -301,8 +300,8 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("trigger_surge — new volume with no baseline (multiplier can't be computed)", () => {
-    // normal 0 makes a multiplier meaningless, so an absolute rate selects "new volume"
-    // instead of dropping to the v1 fallback (a spike from a zero baseline was invisible before).
+    // normal 0 makes a multiplier meaningless, so an absolute rate selects "new volume" instead
+    // of dropping to the v1 fallback, which left a spike from a zero baseline invisible.
     const input = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       { triggeredPerMin: 5000, normalTriggeredPerMin: 0 }
@@ -313,9 +312,8 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("does not select trigger_spike when completions keep pace and pending falls", () => {
-    // 3× the normal trigger rate, but the backlog is draining (net >= 0, pending falling) — so the
-    // spike is NOT the cause of degradation (elevated latency is). Blaming it would contradict
-    // its own "queue fills faster than it drains" read.
+    // 3x the normal trigger rate, but the backlog is draining, so the spike is not the cause of
+    // degradation (elevated latency is). Blaming it would contradict its own read.
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
@@ -336,7 +334,7 @@ describe("flow cause tree — cause selection per discriminator", () => {
   });
 
   it("does not select trigger_surge when new volume is draining", () => {
-    // No baseline + high volume, but completions outpace triggers and the backlog falls — not a backup.
+    // No baseline and high volume, but completions outpace triggers and the backlog falls.
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
@@ -363,8 +361,8 @@ describe("flow cause tree — cause selection per discriminator", () => {
 });
 
 describe("env_limit_saturation read does not claim a start lag that isn't there", () => {
-  // Pinned concurrency + rising backlog, but start latency is still healthy — saturation can grow
-  // a backlog before p95 latency crosses its threshold, so the read must not assert "starts lag".
+  // Pinned concurrency and rising backlog, but start latency is still healthy: saturation can
+  // grow a backlog before p95 crosses its threshold, so the read must not assert "starts lag".
   const input: HealthInput = {
     ...INPUT_A,
     startLatency: { p95Ms: 6000, normalP95Ms: 7000, series: [6000, 6100, 6000, 5900, 6000] },
@@ -447,9 +445,8 @@ describe("exclusions are proven, not assumed", () => {
   });
 
   it("trigger_spike observes healthy execution without ruling out user code", () => {
-    // Backing-up spike (net < 0, pending rising) with healthy execution -> "execution_healthy" as
-    // an OBSERVATION, NOT the exclusion "not_your_code": a code path fanning out task.trigger could
-    // BE the cause of the spike, so it must not be ruled out.
+    // A backing-up spike with healthy execution is an observation, not the exclusion
+    // "not_your_code": a code path fanning out task.trigger could itself be the cause.
     const healthyInput = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       {
@@ -573,8 +570,8 @@ describe("zero baseline is not a false green (absolute floors)", () => {
 });
 
 describe("an unmeasurable backlog is not a healthy backlog", () => {
-  // The depth couldn't be measured at all, so `now` is a placeholder — the verdict must be
-  // "can't say", never a confident green (and never actionable).
+  // The depth couldn't be measured, so `now` is a placeholder: the verdict must be "can't say",
+  // never a confident green and never actionable.
   const unmeasured: HealthInput = {
     ...INPUT_B,
     pending: { now: 0, series: [], estimated: true, availability: "unknown" },
@@ -593,7 +590,7 @@ describe("an unmeasurable backlog is not a healthy backlog", () => {
   it("does not classify the placeholder depth or offer a drain ETA", () => {
     const vm = interpret({
       ...unmeasured,
-      // A placeholder that WOULD cross the crit floor if it were classified.
+      // A placeholder that would cross the crit floor if it were classified.
       pending: { now: 9000, series: [], estimated: true, availability: "unknown" },
     });
     const pending = vm.metrics.find((m) => m.id === "pending")!;
@@ -611,8 +608,8 @@ describe("an unmeasurable backlog is not a healthy backlog", () => {
 });
 
 describe("gappy telemetry cannot read as a full window", () => {
-  // 60-minute window at a 1-minute cadence = 60 expected buckets, but only 2 arrived (both
-  // fresh, both pinned at the limit). Counting RECEIVED rows made this "pinned 60 of last 60 min".
+  // 60 expected buckets at a 1-minute cadence, but only 2 arrived, both pinned at the limit.
+  // Counting received rows made this read as "pinned 60 of last 60 min".
   const gappy: HealthInput = {
     ...INPUT_A,
     flowEvidence: {
@@ -639,10 +636,10 @@ describe("gappy telemetry cannot read as a full window", () => {
     // pinned run is 3 buckets = 3 min, not "the whole window".
     const cadence = 60_000;
     const start = Date.parse("2026-07-20T11:00:00Z");
-    // 34 of 60 buckets pinned (over the pinned-share threshold), the rest busy but not pinned.
+    // 34 of 60 buckets pinned, over the pinned-share threshold; the rest busy but not pinned.
     const running = Array.from({ length: 60 }, (_, i) => (i >= 26 ? 100 : 60));
     const timestamps = Array.from({ length: 60 }, (_, i) => start + i * cadence);
-    // Drop bucket 57's continuity by pushing it a full 10 minutes later (a gap, not a neighbour).
+    // Drop bucket 57's continuity by pushing it 10 minutes later, making a gap.
     for (let i = 57; i < 60; i++) timestamps[i] += 10 * cadence;
     const vm = interpret({
       ...INPUT_A,

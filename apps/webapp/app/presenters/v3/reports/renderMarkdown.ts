@@ -1,11 +1,8 @@
 /**
- * GENERIC renderer: ReportViewModel -> monospace markdown. Severity-driven disclosure:
- * a degraded finding expands into evidence in causal order; a healthy finding collapses
- * to one `✓` line. Owns ALL presentation (formatting, glyphs, sparklines, spacing, {token}
- * substitution) and resolves the VM's codes -> strings via the report's registered message
- * catalog, looked up by `vm.title` — so it holds NO report vocabulary itself.
- *
- * Knows NOTHING about health — walks summary -> findings -> metrics generically.
+ * Renders a ReportViewModel as monospace markdown. A degraded finding expands into evidence in
+ * causal order; a healthy finding collapses to one line. This module owns all presentation and
+ * resolves the view model's codes to strings via the report's registered message catalog, looked up
+ * by `vm.title`, so it holds no report vocabulary of its own.
  */
 
 import { reportMessages, type ReportMessages } from "./report-messages";
@@ -24,16 +21,14 @@ const MINUS = "−"; // U+2212
 const SEVERITY_GLYPH: Record<Severity, string> = { ok: "✓", warn: "⚠", crit: "✕" };
 
 /**
- * A NEUTRAL marker for a state that's genuinely unknown, not good/bad — e.g. liveness with no
- * telemetry signal. It doesn't affect the aggregate severity (that stays driven by real findings),
- * but it must not read as a confident green "✓", so it gets its own glyph.
+ * Marker for a state that is genuinely unknown rather than good or bad. It doesn't affect the
+ * aggregate severity, but it must not read as a confident green tick, so it gets its own glyph.
  */
 const NEUTRAL_GLYPH = "○";
 
 /**
- * Markdown-only status colour. Chat hosts render neither ANSI nor HTML, so swapping
- * the glyphs for traffic-light circles is the one colour cue they get — one emoji per
- * marker (neutral -> white). ANSI keeps the crisp ✓/⚠/✕/○, so this applies ONLY on markdown.
+ * Markdown-only status colour. Chat hosts render neither ANSI nor HTML, so swapping the glyphs for
+ * traffic-light circles is the one colour cue they get. ANSI keeps the crisper glyphs.
  */
 const MARKDOWN_STATUS_EMOJI: Record<string, string> = {
   "✓": "🟢",
@@ -47,14 +42,14 @@ function toMarkdownEmoji(text: string): string {
 }
 
 /**
- * Reasons that mean "we can't say" rather than a verdict: the section renders headline-only (no
- * ✓, no facts, no read) because every number behind it is untrustworthy or a placeholder.
+ * Reasons that mean "we can't say" rather than a verdict. The section renders headline-only because
+ * every number behind it is untrustworthy or a placeholder.
  */
 const UNASSESSABLE_REASONS = new Set(["unknown", "flow_unmeasured"]);
 
 /**
- * Reasons whose state is genuinely unknown but NOT bad — they get the neutral marker rather than a
- * severity colour. (A stale feed is different: the guard forces crit, so it keeps ✕.)
+ * Reasons whose state is genuinely unknown but not bad, so they get the neutral marker rather than a
+ * severity colour. A stale feed is different: the guard forces crit.
  */
 const NEUTRAL_REASONS = new Set(["freshness_unknown", "flow_unmeasured"]);
 
@@ -68,7 +63,7 @@ function statusGlyph(severity: Severity, reason?: string): string {
 /** Evidence lines (metric rows + attribution) shown for a degraded section. */
 const EVIDENCE_CAP = 4;
 
-/** Column where the header's scope·period·baseline starts (mirrors the mockup). */
+/** Column where the header's scope, period and baseline start. */
 const HEADER_COL = 22;
 
 /** Gap between aligned columns in an evidence block. */
@@ -82,10 +77,6 @@ const SECTION_GAP = 3;
 function sectionLabel(type: string): string {
   return `${type.toUpperCase().padEnd(SECTION_LABEL_WIDTH)}${" ".repeat(SECTION_GAP)}`;
 }
-
-// ---------------------------------------------------------------------------
-// Formatters.
-// ---------------------------------------------------------------------------
 
 /** All sparklines render at this fixed width so they align in a column. */
 const SPARK_WIDTH = 8;
@@ -168,15 +159,12 @@ function metricById(metrics: Metric[], id: string): Metric | undefined {
   return metrics.find((m) => m.id === id);
 }
 
-// ---------------------------------------------------------------------------
-// Metric line (expanded evidence).
-// ---------------------------------------------------------------------------
 
 function deltaSegment(metric: Metric): string {
   if (metric.severity === "ok" || !metric.delta || metric.delta.dir === "flat") return "";
   const arrow = metric.delta.dir === "up" ? "↑" : "↓";
-  // "up" shows the multiplier when we have it ("↑ 16×"). "down" is arrow-only: a
-  // drop rounds to 0×/1×, meaningless — the arrow already says "below normal".
+  // "up" shows the multiplier when there is one. "down" is arrow-only: a drop rounds to 0x or 1x,
+  // and the arrow already says below normal.
   if (metric.delta.dir === "down") return arrow;
   return metric.delta.mult === undefined ? arrow : `${arrow} ${metric.delta.mult}×`;
 }
@@ -255,8 +243,7 @@ function renderMetricRow(metric: Metric, cols: Cols, vm: ReportViewModel): strin
         ? "(estimated)" // proxy trend (e.g. snapshot backlog) — flag it so it isn't read as measured
         : "";
 
-  // Fixed columns: label · value · delta · SPARK · trailing. The fixed-width spark
-  // column keeps every spark and the trailing (normal / annotation) aligned.
+  // The fixed-width spark column keeps every spark and the trailing normal or annotation aligned.
   let line = `  ${label}${gap}${value.padEnd(cols.value)}`;
   if (cols.delta > 0) line += `${gap}${delta.padEnd(cols.delta)}`;
   line += `${gap}${(spark || "").padEnd(SPARK_WIDTH)}`;
@@ -264,9 +251,6 @@ function renderMetricRow(metric: Metric, cols: Cols, vm: ReportViewModel): strin
   return line.replace(/\s+$/, "");
 }
 
-// ---------------------------------------------------------------------------
-// Compact facts (collapsed / semi-expanded healthy sections).
-// ---------------------------------------------------------------------------
 
 function compactFact(metric: Metric): string | undefined {
   switch (metric.id) {
@@ -299,9 +283,6 @@ function compactFacts(finding: Finding, metrics: Metric[]): string {
     .join(" · ");
 }
 
-// ---------------------------------------------------------------------------
-// Read / exclusion / attribution / window.
-// ---------------------------------------------------------------------------
 
 function readTokens(_finding: Finding, metrics: Metric[]): Record<string, string | number> {
   const triggered = metricById(metrics, "triggered");
@@ -323,9 +304,6 @@ function attributionLine(finding: Finding, cols: Cols): string | undefined {
   return `  ${label}${" ".repeat(COL_GAP)}${a.key} — ${Math.round(a.share * 100)}% of ${a.of}`;
 }
 
-// ---------------------------------------------------------------------------
-// Sections.
-// ---------------------------------------------------------------------------
 
 function renderDegradedSection(finding: Finding, vm: ReportViewModel): string[] {
   const msg = reportMessages(vm.title);
@@ -355,7 +333,7 @@ function renderDegradedSection(finding: Finding, vm: ReportViewModel): string[] 
       "",
       `  read: ${fill(msg.readMessage(finding.read), readTokens(finding, vm.metrics))}`
     );
-    // Exclusions ("not your code") first, then supporting observations ("runs completing at ~X/min").
+    // Ruled-out causes first, then supporting observations.
     for (const excl of finding.exclusions ?? []) {
       lines.push(
         `        ${fill(msg.exclusionMessage(excl.code), { rate: fmtCount(excl.evidence?.finishedPerMin ?? 0) })}`
@@ -404,14 +382,9 @@ function renderFooter(footer: FooterEntry[], msg: ReportMessages): string[] {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Top-level render.
-// ---------------------------------------------------------------------------
-
 /**
- * The plain monochrome layout (✓/⚠/✕) shared by every surface. Colour renderers paint
- * THIS via `paintReport`; markdown swaps the glyphs for emoji. Internal so the three
- * public renderers can't drift.
+ * The plain monochrome layout shared by every surface. Colour renderers paint this via
+ * `paintReport` and markdown swaps the glyphs for emoji, so the three public renderers can't drift.
  */
 function renderReportPlain(vm: ReportViewModel): string {
   const msg = reportMessages(vm.title);
@@ -422,8 +395,8 @@ function renderReportPlain(vm: ReportViewModel): string {
   const right = [vm.scope, vm.period, vm.baselineLabel].filter(Boolean).join(" · ");
   lines.push(`${left.padEnd(HEADER_COL)}${right}`, "");
 
-  // Each statement carries its OWN glyph — one leading glyph would read as if it
-  // applied only to the first statement (e.g. "✕ Flow healthy"). Per-statement is clear.
+  // Each statement carries its own glyph. One leading glyph would read as if it applied only to the
+  // first statement.
   const verdict = vm.summary.statements
     .map(
       (s) =>
@@ -438,8 +411,8 @@ function renderReportPlain(vm: ReportViewModel): string {
     if (finding.type === "liveness") {
       lines.push(renderLivenessLine(finding, vm.metrics, msg), "");
     } else if (UNASSESSABLE_REASONS.has(finding.reason)) {
-      // No ✓ or facts computed from a silent feed / an unmeasurable depth. Stale forces crit (✕);
-      // an unmeasurable signal is neutral (○) — both consistent with the summary + JSON.
+      // No tick or facts computed from a silent feed or an unmeasurable depth. Stale forces crit
+      // and an unmeasurable signal stays neutral, both consistent with the summary and JSON.
       lines.push(
         `${sectionLabel(finding.type)}${statusGlyph(finding.severity, finding.reason)} ${msg.findingReason(finding.type, finding.reason)}`,
         ""
@@ -458,18 +431,12 @@ function renderReportPlain(vm: ReportViewModel): string {
   return lines.join("\n").replace(/\n+$/, "\n");
 }
 
-/**
- * Markdown surface (agents / chat). The plain layout with severity glyphs swapped for
- * status emoji — the only decoration markdown gets.
- */
+/** Markdown surface: the plain layout with severity glyphs swapped for status emoji. */
 export function renderReportMarkdown(vm: ReportViewModel): string {
   return toMarkdownEmoji(renderReportPlain(vm));
 }
 
-// ---------------------------------------------------------------------------
-// ANSI colour renderer (terminal, e.g. `trigger report`). Colourises the SAME
-// plain layout as a post-pass via `paintReport`, so terminal output can't drift.
-// ---------------------------------------------------------------------------
+// The ANSI renderer colourises the same plain layout as a post-pass, so terminal output can't drift.
 
 const SPARK_LOW = "▁▂▃▄▅";
 const SPARK_HIGH = "▆▇█";
@@ -491,7 +458,7 @@ function paintSpark(run: string, p: Paint): string {
     .join("");
 }
 
-/** Colourise the plain report by role. Detection reads the RAW line; wrapping the escaped line. */
+/** Colourise the plain report by role. Detection reads the raw line, wrapping the escaped line. */
 function paintReport(text: string, p: Paint): string {
   return text
     .split("\n")

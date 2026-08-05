@@ -12,22 +12,15 @@ import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
-// Same-origin proxy for the chat "in"/append request. The transport routes the
-// `in` endpoint here (and the `out` SSE stream direct to the Trigger API), so
-// every turn passes through the dashboard's own session before reaching the
-// agent. We use that hop to mint a fresh read-only delegated token for the
-// signed-in user and inject it into the turn's metadata server-side. The token
-// reaches the agent without ever touching the browser, and minting stays tied
-// to the user's own session (no shared-secret backdoor). The token is scoped to
-// the environment in this URL, which is what the agent's write-ish endpoints
-// (watches, watch alerts) bind to — so a turn can only ever act in the
-// environment the user is actually looking at.
+// Same-origin proxy for the chat append request, so every turn passes through the
+// dashboard session before reaching the agent. That hop mints a read-only delegated
+// token for the signed-in user and injects it into `payload.metadata`, so the token
+// never touches the browser and minting stays tied to the user's own session.
 //
-// The append body is `{ kind, payload: { metadata, ... } }`; we add the token
-// (plus the API origin and the server-vouched project ref + env) to
-// `payload.metadata`. Only `kind === "message"` turns carry metadata — stop
-// chunks pass through untouched. We forward only the headers the API needs and
-// deliberately drop the dashboard session cookie.
+// The token is scoped to the environment in this URL, which is what the agent's
+// writing endpoints bind to, so a turn can only act in the environment the user is
+// looking at. Only `kind === "message"` turns carry metadata. Only the headers the
+// API needs are forwarded; the dashboard session cookie is dropped.
 
 const FORWARDED_HEADERS = [
   "authorization",
@@ -71,11 +64,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   const environmentName = dashboardAgentEnvironmentName(runtimeEnv?.type);
 
-  // When the project has a connected GitHub repo, resolve a signed source-archive
-  // pointer (code mode). Null otherwise -> the agent stays in assistant mode.
+  // A signed source-archive pointer when the project has a connected GitHub repo.
+  // Null otherwise, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
-  // Inject the delegated token + context into the turn's metadata.
   const raw = await request.text();
   let body = raw;
   try {
@@ -83,13 +75,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       kind?: string;
       payload?: { trigger?: string; metadata?: Record<string, unknown> };
     };
-    // Actions are server business, not the browser's. A wake comes from the
-    // watcher task and the investigate kick from our own server hop, both writing
-    // to `.in` with an environment key — nothing arriving through this proxy may
-    // claim to be one. Refusing here (rather than letting the agent's action schema
-    // sort it out) keeps "an action was placed by the server" a real boundary: the
-    // proxy is the one path a browser can reach `.in` through, and it is also where
-    // a delegated token gets minted.
+    // Actions are placed by the server only: wakes and investigate kicks write to
+    // `.in` with an environment key. This proxy is the one path a browser can reach
+    // `.in` through, so refusing here keeps that boundary real.
     if (parsed.payload?.trigger === "action") {
       return json({ error: "Not allowed" }, { status: 403 });
     }
@@ -101,10 +89,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }),
         apiOrigin,
         projectRef: project.externalRef,
-        // The canonical environment identity. `(projectId, slug)` isn't unique
-        // (dev is per-member) and names are display-only, so anything that has to
-        // address one specific environment row uses this id. `environmentName`
-        // stays for back-compat with the agent's name-addressed tools.
+        // `(projectId, slug)` isn't unique (dev is per-member) and names are
+        // display-only, so anything addressing one environment row uses this id.
+        // `environmentName` stays for the agent's name-addressed tools.
         environmentId: runtimeEnv?.id,
         environmentName,
         ...(repoSnapshot ? { repoSnapshot } : {}),

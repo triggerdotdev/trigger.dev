@@ -3,18 +3,16 @@ import { z } from "zod";
 import type { McpContext } from "./context.js";
 import { GetReportInput, ReportPeriodSchema } from "./schemas.js";
 
-// Derived from the tool's schema so completion — and validation — can't drift from what
-// get_report accepts. `environment` has a `.default(...)`, so read its enum through
-// `removeDefault()`.
+// Derived from the tool's schema so completion and validation can't drift from what get_report
+// accepts. `environment` has a `.default(...)`, so read its enum through `removeDefault()`.
 const ReportKeySchema = GetReportInput.shape.key;
 const ReportEnvironmentSchema = GetReportInput.shape.environment.removeDefault();
 const REPORT_KEYS = ReportKeySchema.options;
 const ENVIRONMENTS = ReportEnvironmentSchema.options;
 
 /**
- * The prompt's own argument contract. Same schemas the tool uses, so `/report nonsense` is
- * rejected here instead of generating a prompt that asks the agent to call get_report with an
- * invalid key.
+ * The prompt's argument contract. Same schemas the tool uses, so `/report nonsense` is rejected
+ * here instead of producing a prompt that calls get_report with an invalid key.
  */
 export const ReportPromptArgs = z.object({
   key: ReportKeySchema.optional(),
@@ -25,10 +23,9 @@ export const ReportPromptArgs = z.object({
 export type ReportPromptArgs = z.input<typeof ReportPromptArgs>;
 
 /**
- * Render the tool arguments as a `key: value, …` list. Values go through `JSON.stringify`, so a
- * quote or newline in one can never close the `{ … }` snippet or start a fresh line that reads
- * as an instruction. The schemas above already constrain the values; this keeps the prompt inert
- * even if they loosen, or if a host passes arguments the SDK didn't validate.
+ * Render the tool arguments as a `key: value, …` list. Values go through `JSON.stringify` so a
+ * quote or newline can't close the snippet or start a line that reads as an instruction, keeping
+ * the prompt inert even if the schemas loosen.
  */
 export function formatToolArgs(args: Record<string, string>): string {
   return Object.entries(args)
@@ -72,8 +69,8 @@ export function registerPrompts(context: McpContext) {
       title: "Report",
       description:
         "Render an interpreted report for an environment. Currently: 'health' — is work flowing, is it your code, is the data fresh.",
-      // Enum / refined string schemas, not bare strings: the MCP SDK accepts any
-      // `ZodType<string>` here, so the host rejects a bad key or period before the callback runs.
+      // Enum and refined string schemas, not bare strings: the MCP SDK accepts any
+      // `ZodType<string>`, so the host rejects a bad key or period before the callback runs.
       argsSchema: {
         key: completable(ReportKeySchema.optional(), (value) =>
           REPORT_KEYS.filter((k) => k.startsWith(value ?? ""))

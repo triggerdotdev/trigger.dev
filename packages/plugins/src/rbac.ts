@@ -283,11 +283,9 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
-  // Optional environment scope — the canonical `RuntimeEnvironment.id` the token
-  // was minted for. Present when the minter knows which environment the caller
-  // is acting in, so a route that binds something to one environment can take it
-  // from the token instead of trusting the request body. Optional: the other UAT
-  // flows are environment-agnostic.
+  // The `RuntimeEnvironment.id` the token was minted for, when the minter knows
+  // it. Lets a route take the environment from the token instead of trusting the
+  // request body. Optional because other UAT flows are environment-agnostic.
   environmentId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
@@ -314,8 +312,6 @@ export async function signUserActorToken(
     payload: {
       kind: USER_ACTOR_KIND,
       sub: opts.userId,
-      // One claim for everything about the acting client, so the wire format
-      // stays stable as scopes are added.
       act: {
         client: opts.client,
         ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),

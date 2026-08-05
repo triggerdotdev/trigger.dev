@@ -1,15 +1,11 @@
 /**
- * Generic, render-agnostic contract for a Report. Semantic, not a UI tree: numbers +
- * what they mean (codes, severities, units, series), never formatted strings or layout.
- * Every renderer consumes this and owns presentation. Reasons are codes;
- * `report-messages.ts` resolves them -> strings, so phrasing lives in one place.
+ * Render-agnostic contract for a report: numbers plus what they mean (codes, severities, units,
+ * series), never formatted strings or layout. Reasons are codes, and `report-messages.ts` resolves
+ * them to strings so phrasing lives in one place.
  *
- * No React/DOM/IO. Report-agnostic — `health` is just one interpreter that emits it.
- *
- * The shapes themselves live in `@trigger.dev/core/v3/schemas` (as zod schemas) because the
- * API serves this view model verbatim under `format=json` and the API clients parse it — one
- * definition, no drift. This module only re-aliases them to the short local names the
- * interpreters and renderers use, and owns the interpret-side helpers below.
+ * The shapes live in `@trigger.dev/core/v3/schemas` as zod schemas, because the API serves this view
+ * model verbatim under `format=json` and the clients parse it. This module re-aliases them to short
+ * local names and owns the interpret-side helpers below.
  */
 
 import {
@@ -46,14 +42,9 @@ export type Observation = ReportObservation;
 export type Finding = ReportFinding;
 export type SummaryStatement = ReportSummaryStatement;
 export type ReportLink = CoreReportLink;
-/** a.k.a. ReportDocument — report-agnostic, render-agnostic. */
 export type ReportViewModel = CoreReportViewModel;
 
-// ---------------------------------------------------------------------------
-// Interpret-side helpers (produce VM fields, no prose, no IO).
-// ---------------------------------------------------------------------------
-
-/** Direction + rounded multiplier of `value` against a `normal` baseline. */
+/** Direction and rounded multiplier of `value` against a `normal` baseline. */
 export function delta(value: number, normal: number | undefined): Delta {
   if (normal === undefined || !Number.isFinite(normal) || normal === 0) {
     return { dir: "flat" };
@@ -84,16 +75,13 @@ export function isOk(severity: Severity): boolean {
 }
 
 /**
- * Trailing contiguous run of buckets that breach `threshold`, in minutes over
- * `windowMinutes`. Default breach is at/over threshold (ABOVE, e.g. concurrency
- * pinned at the limit); `below: true` counts at/under (BELOW, e.g. running capacity
- * idle under a stall floor). `touchesEnd` = the run reaches the latest bucket
- * ("(last 40 min)" vs mid-window "(14–16h)"). Undefined when nothing breaches.
+ * Trailing contiguous run of buckets that breach `threshold`, in minutes over `windowMinutes`. By
+ * default a breach is at or over the threshold; `below: true` counts at or under it. `touchesEnd`
+ * means the run reaches the latest bucket. Undefined when nothing breaches.
  *
- * `bucketMinutes` + `timestampsMs` make the duration GAP-AWARE: each bucket then counts for its
- * real cadence (not window/received, which inflates a sparse series), and a missing bucket breaks
- * the contiguous run instead of being silently bridged. Without them the series is assumed
- * gap-free and evenly spread over the window.
+ * `bucketMinutes` and `timestampsMs` make the duration gap-aware: each bucket counts for its real
+ * cadence rather than window over received, which inflates a sparse series, and a missing bucket
+ * breaks the run instead of being silently bridged. Without them the series is assumed gap-free.
  */
 export function anomalyWindow(
   series: number[],
@@ -108,8 +96,8 @@ export function anomalyWindow(
       ? bucketMinutes
       : windowMinutes / series.length;
   const breaches = options?.below ? (v: number) => v <= threshold : (v: number) => v >= threshold;
-  // Buckets are adjacent in TIME when their timestamps differ by ~one cadence; anything larger
-  // is a gap (a dropped bucket), which must not extend the run.
+  // Buckets are adjacent in time when their timestamps differ by about one cadence. Anything larger
+  // is a dropped bucket, which must not extend the run.
   const timestamps = options?.timestampsMs;
   const maxGapMs =
     timestamps && timestamps.length === series.length && bucketMinutes
@@ -118,7 +106,6 @@ export function anomalyWindow(
   const adjacent = (i: number) =>
     maxGapMs === undefined || i === 0 || timestamps![i] - timestamps![i - 1] <= maxGapMs;
 
-  // longest breaching run + whether any run touches the end.
   let longest = 0;
   let current = 0;
   let touchesEnd = false;
@@ -132,8 +119,8 @@ export function anomalyWindow(
     }
   }
   if (longest === 0) return undefined;
-  // If the run reaches the latest bucket, use the TRAILING length so "(last X min)" is
-  // accurate — a longer mid-window run must not inflate it.
+  // When the run reaches the latest bucket, use the trailing length so a longer mid-window run
+  // can't inflate it.
   const runBuckets = touchesEnd ? current : longest;
   return { minutes: Math.round(runBuckets * perBucket), touchesEnd };
 }

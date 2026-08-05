@@ -30,12 +30,10 @@ const DashboardAgentWatchAlertPayload = z.object({
   note: z.string(),
   firedAt: z.string(),
   facts: z.record(z.unknown()),
-  // The resolution model, carried alongside the as-built fields (§7.5). Optional
-  // so a job enqueued before this deploy still validates and delivers.
+  // Optional so a job enqueued before this deploy still validates and delivers.
   resolution: watchResolutionSchema.optional().catch(undefined),
-  // `.catch` rather than a hard parse: an observation shape this build doesn't
-  // recognize must degrade to "no observation" (the headline then uses the
-  // kind's default cell), never drop the whole alert.
+  // `.catch` so an observation shape this build doesn't recognize degrades to
+  // "no observation" instead of dropping the whole alert.
   observed: watchObservedOutcomeSchema.optional().catch(undefined),
 });
 

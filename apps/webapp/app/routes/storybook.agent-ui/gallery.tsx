@@ -15,12 +15,11 @@ import {
 /**
  * The shared shell every dashboard-agent gallery page renders through.
  *
- * `./manifest.ts` is the source of truth for what a page contains: sections
- * render in manifest order, and a manifest row with no renderer shows up as a
- * loud placeholder rather than silently vanishing. The screenshot script walks
- * the same manifest, page by page, capturing each section by its `id`.
+ * `./manifest.ts` decides what a page contains. A manifest row with no renderer shows
+ * a loud placeholder instead of vanishing. The screenshot script walks the same
+ * manifest and captures each section by its `id`.
  *
- * Every page is gated by the parent `storybook` route, which requires an admin.
+ * The parent `storybook` route gates every page on admin.
  */
 
 export const noop = () => undefined;
@@ -28,20 +27,12 @@ export const noop = () => undefined;
 /** Panel width, matching `DashboardAgent`'s default panel size. */
 export const PANEL = "w-[380px]";
 
-/**
- * The canvas is the chat panel's own background (`DashboardAgentPanel` uses
- * `bg-background-bright`), so each state is judged on the surface it ships on
- * rather than against a darker page. Anything that shares that colour — a card's
- * header strip, a pending pill, a chip — reads by its border here, exactly as it
- * does in the panel.
- */
+// The chat panel's own background, so each state is judged on the surface it ships
+// on rather than against a darker page.
 const CANVAS = "bg-background-bright";
 
-/**
- * The frame a harness draws around transcript content to stand in for the panel.
- * Its fill is the canvas colour, so the border is the only thing separating the
- * two.
- */
+// The frame a harness draws around transcript content to stand in for the panel. Its
+// fill is the canvas colour, so the border is all that separates the two.
 export const PANEL_FRAME = "rounded-lg border border-border-bright bg-background-bright";
 
 export function Missing({ what }: { what: string }) {
@@ -53,9 +44,8 @@ export function Missing({ what }: { what: string }) {
 }
 
 /**
- * The gallery's stand-in for the panel's URI resolver. In the app the host
- * resolves against the real environment (`resolveTriggerUri.server.ts`); here a
- * fixture resolver proves the seam exists without a project route.
+ * Stand-in for the panel's URI resolver. In the app the host resolves against the real
+ * environment; here a fixture resolver keeps the seam without a project route.
  */
 export function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
@@ -68,8 +58,7 @@ const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
 
 /**
  * One state. The `id` is the deep-link anchor and the screenshot target, and the
- * element is width-fitted so a capture of it hugs the component instead of the
- * page.
+ * element is width-fitted so a capture hugs the component instead of the page.
  */
 function Section({
   section,
@@ -81,8 +70,6 @@ function Section({
   const state = states[section.sectionId];
   return (
     <section id={section.sectionId} className="w-fit scroll-mt-4 space-y-1.5">
-      {/* The section id stays as the DOM id / deep-link anchor; showing it
-          overflowed the tile, and `title` says what the state is. */}
       <h3 className="text-sm font-medium text-text-bright">{section.title}</h3>
       <div className={cn(WIDE_SECTIONS.has(section.sectionId) ? "w-auto" : PANEL)}>
         {state ?? <Missing what={`section "${section.sectionId}"`} />}
@@ -94,7 +81,7 @@ function Section({
 function ThemeToggle() {
   return (
     <div className="flex items-center gap-1.5">
-      {/* classic is still the default theme for most users, so it's part of the pack */}
+      {/* classic is still the default theme for most users, so it's in the pack */}
       {(["classic", "dark", "light"] as const).map((theme) => (
         <button
           key={theme}
@@ -156,10 +143,9 @@ function Nav({ page }: { page: GalleryPageId }) {
 }
 
 /**
- * A gallery page: the manifest's sections for `page`, rendered from `states`.
- *
- * Fixtures come from `~/components/dashboard-agent/demo/fixtures` — the same
- * data the demo conversations use, so the gallery and the panel can't drift.
+ * A gallery page: the manifest's sections for `page`, rendered from `states`. Fixtures
+ * come from the same data the demo conversations use, so the gallery can't drift from
+ * the panel.
  */
 export function GalleryPage({
   page,

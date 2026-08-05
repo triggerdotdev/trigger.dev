@@ -4,10 +4,8 @@ import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { chatItems } from "../storybook.agent-ui/fixtures";
 import { fixtureResolveUri, GalleryPage, noop } from "../storybook.agent-ui/gallery";
 
-/**
- * The health report, one state per verdict. The shell and the manifest live in
- * `../storybook.agent-ui`.
- */
+// The health report, one state per verdict. The shell and the manifest live in
+// `../storybook.agent-ui`.
 
 // The report items of the demo conversations, for the source URI each card cites.
 const reportItems = chatItems(demoId("report-healthy"), "report").concat(
@@ -15,12 +13,10 @@ const reportItems = chatItems(demoId("report-healthy"), "report").concat(
 );
 
 /**
- * The two demo VMs cover healthy and degraded; the third is derived here because
- * no fixture conversation shows it: when telemetry goes stale the interpreter
- * marks flow AND execution "unknown", strips every actionable field, and flags
- * the snapshot `trustworthy: false` — the one state where the card must show
- * numbers while refusing to advise on them. Derived exactly the way
- * `applyStaleGuard` does it, so the shape is real.
+ * No demo conversation shows stale telemetry, the one state where the card must show
+ * numbers while refusing to advise on them. Derived the way `applyStaleGuard` does it,
+ * so the shape is real: flow and execution go "unknown", actionable fields are
+ * stripped, and the snapshot is flagged untrustworthy.
  */
 const untrustworthyReport: ReportViewModelPayload = {
   ...demoFixtures.demoDegradedReport,

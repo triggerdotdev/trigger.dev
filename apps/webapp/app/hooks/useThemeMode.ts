@@ -4,19 +4,13 @@ import { useEffect, useState } from "react";
 export type ThemeMode = "dark" | "light";
 
 /**
- * The active theme's mode, for the rare color that can't come from a CSS
- * variable — a canvas paints with concrete values, so it has to ask.
+ * The active theme's mode, for colors that can't come from a CSS variable
+ * (canvas, props that take a color string). Prefer a theme-aware token
+ * otherwise.
  *
- * Prefer a theme-aware token (`text-*`, `bg-*`, `var(--color-*)`) whenever the
- * color goes through CSS; this is the escape hatch for canvas and for props
- * that take a color string.
- *
- * `light` is the only mode that isn't dark, so anything else — `dark`,
- * `classic`, an unset attribute during SSR — resolves to `dark`. Resolution
- * happens in an effect so server and hydration renders agree (the pre-paint
- * script in `root.tsx` can flip `data-theme` before hydration), and a
- * `MutationObserver` keeps long-lived components correct across theme
- * switches. Same shape as `useThemeColor`.
+ * `light` is the only non-dark mode, so anything else resolves to `dark`.
+ * Resolution happens in an effect so server and hydration renders agree, since
+ * the pre-paint script in `root.tsx` can flip `data-theme` before hydration.
  */
 export function useThemeMode(): ThemeMode {
   const [mode, setMode] = useState<ThemeMode>("dark");

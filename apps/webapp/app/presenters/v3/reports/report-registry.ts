@@ -1,11 +1,7 @@
 /**
- * The report catalog: which reports exist, what data each is allowed to read, and how each
- * loads + interprets it. Keyed by report name so cost/regression/errors drop in later as new
- * `{ tables, load, interpret }` entries with no changes to the VM, renderers, route, tool, or
- * presenter.
- *
- * Deliberately separate from `ReportPresenter` — the presenter only orchestrates (look up a
- * loader by key, run it, single-flight); knowing WHICH reports exist is a distinct concern.
+ * The report catalog: which reports exist, what data each may read, and how each loads and
+ * interprets it. A new report is a new `{ tables, load, interpret }` entry with no changes to the
+ * view model, renderers, route or presenter.
  */
 
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -18,9 +14,8 @@ export type ReportQueryTable = "runs" | "env_metrics" | "queue_metrics";
 
 export type ReportLoader<TInput> = {
   /**
-   * The query tables this report reads. This is authorization metadata, not documentation: the
-   * route derives its per-table JWT scope check from it, so a new report with narrower data
-   * needs only its own entry here — no route change.
+   * The query tables this report reads. Authorization metadata, not documentation: the route
+   * derives its per-table JWT scope check from it, so a narrower report needs no route change.
    */
   tables: readonly ReportQueryTable[];
   load: (env: AuthenticatedEnvironment, period: string) => Promise<TInput>;
@@ -42,8 +37,8 @@ export const REPORT_REGISTRY: Record<string, ReportLoader<unknown>> = {
 export const REPORT_KEYS = Object.keys(REPORT_REGISTRY);
 
 export function isReportKey(key: string): boolean {
-  // Object.hasOwn, not `in`: `in` matches prototype keys ("toString", "__proto__"),
-  // which would pass the route guard and then 500 in the loader.
+  // Object.hasOwn rather than `in`: `in` matches prototype keys like "toString", which would pass
+  // the route guard and then 500 in the loader.
   return Object.hasOwn(REPORT_REGISTRY, key);
 }
 
@@ -51,12 +46,11 @@ export function isReportKey(key: string): boolean {
 type ReportTablesRegistry = Record<string, Pick<ReportLoader<unknown>, "tables">>;
 
 /**
- * The query tables a request for `key` will read — the input to the route's JWT scope check.
+ * The query tables a request for `key` will read, and the input to the route's JWT scope check.
  *
- * An unknown key returns the union across every report rather than an empty list: empty would
- * make the check vacuous, and a single table would be arbitrary. The union is the strictest
- * answer that still lets a fully-scoped token through to the handler's 404 (so a bad key reads
- * as "no such report", not "forbidden").
+ * An unknown key returns the union across every report, not an empty list, which would make the
+ * check vacuous. The union is the strictest answer that still lets a fully-scoped token reach the
+ * handler's 404, so a bad key reads as "no such report" rather than "forbidden".
  */
 export function reportQueryTables(
   key: string,

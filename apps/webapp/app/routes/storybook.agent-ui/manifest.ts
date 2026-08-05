@@ -1,23 +1,15 @@
 /**
- * The gallery's table of contents — one row per state, spread over a handful of
- * storybook pages.
+ * The gallery's table of contents: one row per state. `gallery.tsx` renders a page
+ * from it and shows a "no renderer" placeholder for a row it can't render, and
+ * `scripts/agent-ui-screenshots.ts` walks it to capture every state.
  *
- * Three consumers share this file, which is why it holds no imports and no JSX:
+ * Keep this file free of imports and JSX. The screenshot script is plain node and
+ * cannot import a Remix route module, only this.
  *
- * 1. `gallery.tsx` renders a page *from* it, and fails loudly (a visible
- *    "no renderer" placeholder) for any row it can't render. So the manifest is
- *    the spec, not a description written after the fact.
- * 2. Each `storybook.agent-…` route module maps a page id to its states.
- * 3. `scripts/agent-ui-screenshots.ts` walks it to capture every state on every
- *    page. A node script can't import a Remix route module (JSX, `~/` aliases,
- *    browser-only deps), but it can import this — hence the no-dependency rule.
- *    Keep it that way.
- *
- * `sectionId` is the DOM `id` of the section element and the screenshot's
- * filename, so it must be URL- and filename-safe and must never change
- * casually — a rename breaks deep links and orphans old screenshots. Groups are
- * the screenshot directories, so those are stable too; which page a group lives
- * on is not.
+ * `sectionId` is the section's DOM id and the screenshot filename, so it must be URL-
+ * and filename-safe and stable: a rename breaks deep links and orphans screenshots.
+ * Groups are the screenshot directories, so those are stable too. Which page a group
+ * lives on is not.
  */
 
 /** A storybook page in the "Trigger Agent" nav section. */
@@ -117,9 +109,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
 ];
 
 export const MANIFEST: GallerySection[] = [
-  // --- Blank-state hero -----------------------------------------------------
-  // The new-chat state, with the composer inside the hero. Both widths it ships
-  // at: the 380px side panel and the fullscreen takeover's centred column.
+  // Both widths the hero ships at: the 380px side panel and the fullscreen column.
   { sectionId: "hero-panel", title: "Side panel (380px) — no page context", group: "hero" },
   {
     sectionId: "hero-panel-contextual",
@@ -129,7 +119,6 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "hero-fullscreen", title: "Fullscreen takeover — centred column", group: "hero" },
   { sectionId: "hero-in-chat", title: "Empty chat — hero without its own composer", group: "hero" },
 
-  // --- Suggested prompts ---------------------------------------------------
   { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },
   {
     sectionId: "prompts-contextual-fresh-failure",
@@ -139,7 +128,7 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "prompts-promoted", title: "Promoted chip on top", group: "prompts" },
   { sectionId: "prompts-dismissed", title: "After a dismissal", group: "prompts" },
 
-  // --- Message-level states, through the production renderer ---------------
+  // Message-level states, through the production renderer.
   {
     sectionId: "messages-streaming-text",
     title: "Text part still streaming, with activity row",
@@ -173,7 +162,6 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "messages-docs-sources", title: "Answer with source links", group: "messages" },
 
-  // --- Intent bubbles ------------------------------------------------------
   {
     sectionId: "intent-navigate-filtered-runs",
     title: "Navigate — runs with filters",
@@ -186,23 +174,18 @@ export const MANIFEST: GallerySection[] = [
     group: "intents",
   },
 
-  // --- Wake banners --------------------------------------------------------
-  // A wake narration through the production renderer: the banner plus the prose
-  // the agent wrote, as the panel shows them. One per presentation category.
+  // One per presentation category: the banner plus the prose the agent wrote.
   { sectionId: "wake-positive", title: "Positive", group: "wakes" },
   { sectionId: "wake-attention", title: "Attention", group: "wakes" },
   { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
   { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
 
-  // --- Watch chips ---------------------------------------------------------
   // The real panel component, fed every status at once.
   { sectionId: "watches-live", title: "All four states, cancellable", group: "watches" },
 
-  // --- Context banner ------------------------------------------------------
   { sectionId: "banner-prod", title: "Production environment", group: "banner" },
   { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
 
-  // --- ViewBlocks: identity, revisions, actions -----------------------------
   {
     sectionId: "view-blocks-revisions",
     title: "Three same-id revisions collapse to one card",
@@ -219,7 +202,6 @@ export const MANIFEST: GallerySection[] = [
     group: "view-blocks",
   },
 
-  // --- Diagnosis card ------------------------------------------------------
   { sectionId: "diagnosis-full-high", title: "Full card, high confidence", group: "diagnosis" },
   {
     sectionId: "diagnosis-low-minimal",
@@ -232,7 +214,6 @@ export const MANIFEST: GallerySection[] = [
     group: "diagnosis",
   },
 
-  // --- Chart card ----------------------------------------------------------
   {
     sectionId: "chart-with-actions",
     title: "Ranking chart with actions on the top item",
@@ -240,7 +221,6 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
 
-  // --- Report view ---------------------------------------------------------
   { sectionId: "report-view-healthy", title: "Healthy — nothing to do", group: "report" },
   {
     sectionId: "report-view-degraded",
@@ -253,7 +233,6 @@ export const MANIFEST: GallerySection[] = [
     group: "report",
   },
 
-  // --- Investigation card --------------------------------------------------
   {
     sectionId: "investigation-card-streaming-rev1",
     title: "In progress — one hypothesis settled",
@@ -264,8 +243,8 @@ export const MANIFEST: GallerySection[] = [
     title: "Concluded, collapsed",
     group: "investigation",
   },
-  // The two concluded endings side by side: one whose verdict rests on a line of
-  // source it read (so "Show code" is offered), one from telemetry alone.
+  // The two concluded endings: a verdict resting on source it read, so "Show code" is
+  // offered, and one from telemetry alone.
   {
     sectionId: "investigation-card-concluded-code-grounded",
     title: "Concluded, code-grounded — source citation and Show code",
@@ -289,16 +268,12 @@ export const MANIFEST: GallerySection[] = [
     group: "investigation",
   },
 
-  // --- Watch card ----------------------------------------------------------
-  // The configuration card and the blocks a submitted card leaves behind. The
-  // card is ephemeral (it never enters the transcript), so these states are the
-  // whole of what a user can see of it.
+  // The configuration card is ephemeral and never enters the transcript, so these
+  // states plus the blocks a submitted card leaves behind are all a user can see.
   { sectionId: "watch-card-compact", title: "Compact — the recommendation", group: "watch-card" },
   { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
   { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
   { sectionId: "watch-card-pending", title: "Pending create", group: "watch-card" },
-  // The queue pack (TRI-12890): a condition with its ONE contextual parameter,
-  // and the one that takes no parameter at all.
   {
     sectionId: "watch-card-queue-below",
     title: "Customize — back below a threshold",

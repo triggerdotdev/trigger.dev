@@ -19,13 +19,12 @@ import { rootPath } from "~/utils/pathBuilder";
 /**
  * The "Turn off these alerts" link in a watch alert email.
  *
- * The signed token in the query string is the whole authorization — no session,
- * because the recipient of an alert email is not necessarily signed in on the
- * device they read it on. It names one channel and one alert type, so this route
- * can do exactly one thing.
+ * The signed token in the query string is the whole authorization: an email recipient
+ * isn't necessarily signed in on the device they read it on. It names one channel and
+ * one alert type, so this route can do exactly one thing.
  *
- * GET confirms, POST acts: a bare GET must not mutate, or a link preview or mail
- * scanner would silently unsubscribe someone.
+ * GET confirms and POST acts, so a link preview or mail scanner can't silently
+ * unsubscribe someone.
  */
 
 const ParamsSchema = z.object({ channelId: z.string().min(1) });
@@ -71,16 +70,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // The token names a channel and nothing else, so the channel's project is the
-  // only tenant this route can put on a failure. Read for that alone — the
-  // unsubscribe below does its own scoped lookup.
+  // Read only to name a tenant in the failure log below. The unsubscribe does its
+  // own scoped lookup.
   const channel = await prisma.projectAlertChannel.findFirst({
     where: { id: claims.channelId },
     select: { projectId: true },
   });
 
-  // Rethrown, so the page behaves exactly as it did before: the failure is only
-  // named, not handled.
   try {
     const result = await unsubscribeChannelFromWatchAlerts(claims.channelId);
     if (!result.ok) {

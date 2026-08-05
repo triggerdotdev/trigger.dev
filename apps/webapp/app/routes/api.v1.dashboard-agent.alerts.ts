@@ -22,13 +22,12 @@ import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChann
  * when a watch fires.
  * `POST /api/v1/dashboard-agent/alerts` — subscribe the user's email to them.
  *
- * Accepts ONLY the dashboard agent's delegated user-actor token, like the watches
- * endpoint: POST creates something that later mails a person, so the only caller
- * it trusts is the agent acting for the signed-in user in a live chat. The
- * environment is the token's, not the body's (see `resolveAgentAlertContext`).
+ * Accepts only the dashboard agent's delegated user-actor token, like the watches
+ * endpoint: POST creates something that later mails a person. The environment comes
+ * from the token, not the body, via `resolveAgentAlertContext`.
  *
- * The feature-flag/transport gate is enforced here AND at delivery, and its denial
- * carries a machine-readable `reason` so the agent can say why instead of guessing.
+ * The feature-flag gate is enforced here and again at delivery, and its denial
+ * carries a machine-readable `reason` so the agent can say why.
  */
 
 const ListQuerySchema = z.object({
@@ -47,9 +46,8 @@ const CreateBodySchema = z.object({
 });
 
 /**
- * The preamble both handlers share: a dashboard-agent token, plus the environment
- * scope the dashboard minted it with — which is the authority for everything here,
- * so a token without one can't be used at all.
+ * Shared preamble: a dashboard-agent token plus the environment scope it was minted
+ * with. That scope is the authority here, so a token without one is unusable.
  */
 async function authenticate(
   request: Request
@@ -129,8 +127,6 @@ export async function action({ request }: ActionFunctionArgs) {
   if ("error" in auth) return auth.error;
   const { userId } = auth;
 
-  // The try guards the parse and nothing else: a malformed body is a 400, and the
-  // shape check below it answers for itself.
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -169,11 +165,9 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Alerts are not available here", code: gate.reason }, { status: 403 });
   }
 
-  // The agent may only ever subscribe the signed-in user's own account email.
-  // Omitting it is the normal path; supplying one is accepted only when it IS that
-  // address, so a model can't be talked into mailing a watch to someone else.
-  // Read off the primary, not the replica: this is the identity the subscription
-  // is pinned to.
+  // The agent may only subscribe the signed-in user's own account email, so a model
+  // can't be talked into mailing a watch to someone else. Read off the primary, not
+  // the replica: this is the identity the subscription is pinned to.
   const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
   if (!user) {
     return json({ error: "User not found", code: "invalid_request" }, { status: 404 });

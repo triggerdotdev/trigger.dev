@@ -8,13 +8,11 @@ import {
 } from "~/services/dashboardAgentWatchToken.server";
 
 /**
- * `POST /api/v1/dashboard-agent/watches/batch-check` — the PRIVATE batch check. One
- * call per (environment, cadence) group per cadence, in place of one call per watch.
+ * `POST /api/v1/dashboard-agent/watches/batch-check` — private batch check. One call
+ * per (environment, cadence) group per cadence, in place of one call per watch.
  *
- * A thin shell: the token names the group, the body names the tick inside it, and
- * `runWatchBatchCheck` does everything else (the chain's generation claim, the
- * per-user re-authorization, the shared reads, the per-watch verdicts). The security
- * model and its ordering are documented there.
+ * The token names the group and the body names the tick inside it.
+ * `runWatchBatchCheck` does the rest, and documents the security model.
  */
 
 const BodySchema = z.object({
@@ -57,8 +55,8 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!parsedBody.success) return json({ error: "Invalid request body" }, { status: 400 });
   const body = parsedBody.data;
 
-  // A valid token for a DIFFERENT group is a distinct failure from a bad token: the
-  // caller is authenticated, just not for this group.
+  // A valid token for a different group is 403, not 401: the caller is
+  // authenticated, just not for this group.
   if (
     claims.environmentId !== body.environmentId ||
     claims.cadenceMinutes !== body.cadenceMinutes

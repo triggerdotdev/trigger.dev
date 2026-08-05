@@ -1,13 +1,10 @@
 /**
- * The `health` report — ORCHESTRATOR + public entry. Two layers:
- *   `assessHealth()`      data -> HealthAssessment (all health reasoning)
- *   `toReportViewModel()` HealthAssessment -> generic ReportViewModel (pure packaging)
- * `interpret()` is the thin composition of the two.
+ * The health report's orchestrator and public entry. `assessHealth()` turns data into a
+ * HealthAssessment (all the reasoning), `toReportViewModel()` packages that into the generic
+ * ReportViewModel, and `interpret()` composes the two.
  *
- * The reasoning is split into three independent analyzers, each returning a Finding:
- *   flow.ts · execution.ts · liveness.ts   (foundation in health-core.ts)
- * This module only wires them: build metrics -> run the three -> flow policy -> stale guard
- * -> reads -> summary/footer. PURE — no IO/clock/LLM/formatting.
+ * The reasoning lives in three independent analyzers (flow, execution, liveness) over the
+ * health-core foundation. This module only wires them together, and is pure: no IO or formatting.
  */
 
 import {
@@ -30,27 +27,20 @@ import {
 import { buildExecutionRead, interpretExecution } from "./execution";
 import { applyFlowPolicy, buildFlowRead, FLOW_UNMEASURED, interpretFlow } from "./flow";
 import { interpretLiveness } from "./liveness";
-// Registers the "health" message catalog (side effect) so the renderer resolves this report's
-// codes. Kept here — the health report's entry module — so loading it always registers its prose.
 
-// Re-exported so the data layer + tests keep a single import path (`./health`).
+// Re-exported so the data layer and tests keep a single import path.
 export { HEALTH_THRESHOLDS, isPendingIncreasing, type HealthInput } from "./health-core";
 
-// ---------------------------------------------------------------------------
-// Stale-telemetry trust guard. When telemetry is genuinely stale, both flow and execution are
-// CH-derived and untrustworthy: mark them unknown and strip everything that would advise action
-// off stale data (recommendation, attribution, exclusions, observations, hedge, anomaly window).
-// ---------------------------------------------------------------------------
-
+// When telemetry is genuinely stale, flow and execution are both ClickHouse-derived and
+// untrustworthy: mark them unknown and strip everything that would advise action off stale data.
 function applyStaleGuard(
   flow: Finding,
   execution: Finding,
   telemetryStale: boolean
 ): { flow: Finding; execution: Finding; treatedCrit: boolean } {
   if (!telemetryStale) return { flow, execution, treatedCrit: false };
-  // Force crit so severity is consistent across summary / section glyph / JSON, and strip the
-  // ACTIONABLE causal fields so no surface advises off stale data. Raw metrics/evidence stay in
-  // the VM for diagnostics, flagged informational-only by `facts.trustworthy: false`.
+  // Force crit so severity is consistent across summary, glyph and JSON. Raw metrics stay in the
+  // view model for diagnostics, flagged by `facts.trustworthy: false`.
   const untrust = (f: Finding): Finding => ({
     ...f,
     severity: "crit",
@@ -64,10 +54,6 @@ function applyStaleGuard(
   });
   return { flow: untrust(flow), execution: untrust(execution), treatedCrit: true };
 }
-
-// ---------------------------------------------------------------------------
-// Summary.
-// ---------------------------------------------------------------------------
 
 function aggregateSummary(
   flow: Finding,
@@ -99,10 +85,6 @@ function aggregateSummary(
   return { severity, statements };
 }
 
-// ---------------------------------------------------------------------------
-// Footer (dominant action + do-nothing option) + links.
-// ---------------------------------------------------------------------------
-
 const SEV_RANK: Record<Severity, number> = { ok: 0, warn: 1, crit: 2 };
 
 function dominantFinding(findings: Finding[]): Finding | undefined {
@@ -130,9 +112,8 @@ function buildFooter(
   const dominant = dominantFinding(findings);
   if (!dominant?.recommendation) return [{ code: "nothing_to_do" }];
 
-  // Raising the env concurrency limit is self-serve now: the action button
-  // takes the user to the environment's Concurrency page (the host resolves
-  // the path), with the docs alongside.
+  // Raising the env concurrency limit is self-serve, so the action links to the Concurrency page
+  // with the docs alongside.
   const footer: FooterEntry[] =
     dominant.recommendation.code === "raise_env_limit"
       ? [
@@ -141,8 +122,8 @@ function buildFooter(
         ]
       : [{ code: dominant.recommendation.code, link: dominant.recommendation.link }];
 
-  // Second entry: do-nothing when the backlog drains, or the region-move hedge for a
-  // dequeue stall (the one place it stays plausible).
+  // Second entry: do-nothing when the backlog drains, or the region-move hedge for a dequeue
+  // stall, the one place it stays plausible.
   if (dominant.type === "flow") {
     if (drain.isDrainable && Number.isFinite(drain.drainMinutes)) {
       footer.push({ code: "do_nothing_drains", value: Math.round(drain.drainMinutes * 10) / 10 });
@@ -162,35 +143,26 @@ function collectLinks(findings: Finding[]): ReportViewModel["links"] {
   return [...keys].map((key) => ({ key, label: key, url: "" }));
 }
 
-// ---------------------------------------------------------------------------
-// Domain layer: HealthAssessment — the health verdict (flow / execution / liveness findings,
-// their causes + recommendations, and the derived state). All health semantics live here; it
-// knows nothing about how a report is presented. `toReportViewModel` maps it into the generic,
-// report-agnostic ReportViewModel — so the VM stays reusable for future reports (each has its
-// own <domain>Assessment + mapper; the renderer/VM primitives are shared).
-// ---------------------------------------------------------------------------
-
+// The health verdict. All health semantics live here and nothing about presentation does, so the
+// generic ReportViewModel stays reusable for future reports.
 export type HealthAssessment = {
-  /** header, carried through from the input. */
   scope: string;
   period: string;
   baselineLabel: string;
   generatedAt: string;
   windowMinutes: number;
-  /** finalized findings (post-policy, post-stale-guard, with reads built). */
+  /** Finalized findings: post-policy, post-stale-guard, with reads built. */
   flow: Finding;
   execution: Finding;
   liveness: Finding;
   metrics: Metric[];
-  /** derived domain state the presentation layer needs (footer / summary / trust). */
   drain: { drainMinutes: number; isDrainable: boolean };
   telemetryStale: boolean;
   executionTreatedCrit: boolean;
-  /** structured payload for agents (already carries the trust marker). */
+  /** Structured payload for agents. Carries the trust marker. */
   facts: Record<string, unknown>;
 };
 
-/** Data -> domain verdict. Pure: no IO/clock/LLM/formatting — just health reasoning. */
 export function assessHealth(input: HealthInput): HealthAssessment {
   const metrics = buildMetrics(input);
   const drain = computeDrain(input);
@@ -199,15 +171,12 @@ export function assessHealth(input: HealthInput): HealthAssessment {
   const executionRaw = interpretExecution(metrics, input);
   const liveness = interpretLiveness(metrics, input);
 
-  // Telemetry freshness as an explicit state so "unknown" (no signal) is never conflated with
-  // "lagging" (a real severity). Only GENUINE staleness trust-guards the CH-derived verdicts.
+  // Freshness is an explicit state so no signal is never conflated with lagging. Only genuine
+  // staleness trust-guards the verdicts.
   //
-  // HUMAN severity and MACHINE trust are deliberately split here:
-  //  - a signal-less env stays NEUTRAL for the reader (liveness ok / "freshness unknown"): an
-  //    idle-but-fine env must not be painted yellow, and no verdict is trust-guarded;
-  //  - but `facts.trustworthy` must NOT claim trust with no signal to back it. `telemetry: "none"`
-  //    names the state, and trustworthy is false — so an automated watch (e.g. "health recovered")
-  //    can never fire off an env that simply produced no telemetry.
+  // Human severity and machine trust split here: a signal-less env stays neutral for the reader,
+  // but `facts.trustworthy` is false because there is no signal to back it, so an automated watch
+  // can never fire off an env that simply produced no telemetry.
   const ageMs = input.liveness.telemetryAgeMs;
   const telemetry: "none" | "fresh" | "lagging" | "stale" =
     ageMs === null
@@ -222,16 +191,13 @@ export function assessHealth(input: HealthInput): HealthAssessment {
 
   flow = applyFlowPolicy(flow, executionRaw, drain.isDrainable, telemetryStale);
 
-  // Stale telemetry: flow AND execution are untrustworthy -> mark both unknown and strip their
-  // actions/attribution/exclusions so nothing advises off stale data.
   const guarded = applyStaleGuard(flow, executionRaw, telemetryStale);
   flow = guarded.flow;
   const execution = guarded.execution;
 
-  // interpretFlow mutates the shared metrics array (e.g. sets concurrency.annotation "pinned 40
-  // of last 60 min") BEFORE the guard runs. The renderers hide it for an unknown finding, but
-  // format=json would still leak that stale-derived narrative — so strip metric annotations too
-  // (the twin of the stripped anomaly window). Raw values stay, flagged by facts.trustworthy.
+  // interpretFlow annotates the shared metrics array before the guard runs. The renderers hide the
+  // annotation for an unknown finding, but format=json would still leak that stale-derived
+  // narrative, so strip annotations too. Raw values stay, flagged by facts.trustworthy.
   if (telemetryStale) {
     for (const m of metrics) m.annotation = undefined;
   }
@@ -254,10 +220,10 @@ export function assessHealth(input: HealthInput): HealthAssessment {
     telemetryStale,
     executionTreatedCrit: guarded.treatedCrit,
     facts: {
-      // Trust marker for structured consumers. The metrics/evidence stay (useful for pipeline
-      // diagnostics), but they're informational-only unless this is true: an agent must not act
-      // on them (e.g. raise concurrency off a stale backlog, or declare recovery off silence).
-      // Trust needs a POSITIVE signal — stale, absent, and unmeasurable all read false.
+      // Trust marker for structured consumers. Metrics stay for diagnostics but are informational
+      // only unless this is true, so an agent never raises concurrency off a stale backlog or
+      // declares recovery off silence. Trust needs a positive signal: stale, absent and
+      // unmeasurable all read false.
       trustworthy: !telemetryStale && telemetry !== "none" && !flowUnmeasured,
       telemetry,
       untrustworthyReason: telemetryStale
@@ -275,11 +241,7 @@ export function assessHealth(input: HealthInput): HealthAssessment {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Presentation mapping: HealthAssessment -> generic ReportViewModel. Pure packaging only —
-// no health reasoning here (summary/footer/links are derived from the findings).
-// ---------------------------------------------------------------------------
-
+// Packaging only. No health reasoning here: summary, footer and links derive from the findings.
 function toReportViewModel(a: HealthAssessment): ReportViewModel {
   const findings = [a.flow, a.execution, a.liveness];
   return {
@@ -294,12 +256,10 @@ function toReportViewModel(a: HealthAssessment): ReportViewModel {
     metrics: a.metrics,
     facts: a.facts,
     links: collectLinks(findings),
-    // Stale telemetry -> footer points at the control plane, not a CH-derived action.
     footer: buildFooter(findings, a.drain, a.telemetryStale),
   };
 }
 
-/** Public entry: data -> generic report. Thin composition of the domain + presentation layers. */
 export function interpret(input: HealthInput): ReportViewModel {
   return toReportViewModel(assessHealth(input));
 }

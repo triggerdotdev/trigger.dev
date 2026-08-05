@@ -44,10 +44,8 @@ const ClaimsSchema = z.object({
       skipColumns: z.array(z.string()).optional(),
     })
     .optional(),
-  // Delegation stamped at env-JWT exchange time: who the exchange was done for
-  // (`sub`) and what kind of caller did it (`client`). Identity only — it must
-  // never feed the ability. Authorization comes from `sub` (the environment)
-  // and `scopes` alone, so `act` can't widen what a token can do.
+  // Delegation stamped at env-JWT exchange time. Identity only: authorization
+  // comes from `sub` (the environment) and `scopes`, never from `act`.
   act: z
     .object({
       sub: z.string(),

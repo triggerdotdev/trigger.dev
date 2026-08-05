@@ -279,10 +279,10 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
 
 /**
- * Period validation for the report surfaces (MCP tool + `trigger report` CLI), re-exported from
- * `@trigger.dev/core` so the CLI, the API clients and the webapp route all share ONE definition
- * of the grammar. The route remains the authoritative security boundary; validating here just
- * means garbage and absurd ranges are rejected before a request is made.
+ * Period validation for the report surfaces (MCP tool and `trigger report` CLI), re-exported from
+ * `@trigger.dev/core` so the CLI, the API clients and the webapp route share one definition of the
+ * grammar. The route stays the authoritative boundary; this just rejects bad ranges before a
+ * request is made.
  */
 export { ReportPeriodSchema };
 

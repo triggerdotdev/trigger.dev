@@ -5,19 +5,15 @@ import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 /**
- * Per-queue metrics over a window: wait latency, peak depth, throughput, and how
- * often the queue was throttled. ClickHouse only — no Postgres and no Redis, so
- * it stays cheap enough for an agent to poll.
+ * Per-queue metrics over a window: wait latency, peak depth, throughput, throttling.
+ * ClickHouse only, no Postgres and no Redis, so it stays cheap enough to poll.
  *
- * `queueParam` is the queue's name (URL-encoded; `%2F` for the `task/` prefix a
- * task queue carries in ClickHouse). `?type=task` (the default) prefixes it for
- * you, so `?type=task` + `send-receipt` reads `task/send-receipt`. Nothing is
- * resolved against Postgres, so an unknown queue comes back with zeroed metrics
- * rather than a 404.
+ * `queueParam` is the queue's name, with `%2F` for the `task/` prefix a task queue
+ * carries in ClickHouse. `?type=task` (the default) adds that prefix. Nothing is
+ * resolved against Postgres, so an unknown queue returns zeroed metrics, not a 404.
  *
- * JWT-reachable (like /api/v1/query and /api/v1/reports/:key) and gated on the
- * `queue_metrics` query table, so a token scoped to that table — and nothing
- * wider — can read it.
+ * Reachable with a JWT, gated on the `queue_metrics` query table, so a token scoped
+ * to that table and nothing wider can read it.
  */
 
 const UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };

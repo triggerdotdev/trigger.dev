@@ -22,22 +22,15 @@ import { cn } from "~/utils/cn";
 import { chatMessages, investigationBlock } from "./fixtures";
 import { fixtureResolveUri, GalleryPage, Missing, noop, PANEL_FRAME } from "./gallery";
 
-/**
- * The chat chrome gallery: the hero, the prompts, the transcript, wake banners,
- * watch chips and the context banner. The card catalogs live on their own pages
- * (see `GALLERY_PAGES` in `./manifest.ts`).
- */
+// The chat chrome gallery: hero, prompts, transcript, wake banners, watch chips and
+// the context banner. The card catalogs are on their own pages, see `./manifest.ts`.
 
 const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
 
-// ---------------------------------------------------------------------------
-// Harnesses
-// ---------------------------------------------------------------------------
-
 /**
- * `DashboardAgentMessages` in isolation. Its root is `flex-1 overflow-y-auto`,
- * which in a plain block parent resolves to content height with nothing to
- * scroll — so the whole transcript is visible and screenshotable.
+ * `DashboardAgentMessages` in isolation. Its root is `flex-1 overflow-y-auto`, which
+ * in a plain block parent resolves to content height with nothing to scroll, so the
+ * whole transcript is visible and screenshotable.
  */
 function MessageHarness({
   chatId,
@@ -71,16 +64,12 @@ function MessageHarness({
 }
 
 /**
- * Every progress label next to each other, one line per in-flight tool.
+ * A label sheet, not a transcript: a real turn shows one progress line, relabelled as
+ * it goes, so the phrasing has to hold up read as a set. The last tool is one the
+ * label map doesn't know, showing the `Running <name>` fallback.
  *
- * A real turn shows exactly ONE progress line, relabelled as it goes, so this is a
- * label sheet rather than a transcript: the phrasing has to hold up read as a set,
- * and the two tools that used to stream the most input JSON before flipping to a
- * card (`render_view`, `get_report`) have to look like every other wait. The last
- * one is a tool the label map doesn't know, showing the `Running <name>` fallback.
- *
- * The labels come from `liveProgress` — the same decision the panel makes — fed a
- * one-part transcript per tool, so the sheet can't drift from what ships.
+ * Labels come from `liveProgress`, the same decision the panel makes, so the sheet
+ * can't drift from what ships.
  */
 const PENDING_PILL_TOOLS: { tool: string; input: unknown }[] = [
   { tool: "render_view", input: { blocks: [{ type: "diagnosis" }] } },
@@ -117,12 +106,10 @@ function PendingPillsHarness() {
 }
 
 /**
- * The real `DashboardAgentSuggestedPrompts`, fed a fixture page context.
- *
- * The chips come from the registry resolver, so what's on screen here is exactly
- * what the panel shows on that page — including the ordering and the cap.
- * `dismissedIds` is passed explicitly, which puts the component in its controlled
- * mode so the gallery never touches (or is affected by) localStorage.
+ * The real `DashboardAgentSuggestedPrompts`, fed a fixture page context. Chips come
+ * from the registry resolver, so ordering and the cap match the panel. Passing
+ * `dismissedIds` puts the component in controlled mode, keeping the gallery out of
+ * localStorage.
  */
 function PromptsHarness({
   context,
@@ -153,13 +140,10 @@ function PromptsHarness({
 }
 
 /**
- * The real blank-state hero, in the shape it ships in.
- *
- * `fullscreen` switches the wrapping `AgentPanelColumn` to the takeover's capped,
- * centred column — the same component the panel uses — so this state shows the
- * reading width the hero actually gets there rather than an approximation.
- * `composer` mirrors the draft state, which owns the field; the empty-chat state
- * passes none because its composer is docked below.
+ * The real blank-state hero. `fullscreen` switches the wrapping `AgentPanelColumn` to
+ * the takeover's centred column, the same component the panel uses, so the reading
+ * width is the real one. The empty-chat state passes no composer because its composer
+ * is docked below.
  */
 function HeroHarness({
   context,
@@ -208,12 +192,9 @@ function HeroHarness({
 }
 
 /**
- * A live investigation through the production renderer.
- *
- * The state that proves the unified progress element: the card carries no spinner
- * of its own, and the turn's ONE progress line sits at the bottom of the transcript
- * wearing the card's phrase. It is the same element that showed "Rendering a card…"
- * a moment earlier, which is why the spinner never restarts.
+ * A live investigation through the production renderer. The card carries no spinner of
+ * its own: the turn's single progress line sits at the bottom of the transcript
+ * wearing the card's phrase, which is why the spinner never restarts.
  */
 function LiveInvestigationHarness() {
   const messages: UIMessage[] = [
@@ -236,12 +217,7 @@ function LiveInvestigationHarness() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
-// production — the point of the state is the styling of the top slot.
+// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in production.
 const promotedPrompt: SuggestedPrompt = {
   id: "sp:promo-storybook",
   label: "Try the new health report",
@@ -249,9 +225,8 @@ const promotedPrompt: SuggestedPrompt = {
   source: "promoted",
 };
 
-// Dismiss whatever the resolver puts first on the failed-run page, so the
-// "after a dismissal" state always shows a real chip having been removed even if
-// the registry's wording changes.
+// Dismiss whatever the resolver puts first, so the state still shows a real chip
+// having been removed when the registry's wording changes.
 const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
   .slice(0, 1)
   .map((prompt) => prompt.id);
@@ -269,10 +244,8 @@ function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Wake fixtures, written here rather than pulled from the demo conversations: a
-// wake is a message *id* plus the watch it names, and no demo chat carries one.
-// ---------------------------------------------------------------------------
+// Wake fixtures live here rather than in the demo conversations: a wake is a message
+// id plus the watch it names, and no demo chat carries one.
 
 /** A wake narration, in the shape the panel merges live stream and history into. */
 function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
@@ -328,19 +301,13 @@ function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeW
   );
 }
 
-// ---------------------------------------------------------------------------
-// The state map. Keyed by `sectionId`, so the manifest drives what renders.
-// ---------------------------------------------------------------------------
-
+// Keyed by `sectionId`, so the manifest drives what renders.
 const STATES: Record<string, React.ReactNode> = {
-  // --- Blank-state hero ---------------------------------------------------
   "hero-panel": <HeroHarness context={demoPageContexts.other} />,
   "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
   "hero-fullscreen": <HeroHarness context={demoPageContexts.failedRun} fullscreen />,
   "hero-in-chat": <HeroHarness context={demoPageContexts.runs} withComposer={false} />,
 
-  // --- Suggested prompts --------------------------------------------------
-  // The real component, resolving the registry against each fixture context.
   "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
   "prompts-contextual-fresh-failure": <PromptsHarness context={demoPageContexts.failedRun} />,
   "prompts-promoted": (
@@ -350,7 +317,6 @@ const STATES: Record<string, React.ReactNode> = {
     <PromptsHarness context={demoPageContexts.failedRun} dismissedIds={dismissedPromptIds} />
   ),
 
-  // --- Message-level states ------------------------------------------------
   "messages-streaming-text": <MessageHarness chatId={demoId("base-streaming")} />,
   "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
   "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
@@ -362,7 +328,6 @@ const STATES: Record<string, React.ReactNode> = {
   "messages-investigation-live": <LiveInvestigationHarness />,
   "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
 
-  // --- Intent bubbles -----------------------------------------------------
   "intent-navigate-filtered-runs": (
     <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
   ),
@@ -371,7 +336,6 @@ const STATES: Record<string, React.ReactNode> = {
     <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />
   ),
 
-  // --- Wake banners -------------------------------------------------------
   "wake-positive": (
     <WakeHarness
       watches={wakeWatches}
@@ -413,10 +377,8 @@ const STATES: Record<string, React.ReactNode> = {
     />
   ),
 
-  // --- Watch chips --------------------------------------------------------
   "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
 
-  // --- Context banner -----------------------------------------------------
   "banner-prod": (
     <DashboardAgentContextBanner
       projectSlug="demo-storefront"

@@ -1,13 +1,9 @@
 /**
- * Default IO wiring for `computeWaitingRunDiagnosis` — the ONLY place this feature touches a
- * datastore. Kept apart from the module so the diagnosis stays transport- and IO-independent
- * (tests inject fake readers instead of mocking these).
+ * Default IO wiring for `computeWaitingRunDiagnosis`, and the only place this feature touches a
+ * datastore. Kept apart so the diagnosis stays IO-independent and tests can inject fake readers.
  *
- * Read budget per call:
- *   - Postgres: ONE run row point-read (by friendlyId + environment). No scans, no aggregates.
- *   - ClickHouse: the existing `queue_metrics` readers (`listSummary` + `depthSparklines`),
- *     scoped to this single queue — the same seam the queue pages use.
- *   - Redis (run-queue): live depth + running counters, best-effort.
+ * The read budget per call is one Postgres run-row point-read, the existing `queue_metrics` readers
+ * scoped to this single queue, and best-effort live counters from the run-queue.
  */
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -33,7 +29,7 @@ export const WAITING_RUN_SELECT = {
   delayUntil: true,
 } as const;
 
-/** The single Postgres point-read: one run, scoped to the authenticated environment. */
+/** One run, scoped to the authenticated environment. */
 export async function findWaitingRun(
   runFriendlyId: string,
   environmentId: string
@@ -56,9 +52,8 @@ function finiteOrNull(value: number | undefined): number | null {
 }
 
 /**
- * ClickHouse-first queue signals for one queue, enriched with the live run-queue counters.
- * Every source degrades to null independently: a ClickHouse outage still yields live depth,
- * and a Redis outage still yields the measured series.
+ * Queue signals for one queue, enriched with the live run-queue counters. Every source degrades to
+ * null independently: a ClickHouse outage still yields live depth, a Redis outage the series.
  */
 export async function readQueueSignals(
   environment: AuthenticatedEnvironment,
@@ -139,8 +134,8 @@ async function readClickhouseSignals(
       return null;
     }
 
-    // Map rows onto the aligned grid. Depth is carry-forward filled (a bucket with no emission
-    // means "unchanged", not zero); throttled is not (only real counts count as throttling).
+    // Depth is carry-forward filled, since a bucket with no emission means unchanged rather than
+    // zero. Throttled is not filled: only real counts count as throttling.
     const byIndex = new Map<number, { depth: number; throttled: number }>();
     for (const row of sparklineRows ?? []) {
       const bucketMs = Date.parse(row.bucket.replace(" ", "T") + "Z");
@@ -163,7 +158,7 @@ async function readClickhouseSignals(
     const summary = summaryRows?.[0];
 
     return {
-      // Buckets that really reported — the ETA's sample size, not the grid width.
+      // Buckets that reported, which is the ETA's sample size rather than the grid width.
       sampleBuckets: byIndex.size,
       depthSeries,
       throttledSeries,
@@ -205,7 +200,6 @@ async function readLiveSignals(
   }
 }
 
-/** Wire the real readers for one (environment, run) pair. */
 export function waitingRunDeps(
   environment: AuthenticatedEnvironment,
   runFriendlyId: string,

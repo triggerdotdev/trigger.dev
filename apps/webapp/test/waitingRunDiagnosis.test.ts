@@ -42,7 +42,7 @@ function signals(overrides: Partial<WaitingRunQueueSignals> = {}): WaitingRunQue
   };
 }
 
-/** Plain fake readers — the repo forbids mocking frameworks. */
+/** Plain fake readers; the repo forbids mocking frameworks. */
 function deps(runRow: WaitingRunRow | null, queueSignals: WaitingRunQueueSignals | null) {
   const asked: string[] = [];
   const injected: WaitingRunDeps = {
@@ -224,8 +224,8 @@ describe("computeWaitingRunDiagnosis", () => {
         run({ status: "PENDING", queuedAt: null, delayUntil: new Date(NOW.getTime() - 60_000) }),
         signals()
       );
-      // The delay already passed but the run wasn't enqueued — the label says the
-      // delay elapsed rather than hiding it behind "time from creation".
+      // The delay passed but the run wasn't enqueued, so the label says the delay elapsed
+      // rather than hiding it behind "time from creation".
       expect(result?.run.waitingBasis).toBe("delay_until");
       expect(result?.run.waitingLabel).toContain("not yet enqueued");
     });
