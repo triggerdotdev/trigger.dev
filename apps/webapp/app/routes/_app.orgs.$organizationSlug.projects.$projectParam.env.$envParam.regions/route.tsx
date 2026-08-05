@@ -64,6 +64,9 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Regions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);

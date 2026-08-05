@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo, useRef, useState } from "react";
@@ -65,11 +64,12 @@ import { parseFiniteInt } from "~/utils/searchParams";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [{ title: slug ? `${slug} | Tasks | Trigger.dev` : "Task | Trigger.dev" }];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),

@@ -79,6 +79,9 @@ import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Preview branches");
 
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({

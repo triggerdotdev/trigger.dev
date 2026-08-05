@@ -1,7 +1,7 @@
 import * as Ariakit from "@ariakit/react";
 import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { type MetaFunction, useFetcher } from "@remix-run/react";
+import { useFetcher } from "@remix-run/react";
 import { json, type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 
 import { AnimatePresence, motion } from "framer-motion";
@@ -85,14 +85,16 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
+import { pageMeta } from "~/utils/pageTitle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  return [{ title: `${(data as any)?.prompt.slug ?? "Prompt"} | Trigger.dev` }];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.prompt?.slug ?? params.promptSlug ?? "Prompt",
+  "Prompts",
+]);
 
 // ─── Action ──────────────────────────────────────────────
 

@@ -25,6 +25,12 @@ import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { logger } from "~/services/logger.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.waitpointParam ?? "Waitpoint",
+  "Waitpoint tokens",
+]);
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),

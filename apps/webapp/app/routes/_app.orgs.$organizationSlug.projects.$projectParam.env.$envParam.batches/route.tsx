@@ -1,6 +1,6 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -62,14 +62,9 @@ import {
   v3BatchRunsPath,
 } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Batches | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Batches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

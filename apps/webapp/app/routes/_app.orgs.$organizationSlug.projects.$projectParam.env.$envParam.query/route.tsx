@@ -18,6 +18,9 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Query");
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {

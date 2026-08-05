@@ -1,5 +1,5 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
+import { useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useState } from "react";
 import {
@@ -76,16 +76,11 @@ import {
   shouldRevalidateRunsList,
 } from "./shouldRevalidateRunsList";
 import { useRunsLiveReload } from "./useRunsLiveReload";
+import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Runs metrics | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Runs metrics");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

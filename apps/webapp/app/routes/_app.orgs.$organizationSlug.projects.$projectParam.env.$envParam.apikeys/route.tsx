@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -38,14 +37,9 @@ import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `API keys | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("API keys");
 
 export const loader = dashboardLoader(
   {

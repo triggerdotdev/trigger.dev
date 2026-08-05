@@ -1,5 +1,5 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
@@ -105,13 +105,12 @@ import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [
-    { title: slug ? `${slug} | Scheduled tasks | Trigger.dev` : "Scheduled task | Trigger.dev" },
-  ];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Scheduled tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),

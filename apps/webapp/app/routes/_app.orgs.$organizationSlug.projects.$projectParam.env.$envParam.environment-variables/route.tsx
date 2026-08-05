@@ -16,7 +16,6 @@ import {
   useFetcher,
   useNavigation,
   useRevalidator,
-  type MetaFunction,
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -88,14 +87,9 @@ import {
   shouldSyncEnvVar,
   type TriggerEnvironmentType,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Environment variables | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Environment variables");
 
 type PageVercelIntegration = NonNullable<
   Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]

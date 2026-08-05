@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
@@ -24,14 +23,9 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Sessions | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Sessions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

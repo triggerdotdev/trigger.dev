@@ -56,6 +56,9 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New environment variable");
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
