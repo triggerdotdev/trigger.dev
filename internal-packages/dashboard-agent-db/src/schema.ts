@@ -329,7 +329,59 @@ export const watches = dashboardAgentSchema.table(
     index("watches_org_user_wake_idx")
       .on(t.organizationId, t.userId, sql`coalesce(${t.firedAt}, ${t.lastCheckedAt}) desc`)
       .where(sql`${t.deliveryStatus} = 'delivered' and ${t.status} in ('fired', 'expired')`),
+    // One batch tick loads every active watch of one environment in a single read
+    // (see `listActiveWatchesForBatch`). Partial on `active`, so the terminal rows
+    // an environment accumulates never enter it.
+    index("watches_active_env_idx")
+      .on(t.environmentId, t.expiresAt)
+      .where(sql`${t.status} = 'active'`),
   ]
+);
+
+/** A batch chain is either ticking or it has stopped; nothing in between. */
+export type WatchBatchStatus = "running" | "stopped";
+
+/**
+ * One row per **(environment, cadence) batch chain** — the registry that makes
+ * "one tick run per environment per cadence" possible instead of one run per
+ * watch.
+ *
+ * Watches don't schedule their own polling loop; a chain does, for all of them at
+ * once. The row exists so three questions have an answer that two concurrent
+ * writers can't disagree about:
+ *
+ *  - **Is a chain already ticking this group?** A new watch joins a live chain
+ *    rather than starting a second one, so N watches in an environment cost one
+ *    tick run, one authorization and one report read per cadence.
+ *  - **Which run owns this tick?** `epoch` + `generation` are claimed together by
+ *    {@link claimWatchBatchTick} with the same guarded-SQL/resumable rule a watch's
+ *    own generation uses, so a duplicated schedule can't fork the chain.
+ *  - **Is the chain still alive?** `lastTickAt` is the heartbeat. A chain whose run
+ *    died leaves it behind, and the webapp's re-arm backstop starts a fresh epoch.
+ *
+ * `epoch` is what makes re-arming safe: a run from a previous epoch claims nothing
+ * and exits, so a zombie chain can never tick alongside its replacement, and the
+ * successor idempotency keys of the two epochs can never collide.
+ *
+ * FK-free like every other table here: `environmentId` is a main-DB id.
+ */
+export const watchBatches = dashboardAgentSchema.table(
+  "watch_batches",
+  {
+    environmentId: text("environment_id").notNull(),
+    // 1 | 5 | 15 | 60 — the cadences a watch spec may ask for.
+    cadenceMinutes: integer("cadence_minutes").notNull(),
+    // Bumped by every arm. Runs carry it, and a claim requires it to match.
+    epoch: integer("epoch").notNull().default(0),
+    // The tick generation inside the current epoch. Single writer: the claim.
+    generation: integer("generation").notNull().default(0),
+    status: text("status").$type<WatchBatchStatus>().notNull().default("running"),
+    armedAt: timestamp("armed_at", { withTimezone: true }).notNull().defaultNow(),
+    // The heartbeat: when a run last claimed a generation. NULL right after an arm,
+    // until the first run lands.
+    lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.environmentId, t.cadenceMinutes] })]
 );
 
 export type Chat = typeof chats.$inferSelect;
@@ -342,3 +394,4 @@ export type Investigation = typeof investigations.$inferSelect;
 export type NewInvestigation = typeof investigations.$inferInsert;
 export type Watch = typeof watches.$inferSelect;
 export type NewWatch = typeof watches.$inferInsert;
+export type WatchBatch = typeof watchBatches.$inferSelect;

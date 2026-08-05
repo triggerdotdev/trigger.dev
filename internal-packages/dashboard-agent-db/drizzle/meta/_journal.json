@@ -71,6 +71,13 @@
       "when": 1785936955047,
       "tag": "0009_harsh_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785942560158,
+      "tag": "0010_lumpy_killraven",
+      "breakpoints": true
     }
   ]
 }

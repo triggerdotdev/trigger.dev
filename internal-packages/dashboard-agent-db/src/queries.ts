@@ -11,12 +11,14 @@ import {
   chatSessions,
   chatTurnEvals,
   investigations,
+  watchBatches,
   watches,
   type ChatSession,
   type Investigation,
   type NewChatTurnEval,
   type PersistedWatchSpec,
   type Watch,
+  type WatchBatch,
   type WatchCancelReason,
   type WatchStatus,
 } from "./schema.js";
@@ -1649,4 +1651,207 @@ export async function listExpiredActiveWatches(
     )
     .orderBy(watches.expiresAt)
     .limit(params.limit ?? 100);
+}
+
+// ---------------------------------------------------------------------------
+// Batch chains — one polling loop per (environment, cadence), not one per watch.
+// ---------------------------------------------------------------------------
+
+/**
+ * The cadence a watch asks to be checked at, dug out of its spec. It lives in the
+ * JSONB rather than a column because it is part of the check's input, so the batch
+ * grouping reads it from there — cheap, because every query that uses it is already
+ * narrowed to one environment's `active` rows by `watches_active_env_idx`.
+ */
+const watchCadenceMinutes = sql<number>`(${watches.spec} ->> 'checkEveryMinutes')::int`;
+
+/**
+ * How many active watches one batch tick will take at a time. Well past what an
+ * environment realistically holds (three per chat), and the order — soonest
+ * deadline first — means a group over the cap never defers a watch that is about to
+ * reach its window boundary.
+ */
+const BATCH_GROUP_LIMIT = 500;
+
+/**
+ * Every `active` watch of one (environment, cadence) group, in ONE read. This is
+ * the query that replaces N per-watch tick runs with one: the caller authorizes the
+ * environment once, loads the shared expensive data once, and evaluates these rows
+ * against it.
+ *
+ * Which of them are DUE (and which need their boundary evaluation) is the caller's
+ * decision, not this query's — it depends on the tick's own clock, and the caller
+ * has to see the whole group anyway to know whether the chain should tick again.
+ */
+export async function listActiveWatchesForBatch(
+  db: DashboardAgentDb,
+  params: { environmentId: string; cadenceMinutes: number; limit?: number }
+): Promise<Watch[]> {
+  return db
+    .select()
+    .from(watches)
+    .where(
+      and(
+        eq(watches.status, "active"),
+        eq(watches.environmentId, params.environmentId),
+        sql`${watchCadenceMinutes} = ${params.cadenceMinutes}`
+      )
+    )
+    .orderBy(watches.expiresAt)
+    .limit(params.limit ?? BATCH_GROUP_LIMIT);
+}
+
+/**
+ * Arm the batch chain for one (environment, cadence) group — the gate that keeps a
+ * group to exactly one polling loop.
+ *
+ * Returns the row when THIS call armed the chain, so the caller must trigger the
+ * run that owns `epoch` / `generation + 1`. Returns `null` when a live chain
+ * already covers the group: a watch created into it simply joins the next tick, and
+ * that is the whole economics of the feature — one run, one authorization, one
+ * report read per cadence however many watches are watching.
+ *
+ * One statement, so two creations racing on the same group can only produce one
+ * chain. The `DO UPDATE … WHERE` is the guard: an existing row is re-armed only if
+ * its chain has stopped or its heartbeat is older than `staleBefore` (the run that
+ * owned it died). Anything else conflicts, updates nothing, and returns no row.
+ *
+ * `epoch` is bumped on every arm and `generation` reset with it, which is what makes
+ * re-arming a dead chain safe: the zombie's next claim names the old epoch and
+ * lands nowhere, and the two epochs' successor idempotency keys can never collide.
+ */
+export async function armWatchBatch(
+  db: DashboardAgentDb,
+  params: { environmentId: string; cadenceMinutes: number; staleBefore: Date }
+): Promise<WatchBatch | null> {
+  const rows = await db
+    .insert(watchBatches)
+    .values({
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      epoch: 1,
+      generation: 0,
+      status: "running",
+    })
+    .onConflictDoUpdate({
+      target: [watchBatches.environmentId, watchBatches.cadenceMinutes],
+      set: {
+        epoch: sql`${watchBatches.epoch} + 1`,
+        generation: 0,
+        status: "running",
+        armedAt: sql`now()`,
+        lastTickAt: null,
+      },
+      setWhere: sql`(${watchBatches.status} = 'stopped' or coalesce(${watchBatches.lastTickAt}, ${watchBatches.armedAt}) <= ${params.staleBefore.toISOString()}::timestamptz)`,
+    })
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * Claim a batch chain's tick generation — the batch-level twin of
+ * {@link claimWatchTick}, with the same resumable rule and the same single-writer
+ * discipline, plus the epoch fence.
+ *
+ * Lands when the row is still on the previous generation (a fresh tick) or already
+ * on this one (a retry of the run that owns it, resuming after a crash). Refuses
+ * when the row is further ahead — a late duplicate whose successor already ran —
+ * and refuses on an epoch mismatch, which is how a zombie chain from before a
+ * re-arm exits instead of ticking alongside its replacement.
+ *
+ * Also the heartbeat: `lastTickAt` is what the re-arm backstop reads to tell a live
+ * chain from one whose run died.
+ */
+export async function claimWatchBatchTick(
+  db: DashboardAgentDb,
+  params: {
+    environmentId: string;
+    cadenceMinutes: number;
+    epoch: number;
+    generation: number;
+  }
+): Promise<WatchBatch | null> {
+  const rows = await db
+    .update(watchBatches)
+    .set({ generation: params.generation, lastTickAt: sql`now()` })
+    .where(
+      and(
+        eq(watchBatches.environmentId, params.environmentId),
+        eq(watchBatches.cadenceMinutes, params.cadenceMinutes),
+        eq(watchBatches.epoch, params.epoch),
+        eq(watchBatches.status, "running"),
+        inArray(watchBatches.generation, [params.generation - 1, params.generation])
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * Stop a batch chain: the group has no active watches left, or the run that was
+ * going to own the chain couldn't be triggered at all.
+ *
+ * Fenced on the epoch, so a stop decided by one epoch's run can never end the chain
+ * a later arm started. A stopped row is re-armed (with a fresh epoch) the moment a
+ * watch needs the group polled again.
+ */
+export async function stopWatchBatch(
+  db: DashboardAgentDb,
+  params: { environmentId: string; cadenceMinutes: number; epoch: number }
+): Promise<WatchBatch | null> {
+  const rows = await db
+    .update(watchBatches)
+    .set({ status: "stopped" })
+    .where(
+      and(
+        eq(watchBatches.environmentId, params.environmentId),
+        eq(watchBatches.cadenceMinutes, params.cadenceMinutes),
+        eq(watchBatches.epoch, params.epoch),
+        eq(watchBatches.status, "running")
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+/** A (environment, cadence) group that needs a chain. */
+export interface WatchBatchGroup {
+  environmentId: string;
+  cadenceMinutes: number;
+}
+
+/**
+ * Groups that have active watches but NO live chain ticking them — the input to the
+ * re-arm backstop.
+ *
+ * Batching trades one failure domain for a bigger one: a per-watch chain that died
+ * cost one watch its early answer, a batch chain that dies costs its whole group.
+ * So the same sweep that finalizes overdue watches also reads this and arms what it
+ * finds. `staleBefore` is measured against the heartbeat, so a chain that is
+ * ticking normally never appears here.
+ */
+export async function listWatchBatchGroupsToArm(
+  db: DashboardAgentDb,
+  params: { staleBefore: Date; limit?: number }
+): Promise<WatchBatchGroup[]> {
+  return db
+    .selectDistinct({
+      environmentId: watches.environmentId,
+      cadenceMinutes: watchCadenceMinutes,
+    })
+    .from(watches)
+    .leftJoin(
+      watchBatches,
+      and(
+        eq(watchBatches.environmentId, watches.environmentId),
+        sql`${watchBatches.cadenceMinutes} = ${watchCadenceMinutes}`
+      )
+    )
+    .where(
+      and(
+        eq(watches.status, "active"),
+        sql`(${watchBatches.environmentId} is null or ${watchBatches.status} = 'stopped' or coalesce(${watchBatches.lastTickAt}, ${watchBatches.armedAt}) <= ${params.staleBefore.toISOString()}::timestamptz)`
+      )
+    )
+    .limit(params.limit ?? 200);
 }
