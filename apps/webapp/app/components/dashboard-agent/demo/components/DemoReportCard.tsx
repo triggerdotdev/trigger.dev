@@ -1,16 +1,12 @@
 /**
- * The report card — DEMO ONLY.
- *
- * The real card is `ReportView`. This one renders a `ReportViewModel` (the real
- * type) as a panel-width card so a design review can settle the layout question
- * the markdown renderer can't answer: what a report looks like inside a 380px
+ * Demo-only report card. The real card is `ReportView`; this one renders a
+ * `ReportViewModel` at panel width to settle what a report looks like inside the
  * chat panel.
  *
- * It reuses the production semantics wherever they exist — the health message
- * catalog for every string, the shared sections, metric row and sparkline from
- * `report-sparkline.tsx` for the layout — so the card holds no report vocabulary
- * and no layout of its own. Only the *formatting* is local, and only because the
- * markdown renderer keeps its formatters private.
+ * Every string comes from the health message catalog and every section from
+ * `report-sparkline.tsx`, so this file holds no report vocabulary of its own. Only
+ * the formatting is local, because the markdown renderer keeps its formatters
+ * private.
  */
 import type {
   Finding,
@@ -43,9 +39,8 @@ import {
   type ReportFooterItem,
 } from "../../report-sparkline";
 
-// --- formatting -------------------------------------------------------------
-// Local copies of the markdown renderer's private formatters. Kept in sync by
-// eye for the demo; the real ReportView should share them properly (M2).
+// Local copies of the markdown renderer's private formatters. TODO: export them
+// from the renderer and drop these.
 
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -99,8 +94,6 @@ function findingTokens(vm: ReportViewModel): Record<string, string | number> {
   };
 }
 
-// --- pieces ----------------------------------------------------------------
-
 function MetricRow({
   vm,
   metric,
@@ -110,7 +103,7 @@ function MetricRow({
   vm: ReportViewModel;
   metric: Metric;
   anomalyMinutes?: number;
-  /** The metric that explains the finding: its annotation is spelled out inline. */
+  /** The metric that explains the finding. Its annotation is spelled out inline. */
   hero?: boolean;
 }) {
   const annotation = metric.annotation
@@ -150,7 +143,7 @@ function MetricRow({
   );
 }
 
-/** A finding's evidence: the metric grid, then "why:" — who owns it, what it isn't. */
+/** A finding's evidence: the metric grid, then the "why:" block. */
 function FindingBody({
   vm,
   finding,
@@ -164,8 +157,8 @@ function FindingBody({
     .map((id) => vm.metrics.find((m) => m.id === id))
     .filter((m): m is Metric => m !== undefined);
 
-  // The anomaly window describes the finding's *driving* metric — the first id,
-  // since degraded findings list theirs in causal order.
+  // The anomaly window describes the finding's driving metric, which is the first
+  // id: degraded findings list their metrics in causal order.
   const anomalyMinutes = finding.anomalyWindow?.touchesEnd
     ? finding.anomalyWindow.minutes
     : undefined;
@@ -216,7 +209,7 @@ function FindingBody({
   );
 }
 
-/** The finding the headline speaks for: the first one at the report's severity. */
+/** The headline speaks for the first finding at the report's severity. */
 function heroIndexOf(vm: ReportViewModel): number {
   const index = vm.findings.findIndex((finding) => finding.severity === vm.summary.severity);
   return index === -1 ? 0 : index;
@@ -224,7 +217,7 @@ function heroIndexOf(vm: ReportViewModel): number {
 
 export function DemoReportCard({
   vm,
-  /** Where the report came from, e.g. a `trigger://…/report/health` URI. */
+  /** Where the report came from, as a `trigger://` URI. */
   sourceUri,
   onAction,
 }: {
@@ -240,8 +233,8 @@ export function DemoReportCard({
   const otherFindings = vm.findings.filter((_, i) => i !== heroIndex);
   const heroStatement = vm.summary.statements.find((s) => s.findingType === hero?.type);
 
-  // The headline speaks for the hero finding. When its statement carries a reason
-  // of its own (stale telemetry) that statement IS the whole sentence.
+  // When the hero's statement carries a reason of its own (stale telemetry), that
+  // statement is the whole sentence.
   const headlinePhrase = hero
     ? healthMessages.statementMessage(hero.type, hero.severity, heroStatement?.reason)
     : healthMessages.statementMessage(vm.title, severity);
@@ -266,11 +259,9 @@ export function DemoReportCard({
 
   const footerLinkKeys = new Set(vm.footer.map((entry) => entry.link).filter(Boolean));
 
-  // The footer reads as a sentence, and each entry's code decides what it is:
-  // a primary button for something that happens, the docs button for something
-  // to read, a text link for a place to look, prose for an option. Demo mode
-  // never navigates — pressing hands the label back so the transcript can show
-  // what would have happened.
+  // Each entry's code decides what it renders as: a primary button, the docs
+  // button, a text link, or prose. Demo mode never navigates; pressing hands the
+  // label back so the transcript can show what would have happened.
   const footerItems: ReportFooterItem[] = vm.footer.map((entry) => {
     const label = fillTokens(healthMessages.actionMessage(entry.code), {
       ...tokens,
@@ -328,8 +319,7 @@ export function DemoReportCard({
       code: offersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
       node: <ReportFooterAction onClick={() => onAction?.(label)}>{label}</ReportFooterAction>,
     };
-    // In the actions list the watch joins the buttons before the "or do
-    // nothing" prose; in the stale sentence it stays last.
+    // Among buttons the watch goes before the trailing prose; otherwise it is last.
     const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
     if (offersControl && noteIndex !== -1) {
       footerItems.splice(noteIndex, 0, watchItem);
@@ -338,8 +328,7 @@ export function DemoReportCard({
     }
   }
 
-  // Docs the report cites — demo mode has no host to resolve `trigger://` URIs,
-  // so only real URLs.
+  // Demo mode has no host to resolve `trigger://` URIs, so only real URLs.
   for (const link of vm.links) {
     if (footerLinkKeys.has(link.key) || !/^https?:\/\//i.test(link.url)) continue;
     footerItems.push({

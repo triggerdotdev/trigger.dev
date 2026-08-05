@@ -16,12 +16,12 @@ const promoted: SuggestedPrompt = {
   id: "sp:promo-blackfriday",
   label: "Check the Black Friday queue",
   prompt: "How is the black-friday queue holding up?",
-  source: "default", // deliberately wrong — the resolver must force `promoted`
+  source: "default", // deliberately wrong: the resolver must force `promoted`
 };
 
 const ids = (prompts: SuggestedPrompt[]) => prompts.map((p) => p.id);
 
-/** The docs chip for a page — always the last slot. */
+/** The docs chip for a page, always the last slot. */
 const docsId = (key: keyof typeof demoPageContexts) =>
   pageSlotPrompts(demoPageContexts[key].page).docs.id;
 
@@ -277,14 +277,12 @@ describe("pageSlotPrompts", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Every page kind, exhaustively
-// ---------------------------------------------------------------------------
 
 /**
- * One sample page per kind, in its NORMAL state (nothing wrong). Keyed by
- * `AgentPageKind`, so adding a kind to the contract without giving it chips is a
- * type error here rather than a generic-fallback row in production.
+ * One sample page per kind, in its normal state. Keyed by `AgentPageKind`, so
+ * adding a kind to the contract without giving it chips is a type error here
+ * rather than a generic-fallback row in production.
  */
 const SAMPLE_PAGES: Record<AgentPageKind, AgentPage> = {
   runs: { kind: "runs" },
@@ -339,8 +337,8 @@ describe("pageSlotPrompts, across every page kind", () => {
   it("offers no investigate or status chip on a page where nothing is wrong", () => {
     for (const page of ALL_PAGES) {
       const slots = pageSlotPrompts(page);
-      // A run page and an error page are inherently about a failure, and a queue
-      // always has a live backlog question — everything else stays quiet.
+      // Run and error pages are about a failure, and a queue always has a live
+      // backlog question. Everything else stays quiet.
       const inherentlyLoud = ["run", "error", "queue"];
       if (inherentlyLoud.includes(page.kind)) continue;
       expect(slots.investigate, page.kind).toBeUndefined();

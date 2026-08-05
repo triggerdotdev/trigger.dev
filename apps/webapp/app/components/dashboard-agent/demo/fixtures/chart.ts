@@ -1,13 +1,8 @@
 /**
- * Canned chart data.
- *
- * The real `AgentChart` renders a `chart` block by POSTing its TRQL to
- * `/resources/metric` and feeding the rows into `QueryResultsChart`. Demo mode
- * must not talk to a resource route (and on a fresh local database the result
- * would be an empty chart anyway), so the demo card skips the fetch and hands
- * `QueryResultsChart` these rows directly — same chart component, same config
- * shape, no network. The `chart` block fixture in `blocks.ts` still carries the
- * query the agent would have emitted, so both halves stay reviewable.
+ * Canned chart data. The real `AgentChart` POSTs a block's TRQL to
+ * `/resources/metric`; demo mode must not hit a resource route, so the demo card
+ * hands `QueryResultsChart` these rows directly. The `chart` fixture in `blocks.ts`
+ * still carries the query the agent would have emitted.
  */
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
@@ -24,8 +19,7 @@ const SERIES: Record<string, number[]> = {
   "sync-crm-contacts": [3, 2, 4, 3, 2, 3, 2, 4, 3, 2, 3, 2],
 };
 
-// 12 hourly buckets ending at the fixture "now", so the x-axis reads as the
-// last half day.
+// 12 hourly buckets ending at the fixture "now".
 const START_MS = Date.parse("2026-07-26T23:00:00.000Z");
 const HOUR_MS = 3_600_000;
 

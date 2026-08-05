@@ -1,18 +1,10 @@
 /**
- * The demo conversation registry — every v1 case as a canned transcript.
+ * Canned transcripts for the state gallery (`/storybook/agent-ui`). A `DemoChat`
+ * is an ordered list of items rendered through the production renderers; nothing
+ * here is persisted, fetched, or sent.
  *
- * A `DemoChat` is a script: an ordered list of items rendered through the
- * production renderers. Most items are real `UIMessage[]`; the rest are the
- * demo-only cards that stand in for view blocks that don't exist yet
- * (investigation, report) or that would otherwise need the network (chart).
- *
- * Nothing here is persisted, fetched, or sent. The state gallery
- * (`/storybook/agent-ui`) is the only consumer; the panel shows real chats.
- *
- * One rule for every case: a demo chat is one coherent story, as close to a real
- * conversation as fixtures allow. Variation matrices — the same card in four
- * states, a banner across four page kinds — belong to the state gallery, never to
- * a chat, where stacked variants read as a bug.
+ * Keep each chat one coherent story. Variation matrices belong to the gallery, not
+ * to a chat, where stacked variants read as a bug.
  */
 import type { UIMessage } from "@ai-sdk/react";
 import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
@@ -52,7 +44,7 @@ import {
   type DemoWatch,
 } from "./fixtures";
 
-/** The flows the playbook is organised by. */
+/** The flows the demo chats are grouped by. */
 export type DemoFlow = "investigate" | "navigation" | "prompts" | "watch" | "reports" | "base";
 
 export type DemoItem =
@@ -69,13 +61,9 @@ export type DemoItem =
       context?: AgentPageContext;
       dismissedIds?: string[];
     }
-  /** A demo-voice aside explaining what the reviewer is looking at. */
+  /** A demo-voice aside explaining what is on screen. */
   | { kind: "note"; text: string }
-  /**
-   * A context banner rendered inline, full-bleed. No chat uses it now: a chat
-   * gets one banner — its own, at the top — and comparing banner variants is the
-   * gallery's job. Kept for a case that needs a banner mid-transcript.
-   */
+  /** A context banner rendered inline, for a case that needs one mid-transcript. */
   | { kind: "banner"; projectSlug: string; environmentSlug: string; currentPage: string };
 
 export type DemoChat = {
@@ -84,13 +72,10 @@ export type DemoChat = {
   /** History-list title. */
   title: string;
   flow: DemoFlow;
-  /** One line: what the reviewer should be looking at. */
+  /** One line describing what the chat shows. */
   summary: string;
   items: DemoItem[];
-  /**
-   * What the turn is doing, or absent when nothing is in flight — the same
-   * `activity` prop the production message renderer takes.
-   */
+  /** The same `activity` prop the production message renderer takes. */
   activity?: TurnActivity;
   /** Render the error row, with a retry affordance. */
   error?: string;
@@ -105,17 +90,14 @@ export type DemoChat = {
   lastMessageAt: string;
 };
 
-// `currentPage` is the human label the banner shows (see `page-label.ts`), not
-// a path segment.
+// `currentPage` is the human label the banner shows (`page-label.ts`), not a path.
 const PROD_BANNER = {
   projectSlug: "demo-storefront",
   environmentSlug: "prod",
   currentPage: "Runs",
 };
 
-// ---------------------------------------------------------------------------
 // Investigate
-// ---------------------------------------------------------------------------
 
 const investigateStreaming: DemoChat = {
   id: demoId("investigate-streaming"),
@@ -418,9 +400,7 @@ const investigateDirtyCommit: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Navigation
-// ---------------------------------------------------------------------------
 
 const navigateFilteredRuns: DemoChat = {
   id: demoId("navigate-filtered-runs"),
@@ -499,9 +479,7 @@ const navigateRejectedIntent: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Prompts
-// ---------------------------------------------------------------------------
 
 const promptsPageAware: DemoChat = {
   id: demoId("prompts-page-aware"),
@@ -520,9 +498,7 @@ const promptsPageAware: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Watch
-// ---------------------------------------------------------------------------
 
 const watchCreatedAndWake: DemoChat = {
   id: demoId("watch-created-and-wake"),
@@ -616,9 +592,7 @@ const watchExpiryAndCancel: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Reports
-// ---------------------------------------------------------------------------
 
 const reportHealthy: DemoChat = {
   id: demoId("report-healthy"),
@@ -761,9 +735,7 @@ const docsAnswer: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Base states
-// ---------------------------------------------------------------------------
 
 const baseStreaming: DemoChat = {
   id: demoId("base-streaming"),
@@ -821,8 +793,8 @@ const baseToolInFlight: DemoChat = {
             { rows: [{ "count()": 4812 }] },
             "run-query-done"
           ),
-          // A real tool name, so the pending pill shows its real phrase rather
-          // than the unknown-tool fallback.
+          // A real tool name, so the pending pill shows its phrase rather than the
+          // unknown-tool fallback.
           pendingToolPart(
             "get_queue",
             { queue: DEMO_WORLD.queue, period: "1h" },
@@ -882,9 +854,8 @@ const baseResumed: DemoChat = {
           textPart(
             `Yes — same error, same task, three weeks ago. \`${DEMO_WORLD.taskId}\` hit the same rate limit on 6 July and it was diagnosed then too; the card below is that diagnosis, replayed from this conversation rather than re-run. The retry config hasn't changed since, which is why it came back.`
           ),
-          // Two revisions of the same block plus one legacy block with no
-          // envelope: the renderer keeps revision 1 and renders the legacy card
-          // in transcript order.
+          // Two revisions of one block plus a legacy block with no envelope: the
+          // renderer keeps revision 1 and renders the legacy card in order.
           renderViewPart(
             [demoDiagnosisBlockFirstPass, demoDiagnosisBlockRevised, demoLegacyDiagnosisBlock],
             "render-view-resumed"
@@ -917,12 +888,10 @@ const baseComposerDraft: DemoChat = {
   summary:
     "A question half typed and left there: the conversation is still empty (suggested prompts on screen) and the composer holds the unsent draft, cursor mid-word.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
-  // Deliberately unfinished mid-word: the state being reviewed is a draft, not a
-  // prefill, so it has to look like someone stopped typing.
+  // Unfinished mid-word on purpose: this is a draft, not a prefill.
   draft: "why did the send-order-receipt run from last nig",
   lastMessageAt: "2026-07-27T10:28:00.000Z",
-  // Empty on purpose: an unsent draft means nothing has been said yet, so the
-  // transcript is the first-open prompt panel.
+  // Empty on purpose: an unsent draft means nothing has been said yet.
   items: [],
 };
 
@@ -991,9 +960,7 @@ const baseInvestigationDeepLink: DemoChat = {
   ],
 };
 
-// ---------------------------------------------------------------------------
 // Registry
-// ---------------------------------------------------------------------------
 
 export const demoChats: DemoChat[] = [
   investigateStreaming,

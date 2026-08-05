@@ -1,12 +1,8 @@
 /**
- * Intent fixtures. An intent is a *request* to the host — emitting one is never
- * an action — so each fixture pairs the intent with the sentence the panel shows
- * once the host has honoured it ("Opened runs filtered to failed · last 24h").
- * That sentence is what the design review is judging: the user has to be able to
- * tell, after the fact, what the agent just did to their screen.
- *
- * Nothing here is honoured: the gallery renders the outcome inline instead of
- * navigating.
+ * Intent fixtures. An intent is a request to the host, never an action, so each
+ * fixture pairs the intent with the past-tense sentence the panel shows once the
+ * host has honoured it. Nothing here is honoured: the gallery renders the outcome
+ * inline instead of navigating.
  */
 import { isExecutableIntent, type AgentIntent } from "@internal/dashboard-agent-contracts";
 import { DEMO_WORLD, demoRunUri } from "../ids";
@@ -29,7 +25,7 @@ const demoIntent = (intent: AgentIntent, outcome: string, deepLinkLabel?: string
   executable: isExecutableIntent(intent),
 });
 
-/** Navigate to the runs list with filters applied — the common navigate case. */
+/** Navigate to the runs list with filters applied. */
 export const demoNavigateToFailedRuns = demoIntent(
   {
     kind: "navigate",
@@ -64,9 +60,8 @@ export const demoWatchIntent = demoIntent(
 );
 
 /**
- * RESERVED until write actions ship. Kept as a fixture so the mockup shows the
- * host *rejecting* it explicitly rather than silently ignoring it — that
- * rejection is the behaviour we want reviewed now, while it's still cheap.
+ * Reserved until write actions ship. Kept so the mockup shows the host rejecting
+ * it explicitly rather than silently ignoring it.
  */
 export const demoProposeFixIntent = demoIntent(
   { kind: "propose_fix", investigationId: "demo:investigation-order-receipt" },

@@ -1,17 +1,11 @@
 /**
- * Investigation fixtures — and, until M5 lands, the *proposed shape* of the
- * investigation payload itself.
+ * Investigation fixtures, and the proposed shape of the investigation payload.
  *
- * There is no `investigation` member in the view-block catalog yet: the
- * contracts package freezes only its identity rule (a block whose `id` is the
- * `investigationId` and whose `revision` climbs as the investigation
- * progresses). The payload is M5's to define, and the design review of this
- * mockup is what freezes it. So the types below are written as the real payload
- * we intend to ship, not as throwaway props: when M5 adds the block, this file's
- * `DemoInvestigation` should be liftable into `blocks.ts` more or less verbatim,
- * with `Evidence` and the envelope already in their final form.
- *
- * The card that renders these lives in `../components/DemoInvestigationCard`.
+ * The view-block catalog has no `investigation` member yet; the contracts package
+ * freezes only its identity rule (block `id` is the `investigationId`, `revision`
+ * climbs as the investigation progresses). `DemoInvestigation` is written to be
+ * liftable into `blocks.ts` verbatim once the block exists, so keep it in the
+ * shape we intend to ship. The card is `../components/DemoInvestigationCard`.
  */
 import type { Evidence } from "@internal/dashboard-agent-contracts";
 import {
@@ -25,10 +19,7 @@ import {
   demoSpanUri,
 } from "../ids";
 
-/**
- * Where a hypothesis stands. `testing` is a live state the card shows while the
- * investigation is still running; the two verdicts are terminal.
- */
+/** `testing` is live while the investigation runs; the two verdicts are terminal. */
 export type DemoHypothesisVerdict = "testing" | "validated" | "invalidated";
 
 export type DemoHypothesis = {
@@ -36,29 +27,25 @@ export type DemoHypothesis = {
   /** The claim, as a falsifiable sentence. */
   statement: string;
   verdict: DemoHypothesisVerdict;
-  /** Why the verdict — one sentence. Absent while `testing`. */
+  /** Why the verdict, in one sentence. Absent while `testing`. */
   finding?: string;
   /** The citations that settled it. */
   evidence: Evidence[];
 };
 
 /**
- * `concluded` — there is a cause and a fix.
- * `inconclusive` — the evidence ran out; the card must not invent a fix.
- * `in_progress` — still testing hypotheses.
+ * `concluded` has a cause and a fix. `inconclusive` means the evidence ran out and
+ * the card must not invent a fix. `in_progress` is still testing hypotheses.
  */
 export type DemoInvestigationOutcome = "in_progress" | "concluded" | "inconclusive";
 
-/**
- * How bad it is. Mirrors the report view model's severity ladder minus `ok` —
- * an investigation only exists because something was wrong.
- */
+/** The report view model's severity ladder minus `ok`. */
 export type DemoInvestigationSeverity = "info" | "warn" | "crit";
 
 /**
- * A caveat qualifies the whole card. `dirty_commit` is the one v1 case: the
- * source we read is the nearest repository snapshot, not provably the code that
- * was deployed, so every source citation on the card inherits the hedge.
+ * A caveat qualifies the whole card. With `dirty_commit` the source read is the
+ * nearest snapshot rather than the deployed code, so every source citation on the
+ * card inherits the hedge.
  */
 export type DemoInvestigationCaveat = {
   kind: "dirty_commit";
@@ -84,7 +71,7 @@ export type DemoInvestigation = {
   headline: string;
   /** Remediation prose. Present only when `outcome === "concluded"`. */
   remediation?: string;
-  /** Present only when `outcome === "inconclusive"` — never alongside a fix. */
+  /** Present only when `outcome === "inconclusive"`. Never alongside a fix. */
   checkNext?: string[];
   /** What the agent is doing right now. Present while `in_progress`. */
   progress?: string;
@@ -153,10 +140,6 @@ const deploymentEvidence: Evidence = {
   excerpt: "first failure 09:02, deploy 14:11 the previous day — no overlap",
 };
 
-// ---------------------------------------------------------------------------
-// (a) Streaming — the card mid-flight, hypotheses still being tested.
-// ---------------------------------------------------------------------------
-
 /** Revision 0: hypotheses posed, nothing settled yet. */
 export const demoInvestigationStreamingRev0: DemoInvestigation = {
   investigationId: INVESTIGATION_ID,
@@ -194,12 +177,7 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:06.000Z",
 };
 
-/**
- * The card's very first frame: the subject and the one thing already read, and
- * nothing else. No hypotheses yet, so the disclosure has nothing behind it —
- * the state the gallery needs to prove an empty card still reads as an answer
- * in the making rather than as a broken one.
- */
+/** The card's first frame: no hypotheses yet, so the disclosure is empty. */
 export const demoInvestigationEarly: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-early"),
   revision: 0,
@@ -248,10 +226,6 @@ export const demoInvestigationStreamingRev1: DemoInvestigation = {
   evidence: [runEvidence, errorEvidence, queueEvidence],
   updatedAt: "2026-07-27T10:14:11.000Z",
 };
-
-// ---------------------------------------------------------------------------
-// (b) Concluded — cause + fix, two settled hypotheses, citations.
-// ---------------------------------------------------------------------------
 
 export const demoInvestigationConcluded: DemoInvestigation = {
   investigationId: INVESTIGATION_ID,
@@ -313,10 +287,8 @@ export const demoInvestigationConcluded: DemoInvestigation = {
 };
 
 /**
- * Concluded, and NOT code-grounded: the cause is a saturated concurrency limit,
- * established entirely from telemetry. No file was read, so the card cites no
- * source and the executor offers no "Show code" — the contrast the gallery needs
- * against the concluded card above, whose verdict rests on a line of source.
+ * Concluded from telemetry alone. No file was read, so the card must cite no
+ * source and offer no "Show code".
  */
 export const demoInvestigationConcludedNoCode: DemoInvestigation = {
   investigationId: demoId("investigation-queue-saturation"),
@@ -350,10 +322,6 @@ export const demoInvestigationConcludedNoCode: DemoInvestigation = {
   startedAt: "2026-07-27T11:02:00.000Z",
   updatedAt: "2026-07-27T11:02:19.000Z",
 };
-
-// ---------------------------------------------------------------------------
-// (c) Inconclusive — "What we know" + "What to check next", no fix.
-// ---------------------------------------------------------------------------
 
 export const demoInvestigationInconclusive: DemoInvestigation = {
   investigationId: demoId("investigation-monthly-report"),
@@ -434,17 +402,10 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
   updatedAt: "2026-07-27T09:41:38.000Z",
 };
 
-// ---------------------------------------------------------------------------
-// (d) Degraded — a read failed mid-investigation, so the card says so.
-// ---------------------------------------------------------------------------
-
 /**
- * Inconclusive because a tool failed, not because the evidence was thin.
- *
- * A read that comes back empty or unavailable is itself a finding, and the card
- * has to name what it could not read rather than quietly answering around it: a
- * hypothesis nobody could test is `testing`, never `invalidated`, and the
- * missing read is the first thing on "What to check next".
+ * Inconclusive because a tool failed, not because the evidence was thin. The card
+ * must name what it could not read: an untestable hypothesis stays `testing`, never
+ * `invalidated`, and the missing read leads "What to check next".
  */
 export const demoInvestigationDegraded: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-degraded"),
@@ -471,7 +432,7 @@ export const demoInvestigationDegraded: DemoInvestigation = {
     {
       id: demoId("hyp-retry-window"),
       statement: "The retry schedule keeps every attempt inside one rate-limit window.",
-      // Evidence we couldn't get leaves a hypothesis untested — never disproved.
+      // Evidence we couldn't get leaves a hypothesis untested, never disproved.
       verdict: "testing",
       finding: "The run's spans are no longer retained, so the attempt timings can't be read.",
       evidence: [],
@@ -482,15 +443,9 @@ export const demoInvestigationDegraded: DemoInvestigation = {
   updatedAt: "2026-07-27T10:31:14.000Z",
 };
 
-// ---------------------------------------------------------------------------
-// (e) Dirty-commit caveat — the same concluded card, hedged.
-// ---------------------------------------------------------------------------
-
 /**
- * The deployed version was built from a working tree with uncommitted changes,
- * so the file we read is the nearest repository snapshot rather than provably
- * the deployed code. The wording is the point of this fixture: it hedges the
- * source citation without hedging the evidence that came from telemetry.
+ * The concluded card, hedged. The wording is the point: it qualifies the source
+ * citation without qualifying the telemetry evidence.
  */
 export const demoInvestigationDirtyCommit: DemoInvestigation = {
   ...demoInvestigationConcluded,
@@ -514,11 +469,7 @@ export const demoInvestigations = {
   dirtyCommit: demoInvestigationDirtyCommit,
 } as const;
 
-/**
- * The show-code follow-up: a fenced diff citing `file:line@sha`. Kept next to
- * the investigation fixtures because it is the same turn's continuation — the
- * user asks "show me the code", the agent answers with the patch it would write.
- */
+/** The show-code follow-up: a fenced diff citing `file:line@sha`. */
 export const demoShowCodeMarkdown = `Here's the change, against \`${DEMO_WORLD.sourcePath}:14-20@${DEMO_WORLD.sourceSha.slice(0, 7)}\`:
 
 \`\`\`diff

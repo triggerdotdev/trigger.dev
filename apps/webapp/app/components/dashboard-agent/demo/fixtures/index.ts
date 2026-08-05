@@ -1,7 +1,4 @@
-/**
- * Every fixture in one place. The demo conversations and (later) the storybook
- * gallery both import from here, so there is exactly one source of dummy data.
- */
+/** Every fixture in one place, so there is one source of dummy data. */
 export * from "./blocks";
 export * from "./chart";
 export * from "./intents";

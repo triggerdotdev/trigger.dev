@@ -1,27 +1,22 @@
 /**
- * Report fixtures — two realistic `ReportViewModel`s (the real type from
- * `~/presenters/v3/reports/report-view-model`, no demo mirror), one healthy and
- * one degraded.
- *
- * They are hand-written rather than produced by `interpret()` on purpose: the
- * point of the mockup is to pin what the *card* must render, and a fixture VM
- * lets the reviewer see a specific degraded story (env-limit saturation with a
- * drainable backlog) without seeding ClickHouse. Every code used here exists in
- * the real health message catalog, so the demo card resolves them through the
- * production prose — no invented wording.
+ * Two hand-written `ReportViewModel`s, one healthy and one degraded, using the real
+ * type rather than a demo mirror. Hand-written instead of produced by `interpret()`
+ * so a specific story can be pinned without seeding ClickHouse. Every code used
+ * here must exist in the real health message catalog, so the card resolves them
+ * through the production prose.
  */
 import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import { DEMO_WORLD } from "../ids";
 
-// A believable 60-point minute series, shaped rather than random so the
-// sparklines read as a story (calm, then a ramp).
+// 60-point minute series, shaped rather than random so the sparklines read as a
+// story: calm, then a ramp.
 const calm = (base: number, jitter: number) =>
   Array.from({ length: 60 }, (_, i) => base + Math.round(Math.sin(i / 4) * jitter));
 
 const ramp = (from: number, to: number) =>
   Array.from({ length: 60 }, (_, i) => Math.round(from + ((to - from) * i) / 59));
 
-/** Everything is fine — the "nothing to do" shape of the card. */
+/** The "nothing to do" shape of the card. */
 export const demoHealthyReport: ReportViewModel = {
   title: "health",
   scope: "prod",
@@ -114,8 +109,8 @@ export const demoHealthyReport: ReportViewModel = {
 };
 
 /**
- * Degraded: pinned at the env concurrency limit, backlog climbing, execution
- * still fine — the case where the card has to say "not your code" out loud.
+ * Degraded: pinned at the env concurrency limit with the backlog climbing while
+ * execution stays fine, so the card has to say "not your code" out loud.
  */
 export const demoDegradedReport: ReportViewModel = {
   title: "health",
@@ -235,8 +230,8 @@ export const demoDegradedReport: ReportViewModel = {
     { key: "contact", label: "Contact us", url: "https://trigger.dev/contact" },
   ],
   footer: [
-    // Raising the env limit is a plan quota — the action is contacting us; the
-    // docs ride alongside as their own button.
+    // Raising the env limit is a plan quota, so the action is contacting us. The
+    // docs get their own button alongside.
     { code: "contact_us_raise_limit", link: "contact" },
     { code: "concurrency_docs", link: "concurrency_docs" },
     { code: "do_nothing_drains", value: 26.7 },

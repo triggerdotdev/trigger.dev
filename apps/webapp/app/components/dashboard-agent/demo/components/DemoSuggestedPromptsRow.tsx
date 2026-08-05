@@ -1,12 +1,8 @@
 /**
- * What the page-aware prompt row should look like once M4's registry resolves
- * chips from the page context.
- *
- * The production `DashboardAgentSuggestedPrompts` is a static list with no
- * notion of a promoted chip or a dismissal, so this demo row exists to show the
- * two things the review has to settle: how a promoted chip is distinguished from
- * the rest, and what dismissing one leaves behind. It renders the same
- * `SuggestedPrompt[]` the registry will produce, capped the same way.
+ * The page-aware prompt row. The production `DashboardAgentSuggestedPrompts` is a
+ * static list with no promoted chip and no dismissal, so this demo row shows how a
+ * promoted chip is distinguished and what dismissing one leaves behind. It renders
+ * the same `SuggestedPrompt[]` the registry produces, capped the same way.
  */
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import {
@@ -17,8 +13,8 @@ import {
 import { cn } from "~/utils/cn";
 
 /**
- * The identity a page kind carries, when it carries one. Pages with nothing but
- * a kind (the section pages) fall through to the kind on its own.
+ * The identity a page kind carries, when it carries one. Section pages have only a
+ * kind and fall through to that.
  */
 function pageSubject(page: AgentPageContext["page"]): string | undefined {
   switch (page.kind) {
@@ -82,7 +78,7 @@ export function DemoSuggestedPromptsRow({
   onDismiss,
 }: {
   prompts: SuggestedPrompt[];
-  /** Shown above the chips so a reviewer can see what produced them. */
+  /** Shown above the chips, so the context that produced them is visible. */
   context?: AgentPageContext;
   dismissedIds?: string[];
   onSelect?: (prompt: SuggestedPrompt) => void;

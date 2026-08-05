@@ -1,15 +1,8 @@
 /**
- * The investigation card — DEMO ONLY, and deliberately so.
- *
- * There is no `investigation` block in the view catalog yet (M5 owns it), so
- * this renders the proposed payload from `../fixtures/investigation` instead of
- * a validated block. It borrows `RunDiagnosisCard`'s anatomy on purpose —
- * bordered card, header strip with badges, `Section` bodies, the same colour
- * ramp — so a reviewer is judging the *content model* (collapsed verdict,
- * expandable hypotheses, cited evidence) and not a new visual language.
- *
- * When M5 ships, this component's props are the payload contract: whatever the
- * review here approves is what the block should carry.
+ * Demo-only investigation card. The view catalog has no `investigation` block yet,
+ * so this renders the proposed payload from `../fixtures/investigation`. It borrows
+ * `RunDiagnosisCard`'s anatomy rather than inventing a visual language, and its
+ * props stand in for the eventual payload contract.
  */
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { Evidence } from "@internal/dashboard-agent-contracts";
@@ -54,17 +47,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /**
- * One citation. The `trigger://` URI is shown verbatim as monospace text rather
- * than a link: in the real card the host resolves it to a dashboard path, and
- * showing the raw URI here is what lets the reviewer check that the agent cited
- * something addressable at all.
+ * One citation. The `trigger://` URI is shown verbatim rather than as a link; in
+ * the real card the host resolves it to a dashboard path.
  */
 function EvidenceItem({ evidence, stacked }: { evidence: Evidence; stacked?: boolean }) {
   return (
     <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
-      {/* `w-fit` is what keeps the badge its own size when it is a block child of
-          the stacked item — the Badge primitive is a grid, so it would otherwise
-          stretch the full width and read as a bar. */}
+      {/* `w-fit` keeps the badge its own size in the stacked layout: the Badge
+          primitive is a grid, so it would otherwise stretch to full width. */}
       <CategoryBadge className="w-fit justify-self-start">{evidence.kind}</CategoryBadge>
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-text-bright">{evidence.label}</p>
@@ -91,10 +81,9 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
-        // Stacked, not two-column: nested under the hypothesis's indent the
-        // content column would be too narrow for identifiers and excerpts. The
-        // wide gap is deliberate — stacked items have no column to separate them,
-        // so the space between them is the only thing that says "next citation".
+        // Stacked, not two-column: under the hypothesis indent the content column
+        // would be too narrow for identifiers and excerpts. The wide gap is the only
+        // thing separating one citation from the next.
         <ul className="space-y-5 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} stacked />
@@ -107,7 +96,7 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
 
 export function DemoInvestigationCard({
   investigation,
-  /** Start expanded — used by the playbook case that reviews the detail view. */
+  /** Start expanded, for the demo chats that show the detail view. */
   defaultExpanded = false,
 }: {
   investigation: DemoInvestigation;
@@ -128,8 +117,8 @@ export function DemoInvestigationCard({
             </SeverityBadge>
             <ConfidenceBadge confidence={investigation.confidence} />
           </div>
-          {/* Its own truncating line — the badge row's right corner can't hold a
-              run id reliably at panel width (same rule as RunDiagnosisCard). */}
+          {/* Its own truncating line: at panel width the badge row's right corner
+              can't hold a run id. Same rule as RunDiagnosisCard. */}
           {investigation.runId ? (
             <div className="truncate font-mono text-xs text-text-dimmed">{investigation.runId}</div>
           ) : null}
@@ -142,8 +131,8 @@ export function DemoInvestigationCard({
             <p className="text-sm text-text-dimmed">{investigation.headline}</p>
           </Section>
 
-          {/* A fix is only ever shown for a concluded investigation. An
-            inconclusive one gets "What to check next" instead — never both. */}
+          {/* A fix is only shown for a concluded investigation. An inconclusive one
+            gets "What to check next" instead, never both. */}
           {concluded && investigation.remediation ? (
             <Section title="How to fix">
               <p className="text-sm text-text-dimmed">{investigation.remediation}</p>
@@ -206,10 +195,9 @@ export function DemoInvestigationCard({
           </div>
         </div>
       </div>
-      {/* Progress lives outside the card, on the left — the same line the chat
-        uses for "Working…" and in-flight tools. `ChatProgress` carries the
-        transcript's alignment itself, so it lines up with the card above it
-        instead of hugging the card's border. */}
+      {/* Progress sits outside the card, on the same line the chat uses for
+        "Working…" and in-flight tools. `ChatProgress` carries the transcript's
+        alignment itself, so it lines up with the card rather than its border. */}
       {inProgress ? <ChatProgress>{investigation.progress ?? "Working…"}</ChatProgress> : null}
     </div>
   );

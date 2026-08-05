@@ -1,11 +1,8 @@
 /**
- * View-block fixtures — typed against the contracts package's own schemas.
- *
- * The enveloped fixtures are typed `EnvelopedViewBlock` (the strict, emit-side
- * type) so the compiler proves the envelope is present and complete. The one
- * legacy fixture is typed `ViewBlock` (the lenient, read-side type) and
- * deliberately carries no envelope, so the mockup also covers the
- * pre-envelope-transcript path the renderer must support forever.
+ * View-block fixtures, typed against the contracts package schemas. Enveloped
+ * fixtures use the strict emit-side types so the compiler proves the envelope is
+ * complete. The legacy fixture is typed `ViewBlock` and carries no envelope on
+ * purpose, covering the pre-envelope transcript path.
  */
 import {
   VIEW_BLOCK_VERSION,
@@ -21,10 +18,7 @@ const envelope = (id: string, revision = 0) => ({
   version: VIEW_BLOCK_VERSION,
 });
 
-/**
- * The failure card as it lands on the first pass: a plausible cause, medium
- * confidence, thin evidence.
- */
+/** First pass: a plausible cause, medium confidence, thin evidence. */
 export const demoDiagnosisBlockFirstPass: EnvelopedDiagnosisBlock = {
   ...envelope("diagnosis-order-receipt", 0),
   type: "diagnosis",
@@ -53,9 +47,8 @@ export const demoDiagnosisBlockFirstPass: EnvelopedDiagnosisBlock = {
 };
 
 /**
- * The same block, re-emitted with better information. Same `id`, higher
- * `revision` — the renderer collapses it latest-wins, which is the behaviour the
- * streaming-card case is there to show.
+ * The same block re-emitted with better information. Same `id`, higher `revision`,
+ * so the renderer collapses it latest-wins.
  */
 export const demoDiagnosisBlockRevised: EnvelopedDiagnosisBlock = {
   ...demoDiagnosisBlockFirstPass,
@@ -105,8 +98,8 @@ export const demoChartBlock: EnvelopedChartBlock = {
   groupByColumn: "task_identifier",
   stacked: false,
   aggregation: "sum",
-  // The chart ranks the tasks; the buttons act on the one it put on top. The ask
-  // is phrased as the user's own follow-up, because that's what it becomes.
+  // The buttons act on the task the chart ranks first. The ask is phrased as the
+  // user's own follow-up, because that is what it becomes.
   actions: [
     {
       label: `Investigate ${DEMO_WORLD.taskId}`,
@@ -127,9 +120,9 @@ export const demoChartBlock: EnvelopedChartBlock = {
 };
 
 /**
- * A block replayed from a transcript written before the envelope existed: no
- * `id`, no `revision`, no `version`. It must still parse and still render, and
- * it can never be revised — that's the frozen rule this fixture pins.
+ * A block from a transcript written before the envelope existed: no `id`,
+ * `revision` or `version`. It must still parse and render, and can never be
+ * revised. This fixture pins that rule.
  */
 export const demoLegacyDiagnosisBlock: ViewBlock = {
   type: "diagnosis",

@@ -1,29 +1,21 @@
 /**
- * Demo-mode identity rules. Everything the demo layer invents lives in its own
- * namespace so a demo artefact can never be mistaken for — or written next to —
- * a real one.
+ * Demo-mode identity rules, so a demo artefact is never mistaken for a real one.
  *
- * Two conventions, on purpose:
+ * Two conventions. The demo layer's own ids (chats, investigations, watches) use
+ * the literal `demo:` prefix, which is what `isDemoChatId` tests. Resource ids
+ * (runs, queues, errors, deployments, shas) keep their real-world shape and carry
+ * the marker inside instead, because they travel through `trigger://` URIs whose
+ * segments are percent-encoded and a `demo:` prefix would render as `demo%3A`.
  *
- * 1. **Our own namespace** (chats, investigations, watches) uses the literal
- *    `demo:` prefix, so `isDemoChatId` answers "this id is a fixture, never
- *    talk to the server about it".
- * 2. **Resource ids** (runs, queues, errors, deployments, source shas) keep
- *    their real-world shape but always carry the `demo` marker inside the id
- *    (`run_demo0f2c91`, `demo-email-sends`). They have to stay shaped like real
- *    ids because they travel through `trigger://` URIs, whose grammar is frozen
- *    and whose segments are percent-encoded — a `demo:` prefix would render as
- *    `demo%3A…` in every citation and make the mockup unreadable.
- *
- * The invariant both conventions share, and the one the test enforces: every id
- * the demo layer produces contains the string `demo`.
+ * The invariant the test enforces: every id the demo layer produces contains
+ * `demo`.
  */
 import { formatTriggerUri, type TriggerUri } from "@internal/dashboard-agent-contracts";
 
 /** Prefix for every id in the demo layer's own namespace. */
 export const DEMO_ID_PREFIX = "demo:";
 
-/** The marker every demo id — ours or resource-shaped — must contain. */
+/** The marker every demo id must contain, prefixed or resource-shaped. */
 export const DEMO_MARKER = "demo";
 
 /** `demo:` + the rest. Use for chats, investigations and watches. */
@@ -32,8 +24,8 @@ export function demoId(rest: string): string {
 }
 
 /**
- * True for a chat id the demo registry owns — cheap and total, no lookups and
- * no async, so any renderer can ask before it touches the server.
+ * True for a chat id the demo registry owns. Synchronous and lookup-free, so any
+ * renderer can ask before it touches the server.
  */
 export function isDemoChatId(id: string | null | undefined): boolean {
   return typeof id === "string" && id.startsWith(DEMO_ID_PREFIX);
@@ -46,8 +38,7 @@ export const DEMO_ENVIRONMENT_ID = "env_demo00000000000000";
 const scope = { projectRef: DEMO_PROJECT_REF, environmentId: DEMO_ENVIRONMENT_ID };
 
 // Builders go through `formatTriggerUri` rather than string templates so every
-// fixture URI is grammar-valid by construction — the contracts package, not the
-// fixture author, decides what a legal URI looks like.
+// fixture URI is grammar-valid by construction.
 
 export function demoRunsUri(): TriggerUri {
   return formatTriggerUri({ kind: "runs", ...scope });
@@ -85,18 +76,16 @@ export function demoInvestigationUri(investigationId: string): TriggerUri {
   return formatTriggerUri({ kind: "investigation", ...scope, investigationId });
 }
 
-// ---------------------------------------------------------------------------
-// The demo world: one small, consistent cast of resources every fixture reuses,
-// so the mockup reads as one environment rather than a pile of unrelated cards.
-// ---------------------------------------------------------------------------
+// One cast of resources every fixture reuses, so the mockup reads as a single
+// environment.
 
 export const DEMO_WORLD = {
   /** The failing run at the centre of the Investigate flow. */
   failedRunId: "run_demo0f2c91",
   failedSpanId: "span_demoa41b",
-  /** A run that is sitting in the queue rather than executing. */
+  /** Queued rather than executing. */
   waitingRunId: "run_demo7b41ad",
-  /** A run running well past its task's usual duration. */
+  /** Running well past its task's usual duration. */
   slowRunId: "run_democ0113e",
   /** A historical run that failed the same way. */
   priorRunId: "run_demo4419bb",

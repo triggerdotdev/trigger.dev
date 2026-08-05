@@ -1,19 +1,8 @@
 /**
- * Turning a page context into the chips the panel shows.
- *
- * The row is a fixed set of slots, in this order:
- *
- * 1. `promoted` — the product-chosen chip, when one is configured.
- * 2. `investigate` — when the page or its signals make one relevant.
- * 3. `watch` — when there's something worth watching (a waiting run, a saturated
- *    queue, a recurring error).
- * 4. `explain` — the evergreen explain/find/show question. Always present.
- * 5. `docs` — a doc-flavored question. Always present, always last.
- *
- * Slots nothing can fill collapse, so the row shows what exists rather than
- * padding itself. Each slot has an ordered candidate list (signal chips first,
- * then the page-kind default), so dismissing a chip promotes the next candidate
- * for that slot instead of leaving a hole.
+ * Turns a page context into the chips the panel shows. The promoted slot comes
+ * first, then `PROMPT_SLOTS` in order. Each slot has an ordered candidate list
+ * (signal chips first, then the page-kind default), so dismissing a chip promotes
+ * the next candidate for that slot instead of leaving a hole.
  */
 import {
   SUGGESTED_PROMPT_CAP,
@@ -32,10 +21,8 @@ import {
 export type ResolvedPromptSlot = "promoted" | PromptSlot;
 
 /**
- * A resolved prompt with the slot it filled. The slot is what the blank-state
- * hero styles each prompt button by (see `PROMPT_SLOT_BUTTON`), so it has to
- * survive resolution — a `SuggestedPrompt` on its own can't say whether it is an
- * investigate or a docs question.
+ * A resolved prompt with the slot it filled. The blank-state hero styles each
+ * button by slot (`PROMPT_SLOT_BUTTON`), so the slot has to survive resolution.
  */
 export type ResolvedSuggestedPrompt = {
   slot: ResolvedPromptSlot;
@@ -60,8 +47,7 @@ export function resolveSuggestedPrompts(
 
 /**
  * The same resolution, keeping each prompt's slot. `resolveSuggestedPrompts` is
- * this with the slots dropped, so the two can never disagree about ordering or
- * the cap.
+ * this with the slots dropped, so the two can't disagree about order or the cap.
  */
 export function resolveSuggestedPromptsBySlot(
   context: AgentPageContext,
@@ -85,8 +71,7 @@ export function resolveSuggestedPromptsBySlot(
     }
   };
 
-  // Whatever the flag says, it occupies the promoted slot — the caller doesn't
-  // have to remember to set `source`.
+  // `source` is forced here so callers don't have to set it.
   if (opts.promoted) {
     take("promoted", [{ ...opts.promoted, source: "promoted" }]);
   }
@@ -95,10 +80,8 @@ export function resolveSuggestedPromptsBySlot(
     take(slot, [...contextual[slot], pageSlots[slot]]);
   }
 
-  // Over the cap, optional slots yield in a fixed order — the generic status
-  // chip first, then watch, then investigate. Promoted, explain and docs never
-  // yield: explain and docs are required on every page (docs stays last), and
-  // the promoted slot is the product's own voice.
+  // Over the cap, optional slots yield in this order. Promoted, explain and docs
+  // never yield: explain and docs are required on every page, docs stays last.
   const yieldOrder: ResolvedPromptSlot[] = ["status", "watch", "investigate"];
   let trimmed = resolved;
   for (const slot of yieldOrder) {
@@ -108,11 +91,7 @@ export function resolveSuggestedPromptsBySlot(
   return trimmed.slice(0, SUGGESTED_PROMPT_CAP);
 }
 
-/**
- * The contract's resolver shape, with the promoted slot and dismissals bound.
- * Lets a caller that only has a page context (the prompts component) hold a
- * plain `(context) => prompts` function.
- */
+/** The contract's resolver shape, with the promoted slot and dismissals bound. */
 export function makeSuggestedPromptResolver(
   opts: ResolveSuggestedPromptsOptions = {}
 ): SuggestedPromptResolver {

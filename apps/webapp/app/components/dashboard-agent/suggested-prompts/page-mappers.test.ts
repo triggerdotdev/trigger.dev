@@ -461,9 +461,7 @@ describe("deploymentAgentPageContext", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // The rest of the environment's sections
-// ---------------------------------------------------------------------------
 
 /** Every mapper must produce something the contract accepts, or nothing at all. */
 function expectValid(context: unknown) {

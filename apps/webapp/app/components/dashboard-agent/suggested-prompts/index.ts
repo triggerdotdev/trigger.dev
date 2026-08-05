@@ -1,7 +1,6 @@
 /**
- * The suggested-prompt registry. Import point for the panel and the routes;
- * nothing here touches the server (the promoted-slot flag reader is a separate
- * `.server.ts` module, imported only by loaders).
+ * Import point for the panel and the routes. Nothing here touches the server; the
+ * promoted-slot flag reader is a separate `.server.ts` module.
  */
 export {
   contextualPrompts,

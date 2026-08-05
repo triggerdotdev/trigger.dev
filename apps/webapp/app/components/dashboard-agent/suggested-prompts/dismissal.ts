@@ -1,10 +1,7 @@
 /**
- * Per-user chip dismissals.
- *
- * localStorage, not a cookie or a DB row: the panel is client-only, a dismissal
- * is a preference rather than data, and a browser profile is already the unit of
- * "this user". One key per chip id (rather than one key holding a list) so two
- * tabs dismissing different chips can't clobber each other's write.
+ * Per-user chip dismissals, in localStorage. One key per chip id rather than one
+ * key holding a list, so two tabs dismissing different chips can't clobber each
+ * other's write.
  */
 const KEY_PREFIX = "tdev:dashboard-agent:prompt-dismissed:";
 

@@ -3,12 +3,10 @@
  * inline outcome line.
  *
  * The bubble is the user's only record that the agent moved their screen, so it
- * states the action in the past tense and shows the deep link it used. In demo
- * mode the link is a button, not a `Link`: clicking it reports what *would* have
- * happened and navigates nowhere.
- *
- * The outcome text keeps the default colour — honoured vs rejected is carried by
- * the coloured icon, the same rule the run status cells follow.
+ * states the action in the past tense and shows the deep link it used. In demo mode
+ * the link is a button: clicking it reports what would have happened and navigates
+ * nowhere. Honoured versus rejected is carried by the icon colour alone, the same
+ * rule the run status cells follow.
  */
 import {
   ArrowTopRightOnSquareIcon,
@@ -22,11 +20,9 @@ import { ChatNote, ChatStatusLine } from "../../chat-layout";
 import type { DemoIntent } from "../fixtures/intents";
 
 /**
- * A neutral inline note — the demo interceptor's voice, never the agent's.
- * Unlabelled on purpose: fixture chats present as real ones for review.
- *
- * The note is a transcript-level format, so it lives in the chat layout library
- * as `ChatNote`; this is the demo's name for it.
+ * A neutral inline note in the demo interceptor's voice, never the agent's.
+ * Unlabelled on purpose, so fixture chats present as real ones. The format itself
+ * is `ChatNote` in the chat layout library; this is the demo's name for it.
  */
 export const DemoNote = ChatNote;
 

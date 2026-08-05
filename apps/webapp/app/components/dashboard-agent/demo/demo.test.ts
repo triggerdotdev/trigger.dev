@@ -195,7 +195,7 @@ describe("investigation fixtures", () => {
   });
 
   it("cites file:line@sha in the show-code turn", () => {
-    // The sha is demo-marked, so it isn't pure hex — shape is what matters.
+    // The sha is demo-marked, so it isn't pure hex. Shape is what matters.
     expect(fixtures.demoShowCodeMarkdown).toMatch(/\.ts:\d+(-\d+)?@[0-9a-z]{7}/);
     expect(fixtures.demoShowCodeMarkdown).toContain("```diff");
   });
@@ -327,18 +327,16 @@ describe("demo coverage", () => {
   });
 
   it("keeps the draft case an unsent draft over an empty conversation", () => {
-    // The first-open prompt panel and the composer draft are the same case: the
-    // transcript has to be empty for the panel to show, and the draft has to be
-    // there for the case to have a point.
+    // The transcript has to be empty for the first-open prompt panel to show, and
+    // the draft has to be there for the case to have a point.
     const draftChat = demoChats.find((chat) => chat.id === `${DEMO_ID_PREFIX}base-composer-draft`);
     expect(draftChat?.draft?.length ?? 0).toBeGreaterThan(0);
     expect(draftChat?.items).toEqual([]);
   });
 
   it("keeps every chat to one story rather than a variant matrix", () => {
-    // Stacked variants of the same thing read as a bug in a conversation; they
-    // belong to the state gallery. One banner (the chat's own) and at most one
-    // prompt row per chat.
+    // Stacked variants read as a bug in a conversation, so one banner and at most
+    // one prompt row per chat.
     for (const chat of demoChats) {
       const count = (kind: string) => chat.items.filter((item) => item.kind === kind).length;
       expect(count("banner"), chat.id).toBe(0);
@@ -358,7 +356,7 @@ describe("demo coverage", () => {
   it("gives every chat a playbook summary and a natural title", () => {
     for (const chat of demoChats) {
       expect(chat.summary.length, chat.id).toBeGreaterThan(20);
-      // Titles read like real chats — identity lives in the demo: id, never the label.
+      // Titles read like real chats. Identity lives in the id, never the label.
       expect(chat.title.includes("Demo"), chat.title).toBe(false);
       expect(chat.title.length, chat.id).toBeGreaterThan(0);
     }

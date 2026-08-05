@@ -1,32 +1,19 @@
 /**
  * Route `handle` mappers: loader data in, `AgentPageContext` out.
  *
- * These live here rather than inline in the routes so they can be unit tested as
- * plain functions — a route module drags in the whole page. Each one is a pure
- * function of data the loader ALREADY returns; none of them may cause a query,
- * and a field that isn't in the loader means the signal simply isn't emitted.
- *
- * They read raw route-match data (`useAgentPageContext` passes `match.data`
- * straight through), so dates arrive as ISO strings, not `Date`s — hence the
- * string|Date unions. Everything is `safeParse`d: a shape change downstream
- * degrades to "no context", never a thrown mapper.
- *
- * A signal is emitted ONLY for abnormal state. That's the contract the resolver
- * relies on: if a contextual chip is on screen, something is actually up.
+ * Each mapper is a pure function of data the loader already returns; none may
+ * cause a query. They read raw route-match data, so dates arrive as ISO strings
+ * or `Date`s, and everything is `safeParse`d so a shape change degrades to "no
+ * context" instead of throwing. Signals are emitted only for abnormal state —
+ * the resolver relies on that to decide when a contextual chip is warranted.
  */
 import type { AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
 
-/**
- * How recently a run must have failed for the failure to be "why the user is
- * here". Older failures still show the run page's defaults.
- */
+/** How recently a run must have failed to count as fresh. */
 export const FRESH_FAILURE_WINDOW_MS = 30 * 60_000;
 
-/**
- * Run statuses that mean "this failed". Mirrors the error set the run presenter
- * uses for the root span (`isError`).
- */
+/** Mirrors the error set the run presenter uses for the root span (`isError`). */
 const FAILED_STATUSES = new Set([
   "COMPLETED_WITH_ERRORS",
   "CRASHED",
@@ -35,14 +22,13 @@ const FAILED_STATUSES = new Set([
   "EXPIRED",
 ]);
 
-/** Run statuses that mean "queued or delayed, not executing" (`QUEUED_STATUSES`). */
+/** Queued or delayed, not executing (`QUEUED_STATUSES`). */
 const WAITING_STATUSES = new Set(["PENDING", "PENDING_VERSION", "WAITING_FOR_DEPLOY", "DELAYED"]);
 
 /**
- * Display labels for run statuses, mirroring `runStatusTitleFromStatus` in
- * `components/runs/v3/TaskRunStatus.tsx`. Duplicated rather than imported so
- * this module stays free of React component imports; the contract stores the
- * status as a plain string, so an unmapped status passes through as-is.
+ * Mirrors `runStatusTitleFromStatus` in `components/runs/v3/TaskRunStatus.tsx`.
+ * Duplicated so this module stays free of React imports. An unmapped status
+ * passes through as-is.
  */
 const STATUS_LABELS: Record<string, string> = {
   DELAYED: "Delayed",
@@ -77,14 +63,11 @@ function toIso(value: string | Date | null | undefined): string | undefined {
   return ms === undefined ? undefined : new Date(ms).toISOString();
 }
 
-// ---------------------------------------------------------------------------
 // Run detail page
-// ---------------------------------------------------------------------------
 
 /**
- * What the run-detail loader gives us. `run.taskIdentifier` isn't in the payload,
- * so the task id comes off the run's own span in the trace — the same span the
- * page's tree renders, whose `message` is the task identifier.
+ * `run.taskIdentifier` isn't in the loader payload, so the task id comes off the
+ * run's own span in the trace, whose `message` is the task identifier.
  */
 const runLoaderDataSchema = z.object({
   run: z.object({
@@ -121,15 +104,13 @@ export function runAgentPageContext(
     events.find((event) => event.runId === run.friendlyId && event.data?.message)?.data?.message ??
     events[0]?.data?.message;
 
-  // No task id means we'd be inventing one to satisfy the contract. Returning
-  // undefined lets the hook fall back to the path, which is honest.
+  // Without a task id, returning undefined lets the hook fall back to the path.
   if (!taskId) return undefined;
 
   const signals: AgentPageSignal[] = [];
 
   if (FAILED_STATUSES.has(run.status)) {
     const failedAtMs = toMillis(run.completedAt);
-    // A failure with no timestamp can't be called fresh, so it isn't.
     if (failedAtMs !== undefined && now - failedAtMs <= FRESH_FAILURE_WINDOW_MS) {
       signals.push({
         kind: "fresh_failure",
@@ -138,13 +119,12 @@ export function runAgentPageContext(
       });
     }
   } else if (WAITING_STATUSES.has(run.status)) {
-    // The queue name isn't in this loader's payload, so it's omitted rather than
-    // fetched.
+    // The queue name isn't in this loader's payload, so it's omitted.
     signals.push({ kind: "waiting_run", runId: run.friendlyId });
   }
 
-  // No `slow_run`: the loader has this run's duration but no per-task p95
-  // baseline, and fetching one would be an added query.
+  // No `slow_run`: the loader has no per-task p95 baseline to compare against,
+  // and fetching one would be an added query.
 
   return {
     page: {
@@ -157,15 +137,9 @@ export function runAgentPageContext(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Errors list + error group
-// ---------------------------------------------------------------------------
 
-/**
- * The errors list. Its loader defers the list itself, so the match carries
- * promises rather than error groups — the page kind is all we can say without
- * awaiting, which is enough to swap the generic chips for error ones.
- */
+/** The errors list defers its data, so the page kind is all we can report. */
 export function errorsAgentPageContext(): AgentPageContext {
   return { page: { kind: "errors" }, signals: [] };
 }
@@ -173,10 +147,8 @@ export function errorsAgentPageContext(): AgentPageContext {
 const errorLoaderDataSchema = z.object({ fingerprint: z.string().min(1) });
 
 /**
- * One error group. The fingerprint is the only non-deferred field in this
- * loader's payload, so there is no occurrence timestamp to call recent — the
- * page's "is it still happening?" question goes to the agent instead of a
- * signal we'd have to query for.
+ * One error group. The fingerprint is the only non-deferred field, so there is
+ * no occurrence timestamp to emit a signal from.
  */
 export function errorAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = errorLoaderDataSchema.safeParse(data);
@@ -185,9 +157,7 @@ export function errorAgentPageContext(data: unknown): AgentPageContext | undefin
   return { page: { kind: "error", fingerprint: parsed.data.fingerprint }, signals: [] };
 }
 
-// ---------------------------------------------------------------------------
 // Queues list + queue detail
-// ---------------------------------------------------------------------------
 
 const queuesLoaderDataSchema = z.object({
   environment: z.object({
@@ -199,10 +169,9 @@ const queuesLoaderDataSchema = z.object({
 });
 
 /**
- * The queues list, with the environment-level concurrency the page's own
- * "Running" tile tints (`getEnvConcurrencyLimitStatus`): at the burst limit
- * with work waiting is saturation. The signal has no queue identity because
- * this one is the environment's, not one queue's.
+ * Saturation here matches the page's own "Running" tile
+ * (`getEnvConcurrencyLimitStatus`): at the burst limit with work waiting. The
+ * signal carries no queue identity because the limit is the environment's.
  */
 export function queuesAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = queuesLoaderDataSchema.safeParse(data);
@@ -221,8 +190,8 @@ export function queuesAgentPageContext(data: unknown): AgentPageContext | undefi
 
 /**
  * How long the head of the queue may sit unstarted before the queue counts as
- * degraded. The queue detail route imports this as its `OLDEST_WAIT_WARNING_MS`,
- * so the page's warning tint and the health we report here are one threshold.
+ * degraded. The queue detail route imports this as its `OLDEST_WAIT_WARNING_MS`
+ * so its warning tint and the health reported here share one threshold.
  */
 export const QUEUE_OLDEST_WAIT_WARNING_MS = 5 * 60_000;
 
@@ -247,8 +216,8 @@ const queueLoaderDataSchema = z.object({
 
 /**
  * Whole-queue oldest wait, as the page computes it (`wholeQueueOldestWaitMs`):
- * for keyed queues the oldest wait is the worst across keys with a live
- * backlog, otherwise the queue's own oldest message. Null when nothing waits.
+ * for keyed queues the worst across keys with a live backlog, otherwise the
+ * queue's own oldest message. Null when nothing waits.
  */
 function oldestWaitMs(
   keys: { queued: number; oldestEnqueuedAt: number }[],
@@ -266,11 +235,10 @@ function oldestWaitMs(
 }
 
 /**
- * Queue health, from the same running/queued/limit decision the queues list
- * renders as a badge (`queueHealthLabel`): at capacity with work waiting is
- * critical, a backlog under the limit is a warning, paused is a warning. A
- * head-of-line run waiting past the page's own threshold is a warning too —
- * the same state that puts the page's Investigate button on screen.
+ * Queue health, from the same decision the queues list renders as a badge
+ * (`queueHealthLabel`): at capacity with work waiting is critical; a backlog
+ * under the limit, paused, or a head-of-line run past the wait threshold are
+ * warnings.
  */
 export function queueAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = queueLoaderDataSchema.safeParse(data);
@@ -288,27 +256,20 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
 
   const signals: AgentPageSignal[] = [];
   if (atCapacity) {
-    // A backlog at least as deep as the limit is a queue that won't clear this
-    // cycle — that's the crit case.
+    // A backlog at least as deep as the limit won't clear this cycle.
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
   }
 
   // No `waiting_run` for a stalled head of line: the loader has the wait time
-  // but not the run's id, and the signal is about a named run. The `warn`
-  // health carries it instead, which is what the page's Investigate button
-  // gates on.
+  // but not the run's id, and the signal names a run. The `warn` health carries
+  // it instead.
 
   return { page: { kind: "queue", name, health }, signals };
 }
 
-// ---------------------------------------------------------------------------
 // Deployments list + deployment detail
-// ---------------------------------------------------------------------------
 
-/**
- * The deployments list. Nothing here is abnormal on its own — a failed deploy
- * in the table is history, not news — so the page kind carries the chips.
- */
+/** A failed deploy in the table is history, so no signal is emitted. */
 export function deploymentsAgentPageContext(): AgentPageContext {
   return { page: { kind: "deployments" }, signals: [] };
 }
@@ -319,8 +280,7 @@ const deploymentLoaderDataSchema = z.object({
 
 /**
  * One deployment. The status is the raw `WorkerDeploymentStatus`; the registry
- * decides which of them is worth an investigate chip. No signal: the signal
- * vocabulary is about runs and concurrency, and a failed deploy is neither.
+ * decides which statuses earn an investigate chip.
  */
 export function deploymentAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = deploymentLoaderDataSchema.safeParse(data);
@@ -330,19 +290,9 @@ export function deploymentAgentPageContext(data: unknown): AgentPageContext | un
   return { page: { kind: "deployment", version, status }, signals: [] };
 }
 
-// ---------------------------------------------------------------------------
-// Sections whose loader has nothing abnormal to report
-// ---------------------------------------------------------------------------
-
 /**
- * Page kinds that need no loader data at all: the page kind is the whole story,
- * and everything that could be called abnormal on them is either behind a
- * deferred promise (the logs explorer, the tasks list's activity) or simply not
- * a health question (the query editor, the API keys page).
- *
- * One function rather than eight one-liners: the route reads
- * `sectionAgentPageContext("regions")`, which says the same thing a
- * `regionsAgentPageContext()` wrapper would.
+ * Page kinds that need no loader data: anything abnormal on them is either
+ * deferred or not a health question.
  */
 export type SectionPageKind =
   | "tasks"
@@ -358,14 +308,11 @@ export function sectionAgentPageContext(kind: SectionPageKind): AgentPageContext
   return { page: { kind }, signals: [] };
 }
 
-// ---------------------------------------------------------------------------
 // Task detail (standard + scheduled)
-// ---------------------------------------------------------------------------
 
 /**
- * The task-detail loaders. `task` and (on the scheduled variant) `scheduleList`
- * resolve synchronously; `activity` and `runList` are deferred, so recent
- * failures are deliberately not read here.
+ * `task` and `scheduleList` resolve synchronously; `activity` and `runList` are
+ * deferred, so recent failures are not read here.
  */
 const taskLoaderDataSchema = z.object({
   task: z.object({
@@ -382,10 +329,8 @@ const taskLoaderDataSchema = z.object({
 });
 
 /**
- * One task. A paused queue and a scheduled task with no enabled schedule are
- * both "this will never run", and both are in the loader already — the registry
- * turns them into the investigate chip. No signal: the vocabulary is about runs
- * and concurrency, and neither of these is a run.
+ * One task. A paused queue and a scheduled task with no enabled schedule both
+ * mean it will never run; the registry turns them into the investigate chip.
  */
 export function taskAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = taskLoaderDataSchema.safeParse(data);
@@ -393,9 +338,8 @@ export function taskAgentPageContext(data: unknown): AgentPageContext | undefine
 
   const { task, scheduleList } = parsed.data;
 
-  // `totalCount` counts every schedule on the task; the page only lists one
-  // page of them, so `active` is counted off what we were given and can only
-  // under-report. That's the safe direction: it never claims "none are active".
+  // `totalCount` counts every schedule; the loader only carries one page, so
+  // `active` can under-report. That is the safe direction.
   const schedules = scheduleList
     ? {
         total: scheduleList.totalCount,
@@ -416,9 +360,7 @@ export function taskAgentPageContext(data: unknown): AgentPageContext | undefine
   };
 }
 
-// ---------------------------------------------------------------------------
 // Schedule detail
-// ---------------------------------------------------------------------------
 
 const scheduleLoaderDataSchema = z.object({
   schedule: z
@@ -434,13 +376,9 @@ const scheduleLoaderDataSchema = z.object({
 });
 
 /**
- * One schedule. The loader carries the schedule's last few runs, so unlike the
- * other section pages this one CAN emit `fresh_failure` — the newest run failing
- * a few minutes ago is exactly why someone opens the panel here. Older failures
- * fall back to the page's own chips.
- *
- * `schedule` is nullable in the loader (a just-deleted schedule renders an empty
- * state rather than a 404), and a null one has no identity to report.
+ * One schedule. The loader carries the last few runs, so this mapper can emit
+ * `fresh_failure`. `schedule` is nullable (a just-deleted schedule renders an
+ * empty state rather than a 404) and a null one has no identity to report.
  */
 export function scheduleAgentPageContext(
   data: unknown,
@@ -452,8 +390,7 @@ export function scheduleAgentPageContext(
   const { friendlyId, taskIdentifier, active, runs } = parsed.data.schedule;
 
   const signals: AgentPageSignal[] = [];
-  // Only the newest run: an older failure the schedule has since recovered from
-  // isn't news.
+  // Only the newest run: an older failure may already have recovered.
   const latest = (runs ?? [])[0];
   if (latest && FAILED_STATUSES.has(latest.status)) {
     const failedAtMs = toMillis(latest.finishedAt);
@@ -477,9 +414,7 @@ export function scheduleAgentPageContext(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Batches list + batch detail
-// ---------------------------------------------------------------------------
 
 /** `BatchTaskRunStatus` values that mean "this batch didn't come out clean". */
 const FAILED_BATCH_STATUSES = new Set(["PARTIAL_FAILED", "ABORTED"]);
@@ -495,11 +430,8 @@ const batchesLoaderDataSchema = z.object({
 });
 
 /**
- * The batches list, newest first. Only the NEWEST batch is worth a chip, and
- * only on an unfiltered list: "your latest batch partly failed" is news, while
- * a failure further down the table is history — the same line the deployments
- * list draws. A filtered list isn't in newest-first order of anything the user
- * asked about, so it says nothing.
+ * The batches list, newest first. Only the newest batch earns a chip, and only
+ * on an unfiltered list, where newest-first order is meaningful.
  */
 export function batchesAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = batchesLoaderDataSchema.safeParse(data);
@@ -527,10 +459,7 @@ const batchLoaderDataSchema = z.object({
   }),
 });
 
-/**
- * One batch. `failedRunCount` is live for a batch still processing, so the
- * registry can name the number in the chip.
- */
+/** `failedRunCount` is live while a batch processes, so the chip can name it. */
 export function batchAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = batchLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
@@ -547,9 +476,7 @@ export function batchAgentPageContext(data: unknown): AgentPageContext | undefin
   };
 }
 
-// ---------------------------------------------------------------------------
 // Test page (task picker + one task)
-// ---------------------------------------------------------------------------
 
 const testLoaderDataSchema = z.object({
   /** Present on the picker; the task page has `task` instead. */
@@ -559,9 +486,8 @@ const testLoaderDataSchema = z.object({
 });
 
 /**
- * The test page, for both the picker and one task. A paused queue means the
- * test run the user is about to send won't execute, which is the one thing here
- * worth interrupting them about.
+ * The test page, for both the picker and one task. A paused queue means the test
+ * run about to be sent won't execute.
  */
 export function testAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = testLoaderDataSchema.safeParse(data);
@@ -578,19 +504,15 @@ export function testAgentPageContext(data: unknown): AgentPageContext | undefine
   };
 }
 
-// ---------------------------------------------------------------------------
 // Alerts
-// ---------------------------------------------------------------------------
 
 const alertsLoaderDataSchema = z.object({
   alertChannels: z.array(z.object({ enabled: z.boolean().nullish() })),
 });
 
 /**
- * The alerts page. A switched-off channel is the page's one abnormal state the
- * loader actually knows about — delivery failures live on `ProjectAlert`, which
- * this loader never reads, so "this alert failed to send" is not something we
- * can claim.
+ * A switched-off channel is the only abnormal state this loader knows about.
+ * Delivery failures live on `ProjectAlert`, which it never reads.
  */
 export function alertsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = alertsLoaderDataSchema.safeParse(data);
@@ -607,12 +529,10 @@ export function alertsAgentPageContext(data: unknown): AgentPageContext | undefi
   };
 }
 
-// ---------------------------------------------------------------------------
 // Waitpoint tokens (list + one token)
-// ---------------------------------------------------------------------------
 
 const waitpointsLoaderDataSchema = z.object({
-  /** The list. Both the success and failure variants of the presenter carry it. */
+  /** The list. Both presenter variants carry it. */
   tokens: z
     .array(z.object({ status: z.string(), timeoutAt: dateish, completedAfter: dateish }))
     .nullish(),
@@ -621,10 +541,9 @@ const waitpointsLoaderDataSchema = z.object({
 });
 
 /**
- * Waitpoint tokens. Two states are worth a chip and both are in the loader: a
- * token that timed out, and a token still `WAITING` past its own timeout — the
- * second one nothing computes for us, so it's computed here from the timeout the
- * list already carries.
+ * Waitpoint tokens. Two states earn a chip: a token that timed out, and a token
+ * still `WAITING` past its own timeout. Nothing computes the second one, so it is
+ * derived here from the timeout the list carries.
  */
 export function waitpointsAgentPageContext(
   data: unknown,
@@ -659,9 +578,7 @@ export function waitpointsAgentPageContext(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Bulk actions (list + one action)
-// ---------------------------------------------------------------------------
 
 const bulkActionsLoaderDataSchema = z.object({
   bulkActions: z.array(z.object({ status: z.string() })).nullish(),
@@ -674,10 +591,7 @@ const bulkActionsLoaderDataSchema = z.object({
     .nullish(),
 });
 
-/**
- * Bulk actions. The detail page knows how many runs the action failed on, which
- * is the whole question a user has after running a replay.
- */
+/** The detail page knows how many runs the action failed on. */
 export function bulkActionsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = bulkActionsLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
@@ -707,18 +621,13 @@ export function bulkActionsAgentPageContext(data: unknown): AgentPageContext | u
   };
 }
 
-// ---------------------------------------------------------------------------
 // Branches (preview + dev)
-// ---------------------------------------------------------------------------
 
 const branchesLoaderDataSchema = z.object({
   limits: z.object({ isAtLimit: z.boolean().nullish() }),
 });
 
-/**
- * The branch list. At the limit the page can't create another branch, which is
- * the question the user came with.
- */
+/** At the limit the page can't create another branch. */
 export function branchesAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = branchesLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
@@ -729,9 +638,7 @@ export function branchesAgentPageContext(data: unknown): AgentPageContext | unde
   };
 }
 
-// ---------------------------------------------------------------------------
 // Limits
-// ---------------------------------------------------------------------------
 
 const quotaSchema = z
   .object({
@@ -747,11 +654,9 @@ const quotaSchema = z
 const limitsLoaderDataSchema = z.object({ quotas: z.record(z.string(), z.unknown()) });
 
 /**
- * The limits page. A quota at or over its limit is a wall the user is already
- * standing at, so the names of those quotas go on the page — the chip can then
- * name the one they hit rather than asking "which limits am I near?".
- *
- * `canExceed` quotas are excluded: those are soft and being over them is normal.
+ * Quotas at or over their limit are named on the page so the chip can name the
+ * one that was hit. `canExceed` quotas are excluded: those are soft, and being
+ * over them is normal.
  */
 export function limitsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = limitsLoaderDataSchema.safeParse(data);
@@ -773,16 +678,13 @@ export function limitsAgentPageContext(data: unknown): AgentPageContext | undefi
   };
 }
 
-// ---------------------------------------------------------------------------
 // Dashboards
-// ---------------------------------------------------------------------------
 
 const dashboardsLoaderDataSchema = z.object({ title: z.string().nullish() });
 
 /**
- * A metrics dashboard, or the chooser. The title is the only thing that
- * distinguishes one dashboard from another to a user, so it rides along and the
- * chooser (which has no title) reports the section on its own.
+ * A metrics dashboard, or the chooser. The title identifies which dashboard; the
+ * chooser has none and reports the section alone.
  */
 export function dashboardsAgentPageContext(data: unknown): AgentPageContext {
   const parsed = dashboardsLoaderDataSchema.safeParse(data);
@@ -790,13 +692,11 @@ export function dashboardsAgentPageContext(data: unknown): AgentPageContext {
   return { page: { kind: "dashboards", ...(title ? { title } : {}) }, signals: [] };
 }
 
-// ---------------------------------------------------------------------------
 // Agents + playground
-// ---------------------------------------------------------------------------
 
 const agentLoaderDataSchema = z.object({ agent: z.object({ slug: z.string().min(1) }) });
 
-/** One agent. Everything else on this page (activity, runs, sessions) is deferred. */
+/** Everything else on this page (activity, runs, sessions) is deferred. */
 export function agentsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = agentLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
@@ -804,10 +704,7 @@ export function agentsAgentPageContext(data: unknown): AgentPageContext | undefi
   return { page: { kind: "agents", agentId: parsed.data.agent.slug }, signals: [] };
 }
 
-/**
- * The playground, for both the agent picker and one agent. The picker's loader
- * has no agent to name, so it reports the section alone.
- */
+/** The playground. The picker's loader has no agent to name. */
 export function playgroundAgentPageContext(data: unknown): AgentPageContext {
   const parsed = agentLoaderDataSchema.safeParse(data);
   return {
@@ -816,9 +713,7 @@ export function playgroundAgentPageContext(data: unknown): AgentPageContext {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Prompts
-// ---------------------------------------------------------------------------
 
 const promptsLoaderDataSchema = z.object({
   /** The list. */
@@ -829,9 +724,8 @@ const promptsLoaderDataSchema = z.object({
 });
 
 /**
- * Prompts. An active override is the abnormal state that matters here: runs
- * silently use the pinned version instead of the current one, and nothing else
- * on the page says so loudly.
+ * An active override is the abnormal state here: runs silently use the pinned
+ * version instead of the current one.
  */
 export function promptsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = promptsLoaderDataSchema.safeParse(data);
@@ -855,27 +749,20 @@ export function promptsAgentPageContext(data: unknown): AgentPageContext | undef
   };
 }
 
-// ---------------------------------------------------------------------------
 // Models
-// ---------------------------------------------------------------------------
 
 const modelsLoaderDataSchema = z.object({
   model: z.object({ modelName: z.string().min(1) }).nullish(),
 });
 
-/**
- * The model registry, or one model. Nothing here is abnormal — a model's cost
- * and latency are questions, not alarms — so the identity is the whole context.
- */
+/** Nothing here is abnormal, so the model identity is the whole context. */
 export function modelsAgentPageContext(data: unknown): AgentPageContext {
   const parsed = modelsLoaderDataSchema.safeParse(data);
   const modelId = parsed.success ? parsed.data.model?.modelName : undefined;
   return { page: { kind: "models", ...(modelId ? { modelId } : {}) }, signals: [] };
 }
 
-// ---------------------------------------------------------------------------
 // Sessions
-// ---------------------------------------------------------------------------
 
 const sessionsLoaderDataSchema = z.object({
   /** The list. `status` is derived by the presenter, not stored. */
@@ -890,10 +777,9 @@ const sessionsLoaderDataSchema = z.object({
 });
 
 /**
- * Agent sessions. The detail page carries the session's current run and how it
- * ended, so a failed run there earns the investigate chip — and unlike the
- * schedule page there's no timestamp on it, so it's a page fact rather than a
- * `fresh_failure` we'd have to date.
+ * Agent sessions. The detail page carries the session's current run, so a failed
+ * run earns the investigate chip. There is no timestamp on it, so it is a page
+ * fact rather than a `fresh_failure`.
  */
 export function sessionsAgentPageContext(data: unknown): AgentPageContext | undefined {
   const parsed = sessionsLoaderDataSchema.safeParse(data);

@@ -1,10 +1,8 @@
 /**
- * A chart block, rendered from canned rows.
- *
- * The real `AgentChart` fetches `/resources/metric` to turn a block's TRQL into
- * rows. Demo mode does no network, so this hands the same `QueryResultsChart`
- * the fixture rows directly. The frame (border, title strip, height) mirrors
- * `AgentChart` so the card reads identically in the panel.
+ * A chart block rendered from canned rows. The real `AgentChart` fetches
+ * `/resources/metric`; demo mode does no network, so this hands the same
+ * `QueryResultsChart` the fixture rows directly. The frame mirrors `AgentChart` so
+ * the card reads identically in the panel.
  */
 import type { AgentIntent, ChartAction } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";

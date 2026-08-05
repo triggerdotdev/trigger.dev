@@ -1,8 +1,6 @@
 /**
- * Parsing the promoted-slot flag value.
- *
- * Split out of `promotedPrompt.server.ts` so the parsing (the part with rules
- * worth testing) doesn't drag in prisma and `env.server`.
+ * Parsing the promoted-slot flag value. Split out of `promotedPrompt.server.ts`
+ * so it can be tested without pulling in prisma and `env.server`.
  */
 import { suggestedPromptSchema, type SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 
@@ -15,7 +13,7 @@ const promotedPromptSchema = suggestedPromptSchema.omit({ source: true }).extend
 
 /**
  * The promoted chip from a stored flag value, or undefined for anything
- * malformed — a typo in the admin field must cost a chip, not the panel.
+ * malformed. A typo in the admin field costs a chip, not the panel.
  */
 export function parsePromotedPrompt(value: unknown): SuggestedPrompt | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
