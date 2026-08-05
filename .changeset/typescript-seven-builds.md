@@ -10,4 +10,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. TypeScript remains an optional peer for the decorator metadata build extension, so installing the Trigger.dev CLI does not install an additional compiler.
+Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler.
