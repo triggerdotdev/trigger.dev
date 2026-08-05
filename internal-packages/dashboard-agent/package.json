@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./tool-schemas": "./src/tool-schemas.ts"
+    "./tool-schemas": "./src/tool-schemas.ts",
+    "./prompt-prefix": "./src/prompt-prefix.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",

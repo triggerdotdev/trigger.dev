@@ -27,6 +27,12 @@ import {
 import { z } from "zod";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import { codeSystemPrompt, systemPrompt, titlePrompt } from "./prompts";
+import {
+  describePromptPrefix,
+  PROMPT_CACHE_CONTROL,
+  promptCacheAttributes,
+  type PromptCacheUsage,
+} from "./prompt-prefix";
 import { buildDashboardAgentTools } from "./tools";
 
 /**
@@ -587,10 +593,37 @@ function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
       ...last,
       providerOptions: {
         ...last.providerOptions,
-        anthropic: { cacheControl: { type: "ephemeral" } },
+        anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
       },
     },
   ];
+}
+
+/**
+ * One line per model call: what the provider billed as a cache write, a cache read
+ * and uncached input, against the prefix we expect to be cached. The estimate and
+ * the fingerprint are ours; the token counts are the provider's, and are logged as
+ * `null` when it reported none.
+ */
+function recordPromptCacheUsage(args: {
+  source: string;
+  usage: PromptCacheUsage | undefined;
+  system: string;
+  tools: ToolSet;
+}): void {
+  try {
+    logger.info(
+      "dashboard-agent prompt cache",
+      promptCacheAttributes({
+        source: args.source,
+        usage: args.usage,
+        prefix: describePromptPrefix({ system: args.system, tools: args.tools }),
+      })
+    );
+  } catch (error) {
+    // Measurement must never fail a turn.
+    logger.debug("dashboard-agent prompt cache measurement failed", { error });
+  }
 }
 
 /**
@@ -1192,7 +1225,7 @@ export const dashboardAgent = chat.agent({
     // prompt; the resolve is cached per process. The cache breakpoint on the system
     // block carries through toStreamTextOptions() and survives suspend/resume.
     chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
-      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+      providerOptions: { anthropic: { cacheControl: PROMPT_CACHE_CONTROL } },
     });
   },
 
@@ -1306,7 +1339,7 @@ export const dashboardAgent = chat.agent({
         ...last,
         providerOptions: {
           ...last.providerOptions,
-          anthropic: { cacheControl: { type: "ephemeral" } },
+          anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
         },
       },
     ];
@@ -1327,6 +1360,14 @@ export const dashboardAgent = chat.agent({
         ),
       messages,
       abortSignal: signal,
+      // Per model call, so the head-start prefix and this one can be compared.
+      onStepFinish: (step) =>
+        recordPromptCacheUsage({
+          source: "agent-turn",
+          usage: step.usage,
+          system: resolved.text,
+          tools: tools ?? {},
+        }),
       // toStreamTextOptions() defaults to a single step; override so the model can
       // call a tool and then answer from its result in the same turn.
       stopWhen: stepCountIs(10),

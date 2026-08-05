@@ -1076,16 +1076,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    get_run: tool({
-      ...getRunSchema,
-      execute: async ({ runId }) => {
-        const result = await envApiGet(`/api/v3/runs/${runId}`);
-        if (!result) return { error: "No current environment is available to read runs from." };
-        if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
-        return curateRun(result.data);
-      },
-    }),
-
     list_tasks: tool({
       ...listTasksSchema,
       execute: async () => {
@@ -1118,6 +1108,19 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok) return { error: `Couldn't list runs (status ${result.status}).` };
         return { ...curateRuns(result.data), period: effectivePeriod };
+      },
+    }),
+
+    // Order matters up to here: `dashboardAgentToolSchemas` is the canonical key
+    // order (head start builds its prefix from it), and a different order is a
+    // different cached prefix.
+    get_run: tool({
+      ...getRunSchema,
+      execute: async ({ runId }) => {
+        const result = await envApiGet(`/api/v3/runs/${runId}`);
+        if (!result) return { error: "No current environment is available to read runs from." };
+        if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
+        return curateRun(result.data);
       },
     }),
 
