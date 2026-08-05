@@ -17,9 +17,9 @@ import {
   type WatchDraft,
   type WatchKind,
 } from "@internal/dashboard-agent-contracts";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Input } from "~/components/primitives/Input";
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
@@ -62,13 +62,50 @@ function ButtonSpinner() {
   return <AgentSpinner size={14} />;
 }
 
+/** Controlled, unlike `CheckboxWithLabel`: the draft is the only thing that says what's on. */
+function Toggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <div className={cn("group flex w-fit items-start gap-x-2", disabled && "opacity-70")}>
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1"
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          "mt-0.5 select-none text-sm text-text-bright",
+          disabled ? "cursor-default" : "cursor-pointer"
+        )}
+      >
+        {label}
+      </label>
+    </div>
+  );
+}
+
 /** One choice in an inline picker. */
 function Choice({
   selected,
+  disabled,
   onSelect,
   children,
 }: {
   selected: boolean;
+  disabled: boolean;
   onSelect: () => void;
   children: React.ReactNode;
 }) {
@@ -76,12 +113,14 @@ function Choice({
     <button
       type="button"
       aria-pressed={selected}
+      disabled={disabled}
       onClick={onSelect}
       className={cn(
         "rounded-full border px-2 py-0.5 text-xs transition focus-custom",
         selected
           ? "border-border-brightest bg-background-bright text-text-bright"
-          : "border-border-bright text-text-dimmed hover:text-text-bright"
+          : "border-border-bright text-text-dimmed hover:text-text-bright",
+        disabled && "cursor-default opacity-70 hover:text-text-dimmed"
       )}
     >
       {children}
@@ -178,6 +217,7 @@ export function WatchCard({
                 <Choice
                   key={kind}
                   selected={kind === spec.kind}
+                  disabled={pending}
                   onSelect={() => {
                     if (kind !== spec.kind) onChange(withVariant(draft, kind));
                   }}
@@ -200,6 +240,7 @@ export function WatchCard({
                 min={0}
                 variant="small"
                 className="w-28"
+                disabled={pending}
                 // A half-typed field must show empty, not "NaN"; `watchDraftError`
                 // is what refuses to submit it.
                 value={Number.isFinite(spec.threshold) ? String(spec.threshold) : ""}
@@ -218,6 +259,7 @@ export function WatchCard({
                 min={1}
                 variant="small"
                 className="w-28"
+                disabled={pending}
                 value={Number.isFinite(spec.thresholdMinutes) ? String(spec.thresholdMinutes) : ""}
                 onChange={(event) =>
                   onChange(withAgeMinutes(draft, Number.parseInt(event.target.value, 10)))
@@ -233,6 +275,7 @@ export function WatchCard({
               <Choice
                 key={hours}
                 selected={spec.maxHours === hours}
+                disabled={pending}
                 onSelect={() => onChange(withWindow(draft, hours))}
               >
                 {formatWatchWindow(hours)}
@@ -247,6 +290,7 @@ export function WatchCard({
               <Choice
                 key={minutes}
                 selected={spec.checkEveryMinutes === minutes}
+                disabled={pending}
                 onSelect={() => onChange(withCadence(draft, minutes))}
               >
                 {formatWatchCadence(minutes)}
@@ -258,18 +302,18 @@ export function WatchCard({
               group, so "email instead of chat" is not expressible. */}
           <Field label="When there's an answer">
             <div className="flex flex-col gap-1.5">
-              <CheckboxWithLabel
-                variant="simple/small"
+              <Toggle
                 label="Investigate attention outcomes"
-                defaultChecked={draft.followUp.investigateOnAttention}
+                checked={draft.followUp.investigateOnAttention}
+                disabled={pending}
                 onChange={(checked) =>
                   onChange(withFollowUp(draft, { investigateOnAttention: checked }))
                 }
               />
-              <CheckboxWithLabel
-                variant="simple/small"
+              <Toggle
                 label="Also notify me externally"
-                defaultChecked={draft.followUp.notifyExternally}
+                checked={draft.followUp.notifyExternally}
+                disabled={pending}
                 onChange={(checked) => onChange(withFollowUp(draft, { notifyExternally: checked }))}
               />
             </div>
