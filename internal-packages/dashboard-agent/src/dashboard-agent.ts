@@ -308,9 +308,20 @@ function cleanTitle(raw: string): string {
     .trim();
 }
 
+/**
+ * Title generation in flight, per chat. Started in `onTurnStart` so it runs
+ * alongside the model answering, and awaited in `onBeforeTurnComplete` — while
+ * the stream is still open, before the turn-complete chunk settles the frontend.
+ *
+ * That ordering is the whole point: the panel reloads its chat list once, when
+ * the turn settles, so the name has to be on the row by then. Deferring the write
+ * past the settle is what used to make the list read "New chat" until a second,
+ * delayed reload caught up.
+ */
+const pendingTitles = new Map<string, Promise<void>>();
+
 // Generate a short title from the first user message using the cheaper title
-// model, then write it only if the chat still has the default title. Runs in
-// the background (chat.defer) so it never blocks the response.
+// model, then write it only if the chat still has the default title.
 async function generateAndSaveTitle(
   store: DashboardAgentStore,
   chatId: string,
@@ -1183,6 +1194,20 @@ export const dashboardAgent = chat.agent({
     // not read an empty transcript.
     await getStore().persistMessages({ chatId, messages: uiMessages });
 
+    // First exchange: name the chat with the cheaper title model, started here so
+    // it runs while the model answers and is finished by the time the turn
+    // settles. Not awaited — `onBeforeTurnComplete` does that. A failure only
+    // costs the generated name, so it never reaches the turn.
+    if (uiMessages.length <= 1 && !pendingTitles.has(chatId)) {
+      const store = getStore();
+      pendingTitles.set(
+        chatId,
+        generateAndSaveTitle(store, chatId, uiMessages).catch((error) => {
+          logger.error("Failed to generate a dashboard-agent chat title", { chatId, error });
+        })
+      );
+    }
+
     // Load the dashboard-managed system prompt for this turn. The code-mode
     // variant is used when the project has a connected repo. Set every turn so
     // continuation runs (which skip onChatStart) still get it; the resolve is
@@ -1191,6 +1216,18 @@ export const dashboardAgent = chat.agent({
     chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
     });
+  },
+
+  // Runs after the response is captured but BEFORE the turn-complete chunk closes
+  // the frontend stream — the last point at which a write still lands ahead of the
+  // client's settle. `onTurnComplete` is too late for that (the stream is already
+  // closed by then), which is why the title is awaited here.
+  onBeforeTurnComplete: async ({ chatId }) => {
+    const pending = pendingTitles.get(chatId);
+    if (!pending) return;
+    pendingTitles.delete(chatId);
+    // Normally already settled: it has had the whole response for company.
+    await pending;
   },
 
   onTurnComplete: async ({
@@ -1222,13 +1259,6 @@ export const dashboardAgent = chat.agent({
         runId,
       },
     });
-
-    // First exchange: generate a title with the cheaper title model in the
-    // background. Deferred from onTurnComplete, so it runs during the idle wait
-    // and never blocks the response; the write is conditional (default title).
-    if (uiMessages.length <= 2) {
-      chat.defer(generateAndSaveTitle(store, chatId, uiMessages));
-    }
 
     // Runtime eval: score this turn in a SEPARATE, idempotency-keyed task so it
     // never blocks or bills the agent run. Best-effort — enqueue failures must

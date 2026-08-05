@@ -66,7 +66,14 @@ function toolCallStep(
  * `doStream` call returns a fresh stream for the next entry in `steps` (the last
  * entry repeats if the model is called more times than there are steps).
  */
-function mockModel(steps: LanguageModelV3StreamPart[][], titleText = "Test Chat Title") {
+function mockModel(
+  steps: LanguageModelV3StreamPart[][],
+  titleText = "Test Chat Title",
+  // Real delay on the title generation. Default 0 keeps it a microtask; a test
+  // that cares whether the title is AWAITED has to make it actually take time,
+  // or it lands within the turn's own await chain either way.
+  titleDelayMs = 0
+) {
   let call = 0;
   return new MockLanguageModelV3({
     doStream: async () => {
@@ -74,12 +81,15 @@ function mockModel(steps: LanguageModelV3StreamPart[][], titleText = "Test Chat 
       call++;
       return { stream: simulateReadableStream({ chunks }) };
     },
-    doGenerate: async () => ({
-      content: [{ type: "text", text: titleText }],
-      finishReason: { unified: "stop", raw: "stop" },
-      usage: USAGE,
-      warnings: [],
-    }),
+    doGenerate: async () => {
+      if (titleDelayMs > 0) await new Promise((r) => setTimeout(r, titleDelayMs));
+      return {
+        content: [{ type: "text", text: titleText }],
+        finishReason: { unified: "stop", raw: "stop" } as const,
+        usage: USAGE,
+        warnings: [],
+      };
+    },
   });
 }
 
@@ -190,6 +200,47 @@ describe("dashboardAgent (mock harness)", () => {
     // onTurnComplete persists after the turn-complete chunk; give it a tick.
     await new Promise((r) => setTimeout(r, 30));
     expect(calls.persistTurn).toHaveLength(1);
+  });
+
+  // The dashboard panel reloads its chat list exactly once, when the turn settles,
+  // and that is the only thing that puts the generated name on screen. So the write
+  // has to be done BEFORE the turn-complete chunk — no tick, no delayed retry.
+  it("has written the generated chat title by the time the turn settles", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_title",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        // 50ms, so the title genuinely outlives the response: without the await in
+        // `onBeforeTurnComplete` the turn would settle before the write.
+        set(dashboardAgentModelKey, mockModel([textStep("answered")], "Why orders fail", 50));
+      },
+    });
+
+    await harness.sendMessage(userMessage("why do my orders fail?"));
+
+    // Deliberately no `await setTimeout` here — that is the whole assertion.
+    expect(calls.setChatTitleIfDefault).toEqual([
+      { chatId: "chat_title", title: "Why orders fail" },
+    ]);
+  });
+
+  it("names the chat once, not on every turn", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_title_once",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("first"), textStep("second")]));
+      },
+    });
+
+    await harness.sendMessage(userMessage("first question"));
+    await harness.sendMessage(userMessage("second question"));
+
+    expect(calls.setChatTitleIfDefault).toHaveLength(1);
   });
 
   it("executes a read tool the model calls, then answers from the result", async () => {
