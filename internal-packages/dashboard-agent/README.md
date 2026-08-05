@@ -4,6 +4,9 @@ The in-dashboard agent, built on `chat.agent` and deployed as its own Trigger
 project. This is the launch-week dogfood: we run our own product on the
 primitive we ship.
 
+Running it locally, what it does, and a walkthrough per flow:
+[GUIDEBOOK.md](./GUIDEBOOK.md).
+
 ## Why a separate package (not inside apps/webapp)
 
 The agent has **no access to the main database, ClickHouse, or webapp

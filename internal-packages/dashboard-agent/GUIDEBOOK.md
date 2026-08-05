@@ -1,74 +1,15 @@
-# Dashboard Agent — team guidebook
+# Dashboard agent — guidebook
 
 An AI assistant in a side panel on every dashboard page. It reads your runs,
 errors, queues, deploys and health through the same APIs you use, answers in
 place, renders rich cards, and can keep watching things after the conversation
-ends. Read-only by design — the only things it ever creates are its own
-watches and (with your explicit yes) an email alert subscription.
+ends. Read-only by design: the only things it ever creates are its own watches
+and, with your explicit yes, an email alert subscription.
 
 Branch: `feat/dashboard-agent-flows`.
 
----
-
-## Run it locally (10 minutes)
-
-```bash
-git checkout feat/dashboard-agent-flows && pnpm i
-pnpm run docker && pnpm run db:migrate && pnpm run db:seed
-pnpm --filter @internal/dashboard-agent-db run db:migrate
-
-# The playground: a project with realistic data + example conversations
-pnpm --filter webapp run db:seed:agent-examples
-```
-
-The report's liveness finding goes stale within the hour — re-seed, or run
-`-- --degrade`, shortly before you look.
-
-`apps/webapp/.env` needs: `DASHBOARD_AGENT_ENABLED=1`, `ANTHROPIC_API_KEY`,
-`DASHBOARD_AGENT_SECRET_KEY=<a dev env key of the trigger project the agent
-task runs in>`. **Export `ANTHROPIC_API_KEY` in your shell too** — the agent's
-turns and the wake narration are both LLM calls, and without it a watch fires
-silently. Optional, for email alerts:
-
-```bash
-docker run -d --name mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
-# then in .env: ALERT_EMAIL_TRANSPORT=smtp, ALERT_FROM_EMAIL=agent@localhost.test,
-# ALERT_SMTP_HOST=localhost, ALERT_SMTP_PORT=1025, ALERT_SMTP_SECURE=0
-```
-
-`internal-packages/dashboard-agent/.env` needs `ANTHROPIC_API_KEY` and
-`DATABASE_URL`. Then:
-
-```bash
-pnpm run dev --filter webapp          # start FIRST
-cd internal-packages/dashboard-agent && pnpm exec trigger dev   # then this
-```
-
-> Order matters: if you restart the webapp, restart `trigger dev` after it —
-> otherwise new chat turns hang unpicked.
-
-Open the playground (the seeder prints the URL): the chat button is in the
-page header. Emails land in Mailpit at http://localhost:8025.
-
-### Make things happen on demand
-
-```bash
-pnpm --filter webapp run db:seed:agent-examples -- --degrade   # prod goes crit
-pnpm --filter webapp run db:seed:agent-examples -- --recover   # prod recovers
-```
-
-That pair is how you demo the whole watch-fires-alert loop to yourself.
-
-For the rest — a queue that drains, grows, stalls or breaches its SLA, an error
-that comes back, a run that fails and gets investigated — there is one command
-per scenario:
-
-```bash
-pnpm --filter webapp run scenarios:watch -- --help
-```
-
-Walkthroughs, with the dashboard clicks and the exact wording to expect, are in
-[SCENARIOS.md](./SCENARIOS.md).
+Read this top to bottom once. It covers what the agent does, how to run it
+locally, and how to make every flow happen on demand.
 
 ---
 
@@ -107,30 +48,7 @@ trusted for advice.
 filtered page), TRQL data questions with live charts, deploy correlation
 ("did the last deploy cause this?"), docs answers with source links.
 
-## The full toolbox — what's convenient to do through the agent
-
-Everything it can reach, phrased as things you'd actually say. ⭐ = the
-scenarios worth trying first.
-
-| Say | It does |
-| --- | --- |
-| ⭐ "Why did this run fail?" / *Investigate* | full investigation card with tested hypotheses and cited evidence |
-| ⭐ "Tell me when the backlog drains" / "…when this run starts" | durable watch that wakes the chat (and emails you, if subscribed) |
-| ⭐ "Is anything wrong right now?" | the deterministic health report as a card |
-| ⭐ "Show me the failing code" (repo connected) | reads your source at the run's deployed commit, cites file:line |
-| "Where am I?" / "what is this page showing?" | explains the current page — it always knows where you are |
-| "Take me to the email-sends queue" / "show failed runs from the last 24h" | navigates the dashboard for you, filters applied |
-| "What happened to run_abc?" / "show its timeline" | run details and its trace, span by span |
-| "What errors are recurring?" / "how widespread is this one?" | error groups, counts, first/last seen |
-| "What's queued right now, and why isn't it moving?" | queue depth, throughput, limiting cause, drain estimate |
-| "How many runs failed yesterday, by task?" / "chart it" | TRQL query over your run data, rendered as a live chart |
-| "What's deployed right now?" / "did the last deploy cause this?" | deploy list, current version, run→commit correlation |
-| "What tasks does this project have?" | the task list with file paths |
-| "How do retries work?" / "how do I set a concurrency limit?" | docs answer with source links |
-| "What alerts do I have?" / "turn off the email alert" | lists and manages your watch-result subscriptions |
-| "This looks broken, can you flag it to support?" | files the context to the support channel |
-
-## Where the UI got updates
+### Where the UI got updates
 
 - **Chat button (page header)** — unread dot when a watch woke a chat you
   haven't read.
@@ -141,82 +59,419 @@ scenarios worth trying first.
   investigation in progress; hover for which).
 - **In the transcript** — a watch's result opens with a banner that states the
   fact ("email-sends queue drained", "Run abc123 failed", "Health recovered"),
-  toned by what actually happened rather than by which kind of watch it was;
-  watch chips under the composer show live watches with cancel; clicking a
-  card's watch button posts a visible request the agent answers.
+  toned by what happened rather than by which kind of watch it was; watch chips
+  under the composer show live watches with cancel; clicking a card's watch
+  button posts a visible request the agent answers.
 - **Report cards** — terminal-style skin, metric grid with sparklines, *Next
-  steps* footer with real buttons (docs entries always get the docs button).
+  steps* footer with real buttons.
 - **Alerts page** — the new "Dashboard agent watches" alert type on standard
   channels (email / Slack / webhook).
+- **Suggested prompts** — an empty chat offers up to five, picked from where
+  you are: a promoted one, *Investigate* for the failure on screen, a watch for
+  the thing in front of you, an explain-this-page one, and a docs one.
 
-## Suggested prompts
+Every card in every state is also browsable at `/storybook/agent-ui` (admin
+only), with no LLM and no data.
 
-An empty chat offers up to five, picked from where you are: a promoted one
-(product-controlled), *Investigate* for the failure on screen, a watch for
-the thing in front of you, an explain-this-page one, and a docs one.
+---
 
-## The demo script — four acts, ~15 minutes
+## Prerequisites
 
-Run `-- --degrade` RIGHT BEFORE the demo, not ahead of time — a degradation
-left running for a while blends into the baselines and starts reading as
-normal (re-run `--degrade` if the report says ok). One terminal stays open for
-the act-four commands.
+```bash
+pnpm i
+pnpm run docker
+pnpm run db:migrate
+pnpm run db:seed
+pnpm --filter @internal/dashboard-agent-db run db:migrate
+```
 
-**Act 1 — hello (30 seconds)**
-1. Any page → chat button → *"Where am I? What is this page showing?"* — it
-   knows where you are, no clarification needed.
-2. *"Take me to the email-sends queue"* — it drives the dashboard for you.
+`apps/webapp/.env` needs:
 
-**Act 2 — something's wrong (the centerpiece)**
-3. *"Is anything wrong right now?"* → the terminal-style report card: crit,
-   pinned concurrency, sparklines, "not your code", a *Next steps* row of real
-   buttons.
-4. Click **[Watch recovery]** → your request appears in the chat → the agent
-   confirms: checks every 5 minutes, fires once, gives up after N hours — and
-   offers an email alert. Say *"yes"* and the channel appears on the Alerts
-   page.
-5. While the watch ticks — **Investigate**: open the failing
-   `send-order-receipt` error → *Investigate* → a live card: hypotheses tested
-   in front of you, a concluded verdict citing runs, spans, and the deploy
-   (a 429 rate limit).
-6. Bonus, same chat: *"Show me the failing code"* — file:line at the deployed
-   commit.
+- `DASHBOARD_AGENT_ENABLED=1` (or `DASHBOARD_AGENT_ADMIN_PREVIEW=1`)
+- `ANTHROPIC_API_KEY`
+- `DASHBOARD_AGENT_SECRET_KEY=<a dev env key of the trigger project the agent
+  task runs in>`
 
-**Act 3 — data and knowledge (the interlude)**
-7. *"How many runs failed yesterday, by task? Chart it"* — TRQL + a live chart.
-8. *"Did the last deploy cause this?"* — run → commit → deploy correlation.
-9. *"How do retries work?"* — a docs answer with source buttons.
+`internal-packages/dashboard-agent/.env` needs `ANTHROPIC_API_KEY` and
+`DATABASE_URL`.
 
-**Act 4 — the finale: it comes back on its own**
-10. In the terminal: `pnpm --filter webapp run db:seed:agent-examples -- --recover`.
-    Close the panel and wander the dashboard.
-11. Within ~5 minutes, unprompted: a persistent "Watch update" toast, a dot on
-    the chat button, the chat on top of History highlighted — inside, the green
-    **"Watch update — all clear"** banner — and the email in Mailpit
-    (localhost:8025) with the same headline and one-click unsubscribe.
-12. Curtain: *"What alerts do I have?"* → the list; *"turn it off"* →
-    unsubscribed right from the chat.
+**Export `ANTHROPIC_API_KEY` in your shell too.** Not just in the `.env` files
+— the agent's turns *and* the wake narration are LLM calls, and without the key
+a watch fires silently: the row resolves, the banner never arrives. It is the
+single most common reason a scenario looks broken.
 
-Safety nets: History ships seeded example conversations (browsable without
-spending a token), and every card state lives in the gallery at
-`/storybook/agent-ui`. `-- --degrade` resets the stage for a repeat run.
+Optional, for email alerts:
 
-## Try these
+```bash
+docker run -d --name mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
+# then in .env: ALERT_EMAIL_TRANSPORT=smtp, ALERT_FROM_EMAIL=agent@localhost.test,
+# ALERT_SMTP_HOST=localhost, ALERT_SMTP_PORT=1025, ALERT_SMTP_SECURE=0
+```
 
-| Where | Say / click | You'll see |
+## Running it locally
+
+Two long-running processes, in this order:
+
+```bash
+pnpm run dev --filter webapp                                     # first
+cd internal-packages/dashboard-agent && pnpm exec trigger dev     # then this
+```
+
+> Order matters: if you restart the webapp, restart `trigger dev` after it —
+> otherwise new chat turns hang unpicked.
+
+Open any project in the dashboard; the chat button is in the page header. Emails
+land in Mailpit at http://localhost:8025.
+
+Use a project of your own — the agent works against whatever local project you
+point it at. `pnpm run db:seed` gives you the References org and its
+`hello-world` project if you don't have one.
+
+---
+
+## The scenario kit
+
+One command per thing a watch can see happen, so proving a flow locally is a
+verb rather than hand-run Redis and ClickHouse surgery:
+`apps/webapp/seed-watch-scenarios.mts`.
+
+```bash
+pnpm --filter webapp run scenarios:watch -- --help
+```
+
+It targets any local project and environment, is idempotent, wipes nothing, and
+prints the next dashboard step itself. Node 20 is the version it is run on.
+
+Every command takes `--project <ref-or-slug>` and `--env <dev|staging|prod|slug>`
+(default `dev`). The walkthroughs below assume a shell alias so the flags aren't
+repeated:
+
+```bash
+alias kit='pnpm --filter webapp run scenarios:watch -- --project my-app --env dev'
+```
+
+Verbs: `queue:fill`, `queue:grow`, `queue:drain`, `error:recur`, `run:fail`,
+`run:succeed`, `health:degrade`, `health:recover`.
+
+Queue verbs need a queue that exists in that environment — the kit lists the
+ones it found if you name a queue it can't see. `email-sends` below is a
+placeholder for one of yours.
+
+### The two tasks the run scenarios need
+
+The run verbs trigger a real task through the public API, so a `trigger dev` has
+to be running for the project you target. Put this in its `src/trigger/`:
+
+```ts
+import { task, wait } from "@trigger.dev/sdk";
+
+/** Sleeps, then throws — for the run-failed watch and its auto-investigation. */
+export const slowFail = task({
+  id: "slow-fail",
+  retry: { maxAttempts: 1 },
+  run: async (payload: { seconds?: number }) => {
+    await wait.for({ seconds: payload.seconds ?? 60 });
+    throw new Error("slow-fail failed on purpose");
+  },
+});
+
+/** Sleeps, then succeeds — for the run-finished and condition-impossible cases. */
+export const slowSucceed = task({
+  id: "slow-succeed",
+  retry: { maxAttempts: 1 },
+  run: async (payload: { seconds?: number }) => {
+    await wait.for({ seconds: payload.seconds ?? 60 });
+    return { ok: true };
+  },
+});
+```
+
+`retry.maxAttempts: 1` matters: with retries on, the run stays alive through
+several attempts and the watch's window can run out before the final failure.
+Already have equivalents? Pass `--task <id>` instead.
+
+### How to read the timings
+
+A watch schedules its own next check — there is no shared cron. The first check
+lands one cadence after you confirm the card:
+
+| Cadence | Kinds | First answer |
 | --- | --- | --- |
-| prod runs page | "Is anything wrong right now?" | degraded report card (run `--degrade` first) |
-| that card | *Watch recovery* → confirm the alert offer | visible request, chip, alert channel on /alerts |
-| terminal | `--recover` | report turns ok; within ~5 min the chat wakes green + email in Mailpit |
-| a failed run | *Investigate* | live investigation card, concluded with evidence |
-| an error page | "Ping me if this error comes back" | pending watch; recurrence wakes the chat |
-| anywhere | "How many runs failed yesterday, by task?" | TRQL answer, chart on request |
-| anywhere | "What alerts do I have?" | the agent lists your subscriptions |
-| terminal | `scenarios:watch -- --help` | one command per watch condition — see [SCENARIOS.md](./SCENARIOS.md) |
+| every minute | run watches only | ~1 min |
+| every 5 min (the floor for aggregates) | queue, error, health | ~5 min |
 
-The panel's History also ships seeded example conversations — every flow
-readable without spending a token — and there's a component gallery at
-`/storybook/agent-ui` (admin only) with every card in every state.
+Windows on offer: 30 min, 1, 2, 6, 12, 24 hours. A watch answers **once**, then
+stops. Three active watches per chat, max.
+
+Every scenario below is the same three beats: **command → clicks → what
+arrives.**
+
+---
+
+## 1. A queue drains
+
+```bash
+kit queue:fill email-sends 400
+```
+
+**Clicks.** Queues → `email-sends` → **Watch…** → **Customize** → under **Tell
+me** pick **when it drains** → **Checking** `every 5 min` → **For** `1 hour` →
+**Watch**.
+
+**Confirmation.** "Watching email-sends until the queue drains." plus "Checking
+every 5 min for up to 1 hour. It reports once, then stops." A chip labelled
+`email-sends` appears above the composer.
+
+```bash
+kit queue:drain email-sends
+```
+
+**What arrives (≤5 min).** A persistent toast titled **email-sends queue
+drained** with an **Open chat** button; a dot on the chat button; in the
+transcript a banner labelled `WATCH UPDATE` with the same headline, the watch's
+note underneath, and the agent's one-line narration.
+
+Order matters: drain first and the watch one-shots (§10).
+
+## 2. A queue grows above N
+
+```bash
+kit queue:fill email-sends 50
+```
+
+**Clicks.** Queues → `email-sends` → **Watch…** → **Customize** → **if it
+grows** → **Above** `100` → **Watch**.
+
+```bash
+kit queue:grow email-sends 400
+```
+
+**What arrives (≤5 min).** "email-sends queue is still above 100" — the fact,
+not the threshold. (`queue:grow` is `queue:fill` under another name; the verb
+exists so the command reads like the watch.)
+
+## 3. A queue comes back below N
+
+```bash
+kit queue:fill email-sends 400
+```
+
+**Clicks.** **Watch…** → **Customize** → **when it's back below** → **Below**
+`100` → **Watch**.
+
+```bash
+kit queue:fill email-sends 40
+```
+
+**What arrives (≤5 min).** "email-sends queue is back below 100."
+
+## 4. A queue stops moving
+
+```bash
+kit queue:fill email-sends 400
+```
+
+**Clicks.** **Watch…** → **Customize** → **if it stops moving** → **Watch**.
+Then leave the queue alone — no further command.
+
+**What arrives (~20 min).** "email-sends queue is stuck at 400."
+
+Why 20 minutes: the condition is a streak of three checks whose depth never
+dropped, the first check has nothing to compare against, and the cadence floor
+is 5 minutes. A check that can't read a current depth freezes the streak instead
+of breaking it, so a stalled ClickHouse won't produce a false answer — and won't
+produce a true one either.
+
+## 5. Runs wait longer than the SLA
+
+```bash
+kit queue:fill email-sends 400 --age-min 30
+```
+
+`--age-min` backdates the oldest queued run, which is the number this condition
+reads.
+
+**Clicks.** **Watch…** → **Customize** → **if runs wait too long** → **Waiting
+longer than** `5` minutes → **Watch**.
+
+**What arrives (≤5 min).** "runs in email-sends are waiting 30m (over your 5m
+limit)."
+
+The queue page's **Watch…** button pre-fills this one at 5 minutes when the
+queue looks healthy, and switches to *when it drains* when the wait is already
+over the warning line — a watch is for what happens next, not for what already
+did.
+
+## 6. An error comes back
+
+```bash
+kit error:recur     # creates the error group the first time it runs
+```
+
+**Clicks.** Errors → the group the command named → **Watch…** → **Customize** →
+**if it recurs** → **For** `6 hours` → **Watch**.
+
+**Confirmation.** "Watching error c4b4a797 in case it happens again."
+
+```bash
+kit error:recur     # again, now that the watch exists
+```
+
+**What arrives (≤5 min).** "Error c4b4a797 happened again."
+
+Arm the watch **between** the two commands. A recurrence watch stamps its start
+when it is persisted and only counts occurrences after that moment, so an
+occurrence written earlier is invisible to it.
+
+## 7. The same error, investigated for you
+
+Same as §6, but in **Customize**, under **When there's an answer**, tick
+**Investigate attention outcomes** before confirming.
+
+**Confirmation** gains a line: "If it turns out badly, I'll investigate straight
+away."
+
+**What arrives.** The wake, then — without you asking — an investigation card
+that opens *in progress* ("Looking into why…") and resolves into a concluded
+verdict with tested hypotheses and cited runs, spans and the deploy. Findings
+land as their own message.
+
+Only outcomes that need attention start an investigation. Good news and neutral
+news never do — a watch that reports "stayed quiet" costs nothing.
+
+## 8. A run finishes
+
+```bash
+kit run:succeed 120
+```
+
+**Clicks.** Open the run the command printed → **Watch…** → **Customize** →
+**when it finishes** → **Checking** `every 1 min` → **Watch**.
+
+**What arrives (~1-3 min).** "Run run_xxx finished."
+
+## 9. A run fails, and gets investigated
+
+```bash
+kit run:fail 120
+```
+
+**Clicks.** Open the run → **Watch…** → **Customize** → **if it fails** → tick
+**Investigate attention outcomes** → **Checking** `every 1 min` → **Watch**.
+
+**What arrives (~1-3 min).** "Run run_xxx failed" — an error-toned banner and
+toast — then the auto-conducted investigation, as in §7.
+
+Same run, no watch: the **Investigate** button on the failed run does this on
+demand. That's the flagship path; the watch is the same investigation, started
+by the platform instead of by you.
+
+## 10. It already happened (the one-shot)
+
+```bash
+kit queue:drain email-sends
+```
+
+**Clicks.** Queues → `email-sends` → **Watch…** → **when it drains** →
+**Watch**.
+
+**What arrives — immediately, no waiting.** "That already happened, so there's
+nothing left to watch."
+
+No watch row is created: no chip, no wake, nothing to cancel. Because the check
+runs once before the row is written, the answer you get is the answer, not a
+promise of one.
+
+## 11. It can't happen any more (condition impossible)
+
+```bash
+kit run:succeed 30
+```
+
+**Clicks.** Open the run → **Watch…** → **if it fails** → **Watch**, twice
+over:
+
+- **Before** the run finishes: the watch is created, and when the run succeeds
+  it resolves "Run run_xxx succeeded" — the honest answer to "tell me if it
+  fails", not an error.
+- **After** it has already succeeded: the immediate check refuses it — "That
+  can't happen any more, so there's nothing to watch."
+
+## 12. The window runs out
+
+```bash
+kit queue:fill email-sends 40
+```
+
+**Clicks.** **Watch…** → **Customize** → **if it grows** → **Above**
+`1000000` → **For** `30 min` → **Watch**. Then do nothing.
+
+**What arrives, at the end of the window.** "email-sends queue stayed below
+1000000" — a *positive* result, toned as good news. A window running out is an
+answer, not a failure. If the last check couldn't read the queue at all you get
+"The watch ended without a confirmed answer" instead, which is the honest
+version of the same thing.
+
+## 13. Asking for a watch in words
+
+Type, in any chat:
+
+> set up a watch for that error
+
+**What arrives.** A tool row labelled *Filling in a watch*, then the same watch
+card, pre-filled, above the composer — the agent proposes, you confirm. Nothing
+is created until you press **Watch**. One card at a time; a newer proposal
+replaces an older one, and reopening the chat never re-opens it.
+
+## 14. The offer at the end of an answer
+
+Ask about an unresolved error:
+
+> why is send-order-receipt failing?
+
+**What arrives.** The answer ends with "Want me to set up a watch so you're told
+if it hits again?" and a **Set up a watch** button. Clicking it posts a visible
+request and opens the pre-filled card — same surface as §13.
+
+## 15. Health degrades, then recovers
+
+```bash
+kit health:degrade
+```
+
+The first run also writes a 7-day calm baseline for that environment, so the
+degradation has a normal to be measured against.
+
+**Clicks.** Ask "is anything wrong right now?" → the report card comes back
+**crit** → in its *Next steps* row, **Watch recovery** → **Watch**.
+
+```bash
+kit health:recover
+```
+
+**What arrives (≤5 min).** "Health recovered", green. If an email alert
+subscription was accepted, the same headline lands in Mailpit
+(http://localhost:8025).
+
+Run `health:degrade` shortly before you look, not hours before: the report's
+7-day baselines are cached in the dev server for 5 minutes, and a degradation
+left standing ages into its own baseline and starts reading as normal.
+
+---
+
+## When a scenario looks broken
+
+| Symptom | Cause |
+| --- | --- |
+| Watch resolves, no banner or toast | `ANTHROPIC_API_KEY` not exported — the narration is an LLM call |
+| Turns hang unpicked | the webapp was restarted after `trigger dev`; restart `trigger dev` |
+| "That already happened" | the state was changed before the watch was armed |
+| A recurrence watch never fires | `error:recur` ran before the watch was created |
+| "This chat is already watching that." | same condition, same environment — cancel the chip first |
+| "This chat already has 3 active watches." | the per-chat cap; cancel one |
+| A queue watch answers nothing | the queue's depth couldn't be read as current; an unreadable check is never a verdict |
+| `queue:*` says the queue doesn't exist | wrong environment — pass `--env dev` |
+| The report reads ok right after `health:degrade` | the baseline cache is 5 minutes stale; wait it out or re-run |
 
 ## What it will not do
 
