@@ -701,9 +701,9 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks). Uses the theme-mapped --muted (charcoal on
-     dark, a light grey on light) — a hardcoded charcoal chip reads as a black
-     blob in light-mode prose. Fenced blocks stay deliberately dark via shiki. */
+  /* Inline code (not in pre blocks). Theme-mapped --muted, because a hardcoded
+     charcoal chip reads as a black blob in light-mode prose. Fenced blocks stay
+     dark via shiki. */
   & code:not(pre code) {
     @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
     background-color: var(--muted);
@@ -726,7 +726,7 @@
   & table {
     @apply w-full my-2 border-collapse;
   }
-  /* Theme-mapped, not raw charcoal — a charcoal header is a black bar in
+  /* Theme-mapped, not raw charcoal: a charcoal header is a black bar in
      light-mode prose. */
   & th,
   & td {
