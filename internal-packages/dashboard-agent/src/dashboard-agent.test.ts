@@ -22,6 +22,8 @@ import {
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
   sanitizeReplayedToolInputs,
+  TURN_FAILED_MESSAGE,
+  turnFailureMessageId,
   type DashboardAgentEvalTrigger,
   type DashboardAgentStore,
 } from "./dashboard-agent";
@@ -1051,6 +1053,87 @@ describe("per-turn eval sampling", () => {
 
   it("falls back to sampling every turn when the rate is unparseable", async () => {
     expect(await turnAtRate("not-a-number", "chat_rate_bad")).toHaveLength(1);
+  });
+});
+
+describe("a turn that ends in an error", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  /**
+   * A store that keeps the transcript the way the real one does: `persistTurn`
+   * overwrites it, `appendMessage` adds one message unless its id is already there.
+   * Lets the test read history back rather than only count calls.
+   */
+  function transcriptStore(): { store: DashboardAgentStore; history: () => UIMessage[] } {
+    let messages: UIMessage[] = [];
+    const store: DashboardAgentStore = {
+      ensureChat: async () => undefined,
+      persistMessages: async (args) => void (messages = args.messages as UIMessage[]),
+      appendMessage: async (args) => {
+        const message = args.message as UIMessage;
+        if (!messages.some((m) => m.id === message.id)) messages = [...messages, message];
+      },
+      persistTurn: async (args) => void (messages = args.messages as UIMessage[]),
+      setChatTitleIfDefault: async () => undefined,
+      upsertInvestigationRevision: async () => ({
+        ok: true,
+        id: "inv_fake",
+        revision: 0,
+        created: true,
+      }),
+      findOpenInvestigation: async () => null,
+    };
+    return { store, history: () => messages };
+  }
+
+  /** A model that fails the turn, the way a provider outage does. */
+  function failingModel() {
+    return new MockLanguageModelV3({
+      doStream: async () => {
+        throw new Error("upstream_connect_error: provider said no");
+      },
+      doGenerate: async () => {
+        throw new Error("upstream_connect_error: provider said no");
+      },
+    });
+  }
+
+  it("records the failure in the transcript, in the user's words", async () => {
+    const { store, history } = transcriptStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_turn_error",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, failingModel());
+      },
+    });
+
+    const turn = await harness.sendMessage(userMessage("hi"));
+
+    // The live chunk says the same sentence the transcript keeps, so the browser
+    // and a reload never disagree, and the provider's words reach neither.
+    const errorChunk = turn.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "error"
+    ) as { errorText?: string } | undefined;
+    expect(errorChunk?.errorText).toBe(TURN_FAILED_MESSAGE);
+
+    // onTurnComplete writes after the turn-complete chunk, so give it a tick.
+    await new Promise((r) => setTimeout(r, 30));
+
+    const stored = history();
+    const failure = stored.find((message) => message.id === turnFailureMessageId(0));
+    expect(failure?.role).toBe("assistant");
+    expect(failure?.parts).toEqual([{ type: "text", text: TURN_FAILED_MESSAGE }]);
+    // The record must never carry the provider's own words.
+    expect(JSON.stringify(stored)).not.toContain("upstream_connect_error");
+    // The user's question stays in the transcript next to it.
+    expect(stored.some((message) => message.role === "user")).toBe(true);
   });
 });
 

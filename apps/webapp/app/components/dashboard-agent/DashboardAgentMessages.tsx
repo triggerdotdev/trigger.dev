@@ -19,6 +19,7 @@ import {
   ChatWakeSlot,
 } from "./chat-layout";
 import { reportBlockFromToolPart } from "./report-block-adapter";
+import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
 import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
@@ -357,6 +358,8 @@ export function DashboardAgentTurns({
   // where it landed, earlier working copies disappear.
   const investigationWinners = winningInvestigationOccurrences(stripped);
 
+  const liveError = shouldShowLiveTurnError(error, stripped) ? error : undefined;
+
   return (
     <>
       {stripped.map((message) => (
@@ -375,7 +378,9 @@ export function DashboardAgentTurns({
           <ChatProgress>{progress.label}</ChatProgress>
         </ChatTurn>
       )}
-      {error && (
+      {/* Suppressed once the transcript ends in the stored record of this same
+          failure, so a reload doesn't show the callout and the record together. */}
+      {liveError && (
         <ChatTurn>
           <ChatCardSlot>
             <Callout
@@ -400,7 +405,7 @@ export function DashboardAgentTurns({
                 )
               }
             >
-              {error.message}
+              {liveError.message}
             </Callout>
           </ChatCardSlot>
         </ChatTurn>

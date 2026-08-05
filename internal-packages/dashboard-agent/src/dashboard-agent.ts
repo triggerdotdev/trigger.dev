@@ -149,6 +149,41 @@ async function settleOpenInvestigations(store: DashboardAgentStore, chatId: stri
   }
 }
 
+/**
+ * The chat's owner, remembered per run. The id-deduped append is scoped to the
+ * user, and the error path's `onTurnComplete` gets no parsed `clientData` —
+ * parsing it may be what failed.
+ */
+const chatOwners = new Map<string, string>();
+
+/**
+ * What a failed turn leaves in the transcript. Fixed wording: the provider's error
+ * string is not something to show a user, and this is persisted forever.
+ */
+export const TURN_FAILED_MESSAGE =
+  "Something went wrong on my side, so that turn didn't finish. Ask again and I'll pick it up.";
+
+/** Stable per turn, so a re-run of the error path can't stack two records. */
+export function turnFailureMessageId(turn: number): string {
+  return `turn-error:${turn}`;
+}
+
+/**
+ * Set when this turn's stream errored. A mid-stream failure is converted to an
+ * error chunk rather than thrown, so `onTurnComplete` sees no `error` and no
+ * `finishReason` — the stream's own error hook is the only place it is visible.
+ * Reset every turn in `onTurnStart`.
+ */
+const turnErroredKey = locals.create<boolean>("dashboard-agent.turnErrored");
+
+function turnFailureMessage(turn: number): UIMessage {
+  return {
+    id: turnFailureMessageId(turn),
+    role: "assistant",
+    parts: [{ type: "text", text: TURN_FAILED_MESSAGE }],
+  };
+}
+
 function getStore(): DashboardAgentStore {
   const injected = locals.get(dashboardAgentStoreKey);
   if (injected) return injected;
@@ -1050,6 +1085,19 @@ export const dashboardAgent = chat.agent({
   // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
 
+  uiMessageStreamOptions: {
+    // The stream carries the same sentence the transcript keeps, so the live chunk
+    // and the stored record never disagree. The provider's own message is logged
+    // here and goes no further.
+    onError: (error) => {
+      locals.set(turnErroredKey, true);
+      logger.error("dashboard-agent turn failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return TURN_FAILED_MESSAGE;
+    },
+  },
+
   // Read-only tools, rebuilt per turn from the delegated token the `in` proxy
   // injects. Declared here rather than only inside run so the SDK re-applies each
   // tool's output conversion when it replays prior-turn history. The
@@ -1064,6 +1112,7 @@ export const dashboardAgent = chat.agent({
   },
 
   onChatStart: async ({ chatId, clientData }) => {
+    chatOwners.set(chatId, clientData.userId);
     await getStore().ensureChat({
       id: chatId,
       organizationId: clientData.organizationId,
@@ -1091,6 +1140,10 @@ export const dashboardAgent = chat.agent({
   },
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
+    // Set every turn, not only on chat start: a continuation run skips onChatStart.
+    if (clientData?.userId) chatOwners.set(chatId, clientData.userId);
+    locals.set(turnErroredKey, false);
+
     // Awaited, never chat.defer: a mid-stream refresh must not read an empty
     // transcript.
     await getStore().persistMessages({ chatId, messages: uiMessages });
@@ -1137,6 +1190,8 @@ export const dashboardAgent = chat.agent({
     chatAccessToken,
     lastEventId,
     runId,
+    finishReason,
+    error,
   }) => {
     const store = getStore();
 
@@ -1144,6 +1199,15 @@ export const dashboardAgent = chat.agent({
     // never settles on its own and a refresh right after the turn would read a
     // spinner that never stops.
     await settleOpenInvestigations(store, chatId);
+
+    // A turn that ended in an error is part of the conversation, not only a stream
+    // event: the browser rendered the error chunk but nothing recorded it, so
+    // reloading showed a turn that just stops.
+    const errored =
+      error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
+    const failure = errored ? turnFailureMessage(turn) : undefined;
+    // Into the accumulator too, so the next turn's wholesale write keeps it.
+    if (failure) chat.history.set([...uiMessages, failure]);
 
     // Transcript and session state in one transaction, so the next page load reads
     // both consistently.
@@ -1156,6 +1220,17 @@ export const dashboardAgent = chat.agent({
         runId,
       },
     });
+
+    // After the transcript write, and id-deduped, so a retried error path appends
+    // the record once rather than a second copy.
+    if (failure) {
+      const userId = clientData?.userId ?? chatOwners.get(chatId);
+      if (userId) {
+        await store.appendMessage({ chatId, userId, message: failure });
+      } else {
+        logger.error("dashboard-agent failed turn has no userId; skipping the append", { chatId });
+      }
+    }
 
     // Score this turn in a separate, idempotency-keyed task so it never blocks or
     // bills the agent run. Best-effort: an enqueue failure must not break the turn.
