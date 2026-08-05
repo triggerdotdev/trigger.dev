@@ -719,16 +719,16 @@ function NewApiKeyDialog({
                 {presets ? (
                   <RadioGroup value={presetId} onValueChange={setPresetId} className="space-y-4">
                     <PresetOptions presets={presets} ids={["FULL_ACCESS"]} className="grid" />
-                      <PresetGroup
-                        title="Trigger and operate tasks"
-                        presets={presets}
-                        ids={["TRIGGER_ONLY", "TASK_OPERATOR"]}
-                      />
-                      <PresetGroup
-                        title="Environment capabilities"
-                        presets={presets}
-                        ids={["ENVIRONMENT_OBSERVER", "ENVIRONMENT_OPERATOR"]}
-                      />
+                    <PresetGroup
+                      title="Trigger and operate tasks"
+                      presets={presets}
+                      ids={["TRIGGER_ONLY", "TASK_OPERATOR"]}
+                    />
+                    <PresetGroup
+                      title="Environment capabilities"
+                      presets={presets}
+                      ids={["ENVIRONMENT_OBSERVER", "ENVIRONMENT_OPERATOR"]}
+                    />
                     <PresetGroup
                       title="Deployment and configuration"
                       presets={presets}
@@ -763,7 +763,12 @@ function NewApiKeyDialog({
                     ? "Pick at least one task, or switch to all tasks."
                     : "";
                 return (
-                  <span className={cn("min-w-0 truncate text-xs", error ? "text-error" : "text-text-dimmed")}>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-xs",
+                      error ? "text-error" : "text-text-dimmed"
+                    )}
+                  >
                     {error ?? hint}
                   </span>
                 );
@@ -1025,9 +1030,7 @@ function ApiKeyScopePanel({
             const level = detail.admin ? 4 : cap ? cap[0] : 0;
             const rawScopes = cap?.[1];
             const tone: ScopeTone = SCOPE_LEVEL_TONES[level] ?? "none";
-            const rows = rawScopes?.flatMap((raw) =>
-              expandScopeString(raw, scoped, selectedTasks)
-            );
+            const rows = rawScopes?.flatMap((raw) => expandScopeString(raw, scoped, selectedTasks));
 
             return (
               <li key={key} className="border-t border-grid-dimmed py-2.5 first:border-t-0">
@@ -1038,8 +1041,8 @@ function ApiKeyScopePanel({
                       tone === "read"
                         ? "bg-blue-500"
                         : tone === "write"
-                        ? "bg-amber-500"
-                        : "bg-charcoal-600"
+                          ? "bg-amber-500"
+                          : "bg-charcoal-600"
                     )}
                   />
                   <span
@@ -1064,8 +1067,8 @@ function ApiKeyScopePanel({
                           row.startsWith("…")
                             ? "text-text-dimmed"
                             : tone === "read"
-                            ? "text-blue-400/80"
-                            : "text-amber-400/80"
+                              ? "text-blue-400/80"
+                              : "text-amber-400/80"
                         )}
                       >
                         {row}
