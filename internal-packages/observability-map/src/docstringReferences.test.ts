@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CHECKS } from "./checks/index.js";

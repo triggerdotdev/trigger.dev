@@ -6,12 +6,13 @@
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "dependencies": {
-    "typescript": "catalog:"
+    "@typescript/typescript6": "6.0.2"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1",
     "tsx": "^4.19.2",
+    "typescript": "catalog:",
     "vitest": "4.1.7"
   },
   "scripts": {

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /**
  * Source-to-source mutations for the tree-scale corpus in `mutationCorpus.test.ts`. Why they are text

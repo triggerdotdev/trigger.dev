@@ -104,7 +104,7 @@ export function createSearchParams<TParams extends ParamType>(
   return { success: true, params: new SearchParams<TParams>(parsed.params as TParams, schema) };
 }
 
-function parseSearchParams<TParams extends ParamType>(params: TParams, schema: ZodType<TParams>) {
+function parseSearchParams<TParams>(params: unknown, schema: ZodType<TParams>) {
   const parsedParams = schema.safeParse(params);
 
   if (!parsedParams.success) {
