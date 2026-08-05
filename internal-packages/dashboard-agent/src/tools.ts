@@ -48,20 +48,12 @@ import {
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
 
 /**
- * Read-only tools for the dashboard agent. The agent is firewalled from the main
- * database, so every tool reads through the public Trigger.dev API, authenticated
- * as the user with the short-lived delegated token the `in` proxy injects into the
- * turn's metadata.
- *
- * User-level reads use the delegated token directly. Environment-scoped reads first
- * exchange it for an env JWT for the current project and environment.
- *
- * Tools return `{ error }` on failure rather than throwing, so the model can
- * recover and explain instead of the turn dying.
+ * The agent is firewalled from the main database: every tool reads through the public
+ * API as the user. Tools return `{ error }` on failure rather than throwing.
  */
 
-// The per-turn context the `in` proxy injects server-side. All optional: a turn
-// that carried no token gets tools that fail closed.
+// Injected server-side by the `in` proxy. All optional: a turn with no token gets
+// tools that fail closed.
 export type DashboardAgentToolContext = {
   userActorToken?: string;
   apiOrigin?: string;
@@ -69,33 +61,21 @@ export type DashboardAgentToolContext = {
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;
   // RuntimeEnvironment id: the `{env}` component of every trigger:// URI this turn
-  // emits. Names and slugs are display-only and must never appear in a URI.
+  // emits. Names and slugs must never appear in a URI.
   environmentId?: string;
   // The dashboard path the user is on, passed as context to ask_support.
   currentPage?: string;
-  // The chat this turn belongs to. A watch belongs to a chat: it is guardrailed per
-  // chat and its wake is delivered back into this one.
   chatId?: string;
-  // Structured view of the same page, when the host could classify it. Read by
-  // get_current_page so the agent can resolve "this run" without asking.
+  // Structured view of the same page, when the host could classify it.
   pageContext?: AgentPageContext;
-  // Present only when the project has a connected GitHub repo: a signed archive
-  // pointer the code-mode file tools read from. Adds the source tools.
+  // Present only when the project has a connected GitHub repo. Adds the source tools.
   repoSnapshot?: RepoSnapshot;
-  // The narrow seam to the agent's own datastore, supplied per turn by
-  // dashboard-agent.ts. Only the investigation executor uses it.
   investigations?: InvestigationsCapability;
 };
 
 /**
- * Committing one investigation revision, the only write the tool lane performs.
- *
- * A capability rather than a database import, because this file must stay reachable
- * without `@internal/dashboard-agent-db` and its postgres/drizzle runtime.
- *
- * Without an `id` the store creates the investigation at revision 0 and returns the
- * id it generated; with one it bumps the revision atomically. A mismatched context
- * surfaces as an error the model can report instead of a silent overwrite.
+ * A capability rather than a database import, so this file stays reachable without
+ * `@internal/dashboard-agent-db`. Without an `id` the store creates at revision 0.
  */
 export type InvestigationsCapability = {
   upsert(params: {
@@ -111,9 +91,8 @@ export type InvestigationsCapability = {
 
 type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
 
-// A query POST outcome, split by blame: "query" is the server rejecting the TRQL
-// itself, with a message the model can act on; "transport" is the request or the
-// server breaking. Chart validation only fails a render on "query".
+// "query" is the server rejecting the TRQL, "transport" is the request breaking. Chart
+// validation only fails a render on "query".
 type QueryPostResult =
   | { ok: true; rows: Array<Record<string, unknown>> }
   | { ok: false; kind: "query" | "transport"; error: string };
@@ -126,9 +105,8 @@ async function apiGet(origin: string, path: string, token: string): Promise<Fetc
   return { ok: true, data: await res.json() };
 }
 
-// Swap the delegated token for an env JWT scoped to the current project and env.
-// The exchange ceilings these scopes to the token's read-only cap, so the JWT can
-// never widen the grant. Null when there is no current env, or on a denial.
+// The exchange ceilings these scopes to the delegated token's read-only cap, so the
+// JWT can never widen the grant. Null when there is no current env, or on a denial.
 async function exchangeEnvJwt(
   origin: string,
   userActorToken: string,
@@ -223,9 +201,6 @@ function curateRuns(data: unknown) {
   };
 }
 
-// Flatten the trace tree into a compact, depth-tagged list so the model can reason
-// over the timeline without the full span payloads. Capped so a deep trace stays
-// small.
 const MAX_TRACE_SPANS = 60;
 function curateTrace(data: unknown) {
   const root = (data as any)?.trace?.rootSpan;
@@ -233,8 +208,7 @@ function curateTrace(data: unknown) {
   const walk = (span: any, depth: number) => {
     if (!span || spans.length >= MAX_TRACE_SPANS) return;
     const d = span.data ?? {};
-    // The two flags are emitted only when true: absent means false, and 60 spans
-    // spelling out `isError: false` spend ~2KB of context saying nothing.
+    // The two flags are emitted only when true; absent means false.
     spans.push({
       depth,
       message: d.message,
@@ -292,16 +266,8 @@ function curateError(group: any) {
   };
 }
 
-/**
- * The health report VM, curated for a model.
- *
- * Everything carrying a judgement survives verbatim so the agent can quote the
- * report's own grades instead of re-deriving them. The per-metric `series` arrays
- * and `links` are dropped, and `seriesOmitted` records that the shape is lossy.
- *
- * `facts.trustworthy === false` means the telemetry behind the numbers is stale and
- * the prompt forbids acting on it, so the flag stays at the top level of `facts`.
- */
+// Drops the per-metric `series` arrays and `links`; `seriesOmitted` records that the
+// shape is lossy. Grades and `facts.trustworthy` survive verbatim.
 function curateReport(data: unknown) {
   const vm = (data ?? {}) as any;
   const facts = (vm.facts ?? {}) as any;
@@ -336,9 +302,8 @@ function curateReport(data: unknown) {
       delta: m.delta,
       breakdown: m.breakdown,
       annotation: m.annotation,
-      // Only the lossy case travels: "unknown" means `value` is a placeholder the
-      // model must not read as a measurement. "measured" is the default, so it is
-      // dropped.
+      // "unknown" means `value` is a placeholder, not a measurement. "measured" is the
+      // default and is dropped.
       ...(m.availability === "unknown" ? { availability: "unknown" } : {}),
       severity: m.severity,
     })),
@@ -376,9 +341,7 @@ function curateDeploy(deployment: any) {
   };
 }
 
-// Cap the run-list lookback at 30 days: anything larger or unparseable clamps down,
-// so the agent can't scan huge time ranges. Returns the effective period so the
-// model reports the window it actually queried.
+// Anything larger than 30 days, or unparseable, clamps down.
 const MAX_PERIOD_SECONDS = 30 * 24 * 60 * 60;
 const PERIOD_UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
 function clampPeriod(period: string): string {
@@ -388,14 +351,8 @@ function clampPeriod(period: string): string {
   return seconds > MAX_PERIOD_SECONDS ? "30d" : period.trim();
 }
 
-/**
- * Docs search: a JSON-RPC `tools/call` against the public docs MCP endpoint, ported
- * from the CLI's `search_docs` (packages/cli-v3/src/mcp/mintlifyClient.ts). Public
- * knowledge, so no auth and no user data.
- *
- * The endpoint answers with either JSON or a single-event SSE stream, so both are
- * handled.
- */
+// A JSON-RPC `tools/call` against the public docs MCP endpoint: no auth, no user data.
+// The endpoint answers with either JSON or a single-event SSE stream.
 const DOCS_MCP_URL = "https://trigger.dev/docs/mcp";
 const DOCS_MCP_TOOL = "search_trigger_dev";
 const DOCS_RESULT_MAX_CHARS = 20_000;
@@ -461,11 +418,7 @@ async function searchTriggerDocs(
 
 const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
-/**
- * What clicking "Show code" asks for: a fix as a fenced diff anchored to the exact
- * code that was read. Module-level so the eval can send the real prompt rather than
- * a paraphrase of it.
- */
+/** What clicking "Show code" asks for. The eval sends this exact prompt. */
 export function showCodeAskPrompt(args: { path: string; line: number; sha: string }): string {
   const shortSha = args.sha.slice(0, 7);
   return (
@@ -476,26 +429,18 @@ export function showCodeAskPrompt(args: { path: string; line: number; sha: strin
   );
 }
 
-/**
- * The window and cadence the "Watch for a repeat" handoff proposes. Defaults the
- * card shows and the user can change, not a decision: the longest window a watch may
- * have, on the aggregate floor's next step up.
- */
+/** Defaults the "Watch for a repeat" card shows, which the user can change. */
 const RECURRENCE_WATCH = { checkEveryMinutes: 15, maxHours: WATCH_MAX_HOURS } as const;
 
-// Always returns the same tool set, so it stays stable across turns while the SDK
-// replays it over prior history. With no delegated token each tool reports that
-// rather than silently disappearing.
+// Always returns the same tool set, so it stays stable while the SDK replays it over
+// prior history. With no delegated token each tool reports that instead of disappearing.
 export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSet {
   const { userActorToken, apiOrigin, projectRef, environmentName } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
   const hasAuth = Boolean(userActorToken && origin);
 
-  // Exchange lazily and once per turn: the tool set is rebuilt per turn, so this Map
-  // is exactly turn-scoped and a JWT can't outlive the turn it was minted for. Keyed
-  // by project + environment so the cache can never hand a tool a token for another
-  // scope. The promise, not the token, is cached, so concurrent calls in one step
-  // share a single in-flight exchange.
+  // Turn-scoped, since the tool set is rebuilt per turn, and keyed by project +
+  // environment. Caching the promise makes concurrent calls share one exchange.
   const envJwts = new Map<string, Promise<string | null>>();
   function getEnvJwt(refresh = false): Promise<string | null> {
     if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(null);
@@ -510,12 +455,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   }
 
   /**
-   * Run an env-scoped API call with the turn's cached JWT. `null` means there is no
-   * current environment, which the caller reports in its own words.
-   *
-   * On an unauthorized result the cache entry is dropped and the call is retried
-   * once with a fresh exchange: a cached token can have been minted right at its
-   * expiry edge. Anything else, including a second 401, is returned as-is.
+   * `null` means there is no current environment. On an unauthorized result the cache
+   * entry is dropped and the call is retried once, since a token can be minted stale.
    */
   async function withEnvJwt<T>(
     call: (jwt: string) => Promise<T>,
@@ -536,11 +477,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
   }
 
-  /**
-   * Run a TRQL query. A POST, so it can't use envApiGet, but with the same JWT cache
-   * and one-shot re-exchange on a 401. Shared by the run_query tool and chart-block
-   * validation, so both see the same window and the same errors.
-   */
+  // A POST, so it can't use envApiGet, but keeps the same JWT cache and one-shot
+  // re-exchange on a 401. Shared by run_query and chart-block validation.
   async function postQuery(
     query: string,
     period: string | undefined
@@ -568,8 +506,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     if (!attempt) return null;
     if ("error" in attempt) return { ok: false, kind: "transport", error: attempt.error };
     const res = attempt.res;
-    // The route returns 400 with { error } for invalid TRQL. Surface it so the model
-    // can fix the query rather than the turn dying.
+    // The route returns 400 with { error } for invalid TRQL.
     const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
     if (!res.ok) {
       return {
@@ -584,11 +521,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     };
   }
 
-  /**
-   * The error a chart block's query produced, or null when it is fine or can't be
-   * told. Validation is a tripwire, not a gate: with no delegated token, or on a
-   * broken request, it is skipped rather than blocking the render.
-   */
+  // Skipped rather than blocking the render when there is no token or the request broke.
   async function validateChartQuery(
     query: string,
     period: string | undefined
@@ -602,11 +535,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return result.error;
   }
 
-  /**
-   * One request to the watch-alerts routes, as the user. Failures come back as
-   * `{ error }` in the model's own terms, including the 403, whose `reason` says
-   * whether the plan or the feature flag denied it.
-   */
   async function alertsRequest(
     method: "GET" | "POST" | "DELETE",
     path: string,
@@ -631,9 +559,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       | { error?: string; reason?: string; code?: string }
       | undefined;
 
-    // 403 is a capability refusal and the host says which one. A 400 with
-    // `email_not_allowed` is a caller mistake, and its message is written to be
-    // relayed as-is.
+    // 403 is a capability refusal and `reason` says which one.
     if (res.status === 403) {
       return {
         error:
@@ -651,9 +577,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return { data };
   }
 
-  // Ask the webapp for a snapshot pinned to a run's deployed commit; it mints the
-  // scoped token and signed URL server-side. Null means the file tools fall back to
-  // the default tracked-branch snapshot.
+  // Null means the file tools fall back to the default tracked-branch snapshot.
   const fetchRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
     if (!hasAuth || !projectRef || !environmentName) return null;
     const result = await apiGet(
@@ -673,9 +597,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     };
   };
 
-  // Memoized per turn: the file tools resolve a run's snapshot on every call and the
-  // read tracker below needs the same answer to pin the read to a commit, so this is
-  // one exchange per run rather than two per call.
+  // Memoized per turn so the file tools and the read tracker below agree on the commit.
   const runSnapshots = new Map<string, Promise<RepoSnapshot | null>>();
   const resolveRunSnapshot = (runId: string): Promise<RepoSnapshot | null> => {
     let pending = runSnapshots.get(runId);
@@ -686,14 +608,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return pending;
   };
 
-  /**
-   * Which files this turn actually read, and at which commit.
-   *
-   * This is what makes a source citation evidence: the model can claim a citation
-   * for any path, but only a recorded read proves the file was opened. A source ref
-   * canonicalizes only when a read at that exact path and commit is in here, and the
-   * "Show code" button appears only when citation and read agree on both.
-   */
+  // Which files this turn read, and at which commit. A source citation canonicalizes
+  // only against a read recorded here.
   const filesReadBySha = new Map<string, Set<string>>();
 
   function recordFileRead(path: string, sha: string) {
@@ -711,17 +627,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   function shaForReadPath(path: string): string | undefined {
     const shas = filesReadBySha.get(path.replace(/^\/+/, ""));
     if (!shas || shas.size === 0) return undefined;
-    // A path read at two commits resolves to the default snapshot's, which is the one
-    // the rest of the turn is grounded in.
+    // A path read at two commits resolves to the default snapshot's.
     const preferred = ctx.repoSnapshot?.sha;
     if (preferred && shas.has(preferred)) return preferred;
     return [...shas][shas.size - 1];
   }
 
-  /**
-   * Wrap `read_file` so a successful read is recorded against the commit it came
-   * from, keeping the repo tools unaware of investigations.
-   */
+  /** Records a successful read against its commit, keeping repo-tools unaware of it. */
   function withReadTracking(repoTools: ToolSet): ToolSet {
     const readFile = repoTools.read_file;
     if (!readFile?.execute) return repoTools;
@@ -745,30 +657,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     };
   }
 
-  // The investigation this tool set is working on. Assigned by the store on the first
-  // investigation block and reused after that, so a second render revises the same
-  // card. Scoped to the tool set (one per turn), which is why the model never carries
-  // the id within a turn; across turns it passes the id back.
+  // Assigned by the store on the first investigation block and reused after that. Scoped
+  // to the tool set, so the model only passes the id back across turns.
   let currentInvestigationId: string | undefined;
 
   /**
-   * Build the canonical `trigger://` URI for one model-cited evidence ref.
-   *
-   * The model can't construct URIs — the grammar embeds the environment id, which it
-   * never sees — so it cites by what the read tools gave it and the executor builds
-   * the URI from those parts.
-   *
-   * Nothing is ever dropped: a ref that can't be canonicalized is reported back as a
-   * tool error naming it, since a silently missing source citation is exactly the
-   * code-grounding the card is supposed to prove.
-   *
-   * A source ref additionally needs this turn's read ledger to hold a read of that
-   * path at that commit. Read proof lives in the turn, so a later turn re-rendering
-   * the same card re-reads the file: a citation nobody opened is model-authored.
-   *
-   * A ref that already carries a full `trigger://` URI is parsed rather than trusted.
-   * Its kind must match the ref's, and its project and environment must be this
-   * turn's, so a URI from another scope can't be smuggled in.
+   * Builds the canonical `trigger://` URI for a cited ref. A ref that can't be
+   * canonicalized is returned as a named error, never dropped.
    */
   function canonicalizeEvidence(
     items: EvidenceRef[],
@@ -796,9 +691,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
       if (item.kind === "source") {
         const path = item.path.trim().replace(/^\/+/, "");
-        // The commit comes from this turn's read ledger and nowhere else. The turn's
-        // snapshot sha is not proof of reading, so a path the model never opened fails
-        // the render by name rather than borrowing it.
+        // The commit comes from this turn's read ledger and nowhere else: the turn's
+        // snapshot sha is not proof of reading.
         const claimed = item.sha?.trim();
         if (claimed && !wasReadThisTurn(path, claimed)) {
           errors.push(
@@ -833,8 +727,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
       let ref = item.uri.trim();
 
-      // Already a full URI: kind and scope both have to match, so a stale or borrowed
-      // URI can't ride into this card.
+      // Already a full URI: kind and scope both have to match, so a URI from another
+      // scope can't be smuggled in.
       const asUri = safeParseTriggerUri(ref);
       if (asUri.success) {
         const parsedUri = asUri.data;
@@ -849,9 +743,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           errors.push(`${ref} belongs to a different project or environment`);
           continue;
         }
-        // Re-formatted from the parse, so a hand-typed URI lands in the encoding
-        // everything else stores. A canonical URI never carries the friendly "error_"
-        // prefix, so fingerprints are normalized the same way bare ids are.
+        // A canonical URI never carries the friendly "error_" prefix.
         const normalizedUri =
           parsedUri.kind === "error"
             ? { ...parsedUri, fingerprint: parsedUri.fingerprint.replace(/^error_/, "") }
@@ -860,9 +752,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         continue;
       }
 
-      // An improvised almost-URI ("trigger://errors/error_abc", a dashboard URL): the
-      // bare id is its last path segment, so salvage that rather than encoding the
-      // whole string into a nonsense URI.
+      // An improvised almost-URI: salvage the bare id from the last path segment.
       if (ref.includes("://")) {
         const segments = ref.split("?")[0]!.split("/").filter(Boolean);
         const last = segments[segments.length - 1];
@@ -879,8 +769,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           parsed = { ...base, kind: "run", runId: ref };
           break;
         case "error":
-          // The errors API returns friendly ids ("error_<fingerprint>") but the
-          // canonical URI, and the page it resolves to, key on the raw fingerprint.
+          // The errors API returns "error_<fingerprint>" but the URI keys on the raw one.
           parsed = { ...base, kind: "error", fingerprint: ref.replace(/^error_/, "") };
           break;
         case "queue":
@@ -920,16 +809,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   }
 
   /**
-   * The card's typed next actions, decided here and never by the model.
-   *
-   * "Show code" is the strict one: it appears only when the investigation concluded,
-   * a source citation survived canonicalization with a concrete line, and that file
-   * was read this turn at that commit — the three things that make the button's
-   * promise true. Its intent is a canned `ask` grounded in the canonical source URI,
-   * so a click can't ask about a target the model improvised.
-   *
-   * The follow-ups only need a terminal outcome, and one of them an error group to
-   * point at.
+   * The card's typed next actions, decided here and never by the model. "Show code"
+   * needs a concluded card, a cited source line, and a read at that commit this turn.
    */
   function investigationCapabilities(state: InvestigationState): InvestigationCapabilities | null {
     if (state.outcome === "in_progress") return null;
@@ -967,9 +848,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
     const errorUri = cited.find((evidence) => evidence.kind === "error")?.uri;
 
-    // "Watch for a repeat" hands the Watch card a ready subject, so it needs a cited
-    // error fingerprint to pre-fill from and a cause worth watching for, which only a
-    // concluded card has. Without the fingerprint the action is left off.
+    // "Watch for a repeat" needs a cited error fingerprint to pre-fill from, so without
+    // one it is left off.
     const parsedError = errorUri ? safeParseTriggerUri(errorUri) : undefined;
     if (
       state.outcome === "concluded" &&
@@ -981,8 +861,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         label: "Watch for a repeat",
         intent: {
           kind: "watch",
-          // The spec is the pre-fill: kind, subject, and the defaults the card shows
-          // before the user customizes them. Emitting it creates nothing.
+          // A pre-fill only: emitting the spec creates nothing.
           spec: {
             kind: "error_recurrence",
             fingerprint: parsedError.data.fingerprint,
@@ -1007,16 +886,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   }
 
   /**
-   * Stamp identity onto the spec's investigation blocks, committing a revision for
-   * each first. The model emits state only; the row says which investigation it is
-   * and which revision this render makes, so the executor writes first and stamps the
-   * envelope from what came back. Other block types pass through untouched.
-   *
-   * `continueId` is the id an earlier render returned, which the model may pass back
-   * on a later turn. The turn's own closure wins when set, so the model can't redirect
-   * a render mid-investigation, and the id is only ever a pointer: the store verifies
-   * the row belongs to this chat, project and environment, so a stale or hallucinated
-   * id fails with nothing written.
+   * Commits a revision per investigation block, then stamps identity from what came
+   * back. `continueId` is only a pointer; the turn's own closure wins when set.
    */
   async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
     if (!blocks.some((block) => block.type === "investigation")) return { blocks };
@@ -1040,11 +911,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         continue;
       }
 
-      // Canonical URIs are built before anything is stored or emitted. A citation that
-      // can't be canonicalized fails the call by name: losing it quietly would leave a
-      // card claiming grounding it doesn't have. Citation building can throw on a
-      // malformed ref, and tools return {error} rather than throwing, so that lands as
-      // a named failure the model can fix and render again.
+      // Canonical URIs are built before anything is stored or emitted, and a citation
+      // that can't be canonicalized fails the call by name.
       let canonicalized: ReturnType<typeof canonicalizeInvestigationState>;
       try {
         canonicalized = canonicalizeInvestigationState(
@@ -1067,8 +935,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       }
       const state = canonicalized.state;
 
-      // A storage failure's message can carry the full SQL text, which must never
-      // reach the transcript.
+      // A storage failure's message can carry the full SQL text, which must never reach
+      // the transcript.
       let result: Awaited<ReturnType<InvestigationsCapability["upsert"]>>;
       try {
         result = await ctx.investigations.upsert({
@@ -1086,8 +954,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       }
 
       if (!result.ok) {
-        // Nothing was written, so say so rather than rendering a card whose identity
-        // couldn't be established.
+        // Nothing was written, so no card can be rendered.
         return {
           error:
             result.error === "context_mismatch"
@@ -1115,8 +982,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       rendered.push(parsed.data);
     }
 
-    // Tell the model which investigation it rendered, so it can talk about the card
-    // without inventing or tracking an id.
     return { blocks: rendered, investigationId };
   }
 
@@ -1164,8 +1029,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (!projectRef || !environmentName) {
           return { error: "No current environment is available to read tasks from." };
         }
-        // The worker-by-tag route is user-level, so this uses the delegated token
-        // directly with no env-JWT exchange.
+        // A user-level route, so it uses the delegated token with no env-JWT exchange.
         const result = await apiGet(
           origin,
           `/api/v1/projects/${projectRef}/${environmentName}/workers/current`,
@@ -1281,9 +1145,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // Forwards the question to the support assistant via the service-to-service
-    // /api/ask proxy. No user data and no delegated token: knowledge is public, so
-    // this uses a shared secret that runs server-side and never reaches the browser.
+    // No user data and no delegated token: this uses a server-side shared secret.
     ask_support: tool({
       ...askSupportSchema,
       execute: async ({ question }) => {
@@ -1305,8 +1167,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           });
           if (!res.ok)
             return { error: `The support assistant request failed (status ${res.status}).` };
-          // The endpoint streams a UI-message SSE, so the text-delta chunks accumulate
-          // into the final answer.
+          // The endpoint streams a UI-message SSE, so text-delta chunks accumulate.
           const body = await res.text();
           let answer = "";
           for (const line of body.split("\n")) {
@@ -1331,18 +1192,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // A presentation tool, not a data tool. zod validates the spec before this runs,
-    // so for most blocks execute just echoes it back for the dashboard's render
-    // registry.
-    //
-    // An `investigation` block is the exception: it is the one progressive block, so
-    // the executor owns its identity — see `renderInvestigations`.
-    //
-    // A `chart` block gets its query run here first. The panel runs that query after
-    // the turn, so a broken one would leave a chart the model never learns failed;
-    // validating now turns it into a named failure it can fix in this turn. The rows
-    // are thrown away, and the double execution is near-free thanks to ClickHouse's
-    // 30s query cache.
+    // A `chart` block's query runs here first so a broken one becomes a named failure
+    // the model can fix; the panel would run it after the turn, too late to report.
     render_view: tool({
       ...renderViewSchema,
       execute: async (view) => {
@@ -1372,9 +1223,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (!result.ok) {
           return { error: `Couldn't get the ${reportKey} report (status ${result.status}).` };
         }
-        // The report's trigger:// URI travels with the snapshot so the card can show
-        // where it came from. Built from the RuntimeEnvironment id the proxy injects,
-        // never the env name.
+        // Built from the RuntimeEnvironment id the proxy injects, never the env name.
         const uri =
           projectRef && ctx.environmentId
             ? formatTriggerUri({
@@ -1384,10 +1233,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
                 key: reportKey,
               })
             : undefined;
-        // The tool output IS the trimmed view model, so the panel's report-block
-        // adapter reads it directly. The untouched VM deliberately does not travel
-        // alongside: it would spend the model's context on fields only the renderer
-        // reads.
+        // The tool output IS the trimmed view model the panel's report block reads.
         return { ...curateReport(result.data), ...(uri ? { uri } : {}) };
       },
     }),
@@ -1448,8 +1294,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           return { deploy: curateDeploy(result.data), isCurrent: true };
         }
         // The public retrieve route is API-key-only, so find the version in the
-        // JWT-reachable list instead. One page is enough; anything older is a
-        // list_deploys question.
+        // JWT-reachable list instead.
         const result = await envApiGet("/api/v1/deployments?page[size]=100");
         if (!result) return noEnv;
         if (!result.ok) return { error: `Couldn't look up deployments (status ${result.status}).` };
@@ -1504,8 +1349,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // Context tools: no fetch, no auth. They read what the host said about this turn,
-    // or hand an intent back for the host to act on.
+    // Context tools: no fetch, no auth.
     get_current_page: tool({
       ...getCurrentPageSchema,
       execute: async () => {
@@ -1564,8 +1408,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
             break;
         }
 
-        // Re-validated through the intent schema, so a malformed id becomes a tool
-        // error the model can recover from rather than an intent the host must reject.
+        // Re-validated through the intent schema, so a malformed id becomes a tool error
+        // rather than an intent the host must reject.
         try {
           const intent = agentIntentSchema.parse({
             kind: "navigate",
@@ -1583,15 +1427,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // Proposes a watch, never creates one: it validates the spec and answers with a
-    // `watch` intent, and the user confirming the pre-filled card is the only thing
-    // that starts a watch. So the card owns consent, the cap, dedup, and the
-    // creation-time one-shot result.
+    // Proposes a watch, never creates one: the user confirming the card is what starts
+    // it, so the card owns consent, the cap and dedup.
     schedule_watch: tool({
       ...scheduleWatchSchema,
       execute: async ({ watch }) => {
-        // Re-validated through the intent schema, so a spec the contract rejects
-        // becomes a tool error the model can fix rather than an intent the host drops.
+        // Re-validated through the intent schema, so a rejected spec becomes a tool
+        // error rather than an intent the host drops.
         try {
           return { intent: agentIntentSchema.parse({ kind: "watch", spec: watch }) };
         } catch (error) {
@@ -1600,9 +1442,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
 
-    // Project-level subscriptions, so they authenticate as the user with the delegated
-    // token rather than the env JWT. Every call carries the chat id, because the API
-    // scopes its authorization through the chat the way watch creation does.
+    // Project-level, so these use the delegated token, not the env JWT. Every call
+    // carries the chat id, which is what the API scopes its authorization through.
     list_alerts: tool({
       ...listAlertsSchema,
       execute: async () => {

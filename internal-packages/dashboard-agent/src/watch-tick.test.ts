@@ -15,12 +15,6 @@ import {
 } from "./watch-tick";
 import type { WatchWakeAction } from "./dashboard-agent";
 
-/**
- * The tick's lifecycle, driven through the `deps` seam: a fake store over in-memory
- * rows that keep the real queries' guards, a fake fetch, and a fake session append.
- * What is under test is the ordering, which is where a wake gets lost or sent twice.
- */
-
 function payloadFor(tick: number): WatchTickPayload {
   return {
     watchId: "watch_1",
@@ -69,11 +63,8 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
   } as Watch;
 }
 
-// A store over one or more rows, guarded exactly like the real queries: the
-// generation claim only lands on an `active` row still on the previous generation,
-// the condition transition only on an `active` row, and the release / delivered marks
-// only on the claim whose fencing token the row still carries. Several rows because a
-// batch tick's isolation is only real if its watches are separate rows.
+// Guarded exactly like the real queries. Several rows, because a batch tick's
+// isolation is only real if its watches are separate rows.
 function fakeStore(first: Watch, ...rest: Watch[]) {
   const rows = [first, ...rest];
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -95,8 +86,7 @@ function fakeStore(first: Watch, ...rest: Watch[]) {
       calls.claims.push(params);
       const row = byId.get(params.id);
       if (!row || row.status !== "active") return null;
-      // Resumable like the real query: the previous generation or this one, never one
-      // further ahead.
+      // Resumable like the real query: the previous generation or this one.
       if (row.tickCount !== params.generation - 1 && row.tickCount !== params.generation) {
         return null;
       }
@@ -134,8 +124,7 @@ function fakeStore(first: Watch, ...rest: Watch[]) {
       calls.transition.push(params);
       const row = byId.get(params.id);
       if (!row || row.status !== "active") return null;
-      // Mirrors the query layer: the two-value status is derived from the resolution,
-      // never passed in alongside it.
+      // Mirrors the query layer: status is derived from the resolution.
       const status = watchResolutionToWireStatus(params.resolution);
       row.status = status;
       row.resolution = params.resolution;
@@ -254,10 +243,8 @@ describe("runWatchTick", () => {
     const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
 
     expect(result).toEqual({ outcome: "pending", tickCount: 4 });
-    // The counter moved exactly once, in the claim.
     expect(calls.claims).toEqual([{ id: "watch_1", generation: 4 }]);
     expect(row.tickCount).toBe(4);
-    // Not flagged final: the watch still has an hour left.
     expect(fetchCalls[0]?.url).toBe(
       "http://localhost:3030/api/v1/dashboard-agent/watches/watch_1/check"
     );
@@ -266,7 +253,6 @@ describe("runWatchTick", () => {
     ).toBe("Bearer watch_token");
     expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({});
 
-    // The successor carries the next generation in both the payload and the key.
     expect(calls.checks).toEqual([{ id: "watch_1", lastResult: {} }]);
     expect(triggers).toEqual([
       {
@@ -308,12 +294,10 @@ describe("runWatchTick", () => {
       facts: { verified: true, status: "COMPLETED", durationMs: 4200 },
       note: "tell me when the receipt run finishes",
     });
-    // Marked only after the append, and under the claim's own token.
     expect(calls.delivered).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     expect(notified).toEqual(["watch_1"]);
   });
 
-  // The tick never judges the consent: it carries the flag and tells the webapp.
   it("the wake carries the row's investigate-on-attention consent, and kicks the investigation", async () => {
     const { store } = fakeStore(watchRow({ investigateOnAttention: true }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
@@ -357,8 +341,6 @@ describe("runWatchTick", () => {
     expect(kicked).toEqual([]);
   });
 
-  // The wake is already delivered by the time the kick runs, so losing the follow-up
-  // beats re-delivering the wake.
   it("a failing investigate kick does not fail the tick", async () => {
     const { store, row } = fakeStore(watchRow({ investigateOnAttention: true }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
@@ -383,8 +365,6 @@ describe("runWatchTick", () => {
     expect(row.deliveryStatus).toBe("delivered");
   });
 
-  // An expiry can warrant attention too, so the kick is not gated on `fired` the way
-  // the alert is.
   it("kicks the investigation on an expiry as well", async () => {
     const { store } = fakeStore(watchRow({ tickCount: 3, investigateOnAttention: true }));
     const { fetch } = fakeFetch(() => ({ body: { result: "pending" } }));
@@ -451,7 +431,6 @@ describe("runWatchTick", () => {
   });
 
   it("a run that started and finished between two ticks fires, it does not go terminal_unsatisfied", async () => {
-    // The tick must not read "it isn't running any more" as a miss.
     const { store, row } = fakeStore(
       watchRow({ tickCount: 1, spec: { ...watchRow().spec, kind: "run_start" } as Watch["spec"] })
     );
@@ -477,14 +456,12 @@ describe("runWatchTick", () => {
 
     await expect(runWatchTick(PAYLOAD, d)).rejects.toThrow("session append failed");
 
-    // The failed append gave the claim back, so the retry doesn't have to wait it out.
     expect(row.status).toBe("fired");
     expect(row.deliveryStatus).toBe("pending");
     expect(calls.released).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     expect(calls.delivered).toHaveLength(0);
     expect(appends).toHaveLength(0);
 
-    // The retry takes the delivery-only path.
     const retry = await runWatchTick(PAYLOAD, d);
     expect(retry).toEqual({ outcome: "delivered_only" });
     expect(calls.transition).toHaveLength(1);
@@ -493,8 +470,6 @@ describe("runWatchTick", () => {
   });
 
   it("two concurrent invocations of the same generation wake the chat exactly once", async () => {
-    // The tick claim is resumable, so two invocations owning the same generation both
-    // reach the delivery. Only the delivery claim keeps that from being two wakes.
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 1 } } }));
     const { appends, deliver } = fakeDeliver();
@@ -506,7 +481,6 @@ describe("runWatchTick", () => {
       await Promise.all([runWatchTick(payloadFor(4), d), runWatchTick(payloadFor(4), d)])
     ).map((result) => result.outcome);
 
-    // Both reached the delivery, and only one got the claim.
     expect(calls.deliveryClaims).toHaveLength(2);
     expect(appends).toHaveLength(1);
     expect(calls.delivered).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
@@ -518,9 +492,6 @@ describe("runWatchTick", () => {
   });
 
   it("a live delivery claim is left alone, and a dead one is recovered", async () => {
-    // A deliverer that claimed the wake and died leaves the row `delivering`. While the
-    // claim is fresh it is somebody's to hold; once stale, nothing else would ever
-    // wake the chat, so the next invocation takes it.
     const fresh = fakeStore(
       watchRow({
         status: "fired",
@@ -591,14 +562,11 @@ describe("runWatchTick", () => {
     expect(row.status).toBe("active");
     expect(calls.transition).toHaveLength(0);
     expect(appends).toHaveLength(0);
-    // Still watching, and the last good observation is kept.
     expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:4");
     expect(row.lastResult).toMatchObject({ checkFailed: true, previous: { pending: 12 } });
   });
 
   it("access_revoked: exits without resolving, delivering, or rescheduling", async () => {
-    // The endpoint cancelled the row itself before answering, and a cancellation is
-    // never narrated.
     const { store, calls, row } = fakeStore(watchRow());
     const { fetch } = fakeFetch(() => ({
       status: 403,
@@ -614,13 +582,11 @@ describe("runWatchTick", () => {
     expect(calls.checks).toHaveLength(0);
     expect(appends).toHaveLength(0);
     expect(triggers).toHaveLength(0);
-    // The generation was claimed, and nothing follows it.
     expect(row.tickCount).toBe(1);
   });
 
   it("an unrecognized 403 is a failed check, not a silent exit: it reschedules", async () => {
-    // Anything but access_revoked/cancelled/not_found leaves the row active, so it must
-    // keep ticking to its own deadline rather than be abandoned.
+    // Anything but access_revoked/cancelled/not_found leaves the row active.
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 1 }));
     const { fetch } = fakeFetch(() => ({ status: 403, body: { error: "nope" } }));
     const { appends, deliver } = fakeDeliver();
@@ -646,8 +612,7 @@ describe("runWatchTick", () => {
     expect(await runWatchTick(payloadFor(4), d)).toEqual({ outcome: "pending", tickCount: 4 });
     expect(await runWatchTick(payloadFor(5), d)).toEqual({ outcome: "pending", tickCount: 5 });
 
-    // A duplicate of generation 4 arrives after its successor has run, so it must not
-    // check, record, or start a second chain.
+    // A duplicate of generation 4, arriving after its successor ran.
     const late = await runWatchTick(payloadFor(4), d);
 
     expect(late).toEqual({ outcome: "stale" });
@@ -668,8 +633,6 @@ describe("runWatchTick", () => {
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
 
-    // The first attempt claims generation 4 and dies scheduling its successor, so
-    // nobody has generation 5.
     let failNextTrigger = true;
     const d = deps({
       store,
@@ -688,8 +651,7 @@ describe("runWatchTick", () => {
     expect(row.tickCount).toBe(4);
     expect(triggers).toHaveLength(0);
 
-    // The retry has to resume the same generation, because refusing the claim would
-    // leave the chain with no successor at all.
+    // Refusing the claim would leave the chain with no successor at all.
     const retry = await runWatchTick(payloadFor(4), d);
 
     expect(retry).toEqual({ outcome: "pending", tickCount: 4 });
@@ -698,8 +660,6 @@ describe("runWatchTick", () => {
       { id: "watch_1", generation: 4 },
     ]);
     expect(fetchCalls).toHaveLength(2);
-    // The key is a pure function of the generation, so the two attempts can only ever
-    // produce the same successor.
     expect(triggers).toHaveLength(1);
     expect(triggers[0]?.payload).toEqual(payloadFor(5));
     expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:5");
@@ -709,8 +669,6 @@ describe("runWatchTick", () => {
   });
 
   it("a resumed generation past the deadline still resolves exactly once", async () => {
-    // The resume re-runs the whole tick, including the terminal transition, and the
-    // guard on `active` is what makes that safe.
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 12 }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 1 } } }));
     const { appends, deliver } = fakeDeliver({ throwOnce: true });
@@ -790,7 +748,6 @@ describe("runWatchTick", () => {
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
 
-    // Past expiresAt (13:00), so the row makes this the final check.
     const result = await runWatchTick(
       payloadFor(31),
       deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:00:01.000Z") })
@@ -874,10 +831,6 @@ describe("runWatchTick", () => {
   });
 });
 
-// Every terminal transition writes a resolution and the observation that came with
-// it, atomically with the frozen facts. The wake carries both, and the wire keeps its
-// two-value encoding.
-
 describe("the resolution model", () => {
   const OBSERVED = {
     kind: "run_finished" as const,
@@ -900,7 +853,6 @@ describe("the resolution model", () => {
 
     await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
 
-    // One statement carried the whole answer.
     expect(calls.transition).toEqual([
       {
         id: "watch_1",
@@ -911,7 +863,6 @@ describe("the resolution model", () => {
     ]);
     expect(row.resolution).toBe("condition_met");
 
-    // The id and type are unchanged, and the meaning rides alongside.
     expect(appends[0]?.action).toMatchObject({
       type: "watch.fired",
       id: "watch:watch_1:fired",
@@ -932,15 +883,13 @@ describe("the resolution model", () => {
 
     expect(calls.transition[0]).toMatchObject({ resolution: "condition_impossible" });
     expect(row.resolution).toBe("condition_impossible");
-    // Still addressed as `expired` on the wire.
     expect(appends[0]?.action).toMatchObject({
       id: "watch:watch_1:expired",
       resolution: "condition_impossible",
     });
   });
 
-  // A watch whose condition becomes true exactly at the deadline resolves
-  // `condition_met`, not `window_completed`.
+  // A condition true exactly at the deadline resolves `condition_met`.
   it("lets the boundary check still resolve condition_met", async () => {
     const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
     const { fetch, calls: fetchCalls } = fakeFetch(() => ({
@@ -978,7 +927,6 @@ describe("the resolution model", () => {
   it("only a pending or unavailable boundary check becomes window_completed", async () => {
     for (const body of [
       { result: "pending" as const, facts: { pending: 7 } },
-      // `unavailable` arrives as a non-result: the check itself couldn't run.
       undefined,
     ]) {
       const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
@@ -997,7 +945,6 @@ describe("the resolution model", () => {
     }
   });
 
-  // Before the deadline those two resolve NOTHING — the watch keeps its state.
   it("resolves nothing on a pending or unavailable check inside the window", async () => {
     for (const body of [{ result: "pending" as const, facts: {} }, undefined]) {
       const { store, calls, row } = fakeStore(watchRow());
@@ -1017,8 +964,6 @@ describe("the resolution model", () => {
 
   it("carries an unverified observation through a window that could not be confirmed", async () => {
     const { store, calls } = fakeStore(watchRow({ tickCount: 12 }));
-    // The endpoint answered, but the check couldn't run, so it hands back an
-    // observation carrying `verified: false`.
     const { fetch } = fakeFetch(() => ({
       body: {
         result: "unavailable",
@@ -1045,10 +990,6 @@ describe("the resolution model", () => {
   });
 });
 
-// Only what batching added: isolation between the watches of one run, the chain's own
-// scheduling, and two overlapping runs still waking a chat exactly once. The per-watch
-// algorithm is the same `runWatchLifecycle` the tests above drive.
-
 describe("runWatchBatchTick", () => {
   const ENVIRONMENT = "env_1";
   const CADENCE = 5;
@@ -1068,7 +1009,6 @@ describe("runWatchBatchTick", () => {
     };
   }
 
-  /** A group of watches, each on its own chat so their wakes are distinguishable. */
   function group(count: number, overrides: Partial<Watch> = {}): Watch[] {
     return Array.from({ length: count }, (_, index) =>
       watchRow({
@@ -1081,7 +1021,6 @@ describe("runWatchBatchTick", () => {
     );
   }
 
-  /** Satisfied unless told otherwise. */
   function entry(
     watch: Watch,
     overrides: Partial<WatchBatchCheckEntry> = {}
@@ -1136,7 +1075,6 @@ describe("runWatchBatchTick", () => {
       })
     );
 
-    // One call for three watches, which is the point of the shape.
     expect(checkCalls).toBe(1);
     expect(result.outcome).toBe("ticked");
     expect(result.results.map((one) => one.outcome)).toEqual(["fired", "fired", "fired"]);
@@ -1144,7 +1082,6 @@ describe("runWatchBatchTick", () => {
     expect(calls.delivered).toHaveLength(3);
     expect(rows.map((row) => row.status)).toEqual(["fired", "fired", "fired"]);
 
-    // One reschedule for the group, keyed on the chain's epoch and generation.
     expect(result.rescheduled).toBe(true);
     expect(triggers).toHaveLength(1);
     expect(triggers[0]?.payload).toEqual(batchPayload(8));
@@ -1163,7 +1100,6 @@ describe("runWatchBatchTick", () => {
     const batch = batchDeps({
       store,
       response: { watches: rows.map((row) => entry(row)), continues: true },
-      // The middle watch's append fails, for that watch and nobody else.
       deliver: async ({ chatId }) => {
         if (chatId === "chat_2") throw new Error("session append failed");
         appends.push(chatId);
@@ -1171,8 +1107,6 @@ describe("runWatchBatchTick", () => {
       reschedule: async (payload, options) => void triggers.push({ payload, options }),
     });
 
-    // The run fails so the lost wake is retried, but only after everything else has
-    // resolved and the chain's next tick is booked.
     await expect(runWatchBatchTick(batchPayload(7), batch)).rejects.toThrow(
       "1 of 3 watches failed their tick"
     );
@@ -1181,17 +1115,12 @@ describe("runWatchBatchTick", () => {
     expect(rows[0]).toMatchObject({ status: "fired", deliveryStatus: "delivered" });
     expect(rows[2]).toMatchObject({ status: "fired", deliveryStatus: "delivered" });
 
-    // The failed one is terminal with its wake owed, the state the retry and the sweep
-    // recover, because the failed append gave its claim back.
     expect(rows[1]).toMatchObject({ status: "fired", deliveryStatus: "pending" });
 
-    // The chain survived it, because the reschedule happened before the throw.
     expect(triggers).toHaveLength(1);
   });
 
   it("a watch whose wake is owed is redelivered by the group's own tick", async () => {
-    // What the retry of the run above sees: the row is terminal, so it has left the
-    // group's active set and only a deliver-only entry reaches it.
     const [owed] = group(1, {
       status: "fired",
       deliveryStatus: "pending",
@@ -1214,7 +1143,6 @@ describe("runWatchBatchTick", () => {
     );
 
     expect(result.results).toEqual([{ watchId: "watch_1", outcome: "delivered_only" }]);
-    // No check decided and no generation claimed, only the wake.
     expect(calls.claims).toHaveLength(0);
     expect(calls.transition).toHaveLength(0);
     expect(appends).toHaveLength(1);
@@ -1222,8 +1150,6 @@ describe("runWatchBatchTick", () => {
   });
 
   it("evaluates the window boundary inside the batch: a pending final check expires the watch", async () => {
-    // The row is past its deadline, so the lifecycle treats this as the window's last
-    // evaluation, the same as a per-watch tick past the deadline would.
     const rows = group(2);
     rows[0]!.expiresAt = new Date(NOW.getTime() - 1000);
     const { store, calls } = fakeStore(rows[0]!, rows[1]!);
@@ -1244,7 +1170,6 @@ describe("runWatchBatchTick", () => {
       })
     );
 
-    // The boundary watch resolved; its neighbour, still inside its window, did not.
     expect(result.results.map((one) => one.outcome)).toEqual(["expired", "pending"]);
     expect(rows[0]?.status).toBe("expired");
     expect(rows[1]?.status).toBe("active");
@@ -1278,10 +1203,6 @@ describe("runWatchBatchTick", () => {
   });
 
   it("two overlapping batch runs wake each chat exactly once", async () => {
-    // A duplicated schedule, or a retry overlapping its own attempt: both runs get the
-    // same verdicts, both claim the same generation, and both reach every watch's
-    // transition. Only the guarded transition and the fenced delivery claim keep that
-    // from being two wakes each.
     const rows = group(2);
     const { store, calls } = fakeStore(rows[0]!, rows[1]!);
     const { appends, deliver } = fakeDeliver();
@@ -1298,7 +1219,6 @@ describe("runWatchBatchTick", () => {
       runWatchBatchTick(batchPayload(7), batch),
     ]);
 
-    // Both runs reached both delivery claims, which is the race.
     expect(calls.deliveryClaims).toHaveLength(4);
     expect(calls.transition).toHaveLength(4);
     expect(appends.map((append) => append.chatId).sort()).toEqual(["chat_1", "chat_2"]);
@@ -1376,7 +1296,6 @@ describe("runWatchBatchTick", () => {
     );
 
     expect(result.results.map((one) => one.outcome)).toEqual(["revoked", "fired"]);
-    // The revoked row was never transitioned and never narrated.
     expect(calls.transition).toHaveLength(1);
     expect(appends.map((append) => append.chatId)).toEqual(["chat_2"]);
   });
@@ -1401,14 +1320,10 @@ describe("runWatchBatchTick", () => {
       )
     ).rejects.toThrow("the batch check returned 500");
 
-    // Nothing was decided for the group and nothing rescheduled as if it had been, so
-    // the run is retried instead.
     expect(calls.checks).toHaveLength(0);
     expect(triggers).toHaveLength(0);
   });
 });
-
-// The hand-off: how a watch stops polling for itself and joins its group.
 
 describe("the hand-off to a batch chain", () => {
   it("a pending check that reports a chain stops rescheduling the per-watch tick", async () => {
@@ -1420,7 +1335,6 @@ describe("the hand-off to a batch chain", () => {
     const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
 
     expect(result).toEqual({ outcome: "handed_off", tickCount: 4 });
-    // The check still happened and was recorded; only the chain stops.
     expect(calls.checks).toHaveLength(1);
     expect(triggers).toHaveLength(0);
     expect(row.status).toBe("active");
