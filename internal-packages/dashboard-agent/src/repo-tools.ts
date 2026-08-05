@@ -277,7 +277,12 @@ export function buildRepoTools(
           };
         }
         const { content, truncated } = capRead(whole);
-        return { path, content, truncated, ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}) };
+        return {
+          path,
+          content,
+          truncated,
+          ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}),
+        };
       },
     }),
 

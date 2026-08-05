@@ -2456,7 +2456,12 @@ describe("the view-model tools don't echo the view back to the model", () => {
     return buildDashboardAgentTools({
       ...SCOPE,
       investigations: {
-        upsert: async () => ({ ok: true as const, id: `inv_${++next}`, revision: 0, created: true }),
+        upsert: async () => ({
+          ok: true as const,
+          id: `inv_${++next}`,
+          revision: 0,
+          created: true,
+        }),
       },
     });
   }
