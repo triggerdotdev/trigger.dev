@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { AUDIT_SYMBOLS } from "./checks/auditTrail.js";

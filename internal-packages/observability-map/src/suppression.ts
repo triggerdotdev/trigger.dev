@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { CHECKS } from "./checks/index.js";
 
 const KNOWN_CHECK_IDS = new Set(CHECKS.map((c) => c.id));
