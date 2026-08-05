@@ -88,16 +88,22 @@ export async function authorizeWatchEnvironment(params: {
 
   if (!environment) return { ok: false, reason: "access_revoked" };
 
-  // Primary for the same reason as the membership read above.
-  const user = await prisma.user.findFirst({
-    where: { id: params.userId },
-    select: { admin: true },
-  });
-  if (!user) return { ok: false, reason: "access_revoked" };
+  // The gate only reads `isAdmin` while the admin preview is on, so this read is skipped
+  // otherwise: it runs on every watch check, batch authorization and sweep finalisation.
+  let isAdmin = false;
+  if (env.DASHBOARD_AGENT_ADMIN_PREVIEW === "1") {
+    // Primary for the same reason as the membership read above.
+    const user = await prisma.user.findFirst({
+      where: { id: params.userId },
+      select: { admin: true },
+    });
+    if (!user) return { ok: false, reason: "access_revoked" };
+    isAdmin = user.admin;
+  }
 
   const allowed = await canAccessDashboardAgent({
     userId: params.userId,
-    isAdmin: user.admin,
+    isAdmin,
     // A background check is never an impersonated session.
     isImpersonating: false,
     organizationSlug: environment.organization.slug,
