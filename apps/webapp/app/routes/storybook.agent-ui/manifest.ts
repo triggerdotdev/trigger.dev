@@ -47,6 +47,7 @@ export const GALLERY_PAGES: GalleryPage[] = [
 ];
 
 export type GalleryGroup =
+  | "card"
   | "diagnosis"
   | "view-blocks"
   | "investigation"
@@ -79,6 +80,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
   { group: "watches", page: "chat", label: "Watch chips" },
   { group: "banner", page: "chat", label: "Context banner" },
   { group: "view-blocks", page: "view-blocks", label: "Envelope & actions" },
+  { group: "card", page: "view-blocks", label: "Card chrome" },
   { group: "diagnosis", page: "view-blocks", label: "Diagnosis card" },
   { group: "chart", page: "view-blocks", label: "Chart card" },
   { group: "report", page: "report", label: "Report view" },
@@ -175,6 +177,10 @@ export const MANIFEST: GallerySection[] = [
     title: "Actions block — the watch offer as buttons",
     group: "view-blocks",
   },
+
+  { sectionId: "card-compact", title: "Header plus a compact body", group: "card" },
+  { sectionId: "card-roomy", title: "Header plus a roomy body", group: "card" },
+  { sectionId: "card-headerless", title: "No header — body only", group: "card" },
 
   { sectionId: "diagnosis-full-high", title: "Full card, high confidence", group: "diagnosis" },
   {

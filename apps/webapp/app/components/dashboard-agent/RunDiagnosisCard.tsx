@@ -4,6 +4,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { TextLink } from "~/components/primitives/TextLink";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
+import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -164,8 +165,8 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
   const actions = block.actions ?? [];
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="space-y-1.5 border-b border-grid-bright bg-background-bright px-4 py-3">
+    <AgentCard>
+      <AgentCardHeader className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
           <ConfidenceBadge confidence={block.confidence} />
@@ -179,9 +180,9 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
             <RunLink runId={block.runId} className="block truncate font-mono text-xs" />
           </div>
         ) : null}
-      </div>
+      </AgentCardHeader>
 
-      <div className="space-y-5 px-4 py-4">
+      <AgentCardBody density="roomy">
         <p className="text-sm text-text-bright">{block.summary}</p>
 
         <Section title="Likely cause">
@@ -229,8 +230,8 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
         ) : null}
 
         {actions.length > 0 ? <DiagnosisActions actions={actions} /> : null}
-      </div>
-    </div>
+      </AgentCardBody>
+    </AgentCard>
   );
 }
 

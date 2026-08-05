@@ -10,6 +10,7 @@ import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { AgentCard, AgentCardHeader } from "./agent-card";
 import { ChatActionsRow } from "./chat-layout";
 import { renderableActions } from "./view-actions";
 
@@ -148,11 +149,11 @@ export function AgentChart({
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
+    <AgentCard>
       {block.title ? (
-        <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
+        <AgentCardHeader className="text-xs font-medium text-text-dimmed">
           {block.title}
-        </div>
+        </AgentCardHeader>
       ) : null}
       <div className={cn(AGENT_CHART_PLOT_CLASS)}>
         {state.status === "loading" ? (
@@ -174,6 +175,6 @@ export function AgentChart({
         )}
       </div>
       <ChartActions actions={block.actions ?? []} onIntent={onIntent} />
-    </div>
+    </AgentCard>
   );
 }

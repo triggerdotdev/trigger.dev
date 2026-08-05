@@ -2,6 +2,13 @@ import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
 import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { AGENT_CHART_PLOT_CLASS } from "~/components/dashboard-agent/AgentChart";
+import { ConfidenceBadge } from "~/components/dashboard-agent/agent-badges";
+import {
+  AgentCard,
+  AgentCardBody,
+  AgentCardHeader,
+  type AgentCardDensity,
+} from "~/components/dashboard-agent/agent-card";
 import { DemoChartCard, demoFixtures } from "~/components/dashboard-agent/demo";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
@@ -167,10 +174,10 @@ const badgeMatrixBlocks: DiagnosisBlock[] = DIAGNOSIS_CATEGORIES.map((category, 
 
 function EmptyChartCard() {
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
+    <AgentCard>
+      <AgentCardHeader className="text-xs font-medium text-text-dimmed">
         {demoFixtures.demoChart.title}
-      </div>
+      </AgentCardHeader>
       <div className={AGENT_CHART_PLOT_CLASS}>
         <QueryResultsChart
           rows={[]}
@@ -179,7 +186,29 @@ function EmptyChartCard() {
           timeRange={demoFixtures.demoChart.timeRange}
         />
       </div>
-    </div>
+    </AgentCard>
+  );
+}
+
+/** The card primitive on its own: both body densities, and a card with no header. */
+function CardChrome({ density, header }: { density?: AgentCardDensity; header?: boolean }) {
+  return (
+    <AgentCard>
+      {header ? (
+        <AgentCardHeader className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-text-dimmed">Card header</span>
+          <ConfidenceBadge confidence="high" />
+        </AgentCardHeader>
+      ) : null}
+      <AgentCardBody density={density}>
+        <p className="text-sm text-text-bright">
+          The card owns its border, surface and insets; the transcript owns where it sits.
+        </p>
+        <p className="text-sm text-text-dimmed">
+          A second section, so the body's density is visible as the gap between them.
+        </p>
+      </AgentCardBody>
+    </AgentCard>
   );
 }
 
@@ -195,6 +224,10 @@ const STATES: Record<string, React.ReactNode> = {
     />
   ),
   "view-blocks-actions-offer": <ViewBlocks blocks={[offerActionsBlock]} onIntent={noop} />,
+
+  "card-compact": <CardChrome header density="compact" />,
+  "card-roomy": <CardChrome header density="roomy" />,
+  "card-headerless": <CardChrome />,
 
   "diagnosis-full-high": <RunDiagnosisCard block={fullDiagnosis} />,
   "diagnosis-low-minimal": <RunDiagnosisCard block={lowConfidenceDiagnosis} />,

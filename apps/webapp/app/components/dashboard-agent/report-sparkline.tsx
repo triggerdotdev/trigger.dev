@@ -30,6 +30,7 @@ import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { cn } from "~/utils/cn";
 import { AgentStatusIcon, type AgentTone } from "./agent-badges";
+import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
 
 /** Both cards' severity type (`Severity` / `ReportSeverity`) resolves to this. */
 export type ReportSeverityKey = "ok" | "warn" | "crit";
@@ -93,11 +94,7 @@ export function ReportSeverityIcon({
 // --- card chrome ------------------------------------------------------------
 
 export function ReportCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      {children}
-    </div>
-  );
+  return <AgentCard>{children}</AgentCard>;
 }
 
 /**
@@ -115,17 +112,17 @@ export function ReportHeaderLine({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright px-3 py-2">
+    <AgentCardHeader className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium text-text-bright">{name}</span>
       {children}
       <span className="ml-auto text-xs text-text-dimmed">{meta}</span>
-    </div>
+    </AgentCardHeader>
   );
 }
 
 /** The card body. */
 export function ReportBody({ children, dimmed }: { children: ReactNode; dimmed?: boolean }) {
-  return <div className={cn("space-y-4 px-3 py-3.5", dimmed && "opacity-80")}>{children}</div>;
+  return <AgentCardBody className={cn(dimmed && "opacity-80")}>{children}</AgentCardBody>;
 }
 
 /** The verdict as one sentence: icon, the coloured phrase, then why. */

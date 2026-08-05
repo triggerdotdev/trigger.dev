@@ -19,6 +19,7 @@ import {
   SeverityBadge,
   VerdictBadge,
 } from "./agent-badges";
+import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
 import { ChatActionsRow } from "./chat-layout";
 import type { ResolvedUri } from "./ReportView";
 
@@ -149,8 +150,8 @@ export function InvestigationCard({
   const concluded = investigation.outcome === "concluded";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="space-y-1.5 border-b border-grid-bright bg-background-bright px-4 py-3">
+    <AgentCard>
+      <AgentCardHeader className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-text-dimmed">Investigation</span>
           <SeverityBadge severity={investigation.severity}>
@@ -161,9 +162,9 @@ export function InvestigationCard({
         {investigation.runId ? (
           <div className="truncate font-mono text-xs text-text-dimmed">{investigation.runId}</div>
         ) : null}
-      </div>
+      </AgentCardHeader>
 
-      <div className="space-y-5 px-4 py-4">
+      <AgentCardBody density="roomy">
         <p className="text-sm font-medium text-text-bright">{investigation.title}</p>
 
         <Section title={concluded ? "What happened" : "What we know"}>
@@ -237,7 +238,7 @@ export function InvestigationCard({
         </div>
 
         <InvestigationActions actions={block.capabilities?.actions ?? []} onIntent={onIntent} />
-      </div>
-    </div>
+      </AgentCardBody>
+    </AgentCard>
   );
 }
