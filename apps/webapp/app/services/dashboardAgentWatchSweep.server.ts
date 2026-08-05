@@ -65,7 +65,6 @@ import {
   armDashboardAgentWatchBatch,
   authorizeWatchEnvironment,
   scheduleWatchDelivery,
-  watchBatchStaleMs,
   type WatchAuthorization,
 } from "~/services/dashboardAgentWatches.server";
 import { logger } from "~/services/logger.server";
