@@ -27,6 +27,7 @@ export function loadTypescript(
   packageNames: readonly string[] = compilerPackages
 ): TypeScriptCompiler {
   const requireFromProject = createRequire(join(projectDir, "package.json"));
+  const loadErrors: Error[] = [];
 
   for (const packageName of packageNames) {
     let resolvedPackage: string;
@@ -46,12 +47,26 @@ export function loadTypescript(
     try {
       compiler = requireFromProject(resolvedPackage);
     } catch (error) {
-      throw new Error(`Failed to load "${packageName}" from ${projectDir}.`, { cause: error });
+      loadErrors.push(
+        new Error(`Failed to load "${packageName}" from ${projectDir}.`, { cause: error })
+      );
+      continue;
     }
 
     if (hasTranspileModule(compiler)) {
       return compiler;
     }
+  }
+
+  if (loadErrors.length === 1) {
+    throw loadErrors[0];
+  }
+
+  if (loadErrors.length > 1) {
+    throw new AggregateError(
+      loadErrors,
+      `Failed to load a compatible TypeScript compiler from ${projectDir}.`
+    );
   }
 
   throw new Error(

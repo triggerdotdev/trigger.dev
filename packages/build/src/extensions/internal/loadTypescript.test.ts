@@ -27,6 +27,17 @@ function createProject(packages: Record<string, string>) {
   return projectDir;
 }
 
+function createBrokenCompiler(projectDir: string, packageName = "typescript") {
+  const packageDir = join(projectDir, "node_modules", packageName);
+
+  mkdirSync(packageDir, { recursive: true });
+  writeFileSync(
+    join(packageDir, "package.json"),
+    JSON.stringify({ name: packageName, main: "index.cjs" })
+  );
+  writeFileSync(join(packageDir, "index.cjs"), 'throw new Error("broken compiler");');
+}
+
 describe("loadTypescript", () => {
   afterEach(() => {
     for (const projectDir of projectDirs) {
@@ -64,18 +75,23 @@ describe("loadTypescript", () => {
 
   it("surfaces errors from an installed compiler package", () => {
     const projectDir = createProject({});
-    const packageDir = join(projectDir, "node_modules", "typescript");
+    createBrokenCompiler(projectDir);
 
-    mkdirSync(packageDir);
-    writeFileSync(
-      join(packageDir, "package.json"),
-      JSON.stringify({ name: "typescript", main: "index.cjs" })
-    );
-    writeFileSync(join(packageDir, "index.cjs"), 'throw new Error("broken compiler");');
-
-    expect(() => loadTypescript(projectDir)).toThrowError(
+    expect(() => loadTypescript(projectDir, ["typescript"])).toThrowError(
       `Failed to load "typescript" from ${projectDir}.`
     );
+  });
+
+  it("falls back when an earlier compiler package fails to load", () => {
+    const projectDir = createProject({
+      "@typescript/typescript6": "@typescript/typescript6",
+    });
+    createBrokenCompiler(projectDir);
+
+    const compiler = loadTypescript(projectDir);
+
+    expect(compiler.version).toBe("6.0.3");
+    expect(typeof compiler.transpileModule).toBe("function");
   });
 
   it("falls back to the TypeScript 6 compatibility package for TypeScript 7", () => {
