@@ -11,6 +11,7 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
+import { sweepDashboardAgentTurnEvals } from "~/services/dashboardAgentEvalRetention.server";
 import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
 import {
   rearmDashboardAgentWatchBatches,
@@ -246,6 +247,16 @@ function initializeWorker() {
           const batches = await rearmDashboardAgentWatchBatches();
           if (batches.stale > 0) {
             logger.debug("Dashboard agent watch batch re-arm", batches);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        // Retention on the judged-turn rows. Independent of the agent being configured.
+        try {
+          const evals = await sweepDashboardAgentTurnEvals();
+          if (evals.purged > 0) {
+            logger.debug("Dashboard agent turn-eval retention", evals);
           }
         } catch (error) {
           failure ??= error;

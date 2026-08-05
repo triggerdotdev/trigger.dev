@@ -382,6 +382,30 @@ export async function insertTurnEval(db: DashboardAgentDb, row: NewChatTurnEval)
   await db.insert(chatTurnEvals).values(row).onConflictDoNothing();
 }
 
+/**
+ * Retention for the judged-turn rows. One bounded statement, oldest first, so a
+ * backlog drains over several runs instead of locking the table in one pass.
+ */
+export async function deleteTurnEvalsOlderThan(
+  db: DashboardAgentDb,
+  params: { before: Date; limit?: number }
+): Promise<number> {
+  // Raw statement because the key is composite: drizzle's `inArray` takes one column.
+  const deleted = await db.execute<{ chat_id: string }>(sql`
+    delete from ${chatTurnEvals}
+    where (${chatTurnEvals.chatId}, ${chatTurnEvals.turn}) in (
+      select ${chatTurnEvals.chatId}, ${chatTurnEvals.turn}
+      from ${chatTurnEvals}
+      where ${chatTurnEvals.createdAt} <= ${params.before.toISOString()}::timestamptz
+      order by ${chatTurnEvals.createdAt}
+      limit ${params.limit ?? 500}
+    )
+    returning ${chatTurnEvals.chatId}
+  `);
+
+  return deleted.length;
+}
+
 export type UpsertInvestigationResult =
   | { ok: true; id: string; revision: number; created: boolean }
   | { ok: false; error: "not_found" | "context_mismatch" };

@@ -85,6 +85,13 @@
       "when": 1785967899562,
       "tag": "0011_perfect_toad",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785974189237,
+      "tag": "0012_windy_silverclaw",
+      "breakpoints": true
     }
   ]
 }

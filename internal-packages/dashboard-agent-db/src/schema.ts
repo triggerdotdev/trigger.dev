@@ -104,6 +104,8 @@ export const chatTurnEvals = dashboardAgentSchema.table(
   (t) => [
     primaryKey({ columns: [t.chatId, t.turn] }),
     index("chat_turn_evals_org_created_idx").on(t.organizationId, t.createdAt.desc()),
+    // Retention scans by age across every org, so it can't use the org-leading index.
+    index("chat_turn_evals_created_idx").on(t.createdAt),
     index("chat_turn_evals_org_opps_idx")
       .on(t.organizationId, t.createdAt.desc())
       .where(
