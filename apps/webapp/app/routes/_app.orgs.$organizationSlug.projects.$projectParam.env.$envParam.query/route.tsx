@@ -253,7 +253,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// The loader carries editor seed data only; results come from the action.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("query"),
 };

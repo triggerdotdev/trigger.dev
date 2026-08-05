@@ -1156,8 +1156,6 @@ function RunBody({
               {isFinalRunStatus(run.status) ? null : (
                 <WatchButton
                   spec={runWatchRecommendation(run.friendlyId)}
-                  // Primary here: on a live run it's the page's one agent action,
-                  // dressed like Investigate is on a failed one.
                   variant="primary"
                   className="self-start"
                 />

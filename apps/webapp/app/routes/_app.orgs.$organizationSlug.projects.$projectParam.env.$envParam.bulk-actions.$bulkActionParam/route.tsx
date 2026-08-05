@@ -157,7 +157,6 @@ export const action = dashboardAction(
   }
 );
 
-// Same mapper as the bulk actions list.
 export const handle: Handle = {
   agentPageContext: (data) => bulkActionsAgentPageContext(data),
 };

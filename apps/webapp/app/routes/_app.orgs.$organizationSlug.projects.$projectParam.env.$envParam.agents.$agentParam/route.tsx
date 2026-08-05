@@ -51,7 +51,6 @@ import { parseFiniteInt } from "~/utils/searchParams";
 import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Activity, runs and sessions are deferred, so only the agent name is reported.
 export const handle: Handle = {
   agentPageContext: (data) => agentsAgentPageContext(data),
 };

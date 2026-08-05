@@ -25,9 +25,8 @@ const RequestBodySchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
-    // A delegated user-actor token authenticates as its user, like a PAT (UATs
-    // are only accepted on the routes that opt in, via this helper). The token's
-    // optional scope cap ceilings the minted env JWT below.
+    // A user-actor token authenticates as its user, like a PAT. Its scope cap ceilings the
+    // minted env JWT below.
     const authentication = await authenticateUatOrApiRequest(request);
 
     if (!authentication) {
@@ -99,9 +98,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // authentication result. Either way downstream handlers read `act.sub`
     // (e.g. the errors API records who resolved/ignored an error). An org
     // access token has no user, so `act` is omitted.
-    //
-    // `act.client` names the kind of caller, for attribution only. A UAT carries its
-    // own; a PAT exchange gets the same default the UAT mint route uses.
     const actorUserId =
       userActorId ??
       (authenticationResult.type === "personalAccessToken"

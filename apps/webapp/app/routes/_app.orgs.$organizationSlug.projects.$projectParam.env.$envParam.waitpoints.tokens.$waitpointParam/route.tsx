@@ -87,7 +87,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-// Same mapper as the wait tokens list.
 export const handle: Handle = {
   agentPageContext: (data) => waitpointsAgentPageContext(data),
 };

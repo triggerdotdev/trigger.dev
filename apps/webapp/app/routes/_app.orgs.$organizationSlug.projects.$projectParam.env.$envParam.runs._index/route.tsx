@@ -81,8 +81,7 @@ import { useRunsLiveReload } from "./useRunsLiveReload";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
 
-// Filters are read straight off the route match, not via the typedjson deserializer,
-// which mutates the match data. The contract parse keeps only the navigable fields.
+// Filters are read off the route match, not the typedjson deserializer, which mutates match data.
 export const handle: Handle = {
   agentPageContext: (data) => {
     const filters = runFiltersSchema.safeParse((data as { filters?: unknown } | null)?.filters);

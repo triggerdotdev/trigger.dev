@@ -68,7 +68,6 @@ import { engine } from "~/v3/runEngine.server";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Failure history is behind the deferred activity, so it isn't read here.
 export const handle: Handle = {
   agentPageContext: (data) => taskAgentPageContext(data),
 };

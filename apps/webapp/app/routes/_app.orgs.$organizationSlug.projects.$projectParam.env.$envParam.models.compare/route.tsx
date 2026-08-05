@@ -31,7 +31,6 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// The comparison names no single model, so it reports the section.
 export const handle: Handle = {
   agentPageContext: (data) => modelsAgentPageContext(data),
 };

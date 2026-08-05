@@ -12,11 +12,6 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
-/**
- * Why a run is waiting. Authorizes here, then hands off to the transport-independent
- * waiting-run diagnosis so the same capability can back MCP later.
- */
-
 const ParamsSchema = z.object({
   projectRef: z.string(),
   env: z.enum(["dev", "staging", "prod", "preview"]),
@@ -25,11 +20,7 @@ const ParamsSchema = z.object({
 
 type Params = z.infer<typeof ParamsSchema>;
 
-/**
- * The bearer token already pins the environment, so the path segments are a consistency
- * check. A mismatch is a 404, not a 400, so a token for one environment can't probe
- * another environment's paths.
- */
+/** A mismatch is a 404, not a 400, so a token for one environment can't probe another's paths. */
 function environmentMatchesParams(environment: AuthenticatedEnvironment, params: Params): boolean {
   if (environment.project.externalRef !== params.projectRef) return false;
   // The staging slug is stored as "stg"; preview environments are branch-scoped children.
@@ -41,7 +32,6 @@ function environmentMatchesParams(environment: AuthenticatedEnvironment, params:
 export const loader = createLoaderApiRoute(
   {
     params: ParamsSchema,
-    // Called with the environment JWT the dashboard agent mints (read:runs).
     allowJWT: true,
     findResource: async (params, auth): Promise<WaitingRunRow | undefined> => {
       if (!environmentMatchesParams(auth.environment, params)) return undefined;
@@ -60,7 +50,7 @@ export const loader = createLoaderApiRoute(
     try {
       const diagnosis = await computeWaitingRunDiagnosis(
         {
-          // Already read by findResource, so don't pay for the point-read twice.
+          // Already read by findResource.
           readRun: async () => run,
           readQueueSignals: (queueName) => readQueueSignals(environment, queueName, now),
         },
@@ -73,8 +63,7 @@ export const loader = createLoaderApiRoute(
 
       return json(diagnosis, { status: 200 });
     } catch (error) {
-      // The builder answers a thrown Response with that response; swallowing one
-      // here would turn it into a 500.
+      // Rethrow Responses: swallowing one would turn it into a 500.
       if (error instanceof Response) throw error;
       logger.error("Failed to diagnose waiting run", {
         error,

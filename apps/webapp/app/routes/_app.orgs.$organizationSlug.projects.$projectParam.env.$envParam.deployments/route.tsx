@@ -84,7 +84,6 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { deploymentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Nothing on this page is abnormal by itself, so there are no signals.
 export const handle: Handle = {
   agentPageContext: () => deploymentsAgentPageContext(),
 };

@@ -90,8 +90,6 @@ import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// The fingerprint is the one non-deferred field in this loader's payload, so this
-// costs no query.
 export const handle: Handle = {
   agentPageContext: (data) => errorAgentPageContext(data),
 };

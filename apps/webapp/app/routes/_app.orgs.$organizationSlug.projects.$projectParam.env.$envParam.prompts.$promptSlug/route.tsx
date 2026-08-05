@@ -92,7 +92,6 @@ const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
 
-// Same mapper as the prompts list.
 export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
 };

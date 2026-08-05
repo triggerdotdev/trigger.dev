@@ -272,7 +272,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
-// A paused queue means the test run won't start.
 export const handle: Handle = {
   agentPageContext: (data) => testAgentPageContext(data),
 };

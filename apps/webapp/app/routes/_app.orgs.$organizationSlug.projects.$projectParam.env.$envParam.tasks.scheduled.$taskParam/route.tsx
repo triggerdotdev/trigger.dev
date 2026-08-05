@@ -108,8 +108,6 @@ import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Same mapper as a standard task, plus the schedule counts this loader resolves
-// synchronously.
 export const handle: Handle = {
   agentPageContext: (data) => taskAgentPageContext(data),
 };

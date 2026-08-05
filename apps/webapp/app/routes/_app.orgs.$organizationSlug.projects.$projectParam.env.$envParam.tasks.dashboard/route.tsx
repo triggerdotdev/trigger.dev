@@ -31,7 +31,6 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Reports the same page kind as the tasks list. Its series are deferred.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("tasks"),
 };

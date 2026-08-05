@@ -5,15 +5,8 @@ import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 /**
- * Per-queue metrics over a window: wait latency, peak depth, throughput, throttling.
- * ClickHouse only, no Postgres and no Redis, so it stays cheap enough to poll.
- *
- * `queueParam` is the queue's name, with `%2F` for the `task/` prefix a task queue
- * carries in ClickHouse. `?type=task` (the default) adds that prefix. Nothing is
- * resolved against Postgres, so an unknown queue returns zeroed metrics, not a 404.
- *
- * Reachable with a JWT, gated on the `queue_metrics` query table, so a token scoped
- * to that table and nothing wider can read it.
+ * Per-queue metrics over a window. `queueParam` is the queue name; `?type=task` (the default)
+ * adds the `task/` prefix. An unknown queue returns zeroed metrics, not a 404.
  */
 
 const UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
@@ -32,7 +25,6 @@ const SearchParamsSchema = z.object({
   period: PeriodSchema.default("1h"),
 });
 
-// A short depth trend, not a chart: enough points to see "rising" vs "draining".
 const TREND_POINTS = 12;
 
 function periodMs(period: string): number {
@@ -62,16 +54,14 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, searchParams, authentication }) => {
-    // Remix already URL-decoded the param and the schema's transform unescaped %2F —
-    // decoding again would throw a 500 on queue names containing a literal "%".
+    // Already decoded by Remix and the schema; decoding again would 500 on a literal "%".
     const name = params.queueParam;
     const queue = searchParams.type === "task" && !name.startsWith("task/") ? `task/${name}` : name;
 
     const windowMs = periodMs(searchParams.period);
     const windowMinutes = windowMs / 60_000;
     const bucketSeconds = Math.max(60, Math.round(windowMs / 1000 / TREND_POINTS));
-    // Snap both bounds to the bucket grid so repeated calls share ClickHouse
-    // query-cache entries.
+    // Snap both bounds to the bucket grid so repeated calls share ClickHouse cache entries.
     const endMs = Math.ceil(Date.now() / (bucketSeconds * 1000)) * bucketSeconds * 1000;
     const startMs = endMs - windowMs;
 
@@ -126,16 +116,14 @@ export const loader = createLoaderApiRoute(
         startedPerMin: Number((startedCount / windowMinutes).toFixed(2)),
         throttledCount: summary?.throttled_count ?? 0,
         bucketIntervalMs: bucketSeconds * 1000,
-        // Oldest first, sparse: a bucket with no sample is omitted upstream, so
-        // gaps carry the previous depth.
+        // Oldest first; buckets with no sample are omitted, so gaps carry the previous depth.
         depthTrend: (trendRows ?? [])
           .slice()
           .sort((a, b) => a.bucket.localeCompare(b.bucket))
           .map((row) => row.depth),
       });
     } catch (error) {
-      // The builder answers a thrown Response with that response; swallowing one
-      // here would turn it into a 500.
+      // Rethrow Responses: swallowing one would turn it into a 500.
       if (error instanceof Response) throw error;
       logger.error("Failed to read queue metrics", {
         error,

@@ -22,10 +22,8 @@ type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    // Accepts a delegated user-actor token as well as a PAT, so the dashboard
-    // agent can list a project's deployed tasks on the user's behalf. There's no
-    // ability check on this route, so the token's cap isn't enforced here
-    // (matches PAT behavior).
+    // Accepts a user-actor token as well as a PAT. There's no ability check here, so the
+    // token's cap isn't enforced (matches PAT behavior).
     const authentication = await authenticateUatOrApiRequest(request);
 
     if (!authentication) {

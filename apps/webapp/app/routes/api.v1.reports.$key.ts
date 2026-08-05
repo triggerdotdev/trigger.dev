@@ -10,9 +10,8 @@ import {
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
-// Only `loader` may be exported here: the route's schemas and helpers live in
-// reportsApi.server.ts, or the vite build flags server code reachable from a
-// non-loader export.
+// Only `loader` may be exported here; the vite build flags server code reachable from a
+// non-loader export. Schemas and helpers live in reportsApi.server.ts.
 export const loader = createLoaderApiRoute(
   {
     params: ReportParamsSchema,

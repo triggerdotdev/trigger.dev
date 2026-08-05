@@ -90,7 +90,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
-  // Without access the panel never mounts, so reading the flag would be wasted.
   const promotedDashboardAgentPrompt = hasDashboardAgentAccess
     ? await getPromotedDashboardAgentPrompt({
         orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},

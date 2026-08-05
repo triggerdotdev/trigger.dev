@@ -136,8 +136,6 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
 
-// The saturation signal uses the same running/limit/burst state the "Running" tile
-// already tints. Loader data only, no extra queries.
 export const handle: Handle = {
   agentPageContext: (data) => queuesAgentPageContext(data),
 };

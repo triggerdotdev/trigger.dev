@@ -15,7 +15,6 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Sits on the layout, so it covers both settings tabs.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("settings"),
 };

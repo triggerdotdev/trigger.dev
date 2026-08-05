@@ -267,8 +267,6 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
-// The signals come from fields the loader already returns (`run.status`,
-// `run.completedAt`, and the task id off the run's own span), so this costs no queries.
 export const handle: Handle = {
   agentPageContext: (data) => runAgentPageContext(data),
 };

@@ -178,7 +178,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// All three fields come from this loader's own payload, so this costs no extra query.
 export const handle: Handle = {
   agentPageContext: (data) => scheduleAgentPageContext(data),
 };

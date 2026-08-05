@@ -75,7 +75,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-// Same loader shape as the preview branch list, so the same mapper.
 export const handle: Handle = {
   agentPageContext: (data) => branchesAgentPageContext(data),
 };

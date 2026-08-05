@@ -67,8 +67,6 @@ import { alertsWorker } from "~/v3/alertsWorker.server";
 import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Delivery failures aren't in this loader, so they aren't reported. Also covers the
-// new-alert child route.
 export const handle: Handle = {
   agentPageContext: (data) => alertsAgentPageContext(data),
 };

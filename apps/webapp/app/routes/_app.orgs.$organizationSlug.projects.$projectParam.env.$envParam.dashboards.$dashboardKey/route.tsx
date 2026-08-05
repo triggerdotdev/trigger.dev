@@ -141,7 +141,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-// Widget values are fetched client-side, so the dashboard title is the whole context.
 export const handle: Handle = {
   agentPageContext: (data) => dashboardsAgentPageContext(data),
 };

@@ -73,7 +73,6 @@ const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
 });
 
-// Same mapper as the sessions list.
 export const handle: Handle = {
   agentPageContext: (data) => sessionsAgentPageContext(data),
 };

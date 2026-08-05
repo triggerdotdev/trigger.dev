@@ -152,7 +152,6 @@ export const action = dashboardAction(
   }
 );
 
-// A region is either listed or not, so there's no health state to report.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("regions"),
 };

@@ -87,8 +87,6 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 
-// Health and the saturation signal come from the same running/queued/limit and
-// oldest-wait numbers the page renders, so this costs no queries.
 export const handle: Handle = {
   agentPageContext: (data) => queueAgentPageContext(data),
 };
@@ -277,9 +275,6 @@ export default function Page() {
   const view = value("view") === "keys" ? "keys" : "overview";
   const selectedKey = value("key");
 
-  // Two states the page already tints warning: at capacity with runs waiting, and a head-of-line
-  // run unstarted past the threshold. Paused queues are excluded, because the banner above already
-  // says why nothing is moving.
   const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
   const concurrencyLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
   const degraded =
@@ -1075,8 +1070,7 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// The oldest-wait warning threshold lives in ~/components/queues/queue-thresholds, shared with
-// the page-context mapper and the watch recommendation so they can't drift apart.
+// The oldest-wait warning threshold lives in ~/components/queues/queue-thresholds.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

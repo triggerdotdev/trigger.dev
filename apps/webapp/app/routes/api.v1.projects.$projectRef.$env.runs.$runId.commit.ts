@@ -9,13 +9,7 @@ import { resolveRunCommit } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
-/**
- * The commit a run's deployed version came from, plus that deployment's git metadata.
- * Backs the dashboard agent's `correlate_version` tool.
- *
- * Auth mirrors the repo-snapshot route: a delegated user-actor token authenticates as
- * its user, identity-only, as does a PAT.
- */
+/** The commit a run's deployed version came from, plus that deployment's git metadata. */
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -23,7 +17,6 @@ const ParamsSchema = z.object({
   runId: z.string(),
 });
 
-// The fields of WorkerDeployment.git that identify the change, not the whole blob.
 type GitMetaBlob = {
   source?: string;
   commitAuthorName?: string;

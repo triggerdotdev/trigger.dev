@@ -79,7 +79,6 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { errorsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// The list is deferred, so the page kind is all we can say without a query.
 export const handle: Handle = {
   agentPageContext: () => errorsAgentPageContext(),
 };

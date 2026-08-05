@@ -54,7 +54,6 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
 }
 
-// The logs are deferred, so the page kind is all we can say without a query.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("logs"),
 };
