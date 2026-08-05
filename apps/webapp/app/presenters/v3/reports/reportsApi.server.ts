@@ -37,10 +37,8 @@ export function reportResponse(vm: ReportViewModel, format: ReportFormatParam): 
   }
 }
 
-/**
- * Per-table, not the permissive `{ type: "query", id: "all" }`: a JWT must be scoped to every table
- * the report reads, so a partially scoped token can't reach the others.
- */
+// Per-table, not the permissive `{ type: "query", id: "all" }`: a JWT must be scoped to every
+// table the report reads, so a partially scoped token can't reach the others.
 export function reportAuthResource(key: string) {
   return everyResource(reportQueryTables(key).map((id) => ({ type: "query", id })));
 }

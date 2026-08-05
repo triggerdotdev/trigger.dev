@@ -374,8 +374,8 @@ export class CliApiClient {
   }
 
   /**
-   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
-   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" a string.
+   * `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
    */
   async getReport(
     key: string,

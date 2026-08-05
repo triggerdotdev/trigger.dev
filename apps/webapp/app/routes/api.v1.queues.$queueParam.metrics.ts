@@ -4,10 +4,8 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
-/**
- * Per-queue metrics over a window. `queueParam` is the queue name; `?type=task` (the default)
- * adds the `task/` prefix. An unknown queue returns zeroed metrics, not a 404.
- */
+// `?type=task` (the default) adds the `task/` prefix to `queueParam`. An unknown queue
+// returns zeroed metrics, not a 404.
 
 const UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
 const MAX_PERIOD_MS = 7 * UNIT_MS.d;

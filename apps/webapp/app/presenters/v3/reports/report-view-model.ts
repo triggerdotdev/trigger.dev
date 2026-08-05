@@ -67,10 +67,8 @@ export function isOk(severity: Severity): boolean {
   return severity === "ok";
 }
 
-/**
- * Trailing contiguous run of buckets breaching `threshold`, in minutes. `below: true` counts at or
- * under it. `bucketMinutes` and `timestampsMs` make it gap-aware; without them the series is gap-free.
- */
+// Trailing contiguous breach in minutes; `below: true` counts at or under `threshold`.
+// `bucketMinutes` and `timestampsMs` make it gap-aware; without them the series is gap-free.
 export function anomalyWindow(
   series: number[],
   threshold: number,

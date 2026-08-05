@@ -34,10 +34,8 @@ export function isReportKey(key: string): boolean {
 
 type ReportTablesRegistry = Record<string, Pick<ReportLoader<unknown>, "tables">>;
 
-/**
- * Input to the route's JWT scope check. An unknown key returns the union across every report, never
- * an empty list, which would make the check vacuous.
- */
+// An unknown key returns the union across every report, never an empty list, which would make
+// the route's JWT scope check vacuous.
 export function reportQueryTables(
   key: string,
   registry: ReportTablesRegistry = REPORT_REGISTRY
