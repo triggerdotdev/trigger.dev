@@ -30,6 +30,10 @@ import {
 // noticing within a minute, and the count is one indexed query.
 const UNREAD_POLL_INTERVAL_MS = 60_000;
 
+// Spread the poll out instead of letting every open tab fire on the same second.
+// Added to each delay, so tabs never settle into lockstep.
+const UNREAD_POLL_JITTER_MS = 15_000;
+
 /** Wake ids already toasted, across reloads — see the dedupe note in the poll. */
 const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
 
@@ -220,11 +224,37 @@ export function DashboardAgent({
       }
     };
 
+    // Self-scheduling rather than setInterval, so the delay can carry fresh
+    // jitter each time — tabs that happen to align drift apart again instead of
+    // hammering the same second forever.
+    let timer: number | undefined;
+    function schedule() {
+      timer = window.setTimeout(
+        tick,
+        UNREAD_POLL_INTERVAL_MS + Math.random() * UNREAD_POLL_JITTER_MS
+      );
+    }
+    async function tick() {
+      // A background tab has nowhere to show a toast and no dot the user can
+      // see, so it asks nothing. `onVisible` catches it up the moment it matters.
+      if (!document.hidden) await load();
+      if (!cancelled) schedule();
+    }
+    // Back in front of the user: refresh once, immediately, and restart the
+    // cadence from now so the catch-up isn't followed by a redundant tick.
+    const onVisible = () => {
+      if (document.hidden || cancelled) return;
+      window.clearTimeout(timer);
+      void tick();
+    };
+
     void load();
-    const interval = window.setInterval(load, UNREAD_POLL_INTERVAL_MS);
+    schedule();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [hasAccess, actionPath, setPanelOpen, openChat]);
 
