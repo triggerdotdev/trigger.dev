@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne, sql, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql, isNull } from "drizzle-orm";
 import {
   watchResolutionToWireStatus,
   type WatchObservedOutcome,
@@ -947,10 +947,27 @@ export async function listRecentWatchWakes(
     .orderBy(desc(wakeResolvedAt))
     .limit(UNREAD_WAKE_LIST_LIMIT);
 
-  return rows.map((row) => ({
+  return rows.map(toUnreadWatchWake);
+}
+
+/** The wake row shape both wake readers select. */
+type WakeRow = {
+  watchId: string;
+  chatId: string;
+  status: WatchStatus;
+  identity: string;
+  spec: PersistedWatchSpec;
+  resolution: WatchResolution | null;
+  observedOutcome: WatchObservedOutcome | null;
+  resolvedAt: Date;
+  unread: boolean;
+};
+
+function toUnreadWatchWake(row: WakeRow): UnreadWatchWake {
+  return {
     watchId: row.watchId,
     chatId: row.chatId,
-    // Narrowed by the `in` clause above.
+    // Narrowed by the status `in` clause in the wake scope.
     outcome: row.status as "fired" | "expired",
     note: row.spec.note?.trim() || row.identity,
     firedAt: new Date(row.resolvedAt),
@@ -959,7 +976,47 @@ export async function listRecentWatchWakes(
     resolution: row.resolution,
     observedOutcome: row.observedOutcome,
     unread: row.unread,
-  }));
+  };
+}
+
+/**
+ * The wake feed the dashboard polls: the recent wakes plus the unread total, in one query. The
+ * window count is evaluated before the limit, so it covers unread wakes older than the window.
+ */
+export async function readWatchWakeFeed(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string; deliveredAfter: Date }
+): Promise<{ unreadWakes: number; wakes: UnreadWatchWake[] }> {
+  const rows = await db
+    .select({
+      watchId: watches.id,
+      chatId: watches.chatId,
+      status: watches.status,
+      identity: watches.identity,
+      spec: watches.spec,
+      resolution: watches.resolution,
+      observedOutcome: watches.observedOutcome,
+      resolvedAt: wakeResolvedAt,
+      unread: sql<boolean>`${unreadWake}`,
+      recent: sql<boolean>`${wakeResolvedAt} > ${params.deliveredAfter.toISOString()}::timestamptz`,
+      unreadTotal: sql<number>`(count(*) filter (where ${unreadWake}) over ())::int`,
+    })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        ...deliveredWakeScope(params),
+        or(unreadWake, sql`${wakeResolvedAt} > ${params.deliveredAfter.toISOString()}::timestamptz`)
+      )
+    )
+    .orderBy(desc(wakeResolvedAt))
+    .limit(UNREAD_WAKE_LIST_LIMIT);
+
+  return {
+    unreadWakes: rows[0]?.unreadTotal ?? 0,
+    // Newest first, so the windowed rows are a prefix of the ordered result.
+    wakes: rows.filter((row) => row.recent).map(toUnreadWatchWake),
+  };
 }
 
 /** Same wake definition and scoping as {@link countUnreadWatchWakes}, grouped. */

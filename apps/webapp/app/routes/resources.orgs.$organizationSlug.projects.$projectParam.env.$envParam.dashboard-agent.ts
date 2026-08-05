@@ -12,8 +12,8 @@ import {
   listChatIdsWithOpenInvestigations,
   listChatIdsWithUnreadWakes,
   listChats,
-  listRecentWatchWakes,
   markChatRead,
+  readWatchWakeFeed,
   renameChat,
   setChatPinned,
 } from "@internal/dashboard-agent-db";
@@ -111,26 +111,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ error: "Not found" }, { status: 404 });
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) return json({ error: "Project not found" }, { status: 404 });
-
   const searchParams = new URL(request.url).searchParams;
 
+  // The wake poll runs once a minute per open tab, so it reads only the org id it needs
+  // and asks the agent DB one question. The list is recent deliveries, not unread ones;
+  // the client dedupes by id.
   if (searchParams.get("unread") === "1") {
-    // The list is recent deliveries, not unread ones. The client dedupes by id.
-    const [unreadWakes, wakes] = await Promise.all([
-      countUnreadWatchWakes(dashboardAgentDb, {
-        organizationId: project.organizationId,
-        userId,
-      }),
-      listRecentWatchWakes(dashboardAgentDb, {
-        organizationId: project.organizationId,
+    const scoped = await $replica.project.findFirst({
+      where: {
+        slug: projectParam,
+        organization: { slug: organizationSlug, members: { some: { userId } } },
+      },
+      select: { organizationId: true },
+    });
+    if (!scoped) return json({ error: "Project not found" }, { status: 404 });
+
+    return json(
+      await readWatchWakeFeed(dashboardAgentDb, {
+        organizationId: scoped.organizationId,
         userId,
         deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
-      }),
-    ]);
-    return json({ unreadWakes, wakes });
+      })
+    );
   }
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) return json({ error: "Project not found" }, { status: 404 });
 
   // The open chat is excluded and counted from the live transcript instead, so an
   // unpersisted turn still counts against the cap.

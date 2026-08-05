@@ -18,6 +18,7 @@ import {
   listChatIdsWithUnreadWakes,
   listRecentWatchWakes,
   markWatchDelivered,
+  readWatchWakeFeed,
   recordWatchCheck,
   releaseWatchDelivery,
   transitionWatchCondition,
@@ -843,6 +844,20 @@ describe("unread watch wakes", () => {
         { watchId: created.watchId, chatId: "chat_1", outcome: "fired", unread: true },
       ]);
       expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set(["chat_1"]));
+
+      // The poll's single query answers both halves the same way.
+      expect(await readWatchWakeFeed(ctx.agentDb, recent)).toMatchObject({
+        unreadWakes: 1,
+        wakes: [{ watchId: created.watchId, chatId: "chat_1", outcome: "fired", unread: true }],
+      });
+
+      // An unread wake from before the window still counts, but isn't narrated again.
+      expect(
+        await readWatchWakeFeed(ctx.agentDb, {
+          ...scope,
+          deliveredAfter: new Date(Date.now() + 60_000),
+        })
+      ).toMatchObject({ unreadWakes: 1, wakes: [] });
     }
   );
 });
