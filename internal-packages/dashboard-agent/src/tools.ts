@@ -19,6 +19,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { logger } from "@trigger.dev/sdk";
 import { tool, type ToolSet } from "ai";
+import type { JSONValue } from "@ai-sdk/provider";
 import {
   askSupportSchema,
   correlateVersionSchema,
@@ -322,6 +323,67 @@ function curateReport(data: unknown) {
     },
     footer: vm.footer,
     seriesOmitted: true,
+  };
+}
+
+/**
+ * What the model sees of a `render_view` result: an acknowledgement, not the card.
+ *
+ * The blocks are the panel's view model and the canonicalized copy is larger than
+ * what the model wrote, so echoing it back cost the prefix twice per investigation
+ * and again in the judge payload. Errors pass through verbatim — the prompt tells
+ * the model to read them and render again.
+ */
+export function renderViewModelOutput(output: unknown): JSONValue {
+  const result = (output ?? {}) as {
+    error?: string;
+    investigationId?: string;
+    revision?: number;
+  };
+  if (result.error !== undefined) return { ok: false, error: result.error };
+  return {
+    ok: true,
+    ...(result.investigationId ? { investigationId: result.investigationId } : {}),
+    ...(result.revision !== undefined ? { revision: result.revision } : {}),
+  };
+}
+
+/**
+ * What the model sees of a `get_report` result: the graded findings and metric
+ * values, without the render-only detail the report card draws from (per-key
+ * breakdowns, metric annotations, finding observations and exclusions, footer).
+ */
+export function getReportModelOutput(output: unknown): JSONValue {
+  const vm = (output ?? {}) as any;
+  if (vm.error !== undefined) return { error: vm.error };
+  return {
+    title: vm.title,
+    scope: vm.scope,
+    period: vm.period,
+    summary: vm.summary,
+    findings: (vm.findings ?? []).map((f: any) => ({
+      type: f.type,
+      severity: f.severity,
+      reason: f.reason,
+      read: f.read,
+      metricIds: f.metricIds,
+      recommendation: f.recommendation,
+      hedge: f.hedge,
+      anomalyWindow: f.anomalyWindow,
+      attribution: f.attribution,
+    })),
+    metrics: (vm.metrics ?? []).map((m: any) => ({
+      id: m.id,
+      value: m.value,
+      unit: m.unit,
+      normal: m.normal,
+      delta: m.delta,
+      severity: m.severity,
+      ...(m.availability === "unknown" ? { availability: "unknown" } : {}),
+    })),
+    facts: vm.facts,
+    ...(vm.uri ? { uri: vm.uri } : {}),
+    detailOnCard: true,
   };
 }
 
@@ -904,6 +966,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
     const rendered: unknown[] = [];
     let investigationId: string | undefined;
+    let revision: number | undefined;
 
     for (const block of blocks) {
       if (block.type !== "investigation") {
@@ -965,6 +1028,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
       currentInvestigationId = result.id;
       investigationId = result.id;
+      revision = result.revision;
 
       const capabilities = investigationCapabilities(state);
 
@@ -982,7 +1046,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       rendered.push(parsed.data);
     }
 
-    return { blocks: rendered, investigationId };
+    return { blocks: rendered, investigationId, revision };
   }
 
   const apiTools: ToolSet = {
@@ -1208,6 +1272,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         }
         return renderInvestigations(view.blocks, view.investigationId);
       },
+      // The client keeps the blocks; the model only gets the acknowledgement.
+      toModelOutput: ({ output }) => ({ type: "json", value: renderViewModelOutput(output) }),
     }),
 
     get_report: tool({
@@ -1236,6 +1302,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         // The tool output IS the trimmed view model the panel's report block reads.
         return { ...curateReport(result.data), ...(uri ? { uri } : {}) };
       },
+      // The card renders the full view model; the model reads the graded summary.
+      toModelOutput: ({ output }) => ({ type: "json", value: getReportModelOutput(output) }),
     }),
 
     get_queue: tool({

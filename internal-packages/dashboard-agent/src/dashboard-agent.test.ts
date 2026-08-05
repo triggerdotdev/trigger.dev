@@ -8,7 +8,12 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
 } from "@ai-sdk/provider";
-import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
+import {
+  convertToModelMessages,
+  simulateReadableStream,
+  type UIMessage,
+  type UIMessageChunk,
+} from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -2423,5 +2428,184 @@ describe("watch alert tools", () => {
       expect(typeof result.error).toBe("string");
       expect(requests).toHaveLength(0);
     }
+  });
+});
+
+/**
+ * The two tools whose output IS the panel's view model. `toModelOutput` is the seam:
+ * the client keeps the full payload, the model gets a small one. The end-to-end
+ * assertions go through `convertToModelMessages`, which is what actually replays a
+ * stored transcript back to the provider.
+ */
+describe("the view-model tools don't echo the view back to the model", () => {
+  const SCOPE = { projectRef: "proj_abc", environmentId: "env_abc" };
+
+  const investigationState = {
+    outcome: "concluded",
+    severity: "warn",
+    confidence: "high",
+    title: "Why is send-order-receipt failing?",
+    headline: "All three attempts ended in an error from the email provider.",
+    remediation: "Raise minTimeoutInMs to 30s with a factor of 2.",
+    hypotheses: [],
+    evidence: [],
+  };
+
+  function investigationTools() {
+    let next = 0;
+    return buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: {
+        upsert: async () => ({ ok: true as const, id: `inv_${++next}`, revision: 0, created: true }),
+      },
+    });
+  }
+
+  type ViewModelTool = {
+    inputSchema: { parse: (input: unknown) => unknown };
+    execute: (input: unknown, opts: unknown) => Promise<any>;
+    toModelOutput: (args: { toolCallId: string; input: any; output: any }) => any;
+  };
+
+  /** The tool-result part the panel stores and replays, as the SDK shapes it. */
+  function toolMessage(toolName: string, input: unknown, output: unknown): UIMessage {
+    return {
+      id: `msg_${toolName}`,
+      role: "assistant",
+      parts: [
+        {
+          type: `tool-${toolName}`,
+          toolCallId: "tc1",
+          state: "output-available",
+          input,
+          output,
+        } as UIMessage["parts"][number],
+      ],
+    };
+  }
+
+  async function replayedToolOutput(
+    tools: ReturnType<typeof buildDashboardAgentTools>,
+    message: UIMessage
+  ) {
+    const modelMessages = await convertToModelMessages([message], { tools });
+    const part = modelMessages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .find((p) => (p as { type: string }).type === "tool-result");
+    return (part as { output: { type: string; value: unknown } }).output;
+  }
+
+  it("render_view hands the blocks to the client and an acknowledgement to the model", async () => {
+    const tools = investigationTools();
+    const renderView = tools.render_view as ViewModelTool;
+
+    const input = renderView.inputSchema.parse({
+      blocks: [{ type: "investigation", investigation: investigationState }],
+    });
+    const output = await renderView.execute(input, {});
+
+    // The client path is untouched: the canonicalized blocks are still the result.
+    expect(output.blocks[0].investigation.title).toBe(investigationState.title);
+    expect(output.investigationId).toBe("inv_1");
+
+    // The model path carries identity and nothing else.
+    const small = { type: "json", value: { ok: true, investigationId: "inv_1", revision: 0 } };
+    expect(renderView.toModelOutput({ toolCallId: "tc1", input, output })).toEqual(small);
+
+    // And that is what a replayed transcript sends, not the blocks.
+    const replayed = await replayedToolOutput(tools, toolMessage("render_view", input, output));
+    expect(replayed).toEqual(small);
+    expect(JSON.stringify(replayed)).not.toContain(investigationState.headline);
+    expect(JSON.stringify(replayed).length).toBeLessThan(
+      JSON.stringify({ type: "json", value: output }).length / 4
+    );
+  });
+
+  it("render_view still hands a render failure to the model verbatim", async () => {
+    // No investigations capability, so the render is refused by name.
+    const tools = buildDashboardAgentTools(SCOPE);
+    const renderView = tools.render_view as ViewModelTool;
+    const input = renderView.inputSchema.parse({
+      blocks: [{ type: "investigation", investigation: investigationState }],
+    });
+    const output = await renderView.execute(input, {});
+
+    expect(output.error).toContain("Investigations aren't available");
+    expect(renderView.toModelOutput({ toolCallId: "tc1", input, output })).toEqual({
+      type: "json",
+      value: { ok: false, error: output.error },
+    });
+  });
+
+  it("get_report keeps the card's detail off the model's copy", () => {
+    const tools = buildDashboardAgentTools(SCOPE);
+    const getReport = tools.get_report as ViewModelTool;
+
+    // The curated view model the panel's report block reads.
+    const output = {
+      title: "Health",
+      scope: "prod",
+      period: "1h",
+      baselineLabel: "the last 7 days",
+      generatedAt: "2026-08-05T00:00:00.000Z",
+      windowMinutes: 60,
+      summary: { severity: "crit" },
+      findings: [
+        {
+          type: "flow",
+          severity: "crit",
+          reason: "flow.throttled",
+          metricIds: ["pending"],
+          recommendation: { code: "flow.raise_limit" },
+          observations: [{ code: "flow.dlq_growing", evidence: { dlq: 40 } }],
+          exclusions: [{ code: "flow.not_deploy", evidence: { deploys: 0 } }],
+        },
+      ],
+      metrics: [
+        {
+          id: "pending",
+          value: 4200,
+          unit: "count",
+          aggregation: "max",
+          normal: 40,
+          severity: "crit",
+          breakdown: Object.fromEntries(
+            Array.from({ length: 60 }, (_, i) => [`task/queue-${i}`, i * 7])
+          ),
+          annotation: { code: "pending.estimated", value: 4200 },
+        },
+      ],
+      facts: { trustworthy: true, throughput: 12 },
+      footer: { code: "report.footer" },
+      seriesOmitted: true,
+      uri: "trigger://proj_abc/env_abc/report/health",
+    };
+
+    const modelOutput = getReport.toModelOutput({ toolCallId: "tc1", input: {}, output });
+    const value = modelOutput.value as Record<string, any>;
+
+    // What the answer is written from survives.
+    expect(value.summary).toEqual({ severity: "crit" });
+    expect(value.findings[0]).toMatchObject({ reason: "flow.throttled", severity: "crit" });
+    expect(value.metrics[0]).toMatchObject({ id: "pending", value: 4200, normal: 40 });
+    expect(value.facts).toEqual({ trustworthy: true, throughput: 12 });
+    expect(value.uri).toBe(output.uri);
+
+    // What only the card draws does not.
+    const serialized = JSON.stringify(modelOutput);
+    expect(serialized).not.toContain("breakdown");
+    expect(serialized).not.toContain("observations");
+    expect(serialized).not.toContain("footer");
+    expect(serialized.length).toBeLessThan(JSON.stringify(output).length / 2);
+  });
+
+  it("get_report passes a failure through untouched", () => {
+    const tools = buildDashboardAgentTools(SCOPE);
+    const getReport = tools.get_report as ViewModelTool;
+    const output = { error: "Couldn't get the health report (status 503)." };
+    expect(getReport.toModelOutput({ toolCallId: "tc1", input: {}, output })).toEqual({
+      type: "json",
+      value: output,
+    });
   });
 });
