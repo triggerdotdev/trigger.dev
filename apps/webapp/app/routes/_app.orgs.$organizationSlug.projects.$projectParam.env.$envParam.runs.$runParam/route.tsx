@@ -267,10 +267,8 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
-// Tell the dashboard agent which run it's looking at, and whether something is
-// wrong with it: a recent failure or a run stuck waiting. Both come from fields
-// the loader already returns (`run.status`, `run.completedAt`, and the task id off
-// the run's own span), so this costs no queries — see `runAgentPageContext`.
+// The signals come from fields the loader already returns (`run.status`,
+// `run.completedAt`, and the task id off the run's own span), so this costs no queries.
 export const handle: Handle = {
   agentPageContext: (data) => runAgentPageContext(data),
 };

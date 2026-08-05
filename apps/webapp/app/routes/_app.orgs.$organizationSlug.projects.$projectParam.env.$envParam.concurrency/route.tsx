@@ -77,9 +77,8 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's on the concurrency page. This page manages the
-// limit and carries no live running/queued counts, so there's nothing here to
-// call saturated — that lives on the queues page.
+// This page carries no live running/queued counts, so there's no saturation signal
+// here. That lives on the queues page.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("concurrency"),
 };

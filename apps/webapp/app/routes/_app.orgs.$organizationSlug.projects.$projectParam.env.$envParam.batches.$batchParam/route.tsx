@@ -70,8 +70,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-// Tell the dashboard agent which batch this is, its status and how many of its runs
-// failed.
 export const handle: Handle = {
   agentPageContext: (data) => batchAgentPageContext(data),
 };

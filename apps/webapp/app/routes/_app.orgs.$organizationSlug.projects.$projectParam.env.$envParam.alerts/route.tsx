@@ -67,9 +67,8 @@ import { alertsWorker } from "~/v3/alertsWorker.server";
 import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent how many alert channels this environment has and how
-// many are switched off. Delivery failures aren't in this loader, so they aren't
-// claimed. Also covers the new-alert child route.
+// Delivery failures aren't in this loader, so they aren't reported. Also covers the
+// new-alert child route.
 export const handle: Handle = {
   agentPageContext: (data) => alertsAgentPageContext(data),
 };

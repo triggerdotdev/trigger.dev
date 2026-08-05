@@ -15,8 +15,7 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's in project settings. Sits on the layout so it
-// covers both settings tabs, neither of which has state worth reporting.
+// Sits on the layout, so it covers both settings tabs.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("settings"),
 };

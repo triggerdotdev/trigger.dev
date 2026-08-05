@@ -39,8 +39,6 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's on the API keys page, so it offers key and
-// authentication questions rather than generic ones.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("apikeys"),
 };

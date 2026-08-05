@@ -92,8 +92,7 @@ const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
 
-// Same mapper as the list: with one prompt in the payload it names that prompt and
-// whether an override is live.
+// Same mapper as the prompts list.
 export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
 };

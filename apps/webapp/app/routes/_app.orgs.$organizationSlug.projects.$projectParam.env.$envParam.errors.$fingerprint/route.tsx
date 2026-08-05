@@ -90,9 +90,8 @@ import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent which error group it's looking at. The fingerprint is
-// the one non-deferred field in this loader's payload, so it costs no query —
-// see `errorAgentPageContext`.
+// The fingerprint is the one non-deferred field in this loader's payload, so this
+// costs no query.
 export const handle: Handle = {
   agentPageContext: (data) => errorAgentPageContext(data),
 };
@@ -593,7 +592,7 @@ function ErrorDetailSidebar({
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
-        {/* Hand this error group to the agent. Hidden when the agent isn't available. */}
+        {/* Both buttons self-hide when the agent isn't available. */}
         <div className="flex shrink-0 items-center gap-1">
           <InvestigateButton
             prompt={errorGroupPrompt(
@@ -602,7 +601,6 @@ function ErrorDetailSidebar({
             )}
             label="Investigate this error"
           />
-          {/* Same entry, this object's recommendation: if it happens again. */}
           <WatchButton
             spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
           />

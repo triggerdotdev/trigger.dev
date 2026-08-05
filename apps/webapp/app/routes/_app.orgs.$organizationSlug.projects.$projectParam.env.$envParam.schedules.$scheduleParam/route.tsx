@@ -178,8 +178,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// Tell the dashboard agent which schedule this is, whether it's enabled, and
-// whether its newest run just failed — all from this loader's own payload.
+// All three fields come from this loader's own payload, so this costs no extra query.
 export const handle: Handle = {
   agentPageContext: (data) => scheduleAgentPageContext(data),
 };

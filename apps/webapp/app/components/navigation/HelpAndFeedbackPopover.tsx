@@ -126,12 +126,10 @@ export function HelpAndFeedback({
           align="start"
         >
           <Fragment>
-            {/* The dashboard agent, from the help menu. This popover lives in the app
-                layout — ABOVE the agent's provider, which the environment layout mounts
-                — so it opens the panel through the open-request bridge rather than
-                context, and hides itself when no host is mounted (the agent is gated
-                off, or the page is outside an environment). The keystroke is registered
-                by that host; this only shows it. */}
+            {/* This popover lives in the app layout, above the agent's provider, so it
+                opens the panel through the open-request bridge rather than context, and
+                hides when no host is mounted. The host registers the keystroke; this
+                only shows it. */}
             {agentAvailable && (
               <div className="flex flex-col gap-1 p-1">
                 <SideMenuItemButton

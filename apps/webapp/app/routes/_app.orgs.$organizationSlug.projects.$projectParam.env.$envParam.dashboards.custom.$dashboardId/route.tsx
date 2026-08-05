@@ -183,7 +183,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// Name the custom dashboard the user is on.
 export const handle: Handle = {
   agentPageContext: (data) => dashboardsAgentPageContext(data),
 };

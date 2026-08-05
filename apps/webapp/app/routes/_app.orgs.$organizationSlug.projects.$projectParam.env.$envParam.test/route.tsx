@@ -38,7 +38,6 @@ import { EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
 import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's on the test page, with no task picked yet.
 export const handle: Handle = {
   agentPageContext: (data) => testAgentPageContext(data),
 };

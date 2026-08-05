@@ -56,8 +56,6 @@ import {
 import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's on the bulk actions list, and whether any action is
-// still working through its runs.
 export const handle: Handle = {
   agentPageContext: (data) => bulkActionsAgentPageContext(data),
 };

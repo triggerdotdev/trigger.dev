@@ -21,8 +21,7 @@ import { EnvironmentParamSchema, v3BuiltInDashboardPath } from "~/utils/pathBuil
 import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// The dashboard chooser: no dashboard to read yet, so the panel offers to chart
-// something instead.
+// The chooser has no dashboard selected yet, so there's nothing to read.
 export const handle: Handle = {
   agentPageContext: (data) => dashboardsAgentPageContext(data),
 };

@@ -55,9 +55,7 @@ import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent which deployment it's looking at, and its status, so a
-// deploy that didn't land gets an investigate chip. Both come off the loader's
-// own payload — see `deploymentAgentPageContext`.
+// Both fields come off the loader's own payload, so this costs no extra query.
 export const handle: Handle = {
   agentPageContext: (data) => deploymentAgentPageContext(data),
 };

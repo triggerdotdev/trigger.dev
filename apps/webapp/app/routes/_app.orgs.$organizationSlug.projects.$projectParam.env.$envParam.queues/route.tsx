@@ -136,9 +136,8 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
 
-// Tell the dashboard agent it's looking at the queues list, and whether the
-// environment's concurrency is pinned — the same running/limit/burst state the
-// "Running" tile already tints. Loader data only, no extra queries.
+// The saturation signal uses the same running/limit/burst state the "Running" tile
+// already tints. Loader data only, no extra queries.
 export const handle: Handle = {
   agentPageContext: (data) => queuesAgentPageContext(data),
 };

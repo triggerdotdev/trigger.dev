@@ -181,9 +181,8 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
     } else if (p.state === "output-error") {
-      // The summary is one row — a long error (a failed query can carry its
-      // whole SQL) must not flood the transcript. Full text stays in the
-      // expandable output.
+      // The summary is one row, so a long error is truncated. The full text stays in
+      // the expandable output.
       const errorText = p.errorText ?? "unknown";
       resultSummary =
         errorText.length > 160 ? `error: ${errorText.slice(0, 160)}…` : `error: ${errorText}`;

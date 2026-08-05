@@ -187,8 +187,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return json({ ok: false, error: "Unsupported action" } as const, { status: 400 });
 }
 
-// Tell the dashboard agent it's on the branches page, and whether the branch quota
-// is already spent.
 export const handle: Handle = {
   agentPageContext: (data) => branchesAgentPageContext(data),
 };

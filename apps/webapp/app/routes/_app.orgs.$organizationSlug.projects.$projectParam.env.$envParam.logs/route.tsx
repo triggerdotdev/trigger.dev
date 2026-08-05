@@ -54,8 +54,7 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
 }
 
-// Tell the dashboard agent it's in the log explorer. The logs themselves are
-// deferred, so the page kind is all we can say without a query.
+// The logs are deferred, so the page kind is all we can say without a query.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("logs"),
 };

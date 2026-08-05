@@ -25,7 +25,6 @@ import { throwNotFound } from "~/utils/httpErrors";
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent how many sessions expired instead of being closed.
 export const handle: Handle = {
   agentPageContext: (data) => sessionsAgentPageContext(data),
 };

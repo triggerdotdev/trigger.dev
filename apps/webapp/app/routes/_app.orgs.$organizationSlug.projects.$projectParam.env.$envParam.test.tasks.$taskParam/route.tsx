@@ -272,8 +272,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
-// Tell the dashboard agent which task is being tested, and whether its queue is
-// paused — a paused queue means the test run won't start.
+// A paused queue means the test run won't start.
 export const handle: Handle = {
   agentPageContext: (data) => testAgentPageContext(data),
 };

@@ -40,7 +40,7 @@ const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),
 });
 
-// Same mapper as the registry: with one model in the payload it names that model.
+// Same mapper as the model registry list.
 export const handle: Handle = {
   agentPageContext: (data) => modelsAgentPageContext(data),
 };

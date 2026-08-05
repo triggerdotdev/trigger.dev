@@ -102,8 +102,8 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's looking at the tasks list. The activity and
-// running counts are deferred, so the page kind is all we can say without a query.
+// Activity and running counts are deferred, so the page kind is all we can say
+// without a query.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("tasks"),
 };

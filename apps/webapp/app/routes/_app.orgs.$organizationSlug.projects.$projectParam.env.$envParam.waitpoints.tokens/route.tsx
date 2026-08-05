@@ -50,8 +50,6 @@ import { EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilde
 import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent how many wait tokens timed out, and how many are still
-// waiting past their own timeout.
 export const handle: Handle = {
   agentPageContext: (data) => waitpointsAgentPageContext(data),
 };

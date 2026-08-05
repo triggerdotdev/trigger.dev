@@ -62,15 +62,11 @@ import {
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
 
-/**
- * What the agent is asked when it's opened from a deployment setup panel. The
- * panel is the docs answer; the agent is for the part the docs can't answer —
- * this project, this environment.
- */
+/** What the agent is asked when it's opened from a deployment setup panel. */
 const ASK_AGENT_DEPLOY_PROMPT =
   "I'm trying to deploy my tasks to this environment. Walk me through it and tell me if anything about this project or environment is going to get in the way.";
 
-/** The docs links the deployment panels offered before the agent did. */
+/** Docs links shown when the agent isn't available. */
 function DeployDocsLinks() {
   return (
     <>
@@ -308,10 +304,6 @@ export function DeploymentsNoneDev() {
           <Header1>Deploy your tasks</Header1>
         </div>
         <div className="flex items-center">
-          {/* One entry point instead of three: the docs and troubleshooting links
-              were a guess at which page you needed, and the agent can look at this
-              project and answer for it. Someone with no agent still gets the
-              links. */}
           <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>
@@ -678,10 +670,6 @@ function DeploymentOnboardingSteps() {
           </Header1>
         </div>
         <div className="flex items-center">
-          {/* One entry point instead of three: the docs and troubleshooting links
-              were a guess at which page you needed, and the agent can look at this
-              project and answer for it. Someone with no agent still gets the
-              links. */}
           <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>

@@ -43,9 +43,8 @@ export type MiniLineChartProps = {
    */
   throttled?: number[];
   /**
-   * Tooltip wording for the overlay buckets. Defaults to "throttled" (the queue
-   * pages); other consumers (e.g. report anomaly windows) pass their own, or
-   * null to omit the overlay line from the tooltip entirely.
+   * Tooltip wording for the overlay buckets. Defaults to "throttled"; pass null to
+   * omit the overlay line from the tooltip.
    */
   overlayLabel?: string | null;
   /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */

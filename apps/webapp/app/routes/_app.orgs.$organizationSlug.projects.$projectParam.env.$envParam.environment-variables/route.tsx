@@ -89,8 +89,7 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's on the environment variables page. Also covers the
-// new-variable child route.
+// Also covers the new-variable child route.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("envvars"),
 };

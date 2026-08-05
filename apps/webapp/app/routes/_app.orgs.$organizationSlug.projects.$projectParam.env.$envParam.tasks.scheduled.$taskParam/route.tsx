@@ -109,7 +109,7 @@ import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-pro
 import type { Handle } from "~/utils/handle";
 
 // Same mapper as a standard task, plus the schedule counts this loader resolves
-// synchronously: a scheduled task with no enabled schedule never runs.
+// synchronously.
 export const handle: Handle = {
   agentPageContext: (data) => taskAgentPageContext(data),
 };

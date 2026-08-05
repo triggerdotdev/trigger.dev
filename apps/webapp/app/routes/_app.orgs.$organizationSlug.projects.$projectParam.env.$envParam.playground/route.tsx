@@ -27,7 +27,6 @@ import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils
 import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent it's in the playground, with no agent picked yet.
 export const handle: Handle = {
   agentPageContext: (data) => playgroundAgentPageContext(data),
 };

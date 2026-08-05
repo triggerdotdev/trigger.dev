@@ -40,8 +40,7 @@ import { EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
 import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent how many prompts have a version override pinned — those
-// aren't running their current version.
+// A pinned version override means the prompt isn't running its current version.
 export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
 };

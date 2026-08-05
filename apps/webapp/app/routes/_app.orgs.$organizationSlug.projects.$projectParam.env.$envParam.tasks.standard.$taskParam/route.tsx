@@ -68,9 +68,7 @@ import { engine } from "~/v3/runEngine.server";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// Tell the dashboard agent which task this is, and whether its queue is paused —
-// both already in the loader. Failure history is behind the deferred activity, so
-// it isn't read here.
+// Failure history is behind the deferred activity, so it isn't read here.
 export const handle: Handle = {
   agentPageContext: (data) => taskAgentPageContext(data),
 };

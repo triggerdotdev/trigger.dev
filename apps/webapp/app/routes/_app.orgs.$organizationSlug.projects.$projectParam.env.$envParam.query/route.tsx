@@ -253,8 +253,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// Tell the dashboard agent it's in the query editor. The loader carries editor seed
-// data only — results come from the action.
+// The loader carries editor seed data only; results come from the action.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("query"),
 };

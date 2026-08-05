@@ -31,8 +31,7 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
-// The tasks activity dashboard asks the same questions as the list, so it reports
-// the same page kind. Its series are deferred.
+// Reports the same page kind as the tasks list. Its series are deferred.
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("tasks"),
 };

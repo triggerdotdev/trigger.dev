@@ -87,10 +87,8 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 
-// Tell the dashboard agent which queue it's looking at and how it's doing. The
-// health and the saturation signal come from the same running/queued/limit and
-// oldest-wait numbers the page renders, so this costs no queries — see
-// `queueAgentPageContext`.
+// Health and the saturation signal come from the same running/queued/limit and
+// oldest-wait numbers the page renders, so this costs no queries.
 export const handle: Handle = {
   agentPageContext: (data) => queueAgentPageContext(data),
 };
@@ -279,11 +277,9 @@ export default function Page() {
   const view = value("view") === "keys" ? "keys" : "overview";
   const selectedKey = value("key");
 
-  // Is the queue in the state the page already tints warning? Two signals, both of which this page
-  // renders in warning colour elsewhere: at capacity with runs waiting (the Concurrency block), and
-  // a head-of-line run sitting unstarted past the threshold (the Oldest wait block). A paused queue
-  // is excluded — the banner above already says why nothing is moving, so there is nothing to
-  // diagnose. Only then do we offer to hand the queue to the agent.
+  // Two states the page already tints warning: at capacity with runs waiting, and a head-of-line
+  // run unstarted past the threshold. Paused queues are excluded, because the banner above already
+  // says why nothing is moving.
   const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
   const concurrencyLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
   const degraded =
@@ -339,12 +335,8 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
-            {/* The agent pair, Investigate then Watch. Both self-hide without the
-                agent, and both dress as secondary here — one grey row, no accent.
-                Investigate: hand a backed-up queue over. Watch: the universal
-                entry, pre-filled with this queue's recommendation — if runs start
-                waiting past the SLA, or, when they already are (the same signal
-                `degraded` comes from), when the queue drains. */}
+            {/* Both buttons self-hide when the agent isn't available. Watch is
+                pre-filled with this queue's recommendation. */}
             {degraded ? (
               <InvestigateButton
                 prompt={queueBacklogPrompt(queue.name)}
@@ -1083,9 +1075,8 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// Oldest-wait threshold for the warning tint lives in ~/components/queues/queue-thresholds,
-// shared with the page-context mapper and the watch card's age-SLA recommendation so the
-// tint, the Investigate button, reported health and the card can't drift apart.
+// The oldest-wait warning threshold lives in ~/components/queues/queue-thresholds, shared with
+// the page-context mapper and the watch recommendation so they can't drift apart.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

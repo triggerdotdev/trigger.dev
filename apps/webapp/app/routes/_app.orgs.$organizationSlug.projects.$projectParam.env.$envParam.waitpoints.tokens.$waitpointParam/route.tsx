@@ -87,8 +87,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-// Same mapper as the list: with one token in the payload it reports that token and
-// its status instead of the counts.
+// Same mapper as the wait tokens list.
 export const handle: Handle = {
   agentPageContext: (data) => waitpointsAgentPageContext(data),
 };
