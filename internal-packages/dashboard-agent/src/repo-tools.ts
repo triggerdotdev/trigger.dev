@@ -38,10 +38,29 @@ export type RepoSnapshot = {
 };
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
-const MAX_READ_BYTES = 256 * 1024; // per read_file
+// A tool result the model has to pay for on every later turn of the conversation:
+// 48KB is ~12k tokens, where the old 256KB ceiling was ~65k.
+export const MAX_READ_BYTES = 48 * 1024;
+export const MAX_READ_LINES = 1500;
 const MAX_LIST_FILES = 500;
 const MAX_MATCHES = 80;
 const FETCH_TIMEOUT_MS = 30_000;
+
+// Points at the mechanism the prompt already teaches — the stack-trace line is
+// where a truncated read gets resumed.
+export const READ_TRUNCATION_NOTICE =
+  `Truncated to the first ${MAX_READ_LINES} lines / ${MAX_READ_BYTES / 1024}KB. ` +
+  "Read the part you need with startLine and endLine — the line from the stack trace or the search match is where to start.";
+
+/** Caps a read at both ceilings, whichever bites first. */
+function capRead(content: string): { content: string; truncated: boolean } {
+  const lines = content.split("\n");
+  let capped = lines.length > MAX_READ_LINES ? lines.slice(0, MAX_READ_LINES).join("\n") : content;
+  if (Buffer.byteLength(capped, "utf8") > MAX_READ_BYTES) {
+    capped = Buffer.from(capped, "utf8").subarray(0, MAX_READ_BYTES).toString("utf8");
+  }
+  return { content: capped, truncated: capped.length !== content.length };
+}
 
 // In-flight + completed extractions, keyed by workdir, so concurrent tool calls
 // in a turn extract once. Module scope: shared across turns of a warm run.
@@ -236,23 +255,29 @@ export function buildRepoTools(
         if (realTarget && !isInside(workdir, realTarget)) {
           return { error: "Path escapes the repository root." };
         }
-        let content: string;
-        let truncated = false;
+        let whole: string;
         try {
-          const buf = await readFile(realTarget ?? target);
-          content = buf.subarray(0, MAX_READ_BYTES).toString("utf8");
-          truncated = buf.length > MAX_READ_BYTES;
+          whole = (await readFile(realTarget ?? target)).toString("utf8");
         } catch {
           return { error: `Couldn't read ${path} (not found or not a file).` };
         }
+        // The range is applied before the cap: capping first made a range past the
+        // ceiling come back empty rather than as the lines that were asked for.
         if (startLine != null || endLine != null) {
-          const lines = content.split("\n");
+          const lines = whole.split("\n");
           const from = Math.max(1, startLine ?? 1);
           const to = Math.min(lines.length, endLine ?? lines.length);
-          content = lines.slice(from - 1, to).join("\n");
-          return { path, content, startLine: from, endLine: to };
+          const range = capRead(lines.slice(from - 1, to).join("\n"));
+          return {
+            path,
+            content: range.content,
+            startLine: from,
+            endLine: to,
+            ...(range.truncated ? { truncated: true, notice: READ_TRUNCATION_NOTICE } : {}),
+          };
         }
-        return { path, content, truncated };
+        const { content, truncated } = capRead(whole);
+        return { path, content, truncated, ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}) };
       },
     }),
 

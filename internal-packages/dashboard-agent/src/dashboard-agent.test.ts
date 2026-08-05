@@ -2490,9 +2490,9 @@ describe("the view-model tools don't echo the view back to the model", () => {
   ) {
     const modelMessages = await convertToModelMessages([message], { tools });
     const part = modelMessages
-      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-      .find((p) => (p as { type: string }).type === "tool-result");
-    return (part as { output: { type: string; value: unknown } }).output;
+      .flatMap((m) => (Array.isArray(m.content) ? (m.content as Array<{ type: string }>) : []))
+      .find((p) => p.type === "tool-result");
+    return (part as unknown as { output: { type: string; value: unknown } }).output;
   }
 
   it("render_view hands the blocks to the client and an acknowledgement to the model", async () => {
