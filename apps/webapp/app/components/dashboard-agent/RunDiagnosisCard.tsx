@@ -1,7 +1,7 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
 import type { DiagnosisBlock } from "@internal/dashboard-agent";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { TextLink } from "~/components/primitives/TextLink";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
@@ -70,8 +70,6 @@ const CATEGORY_SENTENCES: Record<DiagnosisBlock["category"], React.ReactNode> = 
   ),
 };
 
-const LINK_STYLE = "text-indigo-500 transition hover:text-indigo-400";
-
 const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string> = {
   error: "Error",
   failed_span: "Failed span",
@@ -95,9 +93,9 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
   return (
-    <Link to={to} className={cn(LINK_STYLE, "underline", className)}>
+    <TextLink to={to} variant="token" className={cn("underline", className)}>
       {runId}
-    </Link>
+    </TextLink>
   );
 }
 
@@ -108,14 +106,15 @@ function EvidenceReference({ reference }: { reference: string }) {
   const safeUrl = toSafeUrl(reference);
   if (safeUrl) {
     return (
-      <a
+      <TextLink
         href={safeUrl}
+        variant="token"
         target="_blank"
         rel="noopener noreferrer"
-        className={cn(LINK_STYLE, "font-mono text-xs underline")}
+        className="font-mono text-xs underline"
       >
         {reference}
-      </a>
+      </TextLink>
     );
   }
   return <span className="font-mono text-xs text-text-dimmed">{reference}</span>;
@@ -176,7 +175,8 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
         </p>
         {block.runId ? (
           <div className="truncate">
-            <RunLink runId={block.runId} className="font-mono text-xs" />
+            {/* `block` so the ellipsis still lands: the link itself is inline-flex. */}
+            <RunLink runId={block.runId} className="block truncate font-mono text-xs" />
           </div>
         ) : null}
       </div>
