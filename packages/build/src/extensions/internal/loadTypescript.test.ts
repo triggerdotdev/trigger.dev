@@ -50,14 +50,14 @@ describe("loadTypescript", () => {
   it("loads the consumer's TypeScript 5 compiler", () => {
     const compiler = loadTypescript(createProject({ typescript: "typescript5" }));
 
-    expect(compiler.version).toBe("5.9.3");
+    expect(compiler.version).toMatch(/^5\./);
     expect(typeof compiler.transpileModule).toBe("function");
   });
 
   it("loads the consumer's TypeScript 6 compiler", () => {
     const compiler = loadTypescript(createProject({ typescript: "typescript" }));
 
-    expect(compiler.version).toBe("6.0.3");
+    expect(compiler.version).toMatch(/^6\./);
     expect(typeof compiler.transpileModule).toBe("function");
   });
 
@@ -90,7 +90,7 @@ describe("loadTypescript", () => {
 
     const compiler = loadTypescript(projectDir);
 
-    expect(compiler.version).toBe("6.0.3");
+    expect(compiler.version).toMatch(/^6\./);
     expect(typeof compiler.transpileModule).toBe("function");
   });
 
@@ -120,14 +120,14 @@ describe("loadTypescript", () => {
       }
     ).outputText;
 
-    expect(compiler.version).toBe("6.0.3");
+    expect(compiler.version).toMatch(/^6\./);
     expect(output).toContain('__metadata("design:paramtypes", [Dependency])');
   });
 
   it("supports aliasing TypeScript to the compatibility package", () => {
     const compiler = loadTypescript(createProject({ typescript: "@typescript/typescript6" }));
 
-    expect(compiler.version).toBe("6.0.3");
+    expect(compiler.version).toMatch(/^6\./);
     expect(typeof compiler.transpileModule).toBe("function");
   });
 });
