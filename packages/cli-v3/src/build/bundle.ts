@@ -307,6 +307,8 @@ export async function getBundleResultFromBuild(
     }
   }
 
+  files.sort((a, b) => a.entry.localeCompare(b.entry));
+
   if (!configPath) {
     return undefined;
   }
