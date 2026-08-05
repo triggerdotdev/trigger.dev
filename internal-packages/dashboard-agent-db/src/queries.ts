@@ -1057,6 +1057,39 @@ export async function listActiveWatchesForChats(
   return byChat;
 }
 
+/** When the watch resolved: `fired_at` for a fire, `last_checked_at` for an expiry. */
+const wakeResolvedAt = sql<Date>`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`;
+
+/** The wake landed after the chat was last read. Never-read chats count as unread. */
+const unreadWake = sql`(${chats.lastReadAt} is null or ${wakeResolvedAt} > ${chats.lastReadAt})`;
+
+/**
+ * A wake the user can open: a resolved, delivered watch in one of this user's
+ * live chats. Shared by the three wake queries so they can't drift apart.
+ *
+ * Only a DELIVERED wake counts — between the terminal transition and the append
+ * to the chat there is no message to read yet, so signalling it would point at an
+ * empty conversation.
+ *
+ * Org + user are asserted on the WATCH row as well as on the joined chat. That is
+ * not a second tenancy rule: a watch's identity is snapshotted from the chat's
+ * owner at creation, and the create path rejects a chat from another org, so the
+ * two can never disagree. It is there so `watches_org_user_wake_idx` narrows to
+ * this user before the join runs, instead of the planner reaching every delivered
+ * wake in the table.
+ */
+function deliveredWakeScope(params: { organizationId: string; userId: string }) {
+  return [
+    inArray(watches.status, ["fired", "expired"]),
+    eq(watches.deliveryStatus, "delivered"),
+    eq(watches.organizationId, params.organizationId),
+    eq(watches.userId, params.userId),
+    eq(chats.organizationId, params.organizationId),
+    eq(chats.userId, params.userId),
+    isNull(chats.deletedAt),
+  ];
+}
+
 /**
  * #13 How many watch wakes this user hasn't seen — what the launcher's dot shows
  * while the panel is closed.
@@ -1069,6 +1102,8 @@ export async function listActiveWatchesForChats(
  *
  * Tenancy floor is the join, same as `listActiveWatchesForChats`: org + user +
  * not-deleted on the chat, so nothing outside this user's chats can be counted.
+ * The same org + user are also asserted on the WATCH row — see
+ * {@link deliveredWakeScope}.
  */
 export async function countUnreadWatchWakes(
   db: DashboardAgentDb,
@@ -1078,19 +1113,7 @@ export async function countUnreadWatchWakes(
     .select({ count: sql<number>`count(*)::int` })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
-    .where(
-      and(
-        inArray(watches.status, ["fired", "expired"]),
-        // Only a DELIVERED wake is a wake the user can open: between the terminal
-        // transition and the append to the chat there is no message to read yet,
-        // so signalling it would point at an empty conversation.
-        eq(watches.deliveryStatus, "delivered"),
-        eq(chats.organizationId, params.organizationId),
-        eq(chats.userId, params.userId),
-        isNull(chats.deletedAt),
-        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
-      )
-    );
+    .where(and(...deliveredWakeScope(params), unreadWake));
   return rows[0]?.count ?? 0;
 }
 
@@ -1132,11 +1155,6 @@ export async function listRecentWatchWakes(
   db: DashboardAgentDb,
   params: { organizationId: string; userId: string; deliveredAfter: Date }
 ): Promise<UnreadWatchWake[]> {
-  const resolvedAt = sql<Date>`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`;
-  // Whether the wake landed after the chat was last read. The TOAST doesn't
-  // care (a wake read on screen still deserves its toast, once); the DOT does.
-  const unread = sql<boolean>`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`;
-
   const rows = await db
     .select({
       watchId: watches.id,
@@ -1146,25 +1164,20 @@ export async function listRecentWatchWakes(
       spec: watches.spec,
       resolution: watches.resolution,
       observedOutcome: watches.observedOutcome,
-      resolvedAt,
-      unread,
+      resolvedAt: wakeResolvedAt,
+      // The TOAST doesn't care whether the wake was read (a wake read on screen
+      // still deserves its toast, once); the DOT does.
+      unread: sql<boolean>`${unreadWake}`,
     })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
     .where(
       and(
-        inArray(watches.status, ["fired", "expired"]),
-        // Only a DELIVERED wake is a wake the user can open: between the terminal
-        // transition and the append to the chat there is no message to read yet,
-        // so signalling it would point at an empty conversation.
-        eq(watches.deliveryStatus, "delivered"),
-        eq(chats.organizationId, params.organizationId),
-        eq(chats.userId, params.userId),
-        isNull(chats.deletedAt),
-        sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${params.deliveredAfter.toISOString()}::timestamptz`
+        ...deliveredWakeScope(params),
+        sql`${wakeResolvedAt} > ${params.deliveredAfter.toISOString()}::timestamptz`
       )
     )
-    .orderBy(desc(resolvedAt))
+    .orderBy(desc(wakeResolvedAt))
     .limit(UNREAD_WAKE_LIST_LIMIT);
 
   return rows.map((row) => ({
@@ -1199,19 +1212,7 @@ export async function listChatIdsWithUnreadWakes(
     .selectDistinct({ chatId: watches.chatId })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
-    .where(
-      and(
-        inArray(watches.status, ["fired", "expired"]),
-        // Only a DELIVERED wake is a wake the user can open: between the terminal
-        // transition and the append to the chat there is no message to read yet,
-        // so signalling it would point at an empty conversation.
-        eq(watches.deliveryStatus, "delivered"),
-        eq(chats.organizationId, params.organizationId),
-        eq(chats.userId, params.userId),
-        isNull(chats.deletedAt),
-        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
-      )
-    );
+    .where(and(...deliveredWakeScope(params), unreadWake));
   return new Set(rows.map((row) => row.chatId));
 }
 

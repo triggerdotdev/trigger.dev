@@ -321,6 +321,14 @@ export const watches = dashboardAgentSchema.table(
     index("watches_pending_delivery_idx")
       .on(t.firedAt, t.lastCheckedAt)
       .where(sql`${t.deliveryStatus} in ('pending', 'delivering')`),
+    // The panel's wake feed, which every poll of a closed panel runs twice (the
+    // dot's count and the toast's list). Tenant columns lead so the index — not
+    // the `chats` join — narrows to this user first; the trailing expression is
+    // the resolution time both queries filter and order on. Partial on the
+    // delivered-wake predicate, so active and undelivered rows stay out of it.
+    index("watches_org_user_wake_idx")
+      .on(t.organizationId, t.userId, sql`coalesce(${t.firedAt}, ${t.lastCheckedAt}) desc`)
+      .where(sql`${t.deliveryStatus} = 'delivered' and ${t.status} in ('fired', 'expired')`),
   ]
 );
 

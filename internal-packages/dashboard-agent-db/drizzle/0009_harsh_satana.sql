@@ -1,0 +1,1 @@
+CREATE INDEX "watches_org_user_wake_idx" ON "trigger_dashboard_agent"."watches" USING btree ("organization_id","user_id",coalesce("fired_at", "last_checked_at") desc) WHERE "trigger_dashboard_agent"."watches"."delivery_status" = 'delivered' and "trigger_dashboard_agent"."watches"."status" in ('fired', 'expired');
