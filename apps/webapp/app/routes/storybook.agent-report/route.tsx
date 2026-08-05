@@ -1,12 +1,9 @@
 import type { ReportViewModelPayload } from "@internal/dashboard-agent-contracts";
-import { demoFixtures, demoId } from "~/components/dashboard-agent/demo";
+import { DEMO_WORLD, demoFixtures, demoReportUri } from "~/components/dashboard-agent/demo";
 import { ReportView } from "~/components/dashboard-agent/ReportView";
-import { chatItems } from "../storybook.agent-ui/fixtures";
 import { fixtureResolveUri, GalleryPage, noop } from "../storybook.agent-ui/gallery";
 
-const reportItems = chatItems(demoId("report-healthy"), "report").concat(
-  chatItems(demoId("report-degraded"), "report")
-);
+const reportUri = demoReportUri(DEMO_WORLD.reportKey);
 
 const untrustworthyReport: ReportViewModelPayload = {
   ...demoFixtures.demoDegradedReport,
@@ -52,7 +49,7 @@ const STATES: Record<string, React.ReactNode> = {
   "report-view-healthy": (
     <ReportView
       vm={demoFixtures.demoHealthyReport}
-      reportUri={reportItems[0]?.sourceUri}
+      reportUri={reportUri}
       onIntent={noop}
       resolveUri={fixtureResolveUri}
     />
@@ -60,7 +57,7 @@ const STATES: Record<string, React.ReactNode> = {
   "report-view-degraded": (
     <ReportView
       vm={demoFixtures.demoDegradedReport}
-      reportUri={reportItems[1]?.sourceUri}
+      reportUri={reportUri}
       onIntent={noop}
       resolveUri={fixtureResolveUri}
     />

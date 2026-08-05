@@ -1,12 +1,7 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useState } from "react";
-import {
-  demoChatById,
-  demoFixtures,
-  demoId,
-  DemoIntentBubble,
-} from "~/components/dashboard-agent/demo";
+import { demoFixtures, DemoIntentBubble } from "~/components/dashboard-agent/demo";
 import { ChatProgress, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
 import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
@@ -19,30 +14,24 @@ import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-
 import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { cn } from "~/utils/cn";
-import { chatMessages, investigationBlock } from "./fixtures";
-import { fixtureResolveUri, GalleryPage, Missing, noop, PANEL_FRAME } from "./gallery";
+import { demoTranscripts, investigationBlock, type DemoTranscript } from "./fixtures";
+import { fixtureResolveUri, GalleryPage, noop, PANEL_FRAME } from "./gallery";
 
 const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
 
 function MessageHarness({
-  chatId,
+  transcript,
   withError = false,
-  take,
 }: {
-  chatId: string;
+  transcript: DemoTranscript;
   withError?: boolean;
-  take?: number;
 }) {
-  const chat = demoChatById(chatId);
-  if (!chat) {
-    return <Missing what={`demo chat ${chatId}`} />;
-  }
   return (
     <div className={PANEL_FRAME}>
       <DashboardAgentMessages
-        messages={chatMessages(chatId, take)}
-        activity={chat.activity ?? null}
-        error={withError && chat.error ? new Error(chat.error) : undefined}
+        messages={transcript.messages}
+        activity={transcript.activity ?? null}
+        error={withError && transcript.error ? new Error(transcript.error) : undefined}
         onRetry={withError ? noop : undefined}
         onDismissError={withError ? noop : undefined}
       />
@@ -268,14 +257,14 @@ const STATES: Record<string, React.ReactNode> = {
     <PromptsHarness context={demoPageContexts.failedRun} dismissedIds={dismissedPromptIds} />
   ),
 
-  "messages-streaming-text": <MessageHarness chatId={demoId("base-streaming")} />,
-  "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
-  "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
+  "messages-streaming-text": <MessageHarness transcript={demoTranscripts.streamingText} />,
+  "messages-reasoning": <MessageHarness transcript={demoTranscripts.reasoning} />,
+  "messages-tool-in-flight": <MessageHarness transcript={demoTranscripts.toolInFlight} />,
   "messages-tool-pending-pills": <PendingPillsHarness />,
-  "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
-  "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
+  "messages-error-retry": <MessageHarness transcript={demoTranscripts.errorRetry} withError />,
+  "messages-render-view": <MessageHarness transcript={demoTranscripts.renderView} />,
   "messages-investigation-live": <LiveInvestigationHarness />,
-  "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
+  "messages-docs-sources": <MessageHarness transcript={demoTranscripts.docsSources} />,
 
   "intent-navigate-filtered-runs": (
     <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />

@@ -14,7 +14,6 @@ import {
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { demoChats } from "./demo-chats";
 import * as fixtures from "./fixtures";
 import { DEMO_ID_PREFIX, DEMO_MARKER } from "./ids";
 
@@ -38,28 +37,6 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe("demo ids", () => {
-  it("namespaces every chat id", () => {
-    for (const chat of demoChats) {
-      expect(chat.id.startsWith(DEMO_ID_PREFIX), chat.id).toBe(true);
-    }
-  });
-
-  it("has no duplicate chat ids", () => {
-    const ids = demoChats.map((chat) => chat.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("namespaces every message id", () => {
-    for (const chat of demoChats) {
-      for (const item of chat.items) {
-        if (item.kind !== "messages") continue;
-        for (const message of item.messages) {
-          expect(message.id.startsWith(DEMO_ID_PREFIX), message.id).toBe(true);
-        }
-      }
-    }
-  });
-
   it("namespaces investigation, hypothesis, watch and prompt ids", () => {
     for (const investigation of Object.values(fixtures.demoInvestigations)) {
       expect(investigation.investigationId.startsWith(DEMO_ID_PREFIX)).toBe(true);
@@ -299,60 +276,6 @@ describe("chart fixtures", () => {
     }
     expect(columns).toContain(fixtures.demoChart.config.xAxisColumn);
     for (const y of fixtures.demoChart.config.yAxisColumns) expect(columns).toContain(y);
-  });
-});
-
-describe("demo coverage", () => {
-  it("covers every v1 flow", () => {
-    const flows = new Set(demoChats.map((chat) => chat.flow));
-    expect(flows).toEqual(
-      new Set(["investigate", "navigation", "prompts", "watch", "reports", "base"])
-    );
-  });
-
-  it("covers the base panel states", () => {
-    const ids = demoChats.map((chat) => chat.id);
-    for (const suffix of [
-      "base-streaming",
-      "base-tool-in-flight",
-      "base-error-retry",
-      "base-resumed",
-      "base-composer-draft",
-      "base-page-context",
-    ]) {
-      expect(ids).toContain(`${DEMO_ID_PREFIX}${suffix}`);
-    }
-  });
-
-  it("keeps the draft case an unsent draft over an empty conversation", () => {
-    const draftChat = demoChats.find((chat) => chat.id === `${DEMO_ID_PREFIX}base-composer-draft`);
-    expect(draftChat?.draft?.length ?? 0).toBeGreaterThan(0);
-    expect(draftChat?.items).toEqual([]);
-  });
-
-  it("keeps every chat to one story rather than a variant matrix", () => {
-    for (const chat of demoChats) {
-      const count = (kind: string) => chat.items.filter((item) => item.kind === kind).length;
-      expect(count("banner"), chat.id).toBe(0);
-      expect(count("prompts"), chat.id).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it("answers the page-context question with a real exchange", () => {
-    const chat = demoChats.find((c) => c.id === `${DEMO_ID_PREFIX}base-page-context`);
-    const messages = (chat?.items ?? []).flatMap((item) =>
-      item.kind === "messages" ? item.messages : []
-    );
-    expect(messages.some((message) => message.role === "user")).toBe(true);
-    expect(messages.some((message) => message.role === "assistant")).toBe(true);
-  });
-
-  it("gives every chat a playbook summary and a natural title", () => {
-    for (const chat of demoChats) {
-      expect(chat.summary.length, chat.id).toBeGreaterThan(20);
-      expect(chat.title.includes("Demo"), chat.title).toBe(false);
-      expect(chat.title.length, chat.id).toBeGreaterThan(0);
-    }
   });
 });
 
