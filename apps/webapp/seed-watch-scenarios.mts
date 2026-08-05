@@ -1,5 +1,7 @@
-// Run on Node 20; `--help` lists the verbs.
-// Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md
+/**
+ * Local watch scenario kit. Run on Node 20; `--help` lists the verbs.
+ * Walkthroughs: internal-packages/dashboard-agent/GUIDEBOOK.md
+ */
 import { ClickHouse, TASK_RUN_COLUMNS } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
 import { randomUUID } from "node:crypto";

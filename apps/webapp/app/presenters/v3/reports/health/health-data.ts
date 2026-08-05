@@ -198,8 +198,10 @@ function envScalarQuery(): string {
 FROM env_metrics`;
 }
 
-// `argMax(max_queued, bucket_start)` is point-in-time depth, not a peak. Rows stop at 20, so
-// the share's denominator comes from `queueTotalsQuery`.
+/**
+ * `argMax(max_queued, bucket_start)` is a point-in-time depth, not a peak. These rows stop at 20, so
+ * the share's denominator comes from `queueTotalsQuery`.
+ */
 function queueWorstQuery(): string {
   return `SELECT
   queue AS name,
@@ -210,8 +212,10 @@ ORDER BY latest_queued DESC
 LIMIT 20`;
 }
 
-// `dlq_delta` is merged per queue then summed, never across queues. `total_queued` must be
-// computed here, not by summing the top-20 `queueWorstQuery` rows.
+/**
+ * `dlq_delta` must be merged per queue then summed, never merged across queues. `total_queued` must
+ * be computed here, not by summing the top-20 `queueWorstQuery` rows.
+ */
 function queueTotalsQuery(): string {
   return `SELECT sum(dlq) AS dlq_total, sum(latest_queued) AS total_queued
 FROM (
@@ -272,8 +276,10 @@ const EMPTY_EVIDENCE: HealthInput["flowEvidence"] = {
 
 type RunsContext = { liveScalar: Row; liveSeries: Row[]; baselineScalar: Row };
 
-// "unavailable" lets the next source down substitute. "failed" must make the flow verdict
-// unassessable, never fall through.
+/**
+ * "unavailable" is a recognized rollout state, so the next source down is a legitimate substitute.
+ * "failed" is anything else and must make the flow verdict unassessable, never fall through to it.
+ */
 export type FlowLoadResult =
   | { status: "ok"; data: FlowData }
   | { status: "unavailable" }
@@ -288,8 +294,10 @@ export interface FlowSource {
   ): Promise<FlowLoadResult>;
 }
 
-// The only failures the measured source may fall back on. Matched on error text because the
-// client collapses the error into a message. Codes: 60, 47, 81.
+/**
+ * The only failures the measured source may treat as a benign fallback. Matched on error text
+ * because the client collapses the error into a message. Codes: 60, 47, 81.
+ */
 const ROLLOUT_ERROR_PATTERNS = [
   /\bUNKNOWN_(?:TABLE|IDENTIFIER|DATABASE)\b/,
   /\bCode:\s*(?:60|47|81)\b/,
@@ -470,8 +478,10 @@ function buildQueueMetricsFlow(args: {
   };
 }
 
-// The `runs` backlog proxy is shape-only: it starts at 0 within the window and can't see backlog
-// that predates it.
+/**
+ * Fallback: live Redis depth plus a backlog proxy from `runs` (triggered minus finished). The proxy
+ * is shape-only: it starts at 0 within the window and can't see backlog that predates it.
+ */
 export const SnapshotFlowSource: FlowSource = {
   async loadFlow(env, _period, ctx, deps) {
     // Last-resort source, so a Redis failure must not break the report.

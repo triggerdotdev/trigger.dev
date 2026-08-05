@@ -43,8 +43,10 @@ const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) =
   info: InformationCircleIcon,
 };
 
-// A terminal chip wears the resolved result's icon, not its lifecycle status: a
-// `run_finished` watch on a failed run resolves `condition_met`.
+/**
+ * A terminal chip wears the resolved result's icon, not its lifecycle status: a
+ * `run_finished` watch on a failed run resolves `condition_met`. Cancellation has none.
+ */
 function StatusIcon({ watch }: { watch: WatchChip }) {
   if (watch.status === "active") return <AgentSpinner size={14} />;
 

@@ -32,8 +32,10 @@ export function createReportCache(ttlMs: number = REPORT_CACHE_TTL_MS): ReportCa
 
 const defaultReportCache = createReportCache();
 
-// The cache only helps once a load has finished, so without this collapsing every caller of a
-// cold key hits the query-concurrency limit at once.
+/**
+ * Collapses concurrent identical requests into one computation: the cache only helps once a load has
+ * finished, so all callers of a cold key would otherwise hit the query-concurrency limit at once.
+ */
 const inFlight = new Map<string, Promise<ReportViewModel | undefined>>();
 
 export class ReportPresenter {

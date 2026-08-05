@@ -1,5 +1,7 @@
-// Order: the promoted slot, then `PROMPT_SLOTS`, signal chips ahead of the page-kind
-// default within each slot.
+/**
+ * Turns a page context into the chips the panel shows: the promoted slot, then
+ * `PROMPT_SLOTS` in order, signal chips ahead of the page-kind default per slot.
+ */
 import {
   SUGGESTED_PROMPT_CAP,
   type AgentPageContext,

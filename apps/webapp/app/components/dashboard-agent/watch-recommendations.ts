@@ -23,8 +23,10 @@ export function runWatchRecommendation(runFriendlyId: string): WatchSpec {
   });
 }
 
-// The recommendation must be a condition that isn't true yet: an already-true watch
-// one-shots instead of watching.
+/**
+ * The recommendation must be a condition that isn't true yet: an already-true watch
+ * one-shots instead of watching. Past the wait threshold that means the drain, not the SLA.
+ */
 export function queueWatchRecommendation(
   queueName: string,
   context?: { oldestWaitMs?: number | null }

@@ -2,8 +2,10 @@ import { useLocation, useMatches } from "@remix-run/react";
 import type { AgentPageContext } from "~/components/dashboard-agent/page-context-types";
 import type { Handle } from "~/utils/handle";
 
-// The deepest `handle.agentPageContext` mapper that returns something wins; pages with no
-// mapper fall back to the path.
+/**
+ * The page context the dashboard agent sees. Routes opt in with `handle = { agentPageContext }`.
+ * The deepest mapper that returns something wins; pages with no mapper fall back to the path.
+ */
 export function useAgentPageContext(): AgentPageContext {
   const matches = useMatches();
   const location = useLocation();

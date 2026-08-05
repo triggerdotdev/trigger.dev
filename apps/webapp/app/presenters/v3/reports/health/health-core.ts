@@ -8,8 +8,10 @@ export type HealthInput = {
   windowMinutes: number;
   /** Provenance. Drives caveat text, not logic. */
   flowSource: "snapshot+runs" | "queue_metrics_v1";
-  // `normal` is the 7d baseline, omitted on the snapshot path. `availability: "unknown"` means the
-  // depth was not measured and `now` is a placeholder, not a confident 0.
+  /**
+   * `normal` is the 7d baseline, omitted on the snapshot path. `availability: "unknown"` means the
+   * depth was not measured and `now` is a placeholder, not a confident 0.
+   */
   pending: {
     now: number;
     normal?: number;
@@ -34,8 +36,10 @@ export type HealthInput = {
     runningSeries: number[];
     /** Epoch ms per `runningSeries` bucket. Absent means contiguity falls back to index adjacency. */
     runningBucketsMs?: number[];
-    // `runningSeries` is not gap-filled. Absent cadence means received buckets are assumed to
-    // spread evenly over the window.
+    /**
+     * Cadence and expected bucket count of `runningSeries`, which is not gap-filled. Absent means
+     * the cadence is unknown and received buckets are assumed to spread evenly over the window.
+     */
     sampling?: { bucketMinutes: number; expectedBuckets: number } | null;
     envLimit: number;
     throttledShare: number;

@@ -1,4 +1,7 @@
-// Pure: no React, no server imports, no clock beyond the `now` passed in.
+/**
+ * The chips the panel can offer. `resolver.ts` orders the slots and applies the
+ * cap. Pure: no React, no server imports, no clock beyond the `now` passed in.
+ */
 import type {
   AgentPage,
   AgentPageContext,
@@ -14,8 +17,10 @@ import {
 } from "../investigate-prompts";
 import { isFailedBatchStatus } from "./page-mappers";
 
-// Chip ids must stay stable and carry no run/queue identity: dismissals are stored by id,
-// so `fresh-failure:run_abc` would scope the dismissal to a single run.
+/**
+ * Chip ids must stay stable and carry no run/queue identity: dismissals are stored
+ * by id, so `fresh-failure:run_abc` would scope the dismissal to a single run.
+ */
 const ID_PREFIX = "sp";
 
 function make(

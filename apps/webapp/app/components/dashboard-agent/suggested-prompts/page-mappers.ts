@@ -1,4 +1,7 @@
-// A mapper may not cause a query, and signals are emitted only for abnormal state.
+/**
+ * Route `handle` mappers: loader data in, `AgentPageContext` out. A mapper may
+ * not cause a query, and signals are emitted only for abnormal state.
+ */
 import type { AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
 
