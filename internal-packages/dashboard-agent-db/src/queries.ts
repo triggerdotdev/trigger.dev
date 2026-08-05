@@ -25,17 +25,12 @@ import {
 
 /**
  * The access-pattern layer. Every query that touches user data is scoped by
- * `organizationId` and/or `userId` so tenant isolation lives in one place —
- * callers can't forget the `where`. Shared by the agent task and the webapp.
+ * `organizationId` and/or `userId`, so tenant isolation lives in one place.
  */
 
-/** Placeholder title for a chat with no generated or user-set title yet. */
 export const DEFAULT_CHAT_TITLE = "New chat";
 
-/**
- * The db handle or an already-open transaction, for the queries that are also
- * called as one step of a larger atomic write.
- */
+/** The db handle or an already-open transaction, for queries used inside a larger write. */
 type DashboardAgentDbOrTx =
   | DashboardAgentDb
   | Parameters<Parameters<DashboardAgentDb["transaction"]>[0]>[0];
@@ -51,9 +46,9 @@ export interface ChatListItem {
 }
 
 /**
- * #1 History tab: a user's chats within an org, recent first, pinned on top.
- * Deliberately selects metadata columns only — never `messages` (large blob) or
- * the session token. Covered by `chats_org_user_last_msg_idx`.
+ * A user's chats within an org, recent first, pinned on top. Selects metadata
+ * columns only, never `messages` (large blob) or the session token. Covered by
+ * `chats_org_user_last_msg_idx`.
  */
 export async function listChats(
   db: DashboardAgentDb,
@@ -81,10 +76,7 @@ export async function listChats(
     .limit(params.limit ?? 50);
 }
 
-/**
- * #2 Open a chat: the stored transcript for `useChat`'s initialMessages.
- * Scoped to the owner; returns null if missing/deleted/not theirs.
- */
+/** The stored transcript. Scoped to the owner; null if missing, deleted or not theirs. */
 export async function getChatMessages(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string }
@@ -105,16 +97,14 @@ export async function getChatMessages(
 }
 
 /**
- * How many messages this user has SENT across their chats in an org.
+ * How many messages this user has sent across their chats in an org.
  *
  * Counted from the stored transcripts rather than a counter column, so it can't
- * drift from what the user can see in their own history: a deleted chat stops
- * counting, exactly as it stops being readable. Aggregated in Postgres —
- * `messages` blobs are large and the caller only ever wants the number.
+ * drift from what the user sees in their history: a deleted chat stops counting.
+ * Aggregated in Postgres because `messages` blobs are large.
  *
- * `excludeChatId` leaves one chat out, for a caller that already has that chat's
- * live message list in hand (the panel counts the open chat client-side, so the
- * turn in flight is included without waiting for it to be persisted).
+ * `excludeChatId` leaves one chat out, for a caller that already counts that
+ * chat's live messages itself.
  */
 export async function countUserMessages(
   db: DashboardAgentDb,
@@ -141,8 +131,8 @@ export async function countUserMessages(
 }
 
 /**
- * #3 Resume the transport on first paint: the session-scoped token + stream
- * cursor. Joins `chats` to scope by owner (chat_sessions has no userId).
+ * The session-scoped token and stream cursor. Joins `chats` to scope by owner,
+ * because `chat_sessions` has no `userId`.
  */
 export async function getSession(
   db: DashboardAgentDb,
@@ -170,9 +160,8 @@ export async function getSession(
 }
 
 /**
- * Owner check: true when a non-deleted chat with this id belongs to the user.
- * Used to authorize chat-scoped actions (e.g. minting a session token) before
- * a session row necessarily exists.
+ * Owner check. Authorizes chat-scoped actions such as minting a session token,
+ * before a session row necessarily exists.
  */
 export async function chatExists(
   db: DashboardAgentDb,
@@ -194,9 +183,8 @@ export async function chatExists(
 }
 
 /**
- * #4 Create a chat. Idempotent (`onConflictDoNothing`) so the webapp's "new
- * chat" insert and the agent's defensive `onChatStart` ensure can't race into a
- * duplicate-key error.
+ * Create a chat. Idempotent, so the webapp's insert and the agent's
+ * ensure-exists can't race into a duplicate-key error.
  */
 export async function createChat(
   db: DashboardAgentDb,
@@ -220,10 +208,8 @@ export async function createChat(
     .onConflictDoNothing();
 }
 
-/** The agent's defensive ensure-exists in `onChatStart` / `onPreload`. */
 export const ensureChat = createChat;
 
-/** #5 Rename. */
 export async function renameChat(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string; title: string }
@@ -241,9 +227,8 @@ export async function renameChat(
 }
 
 /**
- * #5 Set an auto-generated title, but only while the chat still has the default
- * title. Conditional on `DEFAULT_CHAT_TITLE` so the background title write can't
- * clobber a user rename, and so it's a safe no-op if it runs more than once.
+ * Set an auto-generated title, only while the chat still has the default one, so
+ * the background title write can't clobber a user rename and is safe to repeat.
  */
 export async function setChatTitleIfDefault(
   db: DashboardAgentDb,
@@ -257,7 +242,6 @@ export async function setChatTitleIfDefault(
     );
 }
 
-/** #5 Pin / unpin. */
 export async function setChatPinned(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string; pinned: boolean }
@@ -275,8 +259,8 @@ export async function setChatPinned(
 }
 
 /**
- * #5 Mark a chat read up to `at` (default now). Scoped to the owner, so a chatId
- * from a client can only ever clear the caller's own unread state.
+ * Mark a chat read up to `at` (default now). Owner-scoped, so a chatId from a
+ * client can only clear the caller's own unread state.
  */
 export async function markChatRead(
   db: DashboardAgentDb,
@@ -295,15 +279,14 @@ export async function markChatRead(
 }
 
 /**
- * Advisory-lock namespace for the per-chat watch lock — ASCII `watc`, so the
+ * Advisory-lock namespace for the per-chat watch lock (ASCII `watc`), so the
  * (namespace, hashtext(chatId)) pair can't collide with another lock's key space.
  */
 const WATCH_CHAT_LOCK_NAMESPACE = 0x77617463;
 
 /**
- * Serialize everything that decides "may this chat have this watch?" — creating a
- * watch and deleting the chat under it. Transaction-scoped, so it is held to
- * commit and released by Postgres whatever happens.
+ * Serializes creating a watch against deleting the chat under it.
+ * Transaction-scoped, so Postgres releases it whatever happens.
  */
 function lockChatForWatches(tx: DashboardAgentDbOrTx, chatId: string) {
   return tx.execute(
@@ -312,19 +295,18 @@ function lockChatForWatches(tx: DashboardAgentDbOrTx, chatId: string) {
 }
 
 /**
- * #5 Soft-delete a chat AND end its watches, in one transaction.
+ * Soft-delete a chat and end its watches, in one transaction.
  *
  * The two halves must not be separable: a deleted chat has nowhere to deliver a
  * watch outcome, so a crash between them would leave live watches ticking against
- * a conversation the user can no longer see. Owner-scoped, so a chatId the caller
- * doesn't own deletes nothing and cancels nothing.
+ * a conversation the user can no longer see. Owner-scoped.
  */
 export async function softDeleteChat(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string }
 ): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
   return db.transaction(async (tx) => {
-    // The SAME lock `createWatch` takes. Without it a create that resolved a live
+    // The same lock `createWatch` takes. Without it a create that resolved a live
     // chat can commit its insert after this transaction cancelled the chat's
     // watches, leaving an active watch on a deleted chat.
     await lockChatForWatches(tx, params.chatId);
@@ -346,10 +328,7 @@ export async function softDeleteChat(
   });
 }
 
-/**
- * #6a Persist messages only (agent `onTurnStart` — make the user's message
- * durable in the display copy before the model starts streaming).
- */
+/** Persist messages only, so the user's message is durable before the model streams. */
 export async function persistMessages(
   db: DashboardAgentDb,
   params: { chatId: string; messages: unknown[] }
@@ -361,17 +340,14 @@ export async function persistMessages(
 }
 
 /**
- * Append ONE message to a chat's transcript, atomically.
+ * Append one message to a chat's transcript, atomically.
  *
- * This is the deterministic-append seam: the watch card's confirmation and its
- * one-shot result block are host-decided facts, not model output, so they are
- * written straight onto the transcript with no turn and no LLM. `||` on the JSONB
- * column is a single statement, so it cannot lose a concurrent turn's write the
- * way a read-modify-write from the app would.
+ * For host-decided facts that are not model output, written straight onto the
+ * transcript with no turn. `||` on the JSONB column is a single statement, so it
+ * cannot lose a concurrent turn's write the way a read-modify-write would.
  *
  * Owner-scoped and live-chat-scoped: a chatId the caller doesn't own appends
- * nothing and returns false, so ownership never has to be re-proved by the caller
- * after the fact.
+ * nothing and returns false.
  */
 export async function appendChatMessage(
   db: DashboardAgentDb,
@@ -398,10 +374,9 @@ export async function appendChatMessage(
 }
 
 /**
- * `appendChatMessage`, but idempotent on the message's `id`: a message the
- * transcript already holds is not appended again. The wake narration writes
- * through this — its deliverer retries, and each retry re-appends blindly with
- * plain `||`.
+ * `appendChatMessage`, but idempotent on the message's `id`. The wake narration
+ * writes through this, because its deliverer retries and plain `||` would
+ * re-append on every retry.
  */
 export async function appendChatMessageOnce(
   db: DashboardAgentDb,
@@ -428,10 +403,10 @@ export async function appendChatMessageOnce(
 }
 
 /**
- * #6b Persist a completed turn (agent `onTurnComplete`): the finalized transcript
- * and the refreshed session state, in one transaction. Atomicity matters — on
- * the next page load the frontend reads `messages` and `lastEventId` in parallel;
- * a torn write can resume from a stale cursor and double-render the last turn.
+ * Persist a completed turn: the finalized transcript and the refreshed session
+ * state, in one transaction. The frontend reads `messages` and `lastEventId` in
+ * parallel on load, so a torn write resumes from a stale cursor and double-renders
+ * the last turn.
  */
 export async function persistTurn(
   db: DashboardAgentDb,
@@ -472,33 +447,26 @@ export async function persistTurn(
 }
 
 /**
- * #11 Record a turn eval. Idempotent on `(chatId, turn)` so a re-delivered turn
- * (the eval task is triggered with an idempotency key, and may still retry) can
+ * Record a turn eval. Idempotent on `(chatId, turn)`, so a retried eval task can
  * never write a second row.
  */
 export async function insertTurnEval(db: DashboardAgentDb, row: NewChatTurnEval): Promise<void> {
   await db.insert(chatTurnEvals).values(row).onConflictDoNothing();
 }
 
-/* ------------------------------------------------------------------ *
- * Investigations
- * ------------------------------------------------------------------ */
+// Investigations
 
 export type UpsertInvestigationResult =
   | { ok: true; id: string; revision: number; created: boolean }
   | { ok: false; error: "not_found" | "context_mismatch" };
 
 /**
- * #12 Commit an investigation revision.
- *
- * Without an `id` this creates the investigation at revision 0 and returns the
- * generated id. With an `id` it bumps the revision — in **one** statement
- * (`SET revision = revision + 1 … RETURNING`), so two concurrent commits produce
- * two distinct, increasing revisions instead of both writing the same number.
+ * Commit an investigation revision. Without an `id` it creates the investigation
+ * at revision 0; with an `id` it bumps the revision in one statement, so two
+ * concurrent commits produce two distinct revisions instead of the same number.
  *
  * The chat/project/environment triple is part of the `WHERE`, so a commit carrying
- * the wrong context can never overwrite someone else's investigation: it returns
- * `context_mismatch` and writes nothing.
+ * the wrong context returns `context_mismatch` and writes nothing.
  */
 export async function upsertInvestigationRevision(
   db: DashboardAgentDb,
@@ -556,7 +524,7 @@ export async function upsertInvestigationRevision(
   return { ok: false, error: existing.length > 0 ? "context_mismatch" : "not_found" };
 }
 
-/** #12 Load an investigation by id alone (the PK is the whole point). */
+/** Load an investigation by id alone. */
 export async function getInvestigation(
   db: DashboardAgentDb,
   params: { id: string }
@@ -570,14 +538,12 @@ export async function getInvestigation(
 }
 
 /**
- * #12 The freshest investigation of a chat that is still `in_progress`, within a
- * recent window.
+ * The freshest `in_progress` investigation of a chat, within a recent window.
  *
- * The hand-off for a consented watch investigation: the wake seeds the card, and
- * the investigating turn that follows it has to revise THAT row rather than open a
- * second one. Ordering makes it safe — the wake's seed is committed before the
- * investigate action is handled — and the window keeps an old abandoned card (one
- * the stale sweep hasn't reached yet) from being picked up as this watch's.
+ * The hand-off for a consented watch investigation: the wake seeds the card and
+ * the turn that follows revises that row rather than opening a second one. The
+ * window keeps an old abandoned card, one the stale sweep hasn't reached yet, from
+ * being picked up as this watch's.
  */
 export async function findOpenInvestigationForChat(
   db: DashboardAgentDb,
@@ -599,7 +565,7 @@ export async function findOpenInvestigationForChat(
   return rows[0] ?? null;
 }
 
-/** #12 The investigations of a chat, most recently updated first. */
+/** The investigations of a chat, most recently updated first. */
 export async function listInvestigationsForChat(
   db: DashboardAgentDb,
   params: { chatId: string; limit?: number }
@@ -613,16 +579,15 @@ export async function listInvestigationsForChat(
 }
 
 /**
- * #12 WHICH chats are mid-investigation — the history list marks those rows.
+ * Which chats are mid-investigation.
  *
- * Latest one wins: a chat can hold several investigations, so only the newest
- * one's outcome says whether the chat is still being investigated. `distinct on
- * (chat_id)` picks that row (newest `updated_at`, revision as the tie-break) and
- * the outcome is checked on it — a chat whose old investigation stopped at
- * `in_progress` but has a newer concluded one is NOT investigating.
+ * A chat can hold several investigations, so only the newest one's outcome counts.
+ * `distinct on (chat_id)` picks that row (newest `updated_at`, revision as the
+ * tie-break): a chat whose old investigation stopped at `in_progress` but has a
+ * newer concluded one is not investigating.
  *
- * Tenancy floor is the join, same as {@link listActiveWatchesForChats}: org +
- * user + not-deleted on the chat, so nothing outside this user's chats can match.
+ * Tenancy floor is the join: org, user and not-deleted on the chat, so nothing
+ * outside this user's chats can match.
  */
 export async function listChatIdsWithOpenInvestigations(
   db: DashboardAgentDb,
@@ -654,21 +619,13 @@ export async function listChatIdsWithOpenInvestigations(
 }
 
 /**
- * #12 Sweep: investigations still `in_progress` long after any turn could still be
- * working on them, oldest first.
- *
- * The turn that opens a card is supposed to settle it — the agent force-settles
- * whatever it left open when the turn completes. That leaves two rows nothing
- * settles: a turn that died before its own settle ran, and a card opened for a
- * LATER turn to finish (a wake's narration does exactly this) whose follow-up never
- * came. Either way the user watches a spinner forever, so the caller settles these
- * to `inconclusive`.
+ * Sweep: investigations still `in_progress` long after any turn could be working
+ * on them, oldest first. Two rows nothing else settles: a turn that died before its
+ * own settle ran, and a card opened for a later turn that never came. The caller
+ * settles these to `inconclusive` so the user isn't left with a spinner.
  *
  * `olderThan` is on `updated_at`, which every revision bumps, so a card a live turn
- * is still writing to keeps moving out of the window.
- *
- * Deleted chats are excluded — there is no card to unstick in a conversation the
- * user can no longer open.
+ * is still writing to keeps moving out of the window. Deleted chats are excluded.
  */
 export async function listStaleOpenInvestigations(
   db: DashboardAgentDb,
@@ -693,20 +650,16 @@ export async function listStaleOpenInvestigations(
 }
 
 /**
- * #12 Settle one investigation as `inconclusive` — the between-turns backstop for
- * {@link listStaleOpenInvestigations}. Returns false if the row was no longer
- * `in_progress`.
+ * Settle one investigation as `inconclusive`, the backstop for
+ * {@link listStaleOpenInvestigations}. False if the row was no longer `in_progress`.
  *
- * One statement, so it can't fight a live revision: the merge, the `revision + 1`
- * and the `in_progress` guard are evaluated together, and a turn that concludes the
- * card first simply wins (this then updates nothing). The state is rewritten in
- * SQL rather than read-modify-written for the same reason — there is no window
- * between the read and the write to lose a concurrent revision in.
+ * One statement, so it can't fight a live revision: a turn that concludes the card
+ * first wins and this updates nothing. The state is rewritten in SQL rather than
+ * read-modify-written for the same reason.
  *
- * The merge mirrors the agent's own `forceSettledInvestigationState`: `progress`
- * and `remediation` are dropped (an inconclusive card may not carry a fix, and the
- * schema rejects one), confidence falls to `low`, and `note` is appended to the
- * headline. Everything established — hypotheses, evidence, `checkNext` — is kept.
+ * The merge mirrors the agent's `forceSettledInvestigationState`: `progress` and
+ * `remediation` are dropped, because the schema rejects a fix on an inconclusive
+ * card; confidence falls to `low` and `note` is appended to the headline.
  */
 export async function settleInvestigationAsInconclusive(
   db: DashboardAgentDb,
@@ -734,22 +687,20 @@ export async function settleInvestigationAsInconclusive(
   return rows.length > 0;
 }
 
-/* ------------------------------------------------------------------ *
- * Watches
- * ------------------------------------------------------------------ */
+// Watches
 
 /** Guardrail: a chat may hold at most this many watches at once. */
 export const MAX_ACTIVE_WATCHES_PER_CHAT = 3;
 
-/** Terminal statuses are immutable — every transition guards on `active`. */
+/** Terminal statuses are immutable. Every transition guards on `active`. */
 export function isTerminalWatchStatus(status: string): boolean {
   return status === "fired" || status === "expired" || status === "cancelled";
 }
 
 /**
- * A wake that still has to reach its chat: never claimed, or claimed by a
- * deliverer that hasn't marked it delivered (yet, or ever). Whether the claim is
- * still someone's to hold is {@link claimWatchDelivery}'s call, not this one's.
+ * A wake that still has to reach its chat: never claimed, or claimed by a deliverer
+ * that hasn't marked it delivered. Whether the claim is still someone's to hold is
+ * {@link claimWatchDelivery}'s call.
  */
 export function isWatchDeliveryOwed(status: string): boolean {
   return status === "pending" || status === "delivering";
@@ -774,26 +725,18 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * #13 Create a watch. The caller supplies the already-resolved identity — both
- * the tenancy snapshot (org/project/env/user, frozen for the watch's life) and
- * the `identity` dedup string for the thing being watched.
+ * Create a watch. The caller supplies the already-resolved identity: the tenancy
+ * snapshot, frozen for the watch's life, and the `identity` dedup string.
  *
- * Two guardrails:
+ * Dedup is guaranteed by the partial unique index
+ * `watches_chat_active_identity_key`. The pre-check below only returns a friendly
+ * result with the existing watch's id; a concurrent double-submit slips past it
+ * under READ COMMITTED and is caught as a unique violation on insert.
  *
- * - **Dedup** (no second active watch on the same chat/project/environment/identity)
- *   is guaranteed by the partial unique index `watches_chat_active_identity_key`.
- *   The pre-check below exists only to return a friendly result with the existing
- *   watch's id in the common case; a concurrent double-submit slips past it (both
- *   transactions can read no duplicate under READ COMMITTED) and is caught as a
- *   unique violation on insert.
- * - **The ≤`MAX_ACTIVE_WATCHES_PER_CHAT` limit** is a hard cap: the count and the
- *   insert are one transaction, serialized per chat by a transaction-scoped
- *   advisory lock, so concurrent creates queue behind each other and the one that
- *   would be the 4th is rejected instead of landing.
- *
- * The same lock also serializes against `softDeleteChat`, and the chat is re-read
- * inside it, so a create can never land an active watch on a chat that was deleted
- * while the create was in flight.
+ * The `MAX_ACTIVE_WATCHES_PER_CHAT` cap holds because the count and the insert are
+ * one transaction, serialized per chat by the advisory lock. That same lock
+ * serializes against `softDeleteChat`, and the chat is re-read inside it, so a
+ * create can't land an active watch on a chat deleted while it was in flight.
  */
 export async function createWatch(
   db: DashboardAgentDb,
@@ -803,7 +746,7 @@ export async function createWatch(
     spec: PersistedWatchSpec;
     organizationId: string;
     projectId: string;
-    /** The project's external `proj_…` ref — what a wake scopes an investigation by. */
+    /** The project's external `proj_…` ref, which a wake scopes an investigation by. */
     projectRef?: string | null;
     environmentId: string;
     userId: string;
@@ -816,12 +759,12 @@ export async function createWatch(
   try {
     return await db.transaction(async (tx) => {
       // Serialize this chat's watch decisions, so count-then-insert is atomic
-      // against a concurrent create AND against the chat being deleted underneath.
+      // against a concurrent create and against the chat being deleted underneath.
       await lockChatForWatches(tx, params.chatId);
 
       // Re-read the chat under the lock. A delete that committed while this call
       // was validating its target would otherwise be overtaken by the insert
-      // below, leaving an active watch on a conversation the user has deleted.
+      // below, leaving an active watch on a deleted conversation.
       const chat = await tx
         .select({ id: chats.id })
         .from(chats)
@@ -882,19 +825,15 @@ export async function createWatch(
 }
 
 /**
- * The guardrails, BEFORE anything is written — the `cap → dedup → immediate
- * check` order of §4.4.
+ * The guardrails before anything is written, in `cap` then `dedup` order.
  *
- * Under the resolution model the immediate check can answer the request outright
- * (a one-shot result block, no watch row at all), so the cap and the dedup have to
- * be consulted before it runs: refusing at the 4th watch, or pointing at the watch
- * that already covers this, must not depend on whether the condition happens to be
- * true right now.
+ * The immediate check can answer a watch request outright with no watch row, so the
+ * cap and the dedup are consulted before it runs: refusing at the 4th watch, or
+ * pointing at the watch that already covers this, must not depend on whether the
+ * condition happens to be true right now.
  *
- * Advisory only. It is a plain read, so it is NOT race-proof — {@link createWatch}
- * re-applies both guardrails atomically under the per-chat lock and the partial
- * unique index, and remains the authority. This exists so the common case gets the
- * friendly answer without a row being written first.
+ * Advisory only, and a plain read, so it is not race-proof. {@link createWatch}
+ * re-applies both guardrails atomically and remains the authority.
  */
 export async function precheckWatchCreation(
   db: DashboardAgentDb,
@@ -930,9 +869,8 @@ export async function precheckWatchCreation(
 }
 
 /**
- * #13 The active watch on a given thing, if any — the dedup lookup behind
- * `createWatch`, also useful on its own ("am I already watching this?").
- * Covered by `watches_chat_active_identity_key`.
+ * The active watch on a given thing, if any. Covered by
+ * `watches_chat_active_identity_key`.
  */
 export async function findActiveWatchByIdentity(
   db: DashboardAgentDb,
@@ -954,7 +892,7 @@ export async function findActiveWatchByIdentity(
   return rows[0] ?? null;
 }
 
-/** #13 Load a watch by id. */
+/** Load a watch by id. */
 export async function getWatch(
   db: DashboardAgentDb,
   params: { id: string }
@@ -964,8 +902,8 @@ export async function getWatch(
 }
 
 /**
- * #13 The chat's active watches — what the UI shows and what the guardrail
- * counts. Covered by the partial `watches_chat_active_idx`.
+ * The chat's active watches. Covered by the partial
+ * `watches_chat_active_identity_key`, which leads with `chat_id`.
  */
 export async function listActiveWatchesForChat(
   db: DashboardAgentDb,
@@ -988,26 +926,28 @@ export interface ActiveWatchSummary {
   note: string;
   checkEveryMinutes: number;
   expiresAt: Date;
-  /** The last check's reason — lets a resolved banner tell "can no longer
-   *  happen" (terminal_unsatisfied) apart from a plain timeout. */
+  /**
+   * The last check's reason. Lets a resolved banner tell `terminal_unsatisfied`
+   * apart from a plain timeout.
+   */
   endedReason: string | null;
   /** How it ended. NULL while active and for every cancellation. */
   resolution: WatchResolution | null;
-  /** What the resolving check observed — the other half of the headline. */
+  /** What the resolving check observed. */
   observedOutcome: WatchObservedOutcome | null;
 }
 
 /**
- * #13 Watches for MANY chats in one query, keyed by chatId — the history list
+ * Watches for many chats in one query, keyed by chatId, because the history list
  * renders up to 50 chats and must not fan out a query per row.
  *
- * Returns every non-cancelled watch, not only the active ones: the chips
- * filter to `active` client-side, while the wake banner needs the KIND of a
- * watch that has already fired to pick its tone.
+ * Returns every non-cancelled watch, not only the active ones: the chips filter to
+ * `active` client-side, while the wake banner needs the kind of an already-fired
+ * watch to pick its tone.
  *
  * Tenancy floor is the join, not the caller: the chats are re-scoped by
- * `organizationId` + `userId` + not-deleted here, so a chat id from anywhere
- * (including a client) can only ever match a chat this user owns.
+ * `organizationId`, `userId` and not-deleted here, so a chat id from anywhere can
+ * only match a chat this user owns.
  */
 export async function listActiveWatchesForChats(
   db: DashboardAgentDb,
@@ -1066,19 +1006,16 @@ const wakeResolvedAt = sql<Date>`coalesce(${watches.firedAt}, ${watches.lastChec
 const unreadWake = sql`(${chats.lastReadAt} is null or ${wakeResolvedAt} > ${chats.lastReadAt})`;
 
 /**
- * A wake the user can open: a resolved, delivered watch in one of this user's
- * live chats. Shared by the three wake queries so they can't drift apart.
+ * A wake the user can open: a resolved, delivered watch in one of this user's live
+ * chats. Shared by the three wake queries so they can't drift apart.
  *
- * Only a DELIVERED wake counts — between the terminal transition and the append
- * to the chat there is no message to read yet, so signalling it would point at an
- * empty conversation.
+ * Only a delivered wake counts, because between the terminal transition and the
+ * append to the chat there is no message to read yet.
  *
- * Org + user are asserted on the WATCH row as well as on the joined chat. That is
- * not a second tenancy rule: a watch's identity is snapshotted from the chat's
- * owner at creation, and the create path rejects a chat from another org, so the
- * two can never disagree. It is there so `watches_org_user_wake_idx` narrows to
- * this user before the join runs, instead of the planner reaching every delivered
- * wake in the table.
+ * Org and user are asserted on the watch row as well as on the joined chat. Not a
+ * second tenancy rule (the watch snapshots the chat's owner at creation, so the two
+ * can't disagree) but so `watches_org_user_wake_idx` narrows to this user before
+ * the join runs.
  */
 function deliveredWakeScope(params: { organizationId: string; userId: string }) {
   return [
@@ -1093,19 +1030,10 @@ function deliveredWakeScope(params: { organizationId: string; userId: string }) 
 }
 
 /**
- * #13 How many watch wakes this user hasn't seen — what the launcher's dot shows
- * while the panel is closed.
- *
- * A wake is a watch that resolved (`fired` or `expired`; a cancelled watch is
- * never narrated) after the chat was last read. `last_read_at is null` means the
- * chat was never opened since the column existed, so every wake in it is unread.
- * The resolution time is `fired_at` for a fire and `last_checked_at` for an
- * expiry — `transitionWatchCondition` writes both in the same statement.
- *
- * Tenancy floor is the join, same as `listActiveWatchesForChats`: org + user +
- * not-deleted on the chat, so nothing outside this user's chats can be counted.
- * The same org + user are also asserted on the WATCH row — see
- * {@link deliveredWakeScope}.
+ * How many watch wakes this user hasn't seen. A wake is a watch that resolved
+ * (`fired` or `expired`; a cancelled watch is never narrated) after the chat was
+ * last read, and `last_read_at is null` counts every wake in the chat as unread.
+ * Scoping is {@link deliveredWakeScope}.
  */
 export async function countUnreadWatchWakes(
   db: DashboardAgentDb,
@@ -1129,14 +1057,13 @@ export interface UnreadWatchWake {
   /** When the watch resolved: `fired_at` for a fire, `last_checked_at` for an expiry. */
   firedAt: Date;
   /**
-   * The three fields a surface needs to state the FACT rather than "Watch update"
-   * (§5.3): the kind and identity name the thing, the resolution and the observed
-   * outcome decide what happened to it. Frozen on the row by the resolving check,
-   * so the toast and the banner can never disagree.
+   * The kind and identity name the thing; the resolution and the observed outcome
+   * say what happened to it. Frozen on the row by the resolving check, so the toast
+   * and the banner can never disagree.
    */
   kind: string;
   identity: string;
-  /** Null on a row written before the resolution model — the surface falls back. */
+  /** Null on a row written before the resolution model. The surface falls back. */
   resolution: WatchResolution | null;
   observedOutcome: WatchObservedOutcome | null;
   /** Landed after the chat's read marker. The dot counts these; the toast fires either way. */
@@ -1144,14 +1071,12 @@ export interface UnreadWatchWake {
 }
 
 // The toast fires one per wake, so a long-unopened panel doesn't need the whole
-// backlog — enough to name the recent ones, and the count carries the rest.
+// backlog. The count carries the rest.
 const UNREAD_WAKE_LIST_LIMIT = 10;
 
 /**
- * #13 The unread wakes themselves, newest first — what the dashboard toast reads
- * from. Same wake definition and tenancy floor as {@link countUnreadWatchWakes};
- * this one returns rows instead of a total, capped at
- * {@link UNREAD_WAKE_LIST_LIMIT}.
+ * The unread wakes themselves, newest first. Same wake definition and scoping as
+ * {@link countUnreadWatchWakes}, capped at {@link UNREAD_WAKE_LIST_LIMIT}.
  */
 export async function listRecentWatchWakes(
   db: DashboardAgentDb,
@@ -1167,8 +1092,7 @@ export async function listRecentWatchWakes(
       resolution: watches.resolution,
       observedOutcome: watches.observedOutcome,
       resolvedAt: wakeResolvedAt,
-      // The TOAST doesn't care whether the wake was read (a wake read on screen
-      // still deserves its toast, once); the DOT does.
+      // The toast fires once per wake whether or not it was read; only the dot cares.
       unread: sql<boolean>`${unreadWake}`,
     })
     .from(watches)
@@ -1198,13 +1122,12 @@ export async function listRecentWatchWakes(
 }
 
 /**
- * #13 WHICH chats have unread wakes — the history list sorts them first and
- * highlights them. Same wake definition and tenancy floor as
- * {@link countUnreadWatchWakes}; this one groups instead of totalling.
+ * Which chats have unread wakes. Same wake definition and scoping as
+ * {@link countUnreadWatchWakes}, grouped instead of totalled.
  *
- * Not scoped to the listed chat ids: the set is small (only chats with a
- * resolved, unseen watch) and the caller is listing every chat the user owns
- * anyway, so a second `in` clause would only narrow what the join already does.
+ * Not scoped to the listed chat ids: the set is small and the caller is listing
+ * every chat the user owns anyway, so a second `in` clause would only narrow what
+ * the join already does.
  */
 export async function listChatIdsWithUnreadWakes(
   db: DashboardAgentDb,
@@ -1224,14 +1147,13 @@ export interface ChatWatchContext {
 }
 
 /**
- * #13 Ownership check for a chat, returning the org it belongs to: a live chat
- * with this id owned by this user.
+ * Ownership check for a chat, returning the org it belongs to.
  *
- * Deliberately does NOT return a project/environment. The chat's stored
- * `metadata.context` is a snapshot from chat creation, and a watch must be bound
- * to the environment of the turn that asked for it — which comes from the
- * authenticated request context, not from the row. The org is returned because it
- * is immutable for a chat and is the tenancy floor its watches can't leave.
+ * Deliberately does not return a project or environment. The chat's stored
+ * `metadata.context` is a snapshot from chat creation, and a watch must be bound to
+ * the environment of the turn that asked for it, which comes from the authenticated
+ * request context. The org is immutable for a chat and is the tenancy floor its
+ * watches can't leave.
  */
 export async function getChatWatchContext(
   db: DashboardAgentDb,
@@ -1252,20 +1174,18 @@ export async function getChatWatchContext(
 }
 
 /**
- * #13 The watch RESOLVED. Atomic — only an `active` row transitions, so a check
- * that resolves at the same moment the sweeper completes the window yields
- * exactly one winner (the loser gets `null`). Every resolution notifies, so
- * `deliveryStatus` becomes `pending`.
+ * The watch resolved. Only an `active` row transitions, so a check that resolves at
+ * the same moment the sweeper completes the window yields exactly one winner; the
+ * loser gets `null`. Every resolution notifies, so `deliveryStatus` becomes
+ * `pending`.
  *
- * One statement writes all three halves of the answer — the `resolution`, the
- * `observedOutcome`, and the frozen `lastResult` facts. That atomicity is what
- * lets §7.5 hold: delivery never re-reads the source to reconstruct what
- * happened, so a retry cannot rebuild a different headline, and banner, toast,
- * email and narration all share one set of facts.
+ * One statement writes the `resolution`, the `observedOutcome` and the frozen
+ * `lastResult`. Delivery never re-reads the source to reconstruct what happened, so
+ * a retry cannot rebuild a different headline and banner, toast, email and
+ * narration all share one set of facts.
  *
- * `status` is derived, never passed: it is the two-value WIRE encoding of the
- * resolution (§7.5 binding), so no caller can put a status on the row that
- * disagrees with the resolution it recorded.
+ * `status` is derived, never passed: it is the two-value wire encoding of the
+ * resolution, so no caller can put a status on the row that disagrees with it.
  */
 export async function transitionWatchCondition(
   db: DashboardAgentDb,
@@ -1294,9 +1214,9 @@ export async function transitionWatchCondition(
 }
 
 /**
- * #13 Cancel an active watch. Cancellation is never notified, so `deliveryStatus`
- * stays `not_required`. Atomic guard on `active`: a watch that already fired keeps
- * its outcome (and its pending notification) and this is a no-op returning `null`.
+ * Cancel an active watch. Cancellation is never notified, so `deliveryStatus` stays
+ * `not_required`. Guarded on `active`, so a watch that already fired keeps its
+ * outcome and its pending notification, and this returns `null`.
  */
 export async function cancelWatch(
   db: DashboardAgentDb,
@@ -1316,8 +1236,8 @@ export async function cancelWatch(
 }
 
 /**
- * #13 Cancel every active watch of a chat — chat deletion, or the user losing
- * access to the project the watches were created against.
+ * Cancel every active watch of a chat: chat deletion, or the user losing access to
+ * the project the watches were created against.
  */
 export async function cancelActiveWatchesForChat(
   db: DashboardAgentDbOrTx,
@@ -1336,9 +1256,9 @@ export async function cancelActiveWatchesForChat(
 }
 
 /**
- * How long a `delivering` claim is respected before the wake is considered
- * abandoned and may be claimed again. Longer than a delivery takes (seconds), so
- * the only rows it releases are ones whose deliverer really died.
+ * How long a `delivering` claim is respected before the wake is considered abandoned
+ * and may be claimed again. Much longer than a delivery takes, so the only rows it
+ * releases are ones whose deliverer died.
  */
 export const WATCH_DELIVERY_CLAIM_STALE_MS = 5 * 60 * 1000;
 
@@ -1354,25 +1274,21 @@ export interface WatchDeliveryClaim {
 }
 
 /**
- * #13 Claim the right to deliver a resolved watch's wake — the atomic gate that
- * makes "exactly one wake" true even with two deliverers running at once.
+ * Claim the right to deliver a resolved watch's wake. The gate that keeps "exactly
+ * one wake" true with two deliverers running at once: `pending` to `delivering` in
+ * one statement, and only the row it returns may append. A stable action id would
+ * not be enough, because dedup on the transcript is a read-then-write two concurrent
+ * appends can interleave through.
  *
- * A stable action id dedups a wake only through a read-then-write on the
- * transcript, which two concurrent appends can interleave through. So the claim
- * lives here instead: `pending → delivering` in one statement, and only the row it
- * returns may append. The loser gets `null` and delivers nothing.
+ * A claim is not a renewed lease. {@link releaseWatchDelivery} hands it back when the
+ * append fails, and a claim left behind by a dead deliverer is re-claimable once it
+ * is older than `staleBefore`, so a crash between the claim and
+ * `markWatchDelivered` can't strand the wake forever.
  *
- * A claim is not a lease that has to be renewed: {@link releaseWatchDelivery}
- * hands it back when the append fails, and a claim left behind by a deliverer that
- * died is re-claimable once it is older than `staleBefore` — otherwise a crash
- * between the claim and `markWatchDelivered` would strand the wake forever.
- *
- * Every claim writes a NEW `deliveryClaimId`, which is what makes the takeover
- * safe: the status alone can't say WHOSE claim is in the row, so a deliverer that
- * hung past the stale window and then woke up would otherwise release (or complete)
- * the claim that replaced it, and a third deliverer would append in parallel with
- * the second. The token is required by both of those writes, so the old owner's
- * calls are no-ops.
+ * Every claim writes a new `deliveryClaimId`, which is what makes takeover safe: the
+ * status alone can't say whose claim is in the row, so a deliverer that hung past the
+ * stale window would otherwise release or complete the claim that replaced it. Both
+ * of those writes require the token, so the old owner's calls are no-ops.
  */
 export async function claimWatchDelivery(
   db: DashboardAgentDb,
@@ -1394,14 +1310,12 @@ export async function claimWatchDelivery(
 }
 
 /**
- * #13 Give a delivery claim back, after an append that failed: the wake is owed
- * again, so the invocation's own retry (or another deliverer) can pick it up
+ * Give a delivery claim back after a failed append, so a retry can pick the wake up
  * without waiting out the stale window.
  *
- * Fenced on `claimId`: only the deliverer that still holds the claim releases it,
- * so a late release from a taken-over owner can't hand somebody else's in-flight
- * claim back to `pending`. Guarded on `delivering` too, so it can never un-deliver
- * a wake that landed.
+ * Fenced on `claimId`, so a late release from a taken-over owner can't hand somebody
+ * else's in-flight claim back to `pending`. Guarded on `delivering` too, so it can
+ * never un-deliver a wake that landed.
  */
 export async function releaseWatchDelivery(
   db: DashboardAgentDb,
@@ -1422,16 +1336,15 @@ export async function releaseWatchDelivery(
 }
 
 /**
- * #13 The outcome notification went out, so the row is closed out.
- *
- * Two callers, two guards:
+ * The outcome notification went out, so the row is closed out. Two callers, two
+ * guards:
  *
  * - A deliverer that claimed the wake passes its `claimId`, and the mark lands only
- *   while the row still carries that claim. A stale takeover replaced the token, so
- *   the old owner's late mark can't complete the new owner's delivery.
+ *   while the row still carries that claim, so a taken-over owner's late mark can't
+ *   complete the new owner's delivery.
  * - The one path that never claims (an outcome resolved inline with nothing to
- *   narrate later) passes no `claimId` and marks a `pending` row. Deliberately not
- *   `delivering`: an unfenced mark must not be able to finish a claim it doesn't own.
+ *   narrate later) passes no `claimId` and marks a `pending` row. Not `delivering`,
+ *   because an unfenced mark must not finish a claim it doesn't own.
  *
  * Either way a repeat is a no-op, so a retried delivery can't reset `deliveredAt`.
  */
@@ -1458,32 +1371,26 @@ export async function markWatchDelivered(
 }
 
 /**
- * #13 Claim a tick GENERATION for a watch — the one and only writer of
- * `tickCount`.
+ * Claim a tick generation for a watch. The only writer of `tickCount`.
  *
- * A tick invocation carries its generation in its payload and claims it here. The
- * claim is resumable: it lands when the row is still on the previous generation (a
- * fresh tick) OR already on this one (a retry of the invocation that owns this
- * generation, which crashed somewhere mid-tick). It does NOT land when the row is
- * further ahead — the successor generation already ran, so this invocation is a
- * late duplicate with nothing left to do, and gets `null`.
+ * The claim is resumable: it lands when the row is still on the previous generation
+ * (a fresh tick) or already on this one (a retry of the invocation that owns the
+ * generation and crashed mid-tick). It does not land when the row is further ahead,
+ * because the successor already ran and this is a late duplicate.
  *
- * Resuming is what keeps a crash from killing the chain. The generation lives in
- * the payload and the successor's idempotency key (`watch:{id}:tick:{n+1}`) is a
- * pure function of it, so re-running a whole generation is safe: the successor
- * trigger dedups on that key, the check record is an overwrite, the terminal
+ * Resuming is what keeps a crash from killing the chain. Re-running a whole
+ * generation is safe: the successor's idempotency key (`watch:{id}:tick:{n+1}`) is a
+ * pure function of the generation, the check record is an overwrite, the terminal
  * transition is guarded on `active`, and the wake dedups on its action id. A claim
- * that refused to resume would leave the chain with nobody to schedule the next
- * generation, and the watch would sit active and unchecked until its deadline.
+ * that refused to resume would leave nobody to schedule the next generation, and the
+ * watch would sit active and unchecked until its deadline.
  *
- * Guarded on `active` too: a terminal watch is never ticked again.
+ * Guarded on `active`, so a terminal watch is never ticked again.
  *
- * Deliberately does NOT touch `lastCheckedAt`: claiming a generation is not an
- * observation, and a claim whose check then failed to run would otherwise date the
- * watch's last observation to it — the expiry narration reports that timestamp as
- * "last observed". `lastCheckedAt` is written only where a result is written with
- * it ({@link recordWatchCheck}, {@link transitionWatchCondition}), so the timestamp
- * and the observation it belongs to always agree.
+ * Deliberately does not touch `lastCheckedAt`: claiming a generation is not an
+ * observation, and the expiry narration reports that timestamp as "last observed".
+ * It is written only where a result is written with it ({@link recordWatchCheck},
+ * {@link transitionWatchCondition}).
  */
 export async function claimWatchTick(
   db: DashboardAgentDb,
@@ -1504,12 +1411,11 @@ export async function claimWatchTick(
 }
 
 /**
- * #13 Record what a check observed: `lastCheckedAt` plus the `lastResult` the
- * notification reads. Deliberately does NOT touch `tickCount` — the generation is
- * claimed by {@link claimWatchTick} alone, so the counter has a single writer and
- * this can be called by both the check endpoint and the tick without either of
- * them advancing the chain. Guarded on `active`, so a concurrent fire/expire wins
- * and this no-ops.
+ * Record what a check observed: `lastCheckedAt` plus the `lastResult` the
+ * notification reads. Deliberately does not touch `tickCount`, so the counter keeps
+ * {@link claimWatchTick} as its single writer and both the check endpoint and the
+ * tick can call this without advancing the chain. Guarded on `active`, so a
+ * concurrent fire or expire wins and this no-ops.
  */
 export async function recordWatchCheck(
   db: DashboardAgentDb,
@@ -1532,27 +1438,17 @@ export async function recordWatchCheck(
 }
 
 /**
- * #13 Sweep: terminal watches whose delivery is still owed.
- *
- * The other half of the backstop, and the one `listExpiredActiveWatches` cannot
- * see: a row that has already been resolved (so it is no longer `active`) but
- * whose wake never landed — the session append failed, the run that owned it died
- * between the transition and the append, or the outcome was resolved inline and
- * the turn that was going to narrate it never finished. Without this the row sits
- * `pending` forever, and the wake is simply lost.
+ * Sweep: terminal watches whose delivery is still owed. The half of the backstop
+ * `listExpiredActiveWatches` cannot see, because the row is already resolved. Without
+ * it a row whose append failed sits `pending` forever and the wake is lost.
  *
  * `olderThan` is a grace window on the resolution time (`fired_at` for a fire,
- * `last_checked_at` for an expiry): the normal delivery happens within seconds, so
- * only rows that have been owed for a while are recovered, and the recovery can't
- * race the path that is still mid-delivery.
+ * `last_checked_at` for an expiry), so the recovery can't race a path that is still
+ * mid-delivery. A `delivering` row is owed only once its claim is older than the same
+ * window, which means its deliverer died and nothing else would pick it up.
  *
- * A row mid-delivery (`delivering`) is owed too, but only once its claim is older
- * than the same window: that is a deliverer that died between claiming the wake and
- * marking it delivered, and nothing else would ever pick it up.
- *
- * Deleted chats are excluded — there is nowhere to deliver a wake in a
- * conversation the user can no longer open (deleting a chat cancels its active
- * watches, so this only ever skips one that resolved just before the delete).
+ * Deleted chats are excluded. Deleting a chat cancels its active watches, so this
+ * only skips one that resolved just before the delete.
  */
 export async function listWatchesAwaitingDelivery(
   db: DashboardAgentDb,
@@ -1578,29 +1474,21 @@ export async function listWatchesAwaitingDelivery(
 }
 
 /**
- * #13 Sweep: drop watches that ended long enough ago that nobody will look at
- * them again.
+ * Sweep: drop watches that ended long enough ago that nothing reads them again.
+ * After its wake has landed a terminal watch is immutable and unread (dedup only
+ * considers `active` rows, and the wake's facts are frozen into the transcript), so
+ * the row is pure retention.
  *
- * A terminal watch is immutable and read by nothing after its wake has landed —
- * the chip is gone, dedup only considers `active` rows, and the wake's own facts
- * are frozen into the chat transcript. So the row is pure retention, and left
- * alone it grows forever.
+ * Guarded three ways in one statement: terminal only, delivery settled so a row
+ * that still owes a wake is never deleted out from under the delivery sweep, and the
+ * age measured from the last thing that happened to the row (`greatest(...)`,
+ * falling back to the never-null `created_at`), so a late delivery restarts the
+ * clock rather than shortening it.
  *
- * Guarded three ways, in one statement:
- *  - terminal only, so nothing `active` can ever match,
- *  - delivery settled (`not_required` or `delivered`), so a row that still owes
- *    a wake is never deleted out from under the delivery half of the sweep, and
- *  - the age is measured from the LAST thing that happened to the row
- *    (`greatest(...)`, falling back to `created_at`, which is never null), so a
- *    late delivery restarts the clock rather than shortening it.
+ * Bounded per run, and deliberately unordered: which eligible rows go first doesn't
+ * matter, and without a sort Postgres can stop as soon as it has a batch.
  *
- * Bounded per run: the batch caps both the delete and the scan behind it. There
- * is deliberately no ordering — which eligible rows go first doesn't matter, and
- * without a sort Postgres can stop as soon as it has a batch. The next run takes
- * the rest.
- *
- * Only `watches` rows. Chats, messages and investigations are the user's history
- * and are never touched here.
+ * Only `watches` rows. Chats, messages and investigations are the user's history.
  */
 export async function deleteTerminalWatchesOlderThan(
   db: DashboardAgentDb,
@@ -1627,10 +1515,9 @@ export async function deleteTerminalWatchesOlderThan(
 }
 
 /**
- * #13 Sweep: active watches whose deadline has passed, oldest first. Callers run
- * the final boundary evaluation and resolve these via
- * `transitionWatchCondition` — which may still be `condition_met` (§7.4).
- * Covered by `watches_status_expires_idx`.
+ * Sweep: active watches whose deadline has passed, oldest first. Callers run the
+ * final boundary evaluation and resolve these via `transitionWatchCondition`, which
+ * may still be `condition_met`. Covered by `watches_status_expires_idx`.
  */
 export async function listExpiredActiveWatches(
   db: DashboardAgentDb,
@@ -1642,8 +1529,7 @@ export async function listExpiredActiveWatches(
     .where(
       and(
         eq(watches.status, "active"),
-        // The bind has to be a string: postgres-js won't serialize a Date into a
-        // raw `sql` fragment (it silently worked only while nobody passed `now`).
+        // A string bind: postgres-js won't serialize a Date into a raw fragment.
         params.now
           ? sql`${watches.expiresAt} <= ${params.now.toISOString()}::timestamptz`
           : sql`${watches.expiresAt} <= now()`
@@ -1653,35 +1539,30 @@ export async function listExpiredActiveWatches(
     .limit(params.limit ?? 100);
 }
 
-// ---------------------------------------------------------------------------
-// Batch chains — one polling loop per (environment, cadence), not one per watch.
-// ---------------------------------------------------------------------------
+// Batch chains: one polling loop per (environment, cadence), not one per watch.
 
 /**
- * The cadence a watch asks to be checked at, dug out of its spec. It lives in the
- * JSONB rather than a column because it is part of the check's input, so the batch
- * grouping reads it from there — cheap, because every query that uses it is already
- * narrowed to one environment's `active` rows by `watches_active_env_idx`.
+ * The cadence a watch asks to be checked at, read out of its spec JSONB. Cheap,
+ * because every query that uses it is already narrowed to one environment's `active`
+ * rows by `watches_active_env_idx`.
  */
 const watchCadenceMinutes = sql<number>`(${watches.spec} ->> 'checkEveryMinutes')::int`;
 
 /**
- * How many active watches one batch tick will take at a time. Well past what an
- * environment realistically holds (three per chat), and the order — soonest
- * deadline first — means a group over the cap never defers a watch that is about to
- * reach its window boundary.
+ * How many active watches one batch tick takes at a time. Well past what an
+ * environment realistically holds, and the soonest-deadline-first order means a group
+ * over the cap never defers a watch about to reach its window boundary.
  */
 const BATCH_GROUP_LIMIT = 500;
 
 /**
- * Every `active` watch of one (environment, cadence) group, in ONE read. This is
- * the query that replaces N per-watch tick runs with one: the caller authorizes the
- * environment once, loads the shared expensive data once, and evaluates these rows
- * against it.
+ * Every `active` watch of one (environment, cadence) group, in one read. This is what
+ * replaces N per-watch tick runs with one: the caller authorizes the environment
+ * once, loads the shared expensive data once, and evaluates these rows against it.
  *
- * Which of them are DUE (and which need their boundary evaluation) is the caller's
- * decision, not this query's — it depends on the tick's own clock, and the caller
- * has to see the whole group anyway to know whether the chain should tick again.
+ * Which of them are due is the caller's decision, because it depends on the tick's
+ * own clock and the caller has to see the whole group anyway to know whether the
+ * chain should tick again.
  */
 export async function listActiveWatchesForBatch(
   db: DashboardAgentDb,
@@ -1702,21 +1583,17 @@ export async function listActiveWatchesForBatch(
 }
 
 /**
- * The wakes ONE group still owes — the batch's own half of the delivery backstop.
+ * The wakes one group still owes: the batch's half of the delivery backstop.
  *
- * A per-watch tick that died between its terminal transition and its session append
- * was retried by the platform, and the retry delivered. A batch run is retried too,
- * but by then the watch is terminal, so it is no longer in the group's `active` set
- * and the retry would never see it. This is what it sees instead, which keeps the
- * recovery at seconds rather than waiting out the webapp sweep's five-minute grace.
+ * A retried batch run would never see a watch that went terminal mid-run, because it
+ * is no longer in the group's `active` set. This is what it sees instead, which keeps
+ * recovery at seconds rather than waiting out the webapp sweep's grace window.
  *
- * No grace window here on purpose: the retry is supposed to be immediate, and two
- * deliverers racing is already settled by the fenced delivery claim. A row that is
- * mid-delivery is only owed once its claim is stale — that is a deliverer that died,
- * and nothing else would pick it up.
+ * No grace window here on purpose: the retry is meant to be immediate, and two
+ * deliverers racing is already settled by the fenced delivery claim. A mid-delivery
+ * row is owed only once its claim is stale.
  *
- * Deleted chats are excluded: there is nowhere to deliver a wake in a conversation
- * the user can no longer open.
+ * Deleted chats are excluded.
  */
 export async function listWatchesAwaitingDeliveryForBatch(
   db: DashboardAgentDb,
@@ -1747,23 +1624,21 @@ export async function listWatchesAwaitingDeliveryForBatch(
 }
 
 /**
- * Arm the batch chain for one (environment, cadence) group — the gate that keeps a
+ * Arm the batch chain for one (environment, cadence) group. The gate that keeps a
  * group to exactly one polling loop.
  *
- * Returns the row when THIS call armed the chain, so the caller must trigger the
- * run that owns `epoch` / `generation + 1`. Returns `null` when a live chain
- * already covers the group: a watch created into it simply joins the next tick, and
- * that is the whole economics of the feature — one run, one authorization, one
- * report read per cadence however many watches are watching.
+ * Returns the row when this call armed the chain, so the caller must trigger the run
+ * that owns `epoch` / `generation + 1`. Returns `null` when a live chain already
+ * covers the group, and a watch created into it joins the next tick.
  *
  * One statement, so two creations racing on the same group can only produce one
  * chain. The `DO UPDATE … WHERE` is the guard: an existing row is re-armed only if
- * its chain has stopped or its heartbeat is older than `staleBefore` (the run that
- * owned it died). Anything else conflicts, updates nothing, and returns no row.
+ * its chain has stopped or its heartbeat is older than `staleBefore`, meaning the run
+ * that owned it died.
  *
  * `epoch` is bumped on every arm and `generation` reset with it, which is what makes
- * re-arming a dead chain safe: the zombie's next claim names the old epoch and
- * lands nowhere, and the two epochs' successor idempotency keys can never collide.
+ * re-arming a dead chain safe: the zombie's next claim names the old epoch and lands
+ * nowhere, and the two epochs' successor idempotency keys can never collide.
  */
 export async function armWatchBatch(
   db: DashboardAgentDb,
@@ -1794,17 +1669,12 @@ export async function armWatchBatch(
 }
 
 /**
- * Claim a batch chain's tick generation — the batch-level twin of
- * {@link claimWatchTick}, with the same resumable rule and the same single-writer
- * discipline, plus the epoch fence.
+ * Claim a batch chain's tick generation. The batch-level twin of
+ * {@link claimWatchTick}, with the same resumable rule plus the epoch fence: it
+ * refuses on an epoch mismatch, which is how a zombie chain from before a re-arm
+ * exits instead of ticking alongside its replacement.
  *
- * Lands when the row is still on the previous generation (a fresh tick) or already
- * on this one (a retry of the run that owns it, resuming after a crash). Refuses
- * when the row is further ahead — a late duplicate whose successor already ran —
- * and refuses on an epoch mismatch, which is how a zombie chain from before a
- * re-arm exits instead of ticking alongside its replacement.
- *
- * Also the heartbeat: `lastTickAt` is what the re-arm backstop reads to tell a live
+ * Also the heartbeat. `lastTickAt` is what the re-arm backstop reads to tell a live
  * chain from one whose run died.
  */
 export async function claimWatchBatchTick(
@@ -1833,12 +1703,12 @@ export async function claimWatchBatchTick(
 }
 
 /**
- * Stop a batch chain: the group has no active watches left, or the run that was
- * going to own the chain couldn't be triggered at all.
+ * Stop a batch chain: the group has no active watches left, or the run that was going
+ * to own the chain couldn't be triggered.
  *
- * Fenced on the epoch, so a stop decided by one epoch's run can never end the chain
- * a later arm started. A stopped row is re-armed (with a fresh epoch) the moment a
- * watch needs the group polled again.
+ * Fenced on the epoch, so a stop decided by one epoch's run can never end the chain a
+ * later arm started. A stopped row is re-armed with a fresh epoch the moment a watch
+ * needs the group polled again.
  */
 export async function stopWatchBatch(
   db: DashboardAgentDb,
@@ -1866,25 +1736,21 @@ export interface WatchBatchGroup {
 }
 
 /**
- * How long a chain may go without a heartbeat before it is considered dead, as SQL
- * over the group's OWN cadence: three cadences plus a flat two minutes. Comfortably
- * longer than a tick's jitter and its retries, and short enough that a one-minute
- * group whose run died is polling again within minutes rather than hours.
+ * How long a chain may go without a heartbeat before it counts as dead, over the
+ * group's own cadence: three cadences plus two minutes. Longer than a tick's jitter
+ * and retries, short enough that a one-minute group whose run died polls again within
+ * minutes.
  *
- * Deliberately per-cadence rather than one window for every group — the same formula
- * `watchBatchStaleMs` applies in TypeScript, so the listing here and the guard inside
- * {@link armWatchBatch} always agree about which chains are dead.
+ * `watchBatchStaleMs` applies the same formula in TypeScript, so this listing and the
+ * guard inside {@link armWatchBatch} always agree about which chains are dead.
  */
 const batchHeartbeatDeadline = sql`make_interval(mins => ${watchCadenceMinutes} * 3 + 2)`;
 
 /**
- * Groups that have active watches but NO live chain ticking them — the input to the
- * re-arm backstop.
- *
- * Batching trades one failure domain for a bigger one: a per-watch chain that died
- * cost one watch its early answer, a batch chain that dies costs its whole group. So
- * the same sweep that finalizes overdue watches also reads this and arms what it
- * finds. A chain that is ticking normally never appears here.
+ * Groups that have active watches but no live chain ticking them: the input to the
+ * re-arm backstop. A batch chain that dies costs its whole group, so the same sweep
+ * that finalizes overdue watches reads this and arms what it finds. A chain ticking
+ * normally never appears here.
  */
 export async function listWatchBatchGroupsToArm(
   db: DashboardAgentDb,

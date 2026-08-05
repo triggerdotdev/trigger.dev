@@ -1,11 +1,9 @@
 import { randomInt } from "node:crypto";
 
 /**
- * Friendly ids for rows this package creates itself (`inv_…`, `watch_…`).
- *
- * Same shape as the platform's `generateFriendlyId` — `prefix_` + 21 chars of the
- * lowercase alphanumeric alphabet with look-alikes (`0`, `l`) removed — but
- * implemented on `node:crypto` so this leaf package stays dependency-free.
+ * Friendly ids for rows this package creates itself. Same shape as the platform's
+ * `generateFriendlyId` (`prefix_` plus 21 lowercase alphanumeric chars, look-alikes
+ * removed), but on `node:crypto` so this leaf package stays dependency-free.
  */
 const ALPHABET = "123456789abcdefghijkmnopqrstuvwxyz";
 const SIZE = 21;
