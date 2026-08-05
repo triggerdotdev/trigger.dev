@@ -1,23 +1,12 @@
 import { z } from "zod";
 
-/**
- * The shared contract for the reports API (`GET /api/v1/reports/:key`): the period grammar the
- * endpoint accepts and the `format=json` response body. Canonical home for both so the server,
- * the API clients and the CLI can't drift.
- *
- * The view model is semantic, not a UI tree: numbers plus what they mean (codes, severities,
- * units, series), never formatted strings or layout. Reasons are codes the renderer resolves to
- * prose, so phrasing lives in one place.
- */
+// Shared contract for `GET /api/v1/reports/:key`: the period grammar and the `format=json` body.
+// The view model is semantic, not a UI tree: reasons are codes the renderer resolves to prose.
 
 const PERIOD_UNIT_MS: Record<string, number> = { m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
 const MAX_PERIOD_MS = 90 * 864e5; // 90d
 
-/**
- * Period shorthand for a report's live window: a positive integer plus `m`, `h`, `d` or `w`,
- * capped at 90d. Seconds are rejected rather than silently rounded, because reports bucket by
- * whole minutes and a sub-minute period would not mean what it says.
- */
+/** A positive integer plus `m`, `h`, `d` or `w`, capped at 90d. Reports bucket by whole minutes. */
 export const ReportPeriodSchema = z
   .string()
   .regex(
@@ -79,11 +68,7 @@ export const ReportMetricSchema = z.object({
   breakdown: z.record(z.number()).optional(),
   /** shown on a cause line INSTEAD of "(normal ~x)", e.g. "pinned 40 of last 60 min". */
   annotation: z.object({ code: ReportReasonCodeSchema, value: z.number().optional() }).optional(),
-  /**
-   * Whether `value` is a real measurement. "unknown" means there was no signal and `value` is a
-   * placeholder (e.g. liveness age 0) that a consumer must not read as a real 0; the finding's
-   * reason carries the meaning. Absent means measured.
-   */
+  /** "unknown" means `value` is a placeholder a consumer must not read as real. Absent = measured. */
   availability: z.enum(["measured", "unknown"]).optional(),
   severity: ReportSeveritySchema,
 });
@@ -111,10 +96,7 @@ export const ReportExclusionSchema = z.object({
 });
 export type ReportExclusion = z.infer<typeof ReportExclusionSchema>;
 
-/**
- * A measured fact backing the verdict, e.g. "runs are completing at ~820/min". Separate from
- * `ReportExclusion`, which states what the problem isn't.
- */
+/** A measured fact backing the verdict. `ReportExclusion` states what the problem isn't. */
 export const ReportObservationSchema = z.object({
   code: ReportReasonCodeSchema,
   evidence: z.record(z.number()).optional(),
@@ -137,11 +119,7 @@ export const ReportFindingSchema = z.object({
   hedge: ReportRecommendationSchema.optional(),
   /** contiguous breach window of the driving metric -> "(last 40 min)". */
   anomalyWindow: z.object({ minutes: z.number(), touchesEnd: z.boolean() }).optional(),
-  /**
-   * Which dimension and key own the problem, only when share >= threshold. `of` is the
-   * denominator label the renderer prints ("pending" for flow, "failures" for execution), so a
-   * failures share is never labelled "% of pending".
-   */
+  /** Which dimension and key own the problem. `of` is the denominator label the renderer prints. */
   attribution: z
     .object({ dim: z.string(), key: z.string(), share: z.number(), of: z.string() })
     .optional(),
@@ -155,10 +133,7 @@ export type ReportFinding = z.infer<typeof ReportFindingSchema>;
 export const ReportSummaryStatementSchema = z.object({
   findingType: z.string(),
   severity: ReportSeveritySchema,
-  /**
-   * The statement normally renders from (findingType, severity). Exceptions carry a reason, e.g.
-   * stale telemetry marking both flow and execution "unknown".
-   */
+  /** Renders from (findingType, severity) unless a reason is present. */
   reason: ReportReasonCodeSchema.optional(),
 });
 export type ReportSummaryStatement = z.infer<typeof ReportSummaryStatementSchema>;

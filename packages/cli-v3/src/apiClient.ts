@@ -374,11 +374,8 @@ export class CliApiClient {
   }
 
   /**
-   * Fetch a report, using this client's env API key. `format: "json"` returns the structured
-   * `ReportViewModel`; "markdown" (default) and "ansi" return a rendered string ready to print.
-   *
-   * `period` is a shorthand like "1h", "24h" or "7d" — minutes to weeks, capped at 90d. Seconds
-   * are not accepted (reports bucket by whole minutes).
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
+   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
    */
   async getReport(
     key: string,

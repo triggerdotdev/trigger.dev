@@ -1,12 +1,5 @@
-/**
- * Render-agnostic contract for a report: numbers plus what they mean (codes, severities, units,
- * series), never formatted strings or layout. Reasons are codes, and `report-messages.ts` resolves
- * them to strings so phrasing lives in one place.
- *
- * The shapes live in `@trigger.dev/core/v3/schemas` as zod schemas, because the API serves this view
- * model verbatim under `format=json` and the clients parse it. This module re-aliases them to short
- * local names and owns the interpret-side helpers below.
- */
+// The shapes are zod schemas in `@trigger.dev/core/v3/schemas` because `format=json` serves this view
+// model verbatim and the clients parse it. Here they are re-aliased to short local names.
 
 import {
   type ReportDelta,
@@ -75,13 +68,8 @@ export function isOk(severity: Severity): boolean {
 }
 
 /**
- * Trailing contiguous run of buckets that breach `threshold`, in minutes over `windowMinutes`. By
- * default a breach is at or over the threshold; `below: true` counts at or under it. `touchesEnd`
- * means the run reaches the latest bucket. Undefined when nothing breaches.
- *
- * `bucketMinutes` and `timestampsMs` make the duration gap-aware: each bucket counts for its real
- * cadence rather than window over received, which inflates a sparse series, and a missing bucket
- * breaks the run instead of being silently bridged. Without them the series is assumed gap-free.
+ * Trailing contiguous run of buckets breaching `threshold`, in minutes. `below: true` counts at or
+ * under it. `bucketMinutes` and `timestampsMs` make it gap-aware; without them the series is gap-free.
  */
 export function anomalyWindow(
   series: number[],
@@ -96,8 +84,7 @@ export function anomalyWindow(
       ? bucketMinutes
       : windowMinutes / series.length;
   const breaches = options?.below ? (v: number) => v <= threshold : (v: number) => v >= threshold;
-  // Buckets are adjacent in time when their timestamps differ by about one cadence. Anything larger
-  // is a dropped bucket, which must not extend the run.
+  // A gap larger than about one cadence is a dropped bucket and must not extend the run.
   const timestamps = options?.timestampsMs;
   const maxGapMs =
     timestamps && timestamps.length === series.length && bucketMinutes
@@ -119,8 +106,7 @@ export function anomalyWindow(
     }
   }
   if (longest === 0) return undefined;
-  // When the run reaches the latest bucket, use the trailing length so a longer mid-window run
-  // can't inflate it.
+  // Use the trailing length when the run reaches the latest bucket, so a mid-window run can't inflate it.
   const runBuckets = touchesEnd ? current : longest;
   return { minutes: Math.round(runBuckets * perBucket), touchesEnd };
 }

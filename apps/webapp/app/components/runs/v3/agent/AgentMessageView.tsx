@@ -164,7 +164,6 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     } else if (p.output != null) {
       resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
     } else if (p.state === "output-error" && p.errorText) {
-      // The truncated summary needs somewhere to expand to.
       resultOutput = p.errorText;
     }
 
@@ -181,8 +180,6 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
     } else if (p.state === "output-error") {
-      // The summary is one row, so a long error is truncated. The full text stays in
-      // the expandable output.
       const errorText = p.errorText ?? "unknown";
       resultSummary =
         errorText.length > 160 ? `error: ${errorText.slice(0, 160)}…` : `error: ${errorText}`;

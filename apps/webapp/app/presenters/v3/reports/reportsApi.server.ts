@@ -1,8 +1,4 @@
-/**
- * The reports API route's schemas and helpers. They live outside the route module because a Remix
- * route may only export loader, action and headers alongside client-safe code, and these depend on
- * server-only modules. The route and the tests both import from here.
- */
+// Outside the route module because a Remix route may only export loader, action and headers.
 import { json } from "@remix-run/server-runtime";
 import { ReportFormatSchema, ReportPeriodSchema } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
@@ -15,11 +11,7 @@ export const ReportParamsSchema = z.object({
   key: z.string(),
 });
 
-/**
- * `period` and `format` come from `@trigger.dev/core/v3/schemas`, the same definitions the API
- * clients and the CLI use, so the accepted grammar can't drift. `period` rejects seconds because
- * reports bucket by whole minutes.
- */
+// `period` and `format` come from core, the same definitions the API clients and CLI use.
 export const ReportSearchParamsSchema = z.object({
   period: ReportPeriodSchema.optional(),
   format: ReportFormatSchema.default("markdown"),
@@ -46,9 +38,8 @@ export function reportResponse(vm: ReportViewModel, format: ReportFormatParam): 
 }
 
 /**
- * Authorize per table rather than with the permissive `{ type: "query", id: "all" }`: a JWT must be
- * scoped to every table the selected report reads, so a partially scoped token can't fetch a report
- * that reads others. The tables come from the registry entry.
+ * Per-table, not the permissive `{ type: "query", id: "all" }`: a JWT must be scoped to every table
+ * the report reads, so a partially scoped token can't reach the others.
  */
 export function reportAuthResource(key: string) {
   return everyResource(reportQueryTables(key).map((id) => ({ type: "query", id })));

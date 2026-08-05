@@ -3,17 +3,14 @@ import { z } from "zod";
 import type { McpContext } from "./context.js";
 import { GetReportInput, ReportPeriodSchema } from "./schemas.js";
 
-// Derived from the tool's schema so completion and validation can't drift from what get_report
-// accepts. `environment` has a `.default(...)`, so read its enum through `removeDefault()`.
+// Derived from the tool's schema so completion can't drift from what get_report accepts.
+// `environment` has a `.default(...)`, so its enum is read through `removeDefault()`.
 const ReportKeySchema = GetReportInput.shape.key;
 const ReportEnvironmentSchema = GetReportInput.shape.environment.removeDefault();
 const REPORT_KEYS = ReportKeySchema.options;
 const ENVIRONMENTS = ReportEnvironmentSchema.options;
 
-/**
- * The prompt's argument contract. Same schemas the tool uses, so `/report nonsense` is rejected
- * here instead of producing a prompt that calls get_report with an invalid key.
- */
+/** The same schemas the tool uses, so a bad key is rejected here rather than by get_report. */
 export const ReportPromptArgs = z.object({
   key: ReportKeySchema.optional(),
   environment: ReportEnvironmentSchema.optional(),
@@ -22,11 +19,7 @@ export const ReportPromptArgs = z.object({
 
 export type ReportPromptArgs = z.input<typeof ReportPromptArgs>;
 
-/**
- * Render the tool arguments as a `key: value, …` list. Values go through `JSON.stringify` so a
- * quote or newline can't close the snippet or start a line that reads as an instruction, keeping
- * the prompt inert even if the schemas loosen.
- */
+/** Values go through `JSON.stringify` so a quote or newline can't close the snippet. */
 export function formatToolArgs(args: Record<string, string>): string {
   return Object.entries(args)
     .map(([name, value]) => `${name}: ${JSON.stringify(value)}`)
@@ -69,8 +62,7 @@ export function registerPrompts(context: McpContext) {
       title: "Report",
       description:
         "Render an interpreted report for an environment. Currently: 'health' — is work flowing, is it your code, is the data fresh.",
-      // Enum and refined string schemas, not bare strings: the MCP SDK accepts any
-      // `ZodType<string>`, so the host rejects a bad key or period before the callback runs.
+      // Enum and refined schemas, not bare strings, so the host rejects a bad value first.
       argsSchema: {
         key: completable(ReportKeySchema.optional(), (value) =>
           REPORT_KEYS.filter((k) => k.startsWith(value ?? ""))

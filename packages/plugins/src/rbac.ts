@@ -283,9 +283,8 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
-  // The `RuntimeEnvironment.id` the token was minted for, when the minter knows
-  // it. Lets a route take the environment from the token instead of trusting the
-  // request body. Optional because other UAT flows are environment-agnostic.
+  // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
+  // body. Optional because other UAT flows are environment-agnostic.
   environmentId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.

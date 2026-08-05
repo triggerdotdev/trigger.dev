@@ -1,8 +1,3 @@
-/**
- * Execution analyzer: are the runs that do start completing OK? Failures and durations only. Its
- * "read:" line answers whether the flow problem is a code problem.
- */
-
 import { isOk, maxSeverity, type Finding, type Metric } from "../report-view-model";
 import { HEALTH_THRESHOLDS, metricById, type HealthInput } from "./health-core";
 
@@ -40,11 +35,7 @@ export function interpretExecution(metrics: Metric[], input: HealthInput): Findi
   };
 }
 
-/**
- * Flow causes that provably can't be user code, so a healthy execution reads as not a code problem.
- * Trigger spike and surge are excluded because a code path fanning out task.trigger can be the
- * cause, and only the runs that execute may be called fine.
- */
+// Trigger spike and surge are excluded: code fanning out task.trigger can be the cause.
 const NOT_A_CODE_PROBLEM_CAUSES = new Set(["dequeue_stall"]);
 
 export function buildExecutionRead(execution: Finding, flow: Finding): string {

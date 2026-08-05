@@ -1,7 +1,4 @@
-/**
- * Liveness analyzer: telemetry freshness, the age of the freshest signal, not the last completion.
- * A null age is genuinely unknown and never a warning; only real staleness is crit.
- */
+/** Liveness analyzer: freshest-telemetry age. A null age is unknown, never a warning. */
 
 import { type Finding, type Metric } from "../report-view-model";
 import { metricById, type HealthInput } from "./health-core";

@@ -23,12 +23,9 @@ export const AlertDashboardAgentWatchEmailSchema = z.object({
   identity: z.string(),
   /** The watch kind, e.g. `run_finished`. */
   kind: z.string(),
-  /**
-   * The fact headline, already rendered by the webapp's `watch-presentation.ts`: the same
-   * sentence the chat's wake banner shows. Optional so an older enqueue still renders.
-   */
+  /** Rendered by the webapp's `watch-presentation.ts`. Optional so an older enqueue still renders. */
   headline: z.string().optional(),
-  /** The tone the headline was resolved with. Colours the accent only, as in the panel. */
+  /** Colours the accent only. */
   tone: z.enum(["success", "warning", "error", "neutral"]).optional(),
   /** Why the watch exists, in the user's own words. */
   note: z.string(),
@@ -70,7 +67,6 @@ const previewDefaults: AlertDashboardAgentWatchEmailProps = {
   environment: "Production",
 };
 
-/** ISO timestamps read badly in prose, so shorten to `2026-07-29 12:00 UTC`. */
 function formatFiredAt(firedAt: string) {
   const date = new Date(firedAt);
 
@@ -81,11 +77,7 @@ function formatFiredAt(firedAt: string) {
   return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-/**
- * The email palette for the accent. This template writes no kind-specific wording of its own:
- * the headline and the note line arrive rendered by the webapp's presenter, so only the colour
- * is chosen here.
- */
+// Only the accent colour is chosen here: the headline and note line arrive already rendered.
 const TONE_COLOR: Record<string, string> = {
   success: "#A8FF53",
   warning: "#FBBF24",
@@ -93,7 +85,7 @@ const TONE_COLOR: Record<string, string> = {
   neutral: "#D7D9DD",
 };
 
-/** The fallback headline for a payload written before the presenter existed. */
+/** Fallback for a payload enqueued before `headline` existed. */
 function fallbackHeadline(identity: string): string {
   return `Your watch has an answer — ${identity}`;
 }

@@ -1,10 +1,4 @@
-/**
- * Default IO wiring for `computeWaitingRunDiagnosis`, and the only place this feature touches a
- * datastore. Kept apart so the diagnosis stays IO-independent and tests can inject fake readers.
- *
- * The read budget per call is one Postgres run-row point-read, the existing `queue_metrics` readers
- * scoped to this single queue, and best-effort live counters from the run-queue.
- */
+// Default IO wiring for `computeWaitingRunDiagnosis`, and the only place this feature reads a store.
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { $replica } from "~/db.server";
@@ -51,10 +45,7 @@ function finiteOrNull(value: number | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/**
- * Queue signals for one queue, enriched with the live run-queue counters. Every source degrades to
- * null independently: a ClickHouse outage still yields live depth, a Redis outage the series.
- */
+/** Every source degrades to null independently: a ClickHouse outage still yields live depth. */
 export async function readQueueSignals(
   environment: AuthenticatedEnvironment,
   queueName: string,
@@ -134,8 +125,7 @@ async function readClickhouseSignals(
       return null;
     }
 
-    // Depth is carry-forward filled, since a bucket with no emission means unchanged rather than
-    // zero. Throttled is not filled: only real counts count as throttling.
+    // Depth is carry-forward filled: no emission means unchanged, not zero. Throttled is not filled.
     const byIndex = new Map<number, { depth: number; throttled: number }>();
     for (const row of sparklineRows ?? []) {
       const bucketMs = Date.parse(row.bucket.replace(" ", "T") + "Z");
@@ -158,7 +148,7 @@ async function readClickhouseSignals(
     const summary = summaryRows?.[0];
 
     return {
-      // Buckets that reported, which is the ETA's sample size rather than the grid width.
+      // Buckets that reported: the ETA's sample size, not the grid width.
       sampleBuckets: byIndex.size,
       depthSeries,
       throttledSeries,

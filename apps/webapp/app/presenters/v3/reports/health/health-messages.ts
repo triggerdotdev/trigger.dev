@@ -1,9 +1,3 @@
-/**
- * The health report's prose: the single place its codes resolve to strings. Registered under the
- * "health" title so the generic renderer looks it up by `vm.title` without importing health
- * vocabulary. Some strings carry {tokens} the renderer fills from the finding's metrics.
- */
-
 import { type ReportMessages } from "../report-messages";
 import { type ReasonCode, type Severity } from "../report-view-model";
 
@@ -20,23 +14,17 @@ const METRIC_LABELS: Record<string, string> = {
   triggered: "triggered",
 };
 
-/**
- * Finding headline, keyed by `${findingType}/${reason}`. A degraded finding names the cause, a
- * healthy one reassures. `@expanded` variants show a healthy finding expanded.
- */
+/** Keyed by `${findingType}/${reason}`, with optional `@expanded` variants. */
 const FINDING_REASONS: Record<string, string> = {
-  // flow causes
   "flow/env_limit_saturation": "at your env concurrency limit",
   "flow/dequeue_stall": "capacity is free but nothing is dequeuing",
   "flow/queue_limit_throttling": "a queue is throttling at its own limit",
   "flow/trigger_spike": "a trigger spike is backing up the queue",
   "flow/trigger_surge": "a surge of new triggers is backing up the queue",
-  // flow fallback symptoms
   "flow/start_latency": "runs are slow to start",
   "flow/backlog": "backlog is growing",
   "flow/throughput_lag": "completion is falling behind triggers",
   "flow/degraded": "flow is degraded",
-  // flow healthy, collapsed
   "flow/healthy": "starting normally",
   // execution
   "execution/failures_up": "runs are failing more than usual",
@@ -47,7 +35,7 @@ const FINDING_REASONS: Record<string, string> = {
   "flow/flow_unmeasured": "flow can't be assessed — the queue depth couldn't be measured",
   "execution/healthy": "completing normally", // collapsed
   "execution/healthy@expanded": "the runs that DO start are fine",
-  // liveness, which is telemetry freshness
+  // liveness is telemetry freshness
   "liveness/fresh": "fresh — telemetry current, updated {age} ago",
   "liveness/lagging": "lagging — telemetry last updated {age} ago",
   "liveness/stale": "stale — no telemetry in {age}",
@@ -62,7 +50,6 @@ const READS: Record<string, string> = {
   queue_throttle_chain: "queue at its limit → its runs wait → backlog grows",
   spike_chain: "triggers jumped {mult}× → queue fills faster than it drains",
   surge_chain: "new triggers arriving with no prior baseline → queue fills faster than it drains",
-  // fallback symptoms
   starting_normally: "runs are starting on time",
   lag_while_triggering_normal: "triggering normally, but starts lag → work is backing up",
   lag_and_failures: "runs are lagging AND failing — check the code path",
@@ -83,7 +70,6 @@ const EXCLUSIONS: Record<string, string> = {
 
 /** A supporting fact rather than a ruled-out cause, rendered after the exclusions. */
 const OBSERVATIONS: Record<string, string> = {
-  // "finishing", not "completing": the rate counts every terminal run (what leaves the queue).
   not_workers_platform: "runs are finishing at ~{rate}/min",
   execution_healthy: "runs that start are completing normally",
   nothing_dead_lettered: "nothing dead-lettered",
@@ -113,7 +99,6 @@ const STATEMENTS: Record<string, string> = {
 
 /** Recommendation and footer codes resolved to action text. */
 const ACTIONS: Record<string, string> = {
-  // Review opens concrete data, Check looks at system state, Raise is a settings change.
   review_start_latency: "Review start latency",
   review_failing_tasks: "Review failing tasks",
   review_slow_runs: "Review slow runs",
@@ -144,16 +129,16 @@ function findingReason(
 }
 
 function statementMessage(findingType: string, severity: Severity, reason?: ReasonCode): string {
-  // Stale telemetry makes the derived verdict untrustworthy, so say so instead of a severity.
+  // Stale telemetry makes the verdict untrustworthy, so it replaces the severity.
   if (reason === "unknown") {
     const label = findingType.charAt(0).toUpperCase() + findingType.slice(1);
     return `${label} unknown — data stale`;
   }
-  // A missing depth signal is also unknown, but from a failed measurement rather than staleness.
+  // A missing depth signal is unknown from a failed measurement, not staleness.
   if (reason === "flow_unmeasured") {
     return "Flow unknown — queue depth unavailable";
   }
-  // No freshness signal is genuinely unknown, not the real severity of lagging data.
+  // No freshness signal is unknown, not lagging.
   if (findingType === "liveness" && reason === "freshness_unknown") {
     return "data freshness unknown";
   }
