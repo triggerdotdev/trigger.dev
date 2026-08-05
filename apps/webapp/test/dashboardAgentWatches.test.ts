@@ -2193,9 +2193,7 @@ describe("the batch chain registry", () => {
       expect(created.ok).toBe(true);
 
       // The watch exists and nothing is polling its group.
-      const groups = await listWatchBatchGroupsToArm(ctx.agentDb, {
-        staleBefore: new Date(),
-      });
+      const groups = await listWatchBatchGroupsToArm(ctx.agentDb);
       expect(groups).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
 
       const armed: Array<{ environmentId: string; cadenceMinutes: number }> = [];
@@ -2213,17 +2211,20 @@ describe("the batch chain registry", () => {
       ).toEqual({ stale: 1, armed: 1, failed: 0 });
       expect(armed).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
 
-      // Once a chain is heartbeating, the group is no longer stale.
+      // Once a chain is armed, the group is no longer stale — and the window is the
+      // group's OWN cadence, so a five-minute group goes stale 17 minutes later, not
+      // whenever the slowest cadence would have.
       await armWatchBatch(ctx.agentDb, {
         environmentId: seeded.environment.id,
         cadenceMinutes: 5,
         staleBefore: new Date(),
       });
+      expect(await listWatchBatchGroupsToArm(ctx.agentDb)).toEqual([]);
       expect(
         await listWatchBatchGroupsToArm(ctx.agentDb, {
-          staleBefore: new Date(Date.now() - watchBatchStaleMs(60)),
+          now: new Date(Date.now() + watchBatchStaleMs(5) + 60_000),
         })
-      ).toEqual([]);
+      ).toEqual([{ environmentId: seeded.environment.id, cadenceMinutes: 5 }]);
     }
   );
 
@@ -2251,7 +2252,7 @@ describe("the batch chain registry", () => {
       expect(one.map((watch) => watch.chatId)).toEqual(["chat_2"]);
       // Each cadence gets its own chain.
       expect(
-        (await listWatchBatchGroupsToArm(ctx.agentDb, { staleBefore: new Date() })).sort(
+        (await listWatchBatchGroupsToArm(ctx.agentDb)).sort(
           (a, b) => a.cadenceMinutes - b.cadenceMinutes
         )
       ).toEqual([
@@ -2566,6 +2567,42 @@ describe("the batch check", () => {
       expect(
         response.watches?.filter((entry) => !entry.deliverOnly).map((entry) => entry.watchId)
       ).toEqual([ids[1]!]);
+    }
+  );
+
+  postgresTest(
+    "keeps the chain alive while a wake is still owed, even with nothing left to watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "batchowedlast");
+      const ids = await healthGroup(seeded, 1);
+      const chain = await armChain(seeded);
+      const group = { environmentId: seeded.environment.id, cadenceMinutes: 5 };
+
+      // The group's ONLY watch resolved, and its wake hasn't landed.
+      await transitionWatchCondition(ctx.agentDb, {
+        id: ids[0]!,
+        resolution: "condition_met",
+        lastResult: { verified: true },
+      });
+
+      // Stopping now would strand that wake: the run retrying the failed delivery
+      // would find the chain gone and claim nothing.
+      const first = await runWatchBatchCheck({ ...group, epoch: chain.epoch, tick: 1 });
+      expect(first.continues).toBe(true);
+      expect(first.watches?.map((entry) => entry.deliverOnly)).toEqual([true]);
+
+      // Once the wake has landed there is genuinely nothing left, and the chain stops.
+      const claim = await claimWatchDelivery(ctx.agentDb, {
+        id: ids[0]!,
+        staleBefore: new Date(Date.now() - WATCH_DELIVERY_CLAIM_STALE_MS),
+      });
+      await markWatchDelivered(ctx.agentDb, { id: ids[0]!, claimId: claim!.claimId });
+
+      const second = await runWatchBatchCheck({ ...group, epoch: chain.epoch, tick: 2 });
+      expect(second).toMatchObject({ watches: [], continues: false });
+      // Stopped, so a repeat stop finds nothing left to stop.
+      expect(await stopWatchBatch(ctx.agentDb, { ...group, epoch: chain.epoch })).toBe(null);
     }
   );
 

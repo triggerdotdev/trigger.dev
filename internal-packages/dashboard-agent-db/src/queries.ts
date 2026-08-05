@@ -1866,19 +1866,32 @@ export interface WatchBatchGroup {
 }
 
 /**
+ * How long a chain may go without a heartbeat before it is considered dead, as SQL
+ * over the group's OWN cadence: three cadences plus a flat two minutes. Comfortably
+ * longer than a tick's jitter and its retries, and short enough that a one-minute
+ * group whose run died is polling again within minutes rather than hours.
+ *
+ * Deliberately per-cadence rather than one window for every group — the same formula
+ * `watchBatchStaleMs` applies in TypeScript, so the listing here and the guard inside
+ * {@link armWatchBatch} always agree about which chains are dead.
+ */
+const batchHeartbeatDeadline = sql`make_interval(mins => ${watchCadenceMinutes} * 3 + 2)`;
+
+/**
  * Groups that have active watches but NO live chain ticking them — the input to the
  * re-arm backstop.
  *
  * Batching trades one failure domain for a bigger one: a per-watch chain that died
- * cost one watch its early answer, a batch chain that dies costs its whole group.
- * So the same sweep that finalizes overdue watches also reads this and arms what it
- * finds. `staleBefore` is measured against the heartbeat, so a chain that is
- * ticking normally never appears here.
+ * cost one watch its early answer, a batch chain that dies costs its whole group. So
+ * the same sweep that finalizes overdue watches also reads this and arms what it
+ * finds. A chain that is ticking normally never appears here.
  */
 export async function listWatchBatchGroupsToArm(
   db: DashboardAgentDb,
-  params: { staleBefore: Date; limit?: number }
+  params: { now?: Date; limit?: number } = {}
 ): Promise<WatchBatchGroup[]> {
+  const now = params.now ? sql`${params.now.toISOString()}::timestamptz` : sql`now()`;
+
   return db
     .selectDistinct({
       environmentId: watches.environmentId,
@@ -1895,7 +1908,7 @@ export async function listWatchBatchGroupsToArm(
     .where(
       and(
         eq(watches.status, "active"),
-        sql`(${watchBatches.environmentId} is null or ${watchBatches.status} = 'stopped' or coalesce(${watchBatches.lastTickAt}, ${watchBatches.armedAt}) <= ${params.staleBefore.toISOString()}::timestamptz)`
+        sql`(${watchBatches.environmentId} is null or ${watchBatches.status} = 'stopped' or coalesce(${watchBatches.lastTickAt}, ${watchBatches.armedAt}) <= ${now} - ${batchHeartbeatDeadline})`
       )
     )
     .limit(params.limit ?? 200);

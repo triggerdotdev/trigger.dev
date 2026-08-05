@@ -140,25 +140,14 @@ export async function runWatchBatchCheck(
     cadenceMinutes: params.cadenceMinutes,
   });
 
-  // No active watches left: the group has nothing to poll, so the chain stops here
-  // rather than ticking an empty environment forever. Fenced on the epoch, so this
-  // can only ever end the chain this run belongs to. A watch created a moment later
-  // simply arms a fresh one.
-  if (active.length === 0) {
-    await stopWatchBatch(dashboardAgentDb, {
-      environmentId: params.environmentId,
-      cadenceMinutes: params.cadenceMinutes,
-      epoch: params.epoch,
-    });
-  }
-
   const due = active.filter((watch) => isDue(watch, params.cadenceMinutes, now));
   const evaluated = await evaluateGroup(due, params, { ...deps, now: () => now }, mintToken);
 
   // Wakes this group still owes — a delivery that failed, or a deliverer that died
   // mid-append. The group's own tick recovers them, which is what preserves the
   // retry-in-seconds a per-watch tick had: the run that failed one watch's append is
-  // retried, and finds it here.
+  // retried, and finds it here. Read AFTER the evaluation, so a wake this very tick
+  // resolved and failed to deliver is already in it.
   const owed = await listOwed({
     environmentId: params.environmentId,
     cadenceMinutes: params.cadenceMinutes,
@@ -169,15 +158,29 @@ export async function runWatchBatchCheck(
     owed.map(async (watch) => ({
       watchId: watch.id,
       token: await mintToken(watch),
+      // A delivery decides nothing, so it claims no generation.
       tick: 0,
       deliverOnly: true as const,
     }))
   );
 
-  return {
-    watches: [...evaluated, ...deliveries],
-    continues: active.length > 0,
-  };
+  // Nothing left to poll AND nothing left to deliver: the chain stops here rather than
+  // ticking an empty environment forever. Both halves matter — stopping while a wake is
+  // still owed would strand it, because the run that retries the failed delivery would
+  // find the chain already gone and claim nothing.
+  //
+  // Fenced on the epoch, so this can only ever end the chain this run belongs to, and a
+  // watch created a moment later simply arms a fresh one.
+  const continues = active.length > 0 || owed.length > 0;
+  if (!continues) {
+    await stopWatchBatch(dashboardAgentDb, {
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      epoch: params.epoch,
+    });
+  }
+
+  return { watches: [...evaluated, ...deliveries], continues };
 }
 
 /**

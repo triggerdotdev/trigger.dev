@@ -463,7 +463,7 @@ export type WatchBatchRearmDeps = {
   now?: () => Date;
   limit?: number;
   /** Groups whose chain is missing, stopped, or has stopped heartbeating. */
-  listGroups?: (params: { staleBefore: Date; limit: number }) => Promise<WatchBatchGroup[]>;
+  listGroups?: (params: { now: Date; limit: number }) => Promise<WatchBatchGroup[]>;
   /** Start a chain for one group. */
   arm?: (params: {
     environmentId: string;
@@ -472,16 +472,6 @@ export type WatchBatchRearmDeps = {
   }) => Promise<{ running: boolean }>;
   configured?: () => boolean;
 };
-
-/**
- * How long a chain may go without a heartbeat before this sweep re-arms it. Read off
- * the LONGEST cadence, because the group listing can't know which cadence each row it
- * finds belongs to and under-waiting would re-arm a chain that is merely slow — and a
- * second chain is exactly what the registry exists to prevent. `armWatchBatch` applies
- * the per-cadence window again anyway, so a group whose chain turns out to be alive
- * arms nothing.
- */
-const REARM_STALE_MS = watchBatchStaleMs(60);
 
 /** Per-run cap, same shape as the other halves. */
 const REARM_BATCH_LIMIT = 200;
@@ -495,9 +485,13 @@ const REARM_BATCH_LIMIT = 200;
  * cadence) group that still has active watches but no chain heartbeating for it gets a
  * fresh epoch here.
  *
- * Guarded, not coordinated, like everything else: `armWatchBatch` re-checks the
- * heartbeat in the same statement that arms, so this racing a chain that was only slow
- * arms nothing, and running it twice starts one chain.
+ * The staleness window is the group's OWN cadence (three of them plus two minutes), so
+ * a one-minute group whose chain died is polling again in minutes rather than waiting
+ * out an hourly group's window.
+ *
+ * Guarded, not coordinated, like everything else: `armWatchBatch` re-checks the same
+ * heartbeat in the statement that arms, so this racing a chain that was only slow arms
+ * nothing, and running it twice starts one chain.
  */
 export async function rearmDashboardAgentWatchBatches(
   deps: WatchBatchRearmDeps = {}
@@ -515,10 +509,7 @@ export async function rearmDashboardAgentWatchBatches(
   // expiry half above still finalizes them, so nothing is stranded indefinitely.
   if (!configured()) return result;
 
-  const groups = await listGroups({
-    staleBefore: new Date(now.getTime() - REARM_STALE_MS),
-    limit,
-  });
+  const groups = await listGroups({ now, limit });
   result.stale = groups.length;
 
   for (const group of groups) {
