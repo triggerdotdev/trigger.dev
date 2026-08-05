@@ -8,6 +8,10 @@ import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
   {
+    name: "AI agent",
+    slug: "ai-agent",
+  },
+  {
     name: "Animated panel",
     slug: "animated-panel",
   },
@@ -159,30 +163,11 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
+  // Dashboard agent section
   {
-    sectionTitle: "Trigger Agent",
-    name: "Chat UI",
+    sectionTitle: "Dashboard agent",
+    name: "Agent UI",
     slug: "agent-ui",
-  },
-  {
-    name: "View blocks",
-    slug: "agent-view-blocks",
-  },
-  {
-    name: "Report view",
-    slug: "agent-report",
-  },
-  {
-    name: "Investigation card",
-    slug: "agent-investigation",
-  },
-  {
-    name: "Watch card",
-    slug: "agent-watch",
-  },
-  {
-    name: "Icons & Buttons",
-    slug: "ai-agent",
   },
   // Forms section
   {
