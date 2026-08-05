@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import type { RequireKeys } from "../types/index.js";
 import {
   MachineConfig,
@@ -31,8 +32,8 @@ export type TaskRunExecutionMetrics = z.infer<typeof TaskRunExecutionMetrics>;
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 
@@ -56,8 +57,8 @@ export type V3ProdTaskRunExecution = z.infer<typeof V3ProdTaskRunExecution>;
 
 export const V3ProdTaskRunExecutionPayload = z.object({
   execution: V3ProdTaskRunExecution,
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 
@@ -95,7 +96,7 @@ export const SlidingWindowRateLimit = z.object({
   ]),
 });
 
-export const RateLimitOptions = z.discriminatedUnion("type", [
+export const RateLimitOptions = discriminatedUnion("type", [
   FixedWindowRateLimit,
   SlidingWindowRateLimit,
 ]);
@@ -231,7 +232,7 @@ const promptMetadata = {
   description: z.string().optional(),
   content: z.string().optional(),
   model: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   variableSchema: z.unknown().optional(),
 };
 
@@ -320,8 +321,8 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   messageId: z.string(),
   isTest: z.boolean(),
   isReplay: z.boolean().default(false),
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 

@@ -108,7 +108,7 @@ When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.)
 
 ## Dependency Pinning
 
-Zod is pinned to a single version across the entire monorepo (currently `3.25.76`). When adding zod to a new or existing package, use the **exact same version** as the rest of the repo - never a different version or a range. Mismatched zod versions cause runtime type incompatibilities (e.g., schemas from one package can't be used as body validators in another).
+Zod is pinned to a single version across the entire monorepo (currently `4.4.3`). When adding zod to a new or existing package, use the **exact same version** as the rest of the repo - never a different version or a range. Mismatched zod versions cause runtime type incompatibilities (e.g., schemas from one package can't be used as body validators in another).
 
 ## Architecture Overview
 

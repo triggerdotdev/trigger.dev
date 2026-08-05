@@ -1024,6 +1024,9 @@ export class SpanPresenter extends BasePresenter {
         filePath: lockedWorker?.lockedBy?.filePath ?? "",
       },
       run: {
+        // zod v4 types the run-context `context` (z.any) field as required; it was
+        // never populated here (optional under v3), so undefined preserves behavior.
+        context: undefined,
         id: run.friendlyId,
         createdAt: run.createdAt,
         tags: run.runTags,

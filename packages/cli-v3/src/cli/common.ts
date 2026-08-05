@@ -42,7 +42,7 @@ export async function handleTelemetry(action: () => Promise<void>) {
   }
 }
 
-export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
+export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
   name: string,
   schema: T,
   options: unknown,
@@ -55,7 +55,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
       throw new Error(fromZodError(parsedOptions.error).toString());
     }
 
-    logger.loggerLevel = parsedOptions.data.logLevel;
+    logger.loggerLevel = parsedOptions.data.logLevel as typeof logger.loggerLevel;
 
     logger.debug(`Running "${name}" with the following options`, {
       options: options,

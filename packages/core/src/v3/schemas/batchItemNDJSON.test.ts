@@ -58,6 +58,15 @@ describe("concurrencyKey coercion", () => {
   });
 
   describe("BatchTriggerTaskItem", () => {
+    it("accepts a missing payload", () => {
+      const result = BatchTriggerTaskItem.safeParse({
+        task: "user-workflow-tick",
+        options: {},
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     it("coerces a numeric concurrencyKey to a string", () => {
       const result = BatchTriggerTaskItem.safeParse({
         task: "user-workflow-tick",

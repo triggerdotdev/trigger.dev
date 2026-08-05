@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const ExceptionEventProperties = z.object({
   type: z.string().optional(),
@@ -43,7 +43,7 @@ export type AttemptFailedSpanEvent = z.infer<typeof AttemptFailedSpanEvent>;
 export const OtherSpanEvent = z.object({
   name: z.string(),
   time: z.coerce.date(),
-  properties: z.record(z.unknown()),
+  properties: z.record(z.string(), z.unknown()),
 });
 
 export type OtherSpanEvent = z.infer<typeof OtherSpanEvent>;

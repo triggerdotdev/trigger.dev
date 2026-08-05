@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const stringPatternMatchers = [
   z.object({
@@ -65,7 +65,7 @@ type EventMatcher = z.infer<typeof EventMatcherSchema>;
 export type EventFilter = { [key: string]: EventMatcher | EventFilter };
 
 export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
-  z.record(z.union([EventMatcherSchema, EventFilterSchema]))
+  z.record(z.string(), z.union([EventMatcherSchema, EventFilterSchema]))
 );
 
 export const EventRuleSchema = z.object({

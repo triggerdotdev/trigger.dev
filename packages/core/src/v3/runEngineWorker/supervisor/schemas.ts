@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../../utils/zod.js";
 import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
   MachineResources,
@@ -28,7 +29,7 @@ export const WorkerApiHeartbeatResponseBody = z.object({
 });
 export type WorkerApiHeartbeatResponseBody = z.infer<typeof WorkerApiHeartbeatResponseBody>;
 
-export const WorkerApiSuspendRunRequestBody = z.discriminatedUnion("success", [
+export const WorkerApiSuspendRunRequestBody = discriminatedUnion("success", [
   z.object({
     success: z.literal(true),
     checkpoint: CheckpointInput,
@@ -51,7 +52,7 @@ export type WorkerApiContinueRunExecutionRequestBody = z.infer<
 >;
 
 export const WorkerApiConnectRequestBody = z.object({
-  metadata: z.record(z.any()),
+  metadata: z.record(z.string(), z.any()),
 });
 export type WorkerApiConnectRequestBody = z.infer<typeof WorkerApiConnectRequestBody>;
 
@@ -104,7 +105,7 @@ export type WorkerApiRunAttemptStartRequestBody = z.infer<
 
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
-    envVars: z.record(z.string()),
+    envVars: z.record(z.string(), z.string()),
   })
 );
 export type WorkerApiRunAttemptStartResponseBody = z.infer<

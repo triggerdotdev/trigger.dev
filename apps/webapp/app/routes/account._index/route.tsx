@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { useEffect, useState } from "react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
 import { ComputerDesktopIcon, MoonIcon, SunIcon, SwatchIcon } from "@heroicons/react/20/solid";
 import {
   Form,
@@ -90,9 +90,9 @@ function createSchema(
 ) {
   return z.object({
     name: z
-      .string({ required_error: "You must enter a name" })
+      .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
-      .max(50),
+      .max(50, "Your name must be 50 characters or less"),
     email: emailSchema.pipe(
       z.string().superRefine((email, ctx) => {
         if (constraints.isEmailUnique === undefined) {

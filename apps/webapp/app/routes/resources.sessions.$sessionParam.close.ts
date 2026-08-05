@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";

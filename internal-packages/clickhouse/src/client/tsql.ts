@@ -221,7 +221,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
     const queryFn = reader.queryWithStats({
       name: isExplain ? `${options.name}-explain` : options.name,
       query: queryToExecute,
-      params: z.record(z.any()),
+      params: z.record(z.string(), z.any()),
       // EXPLAIN returns rows with an 'explain' column
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
       settings: options.clickhouseSettings,
@@ -257,7 +257,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
           const additionalQueryFn = reader.queryWithStats({
             name: `${options.name}-explain-${explainType.name.toLowerCase()}`,
             query: explainType.query,
-            params: z.record(z.any()),
+            params: z.record(z.string(), z.any()),
             schema: z.object({ explain: z.string() }),
             settings: options.clickhouseSettings,
             logFields: { tsql: options.query },

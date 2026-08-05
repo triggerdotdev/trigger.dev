@@ -6,7 +6,7 @@ const DurationString = z.string().refine(
     const ms = parseDuration(val);
     return ms !== null && ms > 0;
   },
-  (val) => ({ message: `Invalid or non-positive duration string: "${val}"` })
+  { error: (issue) => `Invalid or non-positive duration string: "${issue.input}"` }
 );
 
 const BracketSchema = z.object({
