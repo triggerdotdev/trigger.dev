@@ -12,7 +12,10 @@ import {
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
 import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
-import { sweepDashboardAgentWatches } from "~/services/dashboardAgentWatchSweep.server";
+import {
+  rearmDashboardAgentWatchBatches,
+  sweepDashboardAgentWatches,
+} from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
 import {
   MembershipDevEnvironmentsSchema,
@@ -150,8 +153,9 @@ function initializeWorker() {
       },
       // The dashboard agent's backstops, on one cron: expire what is overdue
       // (through the same authorization a check goes through), re-deliver wakes that
-      // never reached their chat, and settle investigation cards whose turn never
-      // came back. See dashboardAgentWatchSweep.server.ts and
+      // never reached their chat, settle investigation cards whose turn never came
+      // back, and re-arm batch polling chains whose run died. See
+      // dashboardAgentWatchSweep.server.ts and
       // dashboardAgentInvestigationSweep.server.ts.
       "dashboardAgent.sweepWatches": {
         schema: CronSchema,
@@ -239,6 +243,15 @@ function initializeWorker() {
           const investigations = await sweepDashboardAgentInvestigations();
           if (investigations.stale > 0) {
             logger.debug("Dashboard agent investigation sweep", investigations);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        try {
+          const batches = await rearmDashboardAgentWatchBatches();
+          if (batches.stale > 0) {
+            logger.debug("Dashboard agent watch batch re-arm", batches);
           }
         } catch (error) {
           failure ??= error;

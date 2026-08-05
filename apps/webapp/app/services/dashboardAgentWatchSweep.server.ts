@@ -39,9 +39,11 @@ import {
   cancelWatch,
   deleteTerminalWatchesOlderThan,
   listExpiredActiveWatches,
+  listWatchBatchGroupsToArm,
   listWatchesAwaitingDelivery,
   transitionWatchCondition,
   type Watch,
+  type WatchBatchGroup,
 } from "@internal/dashboard-agent-db";
 import {
   watchResolutionForCheck,
@@ -60,8 +62,10 @@ import {
 import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
 import { isDashboardAgentConfigured } from "~/services/dashboardAgent.server";
 import {
+  armDashboardAgentWatchBatch,
   authorizeWatchEnvironment,
   scheduleWatchDelivery,
+  watchBatchStaleMs,
   type WatchAuthorization,
 } from "~/services/dashboardAgentWatches.server";
 import { logger } from "~/services/logger.server";
@@ -439,6 +443,99 @@ export async function sweepDashboardAgentWatches(
 
   if (result.failed > 0) {
     throw new Error(`The dashboard agent watch sweep failed on ${result.failed} watches`);
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// The batch-chain backstop.
+// ---------------------------------------------------------------------------
+
+export type WatchBatchRearmResult = {
+  /** Groups with active watches and no live chain. */
+  stale: number;
+  armed: number;
+  failed: number;
+};
+
+export type WatchBatchRearmDeps = {
+  now?: () => Date;
+  limit?: number;
+  /** Groups whose chain is missing, stopped, or has stopped heartbeating. */
+  listGroups?: (params: { staleBefore: Date; limit: number }) => Promise<WatchBatchGroup[]>;
+  /** Start a chain for one group. */
+  arm?: (params: {
+    environmentId: string;
+    cadenceMinutes: number;
+    now?: Date;
+  }) => Promise<{ running: boolean }>;
+  configured?: () => boolean;
+};
+
+/**
+ * How long a chain may go without a heartbeat before this sweep re-arms it. Read off
+ * the LONGEST cadence, because the group listing can't know which cadence each row it
+ * finds belongs to and under-waiting would re-arm a chain that is merely slow — and a
+ * second chain is exactly what the registry exists to prevent. `armWatchBatch` applies
+ * the per-cadence window again anyway, so a group whose chain turns out to be alive
+ * arms nothing.
+ */
+const REARM_STALE_MS = watchBatchStaleMs(60);
+
+/** Per-run cap, same shape as the other halves. */
+const REARM_BATCH_LIMIT = 200;
+
+/**
+ * Re-arm batch chains that died — the price of batching, paid back.
+ *
+ * A per-watch tick chain that died cost one watch its early answer, and the expiry
+ * sweep above still ended it properly. A batch chain that dies costs its whole group
+ * the same thing, so the blast radius needs a backstop of its own: any (environment,
+ * cadence) group that still has active watches but no chain heartbeating for it gets a
+ * fresh epoch here.
+ *
+ * Guarded, not coordinated, like everything else: `armWatchBatch` re-checks the
+ * heartbeat in the same statement that arms, so this racing a chain that was only slow
+ * arms nothing, and running it twice starts one chain.
+ */
+export async function rearmDashboardAgentWatchBatches(
+  deps: WatchBatchRearmDeps = {}
+): Promise<WatchBatchRearmResult> {
+  const now = deps.now?.() ?? new Date();
+  const limit = deps.limit ?? REARM_BATCH_LIMIT;
+  const configured = deps.configured ?? isDashboardAgentConfigured;
+  const listGroups =
+    deps.listGroups ?? ((params) => listWatchBatchGroupsToArm(dashboardAgentDb, params));
+  const arm = deps.arm ?? armDashboardAgentWatchBatch;
+
+  const result: WatchBatchRearmResult = { stale: 0, armed: 0, failed: 0 };
+
+  // Nothing to trigger a chain into. The rows keep their active watches, and the
+  // expiry half above still finalizes them, so nothing is stranded indefinitely.
+  if (!configured()) return result;
+
+  const groups = await listGroups({
+    staleBefore: new Date(now.getTime() - REARM_STALE_MS),
+    limit,
+  });
+  result.stale = groups.length;
+
+  for (const group of groups) {
+    try {
+      const { running } = await arm({ ...group, now });
+      if (running) result.armed++;
+    } catch (error) {
+      result.failed++;
+      logger.error("Dashboard agent watch sweep: failed to re-arm a batch chain", {
+        ...group,
+        error,
+      });
+    }
+  }
+
+  if (result.failed > 0) {
+    throw new Error(`The dashboard agent batch re-arm failed on ${result.failed} groups`);
   }
 
   return result;

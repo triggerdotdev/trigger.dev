@@ -124,6 +124,105 @@ export function verifyWatchTokenFromRequest(token: string): Promise<WatchTokenCl
   return verifyDashboardAgentWatchToken(env.SESSION_SECRET, token);
 }
 
+// ---------------------------------------------------------------------------
+// Batch chain tokens — the same idea, for a whole (environment, cadence) group.
+// ---------------------------------------------------------------------------
+
+/**
+ * Disjoint from `tr_daw_` rather than nested under it, so neither verifier ever
+ * sees the other's tokens.
+ */
+export const WATCH_BATCH_TOKEN_PREFIX = "tr_dab_";
+
+const WATCH_BATCH_TOKEN_KIND = "dashboard_agent_watch_batch";
+const WATCH_BATCH_TOKEN_CLIENT = "dashboard-agent-watch-batch";
+
+/**
+ * How long a chain's token lives. A chain ticks for as long as its group has active
+ * watches, which can be indefinitely, so the token can't be pinned to a deadline the
+ * way a watch's is — but it must still expire.
+ *
+ * An expired one is self-healing rather than fatal: the batch check refuses, the run
+ * fails, the chain's heartbeat goes stale, and the re-arm backstop starts a fresh
+ * epoch with a fresh token within a sweep. So the only cost is one missed cadence per
+ * token lifetime, and in practice chains are re-armed long before this.
+ */
+export const WATCH_BATCH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export type WatchBatchTokenClaims = { environmentId: string; cadenceMinutes: number };
+
+/**
+ * Sign a chain token. Like a watch token it names ONE thing and carries no authority
+ * of its own: the batch check re-authorizes every watch's own initiating user against
+ * that watch's own immutable project/environment, so this token can't read anything
+ * any of them has lost access to — and it can't name a group it wasn't minted for.
+ */
+export async function signDashboardAgentWatchBatchToken(
+  secret: string,
+  opts: { environmentId: string; cadenceMinutes: number; expiresAt: Date }
+): Promise<string> {
+  const jwt = await generateJWT({
+    secretKey: secret,
+    payload: {
+      kind: WATCH_BATCH_TOKEN_KIND,
+      // The group, not a user and not a watch.
+      sub: `${opts.environmentId}:${opts.cadenceMinutes}`,
+      act: { client: WATCH_BATCH_TOKEN_CLIENT },
+    },
+    expirationTime: Math.floor(opts.expiresAt.getTime() / 1000),
+    omitIssuedAt: true,
+  });
+
+  return `${WATCH_BATCH_TOKEN_PREFIX}${jwt}`;
+}
+
+/** `undefined` for anything that isn't a valid, unexpired chain token. */
+export async function verifyDashboardAgentWatchBatchToken(
+  secret: string,
+  token: string
+): Promise<WatchBatchTokenClaims | undefined> {
+  if (!token.startsWith(WATCH_BATCH_TOKEN_PREFIX)) return;
+
+  const result = await validateJWT(token.slice(WATCH_BATCH_TOKEN_PREFIX.length), secret);
+  if (!result.ok) return;
+
+  const payload = result.payload;
+  if (payload.kind !== WATCH_BATCH_TOKEN_KIND) return;
+  const act = payload.act as { client?: string } | undefined;
+  if (act?.client !== WATCH_BATCH_TOKEN_CLIENT) return;
+  if (typeof payload.sub !== "string") return;
+
+  // The cadence is the LAST segment: an environment id never contains a colon, but
+  // splitting from the right can't be fooled if one ever did.
+  const separator = payload.sub.lastIndexOf(":");
+  if (separator <= 0) return;
+  const environmentId = payload.sub.slice(0, separator);
+  const cadenceMinutes = Number(payload.sub.slice(separator + 1));
+  if (!Number.isInteger(cadenceMinutes) || cadenceMinutes <= 0) return;
+
+  return { environmentId, cadenceMinutes };
+}
+
+export function mintDashboardAgentWatchBatchToken(opts: {
+  environmentId: string;
+  cadenceMinutes: number;
+  now?: Date;
+}): Promise<string> {
+  const now = opts.now ?? new Date();
+  return signDashboardAgentWatchBatchToken(env.SESSION_SECRET, {
+    environmentId: opts.environmentId,
+    cadenceMinutes: opts.cadenceMinutes,
+    expiresAt: new Date(now.getTime() + WATCH_BATCH_TOKEN_TTL_MS),
+  });
+}
+
+/** Verify a bearer token presented to the batch check endpoint. */
+export function verifyWatchBatchTokenFromRequest(
+  token: string
+): Promise<WatchBatchTokenClaims | undefined> {
+  return verifyDashboardAgentWatchBatchToken(env.SESSION_SECRET, token);
+}
+
 /** The bearer value from an `Authorization: Bearer …` header, if present. */
 export function bearerToken(request: Request): string | undefined {
   const raw = request.headers.get("Authorization");

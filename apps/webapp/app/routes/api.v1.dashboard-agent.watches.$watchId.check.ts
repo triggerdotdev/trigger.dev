@@ -5,7 +5,10 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
 import { checkWatch, previousCheckFacts } from "~/services/dashboardAgentWatchChecks";
 import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
-import { authorizeWatchEnvironment } from "~/services/dashboardAgentWatches.server";
+import {
+  armDashboardAgentWatchBatch,
+  authorizeWatchEnvironment,
+} from "~/services/dashboardAgentWatches.server";
 import {
   WATCH_TOKEN_GRACE_MS,
   bearerToken,
@@ -32,9 +35,46 @@ import {
  * owns the fire/expire transition and the delivery, so exactly one component
  * decides when the user gets told. The tick counter likewise has exactly one
  * writer — the task's generation claim — so nothing here can fork the tick chain.
+ *
+ * It is also where a watch is HANDED OVER to its group's batch chain. Polling one
+ * watch at a time is the expensive shape — one authorization and one report load per
+ * watch per cadence — so this route makes sure a chain is running for the watch's
+ * (environment, cadence) group and answers `batched: true` when one is. The caller
+ * then stops rescheduling its own per-watch chain, and the group's single tick run has
+ * the watch from then on. That is how a newly created watch joins the batch, and how
+ * per-watch ticks that were already scheduled before batching existed drain: their
+ * next check hands them over, one cadence later and with no migration.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
+
+/**
+ * Make sure the watch's group is being polled by a chain, and say whether it is.
+ *
+ * Best-effort by design. The verdict above is the answer this route owes its caller,
+ * and it must not be lost because a chain couldn't be armed — `false` just means the
+ * per-watch chain keeps going for another cadence and the next check tries again.
+ */
+async function ensureBatchChain(watch: {
+  id: string;
+  environmentId: string;
+  spec: { checkEveryMinutes: number };
+}): Promise<boolean> {
+  try {
+    const { running } = await armDashboardAgentWatchBatch({
+      environmentId: watch.environmentId,
+      cadenceMinutes: watch.spec.checkEveryMinutes,
+    });
+    return running;
+  } catch (error) {
+    logger.error("Dashboard agent watch check: couldn't arm the batch chain", {
+      watchId: watch.id,
+      environmentId: watch.environmentId,
+      error,
+    });
+    return false;
+  }
+}
 
 const BodySchema = z.object({
   /** The expiry evaluation: allowed after `expiresAt`, within the token's grace. */
@@ -175,10 +215,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
+    // The hand-off. Last, and never in the way of the verdict: a chain that couldn't
+    // be started is simply `batched: false`, and the caller keeps its own chain alive.
+    const batched = await ensureBatchChain(watch);
+
     // `observed` travels with the verdict: it is the other half of the resolved
     // result (§4.2), and the task writes it onto the row in the SAME statement as
     // the resolution, so no delivery surface has to re-read the source (§7.5).
-    return json({ result: outcome.result, facts: outcome.facts, observed: outcome.observed });
+    return json({
+      result: outcome.result,
+      facts: outcome.facts,
+      observed: outcome.observed,
+      batched,
+    });
   } catch (error) {
     logger.error("Dashboard agent watch check tick failed", {
       error,

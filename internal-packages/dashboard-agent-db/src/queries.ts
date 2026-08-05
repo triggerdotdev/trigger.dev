@@ -1702,6 +1702,51 @@ export async function listActiveWatchesForBatch(
 }
 
 /**
+ * The wakes ONE group still owes — the batch's own half of the delivery backstop.
+ *
+ * A per-watch tick that died between its terminal transition and its session append
+ * was retried by the platform, and the retry delivered. A batch run is retried too,
+ * but by then the watch is terminal, so it is no longer in the group's `active` set
+ * and the retry would never see it. This is what it sees instead, which keeps the
+ * recovery at seconds rather than waiting out the webapp sweep's five-minute grace.
+ *
+ * No grace window here on purpose: the retry is supposed to be immediate, and two
+ * deliverers racing is already settled by the fenced delivery claim. A row that is
+ * mid-delivery is only owed once its claim is stale — that is a deliverer that died,
+ * and nothing else would pick it up.
+ *
+ * Deleted chats are excluded: there is nowhere to deliver a wake in a conversation
+ * the user can no longer open.
+ */
+export async function listWatchesAwaitingDeliveryForBatch(
+  db: DashboardAgentDb,
+  params: {
+    environmentId: string;
+    cadenceMinutes: number;
+    claimStaleBefore: Date;
+    limit?: number;
+  }
+): Promise<Watch[]> {
+  const rows = await db
+    .select({ watch: watches })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        eq(watches.environmentId, params.environmentId),
+        sql`${watchCadenceMinutes} = ${params.cadenceMinutes}`,
+        inArray(watches.status, ["fired", "expired"]),
+        sql`(${watches.deliveryStatus} = 'pending' or (${watches.deliveryStatus} = 'delivering' and coalesce(${watches.deliveryClaimedAt}, ${watches.createdAt}) <= ${params.claimStaleBefore.toISOString()}::timestamptz))`,
+        isNull(chats.deletedAt)
+      )
+    )
+    .orderBy(sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`)
+    .limit(params.limit ?? 100);
+
+  return rows.map((row) => row.watch);
+}
+
+/**
  * Arm the batch chain for one (environment, cadence) group — the gate that keeps a
  * group to exactly one polling loop.
  *

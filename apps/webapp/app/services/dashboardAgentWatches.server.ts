@@ -12,6 +12,7 @@
 
 import {
   MAX_ACTIVE_WATCHES_PER_CHAT,
+  armWatchBatch,
   cancelWatch,
   chatExists,
   createWatch,
@@ -19,6 +20,7 @@ import {
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
   precheckWatchCreation,
   softDeleteChat,
+  stopWatchBatch,
   type ChatWatchContext,
   type PersistedWatchSpec,
   type WatchStatus,
@@ -47,7 +49,10 @@ import {
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
 import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
-import { mintDashboardAgentWatchToken } from "~/services/dashboardAgentWatchToken.server";
+import {
+  mintDashboardAgentWatchBatchToken,
+  mintDashboardAgentWatchToken,
+} from "~/services/dashboardAgentWatchToken.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 /** The task that polls a watch. Lives in the agent project, triggered by us. */
@@ -457,6 +462,133 @@ export async function scheduleWatchTick(params: {
       // can't double-tick.
       idempotencyKey: `watch:${params.watchId}:tick:${params.tick}`,
       // Pin to the same deployed agent version the chat runs on, when set.
+      ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Batch chains — one polling loop per (environment, cadence).
+// ---------------------------------------------------------------------------
+
+/** The task that polls a whole (environment, cadence) group. */
+export const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
+
+/**
+ * How long a chain may go without a heartbeat before it is treated as dead and
+ * re-armed. Three cadences plus a flat two minutes: comfortably longer than a tick's
+ * jitter and its retries, short enough that a group whose run really died is polling
+ * again within a sweep or two.
+ */
+export function watchBatchStaleMs(cadenceMinutes: number): number {
+  return cadenceMinutes * 60_000 * 3 + 2 * 60_000;
+}
+
+/**
+ * Make sure a chain is polling one (environment, cadence) group, and start one if
+ * not.
+ *
+ * `armWatchBatch` is the decision, in one statement: it hands back a row only when
+ * THIS call armed the chain, so a group that is already being polled costs nothing and
+ * a new watch simply joins the next tick. That is the batching — N watches in an
+ * environment share one run, one authorization and one report read per cadence.
+ *
+ * The trigger comes after the row, and a trigger that fails un-arms it: a chain marked
+ * running with no run behind it would leave its whole group unpolled until the re-arm
+ * backstop noticed. `running: false` tells the caller nothing is polling the group
+ * yet, so a per-watch tick keeps its own chain alive instead of handing over.
+ */
+export async function armDashboardAgentWatchBatch(params: {
+  environmentId: string;
+  cadenceMinutes: number;
+  now?: Date;
+  deps?: {
+    arm?: typeof armWatchBatch;
+    schedule?: typeof scheduleWatchBatchTick;
+    stop?: typeof stopWatchBatch;
+  };
+}): Promise<{ running: boolean }> {
+  const now = params.now ?? new Date();
+  const arm = params.deps?.arm ?? armWatchBatch;
+  const schedule = params.deps?.schedule ?? scheduleWatchBatchTick;
+  const stop = params.deps?.stop ?? stopWatchBatch;
+
+  const armed = await arm(dashboardAgentDb, {
+    environmentId: params.environmentId,
+    cadenceMinutes: params.cadenceMinutes,
+    staleBefore: new Date(now.getTime() - watchBatchStaleMs(params.cadenceMinutes)),
+  });
+
+  // A live chain already covers the group.
+  if (!armed) return { running: true };
+
+  try {
+    await schedule({
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      epoch: armed.epoch,
+      // The generation the first run of this epoch claims — the row is on
+      // `generation` (0 after an arm) and a claim lands on `generation + 1`.
+      tick: armed.generation + 1,
+      delayMinutes: params.cadenceMinutes,
+    });
+  } catch (error) {
+    logger.error("Dashboard agent watch: failed to start a batch chain", {
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      error,
+    });
+    await stop(dashboardAgentDb, {
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      epoch: armed.epoch,
+    });
+    return { running: false };
+  }
+
+  return { running: true };
+}
+
+/**
+ * Trigger one tick of a batch chain, as the agent's own environment — the same
+ * credential and version pinning a per-watch tick uses.
+ *
+ * The chain's token travels in the payload, like a watch's. It names the group and
+ * nothing else; every watch inside is re-authorized against its own snapshot by the
+ * batch check.
+ */
+export async function scheduleWatchBatchTick(params: {
+  environmentId: string;
+  cadenceMinutes: number;
+  epoch: number;
+  tick: number;
+  delayMinutes: number;
+}): Promise<void> {
+  const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
+  if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
+
+  const apiOrigin = dashboardAgentApiOrigin();
+  const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
+  const token = await mintDashboardAgentWatchBatchToken({
+    environmentId: params.environmentId,
+    cadenceMinutes: params.cadenceMinutes,
+  });
+
+  await client.tasks.trigger(
+    WATCH_BATCH_TASK_ID,
+    {
+      environmentId: params.environmentId,
+      cadenceMinutes: params.cadenceMinutes,
+      apiOrigin,
+      token,
+      epoch: params.epoch,
+      tick: params.tick,
+    },
+    {
+      delay: `${params.delayMinutes}m`,
+      // The same key shape the chain uses for its own successors, epoch included —
+      // so a re-armed chain can never collide with its predecessor's keys.
+      idempotencyKey: `watch-batch:${params.environmentId}:${params.cadenceMinutes}:${params.epoch}:tick:${params.tick}`,
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
     }
   );
