@@ -1274,6 +1274,85 @@ describe("the watch sweep", () => {
       ).toMatchObject({ overdue: 1, expired: 1 });
     }
   );
+
+  postgresTest(
+    "retention drops long-terminal rows and nothing else",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "sweep");
+      await seedChat(seeded);
+      await seedChat(seeded, "chat_2");
+      await seedChat(seeded, "chat_3");
+
+      // Three rows, one per outcome the retention has to distinguish.
+      const old = await overdueWatch(seeded, "chat_1");
+      const recent = await overdueWatch(seeded, "chat_2");
+      await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches
+         set delivery_status = 'delivered', delivered_at = now()
+         where id in ($1, $2)`,
+        old,
+        recent
+      );
+
+      const active = await create({ seeded, chatId: "chat_3" });
+      if (!active.ok || !active.watching) throw new Error("expected an active watch");
+
+      // Only the first is past the window. Backdate every timestamp the age is
+      // measured from, so `greatest(...)` really is old.
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches
+         set created_at = now() - interval '30 days',
+             fired_at = now() - interval '30 days',
+             last_checked_at = now() - interval '30 days',
+             delivered_at = now() - interval '30 days'
+         where id = $1`,
+        old
+      );
+      // The active row is ancient too — status, not age, is what protects it.
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches set created_at = now() - interval '30 days' where id = $1`,
+        active.watchId
+      );
+
+      expect(await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }))).toMatchObject({
+        purged: 1,
+        failed: 0,
+      });
+      expect(await getWatch(ctx.agentDb, { id: old })).toBeNull();
+      expect(await getWatch(ctx.agentDb, { id: recent })).not.toBeNull();
+      expect(await getWatch(ctx.agentDb, { id: active.watchId })).not.toBeNull();
+    }
+  );
+
+  postgresTest(
+    "retention never takes a row whose wake is still owed",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "sweep");
+      await seedChat(seeded);
+      const watchId = await overdueWatch(seeded);
+
+      // Resolved a month ago and still `pending`: retention must leave it for the
+      // delivery half, or the user silently never gets an outcome they were promised.
+      await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches
+         set delivery_status = 'pending',
+             created_at = now() - interval '30 days',
+             fired_at = now() - interval '30 days',
+             last_checked_at = now() - interval '30 days'
+         where id = $1`,
+        watchId
+      );
+
+      expect(await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }))).toMatchObject({
+        purged: 0,
+      });
+      expect(await getWatch(ctx.agentDb, { id: watchId })).not.toBeNull();
+    }
+  );
 });
 
 describe("the tick claim", () => {

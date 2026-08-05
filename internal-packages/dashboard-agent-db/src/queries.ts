@@ -1576,6 +1576,55 @@ export async function listWatchesAwaitingDelivery(
 }
 
 /**
+ * #13 Sweep: drop watches that ended long enough ago that nobody will look at
+ * them again.
+ *
+ * A terminal watch is immutable and read by nothing after its wake has landed —
+ * the chip is gone, dedup only considers `active` rows, and the wake's own facts
+ * are frozen into the chat transcript. So the row is pure retention, and left
+ * alone it grows forever.
+ *
+ * Guarded three ways, in one statement:
+ *  - terminal only, so nothing `active` can ever match,
+ *  - delivery settled (`not_required` or `delivered`), so a row that still owes
+ *    a wake is never deleted out from under the delivery half of the sweep, and
+ *  - the age is measured from the LAST thing that happened to the row
+ *    (`greatest(...)`, falling back to `created_at`, which is never null), so a
+ *    late delivery restarts the clock rather than shortening it.
+ *
+ * Bounded per run: the batch caps both the delete and the scan behind it. There
+ * is deliberately no ordering — which eligible rows go first doesn't matter, and
+ * without a sort Postgres can stop as soon as it has a batch. The next run takes
+ * the rest.
+ *
+ * Only `watches` rows. Chats, messages and investigations are the user's history
+ * and are never touched here.
+ */
+export async function deleteTerminalWatchesOlderThan(
+  db: DashboardAgentDb,
+  params: { before: Date; limit?: number }
+): Promise<number> {
+  const eligible = db
+    .select({ id: watches.id })
+    .from(watches)
+    .where(
+      and(
+        inArray(watches.status, ["fired", "expired", "cancelled"]),
+        inArray(watches.deliveryStatus, ["not_required", "delivered"]),
+        sql`greatest(${watches.deliveredAt}, ${watches.cancelledAt}, ${watches.firedAt}, ${watches.lastCheckedAt}, ${watches.createdAt}) <= ${params.before.toISOString()}::timestamptz`
+      )
+    )
+    .limit(params.limit ?? 500);
+
+  const deleted = await db
+    .delete(watches)
+    .where(inArray(watches.id, eligible))
+    .returning({ id: watches.id });
+
+  return deleted.length;
+}
+
+/**
  * #13 Sweep: active watches whose deadline has passed, oldest first. Callers run
  * the final boundary evaluation and resolve these via
  * `transitionWatchCondition` — which may still be `condition_met` (§7.4).

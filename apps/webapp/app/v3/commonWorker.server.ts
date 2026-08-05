@@ -228,7 +228,7 @@ function initializeWorker() {
 
         try {
           const watches = await sweepDashboardAgentWatches();
-          if (watches.overdue > 0 || watches.undelivered > 0) {
+          if (watches.overdue > 0 || watches.undelivered > 0 || watches.purged > 0) {
             logger.debug("Dashboard agent watch sweep", watches);
           }
         } catch (error) {

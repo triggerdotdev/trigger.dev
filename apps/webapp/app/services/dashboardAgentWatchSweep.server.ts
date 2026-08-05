@@ -37,6 +37,7 @@
 
 import {
   cancelWatch,
+  deleteTerminalWatchesOlderThan,
   listExpiredActiveWatches,
   listWatchesAwaitingDelivery,
   transitionWatchCondition,
@@ -82,6 +83,21 @@ export const WATCH_DELIVERY_GRACE_MS = 5 * 60 * 1000;
 /** Per-run cap for each half of the sweep. Oldest first, so the rest land next run. */
 const SWEEP_BATCH_LIMIT = 100;
 
+/**
+ * How long a terminal watch is kept. A resolved watch is read by nothing once its
+ * wake has landed — the outcome lives in the chat transcript from then on — so a
+ * week is well past the point where anyone revisits the row, and still leaves any
+ * post-incident look at "what did the watch actually see" plenty of room.
+ */
+export const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Per-run cap for the retention delete, higher than the other two: it is one
+ * statement rather than a row-at-a-time loop, and a backlog should drain in a few
+ * runs rather than a few days.
+ */
+const RETENTION_BATCH_LIMIT = 500;
+
 /** What one finalization did. */
 export type WatchFinalizeOutcome =
   | "fired"
@@ -107,6 +123,8 @@ export type WatchSweepResult = {
    * project isn't configured. They stay owed for the next sweep.
    */
   deliveryDeferred: number;
+  /** Long-terminal rows dropped by retention. */
+  purged: number;
   failed: number;
 };
 
@@ -128,6 +146,8 @@ export type WatchSweepDeps = {
    * only — finalization never depends on it.
    */
   configured?: () => boolean;
+  /** Drop terminal rows older than `before`. Returns how many went. */
+  purgeTerminal?: (params: { before: Date; limit: number }) => Promise<number>;
 };
 
 /**
@@ -327,6 +347,8 @@ export async function sweepDashboardAgentWatches(
   const listAwaitingDelivery =
     deps.listAwaitingDelivery ??
     ((params) => listWatchesAwaitingDelivery(dashboardAgentDb, params));
+  const purgeTerminal =
+    deps.purgeTerminal ?? ((params) => deleteTerminalWatchesOlderThan(dashboardAgentDb, params));
 
   const result: WatchSweepResult = {
     overdue: 0,
@@ -337,6 +359,7 @@ export async function sweepDashboardAgentWatches(
     undelivered: 0,
     redelivered: 0,
     deliveryDeferred: 0,
+    purged: 0,
     failed: 0,
   };
 
@@ -398,6 +421,20 @@ export async function sweepDashboardAgentWatches(
         });
       }
     }
+  }
+
+  // Retention, last: it only touches rows both halves above are finished with, and
+  // it runs whether or not the agent is configured — an unconfigured deployment
+  // still shouldn't accumulate week-old rows. Its own try/catch, because losing a
+  // retention pass is the cheapest failure here and must not mask the others.
+  try {
+    result.purged = await purgeTerminal({
+      before: new Date(now.getTime() - WATCH_RETENTION_MS),
+      limit: RETENTION_BATCH_LIMIT,
+    });
+  } catch (error) {
+    result.failed++;
+    logger.error("Dashboard agent watch sweep: failed to purge terminal watches", { error });
   }
 
   if (result.failed > 0) {
