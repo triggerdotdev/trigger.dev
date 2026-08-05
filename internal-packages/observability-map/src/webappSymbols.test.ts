@@ -194,9 +194,10 @@ describe("the names the tool matches on exist in the webapp", () => {
   // even as a local variable, and failed this suite on any pull request that did.
   it("finds a fixture name however it is declared, and rejects one that is only read", () => {
     const names = declaredNames([join(FIXTURES, "app")]);
-    // A name per declaration form. Sharing one across both would pass on either branch alone, and
-    // the member branch is the one with no other cover: several guards are reached through an
-    // object, so deleting it fails only the live-tree assertions this fixture exists to replace.
+    // A name per declaration form, so no branch of the walker is covered only by another's name:
+    // deleting any one of the three fails here rather than in the live-tree assertions this fixture
+    // exists to replace.
+    expect(names.has("helper")).toBe(true);
     expect(names.has("createJWT")).toBe(true);
     expect(names.has("mintSessionToken")).toBe(true);
     expect(names.has("signJWT")).toBe(false);
