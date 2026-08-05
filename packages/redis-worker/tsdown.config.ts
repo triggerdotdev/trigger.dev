@@ -60,14 +60,27 @@ export default defineConfig({
     {
       name: "resilient-create-require",
       renderChunk(code: string) {
-        if (!code.includes("createRequire(import.meta.url)")) return null;
+        const unsafeCreateRequire = /(\b[\w$]*createRequire[\w$]*\s*\()\s*import\.meta\.url\s*\)/g;
+        const patched = code.replace(
+          unsafeCreateRequire,
+          "$1import.meta.url || process.cwd() + '/index.js')"
+        );
+
+        if (patched === code) return null;
+
         return {
-          code: code.replaceAll(
-            "createRequire(import.meta.url)",
-            "createRequire(import.meta.url || process.cwd() + '/index.js')"
-          ),
+          code: patched,
           map: null,
         };
+      },
+      generateBundle(_options, bundle) {
+        const unsafeCreateRequire = /\b[\w$]*createRequire[\w$]*\s*\(\s*import\.meta\.url\s*\)/;
+
+        for (const output of Object.values(bundle)) {
+          if (output.type === "chunk" && unsafeCreateRequire.test(output.code)) {
+            throw new Error(`Unsafe createRequire helper remained in ${output.fileName}`);
+          }
+        }
       },
     },
   ],

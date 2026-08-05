@@ -2068,6 +2068,9 @@ importers:
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
+      esbuild:
+        specifier: ^0.23.0
+        version: 0.23.0
       rimraf:
         specifier: 6.0.1
         version: 6.0.1

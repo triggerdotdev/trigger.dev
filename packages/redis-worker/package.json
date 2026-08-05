@@ -37,6 +37,7 @@
     "@internal/tracing": "workspace:*",
     "@types/lodash.omit": "^4.5.7",
     "@types/seedrandom": "^3.0.8",
+    "esbuild": "^0.23.0",
     "rimraf": "6.0.1",
     "tsdown": "0.22.10",
     "tsx": "4.17.0"
