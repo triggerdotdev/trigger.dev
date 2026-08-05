@@ -68,7 +68,8 @@ export function DashboardAgentLauncher() {
             Ask Trigger
           </Button>
           {hasUnread && (
-            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed" />
+            // The ring matches the `NavBar` surface the launcher sits on.
+            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-bright" />
           )}
         </span>
       }
