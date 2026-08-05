@@ -25,6 +25,9 @@ import {
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Your invitations");
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
