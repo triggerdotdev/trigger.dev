@@ -31,8 +31,13 @@ A pull request touching `apps/webapp/app/routes` or this package gets a sticky c
 against the tip of the base branch, with the score, what changed, and the current fix list. Every
 comment names the head commit it was rendered for, as a link to the compare range, because the
 comment is edited in place across pushes and otherwise says nothing about which push it reflects. It
-is report-only: nothing here fails the build or blocks a merge. See
-`.github/workflows/observability-map.yml`.
+is report-only: nothing in the comment or its score fails the build or blocks a merge. Separately,
+this package's test suite runs as a required check, on pull requests touching `apps/webapp/app` and
+on any other package through the internal job, and fails when a symbol the tool references stops
+resolving in one of the three trees it reads (`apps/webapp/app`, `packages/plugins/src`,
+`internal-packages/rbac/src`), or when the first route with an anticipated sensitive segment lands.
+Each failure names the list to update (`src/webappSymbols.test.ts`).
+See `.github/workflows/observability-map.yml`.
 
 The workflow runs on every pull request and applies the path list as a gate inside the job rather
 than as a `paths:` filter on the trigger. GitHub evaluates one of those per workflow, so a pull
@@ -86,7 +91,7 @@ find there.
 
 ### What stops it being gamed
 
-`src/mutationCorpus.test.ts` applies 44 semantics-preserving or handling-deleting rewrites to the
+`src/mutationCorpus.test.ts` applies 53 semantics-preserving or handling-deleting rewrites to the
 whole route tree in a temp copy and asserts three things for each: the published global does not
 rise, the mean over the routes measured in both runs does not rise, and for a semantics-preserving
 rewrite no individual route's score rises or drops out of the measured set. Every laundering shape a
@@ -97,14 +102,17 @@ score from 19 to 8, so the metric does not pay you for removing error handling. 
 in `try { ... } catch (e) { throw e }` leaves the global at 19 and raises no route, so it does not
 pay you for adding error handling that does nothing either.
 
-One hole is open and the corpus says so. A catch over `try { 0; }` is refused, but `canRaise`
+Two holes are open and the corpus says so. A catch over `try { 0; }` is refused, but `canRaise`
 accepts any call, so `try { String(0); }` reads as real error handling: it takes the tree from 19 to
 44 and raises 224 routes. Telling an inert call from one that can throw needs types the scanner does
-not have. That entry, `dead-classifying-try-with-call`, runs as an expected failure with the
-residual written out beside it, so the claim is "43 rewrites are defended and here is the one that
-is not", never "unpaddable".
+not have. The second, `dead-conjunction-instanceof-if`, is a dead condition rather than a dead arm:
+`selectsADistinctPath` folds the arm, and `literalTruth` treats `&&` as always null on purpose so a
+live guard is never read as dead, so widening that fold is a different rule needing its own
+measurement. Both run as expected failures with the residual written out beside them, so the claim
+is "51 rewrites are defended and here are the two that are not", never "unpaddable".
 
-The corpus takes about four and a half minutes, so it is gated behind `OBS_MAP_MUTATION_CORPUS=1`
+The corpus takes minutes rather than seconds, under two on CI's runner and closer to eight on a
+laptop, so it is gated behind `OBS_MAP_MUTATION_CORPUS=1`
 and runs as its own CI job rather than in `pnpm test`. Run it if you change this package:
 
 ```bash

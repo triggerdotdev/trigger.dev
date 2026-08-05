@@ -104,14 +104,16 @@ jobs:
             # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
             # @internal/observability-map and runs the same vitest suite. Listing them here as well
             # ran the suite twice on every PR touching them, which was this filter's own doing.
+            #
+            # Also deliberately NOT here: pr_checks.yml, package.json, pnpm-lock.yaml,
+            # pnpm-workspace.yaml. `internal` already lists all four, so a PR touching only one of
+            # them ran this suite twice for the same reason as above. Editing pr_checks.yml no
+            # longer runs this job live as a result; integration.test.ts still asserts on its text
+            # via the `internal` job.
             obsmap:
               - 'apps/webapp/app/**'
-              - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-observability-map.yml'
               - '.github/workflows/observability-map.yml'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
             cli:
               - 'packages/cli-v3/**'
               - 'packages/build/**'
