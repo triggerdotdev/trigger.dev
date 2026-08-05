@@ -133,7 +133,14 @@ export const investigations = dashboardAgentSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("investigations_chat_idx").on(t.chatId)]
+  (t) => [
+    index("investigations_chat_idx").on(t.chatId),
+    // The stale sweep, every 5 minutes. Partial, so it stays small in a table with no
+    // retention: settled rows are the overwhelming majority.
+    index("investigations_open_updated_idx")
+      .on(t.updatedAt)
+      .where(sql`${t.state}->>'outcome' = 'in_progress'`),
+  ]
 );
 
 /** `active` is the only non-terminal status; the other three are immutable. */

@@ -1,0 +1,1 @@
+CREATE INDEX "investigations_open_updated_idx" ON "trigger_dashboard_agent"."investigations" USING btree ("updated_at") WHERE "trigger_dashboard_agent"."investigations"."state"->>'outcome' = 'in_progress';
