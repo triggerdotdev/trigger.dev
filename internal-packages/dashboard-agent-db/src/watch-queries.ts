@@ -7,8 +7,8 @@ import {
 import type { DashboardAgentDb } from "./client.js";
 import { generateWatchDeliveryClaimId, generateWatchId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
+import { chats } from "./schema.js";
 import {
-  chats,
   watchBatches,
   watches,
   type PersistedWatchSpec,
@@ -16,7 +16,7 @@ import {
   type WatchBatch,
   type WatchCancelReason,
   type WatchStatus,
-} from "./schema.js";
+} from "./watch-schema.js";
 
 // The watch, wake and batch-chain half of the query layer. Same tenancy rule as
 // `queries.ts`: every read is scoped by organization and/or user.
