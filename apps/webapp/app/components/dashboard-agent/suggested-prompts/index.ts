@@ -1,7 +1,4 @@
-/**
- * Import point for the panel and the routes. Nothing here touches the server; the
- * promoted-slot flag reader is a separate `.server.ts` module.
- */
+// Client-safe only: the promoted-slot flag reader lives in `promotedPrompt.server.ts`.
 export {
   contextualPrompts,
   contextualPromptsBySlot,

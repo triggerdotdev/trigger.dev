@@ -8,22 +8,14 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { DashboardAgentHistoryMenu, type DashboardAgentChat } from "./DashboardAgentHistory";
 
-/**
- * New chat is the same key that opens the panel, registered once in
- * `DashboardAgent`. This constant is display only; registering it anywhere else
- * makes the keystroke fire twice.
- */
+// Display only. The key is registered once, in `DashboardAgent`; registering it
+// anywhere else makes the keystroke fire twice.
 export const NEW_CHAT_SHORTCUT: Shortcut = {
   modifiers: ["mod"],
   key: "j",
   enabledOnInputElements: true,
 };
 
-/**
- * The panel's title bar. Exactly as tall as the dashboard's own title bar
- * (`NavBar`), so the two dividers form one continuous line across the split.
- * The chat's name doubles as the history dropdown.
- */
 export function DashboardAgentHeader({
   title,
   chats,
@@ -38,20 +30,15 @@ export function DashboardAgentHeader({
   isFullscreen,
   onClose,
 }: {
-  // The active chat's title. Agent-written, so it can be long: truncated here
-  // with the full text in a tooltip.
   title: string;
   chats: DashboardAgentChat[];
   currentChatId: string;
   thinkingChatId?: string | null;
   onNewChat: () => void;
-  /** Hidden on a blank draft, where a new chat would be a no-op. */
   showNewChat: boolean;
-  /** Opening the dropdown is the moment to refresh the list. */
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
-  /** Swap between the side panel and fullscreen. */
   onToggleFullscreen: () => void;
   isFullscreen: boolean;
   onClose: () => void;
@@ -59,8 +46,6 @@ export function DashboardAgentHeader({
   const [isHistoryOpen, setHistoryOpen] = useState(false);
 
   return (
-    // border-box: h-10 plus the 1px border is the same 40px as NavBar's
-    // grid-rows-[auto_1px].
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
       <Popover
         open={isHistoryOpen}
@@ -126,8 +111,6 @@ export function DashboardAgentHeader({
             )
           }
         />
-        {/* Esc is handled by the panel while focus is inside it, so the key is
-            shown here rather than registered as a global shortcut. */}
         <Button
           variant="minimal/small"
           className="aspect-square h-6 p-1"

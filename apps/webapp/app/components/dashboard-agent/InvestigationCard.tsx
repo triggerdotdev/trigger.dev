@@ -1,19 +1,4 @@
-/**
- * The panel's rendering of an `investigation` view block.
- *
- * The card shows no spinner of its own. The transcript has exactly one live
- * progress element for the whole turn (see `progress-line.ts`), and a spinner
- * here would restart its animation on every revision of the card.
- *
- * An investigation is the one progressive block: its `id` is the investigationId
- * and its `revision` climbs, so re-emitting it replaces this card instead of
- * stacking a second one (see `view-blocks.ts`).
- *
- * Pure component: props in, markup out, no Remix hooks or router context, so it
- * renders in the panel and the gallery from the same fixture. `trigger://`
- * evidence URIs are resolved by the host through `resolveUri`; without a
- * resolver the raw URI is shown.
- */
+// `id` is the investigationId and `revision` climbs: re-emitting replaces, never stacks.
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type {
   AgentIntent,
@@ -60,7 +45,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/** One citation: its kind, its label, the resource it points at, and a snippet. */
 function EvidenceItem({
   evidence,
   stacked,
@@ -73,15 +57,13 @@ function EvidenceItem({
   const resolved = resolveUri?.(evidence.uri) ?? null;
   return (
     <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
-      {/* `w-fit` keeps the badge its own size in the stacked item: the Badge
-          primitive is a grid and would otherwise stretch to full width. */}
+      {/* The Badge primitive is a grid, so `w-fit` is needed to stop it stretching. */}
       <CategoryBadge className="w-fit justify-self-start">{evidence.kind}</CategoryBadge>
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-text-bright">{evidence.label}</p>
         {resolved ? (
           <a
             href={resolved.url}
-            // The app's link token (theme-remapped), as the report card uses.
             className="block break-all font-mono text-[10px] text-text-link transition hover:underline"
           >
             {resolved.label}
@@ -116,9 +98,6 @@ function HypothesisRow({
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
-        // Stacked, not two-column: nested under the hypothesis indent the content
-        // column would be too narrow for identifiers and excerpts. The wide gap is
-        // the only thing separating one citation from the next.
         <ul className="space-y-5 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} stacked resolveUri={resolveUri} />
@@ -129,11 +108,6 @@ function HypothesisRow({
   );
 }
 
-/**
- * The card's footer actions. Every action is server-decided: the executor only
- * attaches one when what it offers exists, so there is nothing to validate here.
- * The card hands the intent to the host and renders nothing without one.
- */
 function InvestigationActions({
   actions,
   onIntent,
@@ -148,7 +122,6 @@ function InvestigationActions({
         {actions.map((action, i) => (
           <Button
             key={action.kind}
-            // The first action is the one to take; the rest are alternatives.
             variant={i === 0 ? "primary/small" : "secondary/small"}
             onClick={() => onIntent(action.intent)}
           >
@@ -162,13 +135,8 @@ function InvestigationActions({
 
 export function InvestigationCard({
   block,
-  /** Start expanded: used by the gallery states that review the detail view. */
   defaultExpanded = false,
   resolveUri,
-  /**
-   * Where the footer actions go. The card never navigates or asks on its own: it
-   * emits an intent and the host honours it. Without it the row isn't rendered.
-   */
   onIntent,
 }: {
   block: InvestigationBlock;
@@ -190,8 +158,6 @@ export function InvestigationCard({
           </SeverityBadge>
           <ConfidenceBadge confidence={investigation.confidence} />
         </div>
-        {/* Its own truncating line: a run id doesn't fit the badge row's right
-              corner at panel width (same rule as RunDiagnosisCard). */}
         {investigation.runId ? (
           <div className="truncate font-mono text-xs text-text-dimmed">{investigation.runId}</div>
         ) : null}
@@ -204,8 +170,7 @@ export function InvestigationCard({
           <p className="text-sm text-text-dimmed">{investigation.headline}</p>
         </Section>
 
-        {/* A fix is only shown for a concluded investigation; the schema enforces
-            the exclusivity with "What to check next". */}
+        {/* The schema makes `remediation` and `checkNext` mutually exclusive. */}
         {concluded && investigation.remediation ? (
           <Section title="How to fix">
             <p className="text-sm text-text-dimmed">{investigation.remediation}</p>

@@ -1,10 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-/**
- * `ReportView` is a pure component: props in, markup out, so the same card
- * renders in the panel, the storybook gallery and any future host.
- */
 const source = readFileSync(new URL("./ReportView.tsx", import.meta.url), "utf8");
 
 describe("ReportView purity", () => {

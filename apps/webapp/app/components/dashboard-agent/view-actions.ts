@@ -1,10 +1,5 @@
-/**
- * Which of a card's actions become buttons.
- *
- * A navigate target is a plain string at the contract boundary, so only targets
- * that parse become buttons: a hallucinated URI costs a button, never a dead
- * click. Shared by the `actions` block and the chart's action row.
- */
+// A navigate target is a plain string at the contract boundary, so only targets
+// that parse become buttons: a hallucinated URI costs a button, never a dead click.
 import {
   isTriggerUri,
   type ActionsBlockAction,

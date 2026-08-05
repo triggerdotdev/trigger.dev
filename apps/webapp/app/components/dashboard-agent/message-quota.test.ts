@@ -29,8 +29,6 @@ describe("resolveMessageQuota", () => {
     expect(resolveMessageQuota({ isFreePlan: false, used: 999 })).toEqual({ kind: "unlimited" });
   });
 
-  // The cap is a nudge, not a security boundary: a billing service that can't
-  // answer must not be what stops someone using the product.
   it("fails open when the plan is unknown", () => {
     expect(resolveMessageQuota({ isFreePlan: undefined, used: 999 })).toEqual({
       kind: "unlimited",

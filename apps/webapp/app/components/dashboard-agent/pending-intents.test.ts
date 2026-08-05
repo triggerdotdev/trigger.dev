@@ -89,7 +89,6 @@ describe("pendingWatchIntents", () => {
     expect(pendingWatchIntents(invalid, new Set())).toEqual([]);
   });
 
-  // Replaying a transcript that already holds the proposal is not a new request.
   it("never reopens a proposal seeded from loaded history", () => {
     const history = [{ id: "m1", parts: [toolPart("call-1")] }];
     const seen = new Set<string>();

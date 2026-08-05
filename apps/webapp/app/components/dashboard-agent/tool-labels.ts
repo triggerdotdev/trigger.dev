@@ -1,10 +1,4 @@
-/**
- * What a tool call is called while it is still running, for the pending pill.
- *
- * Phrases are written from the reader's side ("Reading the run", not "get_run"),
- * present tense, with no trailing ellipsis since the pill adds one. A tool that
- * isn't in the map falls back to `Running <name>`.
- */
+// Phrases carry no trailing ellipsis: the pending pill adds one.
 
 const TOOL_LABELS: Record<string, string> = {
   list_projects: "Listing projects",
@@ -38,7 +32,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_code: "Searching the code",
 };
 
-/** Takes the tool's name without the `tool-` prefix. */
+// Takes the tool's name without the `tool-` prefix.
 export function toolPendingLabel(toolName: string): string {
   return TOOL_LABELS[toolName] ?? `Running ${toolName}`;
 }

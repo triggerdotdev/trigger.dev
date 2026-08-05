@@ -148,8 +148,6 @@ describe("liveProgress", () => {
     );
   });
 
-  // One element, mounted once: the decision stays non-null through every phase of
-  // the turn so the host never unmounts the spinner. Only the label changes.
   it("stays non-null through a whole turn: activity → tool → card → tool → done", () => {
     const submitted: unknown[] = [{ role: "user", parts: [{ type: "text", text: "why failed?" }] }];
 
@@ -216,7 +214,7 @@ describe("liveProgress", () => {
       "investigation",
     ]);
 
-    // The turn ends: the verdict lands, the activity signal drops, the element goes.
+    // The verdict lands and the activity signal drops.
     expect(
       liveProgress([...submitted, assistant([investigationPart("inv_1", 2, "concluded")])], null)
     ).toBeNull();

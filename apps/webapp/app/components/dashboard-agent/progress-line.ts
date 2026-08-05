@@ -1,21 +1,9 @@
-/**
- * What the one live progress line says.
- *
- * A turn shows a single progress element, mounted once at the bottom of the
- * transcript for the whole in-flight period (see `DashboardAgentTurns`). Only its
- * label changes between phases: its spinner is an animated canvas that restarts
- * from frame one on every remount.
- *
- * Label priority, most specific first: a live investigation card's own phrase, an
- * in-flight tool's phrase, then the generic activity wording.
- */
 import { toolPendingLabel } from "./tool-labels";
 
-/** A tool call that hasn't produced output yet, so it is still work in progress. */
+/** A tool call with no output yet. */
 export const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
 
-// "thinking": submitted, nothing back yet. "working": streaming text or tool
-// calls, which can run a while with no visible output.
+// "thinking": submitted, nothing back yet. "working": streaming text or tool calls.
 export type TurnActivity = "thinking" | "working";
 
 export const ACTIVITY_LABELS: Record<TurnActivity, string> = {
@@ -23,12 +11,11 @@ export const ACTIVITY_LABELS: Record<TurnActivity, string> = {
   working: "Working…",
 };
 
-/** Which phase wrote the label. The rendered element is the same either way. */
 export type ProgressSource = "investigation" | "tool" | "activity";
 
 export type LiveProgress = { source: ProgressSource; label: string };
 
-/** Duck-typed message/part shapes: this module reads a transcript, it doesn't own one. */
+/** Duck-typed: this module reads a transcript, it doesn't own one. */
 type ProgressPart = {
   type?: string;
   state?: string;
@@ -43,10 +30,7 @@ function partsOf(message: ProgressMessage | undefined): ReadonlyArray<ProgressPa
   return (message?.parts ?? []) as ReadonlyArray<ProgressPart>;
 }
 
-/**
- * The investigation blocks a part carries, in order. An investigation only reaches
- * the panel through `render_view`'s output, so that is the only place to look.
- */
+/** An investigation only reaches the panel through `render_view`'s output. */
 function investigationBlocksIn(part: ProgressPart): ReadonlyArray<{
   id: string;
   revision: number;
@@ -75,14 +59,7 @@ function investigationBlocksIn(part: ProgressPart): ReadonlyArray<{
   return found;
 }
 
-/**
- * The investigation the transcript is currently showing as unfinished, if any.
- *
- * Latest revision wins, like the card the transcript renders (see
- * `winningInvestigationOccurrences`): an investigation is re-emitted as it
- * progresses, so an early `in_progress` revision must not keep the progress line
- * up after the verdict landed. With several live, the last one mentioned wins.
- */
+/** Latest revision wins: an early `in_progress` must not outlive the verdict. */
 export function liveInvestigation(
   messages: ReadonlyArray<ProgressMessage>
 ): LiveInvestigation | null {
@@ -96,7 +73,6 @@ export function liveInvestigation(
         if (!current || block.revision >= current.revision) {
           latest.set(block.id, block);
         }
-        // Recency by last mention, so the card the reader saw most recently wins.
         const seen = order.indexOf(block.id);
         if (seen !== -1) order.splice(seen, 1);
         order.push(block.id);
@@ -113,12 +89,7 @@ export function liveInvestigation(
   return null;
 }
 
-/**
- * The tool the last turn is waiting on, or null.
- *
- * Only the last assistant message counts — an in-flight part left behind in an
- * earlier turn is stale. With more than one call in flight the most recent wins.
- */
+/** Only the last assistant message counts; an in-flight part in an earlier turn is stale. */
 export function inFlightToolName(messages: ReadonlyArray<ProgressMessage>): string | null {
   const last = messages[messages.length - 1];
   if (!last || last.role !== "assistant") return null;
@@ -135,13 +106,7 @@ export function inFlightToolName(messages: ReadonlyArray<ProgressMessage>): stri
   return null;
 }
 
-/**
- * The label for the turn's one progress element, or null when nothing is in flight.
- *
- * Non-null mounts the element and null unmounts it, so this must stay non-null for
- * the whole in-flight period. That is why a live card and an in-flight tool each
- * keep the line up without needing `activity`: a gap would blink the spinner.
- */
+/** Must stay non-null for the whole in-flight period: null unmounts, and a gap blinks. */
 export function liveProgress(
   messages: ReadonlyArray<ProgressMessage>,
   activity: TurnActivity | null
@@ -150,7 +115,6 @@ export function liveProgress(
   if (investigation) {
     return {
       source: "investigation",
-      // A card without its own phrase falls back to the generic wording.
       label: investigation.progress ?? ACTIVITY_LABELS[activity ?? "working"],
     };
   }

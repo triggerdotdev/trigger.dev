@@ -1,6 +1,3 @@
-// Two rules are pinned here: the banner shows the fact, not a generic watch
-// update, and the presentation comes from the resolution plus the observed
-// outcome. The `fired`/`expired` suffix in the message id is only an address.
 import { describe, expect, it } from "vitest";
 import { wakePresentation, wakeRefFromMessageId, wakeResolution } from "./WakeBanner";
 import { watchWakeToastTitle } from "./WatchWakeToast";
@@ -13,8 +10,6 @@ const runWatch = {
 };
 
 describe("wakeRefFromMessageId", () => {
-  // The transport keeps its two-value suffix, so persisted wakes and banner render
-  // keys stay valid under the resolution model.
   it("still reads the as-built two-value wake id", () => {
     expect(wakeRefFromMessageId("wake:watch:watch_1:fired")).toEqual({
       watchId: "watch_1",
@@ -64,7 +59,6 @@ describe("wakePresentation", () => {
     expect(presented.category).toBe("positive");
   });
 
-  // Why the resolution alone is not enough.
   it("shows a failed run as a failure, on the same resolution", () => {
     const presented = wakePresentation("fired", {
       ...runWatch,
@@ -78,7 +72,6 @@ describe("wakePresentation", () => {
     });
     expect(presented.headline).toBe("Run run_abc123 failed");
     expect(presented.category).toBe("attention");
-    // A failed run never wears a success check.
     expect(presented.semanticIcon).not.toBe("success");
   });
 
@@ -160,8 +153,6 @@ describe("wakePresentation", () => {
     );
   });
 
-  // Every headline is fact first, and the numbers come from the frozen
-  // observation rather than a fresh read.
   it("says a queue came back below its threshold, and when it never did", () => {
     const below = {
       id: "watch_below",
@@ -290,9 +281,6 @@ describe("wakePresentation", () => {
   });
 });
 
-// The toast is the out-of-panel copy of the same fact: banner, toast and email
-// all read one presenter, so it never says "Watch update" while the row can say
-// what happened.
 describe("watchWakeToastTitle", () => {
   const wake = {
     watchId: "watch_1",

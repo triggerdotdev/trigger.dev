@@ -1,8 +1,3 @@
-/**
- * The badges the agent's cards use, and the matching status icons. Geometry
- * comes from the `Badge` primitive's `small` variant, so every chip is the same
- * box and only colour and icon differ.
- */
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -16,10 +11,8 @@ import { cn } from "~/utils/cn";
 
 export type AgentTone = "neutral" | "success" | "warning" | "error";
 
-// Semantic tokens, not raw palette classes: raw ones are dark-theme only, and
-// the theme layer remaps these (see tailwind.css). The `system:` overrides are
-// required because the Badge `small` variant otherwise tints every chip blue on
-// the system themes.
+// Semantic tokens, not raw palette classes: raw ones are dark-theme only.
+// The `system:` overrides stop the Badge `small` variant tinting every chip blue.
 const TONE_BADGE: Record<AgentTone, string> = {
   neutral:
     "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500/10 system:text-text-dimmed",
@@ -66,7 +59,6 @@ export function AgentBadge({
   );
 }
 
-/** A failure category, an evidence type: anything that classifies, not grades. */
 export function CategoryBadge({
   className,
   children,
@@ -165,13 +157,8 @@ export function VerdictBadge({
   );
 }
 
-/**
- * One evidence row: fixed left column for the type badge, the rest for text.
- * Shared so the diagnosis and investigation cards align identically.
- */
 export const EVIDENCE_ROW_CLASS = "grid grid-cols-[6.5rem_1fr] items-start gap-x-3";
 
-/** A coloured state icon for a status line whose text stays the default colour. */
 export function AgentStatusIcon({
   tone,
   icon: Icon,

@@ -1,24 +1,14 @@
-/**
- * The Free plan's cap on messages to the agent. Counted per user across their
- * chats in the org, not per chat, which "New chat" would reset.
- */
+// Counted per user across their chats in the org, not per chat, which "New chat"
+// would reset.
 export const FREE_PLAN_MESSAGE_LIMIT = 20;
 
 export type MessageQuota =
-  /** No cap applies — a paid plan, an unknown plan, or no count in hand. */
   | { kind: "unlimited" }
-  /** Under the cap: the composer works, with the remaining count under it. */
   | { kind: "within"; used: number; limit: number; remaining: number }
-  /** At the cap: the composer is replaced by the upgrade block. */
   | { kind: "reached"; used: number; limit: number };
 
-/**
- * Whether the cap applies, and what's left of it.
- *
- * Fails open deliberately: an unknown plan or an unknown count means no cap. The
- * cap is a nudge, not a security boundary, so a billing hiccup must never block
- * someone from using the product.
- */
+// Fails open: the cap is a nudge, not a security boundary, so an unknown plan or
+// count means no cap.
 export function resolveMessageQuota({
   isFreePlan,
   used,

@@ -1,8 +1,3 @@
-/**
- * The watch chip row. One chip per watch, its state carried by a coloured icon,
- * with cancel offered on active watches only. The note and cadence live in a
- * tooltip because the chip has to fit a 380px panel.
- */
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -25,7 +20,7 @@ import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
 import { wakePresentation } from "./WakeBanner";
 import { watchChipLabel, watchChipTooltip } from "./watch-chips";
 
-/** One watch, as the panel's loader hands it over (dates already JSON strings). */
+/** As the panel's loader hands it over: dates are already JSON strings. */
 export type WatchChip = {
   id: string;
   identity: string;
@@ -34,18 +29,12 @@ export type WatchChip = {
   note: string;
   checkEveryMinutes: number;
   expiresAt: string;
-  /** Last check's reason. The wake banner distinguishes terminal_unsatisfied. */
   endedReason?: string | null;
-  /** How the watch ended. Null while active; absent on pre-resolution rows. */
+  /** Null while active; absent on rows written before the resolution column. */
   resolution?: WatchResolution | null;
-  /** What the resolving check observed. The other half of the terminal icon. */
   observedOutcome?: WatchObservedOutcome | null;
 };
 
-/**
- * Semantic icon to glyph. Which icon a resolved result gets is decided in
- * contracts; this only owns the glyph set.
- */
 const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) => JSX.Element> = {
   success: CheckCircleIcon,
   attention: ExclamationTriangleIcon,
@@ -54,13 +43,8 @@ const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) =
   info: InformationCircleIcon,
 };
 
-/**
- * A terminal chip wears the resolved result's icon, not its lifecycle status: a
- * `run_finished` watch on a run that failed resolves `condition_met` and would
- * otherwise show a green check. The chip and the wake banner render the same
- * presentation so they agree by construction. Cancellation is the exception: it
- * has no resolution, so it keeps its own glyph.
- */
+// A terminal chip wears the resolved result's icon, not its lifecycle status: a
+// `run_finished` watch on a failed run resolves `condition_met`.
 function StatusIcon({ watch }: { watch: WatchChip }) {
   if (watch.status === "active") return <AgentSpinner size={14} />;
 
@@ -80,7 +64,6 @@ export function WatchChips({
   onCancel,
 }: {
   watches: WatchChip[];
-  /** Stop watching. Only offered on an active watch. */
   onCancel?: (watchId: string) => void;
 }) {
   if (watches.length === 0) return null;
@@ -93,8 +76,7 @@ export function WatchChips({
         return (
           <span
             key={watch.id}
-            // No native `title` on the chip: it would stack with the custom
-            // tooltip when hovering the cancel button.
+            // No native `title`: it would stack with the custom tooltip.
             className="inline-flex items-center gap-1.5 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-1.5 text-xs text-text-bright"
           >
             <StatusIcon watch={watch} />
@@ -112,7 +94,6 @@ export function WatchChips({
                 button={
                   <button
                     type="button"
-                    // Icon-only, so the label has to name the watch it cancels.
                     aria-label={`Cancel the ${label} watch`}
                     onClick={() => onCancel(watch.id)}
                     className="text-text-faint transition-colors hover:text-error focus-visible:text-error focus-custom"

@@ -1,17 +1,11 @@
-// One human label for "where the user is", used by the context banner.
-//
-// Two sources: a route that describes itself yields a `page.kind` we can label
-// exactly, everything else falls back to the URL. This module only produces
-// display text; the full pathname still goes to the agent untouched in
+// Display text only. The full pathname still reaches the agent in
 // `clientData.currentPage`.
 
 import type { AgentPage, AgentPageContext } from "./page-context-types";
 
-/** Shown when we can't work out anything better. */
 const FALLBACK_LABEL = "Dashboard";
 
-// `other` is the "we didn't classify this route" kind, so it carries no label
-// of its own and resolves from the path instead.
+// `other` is the unclassified kind, so it resolves from the path instead.
 const KIND_LABELS: Record<Exclude<AgentPage["kind"], "other">, string> = {
   runs: "Runs",
   run: "Run detail",
@@ -47,8 +41,7 @@ const KIND_LABELS: Record<Exclude<AgentPage["kind"], "other">, string> = {
   sessions: "Sessions",
 };
 
-// The dashboard's env-level sections, keyed by their path segment. Only the ones
-// whose label isn't the prettified segment strictly need an entry.
+// Only sections whose label isn't the prettified segment need an entry.
 const SECTION_LABELS: Record<string, string> = {
   agents: "Agents",
   alerts: "Alerts",
@@ -87,11 +80,8 @@ function prettifySegment(segment: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/**
- * Label a dashboard path. Env-scoped paths (`/orgs/x/projects/y/env/dev/runs`)
- * label off the section that follows `env/{slug}`; the env root is "Overview".
- * Anything else (org settings, account pages) falls back to its last segment.
- */
+// Env-scoped paths label off the section after `env/{slug}`; anything else falls
+// back to its last segment.
 export function pageLabelFromPath(pathname: string): string {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return FALLBACK_LABEL;
@@ -108,7 +98,6 @@ export function pageLabelFromPath(pathname: string): string {
   return last ? (SECTION_LABELS[last] ?? prettifySegment(last)) : FALLBACK_LABEL;
 }
 
-/** The banner's label: the structured page kind when there is one, else the path. */
 export function agentPageLabel(
   pageContext: AgentPageContext | undefined,
   pathname: string
@@ -117,7 +106,6 @@ export function agentPageLabel(
   if (page && page.kind !== "other") {
     return KIND_LABELS[page.kind] ?? pageLabelFromPath(pathname);
   }
-  // An `other` page carries the raw path it couldn't classify. Prefer it over the
-  // location, since it's what the agent was told.
+  // Prefer the path the `other` page carries: it is what the agent was told.
   return pageLabelFromPath(page?.kind === "other" && page.path ? page.path : pathname);
 }

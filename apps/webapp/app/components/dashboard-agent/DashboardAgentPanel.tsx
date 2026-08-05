@@ -27,9 +27,6 @@ import { agentPageLabel } from "./page-label";
 import { AgentPanelColumn } from "./panel-layout";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
-// Restores the last open chat, but only on the page it was last used on: reopening
-// on a different page starts a fresh draft with that page's prompts. Scoped by org
-// because chats are org-scoped. localStorage because the panel is client-only.
 const lastChatStorageKey = (organizationId: string) =>
   `tdev:dashboard-agent:last-chat:${organizationId}`;
 
@@ -43,12 +40,10 @@ function readLastChat(storageKey: string): { chatId: string; path: string } | nu
     const parsed = JSON.parse(raw) as { chatId?: string; path?: string };
     return parsed.chatId && parsed.path ? { chatId: parsed.chatId, path: parsed.path } : null;
   } catch {
-    return null; // localStorage unavailable or corrupted
+    return null;
   }
 }
 
-// Undefined when the context can't be serialized. It comes from loader data so it
-// should be JSON-safe, but a page's mapper must not be able to break the panel.
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
     return JSON.stringify(pageContext);
@@ -61,21 +56,12 @@ type ActiveChat = {
   chatId: string;
   messages: UIMessage[];
   session: DashboardAgentSession | null;
-  // Cold start only: the mounted chat sends this first message through the
-  // transport to trigger the turn. Undefined for head-started and resumed chats,
-  // whose stream is resumed rather than re-sent.
   pendingFirstMessage?: string;
-  // True for a head-started chat: the turn is already in flight server-side, so
-  // the transport must hydrate the session as streaming to resume `session.out`.
+  // Head start: the turn is already in flight, so the session hydrates as streaming.
   streaming?: boolean;
 };
 
-/**
- * The dashboard agent side panel. Owns history, the active chat and last-chat
- * persistence. New chats start as a draft with no id: the server generates the id
- * on the first send, so the client never invents one. Existing chats resolve their
- * stored transcript and session before mounting `DashboardAgentChat`.
- */
+// The server generates the chat id on the first send; the client never invents one.
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
@@ -88,25 +74,14 @@ export function DashboardAgentPanel({
   onToggleFullscreen,
 }: {
   onClose: () => void;
-  // Fullscreen is owned by `DashboardAgent`, which also hides the page behind the
-  // panel, so the panel only reflects it and asks for the toggle.
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  // Text handed to the panel from outside. `seq` distinguishes repeat requests
-  // with the same text.
+  // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
-  // A specific chat to show, from outside the panel. `seq` distinguishes repeat
-  // requests for the same chat.
   openChatRequest?: { chatId: string; seq: number };
-  // Bumped by the contextual ⌘J while the panel is open. Each change starts a new
-  // chat.
   newChatSeq?: number;
-  // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
-  // A watch card asked for by a `Watch…` entry. `seq` distinguishes repeats.
   watchRequest?: { spec: WatchSpec; seq: number };
-  // The chat in front of the user changed, so its watch wakes are seen. Clears the
-  // launcher's unread dot.
   onChatRead?: (chatId: string) => void;
 }) {
   const organization = useOrganization();
@@ -123,27 +98,19 @@ export function DashboardAgentPanel({
 
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
   const [active, setActive] = useState<ActiveChat | null>(null);
-  // Starts true when there is a chat to restore on this page, so the first render
-  // already knows a restore is coming and an `openWith` request waits for it
-  // instead of racing it into a new chat.
+  // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
   );
 
-  // Display text only. Derived from the same page context the agent receives, so
-  // the banner and the agent cannot disagree about where the user is.
   const currentPage = agentPageLabel(pageContext, location.pathname);
 
-  // Dashboard paths for report footer actions. Built here because only the host
-  // knows the slugs, which keeps the card pure.
   const pagePaths = useMemo<Record<string, string>>(
     () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
     [organization, project, environment]
   );
 
-  // The page context is a fresh object every render, so the clientData memo keys
-  // off its serialized form. Otherwise every render looks like new per-turn
-  // context to the transport.
+  // A fresh object every render, so the clientData memo keys off the serialized form.
   const pageContextKey = serializePageContext(pageContext);
 
   const clientData = useMemo<DashboardAgentClientData>(
@@ -158,8 +125,6 @@ export function DashboardAgentPanel({
     [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
   );
 
-  // Which chat has a turn in flight, for the History list's marker. Client-side
-  // only, because nothing server-side records a live turn.
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
   const handleActivityChange = useCallback((chatId: string, activity: TurnActivity | null) => {
     setThinkingChatId((previous) =>
@@ -167,13 +132,9 @@ export function DashboardAgentPanel({
     );
   }, []);
 
-  // The list is reloaded from several places at once, so one in-flight request is
-  // shared: callers arriving mid-flight await it rather than stacking a new one.
   const historyInFlight = useRef<Promise<void> | null>(null);
 
-  // Chats read since the last reload. The read POST and the reload it triggers can
-  // land out of order, so the next list is masked with what we know was read. The
-  // ids are then dropped so a later wake in the same chat still shows.
+  // The read POST and its reload can land out of order, so mask the next list.
   const justRead = useRef<Set<string>>(new Set());
 
   const loadHistory = useCallback(async () => {
@@ -201,13 +162,9 @@ export function DashboardAgentPanel({
     return request;
   }, [actionPath, toast]);
 
-  // Bumped on each open so a slower earlier open can't overwrite a newer one
-  // when chats are switched rapidly.
+  // Bumped on each open so a slower earlier open can't overwrite a newer one.
   const openChatRequestSeq = useRef(0);
 
-  // Open an existing chat: fetch its stored transcript and session so resume flows
-  // in through the transport at mount. A stored id that no longer exists drops back
-  // to the draft state.
   const openChat = useCallback(
     async (id: string) => {
       const seq = ++openChatRequestSeq.current;
@@ -237,7 +194,6 @@ export function DashboardAgentPanel({
               : null,
           });
         } else {
-          // Nothing stored under this id, so drop to a fresh draft.
           setActive(null);
         }
       } catch (error) {
@@ -251,9 +207,6 @@ export function DashboardAgentPanel({
     [actionPath, toast]
   );
 
-  // Start a new chat by sending its first message. The server generates the id and
-  // kicks off the first turn, then the real chat mounts on that id and either
-  // resumes its stream (head start) or sends the message through the transport.
   const createChat = useCallback(
     async (text: string) => {
       const seq = ++openChatRequestSeq.current;
@@ -275,7 +228,6 @@ export function DashboardAgentPanel({
           headStarted?: boolean;
           error?: string;
         };
-        // A newer open or create superseded this one, so drop the result.
         if (seq !== openChatRequestSeq.current) return;
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
           console.error(`Dashboard agent: failed to create chat (${res.status})`, data.error);
@@ -301,30 +253,22 @@ export function DashboardAgentPanel({
     [actionPath, clientData, toast]
   );
 
-  // On open, restore the last chat if there is one, otherwise stay a draft. Runs
-  // once per mount. The history list loads at the same time because the header
-  // reads the active chat's title from it.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
     void loadHistory();
     const stored = readLastChat(storageKey);
-    // Same page picks the conversation back up. A different page starts a fresh
-    // draft; the old chat stays one click away in History.
     if (stored && stored.path === location.pathname) {
       void openChat(stored.chatId);
     } else {
-      // `loading` starts true only when there was something to restore here.
       setLoading(false);
     }
     // location is deliberately not a dep: this is a mount-time decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChat, storageKey, loadHistory]);
 
-  // Crossing into another organization does not remount the layout (same route,
-  // new params), so the previous org's chat and history would linger. Chats are
-  // org-scoped, so reset to a fresh draft and reload this org's list.
+  // Crossing into another org does not remount the layout.
   const panelOrg = useRef(organization.id);
   useEffect(() => {
     if (panelOrg.current === organization.id) return;
@@ -337,21 +281,17 @@ export function DashboardAgentPanel({
     void loadHistory();
   }, [organization.id, loadHistory]);
 
-  // A chat asked for from outside. Runs after the mount-time restore, and
-  // `openChat` invalidates any in-flight request, so the asked-for chat lands.
   const handledOpenChatSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!openChatRequest || handledOpenChatSeq.current === openChatRequest.seq) return;
     handledOpenChatSeq.current = openChatRequest.seq;
-    // Already the visible transcript, and reloading it would drop a turn in flight.
+    // Reloading the visible transcript would drop a turn in flight.
     if (openChatRequest.chatId === active?.chatId) return;
     void openChat(openChatRequest.chatId);
     // `active` is read, not tracked: a later change must not re-run the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChatRequest, openChat]);
 
-  // Persist the active chat and the page it is being used on. Navigating with the
-  // panel open keeps the chat, so the stored path follows along.
   useEffect(() => {
     if (!active?.chatId) return;
     try {
@@ -364,32 +304,22 @@ export function DashboardAgentPanel({
     }
   }, [active?.chatId, storageKey, location.pathname]);
 
-  // A chat becoming the visible transcript counts as read, which clears the
-  // launcher's dot. Fires on open and on every chat switch.
   useEffect(() => {
     if (!active?.chatId) return;
     const chatId = active.chatId;
     onChatRead?.(chatId);
-    // Clear the row's highlight now rather than at the next history reload, so
-    // reopening the dropdown does not show it as unread.
     justRead.current.add(chatId);
     setChats((previous) =>
       previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
     );
-    // Read it again on the way out, so a wake that landed while the chat was open
-    // does not come back as unread when the panel closes.
+    // Read again on the way out: a wake can land while the chat is open.
     return () => {
       onChatRead?.(chatId);
       justRead.current.add(chatId);
     };
   }, [active?.chatId, onChatRead]);
 
-  // Text handed in by `openWith`. With no chat open it starts one and sends
-  // straight away; with a chat open it only fills the composer, so a message is
-  // never injected mid-conversation. Waits for an in-flight restore or open to know
-  // which case applies. The prefill is bound to the chat it was meant for, because
-  // `DashboardAgentChat` remounts with a fresh guard ref on every chat switch and an
-  // unbound prefill would re-apply to each new chat.
+  // Bound to its chat, which remounts with a fresh guard ref on every switch.
   const [prefill, setPrefill] = useState<{ text: string; seq: number; chatId: string } | undefined>(
     undefined
   );
@@ -405,15 +335,10 @@ export function DashboardAgentPanel({
     }
   }, [requestedMessage, loading, active, createChat]);
 
-  // The watch card. Everything here is ephemeral until `submitWatch` succeeds: the
-  // draft, the pending flag and the error live in the panel, so dropping the card
-  // drops all three without touching the transcript.
   const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
   const [watchPending, setWatchPending] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
-  // The block the server appended, handed to the open chat so it appears now rather
-  // than on the next open. `seq` makes each append distinct, and it carries the chat
-  // it belongs to so a later-mounted chat cannot adopt another chat's confirmation.
+  // Carries its chat id so a later-mounted chat cannot adopt another chat's block.
   const [appendedMessage, setAppendedMessage] = useState<
     { chatId: string; message: UIMessage; seq: number } | undefined
   >(undefined);
@@ -427,8 +352,7 @@ export function DashboardAgentPanel({
     setWatchDraft(watchDraftFor(watchRequest.spec));
   }, [watchRequest]);
 
-  // A card offering a watch opens the same card pre-filled, never a posted request,
-  // so an offer the user walks away from leaves no trace.
+  // Nothing is posted or persisted until the card is submitted.
   const openWatchCard = useCallback((spec: WatchSpec) => {
     setWatchError(null);
     setWatchPending(false);
@@ -449,8 +373,7 @@ export function DashboardAgentPanel({
       const body = new FormData();
       body.set("intent", "watch-create");
       body.set("draft", JSON.stringify(watchDraft));
-      // With no chat open the server creates one and returns its id. A watch is
-      // chat-bound, so there is nowhere else for it to live.
+      // A watch is chat-bound: with no chat open the server creates one.
       if (active?.chatId) body.set("chatId", active.chatId);
 
       const res = await fetch(actionPath, { method: "POST", body });
@@ -460,8 +383,6 @@ export function DashboardAgentPanel({
         error?: string;
       };
       if (!res.ok || !data.chatId || !data.message) {
-        // Failures stay in the card and persist nothing, so the user fixes the
-        // draft in place.
         setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
         return;
       }
@@ -473,13 +394,9 @@ export function DashboardAgentPanel({
           seq: (current?.seq ?? 0) + 1,
         }));
       } else {
-        // A chat that did not exist a moment ago: mount it on what the server
-        // wrote. No session, because nothing is streaming and the block is the
-        // whole chat.
+        // No session: nothing is streaming and the block is the whole chat.
         setActive({ chatId: data.chatId, messages: [data.message], session: null });
       }
-      // The card becomes the persisted block, so it goes the moment that block is
-      // in the transcript.
       setWatchDraft(null);
       void loadHistory();
     } catch (error) {
@@ -490,8 +407,6 @@ export function DashboardAgentPanel({
     }
   }, [watchDraft, active?.chatId, actionPath, loadHistory]);
 
-  // Rendered bare: both mount points already inset it, so a wrapper here would make
-  // the card narrower than the field it sits above.
   const watchCard = watchDraft ? (
     <WatchCard
       draft={watchDraft}
@@ -517,8 +432,7 @@ export function DashboardAgentPanel({
     [openChat]
   );
 
-  // Contextual ⌘J: each bump while the panel is open starts a new chat. A ref
-  // skips the mount-time value so opening the panel never resets a restored chat.
+  // The ref skips the mount-time value so opening the panel never resets a restored chat.
   const seenNewChatSeq = useRef(newChatSeq ?? 0);
   useEffect(() => {
     if (newChatSeq === undefined || newChatSeq === seenNewChatSeq.current) return;
@@ -546,8 +460,6 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
-  // Stop watching, from the chip's ×. The chip goes immediately and the reload
-  // right after restores the truth either way.
   const cancelWatch = useCallback(
     async (watchId: string) => {
       const chatId = active?.chatId;
@@ -575,22 +487,17 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, loadHistory, toast]
   );
 
-  // Titles come from the history list, written when the first turn settles, so a
-  // brand-new chat has none yet and falls back.
+  // Titles are written when the first turn settles, so a new chat has none yet.
   const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
   const headerTitle = active ? (activeChat?.title ?? "Chat") : "New chat";
 
-  // Watches ride along on the history list, so they refresh whenever it does. The
-  // full list goes down: the chips filter to active themselves, while the wake
-  // banner needs the kind of a watch that has already fired.
+  // Not filtered to active: the wake banner needs watches that already fired.
   const chatWatches = activeChat?.watches ?? [];
 
   return (
     <div
       className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
-      // Esc closes the panel, but only while focus is inside it. A React handler
-      // rather than a global hotkey, so Esc still belongs to the rest of the page.
-      // Dialogs and popovers portal out of this subtree and keep their own Esc.
+      // A React handler, not a global hotkey, so Esc stays scoped to the panel.
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
         event.preventDefault();
@@ -612,8 +519,7 @@ export function DashboardAgentPanel({
         onClose={onClose}
       />
 
-      {/* Always mounted, so switching to fullscreen only re-styles this column and
-          the chat keeps its transport, session and transcript. */}
+      {/* Always mounted, so the chat keeps its transport, session and transcript. */}
       <AgentPanelColumn fullscreen={isFullscreen}>
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
@@ -643,8 +549,7 @@ export function DashboardAgentPanel({
             }
             onWatchIntent={openWatchCard}
             onCancelWatch={cancelWatch}
-            // One reload is enough: the generated chat name is written before the
-            // turn-complete chunk settles the stream, so the list already has it.
+            // The generated chat name is written before the turn-complete chunk lands.
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
           />

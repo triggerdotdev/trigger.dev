@@ -2,26 +2,13 @@ import type { UIMessage } from "@ai-sdk/react";
 import { useEffect, useState } from "react";
 import { countUserMessages, resolveMessageQuota, type MessageQuota } from "./message-quota";
 
-/**
- * Whether the message cap applies to this org. Always undefined for now: plan
- * detection belongs to the billing service and will be wired up there. Undefined
- * means no cap (see `resolveMessageQuota`), so the quota surface stays dormant
- * until billing supplies the answer.
- */
+// Always undefined until billing supplies plan detection, which means no cap.
 function useIsFreePlan(): boolean | undefined {
   return undefined;
 }
 
-/**
- * The Free-plan message quota for the user, as the open chat sees it.
- *
- * Counted in two halves so the total can't lag the conversation: the server
- * aggregates the user's messages in every other chat (fetched once per chat,
- * since the panel remounts on every switch), and this chat's own messages come
- * from the live transcript, so the message just sent counts immediately.
- *
- * Nothing is fetched unless the org is on the Free plan.
- */
+// Counted in two halves: the server aggregates other chats, this chat's own count
+// comes from the live transcript so the message just sent counts immediately.
 export function useAgentMessageQuota({
   actionPath,
   chatId,

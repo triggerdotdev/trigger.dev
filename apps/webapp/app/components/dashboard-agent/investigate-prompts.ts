@@ -1,13 +1,4 @@
-/**
- * The prompt text the dashboard's "Investigate" buttons send. Kept out of the
- * routes so the wording is in one place and testable. Phrasing follows
- * `suggested-prompts/registry.ts`.
- */
-
-/**
- * Run statuses that count as a failure. Same set as the fresh-failure signal in
- * `suggested-prompts/page-mappers.ts`.
- */
+// Same set as the fresh-failure signal in `suggested-prompts/page-mappers.ts`.
 const FAILED_RUN_STATUSES = new Set([
   "COMPLETED_WITH_ERRORS",
   "CRASHED",
@@ -41,10 +32,7 @@ export function queueBacklogPrompt(queueName: string): string {
   return `Investigate the ${queueName} queue — why is it backed up?`;
 }
 
-/**
- * The name is optional because the test page knows its queue is paused but not
- * what it's called.
- */
+// The name is optional: the test page knows its queue is paused but not what it's called.
 export function pausedQueuePrompt(queueName?: string): string {
   const subject = queueName ? `The ${queueName} queue` : "The queue this task runs on";
   return `${subject} is paused, so nothing new will start on it. What's waiting behind it?`;

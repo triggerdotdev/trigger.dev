@@ -1,13 +1,9 @@
-/**
- * Per-user chip dismissals, in localStorage. One key per chip id rather than one
- * key holding a list, so two tabs dismissing different chips can't clobber each
- * other's write.
- */
+// One key per chip id, not one key holding a list, so two tabs dismissing
+// different chips can't clobber each other's write.
 const KEY_PREFIX = "tdev:dashboard-agent:prompt-dismissed:";
 
 export const dismissedPromptStorageKey = (promptId: string) => `${KEY_PREFIX}${promptId}`;
 
-/** Every chip id this browser has dismissed. Empty when storage is unavailable. */
 export function readDismissedPromptIds(): string[] {
   if (typeof window === "undefined") return [];
   try {

@@ -1,25 +1,12 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-/** How close to the bottom counts as following along. */
+// How close to the bottom counts as following along.
 const NEAR_BOTTOM_PX = 120;
 
 type ScrollableMessage = { id: string; role?: string };
 
-/**
- * Sticky-bottom scrolling for the chat transcript. Three rules:
- *
- * 1. A message the user just sent always jumps to the bottom, however far up
- *    they had scrolled.
- * 2. Streamed content only follows while they are already near the bottom.
- * 3. Mounting lands at the bottom: the panel remounts the chat on every page
- *    navigation, and a restored transcript opening at the top reads as empty.
- *
- * The shared `useAutoScrollToBottom` can't do 1 or 3: it seeds its stickiness
- * from the scroll position after the first paint, so a restored transcript sits
- * at scrollTop 0, is judged not at the bottom, and never scrolls again.
- *
- * @returns the ref for the content column inside the scroller.
- */
+// Not `useAutoScrollToBottom`: it seeds stickiness from the position after first
+// paint, so a restored transcript sits at scrollTop 0 and never scrolls again.
 export function useTranscriptAutoScroll(
   messages: ReadonlyArray<ScrollableMessage>,
   activity: unknown
@@ -27,10 +14,9 @@ export function useTranscriptAutoScroll(
   const contentRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLElement | null>(null);
   const followRef = useRef(true);
-  // The last user message scrolled for, so rule 1 fires once per send.
+  // The last user message scrolled for, so the jump fires once per send.
   const jumpedForRef = useRef<string | undefined>(undefined);
 
-  // Find the scroller, land at the bottom, and track whether we're following.
   useLayoutEffect(() => {
     let element: HTMLElement | null = contentRef.current?.parentElement ?? null;
     while (element) {
@@ -67,8 +53,7 @@ export function useTranscriptAutoScroll(
     container.scrollTop = container.scrollHeight;
   }, [messages, activity]);
 
-  // Content also grows without a message change (lazy markdown, a card laying
-  // out). Follow that too, but only while following.
+  // Content also grows without a message change (lazy markdown, a card laying out).
   useEffect(() => {
     const container = containerRef.current;
     const content = contentRef.current;

@@ -1,21 +1,11 @@
-/**
- * Stable transcript order. The stored copy of a chat is the base order; anything
- * that arrives live goes strictly after it, in the order it first appeared.
- *
- * Ordering is keyed by message id because the stored copy can lag the turn that
- * just finished, so the stream may replay a turn the base already has. Keying by
- * id puts a replayed turn back in its own slot instead of after a message the
- * user sent locally in the meantime.
- */
+// Ordering is keyed by message id, so a turn the stream replays lands back in its
+// own slot rather than after a message sent locally since.
 
 export type TranscriptOrder = {
-  /** Message id -> its index in the stored transcript. */
   base: Map<string, number>;
-  /** Message id -> the order it first arrived live. */
   live: Map<string, number>;
 };
 
-/** The order to rank against: the stored transcript as loaded. */
 export function createTranscriptOrder(base: ReadonlyArray<{ id: string }>): TranscriptOrder {
   return {
     base: new Map(base.map((message, index) => [message.id, index])),
@@ -25,12 +15,7 @@ export function createTranscriptOrder(base: ReadonlyArray<{ id: string }>): Tran
 
 type Orderable = { id: string; parts?: ReadonlyArray<unknown> };
 
-/**
- * The messages in stable order, one copy per id.
- *
- * Registers ids it hasn't seen before in `order.live`, so the order object must
- * be long-lived (a ref) — it is the memory of what arrived when.
- */
+// Mutates `order.live`, so the order object must be long-lived (a ref).
 export function orderTranscript<T extends Orderable>(
   messages: ReadonlyArray<T>,
   order: TranscriptOrder

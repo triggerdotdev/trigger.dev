@@ -13,10 +13,6 @@ import { cn } from "~/utils/cn";
 import { ChatActionsRow } from "./chat-layout";
 import { renderableActions } from "./view-actions";
 
-// A chart block runs its TRQL query through /resources/metric (session-authed)
-// and feeds the result into QueryResultsChart, so the chart is live and matches
-// the Query page. The agent only emits the query and chart config, never rows.
-
 type MetricResponse =
   | { success: false; error: string }
   | {
@@ -28,23 +24,16 @@ type MetricResponse =
       };
     };
 
-// `chartBlockBodySchema` carries only `period` for the time window, so scope and
-// from/to are fixed here. If the schema grows those fields, read them off `block`.
+// `chartBlockBodySchema` carries only `period`, so scope and from/to are fixed here.
 const CHART_SCOPE = "environment";
 const CHART_FROM = null;
 const CHART_TO = null;
-// `min-h-*` alongside the fixed height on purpose: the chart measures its own
-// container and draws nothing at zero height, so a squeezing flex parent must
-// not be able to collapse it below this.
+// `min-h` as well: the chart draws nothing at zero height if a flex parent collapses it.
 const CHART_HEIGHT_CLASS = "h-64 min-h-64";
-// The chart's top gridline sits on the container edge, so without this padding
-// it touches the card header.
 const CHART_PADDING_CLASS = "px-2 pb-2 pt-4";
-/** The plot area's geometry, exported so the demo card can't drift from it. */
 export const AGENT_CHART_PLOT_CLASS = `w-full ${CHART_PADDING_CLASS} ${CHART_HEIGHT_CLASS}`;
 
-// Query errors can carry SQL and schema detail, so the panel shows a fixed
-// message and the real one goes to the console.
+// Query errors can carry SQL and schema detail, so the real one only goes to the console.
 const CHART_ERROR_MESSAGE = "This chart's query couldn't run.";
 
 type ChartState =
@@ -57,11 +46,6 @@ type ChartState =
       timeRange?: { from: string; to: string };
     };
 
-/**
- * The buttons under a ranking chart. A card never navigates or asks on its own:
- * it hands the block's intent to the host. Without an `onIntent` the row isn't
- * rendered rather than showing dead buttons.
- */
 export function ChartActions({
   actions,
   onIntent,
@@ -69,7 +53,6 @@ export function ChartActions({
   actions: ChartAction[];
   onIntent?: (intent: AgentIntent) => void;
 }) {
-  // Only navigate targets that parse become buttons. See `renderableActions`.
   const renderable = renderableActions(actions);
   if (!onIntent || renderable.length === 0) return null;
   return (
@@ -78,7 +61,6 @@ export function ChartActions({
         {renderable.map((action, i) => (
           <Button
             key={i}
-            // The first action is the one to take; the rest are alternatives.
             variant={i === 0 ? "primary/small" : "secondary/small"}
             onClick={() => onIntent(action.intent as AgentIntent)}
           >
@@ -107,8 +89,7 @@ export function AgentChart({
   const environmentId = environment?.id;
 
   useEffect(() => {
-    // The block can render before its `query` has finished streaming in; wait
-    // for it rather than POST an empty query (which 400s).
+    // The block can render before `query` has streamed in; an empty query 400s.
     if (!block.query) return;
     if (!organizationId || !projectId || !environmentId) {
       setState({ status: "error", error: "No environment context to run the query." });

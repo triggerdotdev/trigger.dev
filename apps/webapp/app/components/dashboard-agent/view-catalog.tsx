@@ -7,28 +7,12 @@ import { RunDiagnosisCard } from "./RunDiagnosisCard";
 import { blockKey, latestRevisionBlocks } from "./view-blocks";
 import { WatchResultBlock } from "./WatchResultBlock";
 
-// The render registry for the agent's view catalog. Each block `type` maps to a
-// component; unknown types are skipped, so an older or newer agent can never
-// render arbitrary content. Add a block with a `case` here plus a union member
-// in the package's `viewBlockSchema`.
-//
-// Blocks carrying an envelope (`id` + `revision`) are keyed by identity and
-// collapsed latest-wins, so a re-emitted block replaces its earlier revision.
-// Envelope-less blocks are keyed by index. See `view-blocks.ts`.
+// Unknown block types are skipped, so an older or newer agent cannot render
+// arbitrary content. A new block needs a `case` here and a `viewBlockSchema` member.
 export function ViewBlocks({
   blocks,
-  /**
-   * Where a card's actions go. Cards never navigate or ask on their own: they
-   * emit an intent and the host honours it. Without it, intent-only actions
-   * render as plain text rather than dead buttons.
-   */
   onIntent,
-  /**
-   * Host resolver for `trigger://` URIs cited by a card. Only the host knows the
-   * environment to resolve against; see `resolveTriggerUri.server.ts`.
-   */
   resolveUri,
-  /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths,
 }: {
   blocks: ViewBlock[];
@@ -40,8 +24,8 @@ export function ViewBlocks({
   return (
     <div className="space-y-2">
       {latestRevisionBlocks(blocks).map((block) => {
-        // Envelope-less blocks key off their position in the original array so
-        // collapsing a revision above them can't shift keys.
+        // Index into the original array, so collapsing a revision above an
+        // envelope-less block can't shift its key.
         const key = blockKey(block, blocks.indexOf(block));
         switch (block.type) {
           case "diagnosis":
@@ -50,8 +34,7 @@ export function ViewBlocks({
             return <AgentChart key={key} block={block} onIntent={onIntent} />;
           case "actions":
             return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
-          // The one progressive block: revisions share the investigationId, so
-          // latest-wins keeps a single live card.
+          // Revisions share the investigationId, so latest-wins keeps one card.
           case "investigation":
             return (
               <InvestigationCard
@@ -61,8 +44,7 @@ export function ViewBlocks({
                 onIntent={onIntent}
               />
             );
-          // Host-emitted only (the watch card's submit path), so the model cannot
-          // fabricate a confirmation.
+          // Host-emitted only, so the model cannot fabricate a confirmation.
           case "watch_result":
             return <WatchResultBlock key={key} block={block} />;
           case "report":

@@ -1,8 +1,3 @@
-/**
- * The agent's offer, as buttons. The block only emits an intent; the host
- * decides whether to honour it, so without `onIntent` there is nothing to
- * render.
- */
 import type {
   ActionsBlock as ActionsBlockPayload,
   AgentIntent,
@@ -25,7 +20,6 @@ export function ActionsBlock({
       {renderable.map((action, i) => (
         <Button
           key={i}
-          // The first action is the one to take; the rest are alternatives.
           variant={i === 0 ? "primary/small" : "secondary/small"}
           onClick={() => onIntent(action.intent as AgentIntent)}
         >

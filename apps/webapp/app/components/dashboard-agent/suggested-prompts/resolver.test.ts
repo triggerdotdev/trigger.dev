@@ -21,14 +21,11 @@ const promoted: SuggestedPrompt = {
 
 const ids = (prompts: SuggestedPrompt[]) => prompts.map((p) => p.id);
 
-/** The docs chip for a page, always the last slot. */
 const docsId = (key: keyof typeof demoPageContexts) =>
   pageSlotPrompts(demoPageContexts[key].page).docs.id;
 
 describe("resolveSuggestedPrompts", () => {
   it("fills all five slots when the page has a promoted chip, signals and defaults", () => {
-    // Error page: investigate + watch + explain + docs defaults, plus a fresh
-    // failure signal that takes the investigate slot.
     const prompts = resolveSuggestedPrompts(demoPageContexts.error, { promoted, now: NOW });
 
     expect(prompts).toHaveLength(5);
@@ -55,7 +52,6 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("shows explain + docs only when no investigate or watch applies", () => {
-    // A deployment page has no failure to dig into and nothing to watch.
     const prompts = resolveSuggestedPrompts(demoPageContexts.deployment, { now: NOW });
 
     expect(ids(prompts)).toEqual(ids(pageDefaultPrompts(demoPageContexts.deployment.page)));
@@ -84,7 +80,6 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("orders promoted, then investigate, then watch, then explain", () => {
-    // Queue page: saturation fills watch, the fresh failure fills investigate.
     const context = {
       ...demoPageContexts.queue,
       signals: [...demoPageContexts.queue.signals, demoFreshFailureSignal],
@@ -103,7 +98,6 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("gives a signal chip the slot ahead of the page-kind default", () => {
-    // The failed-run page can fill investigate itself; the fresh failure wins.
     const prompts = resolveSuggestedPrompts(demoPageContexts.failedRun, { now: NOW });
 
     expect(prompts[0]?.id).toBe("sp:fresh-failure");
@@ -127,7 +121,6 @@ describe("resolveSuggestedPrompts", () => {
     });
 
     expect(ids(full)[0]).toBe("sp:fresh-failure");
-    // The run page's own investigate default takes the vacated slot.
     expect(ids(dismissed)[0]).toBe("sp:run-investigate");
     expect(dismissed).toHaveLength(full.length);
   });
@@ -141,7 +134,6 @@ describe("resolveSuggestedPrompts", () => {
 
     expect(ids(dismissed)).not.toContain("sp:error-watch-recurrence");
     expect(dismissed).toHaveLength(full.length - 1);
-    // Docs is still last.
     expect(dismissed.at(-1)?.id).toBe(docsId("error"));
   });
 
@@ -218,7 +210,6 @@ describe("pageSlotPrompts", () => {
       const prompts = pageDefaultPrompts(context.page);
       expect(prompts.length, context.page.kind).toBeGreaterThan(0);
       expect(new Set(ids(prompts)).size, context.page.kind).toBe(prompts.length);
-      // Docs is always the tail of the page's own set too.
       expect(prompts.at(-1)?.id, context.page.kind).toBe(pageSlotPrompts(context.page).docs.id);
     }
   });
@@ -228,7 +219,6 @@ describe("pageSlotPrompts", () => {
       const slots = pageSlotPrompts({ kind });
       expect(slots.explain.id, kind).not.toBe(GENERIC_PROMPTS[0]!.id);
       expect(slots.docs.id, kind).not.toBe(GENERIC_PROMPTS[1]!.id);
-      // A list has nothing wrong with it by itself.
       expect(slots.investigate, kind).toBeUndefined();
     }
   });
@@ -277,13 +267,7 @@ describe("pageSlotPrompts", () => {
   });
 });
 
-// Every page kind, exhaustively
-
-/**
- * One sample page per kind, in its normal state. Keyed by `AgentPageKind`, so
- * adding a kind to the contract without giving it chips is a type error here
- * rather than a generic-fallback row in production.
- */
+/** Keyed by `AgentPageKind`: a new kind without chips is a type error here. */
 const SAMPLE_PAGES: Record<AgentPageKind, AgentPage> = {
   runs: { kind: "runs" },
   run: { kind: "run", runId: "run_1", status: "Executing", taskId: "process-order" },
@@ -337,8 +321,6 @@ describe("pageSlotPrompts, across every page kind", () => {
   it("offers no investigate or status chip on a page where nothing is wrong", () => {
     for (const page of ALL_PAGES) {
       const slots = pageSlotPrompts(page);
-      // Run and error pages are about a failure, and a queue always has a live
-      // backlog question. Everything else stays quiet.
       const inherentlyLoud = ["run", "error", "queue"];
       if (inherentlyLoud.includes(page.kind)) continue;
       expect(slots.investigate, page.kind).toBeUndefined();
@@ -356,8 +338,7 @@ describe("pageSlotPrompts, across every page kind", () => {
   });
 
   it("never reuses one chip id for two different questions", () => {
-    // Dismissals are stored by id, so the same id has to mean the same chip
-    // everywhere it appears.
+    // Dismissals are stored by id, so one id must mean the same chip everywhere.
     const byId = new Map<string, string>();
     for (const page of ALL_PAGES) {
       for (const prompt of pageDefaultPrompts(page)) {
@@ -382,7 +363,6 @@ describe("pageSlotPrompts, the gated chips", () => {
   it("offers a task investigate chip only when the task can't run", () => {
     expect(pageSlotPrompts(SAMPLE_PAGES.task).investigate).toBeUndefined();
 
-    // A scheduled task with nothing to fire it: it has never run.
     const noSchedules = pageSlotPrompts({
       kind: "task",
       taskId: "nightly",
@@ -392,7 +372,6 @@ describe("pageSlotPrompts, the gated chips", () => {
     expect(noSchedules.investigate?.id).toBe("sp:task-no-schedules");
     expect(noSchedules.investigate?.prompt).toContain("nightly");
 
-    // Schedules attached but all switched off: it has stopped running.
     const allOff = pageSlotPrompts({
       kind: "task",
       taskId: "nightly",
@@ -401,7 +380,6 @@ describe("pageSlotPrompts, the gated chips", () => {
     });
     expect(allOff.investigate?.id).toBe("sp:task-schedules-disabled");
 
-    // One live schedule is enough for the page to be quiet.
     const oneOn = pageSlotPrompts({
       kind: "task",
       taskId: "nightly",
@@ -410,7 +388,6 @@ describe("pageSlotPrompts, the gated chips", () => {
     });
     expect(oneOn.investigate).toBeUndefined();
 
-    // A paused queue stops the next run, so it comes after the schedule checks.
     const paused = pageSlotPrompts({
       kind: "task",
       taskId: "process-order",
@@ -472,12 +449,10 @@ describe("pageSlotPrompts, the gated chips", () => {
     expect(partial.investigate?.prompt).toContain("3 of its runs failed");
     expect(partial.status).toBeUndefined();
 
-    // A live batch is a status question, not an investigation.
     const running = pageSlotPrompts({ kind: "batch", batchId: "batch_1", status: "PROCESSING" });
     expect(running.status?.id).toBe("sp:batch-progress");
     expect(running.investigate).toBeUndefined();
 
-    // Still processing, and already failing.
     const both = pageSlotPrompts({
       kind: "batch",
       batchId: "batch_1",
@@ -516,7 +491,6 @@ describe("pageSlotPrompts, the gated chips", () => {
       pageSlotPrompts({ kind: "waitpoints", timedOutCount: 0, overdueCount: 2 }).investigate?.id
     ).toBe("sp:waitpoints-stuck");
 
-    // One token: only a timed-out one has something to explain.
     expect(
       pageSlotPrompts({ kind: "waitpoints", tokenId: "wp_1", status: "WAITING" }).investigate
     ).toBeUndefined();

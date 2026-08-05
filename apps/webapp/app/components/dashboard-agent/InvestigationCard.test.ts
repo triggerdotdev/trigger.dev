@@ -1,11 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-/**
- * `InvestigationCard` is a pure component: props in, markup out, so the same
- * card renders in the panel, the storybook gallery and any future host. The one
- * hook it may use is `useState`, for the hypotheses disclosure.
- */
 const source = readFileSync(new URL("./InvestigationCard.tsx", import.meta.url), "utf8");
 
 describe("InvestigationCard purity", () => {
@@ -29,8 +24,6 @@ describe("InvestigationCard purity", () => {
   });
 
   it("hands its actions to the host as intents, and never composes its own", () => {
-    // The button emits the block's intent and the host decides: the card reads
-    // `capabilities.actions` and calls `onIntent`, never building an intent itself.
     expect(source).toMatch(/capabilities\?\.actions/);
     expect(source).toMatch(/onIntent\(action\.intent\)/);
     expect(source).not.toMatch(/kind:\s*"(ask|navigate)"/);
@@ -38,9 +31,7 @@ describe("InvestigationCard purity", () => {
   });
 
   it("renders no spinner — the transcript owns the one live progress element", () => {
-    // The card is re-emitted as the investigation progresses, so a spinner inside
-    // it would restart on every revision. The transcript's progress line wears
-    // the card's `progress` phrase instead.
+    // A spinner in the card would restart on every revision.
     expect(source).not.toMatch(/AgentSpinner|ChatProgress|ChatPendingTool/);
   });
 

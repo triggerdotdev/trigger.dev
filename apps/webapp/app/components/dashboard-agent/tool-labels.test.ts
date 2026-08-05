@@ -4,12 +4,10 @@ import { toolPendingLabel } from "./tool-labels";
 
 describe("toolPendingLabel", () => {
   it("names every tool the agent can call", () => {
-    // A tool with no phrase falls back to `Running <name>`, which is the one
-    // thing the pill should never say for a tool we ship.
     const unnamed = Object.keys(dashboardAgentCodeToolSchemas).filter((name) =>
       toolPendingLabel(name).startsWith("Running ")
     );
-    // `run_query` is the exception: "Running a query" is the phrase, not a fallback.
+    // `run_query` is the exception: "Running a query" is its phrase, not a fallback.
     expect(unnamed).toEqual(["run_query"]);
   });
 
@@ -20,7 +18,6 @@ describe("toolPendingLabel", () => {
   it("reads as a phrase, not an identifier", () => {
     expect(toolPendingLabel("get_run")).toBe("Reading the run");
     expect(toolPendingLabel("render_view")).toBe("Rendering a card");
-    // No trailing ellipsis — the pill adds it.
     expect(toolPendingLabel("get_report")).not.toMatch(/…$/);
   });
 });

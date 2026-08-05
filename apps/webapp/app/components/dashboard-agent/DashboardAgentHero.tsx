@@ -5,13 +5,6 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 
-/**
- * The blank state: what the panel shows before there is a conversation.
- *
- * `composer` is passed in rather than mounted here. The draft state puts its
- * composer inside the hero; a chat with no messages keeps its own docked
- * composer at the bottom of the panel and passes nothing.
- */
 export function DashboardAgentHero({
   onSelect,
   pageContext,
@@ -23,9 +16,7 @@ export function DashboardAgentHero({
   onSelect: (prompt: string) => void;
   pageContext?: AgentPageContext;
   promoted?: SuggestedPrompt;
-  /** Controlled dismissals — see `DashboardAgentSuggestedPrompts`. */
   dismissedIds?: string[];
-  /** The composer, when this hero owns it. */
   composer?: React.ReactNode;
 }) {
   return (

@@ -1,11 +1,5 @@
-/**
- * The intents the agent emitted as tool results that the host hasn't honoured
- * yet. A tool that emits an intent performs nothing; the panel is what acts.
- *
- * `seen` is mutated with the calls handled and is seeded with the transcript
- * loaded at mount, so opening an old chat never re-fires on history: only calls
- * that land while this chat is open are honoured, once each.
- */
+// `seen` is mutated with the calls handled and must be seeded from the transcript
+// loaded at mount, or replaying history re-fires its intents.
 import { agentIntentSchema, type AgentIntent } from "@internal/dashboard-agent-contracts";
 
 type ToolPart = { type?: string; state?: string; toolCallId?: string; output?: unknown };
@@ -40,7 +34,6 @@ function pendingToolIntents<Kind extends AgentIntent["kind"]>(
   return intents;
 }
 
-/** Where `navigate_to` asked the panel to take the user. */
 export function pendingNavigateIntents(
   messages: ReadonlyArray<ToolMessage>,
   seen: Set<string>
@@ -48,10 +41,7 @@ export function pendingNavigateIntents(
   return pendingToolIntents(messages, seen, "tool-navigate_to", "navigate");
 }
 
-/**
- * The watches `schedule_watch` proposed. The tool never creates one: the spec
- * comes back for the panel to open the configuration card pre-filled.
- */
+// `schedule_watch` only proposes: the panel creates the watch.
 export function pendingWatchIntents(
   messages: ReadonlyArray<ToolMessage>,
   seen: Set<string>

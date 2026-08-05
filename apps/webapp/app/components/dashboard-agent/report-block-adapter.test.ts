@@ -7,7 +7,6 @@ import {
 } from "./report-block-adapter";
 import { blockIdentity, latestRevisionBlocks } from "./view-blocks";
 
-// A trimmed but real-shaped `ReportViewModel`.
 const vm = {
   title: "health",
   scope: "prod",
@@ -88,14 +87,11 @@ describe("reportBlockFromToolPart", () => {
     expect(reportBlockFromToolPart(part({ output: "not json at all" }))).toBeNull();
     expect(reportBlockFromToolPart(part({ output: [vm] }))).toBeNull();
     expect(reportBlockFromToolPart(part({ output: { error: "Unknown report" } }))).toBeNull();
-    // A half-shaped VM is not a report: no severity, no timestamp, nothing to render.
     expect(reportBlockFromToolPart(part({ output: { title: "health" } }))).toBeNull();
     expect(reportBlockFromToolPart(part({ output: { ...vm, generatedAt: undefined } }))).toBeNull();
   });
 
   it("accepts the curated tool output, which drops links and series", () => {
-    // The curated output drops `links` and metric `series`. The card still builds,
-    // just without sparklines or link targets.
     const { links, ...curated } = vm;
     const block = reportBlockFromToolPart(part({ output: { ...curated, seriesOmitted: true } }))!;
     expect(block.vm.links).toEqual([]);
@@ -115,7 +111,6 @@ describe("reportBlockFromToolPart", () => {
     const block = reportBlockFromToolPart(part({ output: stale }))!;
     expect(block.vm.facts.trustworthy).toBe(false);
     expect(reportIsTrustworthy(block.vm)).toBe(false);
-    // Trustworthy by default, including for a snapshot with no facts at all.
     expect(reportIsTrustworthy({ facts: {} })).toBe(true);
     expect(reportIsTrustworthy(reportBlockFromToolPart(part())!.vm)).toBe(true);
   });
@@ -127,7 +122,6 @@ describe("reportBlockFromToolPart", () => {
     )!;
     expect(blockIdentity(first)).not.toBe(blockIdentity(second));
     expect(latestRevisionBlocks([first, second])).toHaveLength(2);
-    // Even the same report fetched twice stays two cards — the snapshot is the point.
     const sameKeyAgain = reportBlockFromToolPart(part({ toolCallId: "call_3" }))!;
     expect(latestRevisionBlocks([first, second, sameKeyAgain])).toHaveLength(3);
   });

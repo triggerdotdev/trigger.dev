@@ -1,8 +1,3 @@
-/**
- * What matters about the `actions` block is which actions become buttons and what
- * each click hands back. The filter is asserted directly; `ActionsBlock` itself is
- * checked at source level, since the panel has no DOM test host.
- */
 import type { ActionsBlockAction } from "@internal/dashboard-agent-contracts";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

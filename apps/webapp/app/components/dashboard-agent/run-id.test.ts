@@ -28,7 +28,6 @@ describe("isRunFriendlyId", () => {
     expect(isRunFriendlyId("run")).toBe(false);
     expect(isRunFriendlyId("src/trigger/tasks.ts:42")).toBe(false);
     expect(isRunFriendlyId("https://example.com/run_abc")).toBe(false);
-    // A hyphen belongs to pod names, never to an id body.
     expect(isRunFriendlyId("run_abc-attempt-1")).toBe(false);
   });
 });

@@ -56,9 +56,6 @@ describe("the recommendations", () => {
     expect(healthWatchRecommendation("warn").kind).toBe("health_recovery");
   });
 
-  // The recommendation must be a future condition. Once runs are already late,
-  // "if runs wait too long" is already true and would one-shot, so the useful
-  // promise flips to the recovery.
   it("switches the queue recommendation to the drain once runs are already late", () => {
     const late = queueWatchRecommendation("email-sends", {
       oldestWaitMs: OLDEST_WAIT_WARNING_MS,
@@ -107,8 +104,6 @@ describe("cadence limits", () => {
   });
 
   it("re-clamps when the kind changes under the user", () => {
-    // A 1-minute run watch switched to the queue variant must land on 5, not
-    // carry a cadence the aggregate schema would reject.
     const swapped = withVariant(withCadence(runDraft(), 1), "backlog_drain");
     expect(swapped.spec.checkEveryMinutes).toBe(5);
     expect(watchSpecSchema.safeParse(swapped.spec).success).toBe(true);
@@ -125,7 +120,6 @@ describe("condition variants (§3)", () => {
       "queue_stalled",
       "queue_oldest_age",
     ]);
-    // One entry means the card states the condition instead of rendering a picker.
     expect(variantsOf(watchDraftFor(errorWatchRecommendation("error_a1")))).toHaveLength(1);
     expect(variantsOf(watchDraftFor(healthWatchRecommendation("warn")))).toHaveLength(1);
   });
@@ -133,8 +127,6 @@ describe("condition variants (§3)", () => {
   it("carries the subject and window across a swap, and restates the note", () => {
     const draft = withWindow(runDraft(), 6);
     const failed = withVariant(draft, "run_failed");
-    // The wake quotes the note, so wording describing the old condition must not
-    // survive a condition change.
     expect(failed.spec).toMatchObject({
       kind: "run_failed",
       runId: "run_abc123",
@@ -298,7 +290,6 @@ describe("the card's copy", () => {
 
     const age = withAgeMinutes(withVariant(queueDraft(), "queue_oldest_age"), 90);
     expect(watchConditionLabel(age.spec)).toBe("If runs wait longer than 1h 30m");
-    // The subject stays the queue name for all of them.
     expect(watchSubjectLabel(age.spec)).toBe("email-sends");
   });
 

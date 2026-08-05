@@ -5,19 +5,11 @@ import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { AgentIcon, AGENT_ICON_ACCENT_CLASS, ASK_AGENT_LABEL } from "./agent-identity";
 
-/**
- * The Free plan's message cap, at the bottom of the panel.
- * {@link AgentQuotaNotice} sits under the composer while messages are left;
- * {@link AgentUpgradeBlock} replaces the composer once the cap is reached.
- * Both stay in the composer's slot so the transcript above is untouched.
- */
-
-/** The composer's own outer geometry, so the replacement lands in the same place. */
+// Matches the composer's outer geometry so the replacement lands in the same place.
 const SLOT = "flex shrink-0 flex-col bg-background-bright px-3 pb-3 pt-1";
 
 export function AgentUpgradeBlock({
   limit,
-  /** The composer's context banner, so replacing the composer doesn't lose it. */
   context,
 }: {
   limit: number;

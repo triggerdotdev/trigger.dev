@@ -36,8 +36,6 @@ describe("latestRevisionBlocks", () => {
     expect(latestRevisionBlocks(blocks)).toEqual([legacy, enveloped("d1", 2)]);
   });
 
-  // The investigation block is the one progressive block: one revision per render,
-  // and a chat that renders it three times still shows one card.
   it("collapses an investigation's revisions to the current one", () => {
     const revision = (n: number, outcome: string) => ({
       type: "investigation",

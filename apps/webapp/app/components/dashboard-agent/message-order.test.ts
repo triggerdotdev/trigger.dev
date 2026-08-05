@@ -20,11 +20,9 @@ describe("orderTranscript", () => {
     const base = [message("a"), message("b")];
     const order = createTranscriptOrder(base);
 
-    // The user's message is appended locally, then the stream replays "b".
     const result = orderTranscript([...base, message("sent"), message("b", 2)], order);
 
     expect(result.map((m) => m.id)).toEqual(["a", "b", "sent"]);
-    // The replayed copy is the one rendered.
     expect(result[1]!.parts).toHaveLength(2);
   });
 

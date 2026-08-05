@@ -1,16 +1,4 @@
-/**
- * The chips the panel can offer, and the rules that pick them.
- *
- * The row is built from fixed slots, in display order: `investigate`, `watch`,
- * `status`, `explain`, `docs`. The first three are gated — a signal only exists
- * for abnormal state, and a page-gated chip only appears when its loader field
- * says so — so their presence is itself the news. `explain` and `docs` are always
- * filled; empty slots collapse rather than being padded.
- *
- * `resolver.ts` orders the slots and applies the cap. This file is pure: no
- * React, no server imports, no clock beyond the `now` passed in. Chip wording
- * matches the demo fixtures in `demo/fixtures/page-context.ts`.
- */
+// Pure: no React, no server imports, no clock beyond the `now` passed in.
 import type {
   AgentPage,
   AgentPageContext,
@@ -18,7 +6,6 @@ import type {
   AgentPageSignalKind,
   SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
-// The dashboard's own Investigate-button copy: same question, so same wording.
 import {
   batchFailurePrompt,
   isFailedRunStatus,
@@ -27,11 +14,8 @@ import {
 } from "../investigate-prompts";
 import { isFailedBatchStatus } from "./page-mappers";
 
-/**
- * Chip ids must stay stable and carry no run/queue identity: dismissals are
- * stored by id, so an id like `fresh-failure:run_abc` would scope "don't show me
- * this again" to a single run. Identity lives in the prompt text instead.
- */
+// Chip ids must stay stable and carry no run/queue identity: dismissals are stored by id,
+// so `fresh-failure:run_abc` would scope the dismissal to a single run.
 const ID_PREFIX = "sp";
 
 function make(
@@ -51,7 +35,6 @@ export const PROMPT_SLOTS = ["investigate", "watch", "status", "explain", "docs"
 
 export type PromptSlot = (typeof PROMPT_SLOTS)[number];
 
-/** `explain` and `docs` are required: every page must fill the last two slots. */
 export type PageSlotPrompts = {
   investigate?: SuggestedPrompt;
   watch?: SuggestedPrompt;
@@ -59,8 +42,6 @@ export type PageSlotPrompts = {
   explain: SuggestedPrompt;
   docs: SuggestedPrompt;
 };
-
-// Page-independent chips, for pages we haven't classified.
 
 const EXPLAIN_PAGE = def(
   "explain-page",
@@ -77,7 +58,6 @@ const DOCS_RETRIES = def(
   "How do retries work?",
   "How do retries work in Trigger.dev?"
 );
-/** Shared by the errors list and an error group. */
 const DOCS_ERRORS = def(
   "docs-errors",
   "How do I handle errors?",
@@ -93,19 +73,16 @@ const DOCS_DEPLOYS = def(
   "How do deploys work?",
   "How do deployments and versions work in Trigger.dev?"
 );
-/** Shared by the tasks list and a standard task. */
 const DOCS_TASKS = def(
   "docs-tasks",
   "How do I write a task?",
   "How do I write and structure a task in Trigger.dev?"
 );
-/** Shared by a schedule and a scheduled task. */
 const DOCS_SCHEDULES = def(
   "docs-schedules",
   "How do schedules work?",
   "How do cron schedules work in Trigger.dev?"
 );
-/** Shared by the batches list and one batch. */
 const DOCS_BATCHES = def(
   "docs-batches",
   "How do I trigger a batch?",
@@ -176,7 +153,6 @@ const DOCS_DASHBOARDS = def(
   "How do dashboards work?",
   "How do I build a metrics dashboard out of my own queries?"
 );
-/** Shared by an agent and the playground. */
 const DOCS_AGENTS = def(
   "docs-agents",
   "How do I build an agent?",
@@ -198,23 +174,17 @@ const DOCS_SESSIONS = def(
   "How do agent sessions work, and when do they expire?"
 );
 
-/** `BatchTaskRunStatus` values that mean the batch is still working. */
 const RUNNING_BATCH_STATUSES = new Set(["PENDING", "PROCESSING"]);
 
-/** Deploys that didn't land. A canceled deploy is deliberate, so it's excluded. */
+/** A canceled deploy is deliberate, so it's excluded. */
 const FAILED_DEPLOYMENT_STATUSES = new Set(["FAILED", "TIMED_OUT"]);
 
-/** Whether a deployment status is one the agent can investigate. */
 export function isFailedDeploymentStatus(status: string | undefined): boolean {
   return status !== undefined && FAILED_DEPLOYMENT_STATUSES.has(status);
 }
 
-/** The slots an unclassified page fills: explain, then docs. */
 export const GENERIC_PROMPTS: SuggestedPrompt[] = [EXPLAIN_PAGE, DOCS_GENERIC];
 
-// Page-kind slots. What to ask on this kind of page when nothing is wrong.
-
-/** The slot chips a page kind can fill, before signals and the promoted slot. */
 export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
   switch (page.kind) {
     case "runs":
@@ -258,8 +228,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "error":
       return {
-        // The fingerprint is a hash, so the chip names "this error" and lets the
-        // agent read the identity off the page context.
         investigate: def(
           "error-cause",
           "Why does this keep happening?",
@@ -290,7 +258,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "queue":
       return {
-        // A healthy queue has nothing to dig into.
         investigate:
           page.health === "warn" || page.health === "crit"
             ? def(
@@ -329,7 +296,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "deployment":
       return {
-        // Only a deployment that didn't land has something to investigate.
         investigate: isFailedDeploymentStatus(page.status)
           ? def(
               "deployment-failure",
@@ -368,7 +334,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "schedule":
       return {
-        // An enabled schedule has nothing to dig into beyond its runs.
         investigate:
           page.active === false
             ? def(
@@ -486,7 +451,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "concurrency":
       return {
-        // This page carries no live running/queued counts, so no status chip.
         explain: def(
           "concurrency-headroom",
           "Do I have enough concurrency?",
@@ -604,7 +568,6 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "dashboards":
       return {
-        // The chooser has no dashboard to read, so it offers to build one.
         explain: page.title
           ? def(
               "dashboard-read",
@@ -703,11 +666,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
   }
 }
 
-/**
- * The investigate chip for a task that can't run. The order of the three reasons
- * matters, worst first: no schedule attached means it never ran at all, all
- * schedules off means it stopped running, a paused queue only blocks the next run.
- */
+/** Order matters, worst first: never fired, then stopped firing, then a paused queue. */
 function taskBlockedPrompt(
   page: Extract<AgentPage, { kind: "task" }>
 ): SuggestedPrompt | undefined {
@@ -736,7 +695,6 @@ function taskBlockedPrompt(
   return undefined;
 }
 
-/** The investigate chip for a wait token that isn't going to complete on its own. */
 function waitpointStuckPrompt(
   page: Extract<AgentPage, { kind: "waitpoints" }>
 ): SuggestedPrompt | undefined {
@@ -759,7 +717,6 @@ function waitpointStuckPrompt(
     : undefined;
 }
 
-/** The status chip for a bulk action still working through its runs. */
 function bulkActionProgressPrompt(
   page: Extract<AgentPage, { kind: "bulkactions" }>
 ): SuggestedPrompt | undefined {
@@ -782,7 +739,6 @@ function bulkActionProgressPrompt(
     : undefined;
 }
 
-/** The status chip for a prompt version override. */
 function promptOverridePrompt(
   page: Extract<AgentPage, { kind: "prompts" }>
 ): SuggestedPrompt | undefined {
@@ -805,7 +761,6 @@ function promptOverridePrompt(
     : undefined;
 }
 
-/** The page's slot chips as a flat list in display order. */
 export function pageDefaultPrompts(page: AgentPage): SuggestedPrompt[] {
   const slots = pageSlotPrompts(page);
   return PROMPT_SLOTS.map((slot) => slots[slot]).filter(
@@ -813,9 +768,6 @@ export function pageDefaultPrompts(page: AgentPage): SuggestedPrompt[] {
   );
 }
 
-// Contextual prompts, one per signal.
-
-/** Which slot a signal's chip competes for. */
 export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
   fresh_failure: "investigate",
   slow_run: "investigate",
@@ -823,10 +775,7 @@ export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
   concurrency_saturation: "watch",
 };
 
-/**
- * Signal precedence within a slot, `fresh_failure` first. Mirrors
- * `demoSignalsByPriority` in the fixtures.
- */
+/** Signal precedence within a slot. Mirrors `demoSignalsByPriority` in the fixtures. */
 export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
   "fresh_failure",
   "waiting_run",
@@ -834,7 +783,7 @@ export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
   "concurrency_saturation",
 ];
 
-/** "3m", "2h", "4d". Coarse on purpose: this is chip copy. */
+/** "3m", "2h", "4d". */
 export function formatAgo(ms: number): string {
   if (ms < 60_000) return "moments";
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
@@ -847,10 +796,7 @@ export function formatMultiplier(factor: number): string {
   return factor < 10 ? `${factor.toFixed(1)}x` : `${Math.round(factor)}x`;
 }
 
-/**
- * The chip for one signal, or undefined when the signal lacks the data to say
- * anything useful, such as a slow_run with no baseline.
- */
+/** Undefined when the signal lacks the data to say anything, e.g. a `slow_run` with no baseline. */
 export function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt | undefined {
   switch (signal.kind) {
     case "fresh_failure": {
@@ -893,7 +839,7 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
   }
 }
 
-/** Contextual chips for a context's signals, in precedence order. */
+/** In precedence order. */
 export function contextualPrompts(context: AgentPageContext, now: number): SuggestedPrompt[] {
   const prompts: SuggestedPrompt[] = [];
   for (const kind of SIGNAL_PRIORITY) {
@@ -906,10 +852,7 @@ export function contextualPrompts(context: AgentPageContext, now: number): Sugge
   return prompts;
 }
 
-/**
- * Contextual chips grouped by the slot they compete for, each group in
- * precedence order.
- */
+/** Each group is in precedence order. */
 export function contextualPromptsBySlot(
   context: AgentPageContext,
   now: number

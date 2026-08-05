@@ -32,7 +32,7 @@ import {
 
 const NOW = Date.parse("2026-07-27T10:25:41.000Z");
 
-/** The run-detail loader payload, as it arrives on the route match (JSON, so ISO dates). */
+// Arrives on the route match as JSON, so dates are ISO strings.
 function runLoaderData(
   overrides: {
     status?: string;
@@ -48,7 +48,6 @@ function runLoaderData(
       friendlyId,
       status: overrides.status ?? "EXECUTING",
       completedAt: overrides.completedAt ?? null,
-      // Fields the real loader also returns, to prove the mapper ignores them.
       startedAt: "2026-07-27T10:10:00.000Z",
       isFinished: false,
       environment: { id: "env_1", organizationId: "org_1" },
@@ -270,7 +269,6 @@ describe("queueAgentPageContext", () => {
   });
 });
 
-/** The queue-detail loader's live oldest-wait fields, which the page tints on. */
 function queueWaitLoaderData(
   wait: {
     oldestQueuedAt?: number | null;
@@ -294,7 +292,6 @@ describe("queueAgentPageContext oldest wait", () => {
     );
 
     expect(context?.page).toMatchObject({ health: "warn" });
-    // The wait alone is not a signal: the loader has no run id to point at.
     expect(context?.signals).toEqual([]);
   });
 
@@ -461,9 +458,6 @@ describe("deploymentAgentPageContext", () => {
   });
 });
 
-// The rest of the environment's sections
-
-/** Every mapper must produce something the contract accepts, or nothing at all. */
 function expectValid(context: unknown) {
   expect(agentPageContextSchema.safeParse(context).success).toBe(true);
   return context as { page: Record<string, unknown>; signals: unknown[] };
@@ -497,7 +491,6 @@ function taskLoaderData(overrides: Record<string, unknown> = {}) {
       queue: { friendlyId: "queue_1", name: "orders", concurrencyLimit: 10, paused: false },
       ...(overrides.task as Record<string, unknown> | undefined),
     },
-    // Deferred in the real loader; present here to prove the mapper ignores it.
     activity: {},
     runList: {},
     ...overrides,

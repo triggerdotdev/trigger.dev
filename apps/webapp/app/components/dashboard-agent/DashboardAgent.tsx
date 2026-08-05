@@ -26,25 +26,14 @@ import {
   type WatchWake,
 } from "./WatchWakeToast";
 
-// How often the closed panel asks whether a watch woke a chat.
 const UNREAD_POLL_INTERVAL_MS = 60_000;
 
 // Added to each delay so open tabs never settle into polling on the same second.
 const UNREAD_POLL_JITTER_MS = 15_000;
 
-/** Wake ids already toasted, across reloads. See the dedupe note in the poll. */
 const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
 
-/**
- * Mounts the dashboard agent in the env layout. Renders the page content
- * (`children` = the route Outlet) and shares the open/close state via context so
- * the page-header launcher can toggle it. When open, the layout splits into a
- * resizable content + agent panel.
- *
- * `hasAccess` comes from the env layout loader (`canAccessDashboardAgent`); when
- * false the content renders untouched and the context is never exposed, so the
- * launcher stays hidden. The resource routes enforce the same check server-side.
- */
+/** `hasAccess` is a UI gate only; the resource routes enforce the same check server-side. */
 export function DashboardAgent({
   children,
   hasAccess = false,
@@ -52,7 +41,6 @@ export function DashboardAgent({
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
-  // The promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
 }) {
   const organization = useOrganization();
@@ -62,35 +50,29 @@ export function DashboardAgent({
 
   const [open, setOpen] = useState(false);
   const [unreadWakes, setUnreadWakes] = useState(0);
-  // Wakes already toasted, so a wake the user has been shown does not come back
-  // every poll while the chat stays unread.
   const toastedWakes = useRef(new Set<string>());
-  // The poll's toast source is recent deliveries, not unread, so the dedupe must
-  // survive a reload or every wake inside the window re-toasts on every refresh.
-  // A failed read (private mode) degrades to the in-memory set.
+  // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(TOASTED_WAKES_STORAGE_KEY);
       if (raw) for (const id of JSON.parse(raw) as string[]) toastedWakes.current.add(id);
     } catch {
-      // Storage unavailable — session-scoped dedupe still applies.
+      // Storage unavailable; the in-memory dedupe still applies.
     }
   }, []);
   const rememberToasted = useCallback((watchId: string) => {
     toastedWakes.current.add(watchId);
     try {
-      // Keep the newest ids only, so the key can't grow unbounded. The toast
-      // source window is 15 minutes, so a small tail is plenty.
+      // Newest ids only, so the key can't grow unbounded.
       window.localStorage.setItem(
         TOASTED_WAKES_STORAGE_KEY,
         JSON.stringify([...toastedWakes.current].slice(-50))
       );
     } catch {
-      // Same degradation as the read.
+      // Same as the read.
     }
   }, []);
-  // The chat currently on screen. A wake there streams into the visible
-  // transcript, so it toasts but must not light the dot.
+  // A wake in the on-screen chat toasts but must not light the dot.
   const visibleChat = useRef<string | null>(null);
   // Read lazily so SSR always renders the side panel.
   const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
@@ -102,9 +84,7 @@ export function DashboardAgent({
     });
   }, []);
 
-  // Navigating to another page drops the takeover back to the side panel, since
-  // the user asked for a page. Pathname only: filter and search-param changes stay
-  // on the page and keep fullscreen.
+  // Pathname only: filter and search-param changes must keep fullscreen.
   const { pathname } = useLocation();
   const previousPathname = useRef(pathname);
   useEffect(() => {
@@ -115,33 +95,23 @@ export function DashboardAgent({
       return false;
     });
   }, [pathname]);
-  // `seq` makes repeat requests with the same text distinct. Bumped by ⌘J while
-  // the panel is open; the panel starts a new chat when it changes.
   const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
   >(undefined);
-  // A specific chat to open, from a wake toast. `seq` so the same chat can be
-  // asked for twice (a second wake in a chat the user has already left).
+  // `seq` so the same chat can be asked for twice.
   const [openChatRequest, setOpenChatRequest] = useState<
     { chatId: string; seq: number } | undefined
   >(undefined);
-  // A watch card asked for by a `Watch…` entry. A card is not a message, so it
-  // travels on its own channel: the panel opens it pre-filled, and nothing reaches
-  // the transcript unless the user submits it.
   const [watchRequest, setWatchRequest] = useState<{ spec: WatchSpec; seq: number } | undefined>(
     undefined
   );
 
   const setPanelOpen = useCallback((next: boolean) => {
     setOpen(next);
-    // Closing drops the pending requests: the panel unmounts, so a stale one would
-    // re-apply on the next open instead of restoring the last chat.
+    // Pending requests must be dropped or a stale one re-applies on the next open.
     if (!next) {
-      // No chat is on screen, so the dot counts every unread wake again.
       visibleChat.current = null;
-      // Reopening always starts as the side panel, whatever mode it was dismissed
-      // in.
       setFullscreen(false);
       writeAgentFullscreen(false);
       setRequestedMessage(undefined);
@@ -150,8 +120,6 @@ export function DashboardAgent({
     }
   }, []);
 
-  // Open the panel on the chat a wake happened in. Without the chat id the panel
-  // restores whatever it had open last, which is rarely the one the toast is about.
   const openChat = useCallback((chatId: string) => {
     setOpen(true);
     setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
@@ -169,8 +137,6 @@ export function DashboardAgent({
     setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // The poll behind the dot and the toasts. Runs whether the panel is open or not,
-  // since a wake in a chat that isn't on screen still has to announce itself.
   useEffect(() => {
     if (!hasAccess) return;
 
@@ -181,8 +147,7 @@ export function DashboardAgent({
         if (!res.ok) return;
         const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
         if (cancelled) return;
-        // The wakes list carries read ones too (they still toast once), so only
-        // unread ones in the visible chat are subtracted from the dot.
+        // The wakes list carries read ones too, so only unread ones are subtracted.
         const unreadInView = (data.wakes ?? []).filter(
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
@@ -191,22 +156,18 @@ export function DashboardAgent({
         const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
         for (const wake of fresh) rememberToasted(wake.watchId);
 
-        // A burst gets one summary toast instead of a wall of persistent ones.
         if (fresh.length > WAKE_TOAST_MAX_INDIVIDUAL) {
           showWatchWakesSummaryToast(fresh.length, () => setPanelOpen(true));
         } else {
-          // Oldest first, so the newest wake ends up nearest the user.
           for (const wake of [...fresh].reverse()) {
             showWatchWakeToast(wake, openChat);
           }
         }
       } catch {
-        // Offline or a hiccup — leave the dot as it is and try again next tick.
+        // Try again next tick.
       }
     };
 
-    // Self-scheduling rather than setInterval, so each delay carries fresh jitter
-    // and tabs that happen to align drift apart again.
     let timer: number | undefined;
     function schedule() {
       timer = window.setTimeout(
@@ -215,13 +176,10 @@ export function DashboardAgent({
       );
     }
     async function tick() {
-      // A hidden tab has nowhere to show a toast and no visible dot, so it asks
-      // nothing. `onVisible` catches it up.
+      // A hidden tab asks nothing; `onVisible` catches it up.
       if (!document.hidden) await load();
       if (!cancelled) schedule();
     }
-    // Back in front of the user: refresh immediately and restart the cadence from
-    // now, so the catch-up isn't followed by a redundant tick.
     const onVisible = () => {
       if (document.hidden || cancelled) return;
       window.clearTimeout(timer);
@@ -238,8 +196,7 @@ export function DashboardAgent({
     };
   }, [hasAccess, actionPath, setPanelOpen, openChat]);
 
-  // A chat the user is looking at has no unread wakes. Zeroes the dot right away;
-  // the poll restores the truth if another chat still has one.
+  // Zeroes the dot right away; the poll restores the truth if another chat has one.
   const markChatRead = useCallback(
     async (chatId: string) => {
       visibleChat.current = chatId;
@@ -250,14 +207,13 @@ export function DashboardAgent({
       try {
         await fetch(actionPath, { method: "POST", body });
       } catch {
-        // The marker catches up the next time the chat is opened.
+        // Catches up on the next open.
       }
     },
     [actionPath]
   );
 
-  // ⌘J is contextual: closed opens the panel, open starts a new chat. Closing is
-  // Esc or the header button, never ⌘J.
+  // ⌘J is contextual: closed opens the panel, open starts a new chat. It never closes.
   useShortcutKeys({
     shortcut: TOGGLE_PANEL_SHORTCUT,
     action: () => {
@@ -271,8 +227,6 @@ export function DashboardAgent({
     enabledOnInputElements: true,
   });
 
-  // Entry points that sit above this provider (the side menu item) and the CLI's
-  // `?ask=` deep link. See `dashboardAgentOpenRequest.ts`.
   useDashboardAgentOpenRequests({ enabled: hasAccess, openWith, setOpen: setPanelOpen });
 
   const context = useMemo(
@@ -287,10 +241,7 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
-        // `relative` is the takeover's containing block: in fullscreen the panel is
-        // pinned over this box while the split, the page content and the panel stay
-        // mounted, so toggling fullscreen is only a class change and the open
-        // chat's transport and transcript survive it. See `panel-layout.tsx`.
+        // `relative` is the takeover's containing block.
         <div className="relative h-full min-h-0">
           <ResizablePanelGroup
             orientation="horizontal"

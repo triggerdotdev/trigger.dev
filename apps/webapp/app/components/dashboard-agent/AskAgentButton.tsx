@@ -3,22 +3,14 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { AgentIcon, AGENT_ICON_ACCENT_CLASS, ASK_AGENT_LABEL } from "./agent-identity";
 import { requestDashboardAgent, useDashboardAgentAvailable } from "./dashboardAgentOpenRequest";
 
-/**
- * Opens the agent panel, optionally with a question already in play.
- *
- * Unlike `InvestigateButton` this goes through the open-request bridge rather
- * than the provider context, so it works on pages above the environment layout
- * too. It self-hides when the agent can't be opened and renders `fallback`
- * instead.
- */
+// Goes through the open-request bridge rather than the provider context, so it works
+// on pages above the environment layout.
 export function AskAgentButton({
   prompt,
   label = ASK_AGENT_LABEL,
-  /** Icon only, with the label as a tooltip. */
   iconOnly = false,
   variant = "small-menu-item",
   className,
-  /** What to show when the agent can't be opened (a docs link, usually). */
   fallback = null,
 }: {
   prompt?: string;

@@ -1,16 +1,11 @@
-/**
- * The panel's shared list view: a selectable row with an optional hover action,
- * used by both suggested prompts and chat history.
- */
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "~/utils/cn";
 
-/** The list wrapper. Rows are `<li>`, so the list itself is an `<ol>`. */
+// Rows are `<li>`, so the wrapper must stay a list element.
 export function AgentList({ children, className }: { children: ReactNode; className?: string }) {
   return <ol className={cn("flex w-full flex-col gap-1.5", className)}>{children}</ol>;
 }
 
-/** `promoted` is the product-chosen prompt; `selected` is the open chat. */
 export type AgentListRowVariant = "default" | "promoted" | "selected";
 
 const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
@@ -29,17 +24,13 @@ export function AgentListRow({
   onSelect,
   action,
 }: {
-  /** The row's main text. Truncated to one line so every row is the same height. */
   label: ReactNode;
-  /** Small right-aligned detail, e.g. when a chat was last active. */
   meta?: ReactNode;
-  /** Trailing icon for something ongoing. Sits before {@link meta}, inside the button. */
   status?: ReactNode;
   variant?: AgentListRowVariant;
-  /** Something happened here the user hasn't seen: bright label plus a dot. */
   unread?: boolean;
   onSelect: () => void;
-  /** Hover-revealed control. Use {@link AgentListRowAction}. */
+  /** Use {@link AgentListRowAction}. */
   action?: ReactNode;
 }) {
   return (
@@ -70,7 +61,6 @@ export function AgentListRow({
   );
 }
 
-/** The hover-revealed icon button on the right of a row. */
 export function AgentListRowAction({
   icon: Icon,
   label,
@@ -78,7 +68,6 @@ export function AgentListRowAction({
   danger = false,
 }: {
   icon: ComponentType<{ className?: string }>;
-  /** Accessible name: the control is icon-only. */
   label: string;
   onClick: () => void;
   danger?: boolean;

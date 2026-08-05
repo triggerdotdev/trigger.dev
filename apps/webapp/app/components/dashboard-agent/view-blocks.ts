@@ -1,10 +1,5 @@
-// Envelope handling for the agent's view blocks. The envelope is defined by
-// `blockEnvelopeSchema` in `@internal/dashboard-agent-contracts`: `id` is stable
-// identity within a conversation, `revision` increases when the agent re-emits
-// the same block with better information. Blocks replayed from a pre-envelope
-// transcript have neither, so everything here degrades to rendering all of them
-// in order. Reads defensively rather than trusting the parsed type, since blocks
-// arrive as tool output.
+// Envelope is `blockEnvelopeSchema` in `@internal/dashboard-agent-contracts`. Blocks
+// arrive as tool output, so every read here is defensive rather than typed.
 
 type MaybeEnveloped = {
   type?: unknown;
@@ -12,10 +7,7 @@ type MaybeEnveloped = {
   revision?: unknown;
 };
 
-/**
- * The identity two blocks must share to be revisions of each other: type + id.
- * Undefined when the block has no envelope — such blocks are never grouped.
- */
+// Undefined when the block has no envelope; such blocks are never grouped.
 export function blockIdentity(block: unknown): string | undefined {
   const { type, id } = (block ?? {}) as MaybeEnveloped;
   if (typeof id !== "string" || id.length === 0) return undefined;
@@ -28,20 +20,13 @@ function blockRevision(block: unknown): number {
   return typeof revision === "number" && Number.isFinite(revision) ? revision : 0;
 }
 
-/**
- * The React key for a block: its identity when it has an envelope, else the
- * array index (legacy blocks have nothing stable to key on).
- */
+// Falls back to the array index: pre-envelope blocks have nothing stable to key on.
 export function blockKey(block: unknown, index: number): string {
   return blockIdentity(block) ?? `index:${index}`;
 }
 
-/**
- * Latest-wins within one blocks array: when several blocks share (type, id),
- * keep only the highest `revision`, at that winner's position. Ties keep the
- * last one, the newest emission. Blocks without an envelope are all kept, in
- * order. Cross-message grouping is a later milestone.
- */
+// Latest-wins within one array only: highest `revision` at the winner's position,
+// ties to the last. Blocks without an envelope are all kept, in order.
 export function latestRevisionBlocks<T>(blocks: readonly T[]): T[] {
   if (!Array.isArray(blocks)) return [];
 

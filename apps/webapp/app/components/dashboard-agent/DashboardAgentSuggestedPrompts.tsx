@@ -16,7 +16,7 @@ import {
   type ResolvedPromptSlot,
 } from "./suggested-prompts";
 
-/** The only slot-to-button-style mapping: a new slot is styled here and nowhere else. */
+// The only slot-to-button-style mapping: a new slot is styled here and nowhere else.
 export const PROMPT_SLOT_BUTTON: Record<
   ResolvedPromptSlot,
   { variant: ButtonVariant; icon: RenderIcon }
@@ -29,13 +29,7 @@ export const PROMPT_SLOT_BUTTON: Record<
   docs: { variant: "docs/small", icon: BookOpenIcon },
 };
 
-/**
- * The suggested prompts on a blank chat, as a wrapping row of buttons.
- *
- * Prompts come from the `suggested-prompts/` registry resolved against the
- * current page; there is no hardcoded list. Dismissed prompts stay hidden, but
- * this surface never writes dismissals: only the row surfaces do.
- */
+// This surface never writes dismissals; only the row surfaces do.
 export function DashboardAgentSuggestedPrompts({
   onSelect,
   pageContext,
@@ -44,17 +38,13 @@ export function DashboardAgentSuggestedPrompts({
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
-  /** What the user is looking at. Omitted means defaults only. */
+  /** Omitted means defaults only. */
   pageContext?: AgentPageContext;
-  /** The product-controlled promoted prompt, when one is configured. */
   promoted?: SuggestedPrompt;
-  /**
-   * Controlled dismissals. Normally omitted: the component reads its own
-   * localStorage. Passing this makes it stateless, for the gallery and tests.
-   */
+  /** Omitted means the component reads its own localStorage. */
   dismissedIds?: string[];
 }) {
-  // Read once on mount: re-reading per render would make the resolved set churn.
+  // Read once on mount: re-reading per render churns the resolved set.
   const [storedDismissedIds] = useState<string[]>(() =>
     dismissedIds !== undefined ? [] : readDismissedPromptIds()
   );

@@ -1,6 +1,5 @@
 import { cn } from "~/utils/cn";
 
-/** What the agent is answering about, as a chip above the composer. */
 export function DashboardAgentContextBanner({
   projectSlug,
   environmentSlug,
@@ -9,8 +8,7 @@ export function DashboardAgentContextBanner({
 }: {
   projectSlug: string;
   environmentSlug: string;
-  // A human label for the page ("Runs", "Run detail"), not a path; see
-  // `page-label.ts`. The agent still receives the full pathname separately.
+  // A human label from `page-label.ts`, not a path.
   currentPage: string;
   className?: string;
 }) {
