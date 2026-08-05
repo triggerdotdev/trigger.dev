@@ -1,21 +1,14 @@
-// Evals for the dashboard agent: they run the REAL model through the agent and
-// score behavior, which unit tests (mock model) can't. Two layers, following
-// common practice (DeepEval "tool correctness", Vercel AI SDK + vitest evals,
-// LLM-as-judge with an analytic rubric):
+// Evals that run the real model through the agent and score behavior. Two layers:
+// tool selection, scored as an aggregate pass rate with a threshold so a single
+// nondeterministic miss doesn't red the suite; and answer quality, scored by an LLM
+// judge against the tool data the turn was given.
 //
-//  1. Tool selection — does the model pick the right read tool for a question?
-//     Scored as an aggregate pass rate with a threshold, since a real model is
-//     nondeterministic; a single miss shouldn't red the suite, a trend should.
-//  2. Answer quality — an LLM judge scores the final answer against the tool
-//     data it was given (reason-before-score, structured output, grounded on
-//     facts to blunt verbosity/self-enhancement bias).
+// These hit the real Anthropic API, so they live in `*.eval.ts` (not run by
+// `pnpm test`) and skip unless ANTHROPIC_API_KEY is set. Run them with
+// `pnpm --filter @internal/dashboard-agent run test:evals`.
 //
-// These hit the real Anthropic API (cost + nondeterminism), so they live in
-// `*.eval.ts` (not run by `pnpm test`) and skip unless ANTHROPIC_API_KEY is set.
-// Run with `pnpm --filter @internal/dashboard-agent run test:evals`.
-//
-// `@trigger.dev/sdk/ai/test` first so the resource catalog installs before the
-// agent module registers.
+// `@trigger.dev/sdk/ai/test` first so the resource catalog installs before the agent
+// module registers.
 import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
 
 import { anthropic } from "@ai-sdk/anthropic";
@@ -34,15 +27,14 @@ import { dashboardAgentCodeToolSchemas, dashboardAgentToolSchemas } from "./tool
 import { showCodeAskPrompt } from "./tools";
 
 const HAS_KEY = Boolean(process.env.ANTHROPIC_API_KEY);
-// The agent's real model; a capable judge (a stronger/different judge would
-// further reduce self-enhancement bias).
+// A different or stronger judge would further reduce self-enhancement bias.
 const AGENT_MODEL = "claude-sonnet-4-6";
 const JUDGE_MODEL = "claude-sonnet-4-6";
 
 const CLIENT_DATA = {
   userId: "user_eval",
   organizationId: "org_eval",
-  // navigate_to needs a project + environment to build a trigger:// URI, and
+  // navigate_to needs a project and environment to build a trigger:// URI, and
   // get_current_page reads the page context, so the eval turn carries both.
   projectRef: "proj_eval1",
   environmentId: "env_eval1",
@@ -68,8 +60,8 @@ const NOOP_STORE: DashboardAgentStore = {
   findOpenInvestigation: async () => null,
 };
 
-// Realistic, fixed tool results so the model has something concrete to act on
-// and the judge has a ground truth to check the answer against.
+// Fixed tool results, so the model has something concrete to act on and the judge has
+// a ground truth to check the answer against.
 const FIXTURES: Record<string, unknown> = {
   list_projects: {
     projects: [{ ref: "proj_eval1", name: "Checkout", slug: "checkout", organization: "Acme" }],
@@ -139,8 +131,8 @@ const FIXTURES: Record<string, unknown> = {
     affectedVersions: ["20260101.1", "20260102.1"],
     resolvedAt: null,
   },
-  // The curated health report (curateReport's shape): a degraded environment
-  // whose data IS trustworthy, so action advice is allowed.
+  // curateReport's shape: a degraded environment whose data is trustworthy, so action
+  // advice is allowed.
   get_report: {
     title: "health",
     scope: "prod",
@@ -275,19 +267,18 @@ const FIXTURES: Record<string, unknown> = {
   },
 };
 
-// The investigation id the fixture render_view hands back, mirroring the real
-// executor (which returns the id the store assigned). A golden case asserts the
-// model passes it back on the next render instead of opening a second card.
+// The id the fixture render_view hands back, mirroring the real executor. A golden
+// case asserts the model passes it back on the next render instead of opening a
+// second card.
 const EVAL_INVESTIGATION_ID = "inv_eval1";
 
-// Real schemas (so the model sees the real tool descriptions) + stubbed executes
-// that record each call (a spy) and return the fixture. This is the seam that
-// lets us observe tool selection and judge answers with no live API.
-// One recorded tool call. The output is recorded too: the judge's ground truth
-// has to be what the model actually saw, not the fixture overrides for the case
-// (base FIXTURES fill in every tool an override doesn't mention).
+// One recorded tool call. The output is recorded too, because the judge's ground truth
+// has to be what the model actually saw: the base FIXTURES fill in every tool a case's
+// overrides don't mention.
 type RecordedCall = { tool: string; input: unknown; output: unknown };
 
+// Real schemas, so the model sees the real tool descriptions, plus stubbed executes
+// that record each call and return the fixture.
 function makeFixtureTools(
   calls: RecordedCall[],
   options: { code?: boolean; fixtures?: Record<string, unknown> } = {}
@@ -301,16 +292,14 @@ function makeFixtureTools(
       inputSchema: s.inputSchema,
       execute: async (input: unknown) => {
         const output = ((): unknown => {
-          // navigate_to doesn't fetch anything: the real one echoes the intent it
-          // built, so the fixture does too.
+          // The real navigate_to and schedule_watch fetch nothing: they echo the intent
+          // they built, so the fixtures do too.
           if (name === "navigate_to") return input;
-          // schedule_watch creates nothing either: it hands the spec back as the
-          // intent that opens the pre-filled card.
           if (name === "schedule_watch") {
             return { intent: { kind: "watch", spec: (input as { watch?: unknown }).watch } };
           }
-          // render_view echoes the spec and — for an investigation — reports the
-          // identity the store assigned, which is what the model carries forward.
+          // render_view echoes the spec and, for an investigation, reports the identity
+          // the store assigned, which is what the model carries forward.
           if (name === "render_view") {
             const spec = input as { blocks?: Array<{ type?: string }> };
             const hasInvestigation = (spec.blocks ?? []).some((b) => b?.type === "investigation");
@@ -330,9 +319,8 @@ function makeFixtureTools(
   return Object.fromEntries(entries) as ToolSet;
 }
 
-// The judge's ground truth: every tool result the turn actually received, in
-// order. Using the case's fixture overrides instead would hide the base fixtures
-// that filled in for tools the override doesn't mention.
+// The judge's ground truth: every tool result the turn received, in order. Using the
+// case's fixture overrides instead would hide the base fixtures that filled in.
 function toolTranscript(calls: RecordedCall[]): unknown {
   return calls
     .filter((c) => c.tool !== "render_view")
@@ -352,8 +340,8 @@ function collectText(chunks: UIMessageChunk[]): string {
 
 let caseCounter = 0;
 
-// A repo snapshot in clientData puts the turn in code mode: the code system
-// prompt (source guidelines + grounding degradation) and the source tools.
+// A repo snapshot in clientData puts the turn in code mode: the code system prompt
+// and the source tools.
 const REPO_SNAPSHOT = {
   tarballUrl: "https://example.invalid/eval.tar.gz",
   owner: "acme",
@@ -387,10 +375,7 @@ async function runCase(
   }
 }
 
-// ---------------------------------------------------------------------------
 // LLM-as-judge: analytic rubric, reason-before-score, structured output.
-// ---------------------------------------------------------------------------
-
 const Verdict = z.object({
   reasoning: z.string().describe("One or two sentences of reasoning, written BEFORE the scores."),
   grounded: z
@@ -442,9 +427,8 @@ async function judge(args: {
 }
 
 /**
- * A single yes/no judgement about the answer, for the honesty rules a numeric
- * rubric can't express ("makes no absence claim", "the cause is config, not
- * code"). Reason-before-verdict, same as the rubric judge.
+ * A single yes/no judgement, for the honesty rules a numeric rubric can't express
+ * ("makes no absence claim", "the cause is config, not code").
  */
 const ClaimVerdict = z.object({
   reasoning: z.string().describe("One or two sentences of reasoning, written BEFORE the verdict."),
@@ -456,10 +440,9 @@ async function judgeClaim(args: {
   toolData: unknown;
   answer: string;
   /**
-   * The investigation card's final state, when the turn rendered one. The design
-   * puts the conclusion on the card and forbids restating it in prose, so the
-   * user-visible output is card + closing line — judging the prose alone would
-   * demand the duplication the prompt bans.
+   * The card's final state, when the turn rendered one. The conclusion goes on the
+   * card and restating it in prose is banned, so judging the prose alone would demand
+   * the duplication the prompt forbids.
    */
   card?: unknown;
   claim: string;
@@ -483,10 +466,6 @@ async function judgeClaim(args: {
   });
   return object;
 }
-
-// ---------------------------------------------------------------------------
-// Investigation helpers — read the cards the turn actually rendered
-// ---------------------------------------------------------------------------
 
 type InvestigationRender = { state: Record<string, any>; investigationId?: string };
 
@@ -516,8 +495,8 @@ function describeRenders(renders: InvestigationRender[]): string {
     .join("\n");
 }
 
-// The tool-call sequence, with just enough of each input to see what was asked.
-// Printed on every case so diagnosing behavior never needs a rerun.
+// The tool-call sequence, printed on every case so diagnosing behavior never needs a
+// rerun.
 function describeCalls(calls: RecordedCall[]): string {
   if (calls.length === 0) return "  (no tool calls)";
   return calls
@@ -538,14 +517,13 @@ function describeCalls(calls: RecordedCall[]): string {
     .join("\n");
 }
 
-// One diagnosable block per case: what it called, what it rendered, what it said.
 function report(
   label: string,
   calls: RecordedCall[],
   answer: string,
   renders?: InvestigationRender[]
 ): void {
-  // process.stdout.write (not console.log) so it survives vitest's console intercept.
+  // process.stdout.write, not console.log, so it survives vitest's console intercept.
   process.stdout.write(
     `\n=== ${label} (${calls.length} tool calls) ===\n` +
       `${describeCalls(calls)}\n` +
@@ -557,20 +535,16 @@ function report(
 /**
  * Run a golden case, and on failure run it exactly once more.
  *
- * These are single real-model samples, so a case can miss for reasons that have
- * nothing to do with the behavior under test: the turn wanders into the step
- * ceiling, the provider rejects a malformed tool-call payload, the judge reads a
- * borderline sentence the strict way. The tool-selection eval already handles
- * this by scoring a rate instead of a single sample; a golden case can't average,
- * so it gets one retry instead. The assertions themselves are untouched — two
- * misses in a row still reds the suite, which is the trend we care about — and
- * both attempts print their transcript, so a real regression is visible as a
- * repeated failure rather than hidden by the retry.
+ * These are single real-model samples, so a case can miss for reasons unrelated to the
+ * behavior under test: the turn wanders into the step ceiling, the judge reads a
+ * borderline sentence the strict way. The tool-selection eval scores a rate instead;
+ * a golden case can't average, so it gets one retry. Two misses in a row still red the
+ * suite, and both attempts print their transcript, so a real regression shows up as a
+ * repeated failure rather than being hidden by the retry.
  */
 async function goldenCase(body: () => Promise<void>): Promise<void> {
-  // One retry for behavior. A provider-side failure (the API rejecting a
-  // malformed tool-call payload mid-turn, a stream error) says nothing about the
-  // behavior under test, so it doesn't spend that retry — it just runs again.
+  // A provider-side failure says nothing about the behavior under test, so it doesn't
+  // spend the behavior retry.
   let behaviorAttemptsLeft = 2;
   let infraAttemptsLeft = 2;
   for (;;) {
@@ -589,31 +563,25 @@ async function goldenCase(body: () => Promise<void>): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tool-selection cases
-// ---------------------------------------------------------------------------
-
-// `expect` is the tool the first call must be. A few questions are genuinely
-// ambiguous *by the prompt's own rules* — the prompt routes them two ways — so
-// those list every first call the design considers correct.
+// `expect` is the tool the first call must be. A few questions are ambiguous by the
+// prompt's own rules, so those list every first call the design considers correct.
 const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "What errors are happening in this environment?", expect: "list_errors" },
-  // "what's broken" is a list_errors question and "is anything wrong" is a
-  // get_report question; this phrasing sits on the line, so both are correct.
+  // "what's broken" routes to list_errors and "is anything wrong" to get_report; this
+  // phrasing sits on the line, so both are correct.
   { question: "What's broken right now?", expect: ["list_errors", "get_report"] },
   { question: "Are there any unresolved errors?", expect: "list_errors" },
   { question: "Give me the full detail for error_stripe.", expect: "get_error" },
   { question: "Show me the runs behind the error error_stripe.", expect: "list_runs" },
-  // A "show me" request routes to navigate_to; without a filter to carry, reading
-  // the runs and answering is equally defensible.
+  // A "show me" request routes to navigate_to, but with no filter to carry, reading the
+  // runs and answering is equally defensible.
   {
     question: "Show me the failed runs in this environment.",
     expect: ["list_runs", "navigate_to"],
   },
   { question: "List the most recent runs of the send-receipt task.", expect: "list_runs" },
   { question: "What's the status of run run_a1?", expect: "get_run" },
-  // The prompt orders get_run before get_run_trace when diagnosing a run, so
-  // opening on either is on-design.
+  // The prompt orders get_run before get_run_trace, so opening on either is on-design.
   {
     question: "Why did run run_a1 fail? Walk me through what happened.",
     expect: ["get_run", "get_run_trace"],
@@ -621,7 +589,6 @@ const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "What tasks are deployed in this environment?", expect: "list_tasks" },
   { question: "Which projects can I access?", expect: "list_projects" },
   { question: "What environments does this project have?", expect: "list_environments" },
-  // M3: navigation, the health report, versions, queues, and docs.
   {
     question: "Show me the failed runs of send-receipt in the last day.",
     expect: "navigate_to",
@@ -633,21 +600,19 @@ const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "How do I use batchTrigger?", expect: "search_docs" },
   { question: "How deep is the email queue?", expect: "get_queue" },
   { question: "What was deployed recently?", expect: "list_deploys" },
-  // M6: "tell me when" is a watch, never a poll.
-  // Named id on purpose: "this run" would legitimately open on get_current_page.
+  // "tell me when" is a watch, never a poll. Named id on purpose: "this run" would
+  // legitimately open on get_current_page.
   { question: "Tell me when run run_a1 finishes.", expect: "schedule_watch" },
 ];
 
-// 21 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
-// suite, a trend should.
+// 21 cases, tolerating about 3 misses.
 const TOOL_SELECTION_THRESHOLD = 0.83;
 
 describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
   it("tool selection: picks the right tool for the question", async () => {
     const results: Array<{ question: string; expected: string; got: string; ok: boolean }> = [];
-    // Sequential on purpose: mockChatAgent installs its stubs as process-global
-    // module overrides, so two harnesses in one process clobber each other. The
-    // timeout is sized for 20 real-model turns instead.
+    // Sequential on purpose: mockChatAgent installs its stubs as process-global module
+    // overrides, so two harnesses in one process clobber each other.
     for (const c of TOOL_CASES) {
       const started = Date.now();
       const accepted = Array.isArray(c.expect) ? c.expect : [c.expect];
@@ -664,8 +629,7 @@ describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
 
     const passed = results.filter((r) => r.ok).length;
     const rate = passed / results.length;
-    // Surface the full table so a failing case is diagnosable, not just a number.
-    // process.stdout.write (not console.log) so it survives vitest's console intercept.
+    // The full table, so a failing case is diagnosable rather than just a number.
     process.stdout.write(
       `\ntool selection: ${passed}/${results.length} (${(rate * 100).toFixed(0)}%)\n` +
         results
@@ -678,8 +642,8 @@ describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
     );
 
     expect(rate).toBeGreaterThanOrEqual(TOOL_SELECTION_THRESHOLD);
-    // 20 sequential real-model turns at ~10-25s each: budget generously so a
-    // slow API day is a slow test, not a red suite.
+    // 20 sequential real-model turns at 10-25s each, budgeted generously so a slow API
+    // day is a slow test rather than a red suite.
   }, 900_000);
 
   it("answer quality: grounded and on-question (LLM judge)", async () => {
@@ -698,18 +662,12 @@ describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
   }, 300_000);
 });
 
-// ---------------------------------------------------------------------------
-// Golden investigation cases
-//
-// One canned scenario each, aimed at the rules the protocol prompt encodes:
-// where the cause lands (config vs code), whether the card progresses on ONE
-// investigation, whether a thin case stays inconclusive, and the two honesty
-// traps (a dirty deploy, a truncated page). Deterministic assertions read the
-// cards the turn rendered; the judge only rules on prose.
-// ---------------------------------------------------------------------------
+// Golden investigation cases: one canned scenario each, aimed at the rules the protocol
+// prompt encodes. Deterministic assertions read the cards the turn rendered; the judge
+// only rules on prose.
 
-// Saturation: flow is crit on the env concurrency limit, execution is clean and
-// there are no errors at all — so a code cause is unsupported by the evidence.
+// Saturation: flow is crit on the env concurrency limit, execution is clean and there
+// are no errors, so a code cause is unsupported by the evidence.
 const SATURATION_FIXTURES: Record<string, unknown> = {
   list_errors: { errors: [], nextCursor: undefined },
   get_queue: {
@@ -811,8 +769,8 @@ const DRIFT_FIXTURES: Record<string, unknown> = {
   list_files: { files: ["src/trigger/receipt.ts", "src/trigger/rollup.ts"] },
 };
 
-// Same failure, but the deployed version came off a dirty working tree: the
-// source we can read is only the nearest snapshot.
+// Same failure, but the deployed version came off a dirty working tree, so the source
+// that can be read is only the nearest snapshot.
 const DIRTY_FIXTURES: Record<string, unknown> = {
   ...DRIFT_FIXTURES,
   correlate_version: {
@@ -887,13 +845,11 @@ const FLAKY_FIXTURES: Record<string, unknown> = {
   },
 };
 
-// Symptom-only: every run fails the same way, every time, and the symptom is
-// vivid — a socket hangup at exactly 30s. Nothing says WHY. The trap is the
-// opposite of the flaky-upstream one: there the evidence is thin and obviously
-// unsettled, here it is thick, consistent and tempting, and consistency reads as
-// explanation. "The runs fail because the connection resets" restates the
-// symptom with the word "because" in front of it, so the only honest verdict is
-// still inconclusive.
+// Symptom-only: every run fails the same way, every time, with a vivid symptom (a socket
+// hangup at exactly 30s) and nothing saying why. The opposite trap to flaky-upstream:
+// there the evidence is thin and obviously unsettled, here it is thick and consistent,
+// and consistency reads as explanation. Restating the symptom with "because" in front of
+// it is not a cause, so the only honest verdict is still inconclusive.
 const SYMPTOM_ONLY_FIXTURES: Record<string, unknown> = {
   list_runs: {
     runs: [
@@ -960,10 +916,10 @@ const SYMPTOM_ONLY_FIXTURES: Record<string, unknown> = {
   },
 };
 
-// Truncation trap: EVERY page the model can reach is explicitly incomplete, so
-// nothing it reads can support a claim about what ISN'T failing. The error list
-// is truncated too — with a complete one the model could legitimately answer the
-// completeness question from it, and the trap wouldn't be a trap.
+// Truncation trap: every page the model can reach is explicitly incomplete, so nothing
+// it reads can support a claim about what isn't failing. The error list is truncated too,
+// because with a complete one the model could legitimately answer the completeness
+// question from it and the trap wouldn't be a trap.
 const TRUNCATED_FIXTURES: Record<string, unknown> = {
   list_runs: {
     runs: [
@@ -1001,7 +957,7 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         const renders = investigationRenders(calls);
         report("saturation", calls, answer, renders);
 
-        // The card came out early and progressed on ONE investigation.
+        // The card came out early and progressed on one investigation.
         expect(renders.length).toBeGreaterThanOrEqual(2);
         expect(renders[0]?.state.outcome).toBe("in_progress");
         expect(renders[renders.length - 1]?.state.outcome).toBe("concluded");
@@ -1009,7 +965,7 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         for (const render of renders.slice(1)) {
           expect(render.investigationId).toBe(EVAL_INVESTIGATION_ID);
         }
-        // A concluded card carries a fix and no what-to-check-next.
+        // A concluded card carries a fix.
         expect(renders[renders.length - 1]?.state.remediation).toBeTruthy();
         // It answered inside the step ceiling instead of dying at it.
         expect(answer.length).toBeGreaterThan(0);
@@ -1059,7 +1015,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
@@ -1092,7 +1047,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
@@ -1123,7 +1077,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
@@ -1154,7 +1107,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
@@ -1189,7 +1141,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
@@ -1213,7 +1164,6 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
       }),
-    // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 });

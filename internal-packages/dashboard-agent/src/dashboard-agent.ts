@@ -31,22 +31,15 @@ import { buildDashboardAgentTools } from "./tools";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
- * by the webapp. This is the launch-week dogfood: we run our own product on the
- * primitive we ship.
+ * by the webapp.
  *
- * It answers from a dashboard-managed system prompt (Anthropic, resolved via the
- * provider registry) with prompt caching, calls the read-only tools built per
- * turn from the delegated token the `in` proxy injects, persists the
- * conversation to the agent's own datastore (NOT the main DB — the agent has no
- * access to that), and generates the chat title in the background. Runtime
- * history is owned by chat.agent's built-in object-store snapshot; the rows we
- * write here are the display read-model the dashboard's History tab and panel
- * render from.
+ * Persistence goes to the agent's own datastore, never the main DB — the agent
+ * has no access to that. chat.agent owns the runtime history snapshot; the rows
+ * written here are the display read-model the dashboard renders from.
  */
 
-// One connection pool per worker process. onBoot fires on every fresh worker
-// (initial, preloaded, and continuation runs), so the pool is established there
-// and reused across turns within the run.
+// One connection pool per worker process, established in onBoot (which fires on
+// every fresh worker) and reused across the run's turns.
 let dbClient: DashboardAgentDbClient | undefined;
 
 function getDb(): DashboardAgentDbClient {
@@ -57,47 +50,36 @@ function getDb(): DashboardAgentDbClient {
         "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the dashboard agent"
       );
     }
-    // Small client pool — the agent runs in many short-lived containers and the
-    // PlanetScale pooler does the real pooling.
+    // Small pool: many short-lived containers, and the pooler does the real pooling.
     dbClient = createDashboardAgentDb(connectionString, { max: 2 });
   }
   return dbClient;
 }
 
 // Resolves the `"provider:model-id"` strings on our managed prompts to AI SDK
-// models. Anthropic only for now; add another @ai-sdk/* provider here to let
-// the dashboard pick its models on a prompt.
+// models. Add another @ai-sdk/* provider here to allow it on a prompt.
 const registry = createProviderRegistry({ anthropic });
 
-// The persistence the agent does against its own datastore, behind an interface
-// so it can be injected. Production lazily builds one over the env-configured
-// Drizzle client (below); unit tests inject a fake via `locals` (the DI pattern
-// from the chat.agent testing guide) so the agent never needs a real database.
+// The agent's persistence, behind an interface so tests can inject a fake via
+// `locals` and never need a real database.
 export interface DashboardAgentStore {
   ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
   persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
   /**
    * Id-deduped single-message append. The wake narration writes through this
    * rather than `persistMessages`: a wake runs without a client, so the session's
-   * view can miss host-appended blocks (the watch card's confirmation), and a
-   * wholesale write would drop them.
+   * view can miss host-appended blocks and a wholesale write would drop them.
    */
   appendMessage(args: Parameters<typeof appendChatMessageOnce>[1]): Promise<unknown>;
   persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
   setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
-  /**
-   * Commit one investigation revision. The only write the tool lane performs —
-   * `render_view`'s investigation executor calls it through the capability wired
-   * onto the tool context below.
-   */
+  /** Commit one investigation revision. The only write the tool lane performs. */
   upsertInvestigationRevision(
     args: Parameters<typeof upsertInvestigationRevision>[1]
   ): Promise<UpsertInvestigationResult>;
   /**
-   * The freshest card this chat still has open, for the investigating turn a
-   * consented wake kicks off: it must revise the row the wake seeded, not open a
-   * second one. Safe because the wake's seed is committed before the investigate
-   * action is handled.
+   * The freshest card this chat still has open. A consented wake's investigating
+   * turn must revise the row the wake seeded, not open a second one.
    */
   findOpenInvestigation(
     args: Parameters<typeof findOpenInvestigationForChat>[1]
@@ -106,23 +88,14 @@ export interface DashboardAgentStore {
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
 
-// ---------------------------------------------------------------------------
-// The settle guard: a card left `in_progress` when the turn ends is a defect
-// ---------------------------------------------------------------------------
-
 /**
  * The investigations this turn left open, keyed by chat id.
  *
- * The prompt tells the model to render its verdict as the last tool call of the
- * turn, but a prompt is not a guarantee: the model can run out of steps, wander,
- * or have its verdict render rejected. Whatever the reason, the user is left
- * watching a spinner forever — the card is the persisted artifact, so an
- * `in_progress` row outlives the run that wrote it.
- *
- * So the executor tracks the outcome of every revision it commits, and settles
- * anything still open when the turn completes. Written by the `investigations`
- * capability below (the one seam the tool lane writes through), read and cleared
- * in `onTurnComplete`.
+ * The prompt tells the model to render a terminal verdict last, but it can run
+ * out of steps or have the render rejected. An `in_progress` row outlives the
+ * run that wrote it, so the user is left watching a spinner forever. Every
+ * committed revision is tracked here and anything still open is settled in
+ * `onTurnComplete`.
  */
 type OpenInvestigation = { projectRef: string; environmentRef: string; state: InvestigationState };
 
@@ -135,8 +108,8 @@ function trackInvestigationOutcome(
 ): void {
   const parsed = investigationStateSchema.safeParse(params.state);
   const open = openInvestigations.get(chatId);
-  // A terminal outcome (or a state we can't read) settles the entry: only a card
-  // we know is still running is worth force-settling.
+  // A terminal outcome, or a state we can't read, drops the entry: only a card
+  // known to be still running is worth force-settling.
   if (!parsed.success || parsed.data.outcome !== "in_progress") {
     open?.delete(id);
     if (open?.size === 0) openInvestigations.delete(chatId);
@@ -153,11 +126,8 @@ function trackInvestigationOutcome(
 
 /**
  * Force-settle whatever this turn left `in_progress`, as one more revision on
- * the same investigation (identity is fixed, revisions only climb).
- *
- * Best-effort: a failed settle must not fail the turn the user already got an
- * answer from, but it is logged, because a card stuck on a spinner is a defect
- * we want to see.
+ * the same investigation. Best-effort: a failed settle must not fail a turn the
+ * user already got an answer from, but it is logged.
  */
 async function settleOpenInvestigations(store: DashboardAgentStore, chatId: string): Promise<void> {
   const open = openInvestigations.get(chatId);
@@ -179,8 +149,6 @@ async function settleOpenInvestigations(store: DashboardAgentStore, chatId: stri
   }
 }
 
-// Returns the injected store if a test seeded one, otherwise lazily builds the
-// production store over the env-configured Drizzle client and caches it.
 function getStore(): DashboardAgentStore {
   const injected = locals.get(dashboardAgentStoreKey);
   if (injected) return injected;
@@ -196,20 +164,16 @@ function getStore(): DashboardAgentStore {
   });
 }
 
-// Optional language-model override. Production leaves this unset and resolves the
-// model from the managed prompt through the provider registry; unit tests inject
-// a mock model here so `run()` and title generation never reach a provider.
+// Optional language-model override. Unset in production; tests inject a mock so
+// `run()` and title generation never reach a provider.
 export const dashboardAgentModelKey = locals.create<LanguageModel>("dashboard-agent.model");
 
-// Optional tool-set override. Production leaves this unset and builds the real
-// tools per turn; tests and evals inject a fixture tool set (real schemas,
-// stubbed executes) so the model's tool choice can be observed and its answers
-// judged without a live API.
+// Optional tool-set override. Unset in production; tests and evals inject a
+// fixture tool set (real schemas, stubbed executes).
 export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.tools");
 
-// How the per-turn eval is enqueued, behind an interface so it can be injected.
-// Production leaves this unset and triggers the real decoupled task; tests
-// inject a recorder to observe whether a turn was sampled.
+// How the per-turn eval is enqueued. Unset in production; tests inject a
+// recorder to observe whether a turn was sampled.
 export type DashboardAgentEvalTrigger = (
   payload: EvalTurnPayload,
   options: { idempotencyKey: string }
@@ -227,10 +191,9 @@ function getEvalTrigger(): DashboardAgentEvalTrigger {
   );
 }
 
-// Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Defaults to
-// 1.0 (every turn) — volume is internal and low today. Anything unparseable or
-// out of range falls back to 1.0 rather than silently dropping evals; 0 means
-// never. Read per turn so the rate can be changed without a redeploy.
+// Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Anything
+// unparseable or out of range falls back to 1 rather than silently dropping
+// evals. Read per turn so the rate can change without a redeploy.
 function evalSampleRate(): number {
   const raw = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
   if (raw === undefined || raw.trim() === "") return 1;
@@ -244,13 +207,13 @@ function shouldEvalTurn(): boolean {
   return Math.random() < evalSampleRate();
 }
 
-// The system prompt is dashboard-managed (text + model + config). Resolving it
-// is an API call, so cache it per worker process — workers are short-lived
-// (idleTimeoutInSeconds), so a dashboard edit lands within a recycle.
+// The system prompt is dashboard-managed. Resolving it is an API call, so it is
+// cached per worker process; workers are short-lived, so a dashboard edit lands
+// within a recycle.
 type DashboardAgentMode = "assistant" | "code";
 
-// A turn is in `code` mode when the `in` proxy injected a repo snapshot (i.e. the
-// current project has a connected repo). Drives both the tool set and the prompt.
+// A turn is in `code` mode when the project has a connected repo. Drives both the
+// tool set and the prompt.
 function modeFor(clientData: { repoSnapshot?: unknown } | undefined): DashboardAgentMode {
   return clientData?.repoSnapshot ? "code" : "assistant";
 }
@@ -273,8 +236,8 @@ function extractText(message: UIMessage): string {
     .trim();
 }
 
-// Pair this turn's tool-calls with their results (the ground truth the eval
-// judge checks the answer against). Works off the model-format messages.
+// Pair this turn's tool-calls with their results — the ground truth the eval
+// judge checks the answer against.
 function extractToolActivity(
   messages: ModelMessage[]
 ): Array<{ toolName: string; input?: unknown; output?: unknown }> {
@@ -309,19 +272,13 @@ function cleanTitle(raw: string): string {
 }
 
 /**
- * Title generation in flight, per chat. Started in `onTurnStart` so it runs
- * alongside the model answering, and awaited in `onBeforeTurnComplete` — while
- * the stream is still open, before the turn-complete chunk settles the frontend.
- *
- * That ordering is the whole point: the panel reloads its chat list once, when
- * the turn settles, so the name has to be on the row by then. Deferring the write
- * past the settle is what used to make the list read "New chat" until a second,
- * delayed reload caught up.
+ * Title generation in flight, per chat. Started in `onTurnStart` and awaited in
+ * `onBeforeTurnComplete`, while the stream is still open. The panel reloads its
+ * chat list once, when the turn settles, so the name must be on the row by then
+ * or the list reads "New chat".
  */
 const pendingTitles = new Map<string, Promise<void>>();
 
-// Generate a short title from the first user message using the cheaper title
-// model, then write it only if the chat still has the default title.
 async function generateAndSaveTitle(
   store: DashboardAgentStore,
   chatId: string,
@@ -368,10 +325,9 @@ export type {
   AgentPageSignal,
 } from "@internal/dashboard-agent-contracts";
 
-// A chat belongs to an org + user. The current project/env (and the page) are
-// per-turn context for the agent, not chat identity — one conversation can span
-// several projects/envs. Every field past the org + user pair is optional:
-// resumed chats replay their original, older-shaped clientData and must keep
+// A chat belongs to an org + user; project/env/page are per-turn context, since
+// one conversation can span several projects. Everything past the org + user pair
+// is optional because resumed chats replay older-shaped clientData and must keep
 // validating.
 export const clientDataSchema = z.object({
   userId: z.string(),
@@ -379,12 +335,11 @@ export const clientDataSchema = z.object({
   projectId: z.string().optional(),
   environmentId: z.string().optional(),
   currentPage: z.string().optional(),
-  // Structured version of `currentPage`: the page the turn was asked from plus
-  // the notable things on it. Server-injected by the `in` proxy.
+  // Structured version of `currentPage`, injected by the `in` proxy.
   pageContext: agentPageContextSchema.optional(),
-  // Injected server-side by the `in` proxy on each turn (never sent from the
-  // browser): a short-lived read-only delegated token for the user, the API
-  // origin to call back to, and the current project ref + env its tools read.
+  // Injected server-side by the `in` proxy each turn, never sent from the
+  // browser: a short-lived read-only delegated token, the API origin to call
+  // back to, and the project ref + env its tools read.
   userActorToken: z.string().optional(),
   apiOrigin: z.string().optional(),
   projectRef: z.string().optional(),
@@ -402,29 +357,20 @@ export const clientDataSchema = z.object({
     .optional(),
 });
 
-/* ------------------------------------------------------------------ *
- * Watch wakes
- * ------------------------------------------------------------------ */
-
 /**
  * The wake, as the agent receives it.
  *
- * A watch fires (or expires) long after the turn that scheduled it, so there is
- * no turn to answer on. The watcher task (`watch-tick.ts`) appends ONE record to
- * this chat's `in` stream with `trigger: "action"`, which is the SDK's
- * non-message input: it wakes (or re-triggers) the agent run and fires `onAction`
- * only — no `onTurnStart`, no `run()`, no `onTurnComplete`, and the turn counter
- * doesn't move. That's why the narration below does its own model call and its
- * own persistence: the turn machinery isn't running.
+ * A watch resolves long after the turn that scheduled it, so `watch-tick.ts`
+ * appends one record to the chat's `in` stream with `trigger: "action"`. That
+ * fires `onAction` only — no `onTurnStart`, `run()` or `onTurnComplete`, and the
+ * turn counter doesn't move — which is why the narration below does its own model
+ * call and its own persistence.
  *
- * `id` is stable per (watch, outcome) — `watch:{watchId}:{fired|expired}` — and it
- * becomes the narration message's id. That is the dedup: a redelivered wake (the
- * watcher retried after appending but before marking the delivery) finds its
- * message already in the history and narrates nothing.
+ * `id` is stable per (watch, outcome) and becomes the narration message's id, so a
+ * redelivered wake finds its message in the history and narrates nothing.
  *
- * `type` and `id` keep that two-value encoding on purpose (§7.5, binding): it is
- * the stable TRANSPORT, not the model. How the watch actually ended travels in
- * `resolution`, and what was observed when it did travels in `observed`.
+ * `type` keeps the fired/expired encoding as the stable TRANSPORT only. How the
+ * watch ended travels in `resolution`, what was seen in `observed`.
  */
 export type WatchWakeAction = {
   type: "watch.fired" | "watch.expired";
@@ -436,23 +382,22 @@ export type WatchWakeAction = {
   spec: WatchSpec & { since?: string };
   /** What the final check observed. The numbers the narration must use. */
   facts: Record<string, unknown>;
-  /** How the watch ended: met · window completed · impossible. */
+  /** How the watch ended: met, window completed, or impossible. */
   resolution?: WatchResolution;
-  /** What was true when it ended — the run's final status, the depth, the count. */
+  /** What was true when it ended: the run's final status, the depth, the count. */
   observed?: WatchObservedOutcome;
   /** Why the watch exists, in the user's words. */
   note?: string;
   /**
    * The user consented at creation to an investigation after an ATTENTION
-   * outcome (§6). It relaxes exactly one rule — "never a new investigation
-   * unprompted" — and only for that outcome.
+   * outcome. It relaxes one rule, "never a new investigation unprompted", and
+   * only for that outcome.
    */
   investigateOnAttention?: boolean;
 };
 
-// Deliberately lenient on `spec`: a wake must never be lost to a validation
-// error because the host persisted a spec field this version doesn't know about.
-// The narration reads `kind`, `note` and the cadence; the rest passes through.
+// Deliberately lenient on `spec`: a wake must never be lost to a validation error
+// because the host persisted a field this version doesn't know about.
 export const watchWakeActionSchema = z.object({
   type: z.enum(["watch.fired", "watch.expired"]),
   id: z.string(),
@@ -466,8 +411,7 @@ export const watchWakeActionSchema = z.object({
     })
     .passthrough(),
   facts: z.record(z.unknown()).default({}),
-  // Lenient for the same reason `spec` is: a wake must never be lost to a
-  // validation error. An older watcher that predates the resolution model simply
+  // Optional for the same reason: an older watcher predating the resolution model
   // sends neither, and the narration falls back to the transport encoding.
   resolution: z.enum(watchResolutions).optional(),
   observed: z.record(z.unknown()).optional(),
@@ -476,18 +420,15 @@ export const watchWakeActionSchema = z.object({
 });
 
 /**
- * The second half of a consented watch: CONDUCT the investigation the wake opened.
+ * The second half of a consented watch: conduct the investigation the wake opened.
  *
- * Sent by the webapp — never by the watcher and never by a client — right after a
- * delivered wake on a watch whose creator ticked "investigate attention outcomes",
- * and only when the row's outcome is an attention one. It carries a freshly minted
- * delegated token for the watch's initiating user in the record's METADATA (the
- * agent's `clientData`), exactly the way the `in` proxy injects a turn's token, so
- * this turn can read like any other.
+ * Sent by the webapp, never by the watcher or a client, right after a delivered
+ * wake on an attention outcome the creator consented to. It carries a freshly
+ * minted delegated token in the record's metadata, the same way the `in` proxy
+ * injects a turn's token, so this turn can read like any other.
  *
- * Why an action rather than a turn: nobody asked a question. The wake already
- * landed as its own message, and the findings arrive as another one — the agent
- * speaking twice, unprompted, which is exactly what the consent bought.
+ * It is an action rather than a turn because nobody asked a question: the wake
+ * landed as its own message and the findings arrive as another one.
  */
 export type WatchInvestigateAction = {
   type: "watch.investigate";
@@ -501,15 +442,13 @@ export type WatchInvestigateAction = {
   observed?: WatchObservedOutcome;
   note?: string;
   /**
-   * The card to revise, when the sender already knows it. Usually absent: the wake
-   * seeds the row inside the agent, so the id is resolved here (see
-   * `resolveInvestigationId`).
+   * The card to revise, when the sender knows it. Usually absent: the wake seeds
+   * the row inside the agent, so the id is resolved by `resolveInvestigationId`.
    */
   investigationId?: string;
 };
 
-// Same leniency as the wake schema, for the same reason: an investigate action
-// must never be lost to a spec field this version doesn't know about.
+// Same leniency as the wake schema, for the same reason.
 export const watchInvestigateActionSchema = z.object({
   type: z.literal("watch.investigate"),
   id: z.string(),
@@ -530,16 +469,14 @@ export const watchInvestigateActionSchema = z.object({
 });
 
 /**
- * Every action the agent accepts. Both arrive the same way — one record on the
- * chat's `in` stream with `trigger: "action"` — and the union is the whole
- * vocabulary: anything else fails to parse and never reaches a handler.
+ * Every action the agent accepts. The union is the whole vocabulary: anything
+ * else fails to parse and never reaches a handler.
  *
- * The trust boundary is the STREAM, not the schema: `.in` records are written with
- * an environment secret key (the watcher) or from the dashboard's own server-side
- * hop (the investigate kick), and the dashboard's `in` proxy refuses to forward a
- * browser-supplied `trigger: "action"` at all. So the model can describe an action
- * but can never place one — and a forged record would still arrive with no valid
- * delegated token, leaving every read tool failed closed.
+ * The trust boundary is the STREAM, not the schema. `.in` records are written
+ * with an environment secret key or from the dashboard's own server-side hop,
+ * and the `in` proxy refuses to forward a browser-supplied `trigger: "action"`.
+ * So the model can describe an action but never place one, and a forged record
+ * would carry no valid delegated token, leaving every read tool failed closed.
  */
 export const dashboardAgentActionSchema = z.union([
   watchWakeActionSchema,
@@ -548,20 +485,18 @@ export const dashboardAgentActionSchema = z.union([
 
 export type DashboardAgentAction = WatchWakeAction | WatchInvestigateAction;
 
-// The wake's own line. How a wake is narrated (once, briefly, outcome + facts +
-// one suggestion) lives in the managed system prompt's "Watches" section, which
-// is the cached block — this is only the per-wake framing.
+// The per-wake framing only. How a wake is narrated lives in the managed system
+// prompt's Watches section, which is the cached block.
 const WAKE_INSTRUCTION =
   'A watch you set up earlier has resolved and reports once, right now — this is not a question, and nobody is waiting on a reply. Write ONE short message: what the watch found, the numbers from the facts below, and one suggested next step. Say what happened; never say the watch "fired" or "expired". A window that ran out with the condition still not true is an answer, not a failure. No tools, no new investigation, no recap.';
 
 /**
  * Coerce replayed tool-call inputs the Anthropic API would reject back to `{}`.
  *
- * The model occasionally emits a no-arg tool call with a non-object input (empty
- * string, or `null` — which `typeof` also calls "object"), the SDK replays it
+ * The model occasionally emits a no-arg tool call with a non-object input (an
+ * empty string, or `null`, which `typeof` also calls "object"), the SDK replays it
  * into history verbatim, and the API then fails the whole turn with
- * "tool_use.input: Input should be an object". Used by `prepareMessages` on
- * normal turns and by the wake narration, which builds its model call directly.
+ * "tool_use.input: Input should be an object".
  */
 export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessage[] {
   const isBadInput = (part: unknown) =>
@@ -598,11 +533,9 @@ function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
 }
 
 /**
- * How the watch ended, in the resolution model's own words.
- *
- * The narration speaks resolution + observed outcome, never "fired"/"expired":
- * those are the wire encoding (§7.5), and a watch that ran its whole window and
- * found nothing has an ANSWER to give, not a failure to apologise for.
+ * How the watch ended. The narration speaks resolution and observed outcome,
+ * never "fired"/"expired" — those are the wire encoding, and a watch that ran its
+ * whole window and found nothing has an answer to give, not a failure.
  *
  * Falls back to the transport when a wake predates the resolution model.
  */
@@ -621,19 +554,18 @@ function wakeOutcome(action: WatchWakeAction): string {
     case "condition_impossible":
       return "the condition can no longer become true — that is the answer, not a timeout";
     case "window_completed":
-      // Deliberately not "nothing happened": "it didn't drain in an hour" is
-      // exactly the thing the user asked to be told.
+      // Deliberately not "nothing happened": "it didn't drain in an hour" is what
+      // the user asked to be told.
       return "the window ran out with the condition still not true — this is the answer the user asked for, so report it plainly";
   }
 }
 
 /**
- * Whether THIS wake is the one the consent covers (§6, binding).
+ * Whether this wake is the one the consent covers.
  *
- * Consent is for the ATTENTION outcomes only — the contracts' resolved-result
- * mapping decides which those are, per kind, and no surface may substitute its
- * own judgement. A drained queue and a quiet error group are good news and never
- * start anything, however the watch was configured.
+ * Consent is for the ATTENTION outcomes only, and the contracts' resolved-result
+ * mapping decides which those are per kind — no surface may substitute its own
+ * judgement. Good news never starts anything, however the watch was configured.
  */
 export function wakeStartsInvestigation(action: WatchWakeAction): boolean {
   if (action.investigateOnAttention !== true) return false;
@@ -657,10 +589,8 @@ function wakeSubject(action: WatchedSubject): string {
   return action.identity || String(spec.kind ?? "this");
 }
 
-// The wake's own line when the investigation is pre-approved. It states a fact
-// about this turn — the investigation IS being opened here — so the model can't
-// turn it into an offer, and the findings are explicitly the NEXT message's, which
-// this same agent sends itself, without being asked.
+// The wake's line when the investigation is pre-approved. Phrased as a fact about
+// this turn so the model can't turn it into an offer.
 function investigationInstruction(action: WatchWakeAction): string {
   return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them — say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: you are conducting it right now and the findings land in your very next message, with the investigation card. Subject: ${wakeSubject(
     action
@@ -668,9 +598,9 @@ function investigationInstruction(action: WatchWakeAction): string {
 }
 
 /**
- * The watched object as a `trigger://` markdown link the narration can embed —
- * the wake runs with no tools, so the link has to be handed to it ready-made.
- * Needs the tenancy from the wake's metadata; without it there is no link.
+ * The watched object as a `trigger://` markdown link. The wake runs with no tools,
+ * so the link has to be handed to it ready-made, which needs the tenancy from the
+ * wake's metadata.
  */
 function wakeSubjectLink(
   action: WatchedSubject,
@@ -728,17 +658,14 @@ function wakePrompt(
 }
 
 /**
- * Open the pre-approved investigation — the ONE relaxation of "never a new
- * investigation unprompted" (§6).
+ * Open the pre-approved investigation, the one relaxation of "never a new
+ * investigation unprompted".
  *
- * It is deliberately a seeded `in_progress` state and nothing more: the wake
- * turn has no delegated token to read with, so it opens the thread and the
- * findings arrive later, in their own message with the card.
+ * Deliberately a seeded `in_progress` state and nothing more: the wake turn has no
+ * delegated token to read with, so the findings arrive later in their own message.
  *
- * Independence is the binding part (§6). This runs AFTER the narration is in the
- * transcript, it never throws, and the watcher has already marked the wake
- * delivered by the time the agent sees the action — so a failure here cannot
- * delay, retry or invalidate the wake.
+ * Runs after the narration is in the transcript and never throws, so a failure
+ * here cannot delay, retry or invalidate the wake.
  */
 async function openConsentedInvestigation(args: {
   action: WatchWakeAction;
@@ -750,8 +677,7 @@ async function openConsentedInvestigation(args: {
   const environmentRef = clientData?.environmentId;
   if (!projectRef || !environmentRef) {
     // A watch created before the row carried the project's external ref. Scoping
-    // it by the wrong identifier would strand the investigation, so skip it —
-    // the wake itself already landed.
+    // it by the wrong identifier would strand the investigation, so skip it.
     logger.warn("dashboard-agent watch wake can't scope a consented investigation", {
       chatId,
       watchId: action.watchId,
@@ -799,10 +725,10 @@ async function openConsentedInvestigation(args: {
 /**
  * Narrate one wake, exactly once.
  *
- * Streams so the panel shows it arriving live, then writes it into both places a
- * turn normally would: `chat.history` (the runtime transcript the model sees next
- * turn) and the display read-model. Both happen before `onAction` returns —
- * `chat.history` mutations are only picked up immediately after the hook.
+ * Streams so the panel shows it arriving live, then writes it to both `chat.history`
+ * (the transcript the model sees next turn) and the display read-model. Both must
+ * happen before `onAction` returns: `chat.history` mutations are only picked up
+ * immediately after the hook.
  */
 async function narrateWatchWake(args: {
   action: WatchWakeAction;
@@ -834,11 +760,10 @@ async function narrateWatchWake(args: {
         (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
       ),
     system: resolved.text,
-    // The conversation so far plus the wake. No tools: a wake reports what the
-    // check already established, and it carries no delegated token to read with.
-    // The breakpoint goes on the last message of the EXISTING prefix (not on the
-    // wake, which is unique and would only ever be a cache write), so the wake
-    // reads back the same cached prefix a normal turn would.
+    // No tools: a wake reports what the check already established, and carries no
+    // delegated token to read with. The breakpoint goes on the last message of the
+    // existing prefix, not on the unique wake, so the wake reads back the same
+    // cached prefix a normal turn would instead of only writing cache.
     messages: [
       ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
       {
@@ -852,11 +777,10 @@ async function narrateWatchWake(args: {
     ...resolved.toAISDKTelemetry(),
   });
 
-  // Pipe explicitly (rather than returning the result) so the final text is in
-  // hand for the history + read-model writes below. The streamed message must
-  // carry the SAME id the copy below is persisted under — the panel merges the
-  // live stream with the loaded history by message id, and two ids for one
-  // narration render it twice.
+  // Piped explicitly, rather than returned, so the final text is in hand for the
+  // writes below. The streamed message must carry the SAME id the copy below is
+  // persisted under: the panel merges live stream and loaded history by message
+  // id, so two ids for one narration render it twice.
   await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
   const text = (await result.text).trim();
   if (!text) return;
@@ -866,42 +790,36 @@ async function narrateWatchWake(args: {
     role: "assistant",
     parts: [{ type: "text", text }],
   };
-  // The session's view of the transcript, for the model's next turn.
   chat.history.set([...uiMessages, message]);
-  // The display copy is an id-deduped APPEND, never a wholesale write: a wake
-  // has no client to carry the stored transcript in, so the session view can
-  // miss host-appended blocks (a card-born chat starts with ONLY those), and
-  // `persistMessages` here would drop them.
+  // The display copy is an id-deduped append, never a wholesale write: a wake has
+  // no client to carry the stored transcript, so the session view can miss
+  // host-appended blocks (a card-born chat starts with only those) and
+  // `persistMessages` would drop them.
   const userId = args.clientData?.userId;
   if (userId) {
     await getStore().appendMessage({ chatId, userId, message });
   } else {
-    // A wake always carries its watch's tenancy; reaching this means the
-    // metadata contract broke. Deliver anyway — losing blocks beats losing
-    // the wake.
+    // A wake always carries its watch's tenancy, so reaching this means the
+    // metadata contract broke. Deliver anyway: losing blocks beats losing the wake.
     logger.error("dashboard-agent watch wake has no userId; falling back to persistMessages", {
       chatId,
     });
     await getStore().persistMessages({ chatId, messages: [...uiMessages, message] });
   }
 
-  // Only now, with the wake in the transcript: the investigation is the turn's
-  // business after the banner exists, and it can never hold the banner up.
+  // Only once the wake is in the transcript, so the investigation can never hold
+  // the wake up.
   if (wakeStartsInvestigation(action)) {
     await openConsentedInvestigation({ action, chatId, clientData: args.clientData });
   }
 }
-
-/* ------------------------------------------------------------------ *
- * Conducting the consented investigation
- * ------------------------------------------------------------------ */
 
 /**
  * The turn's tool set: the read tools built from the delegated token this record's
  * metadata carried, plus the one narrow write the investigation executor needs.
  *
  * Shared by the agent's `tools` hook and the investigating turn below, so a
- * consented investigation reads with exactly the tools — and exactly the scope — a
+ * consented investigation reads with the same tools and the same scope a
  * user-driven one does.
  */
 function buildTurnTools(
@@ -914,8 +832,8 @@ function buildTurnTools(
       ...(clientData ?? {}),
       chatId,
       investigations: {
-        // Every committed revision is recorded here too, so the settle guard knows
-        // whether the turn left a card running.
+        // Every committed revision is tracked, so the settle guard knows whether
+        // the turn left a card running.
         upsert: async (params) => {
           const result = await getStore().upsertInvestigationRevision({ ...params, chatId });
           if (result.ok) trackInvestigationOutcome(chatId, result.id, params);
@@ -926,20 +844,16 @@ function buildTurnTools(
   );
 }
 
-// How far back the investigate action will look for the card the wake seeded. Wide
-// enough to cover a slow wake turn (and a run that had to boot), tight enough that
-// an older abandoned card is never mistaken for this watch's.
+// How far back the investigate action looks for the card the wake seeded. Wide
+// enough to cover a slow wake turn, tight enough that an older abandoned card is
+// never mistaken for this watch's.
 const CONSENTED_INVESTIGATION_LOOKBACK_MS = 30 * 60 * 1000;
 
 /**
- * The card this turn must revise.
- *
- * Preference order, and the reason for it: the sender's id when it has one; then
- * the freshest card this chat still has open, which IS the one the wake seeded
- * (records on `.in` are handled in order, so the seed is committed before this
- * action is); and finally a fresh seed of our own, for the wake whose seed failed.
- * The point of all three is the same — ONE card per consented outcome, never a
- * second one for the same news.
+ * The card this turn must revise: the sender's id when it has one, else the
+ * freshest card this chat still has open — which is the one the wake seeded, since
+ * `.in` records are handled in order — else a fresh seed for the wake whose seed
+ * failed. All three exist to keep it to one card per consented outcome.
  */
 async function resolveInvestigationId(args: {
   action: WatchInvestigateAction;
@@ -975,10 +889,8 @@ async function resolveInvestigationId(args: {
   return seeded.ok ? seeded.id : undefined;
 }
 
-// The investigating turn's own framing. The protocol itself (gather, open, one
-// test round, verdict) lives in the managed system prompt's Investigations
-// section, which is the cached block — this only says which investigation, about
-// what, and that nobody asked.
+// The investigating turn's framing only. The protocol itself lives in the managed
+// system prompt's Investigations section, which is the cached block.
 function investigatePrompt(args: {
   action: WatchInvestigateAction;
   investigationId: string;
@@ -1014,14 +926,12 @@ function investigatePrompt(args: {
 /**
  * Conduct the consented investigation, exactly once, as the agent's own message.
  *
- * A real turn in everything but name: the tools are built from the delegated token
- * the kick carried in this record's metadata, the investigation protocol applies,
- * and the model has the same step budget `run()` gives it. What it is NOT is a
- * turn in the SDK's sense — no `onTurnComplete` fires — so the settle guard is run
- * here by hand, and the message is appended id-deduped, same as the wake.
+ * A real turn in everything but name: same tools, same protocol, same step budget
+ * `run()` gives. It is NOT a turn in the SDK's sense, so no `onTurnComplete` fires
+ * — the settle guard runs here by hand and the message is appended id-deduped.
  *
- * Independence is binding (§6): the wake was delivered long before this, so
- * everything here is best-effort and nothing it does can retry or invalidate it.
+ * The wake was delivered long before this, so everything here is best-effort and
+ * nothing it does can retry or invalidate the wake.
  */
 async function conductWatchInvestigation(args: {
   action: WatchInvestigateAction;
@@ -1047,8 +957,8 @@ async function conductWatchInvestigation(args: {
   const projectRef = clientData?.projectRef;
   const environmentRef = clientData?.environmentId;
   if (!projectRef || !environmentRef) {
-    // An investigation is answered on a card, and a card can't be scoped without
-    // the tenancy. Saying nothing beats a findings message with nowhere to render.
+    // A card can't be scoped without the tenancy, and saying nothing beats a
+    // findings message with nowhere to render.
     logger.error("dashboard-agent watch investigation can't be scoped; skipping", {
       chatId,
       watchId: action.watchId,
@@ -1097,11 +1007,10 @@ async function conductWatchInvestigation(args: {
   });
 
   try {
-    // Tee'd, because the findings message has to be persisted WHOLE: the panel
-    // renders the investigation card from the `render_view` tool part, so a
-    // text-only copy (what the wake narration gets away with) would lose the card
-    // on the next page load. One branch streams to the panel, the other reduces the
-    // same chunks back into the UIMessage a turn would have persisted.
+    // Tee'd because the findings message has to be persisted whole: the panel
+    // renders the card from the `render_view` tool part, so a text-only copy would
+    // lose it on the next page load. One branch streams to the panel, the other
+    // reduces the same chunks back into a UIMessage.
     const [toPanel, toTranscript] = result
       .toUIMessageStream({ generateMessageId: () => messageId })
       .tee();
@@ -1127,9 +1036,8 @@ async function conductWatchInvestigation(args: {
       }
     }
   } finally {
-    // No `onTurnComplete` on an action, so the guard runs here: a card the model
-    // left at in_progress — because it ran out of steps, or because this threw —
-    // is a spinner nothing else will ever stop.
+    // No `onTurnComplete` on an action, so the guard runs here: a card left at
+    // in_progress is a spinner nothing else will ever stop.
     await settleOpenInvestigations(store, chatId);
   }
 }
@@ -1137,25 +1045,21 @@ async function conductWatchInvestigation(args: {
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
-  // The two actions the agent accepts: a watch wake (appended by the watcher task)
-  // and the investigate kick that follows a consented one (sent by the webapp).
   // Actions are not turns — see `narrateWatchWake`.
   actionSchema: dashboardAgentActionSchema,
-  // Latency levers come next (Head Start, prompt caching, AI Prompts). Scaffold
-  // keeps a short idle window so suspended runs release their DB pool.
+  // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
 
   // Read-only tools, rebuilt per turn from the delegated token the `in` proxy
-  // injects. Declaring them here (not just inside run) lets the SDK re-apply
-  // each tool's output conversion when it replays prior-turn history.
-  // The `investigations` capability is the one seam from the tool lane to the
-  // agent's datastore: the store is reached here (where the chat id is known) and
-  // handed to the tools as a single narrow write, so `tools.ts` stays free of the
-  // database package.
+  // injects. Declared here rather than only inside run so the SDK re-applies each
+  // tool's output conversion when it replays prior-turn history. The
+  // `investigations` capability is the one seam from the tool lane to the agent's
+  // datastore, wired here (where the chat id is known) so `tools.ts` stays free of
+  // the database package.
   tools: async ({ chatId, clientData }) => buildTurnTools(chatId, clientData),
 
   onBoot: async () => {
-    // Establish the store (and, in production, its connection pool) once.
+    // Establish the store, and in production its connection pool, once.
     getStore();
   },
 
@@ -1174,11 +1078,9 @@ export const dashboardAgent = chat.agent({
     });
   },
 
-  // Two things a watch can ask of the agent, in this order: narrate the outcome,
-  // then — when the user consented to it — conduct the investigation that outcome
-  // opened. Each is one message, deduped on the action id, and each returns void:
-  // the stream is piped inside so the response can be written to the history and
-  // the read-model.
+  // Narrate the outcome, then conduct the investigation it opened when the user
+  // consented. Each is one message deduped on the action id, and each returns void:
+  // the stream is piped inside so the response reaches the history and read-model.
   onAction: async ({ action, chatId, clientData, uiMessages, messages }) => {
     const typed = action as DashboardAgentAction;
     if (typed.type === "watch.investigate") {
@@ -1189,19 +1091,14 @@ export const dashboardAgent = chat.agent({
   },
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
-    // Make the user's message durable in the display copy before the model
-    // starts streaming. Awaited, never chat.defer — a mid-stream refresh must
-    // not read an empty transcript.
+    // Awaited, never chat.defer: a mid-stream refresh must not read an empty
+    // transcript.
     await getStore().persistMessages({ chatId, messages: uiMessages });
 
-    // First exchange: name the chat with the cheaper title model, started here so
-    // it runs while the model answers and is finished by the time the turn
-    // settles. Not awaited — `onBeforeTurnComplete` does that. A failure only
-    // costs the generated name, so it never reaches the turn.
-    //
-    // The gate is the transcript length at the START of a turn — one message means
-    // nothing has been answered yet. A later turn can't re-title anyway:
-    // `setChatTitleIfDefault` only writes over the default name.
+    // Name the chat on the first exchange, started here so it runs while the model
+    // answers. Awaited in `onBeforeTurnComplete`, not here; a failure only costs the
+    // generated name. The gate is the transcript length at the START of the turn,
+    // where one message means nothing has been answered yet.
     if (uiMessages.length <= 1 && !pendingTitles.has(chatId)) {
       const store = getStore();
       pendingTitles.set(
@@ -1212,25 +1109,21 @@ export const dashboardAgent = chat.agent({
       );
     }
 
-    // Load the dashboard-managed system prompt for this turn. The code-mode
-    // variant is used when the project has a connected repo. Set every turn so
-    // continuation runs (which skip onChatStart) still get it; the resolve is
-    // cached per process. The Anthropic cache breakpoint on the system block
-    // carries through toStreamTextOptions() and survives suspend/resume.
+    // Set every turn so continuation runs (which skip onChatStart) still get the
+    // prompt; the resolve is cached per process. The cache breakpoint on the system
+    // block carries through toStreamTextOptions() and survives suspend/resume.
     chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
     });
   },
 
-  // Runs after the response is captured but BEFORE the turn-complete chunk closes
-  // the frontend stream — the last point at which a write still lands ahead of the
-  // client's settle. `onTurnComplete` is too late for that (the stream is already
-  // closed by then), which is why the title is awaited here.
+  // The last point at which a write still lands ahead of the client's settle:
+  // `onTurnComplete` runs after the frontend stream closes. That is why the title
+  // is awaited here.
   onBeforeTurnComplete: async ({ chatId }) => {
     const pending = pendingTitles.get(chatId);
     if (!pending) return;
     pendingTitles.delete(chatId);
-    // Normally already settled: it has had the whole response for company.
     await pending;
   },
 
@@ -1245,15 +1138,15 @@ export const dashboardAgent = chat.agent({
     lastEventId,
     runId,
   }) => {
-    // Persist the finalized transcript + refreshed session state in one
-    // transaction so a refresh on the next page load reads both consistently.
     const store = getStore();
 
-    // A card the turn left `in_progress` never settles on its own — the run is
-    // over. Settle it to `inconclusive` before anything else, so a refresh right
-    // after the turn can't read a spinner that will never stop.
+    // Settle before anything else: the run is over, so a card left `in_progress`
+    // never settles on its own and a refresh right after the turn would read a
+    // spinner that never stops.
     await settleOpenInvestigations(store, chatId);
 
+    // Transcript and session state in one transaction, so the next page load reads
+    // both consistently.
     await store.persistTurn({
       chatId,
       messages: uiMessages,
@@ -1264,16 +1157,13 @@ export const dashboardAgent = chat.agent({
       },
     });
 
-    // Runtime eval: score this turn in a SEPARATE, idempotency-keyed task so it
-    // never blocks or bills the agent run. Best-effort — enqueue failures must
-    // not break the turn. Sampled by DASHBOARD_AGENT_EVAL_SAMPLE_RATE (default:
-    // every turn, since volume is internal and low).
+    // Score this turn in a separate, idempotency-keyed task so it never blocks or
+    // bills the agent run. Best-effort: an enqueue failure must not break the turn.
     if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
         const resolved = await getSystemPrompt(modeFor(clientData));
-        // The current turn's question. On a Head Start turn it arrives in the
-        // boot payload (not in newUIMessages), so take the latest user message
-        // from the full transcript, which holds for normal turns too.
+        // On a Head Start turn the question arrives in the boot payload rather than
+        // newUIMessages, so read the latest user message from the full transcript.
         const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
         await getEvalTrigger()(
           {
@@ -1300,11 +1190,10 @@ export const dashboardAgent = chat.agent({
     }
   },
 
-  // Roll an Anthropic cache breakpoint onto the last message every turn so the
-  // growing conversation prefix is cached and read back cheaply. Composes with
-  // the system-block breakpoint above. This is the canonical prompt-caching
-  // pattern; chat.agent keeps the Head Start handover's tool-approval tail
-  // intact across this hook, so it's safe on a resume turn.
+  // Roll a cache breakpoint onto the last message every turn so the growing
+  // conversation prefix is cached and read back cheaply. Composes with the
+  // system-block breakpoint above. chat.agent keeps the Head Start handover's
+  // tool-approval tail intact across this hook, so it is safe on a resume turn.
   prepareMessages: ({ messages }) => {
     if (messages.length === 0) return messages;
     const sanitized = sanitizeReplayedToolInputs(messages);
@@ -1322,17 +1211,14 @@ export const dashboardAgent = chat.agent({
     ];
   },
 
-  // System prompt + model come from the managed prompt (set in onTurnStart),
-  // so they're dashboard-editable. toStreamTextOptions() supplies the system
-  // text (with its cache breakpoint), config, telemetry, and prepareStep
-  // wiring; the model string is resolved through the registry here so
-  // streamText keeps a typed model.
+  // System prompt and model come from the managed prompt set in onTurnStart, so
+  // they are dashboard-editable. toStreamTextOptions() supplies the system text
+  // with its cache breakpoint, config, telemetry and prepareStep wiring; the model
+  // string is resolved through the registry here so streamText keeps a typed model.
   run: async ({ messages, signal, tools }) => {
     const resolved = chat.prompt();
     return streamText({
       ...chat.toStreamTextOptions({ tools }),
-      // Tests inject a mock model via locals; production resolves the managed
-      // prompt's model through the provider registry.
       model:
         locals.get(dashboardAgentModelKey) ??
         registry.languageModel(
@@ -1340,8 +1226,8 @@ export const dashboardAgent = chat.agent({
         ),
       messages,
       abortSignal: signal,
-      // toStreamTextOptions() defaults to a single step; override so the model
-      // can call a tool and then answer from its result in the same turn.
+      // toStreamTextOptions() defaults to a single step; override so the model can
+      // call a tool and then answer from its result in the same turn.
       stopWhen: stepCountIs(10),
     });
   },

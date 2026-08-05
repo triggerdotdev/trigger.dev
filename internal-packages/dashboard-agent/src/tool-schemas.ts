@@ -1,15 +1,13 @@
 /**
- * Schema-only tool definitions + the default system prompt text, shared between
+ * Schema-only tool definitions plus the default system prompt text, shared between
  * the chat.agent task and the webapp's `chat.headStart` route handler.
  *
- * HARD CONSTRAINT — bundle isolation. The head-start route imports this file
- * and runs it in the webapp process, so anything imported here lands in that
- * bundle. Allowed imports: `ai` (for `tool()`), `zod`, type-only AI SDK, and
- * `@internal/dashboard-agent-contracts` (a zod-only leaf package). Nothing else
- * — no `@internal/dashboard-agent-db`, no `@trigger.dev/sdk` runtime, no
- * `postgres`/`drizzle`. The `execute` fns (the data lane that calls the API as
- * the user) live in `tools.ts`, which imports these schemas and adds executes
- * on top; the route handler never sees them.
+ * Bundle isolation is a hard constraint: the head-start route imports this file and
+ * runs it in the webapp process, so anything imported here lands in that bundle.
+ * Allowed imports are `ai`, `zod`, type-only AI SDK, and
+ * `@internal/dashboard-agent-contracts` (a zod-only leaf package) — no
+ * dashboard-agent-db, no `@trigger.dev/sdk` runtime, no postgres/drizzle. The
+ * `execute` fns live in `tools.ts` and the route handler never sees them.
  */
 import {
   runFiltersSchema,
@@ -124,8 +122,6 @@ export const getErrorSchema = tool({
   }),
 });
 
-// Analytics query tools (TRQL over the user's ClickHouse-backed data). Read-only.
-
 export const getQuerySchemaSchema = tool({
   description:
     "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query.",
@@ -167,8 +163,6 @@ export const askSupportSchema = tool({
   }),
 });
 
-// Health report — the composed "is anything wrong here?" answer.
-
 export const getReportSchema = tool({
   description:
     "Get a composed report for the current environment. The 'health' report is the single best answer to 'is anything wrong?' / 'how is prod doing?': it grades flow (are runs starting?), execution (are they succeeding and fast?), and liveness (is telemetry fresh?), each with a severity, a reason, and the metrics behind it. Read this before reaching for individual queries.",
@@ -205,8 +199,6 @@ export const getQueueSchema = tool({
       .describe("Window shorthand like '15m', '1h', '24h' (max 7d). Defaults to 1h."),
   }),
 });
-
-// Deployments (versions) — what's running and what changed.
 
 export const listDeploysSchema = tool({
   description:
@@ -263,16 +255,11 @@ export const searchDocsSchema = tool({
   }),
 });
 
-// ---------------------------------------------------------------------------
-// Navigation — the agent takes the user somewhere instead of describing a path.
-//
 // `navigate_to` never emits a dashboard URL. It emits a `navigate` intent whose
-// target is a `trigger://` URI (the frozen grammar in
-// @internal/dashboard-agent-contracts), built server-side from typed params plus
-// the turn's project ref + environment id. The HOST resolves the URI to whatever
-// the current dashboard route happens to be, so a route rename can't break a
-// stored transcript and the model can never fabricate a link.
-// ---------------------------------------------------------------------------
+// target is a `trigger://` URI (the frozen grammar in dashboard-agent-contracts),
+// built server-side from typed params plus the turn's project ref and environment
+// id. The host resolves the URI to the current dashboard route, so a route rename
+// can't break a stored transcript and the model can never fabricate a link.
 
 export const getCurrentPageSchema = tool({
   description:
@@ -315,39 +302,27 @@ export const navigateToSchema = tool({
   }),
 });
 
-// ---------------------------------------------------------------------------
-// View catalog — our own small "generative UI" layer.
+// The view catalog. The agent renders UI by emitting a spec of blocks from a fixed
+// catalog rather than arbitrary markup; the webapp maps each block `type` to a
+// React component in components/dashboard-agent/view-catalog.tsx.
 //
-// The agent renders rich, on-brand UI by emitting a *spec* (a stack of blocks
-// drawn from a fixed catalog) via the `render_view` tool, instead of inventing
-// arbitrary markup. The webapp has a render registry mapping each block `type`
-// to a React component (see components/dashboard-agent/view-catalog.tsx). This
-// gives us json-render's safety (only catalog blocks, validated, no arbitrary
-// HTML) without its zod 4 / React 19 dependency — we stay on the pinned zod 3.
+// Block schemas live in `@internal/dashboard-agent-contracts` (src/blocks.ts) so
+// the webapp, the agent and persistence share one definition. Add a new block
+// there, then add a renderer entry in the webapp registry.
 //
-// `render_view`'s `execute` (in tools.ts) just validates + echoes the spec back;
-// there's no API call.
-//
-// The block schemas themselves live in `@internal/dashboard-agent-contracts`
-// (src/blocks.ts) so the webapp, the agent, and persistence share one definition.
-// Add a new block there, then add a renderer entry in the webapp registry.
-//
-// The tool takes `viewBlockInputSchema` — the BODY-only schema, with no
-// `{ id, revision, version }` envelope. Block identity is system-owned: the model
-// never supplies it, and the executor in `tools.ts` stamps the envelope on (for an
-// `investigation` it does that from the revision the store committed). The strict
-// enveloped schema (`viewBlockSchema` in contracts) is for renderers and storage,
-// not for the model.
-// ---------------------------------------------------------------------------
+// The tool takes `viewBlockInputSchema`, the body-only schema with no
+// `{ id, revision, version }` envelope: block identity is system-owned, and the
+// executor in `tools.ts` stamps the envelope on. The enveloped `viewBlockSchema`
+// is for renderers and storage, never for the model.
 
 export const renderViewSchema = tool({
   description:
     "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), `chart` (a line/bar chart of run_query results), `actions` (a row of 1-3 buttons offering next steps — a `watch` intent opens the watch configuration card pre-filled with the spec you composed, an `ask` intent sends the labelled question as the user's next message), and `investigation` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the `investigationId` it assigned — pass that back as `investigationId` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as `in_progress` when you open it, then again with the same `investigationId` carrying the final outcome (`concluded` or `inconclusive`), as the last tool call of the turn. A card left at `in_progress` is an unfinished answer whatever your prose says: the user is left watching a spinner. Keep any accompanying message to a one-line lead-in.",
   inputSchema: z.object({
     blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
-    // Cross-turn continuation. Identity stays OUT of the block body (state only);
-    // this is a tool-level pointer at an existing row, and the store verifies it
-    // belongs to this chat + project + environment before touching it.
+    // Cross-turn continuation. Identity stays out of the block body: this is a
+    // tool-level pointer at an existing row, and the store verifies it belongs to
+    // this chat, project and environment before touching it.
     investigationId: z
       .string()
       .optional()
@@ -357,16 +332,11 @@ export const renderViewSchema = tool({
   }),
 });
 
-// ---------------------------------------------------------------------------
-// Watches — "tell me when X happens", instead of the user re-asking.
-//
-// The spec the model composes IS the frozen contract (`watchSpecSchema`): the
-// cadence floors (run state may poll every minute, aggregates are floored at 5)
-// and the 24h ceiling are enforced by the schema, so an over-eager watch fails
-// validation instead of turning into a hot loop. `since` for error recurrence is
-// server-set on persist and is deliberately absent here — the model can't
-// backdate a recurrence window.
-// ---------------------------------------------------------------------------
+// The spec the model composes is the frozen contract (`watchSpecSchema`). Its
+// cadence floors and 24h ceiling are enforced by the schema, so an over-eager watch
+// fails validation instead of becoming a hot loop. `since` for error recurrence is
+// server-set on persist and deliberately absent here, so the model can't backdate a
+// recurrence window.
 
 export const scheduleWatchSchema = tool({
   description:
@@ -378,13 +348,9 @@ export const scheduleWatchSchema = tool({
   }),
 });
 
-// ---------------------------------------------------------------------------
-// Watch alerts — an email on top of the always-on dashboard notification.
-//
-// Project-level subscriptions to the watch alert type, so a wake reaches the
-// user when they aren't looking at the dashboard. Creating one is a write the
-// user has to ask for, and it can be denied by plan or feature flag (403).
-// ---------------------------------------------------------------------------
+// Watch alerts: project-level email subscriptions on top of the always-on
+// dashboard notification. Creating one is a write the user has to ask for, and it
+// can be denied by plan or feature flag with a 403.
 
 export const listAlertsSchema = tool({
   description:
@@ -413,11 +379,8 @@ export const deleteAlertSchema = tool({
   }),
 });
 
-// Code-mode tools (only present when the project has a connected GitHub repo).
-// They read the repo's source at a pinned commit from the agent's filesystem.
-
-// Optional run-SHA pinning: pass a run id to read the exact source that run's
-// deployed version came from, instead of the latest tracked-branch commit.
+// Code-mode tools, present only when the project has a connected GitHub repo. They
+// read the repo's source at a pinned commit from the agent's filesystem.
 const runIdField = z
   .string()
   .optional()
@@ -475,9 +438,9 @@ export const searchCodeSchema = tool({
 });
 
 /**
- * The schema-only tool set, in the same key order the agent attaches executes
- * to in `tools.ts`. Passed to `chat.headStart`'s `streamText` so step 1 can
- * emit tool calls (the agent run executes them on step 2+).
+ * The schema-only tool set, in the same key order `tools.ts` attaches executes in.
+ * Passed to `chat.headStart`'s `streamText` so step 1 can emit tool calls; the
+ * agent run executes them on step 2+.
  */
 export const dashboardAgentToolSchemas = {
   list_projects: listProjectsSchema,
@@ -520,14 +483,12 @@ export const dashboardAgentCodeToolSchemas = {
 };
 
 /**
- * Default model + system prompt, single-sourced here (a light module) so both
- * the managed prompt in `prompts.ts` and the head-start route use the same
- * values without the route importing the SDK runtime. A dashboard override only
- * affects the agent run; the warm step-1 uses these defaults.
+ * Default model and system prompt, single-sourced in this light module so the
+ * managed prompt in `prompts.ts` and the head-start route share them without the
+ * route importing the SDK runtime. A dashboard override only affects the agent run;
+ * the warm step 1 uses these defaults, so both sides run the same model and don't
+ * shift tone mid-turn.
  */
-// Anthropic model id used by both the warm step-1 route (via `anthropic(id)`)
-// and the managed prompt default (as `anthropic:${id}`). Same model both sides
-// so step 1 and step 2+ don't shift tone.
 export const DASHBOARD_AGENT_MODEL = "claude-sonnet-4-6";
 
 export const DASHBOARD_AGENT_SYSTEM_PROMPT = `You are the Trigger.dev dashboard agent, an assistant embedded in the Trigger.dev web dashboard.

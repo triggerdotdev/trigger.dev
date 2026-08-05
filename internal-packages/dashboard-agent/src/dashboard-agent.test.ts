@@ -27,10 +27,6 @@ import {
 } from "./dashboard-agent";
 import { buildDashboardAgentTools } from "./tools";
 
-// ---------------------------------------------------------------------------
-// Mock model helpers
-// ---------------------------------------------------------------------------
-
 const USAGE: LanguageModelV3Usage = {
   inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
   outputTokens: { total: 5, text: 5, reasoning: undefined },
@@ -61,17 +57,15 @@ function toolCallStep(
 }
 
 /**
- * A MockLanguageModelV3 that plays one stream per `streamText` step (call), plus
- * a `doGenerate` for the background title generation (`generateText`). Each
- * `doStream` call returns a fresh stream for the next entry in `steps` (the last
- * entry repeats if the model is called more times than there are steps).
+ * Plays one stream per `streamText` step, plus a `doGenerate` for the background
+ * title generation. The last entry in `steps` repeats if the model is called more
+ * times than there are steps.
  */
 function mockModel(
   steps: LanguageModelV3StreamPart[][],
   titleText = "Test Chat Title",
-  // Real delay on the title generation. Default 0 keeps it a microtask; a test
-  // that cares whether the title is AWAITED has to make it actually take time,
-  // or it lands within the turn's own await chain either way.
+  // A test that cares whether the title is awaited has to make it take real time, or
+  // it lands within the turn's own await chain either way.
   titleDelayMs = 0
 ) {
   let call = 0;
@@ -93,10 +87,7 @@ function mockModel(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Fake store — records the persistence the agent performs
-// ---------------------------------------------------------------------------
-
+// Records the persistence the agent performs.
 type StoreCalls = {
   ensureChat: unknown[];
   persistMessages: unknown[];
@@ -137,7 +128,7 @@ function fakeStore(
   return { store, calls };
 }
 
-// Records the eval enqueues the agent performs, in place of tasks.trigger.
+// Records the eval enqueues, in place of tasks.trigger.
 function fakeEvalTrigger(): { trigger: DashboardAgentEvalTrigger; calls: unknown[] } {
   const calls: unknown[] = [];
   return {
@@ -159,17 +150,12 @@ function collectText(chunks: UIMessageChunk[]): string {
     .join("");
 }
 
-// A tool executed when the agent emits a `tool-output-available` chunk (carries
-// the result, keyed by toolCallId). On a head-start handover the tool-call is
-// supplied by the handover partial rather than streamed by the model, so the
-// output chunk is the only reliable signal that the call actually ran.
+// On a head-start handover the tool-call is supplied by the handover partial rather
+// than streamed by the model, so the output chunk is the only reliable signal that
+// the call actually ran.
 function executedTool(chunks: UIMessageChunk[]): boolean {
   return chunks.some((c) => (c as { type?: string }).type === "tool-output-available");
 }
-
-// ---------------------------------------------------------------------------
-// Harness tests
-// ---------------------------------------------------------------------------
 
 describe("dashboardAgent (mock harness)", () => {
   let harness: MockChatAgentHarness | undefined;
@@ -194,17 +180,15 @@ describe("dashboardAgent (mock harness)", () => {
 
     expect(collectText(turn.chunks)).toBe("hello from the agent");
 
-    // Persistence ran through the injected store, not a real database.
     expect(calls.ensureChat).toHaveLength(1);
     expect(calls.persistMessages).toHaveLength(1);
-    // onTurnComplete persists after the turn-complete chunk; give it a tick.
+    // onTurnComplete persists after the turn-complete chunk, so give it a tick.
     await new Promise((r) => setTimeout(r, 30));
     expect(calls.persistTurn).toHaveLength(1);
   });
 
-  // The dashboard panel reloads its chat list exactly once, when the turn settles,
-  // and that is the only thing that puts the generated name on screen. So the write
-  // has to be done BEFORE the turn-complete chunk — no tick, no delayed retry.
+  // The panel reloads its chat list once, when the turn settles, so the title write
+  // must land before the turn-complete chunk.
   it("has written the generated chat title by the time the turn settles", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
@@ -212,7 +196,7 @@ describe("dashboardAgent (mock harness)", () => {
       clientData: CLIENT_DATA,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        // 50ms, so the title genuinely outlives the response: without the await in
+        // 50ms so the title outlives the response: without the await in
         // `onBeforeTurnComplete` the turn would settle before the write.
         set(dashboardAgentModelKey, mockModel([textStep("answered")], "Why orders fail", 50));
       },
@@ -220,7 +204,7 @@ describe("dashboardAgent (mock harness)", () => {
 
     await harness.sendMessage(userMessage("why do my orders fail?"));
 
-    // Deliberately no `await setTimeout` here — that is the whole assertion.
+    // Deliberately no `await setTimeout` here: that is the whole assertion.
     expect(calls.setChatTitleIfDefault).toEqual([
       { chatId: "chat_title", title: "Why orders fail" },
     ]);
@@ -250,7 +234,6 @@ describe("dashboardAgent (mock harness)", () => {
       clientData: CLIENT_DATA,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        // Step 1: the model calls list_errors. Step 2: it answers.
         set(
           dashboardAgentModelKey,
           mockModel([toolCallStep("list_errors"), textStep("you have no errors")])
@@ -260,8 +243,8 @@ describe("dashboardAgent (mock harness)", () => {
 
     const turn = await harness.sendMessage(userMessage("any errors?"));
 
-    // The tool executed inside the agent (no delegated token in clientData, so it
-    // returns its graceful no-auth result — no network), and the model answered.
+    // No delegated token in clientData, so the tool returns its no-auth result and
+    // never touches the network.
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toBe("you have no errors");
   });
@@ -280,8 +263,6 @@ describe("dashboardAgent (mock harness)", () => {
 
     await harness.sendMessage(userMessage("hi"));
 
-    // The prepareMessages hook should have placed a cacheControl breakpoint on
-    // the last message of the prompt the model received.
     const prompt = model.doStreamCalls[0]?.prompt ?? [];
     const last = prompt[prompt.length - 1] as { providerOptions?: Record<string, unknown> };
     expect(last?.providerOptions?.anthropic).toMatchObject({
@@ -291,8 +272,8 @@ describe("dashboardAgent (mock harness)", () => {
 
   it("Head Start handover: executes the handed-over tool call despite the cache hook (regression)", async () => {
     const { store } = fakeStore();
-    // Only step 2 runs in the agent — the warm route already did step 1 and hands
-    // over the pending tool call.
+    // Only step 2 runs in the agent: the warm route did step 1 and hands over the
+    // pending tool call.
     const model = mockModel([textStep("resolved from the tool")]);
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_headstart",
@@ -305,9 +286,9 @@ describe("dashboardAgent (mock harness)", () => {
       },
     });
 
-    // The reshaped partial the SDK's chat.headStart sends on a tool-calls finish:
-    // a tool-approval round whose trailing tool message must survive prepareMessages
-    // for collectToolApprovals to execute the pending call.
+    // The partial chat.headStart sends on a tool-calls finish: a tool-approval round
+    // whose trailing tool message must survive prepareMessages for
+    // collectToolApprovals to execute the pending call.
     const toolCallId = "tc_hs";
     const approvalId = "ap_hs";
     const turn = await harness.sendHandover({
@@ -327,18 +308,13 @@ describe("dashboardAgent (mock harness)", () => {
       isFinal: false,
     });
 
-    // With the SDK guard (preserveToolApprovalTail) the handed-over tool executes
-    // and the model answers from its result. Without it, the bare tool_use would
-    // never execute (no tool output) — this is the regression guard.
+    // Without the SDK's preserveToolApprovalTail guard the bare tool_use would never
+    // execute, so there would be no tool output.
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toBe("resolved from the tool");
   });
 
-  // -------------------------------------------------------------------------
-  // The settle guard: a card left in_progress when the turn ends is a defect
-  // -------------------------------------------------------------------------
-
-  // The turn needs a project + environment for an investigation to be scoped.
+  // An investigation needs a project and environment to be scoped.
   const INVESTIGATION_CLIENT_DATA = {
     ...CLIENT_DATA,
     projectRef: "proj_abc",
@@ -367,7 +343,7 @@ describe("dashboardAgent (mock harness)", () => {
   const renderViewStep = (investigation: Record<string, unknown>, toolCallId: string) =>
     toolCallStep("render_view", { blocks: [{ type: "investigation", investigation }] }, toolCallId);
 
-  // The store's view of the investigation after the turn: what a refresh reads.
+  // The store's view after the turn: what a refresh reads.
   const finalInvestigationState = (calls: StoreCalls) =>
     (calls.upsertInvestigationRevision[calls.upsertInvestigationRevision.length - 1] as {
       state: Record<string, any>;
@@ -380,8 +356,7 @@ describe("dashboardAgent (mock harness)", () => {
       clientData: INVESTIGATION_CLIENT_DATA,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        // The model opens the card and then just talks — no verdict render, the
-        // failure this guard exists for.
+        // The model opens the card and then only talks, with no verdict render.
         set(
           dashboardAgentModelKey,
           mockModel([renderViewStep(openInvestigation, "tc_open"), textStep("still looking")])
@@ -392,7 +367,6 @@ describe("dashboardAgent (mock harness)", () => {
     await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
     await new Promise((r) => setTimeout(r, 30));
 
-    // The turn wrote the open card; the guard wrote the settle on top of it.
     expect(calls.upsertInvestigationRevision).toHaveLength(2);
     const settle = calls.upsertInvestigationRevision[1] as Record<string, any>;
     expect(settle.id).toBe("inv_fake");
@@ -402,8 +376,7 @@ describe("dashboardAgent (mock harness)", () => {
 
     const state = finalInvestigationState(calls);
     expect(state.outcome).toBe("inconclusive");
-    // No spinner, no invented cause, no fix — and the facts the turn did
-    // establish are kept.
+    // No spinner, no invented cause, no fix, and the facts the turn established stay.
     expect(state.progress).toBeUndefined();
     expect(state.remediation).toBeUndefined();
     expect(state.confidence).toBe("low");
@@ -455,10 +428,6 @@ describe("dashboardAgent (mock harness)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Watch wakes — an action, not a turn
-// ---------------------------------------------------------------------------
-
 describe("watch wake narration", () => {
   let harness: MockChatAgentHarness | undefined;
 
@@ -496,18 +465,16 @@ describe("watch wake narration", () => {
     const first = await harness.sendAction(WAKE);
     expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
 
-    // The streamed message carries the SAME id the read-model copy is persisted
-    // under — the panel merges live stream and loaded history by message id, so
-    // two ids for one narration would render it twice.
+    // The streamed message must carry the same id the read-model copy is persisted
+    // under, or the panel renders the narration twice.
     const startChunk = first.chunks.find(
       (chunk) => (chunk as { type?: string }).type === "start"
     ) as { messageId?: string } | undefined;
     expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
 
-    // An action is not a turn: no turn persistence ran, but the narration is in
-    // the display read-model under an id derived from the action — as an
-    // id-deduped APPEND, never a wholesale write (a card-born chat's transcript
-    // holds host blocks the session view can't see).
+    // An action is not a turn, so no turn persistence ran. The narration lands in the
+    // read-model as an id-deduped append, never a wholesale write: a card-born chat's
+    // transcript holds host blocks the session view can't see.
     expect(calls.persistTurn).toHaveLength(0);
     expect(calls.persistMessages).toHaveLength(0);
     expect(calls.appendMessage).toHaveLength(1);
@@ -521,11 +488,7 @@ describe("watch wake narration", () => {
     expect(calls.appendMessage).toHaveLength(1);
   });
 
-  /**
-   * A model that records the prompt it was asked with, so the wake's framing can
-   * be asserted directly. The narration IS the prompt's job — what it must never
-   * say is as load-bearing as what it must.
-   */
+  // Records the prompt it was asked with, so the wake's framing can be asserted.
   function recordingModel(text: string) {
     const prompts: unknown[] = [];
     const model = new MockLanguageModelV3({
@@ -547,8 +510,7 @@ describe("watch wake narration", () => {
     return JSON.stringify(prompts);
   }
 
-  // §4.2 / §7.7: the narration speaks the resolution model, and a completed
-  // window is an ANSWER — never "the watch expired with nothing to say".
+  // A completed window is an answer, never "the watch expired with nothing to say".
   it("frames a completed window as the answer the user asked for", async () => {
     const { store } = fakeStore();
     const { model, prompts } = recordingModel("The backlog still hasn't drained — 42 pending.");
@@ -574,7 +536,7 @@ describe("watch wake narration", () => {
     expect(prompt).toContain("window_completed");
     expect(prompt).toContain("this is the answer the user asked for");
     expect(prompt).toContain("reports once");
-    // The wire encoding is transport, not vocabulary (§7.5).
+    // The wire encoding is transport, not vocabulary.
     expect(prompt).not.toContain("the watch ended without firing");
   });
 
@@ -609,8 +571,7 @@ describe("watch wake narration", () => {
     expect(prompt).toContain("COMPLETED_WITH_ERRORS");
   });
 
-  // A wake from a watcher that predates the resolution model still narrates: the
-  // resolution is reconstructed from the transport rather than lost.
+  // A wake from a watcher predating the resolution model still narrates.
   it("falls back to the transport encoding when a wake carries no resolution", async () => {
     const { store } = fakeStore();
     const { model, prompts } = recordingModel("That can't happen any more.");
@@ -633,14 +594,8 @@ describe("watch wake narration", () => {
     expect(wakeText(prompts)).toContain("condition_impossible");
   });
 
-  // -------------------------------------------------------------------------
-  // Watch → Investigate: the one relaxation of "never a new investigation
-  // unprompted" (§6). Consent is given at creation and applies to the ATTENTION
-  // outcomes only — the contracts mapping decides which those are.
-  // -------------------------------------------------------------------------
-
-  // A wake needs the project's external ref to scope the investigation exactly
-  // as a turn would; the watcher puts it in the wake's metadata.
+  // A wake needs the project's external ref to scope the investigation the way a turn
+  // would; the watcher puts it in the wake's metadata.
   const WAKE_CLIENT_DATA = {
     ...CLIENT_DATA,
     projectRef: "proj_abc",
@@ -677,12 +632,12 @@ describe("watch wake narration", () => {
 
     await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
 
-    // The wake still lands first and says the investigation has started.
+    // The wake lands first and says the investigation has started.
     expect(calls.appendMessage).toHaveLength(1);
     expect(wakeText(prompts)).toContain("ALREADY been started");
 
-    // And the investigation exists: opened, not concluded — the wake has no
-    // token to read with, so the findings come later in their own message.
+    // Opened, not concluded: the wake has no token to read with, so the findings come
+    // later in their own message.
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
     const opened = calls.upsertInvestigationRevision[0] as {
       chatId: string;
@@ -697,9 +652,8 @@ describe("watch wake narration", () => {
     expect(opened.state.runId).toBe("run_abc123");
   });
 
-  // Consent is for bad news. A drained queue is the good kind, so the same flag
-  // starts nothing — the category comes from the contracts mapping, never from
-  // the flag or the resolution alone.
+  // Consent is for bad news, and the category comes from the contracts mapping rather
+  // than the flag or the resolution alone.
   it("starts nothing on a positive outcome, consent or not", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
@@ -738,14 +692,12 @@ describe("watch wake narration", () => {
 
     expect(calls.appendMessage).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
-    // …and the wake is never framed as having started one.
     expect(wakeText(prompts)).not.toContain("ALREADY been started");
   });
 
-  // Binding independence (§6): scheduling the investigation never delays,
-  // retries or invalidates the wake. The watcher has already marked the delivery
-  // by the time the agent runs, so the only thing this can break is the turn —
-  // and it must not.
+  // Opening the investigation must never delay, retry or invalidate the wake. The
+  // watcher has already marked the delivery by the time the agent runs, so the only
+  // thing this can break is the turn.
   it("delivers the wake even when opening the investigation fails", async () => {
     const { store, calls } = fakeStore();
     const failing: DashboardAgentStore = {
@@ -796,10 +748,6 @@ describe("watch wake narration", () => {
     ]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Conducting the consented investigation
-// ---------------------------------------------------------------------------
 
 describe("watch investigation", () => {
   let harness: MockChatAgentHarness | undefined;
@@ -869,7 +817,7 @@ describe("watch investigation", () => {
     ],
   };
 
-  // A model that records the prompts it was called with, and plays one step per call.
+  // Records the prompts it was called with, and plays one step per call.
   function recordingModel(steps: LanguageModelV3StreamPart[][]) {
     const prompts: unknown[] = [];
     let call = 0;
@@ -920,12 +868,12 @@ describe("watch investigation", () => {
 
     const turn = await harness.sendAction(INVESTIGATE);
 
-    // A real investigating turn: the model called a tool and it EXECUTED.
+    // A real investigating turn: the model called a tool and it executed.
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toContain("order.total");
 
-    // The card the wake opened is the card this revises — no second investigation
-    // for the same news, and no id the model got to choose.
+    // The card the wake opened is the one this revises: no second investigation for
+    // the same news, and no id the model got to choose.
     expect(calls.findOpenInvestigation).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
     const revision = calls.upsertInvestigationRevision[0] as {
@@ -943,15 +891,15 @@ describe("watch investigation", () => {
     expect(prompt).toContain("pre-approved");
     expect(prompt).toContain("its own message");
 
-    // Findings appended ONCE, under an id derived from the action, and WHOLE —
-    // the render_view part is what the panel rebuilds the card from.
+    // Findings appended once and whole: the render_view part is what the panel rebuilds
+    // the card from.
     expect(calls.appendMessage).toHaveLength(1);
     const appended = calls.appendMessage[0] as { userId: string; message: UIMessage };
     expect(appended.userId).toBe(CLIENT_DATA.userId);
     expect(appended.message.id).toBe("investigate:watch:watch_1:fired:investigate");
     expect(appended.message.parts.some((part) => part.type === "tool-render_view")).toBe(true);
 
-    // The same kick again (the sender retried): nothing runs, nothing is written.
+    // The same kick again: nothing runs, nothing is written.
     await harness.sendAction(INVESTIGATE);
     expect(calls.appendMessage).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
@@ -971,8 +919,7 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    // No open card to find, so the turn seeded one (no id = create) and told the
-    // model to revise that.
+    // No open card to find, so the turn seeded one and told the model to revise that.
     expect(calls.findOpenInvestigation).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
     expect((calls.upsertInvestigationRevision[0] as { id?: string }).id).toBeUndefined();
@@ -999,8 +946,7 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    // No onTurnComplete fires on an action, so the guard runs in the handler:
-    // the render, then the settle on top of it.
+    // No onTurnComplete fires on an action, so the guard runs in the handler.
     expect(calls.upsertInvestigationRevision).toHaveLength(2);
     const settle = calls.upsertInvestigationRevision[1] as {
       id?: string;
@@ -1029,10 +975,6 @@ describe("watch investigation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Replayed tool-input sanitizing
-// ---------------------------------------------------------------------------
-
 describe("sanitizeReplayedToolInputs", () => {
   it("coerces empty-string and null tool inputs to {} and leaves everything else alone", () => {
     const messages = [
@@ -1041,8 +983,8 @@ describe("sanitizeReplayedToolInputs", () => {
         role: "assistant",
         content: [
           { type: "tool-call", toolCallId: "tc1", toolName: "get_report", input: "" },
-          // `typeof null === "object"` — the case the original check let through,
-          // which the Anthropic API rejects with "Input should be an object".
+          // `typeof null === "object"`, which the API rejects with "Input should be an
+          // object".
           { type: "tool-call", toolCallId: "tc2", toolName: "list_errors", input: null },
           { type: "tool-call", toolCallId: "tc3", toolName: "get_run", input: { runId: "r1" } },
           { type: "text", text: "looking..." },
@@ -1060,10 +1002,6 @@ describe("sanitizeReplayedToolInputs", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Eval sampling
-// ---------------------------------------------------------------------------
-
 describe("per-turn eval sampling", () => {
   let harness: MockChatAgentHarness | undefined;
   const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
@@ -1078,7 +1016,6 @@ describe("per-turn eval sampling", () => {
     }
   });
 
-  // Runs a turn at the given sample rate and returns the recorded eval enqueues.
   async function turnAtRate(rate: string, chatId: string): Promise<unknown[]> {
     process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = rate;
     const { store } = fakeStore();
@@ -1094,7 +1031,7 @@ describe("per-turn eval sampling", () => {
     });
 
     await harness.sendMessage(userMessage("hi"));
-    // onTurnComplete enqueues after the turn-complete chunk; give it a tick.
+    // onTurnComplete enqueues after the turn-complete chunk, so give it a tick.
     await new Promise((r) => setTimeout(r, 30));
     return calls;
   }
@@ -1108,7 +1045,7 @@ describe("per-turn eval sampling", () => {
       options: { idempotencyKey: string };
     }>;
     expect(calls).toHaveLength(1);
-    // The idempotency key still keys off chat + turn, so a retried turn is scored once.
+    // The key is chat + turn, so a retried turn is scored once.
     expect(calls[0]?.options.idempotencyKey).toBe("eval:chat_rate_one:0");
   });
 
@@ -1117,10 +1054,7 @@ describe("per-turn eval sampling", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// clientData back-compat — resumed chats replay their original metadata shape
-// ---------------------------------------------------------------------------
-
+// Back-compat: resumed chats replay their original metadata shape.
 describe("clientDataSchema", () => {
   it("accepts the old shape a chat created before pageContext replays", () => {
     const parsed = clientDataSchema.safeParse({
@@ -1173,10 +1107,6 @@ describe("clientDataSchema", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tool unit tests (no harness) — the data lane fails closed without a token
-// ---------------------------------------------------------------------------
-
 describe("buildDashboardAgentTools", () => {
   it("exposes the read tools plus render_view, and the data tools fail closed with no token", async () => {
     const tools = buildDashboardAgentTools({});
@@ -1209,10 +1139,9 @@ describe("buildDashboardAgentTools", () => {
       ].sort()
     );
 
-    // No userActorToken / apiOrigin => every data tool returns a graceful
-    // error, never throws and never hits the network. The exempt ones don't
-    // read the user's data at all: render_view and navigate_to echo/validate a
-    // spec, get_current_page reads the turn's own context, and ask_support and
+    // With no token every data tool returns an error, never throws and never hits the
+    // network. The exempt ones read no user data: render_view and navigate_to validate
+    // a spec, get_current_page reads the turn's own context, and ask_support and
     // search_docs are public knowledge lanes gated on their own config.
     const EXEMPT = ["render_view", "ask_support", "search_docs", "get_current_page"];
     for (const name of Object.keys(tools)) {
@@ -1249,8 +1178,6 @@ describe("buildDashboardAgentTools", () => {
     expect(output).toEqual(spec);
   });
 
-  // navigate_to / get_current_page: no fetch, no auth — they turn the turn's own
-  // context into a trigger:// intent the host can act on.
   const SCOPE = { projectRef: "proj_abc", environmentId: "env_abc" };
   const callTool = (name: string, input: unknown, ctx: Record<string, unknown> = SCOPE) => {
     const tools = buildDashboardAgentTools(ctx);
@@ -1306,13 +1233,8 @@ describe("buildDashboardAgentTools", () => {
     expect(typeof result.error).toBe("string");
   });
 
-  // -------------------------------------------------------------------------
-  // render_view: the investigation executor owns identity
-  // -------------------------------------------------------------------------
-
-  // A fake of the `investigations` capability that behaves like the real query:
-  // no id creates at revision 0, an id bumps the revision atomically, and a
-  // foreign id reports a context mismatch without writing.
+  // Behaves like the real query: no id creates at revision 0, an id bumps the
+  // revision, and a foreign id reports a context mismatch without writing.
   function fakeInvestigations(overrides: { mismatch?: boolean } = {}) {
     const rows = new Map<string, { revision: number; state: unknown }>();
     const upserts: Array<Record<string, unknown>> = [];
@@ -1369,8 +1291,8 @@ describe("buildDashboardAgentTools", () => {
     ],
   };
 
-  // Parse through the tool's own inputSchema first, the way the AI SDK does, so
-  // these tests exercise the model-facing boundary and not a hand-built object.
+  // Parsed through the tool's own inputSchema, the way the AI SDK does, so these tests
+  // exercise the model-facing boundary and not a hand-built object.
   const renderInvestigation = async (
     tools: ReturnType<typeof buildDashboardAgentTools>,
     state: Record<string, unknown> = investigationState,
@@ -1407,8 +1329,8 @@ describe("buildDashboardAgentTools", () => {
 
     const output = await renderInvestigation(tools);
 
-    // Revision 0 was committed with the turn's own project/environment, and the
-    // block that reaches the transcript carries the identity the store assigned.
+    // Revision 0 committed with the turn's own project/environment, and the block that
+    // reaches the transcript carries the identity the store assigned.
     expect(upserts).toHaveLength(1);
     expect(upserts[0]).toMatchObject({
       id: undefined,
@@ -1438,10 +1360,10 @@ describe("buildDashboardAgentTools", () => {
         },
       ],
       evidence: [
-        // Already canonical — passes through untouched.
+        // Already canonical, so it passes through untouched.
         ...investigationState.evidence,
-        // A span carries its two parts, so the executor can build the URI. Nothing
-        // was read this turn: the read gate is the source kind's alone.
+        // A span carries its two parts, so the executor can build the URI. Nothing was
+        // read this turn: the read gate belongs to the source kind alone.
         { kind: "span", runId: "run_abc123", spanId: "span_123", label: "the failing span" },
       ],
     });
@@ -1457,7 +1379,6 @@ describe("buildDashboardAgentTools", () => {
       "trigger://proj_abc/env_abc/run/run_abc123",
       "trigger://proj_abc/env_abc/run/run_abc123/span/span_123",
     ]);
-    // The store received the canonical form, not the bare ids.
     expect(JSON.stringify(upserts[0])).not.toContain('"uri":"error_c4b4a797397a9c43"');
   });
 
@@ -1499,7 +1420,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view fails by name when a cited file was never read, rather than borrowing the snapshot's commit", async () => {
     const { capability, upserts } = fakeInvestigations();
-    // A snapshot IS in scope — it just isn't proof that anything was opened.
+    // A snapshot is in scope; it just isn't proof that anything was opened.
     const tools = buildDashboardAgentTools({
       ...SCOPE,
       investigations: capability,
@@ -1548,10 +1469,6 @@ describe("buildDashboardAgentTools", () => {
     expect(upserts).toHaveLength(0);
   });
 
-  // -------------------------------------------------------------------------
-  // The card's typed actions, decided by the executor
-  // -------------------------------------------------------------------------
-
   const codeSnapshot: RepoSnapshot = {
     tarballUrl: "http://unused.invalid/never-fetched",
     owner: "acme",
@@ -1559,8 +1476,8 @@ describe("buildDashboardAgentTools", () => {
     sha: "c".repeat(40),
   };
 
-  // Pre-seed the deterministic workspace with a `.ready` marker so read_file
-  // serves it offline — the same trick repo-tools.test.ts uses.
+  // Pre-seed the deterministic workspace with a `.ready` marker so read_file serves it
+  // offline, the same way repo-tools.test.ts does.
   const seedWorkspace = async () => {
     const dir = workdirFor(codeSnapshot);
     await mkdir(join(dir, "src/tasks"), { recursive: true });
@@ -1600,14 +1517,14 @@ describe("buildDashboardAgentTools", () => {
       repoSnapshot: codeSnapshot,
     });
 
-    // Cited but never read: the render fails on the citation, so there is no
-    // card to hang a button on.
+    // Cited but never read: the render fails on the citation, so there is no card to
+    // hang a button on.
     const unread = await renderInvestigation(tools, concludedWithSource);
     expect(unread.blocks).toBeUndefined();
     expect(unread.error).toContain("src/tasks/send-order-receipt.ts");
 
-    // Now read it, and the same state earns the button — grounded in the
-    // canonical source URI, as a canned ask the model didn't write.
+    // Read it, and the same state earns the button, grounded in the canonical source
+    // URI as a canned ask the model didn't write.
     expect(
       (await readFileTool(tools).execute({ path: "src/tasks/send-order-receipt.ts" }, {})).content
     ).toContain("maxAttempts");
@@ -1620,8 +1537,7 @@ describe("buildDashboardAgentTools", () => {
       "view_similar",
     ]);
     expect(actions[0].intent.kind).toBe("ask");
-    // The ask is a propose-a-change request, not another explanation: a fenced
-    // diff, the minimal change, anchored path:line@sha, with the dirty caveat.
+    // The ask proposes a change rather than another explanation.
     const prompt: string = actions[0].intent.prompt;
     expect(prompt).toContain("```diff");
     expect(prompt).toContain(`src/tasks/send-order-receipt.ts:1@${codeSnapshot.sha.slice(0, 7)}`);
@@ -1629,8 +1545,8 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
 
-    // "Watch for a repeat" is a HANDOFF, not a question: it carries the kind and
-    // the subject, so the Watch card can be pre-filled without another LLM turn.
+    // "Watch for a repeat" carries the kind and the subject, so the Watch card is
+    // pre-filled without another model turn.
     expect(actions[1].intent).toEqual({
       kind: "watch",
       spec: {
@@ -1642,16 +1558,14 @@ describe("buildDashboardAgentTools", () => {
       },
     });
 
-    // The follow-up that navigates points at the canonical error URI.
     expect(actions[2].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     });
   });
 
-  // The handoff needs a subject a recurrence watch can be built on. A concluded
-  // card that cites no error group has none, so the action is left off rather
-  // than offering a button that can't pre-fill anything.
+  // A concluded card citing no error group has no subject to pre-fill from, so the
+  // button is left off rather than offered empty.
   it("offers no repeat watch when the card cites no error group", async () => {
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
@@ -1670,8 +1584,8 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].capabilities).toBeUndefined();
   });
 
-  // An inconclusive card has no cause to watch for a repeat OF, so the handoff
-  // stays off it — "keep digging" is the follow-up that fits.
+  // An inconclusive card has no cause to watch for a repeat of, so the handoff stays
+  // off it.
   it("offers a keep-digging follow-up, and never Show code or a repeat watch, on an inconclusive card", async () => {
     await seedWorkspace();
     const { capability } = fakeInvestigations();
@@ -1724,15 +1638,15 @@ describe("buildDashboardAgentTools", () => {
     const first = await renderInvestigation(tools);
     const second = await renderInvestigation(tools, concludedState);
 
-    // One investigation, two revisions — so the panel shows one live card.
+    // One investigation, two revisions, so the panel shows one live card.
     expect(rows.size).toBe(1);
     expect(second.investigationId).toBe(first.investigationId);
     expect(second.blocks[0].revision).toBe(1);
     expect(second.blocks[0].investigation.remediation).toBeDefined();
   });
 
-  // A later turn gets a fresh tool set, so the closure is empty: the model
-  // continues an investigation by passing back the id the tool returned to it.
+  // A later turn gets a fresh tool set, so the closure is empty and the model must
+  // pass back the id the tool returned.
   it("render_view continues a previous turn's investigation from the returned id", async () => {
     const { capability, rows } = fakeInvestigations();
 
@@ -1740,7 +1654,7 @@ describe("buildDashboardAgentTools", () => {
       buildDashboardAgentTools({ ...SCOPE, investigations: capability })
     );
 
-    // Next turn — new tool set, same chat.
+    // Next turn: new tool set, same chat.
     const second = await renderInvestigation(
       buildDashboardAgentTools({ ...SCOPE, investigations: capability }),
       concludedState,
@@ -1779,7 +1693,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view errors on an investigationId from another chat and writes nothing", async () => {
     // The store owns the chat/project/env check, so a foreign id comes back as a
-    // context mismatch no matter what the model claims.
+    // mismatch whatever the model claims.
     const { capability, rows } = fakeInvestigations({ mismatch: true });
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
 
@@ -1801,7 +1715,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view fails closed when the turn can't scope an investigation", async () => {
     const { capability } = fakeInvestigations();
-    // No store seam at all (an older turn), and no project/environment.
+    // No store seam at all, and no project/environment.
     expect(typeof (await renderInvestigation(buildDashboardAgentTools({}))).error).toBe("string");
     expect(
       typeof (await renderInvestigation(buildDashboardAgentTools({ investigations: capability })))
@@ -1821,8 +1735,8 @@ describe("buildDashboardAgentTools", () => {
       blocks: [
         {
           type: "investigation",
-          // Everything the model could try: envelope fields on the block and
-          // identity inside the payload. All stripped by the input schema.
+          // Envelope fields on the block and identity inside the payload, all stripped
+          // by the input schema.
           id: "inv_smuggled",
           revision: 42,
           version: 9,
@@ -1839,7 +1753,6 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].id).toBe("inv_fake1");
     expect(output.blocks[0].revision).toBe(0);
     expect(output.blocks[0].version).toBe(1);
-    // The state the store persisted carries no identity either.
     expect(upserts[0]?.state).not.toHaveProperty("investigationId");
     expect(upserts[0]?.state).not.toHaveProperty("revision");
   });
@@ -1860,10 +1773,6 @@ describe("buildDashboardAgentTools", () => {
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
   });
 
-  // -------------------------------------------------------------------------
-  // schedule_watch: proposes a watch, never creates one
-  // -------------------------------------------------------------------------
-
   const WATCH_CTX = {
     userActorToken: "uat_token",
     apiOrigin: "http://localhost:3030",
@@ -1878,8 +1787,8 @@ describe("buildDashboardAgentTools", () => {
     note: "tell me when the receipt run finishes",
   };
 
-  // Runs schedule_watch and records any request it would have made — it must make
-  // none: the card the intent opens is the only thing that creates a watch.
+  // Records any request schedule_watch would have made. It must make none: the card
+  // the intent opens is the only thing that creates a watch.
   async function scheduleWatch(
     input: unknown = { watch: RUN_WATCH },
     ctx: Record<string, unknown> = WATCH_CTX
@@ -1903,8 +1812,6 @@ describe("buildDashboardAgentTools", () => {
     }
   }
 
-  // §2.1 Path B: free text goes through schedule_watch and pre-fills the same
-  // card for review, so the tool's whole job is the intent.
   it("schedule_watch returns a watch intent and creates nothing", async () => {
     const { result, requests } = await scheduleWatch();
 
@@ -1942,8 +1849,8 @@ describe("buildDashboardAgentTools", () => {
     expect(typeof nonsense.result.error).toBe("string");
   });
 
-  // The env-JWT exchange is a webapp request plus DB work, so it is paid for once
-  // per tool set (= once per turn) no matter how many env-scoped tools run.
+  // The env-JWT exchange is a webapp request plus DB work, so it is paid for once per
+  // tool set, and so once per turn, however many env-scoped tools run.
   const ENV_CTX = {
     userActorToken: "uat_token",
     apiOrigin: "http://localhost:3030",
@@ -1952,8 +1859,8 @@ describe("buildDashboardAgentTools", () => {
     environmentId: "env_abc",
   };
 
-  // Stubs global fetch with a router and records every request path, so a test can
-  // count exchanges (`/jwt`) separately from the data reads.
+  // Records every request path, so a test can count exchanges (`/jwt`) separately from
+  // the data reads.
   function stubFetch(
     respond: (url: string, init: RequestInit | undefined) => { status?: number; body: unknown }
   ) {
@@ -2013,7 +1920,7 @@ describe("buildDashboardAgentTools", () => {
         parallelCall("list_runs", {}),
         parallelCall("list_errors", {}),
       ]);
-      // A fresh tool set is a fresh turn, so exactly one more exchange.
+      // A fresh tool set is a fresh turn, so exactly one more.
       expect(fetchStub.exchanges()).toBe(before + 1);
     } finally {
       fetchStub.restore();
@@ -2071,10 +1978,6 @@ describe("buildDashboardAgentTools", () => {
       fetchStub.restore();
     }
   });
-
-  // -------------------------------------------------------------------------
-  // render_view: a chart block's query is validated inside the turn
-  // -------------------------------------------------------------------------
 
   const CHART_SPEC = {
     blocks: [
@@ -2195,7 +2098,7 @@ describe("buildDashboardAgentTools", () => {
       path: "/runs/run_1",
     });
 
-    // Only a raw path (an older turn) degrades to the `other` page kind.
+    // Only a raw path degrades to the `other` page kind.
     await expect(callTool("get_current_page", {}, { currentPage: "/some/page" })).resolves.toEqual({
       page: { kind: "other", path: "/some/page" },
       signals: [],
@@ -2207,9 +2110,8 @@ describe("buildDashboardAgentTools", () => {
     expect(typeof blind.note).toBe("string");
   });
 
-  // The tools are rebuilt from the turn's clientData, so a user who navigates
-  // mid-chat gets the new page — a stale answer can only come from the model
-  // reusing an earlier turn instead of calling again.
+  // The tools are rebuilt from the turn's clientData, so a stale answer can only come
+  // from the model reusing an earlier turn instead of calling again.
   it("get_current_page follows the user between turns", async () => {
     const first = await callTool(
       "get_current_page",
@@ -2230,10 +2132,6 @@ describe("buildDashboardAgentTools", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Watch alert tools — project-level subscriptions, as the user
-// ---------------------------------------------------------------------------
-
 describe("watch alert tools", () => {
   const ALERT_CTX = {
     userActorToken: "uat_token",
@@ -2243,8 +2141,7 @@ describe("watch alert tools", () => {
     chatId: "chat_alerts",
   };
 
-  // Runs one alert tool against a stubbed global fetch, handing back the tool's
-  // result and the request the webapp would have received.
+  // Hands back the tool's result and the request the webapp would have received.
   async function callAlertTool(
     name: string,
     input: unknown,
@@ -2304,8 +2201,8 @@ describe("watch alert tools", () => {
     });
     expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
 
-    // No email given: the host defaults to the user's account email, so the body
-    // carries only the chat scope and the channel.
+    // With no email the host defaults to the user's account email, so the body carries
+    // only the chat scope and the channel.
     const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
     expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
       chatId: "chat_alerts",
