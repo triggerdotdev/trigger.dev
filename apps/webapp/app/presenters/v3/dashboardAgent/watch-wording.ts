@@ -1,11 +1,13 @@
 /**
- * The words a resolved watch is said in. The contracts package owns the mapping
- * from resolution and observed outcome to category, tone, icon and headline key;
- * this module owns the final English and the value formatting.
+ * The words a watch is said in — every surface's single source.
  *
- * Pure, no React, so the banner, the toast and the email all render its output.
- * Components must contain no kind-specific wording of their own: a sentence about
- * a queue or a run belongs here.
+ * Contracts own the meaning (which resolution and observation mean which
+ * category, tone, icon and headline key); this module owns the final English and
+ * the value formatting. Pure functions of the contract types, no React and no
+ * request context, so the card, the banner, the toast, the email, the Slack
+ * message and the webhook all read the same sentence.
+ *
+ * Nothing outside this module may write a kind-specific watch sentence.
  *
  * Headlines state the fact first. The micro-label carries the "this is a wake"
  * signal.
@@ -299,6 +301,27 @@ export const WATCH_PRESENTATION_FALLBACK: WatchPresentation = {
   label: WATCH_UPDATE_LABEL,
 };
 
+/**
+ * What the watch was for, under a headline: the user's own words, else whatever
+ * names it. The chat banner and the toast both show this line.
+ */
+export function watchSubline(
+  watch: { note?: string | null; identity?: string | null; kind?: string | null } | undefined
+): string | null {
+  const note = watch?.note?.trim();
+  if (note) return note;
+  return watch?.identity || watch?.kind || null;
+}
+
+/**
+ * The note, as a surface with room for a label states it. The email and the Slack
+ * message both quote the note, so they quote it the same way.
+ */
+export function watchNoteLine(note: string): string | null {
+  const trimmed = note.trim();
+  return trimmed ? `You asked to be told when: ${trimmed}` : null;
+}
+
 /* ------------------------------------------------------------------ *
  * The one-shot result block
  * ------------------------------------------------------------------ */
@@ -342,11 +365,104 @@ export function watchLifetimeSentence(args: {
 export type { WatchSemanticIcon };
 
 /* ------------------------------------------------------------------ *
- * The configuration card
+ * The condition, in the four registers the product says it in
  * ------------------------------------------------------------------ */
 
 /** Fixed and always on: the card states it as a fact, not as a choice. */
 export const WATCH_IN_CHAT_DELIVERY_LINE = "When there's an answer: tell me in chat";
+
+/**
+ * One condition, said four ways. They live in one record per kind rather than in
+ * four switches so a reviewer sees them together and they cannot drift apart:
+ *
+ * - `label` — the card's condition line, read under the subject.
+ * - `clause` — follows "Watching {subject} …" in the confirmation.
+ * - `tooltip` — the Watch button's tooltip.
+ * - `note` — why the watch exists, in the user's voice. The wake quotes it.
+ */
+export type WatchConditionWording = {
+  label: string;
+  clause: string;
+  tooltip: string;
+  note: string;
+};
+
+export function watchConditionWording(spec: WatchSpec): WatchConditionWording {
+  switch (spec.kind) {
+    case "run_start":
+      return {
+        label: "Until it starts",
+        clause: "until it starts",
+        tooltip: "Get notified when this run starts",
+        note: `tell me when run ${spec.runId} starts`,
+      };
+    case "run_finished":
+      return {
+        label: "Until it finishes",
+        clause: "until it finishes",
+        tooltip: "Get notified when this run finishes",
+        note: `tell me when run ${spec.runId} finishes`,
+      };
+    case "run_failed":
+      return {
+        label: "If it fails",
+        clause: "in case it fails",
+        tooltip: "Get notified if this run fails",
+        note: `tell me if run ${spec.runId} fails`,
+      };
+    case "backlog_drain":
+      return {
+        label: "Until the queue drains",
+        clause: "until the queue drains",
+        tooltip: "Get notified when this queue drains",
+        note: `tell me when the ${spec.queue} queue drains`,
+      };
+    case "queue_depth_above":
+      return {
+        label: `If the queue goes above ${spec.threshold}`,
+        clause: `in case the queue goes above ${spec.threshold}`,
+        tooltip: `Get notified if this queue goes above ${spec.threshold}`,
+        note: `tell me if the ${spec.queue} queue goes above ${spec.threshold}`,
+      };
+    case "queue_depth_below":
+      return {
+        label: `Until the queue is back below ${spec.threshold}`,
+        clause: `until it is back below ${spec.threshold}`,
+        tooltip: `Get notified when this queue is back below ${spec.threshold}`,
+        note: `tell me when the ${spec.queue} queue is back below ${spec.threshold}`,
+      };
+    case "queue_stalled":
+      return {
+        label: "If the queue stops moving",
+        clause: "in case it stops moving",
+        tooltip: "Get notified if this queue stops moving",
+        note: `tell me if the ${spec.queue} queue stops moving`,
+      };
+    case "queue_oldest_age":
+      return {
+        label: `If runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`,
+        clause: `in case runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`,
+        tooltip: `Get notified if runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`,
+        note: `tell me if runs in ${spec.queue} wait longer than ${formatWatchSla(
+          spec.thresholdMinutes
+        )}`,
+      };
+    case "error_recurrence":
+      return {
+        label: "If it happens again",
+        clause: "in case it happens again",
+        tooltip: "Get notified if this error happens again",
+        note: `ping me if error ${spec.fingerprint} happens again`,
+      };
+    case "health_recovery":
+      return {
+        label: "Until it recovers",
+        clause: "until it recovers",
+        tooltip: "Get notified when health recovers",
+        note: "tell me when health is back to normal",
+      };
+  }
+}
 
 /**
  * What is being watched, as the card's title names it. Read from the spec rather
@@ -376,54 +492,21 @@ export function watchSubjectLabel(spec: WatchSpec): string {
  * are one sentence without repeating the subject.
  */
 export function watchConditionLabel(spec: WatchSpec): string {
-  switch (spec.kind) {
-    case "run_start":
-      return "Until it starts";
-    case "run_finished":
-      return "Until it finishes";
-    case "run_failed":
-      return "If it fails";
-    case "backlog_drain":
-      return "Until the queue drains";
-    case "queue_depth_above":
-      return `If the queue goes above ${spec.threshold}`;
-    case "queue_depth_below":
-      return `Until the queue is back below ${spec.threshold}`;
-    case "queue_stalled":
-      return "If the queue stops moving";
-    case "queue_oldest_age":
-      return `If runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
-    case "error_recurrence":
-      return "If it happens again";
-    case "health_recovery":
-      return "Until it recovers";
-  }
+  return watchConditionWording(spec).label;
 }
 
 /** The Watch button's tooltip. */
 export function watchTooltipLabel(spec: WatchSpec): string {
-  switch (spec.kind) {
-    case "run_start":
-      return "Get notified when this run starts";
-    case "run_finished":
-      return "Get notified when this run finishes";
-    case "run_failed":
-      return "Get notified if this run fails";
-    case "backlog_drain":
-      return "Get notified when this queue drains";
-    case "queue_depth_above":
-      return `Get notified if this queue goes above ${spec.threshold}`;
-    case "queue_depth_below":
-      return `Get notified when this queue is back below ${spec.threshold}`;
-    case "queue_stalled":
-      return "Get notified if this queue stops moving";
-    case "queue_oldest_age":
-      return `Get notified if runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
-    case "error_recurrence":
-      return "Get notified if this error happens again";
-    case "health_recovery":
-      return "Get notified when health recovers";
-  }
+  return watchConditionWording(spec).tooltip;
+}
+
+/**
+ * The note, restated from the spec. The wake narration quotes the note, so
+ * changing the condition or its number must rewrite it. Edits that keep the
+ * condition (window, cadence) keep the user's own words.
+ */
+export function noteFor(spec: WatchSpec): string {
+  return watchConditionWording(spec).note;
 }
 
 /** The duration line of the card. */
@@ -431,32 +514,6 @@ export function watchDurationLabel(spec: WatchSpec): string {
   return `For ${formatWatchWindow(spec.maxHours)} · checking ${formatWatchCadence(
     spec.checkEveryMinutes
   )}`;
-}
-
-/** The condition as a clause that follows "Watching {subject} …". */
-function watchConditionClause(spec: WatchSpec): string {
-  switch (spec.kind) {
-    case "run_start":
-      return "until it starts";
-    case "run_finished":
-      return "until it finishes";
-    case "run_failed":
-      return "in case it fails";
-    case "backlog_drain":
-      return "until the queue drains";
-    case "queue_depth_above":
-      return `in case the queue goes above ${spec.threshold}`;
-    case "queue_depth_below":
-      return `until it is back below ${spec.threshold}`;
-    case "queue_stalled":
-      return "in case it stops moving";
-    case "queue_oldest_age":
-      return `in case runs wait longer than ${formatWatchSla(spec.thresholdMinutes)}`;
-    case "error_recurrence":
-      return "in case it happens again";
-    case "health_recovery":
-      return "until it recovers";
-  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -498,7 +555,9 @@ export function watchConfirmationBlockBody(args: {
   return {
     type: "watch_result",
     outcome: "watching",
-    headline: `Watching ${watchSubjectLabel(args.spec)} ${watchConditionClause(args.spec)}.`,
+    headline: `Watching ${watchSubjectLabel(args.spec)} ${
+      watchConditionWording(args.spec).clause
+    }.`,
     lifetime: watchLifetimeSentence({
       checkEveryMinutes: args.spec.checkEveryMinutes,
       maxHours: args.spec.maxHours,

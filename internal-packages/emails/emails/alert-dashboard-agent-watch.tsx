@@ -32,6 +32,12 @@ export const AlertDashboardAgentWatchEmailSchema = z.object({
   tone: z.enum(["success", "warning", "error", "neutral"]).optional(),
   /** Why the watch exists, in the user's own words. */
   note: z.string(),
+  /**
+   * The sentence that quotes the note, rendered by the webapp's presenter so this
+   * email and the Slack message say it identically. Optional so an older enqueue
+   * still renders.
+   */
+  noteLine: z.string().optional(),
   firedAt: z.string(),
   /** What the check observed, already flattened to label/value pairs. */
   facts: z.array(z.object({ label: z.string(), value: z.string() })),
@@ -51,6 +57,7 @@ const previewDefaults: AlertDashboardAgentWatchEmailProps = {
   headline: "Run run_abc123 finished",
   tone: "success",
   note: "tell me when the nightly invoice run finishes",
+  noteLine: "You asked to be told when: tell me when the nightly invoice run finishes",
   firedAt: "2026-07-29T12:00:00.000Z",
   facts: [
     { label: "Status", value: "COMPLETED" },
@@ -76,7 +83,8 @@ function formatFiredAt(firedAt: string) {
 
 /**
  * The email palette for the accent. This template writes no kind-specific wording of its own:
- * the headline arrives rendered by the webapp's presenter, so only the colour is chosen here.
+ * the headline and the note line arrive rendered by the webapp's presenter, so only the colour
+ * is chosen here.
  */
 const TONE_COLOR: Record<string, string> = {
   success: "#A8FF53",
@@ -96,6 +104,7 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
     headline,
     tone,
     note,
+    noteLine,
     firedAt,
     facts,
     dashboardLink,
@@ -138,7 +147,7 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
               </Heading>
               <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
                 I was keeping an eye on {project} ({environment}) for you, and this is the answer,
-                as of {formatFiredAt(firedAt)}. Your note on this watch: “{note}”.
+                as of {formatFiredAt(firedAt)}. {noteLine ?? `You asked to be told when: ${note}`}
               </Text>
               <Text className="text-[#878C99] text-[14px] leading-[20px]">
                 {details.join(" · ")}

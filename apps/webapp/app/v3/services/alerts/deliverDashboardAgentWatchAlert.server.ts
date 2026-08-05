@@ -25,7 +25,11 @@ import {
   canUseDashboardAgentAlerts,
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
 } from "~/services/dashboardAgentWatchAlerts.server";
-import { presentResolvedWatch } from "~/components/dashboard-agent/watch-presentation";
+import {
+  presentResolvedWatch,
+  renderFactLines,
+  watchNoteLine,
+} from "~/presenters/v3/dashboardAgent";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
@@ -265,14 +269,19 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       alertType: DASHBOARD_AGENT_WATCH_ALERT_TYPE,
     });
 
+    const presentation = presentAlert(payload);
+
     await sendAlertEmail({
       email: "alert-dashboard-agent-watch",
       to: emailProperties.data.email,
       identity: payload.identity,
       kind: payload.kind,
-      headline: presentAlert(payload).headline,
-      tone: presentAlert(payload).tone,
+      headline: presentation.headline,
+      tone: presentation.tone,
       note: payload.note,
+      // The sentence that quotes the note, rendered by the shared presenter so the
+      // email and the Slack message say it the same way.
+      noteLine: watchNoteLine(payload.note) ?? undefined,
       firedAt: payload.firedAt,
       facts: factList(payload.facts),
       dashboardLink: context.dashboardLink,
@@ -438,15 +447,22 @@ export class DeliverDashboardAgentWatchChannelAlertService {
   ): { text: string; blocks: object[] } {
     const facts = factList(payload.facts);
     const { headline } = presentAlert(payload);
+    const noteLine = watchNoteLine(payload.note);
 
     return {
-      text: `${headline} [${context.environmentName}]`,
+      // The notification text is the plain-text rendering, so what a phone shows
+      // matches what the blocks below say.
+      text: [`${headline} [${context.environmentName}]`, noteLine, ...renderFactLines(facts)]
+        .filter(Boolean)
+        .join("\n"),
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${headline}* [${context.environmentName}]\nYou asked to be told when: ${payload.note}`,
+            text: [`*${headline}* [${context.environmentName}]`, noteLine]
+              .filter(Boolean)
+              .join("\n"),
           },
         },
         ...(facts.length > 0

@@ -11,7 +11,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { ToastUI } from "~/components/primitives/Toast";
 import type { WatchObservedOutcome, WatchResolution } from "@internal/dashboard-agent-contracts";
 import { wakeResolution } from "./WakeBanner";
-import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-presentation";
+import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "~/presenters/v3/dashboardAgent";
 
 /** Matches sonner's default toast width, same as the app's other toasts. */
 const TOAST_WIDTH = 356;
@@ -41,7 +41,7 @@ export type WatchWake = {
 
 /**
  * The toast's title: the fact, or the neutral fallback when this wake predates the
- * resolution model. The wording is `watch-presentation.ts`'s; this only decides
+ * resolution model. The wording is `app/presenters/v3/dashboardAgent`'s; this only decides
  * which watch to ask it about.
  */
 export function watchWakeToastTitle(wake: WatchWake): string {

@@ -33,7 +33,7 @@ import {
   watchConfirmationBlockBody,
   watchOneShotBlockBody,
   watchSubjectLabel,
-} from "~/components/dashboard-agent/watch-presentation";
+} from "~/presenters/v3/dashboardAgent";
 import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
 import {
   authorizeWatchEnvironmentById,

@@ -2,7 +2,7 @@ import { EyeIcon } from "@heroicons/react/20/solid";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
-import { watchTooltipLabel } from "./watch-presentation";
+import { watchTooltipLabel } from "~/presenters/v3/dashboardAgent";
 
 /**
  * The universal Watch action, used by runs, queues, errors and health.

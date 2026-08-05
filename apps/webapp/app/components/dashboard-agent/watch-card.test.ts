@@ -25,7 +25,7 @@ import {
   watchDurationLabel,
   watchOneShotBlockBody,
   watchSubjectLabel,
-} from "./watch-presentation";
+} from "~/presenters/v3/dashboardAgent";
 import {
   errorWatchRecommendation,
   healthWatchRecommendation,
@@ -145,9 +145,11 @@ describe("condition variants (§3)", () => {
 
   it("restates the note when the threshold number changes", () => {
     const above = withThreshold(withVariant(queueDraft(), "queue_depth_above"), 500);
-    expect(above.spec.note).toBe("tell me if the email-sends queue grows above 500");
+    // Same verb and same SLA format as the card's condition line: both come from
+    // the presenter's one wording record.
+    expect(above.spec.note).toBe("tell me if the email-sends queue goes above 500");
     const age = withAgeMinutes(withVariant(queueDraft(), "queue_oldest_age"), 90);
-    expect(age.spec.note).toBe("tell me if runs in email-sends wait longer than 90 minutes");
+    expect(age.spec.note).toBe("tell me if runs in email-sends wait longer than 1h 30m");
   });
 
   it("gives the threshold variant a usable default", () => {

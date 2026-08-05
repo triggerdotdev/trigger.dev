@@ -8,7 +8,7 @@
  * and never become a radio group.
  *
  * Pure component: draft in, markup and callbacks out. Draft rules live in
- * `watch-card.ts` and wording in `watch-presentation.ts`.
+ * `watch-card.ts` and wording in `app/presenters/v3/dashboardAgent`.
  */
 import { EyeIcon } from "@heroicons/react/20/solid";
 import {
@@ -41,7 +41,7 @@ import {
   watchConditionLabel,
   watchDurationLabel,
   watchSubjectLabel,
-} from "./watch-presentation";
+} from "~/presenters/v3/dashboardAgent";
 
 /** How the condition variants are named in the picker. Short, not sentences. */
 const VARIANT_LABEL: Record<WatchKind, string> = {

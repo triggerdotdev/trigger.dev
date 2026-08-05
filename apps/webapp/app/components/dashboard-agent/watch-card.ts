@@ -24,6 +24,7 @@ import {
   type WatchKind,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
+import { noteFor } from "~/presenters/v3/dashboardAgent";
 
 /** A brand-new draft: the recommendation, with both opt-ins off. */
 export function watchDraftFor(spec: WatchSpec): WatchDraft {
@@ -38,36 +39,6 @@ export function clampCadence(kind: WatchKind, minutes: number): number {
   const options = watchCadenceOptions(kind);
   if (options.includes(minutes)) return minutes;
   return options.find((option) => option >= minutes) ?? options[options.length - 1]!;
-}
-
-/**
- * The note, restated from the spec. The wake narration quotes the note, so
- * changing the condition or its number must rewrite it. Edits that keep the
- * condition (window, cadence) keep the user's own words.
- */
-export function noteFor(spec: WatchSpec): string {
-  switch (spec.kind) {
-    case "run_start":
-      return `tell me when run ${spec.runId} starts`;
-    case "run_finished":
-      return `tell me when run ${spec.runId} finishes`;
-    case "run_failed":
-      return `tell me if run ${spec.runId} fails`;
-    case "backlog_drain":
-      return `tell me when the ${spec.queue} queue drains`;
-    case "queue_depth_above":
-      return `tell me if the ${spec.queue} queue grows above ${spec.threshold}`;
-    case "queue_depth_below":
-      return `tell me when the ${spec.queue} queue is back below ${spec.threshold}`;
-    case "queue_stalled":
-      return `tell me if the ${spec.queue} queue stops moving`;
-    case "queue_oldest_age":
-      return `tell me if runs in ${spec.queue} wait longer than ${spec.thresholdMinutes} minutes`;
-    case "error_recurrence":
-      return `ping me if error ${spec.fingerprint} happens again`;
-    case "health_recovery":
-      return "tell me when health is back to normal";
-  }
 }
 
 /**

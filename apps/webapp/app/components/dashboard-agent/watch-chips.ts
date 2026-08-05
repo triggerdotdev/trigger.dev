@@ -10,9 +10,9 @@ import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 
 // The immediate-check wording lives in the presenter with the rest of the
 // user-facing copy. Re-exported here for chip callers.
-export { immediateWatchMessage } from "./watch-presentation";
+export { immediateWatchMessage } from "~/presenters/v3/dashboardAgent";
 
-import { formatWatchCadence, watchIdentityValue } from "./watch-presentation";
+import { formatWatchCadence, watchIdentityValue } from "~/presenters/v3/dashboardAgent";
 
 export const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
   active: "watching",

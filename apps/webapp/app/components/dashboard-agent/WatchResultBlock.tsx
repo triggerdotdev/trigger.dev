@@ -7,7 +7,7 @@
  * cancel.
  *
  * Pure component: the wording is not computed here, it was frozen into the block at
- * append time by `watch-presentation.ts`, so a later copy change never rewrites what
+ * append time by `app/presenters/v3/dashboardAgent`, so a later copy change never rewrites what
  * a user was already told.
  */
 import { CheckCircleIcon, EyeIcon, InformationCircleIcon } from "@heroicons/react/20/solid";

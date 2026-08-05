@@ -2,7 +2,7 @@
  * The banner above a wake narration.
  *
  * This component holds no kind-specific wording: tone, semantic icon and headline
- * come from contracts and `watch-presentation.ts`. All it decides is which glyph a
+ * come from contracts and `app/presenters/v3/dashboardAgent`. All it decides is which glyph a
  * semantic icon draws and which frame a tone paints.
  *
  * A wake is identified by its message id, `wake:watch:{watchId}:{fired|expired}`.
@@ -23,7 +23,11 @@ import type {
 } from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
-import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "./watch-presentation";
+import {
+  presentResolvedWatch,
+  watchSubline,
+  WATCH_PRESENTATION_FALLBACK,
+} from "~/presenters/v3/dashboardAgent";
 
 const WAKE_ID_PREFIX = "wake:watch:";
 
@@ -121,15 +125,6 @@ const TONE_FRAME: Record<AgentTone, string> = {
   error: "border-l-error bg-error/10",
 };
 
-/** What the watch was for: the user's own words, else whatever names it. */
-function subline(watch: WakeWatch | undefined): string | null {
-  const note = watch?.note.trim();
-  if (note) return note;
-  if (watch?.identity) return watch.identity;
-  if (watch?.kind) return watch.kind;
-  return null;
-}
-
 export function WakeBanner({
   outcome,
   watch,
@@ -142,7 +137,7 @@ export function WakeBanner({
   const presentation = wakePresentation(outcome, watch);
   const tone = presentation.tone as AgentTone;
   const Icon = SEMANTIC_ICON[presentation.semanticIcon];
-  const note = subline(watch);
+  const note = watchSubline(watch);
 
   return (
     <div

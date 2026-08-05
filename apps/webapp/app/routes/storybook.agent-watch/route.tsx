@@ -6,10 +6,7 @@ import {
   withVariant,
 } from "~/components/dashboard-agent/watch-card";
 import { WatchCard } from "~/components/dashboard-agent/WatchCard";
-import {
-  watchConfirmationBlockBody,
-  watchOneShotBlockBody,
-} from "~/components/dashboard-agent/watch-presentation";
+import { watchConfirmationBlockBody, watchOneShotBlockBody } from "~/presenters/v3/dashboardAgent";
 import {
   errorWatchRecommendation,
   queueWatchRecommendation,
