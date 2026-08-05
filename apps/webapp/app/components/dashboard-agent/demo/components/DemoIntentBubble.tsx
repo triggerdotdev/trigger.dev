@@ -6,10 +6,8 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
 import { AgentStatusIcon } from "../../agent-badges";
-import { ChatNote, ChatStatusLine } from "../../chat-layout";
+import { ChatStatusLine } from "../../chat-layout";
 import type { DemoIntent } from "../fixtures/intents";
-
-export const DemoNote = ChatNote;
 
 export function DemoIntentBubble({
   intent,

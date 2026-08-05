@@ -5,7 +5,4 @@ export { DEMO_ID_PREFIX, DEMO_MARKER, DEMO_WORLD, demoId } from "./ids";
 export * as demoFixtures from "./fixtures";
 
 export { DemoChartCard } from "./components/DemoChartCard";
-export { DemoIntentBubble, DemoNote } from "./components/DemoIntentBubble";
-export { DemoInvestigationCard } from "./components/DemoInvestigationCard";
-export { DemoSuggestedPromptsRow } from "./components/DemoSuggestedPromptsRow";
-export { DemoWatchChips } from "./components/DemoWatchChips";
+export { DemoIntentBubble } from "./components/DemoIntentBubble";
