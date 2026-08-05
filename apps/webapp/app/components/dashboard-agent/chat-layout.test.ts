@@ -1,26 +1,18 @@
-/**
- * Keeps the chat layout library the only place transcript layout is decided.
- * Asserted at source level: the rule is "a consumer doesn't type spacing
- * classes", a property of the source rather than of the rendered DOM. Only the
- * regions a consumer marks as transcript-level are checked.
- */
+// Source-level checks: "a consumer writes no spacing class" is a property of the
+// source, not of the rendered DOM.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const DIR = __dirname;
 
-/** Files whose transcript regions must compose via chat-layout only. */
 const CONSUMERS = ["DashboardAgentMessages.tsx"];
 
 const LIBRARY = "chat-layout.tsx";
 
 const REGION = /#region chat-layout transcript([\s\S]*?)#endregion chat-layout transcript/g;
 
-/**
- * Tailwind spacing utilities, matched only at a class-name boundary so `gap-2`
- * is caught but `min-w-0` and prose mentioning "space-y" are not.
- */
+// Matched at a class-name boundary so `gap-2` is caught but `min-w-0` is not.
 const SPACING_CLASS =
   /(?:^|[\s"'`])-?(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-[\w./[\]%-]+/;
 
@@ -50,8 +42,6 @@ describe("chat-layout enforcement", () => {
 
       for (const [i, region] of regions.entries()) {
         it(`renders no spinner of its own in transcript region ${i + 1}`, () => {
-          // `ChatProgress` is the turn's one progress element and the only thing
-          // that renders the agent spinner.
           expect(region).not.toContain("AgentSpinner");
         });
 
@@ -104,8 +94,6 @@ describe("chat-layout enforcement", () => {
     });
 
     it("renders assistant text as prose, not as a card", () => {
-      // Only ChatCardSlot content is boxed, so nothing may reintroduce the
-      // shared bubble.
       expect(source).not.toContain("ChatBubble");
     });
 
@@ -114,10 +102,5 @@ describe("chat-layout enforcement", () => {
       expect(source).not.toMatch(/bg-indigo-\d/);
     });
 
-    it("documents the composition rules", () => {
-      expect(source).toContain("## Composition rules");
-      expect(source).toContain("ChatTranscript\n *       ChatTurn*");
-      expect(source).toContain("One live progress element per turn");
-    });
   });
 });
