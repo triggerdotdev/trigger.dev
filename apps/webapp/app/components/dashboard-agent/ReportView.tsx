@@ -1,10 +1,11 @@
 /**
  * The report card: the panel's rendering of a `report` view block.
  *
- * A report carries numbers plus message codes, never prose. Strings are resolved
- * through the report's own message catalog (`report-messages.ts`), shared with
- * the markdown and ANSI renderers so the card, the CLI and the agent's grounding
- * use one vocabulary.
+ * Structure, labels and wording come from `report-layout.ts` (`buildReportLayout`),
+ * the same spec the markdown and ANSI renderers consume, so the card, the CLI and
+ * the agent's grounding show one report. This file only decides what each layout
+ * piece looks like as a component; where the text surfaces use a glyph, the card
+ * uses colour and an icon.
  *
  * Pure component: props in, no Remix hooks, no loader data, no router context, so
  * it renders identically in any host. That means the host resolves `trigger://`
@@ -14,19 +15,21 @@
 import {
   isTriggerUri,
   type AgentIntent,
-  type ReportFindingPayload,
-  type ReportMetricPayload,
-  type ReportUnit,
   type ReportViewModelPayload,
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
 import { type ReactNode } from "react";
 import { Badge } from "~/components/primitives/Badge";
-// Imported for its registration side effect too: each report's catalog registers
-// itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
+import {
+  buildReportLayout,
+  fmtValue,
+  REPORT_LABELS,
+  reportFooterStyle,
+  type LayoutFinding,
+  type LayoutMetricRow,
+} from "~/presenters/v3/reports/report-layout";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
-import { reportIsTrustworthy } from "./report-block-adapter";
 import {
   FOOTER_WATCH_CODE,
   ReportBody,
@@ -45,8 +48,6 @@ import {
   ReportProse,
   ReportProvenance,
   ReportSeverityIcon,
-  reportDelta,
-  reportFooterStyle,
   type ReportFooterItem,
 } from "./report-sparkline";
 
@@ -77,68 +78,6 @@ const CATALOGS: Record<string, ReportMessages> = { health: healthMessages };
 
 function messagesFor(title: string): ReportMessages {
   return CATALOGS[title] ?? PASSTHROUGH_MESSAGES;
-}
-
-// --- formatting -------------------------------------------------------------
-// Mirrors of the markdown renderer's private formatters. If those ever become
-// shared, this block goes.
-
-function fmtDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const s = ms / 1000;
-  if (s < 60) return Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
-  const m = s / 60;
-  return Number.isInteger(m) ? `${m}m` : `${m.toFixed(1)}m`;
-}
-
-function fmtValue(value: number, unit: ReportUnit): string {
-  switch (unit) {
-    case "ms":
-      return fmtDuration(value);
-    case "ratio":
-      return `${(value * 100).toFixed(1)}%`;
-    case "perMin":
-      return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(Math.round(value)).toLocaleString(
-        "en-US"
-      )}/min`;
-    case "count":
-    default:
-      return Math.round(value).toLocaleString("en-US");
-  }
-}
-
-function fmtCount(value: number): string {
-  return Math.round(value).toLocaleString("en-US");
-}
-
-/** Fill the `{token}` placeholders the message catalog leaves for the renderer. */
-function fillTokens(text: string, tokens: Record<string, string | number>): string {
-  return text.replace(/\{(\w+)\}/g, (whole, key: string) =>
-    tokens[key] === undefined ? whole : String(tokens[key])
-  );
-}
-
-function metricTokens(
-  vm: ReportViewModelPayload,
-  metric: ReportMetricPayload
-): Record<string, string | number> {
-  return {
-    value: metric.annotation?.value ?? metric.value,
-    window: vm.windowMinutes,
-    limit: metric.breakdown?.limit ?? "",
-  };
-}
-
-function findingTokens(vm: ReportViewModelPayload): Record<string, string | number> {
-  const metric = (id: string) => vm.metrics.find((m) => m.id === id);
-  const triggered = metric("triggered");
-  const throughput = metric("throughput");
-  const liveness = metric("liveness");
-  return {
-    mult: triggered?.delta?.mult ?? "",
-    rate: Math.round(throughput?.breakdown?.done ?? 0),
-    age: liveness ? fmtDuration(liveness.value) : "",
-  };
 }
 
 // --- links ------------------------------------------------------------------
@@ -279,134 +218,57 @@ const REFERENCE_URL_FALLBACK: Record<string, string> = {
 
 // --- pieces -----------------------------------------------------------------
 
-function MetricRow({
-  vm,
-  metric,
-  messages,
-  anomalyMinutes,
-  hero,
-}: {
-  vm: ReportViewModelPayload;
-  metric: ReportMetricPayload;
-  messages: ReportMessages;
-  anomalyMinutes?: number;
-  /** The metric that explains the finding: its annotation is spelled out inline. */
-  hero?: boolean;
-}) {
-  const annotation = metric.annotation
-    ? fillTokens(messages.annotationMessage(metric.annotation.code), metricTokens(vm, metric))
-    : undefined;
-  const note = annotation
-    ? annotation
-    : metric.normal !== undefined
-      ? `normal ~${fmtValue(metric.normal, metric.unit)}`
-      : metric.series?.kind === "estimated"
-        ? "Estimated from a proxy signal, so read it as a shape, not a number."
-        : undefined;
-
-  const composite = metric.unit === "perMin" && metric.breakdown?.done !== undefined;
+function MetricRow({ row, windowMinutes }: { row: LayoutMetricRow; windowMinutes: number }) {
+  // The hero row's annotation is spelled out rather than tucked in with the baseline.
+  const annotation = row.note?.kind === "annotation" ? row.note.text : undefined;
 
   return (
     <ReportMetricRow
-      label={messages.metricLabel(metric.id)}
-      value={fmtValue(metric.value, metric.unit)}
-      severity={metric.severity}
-      subRows={
-        composite
-          ? [
-              { label: "done", value: fmtCount(metric.breakdown!.done!) },
-              { label: "triggered", value: fmtCount(metric.breakdown!.triggered ?? 0) },
-            ]
-          : undefined
-      }
-      delta={reportDelta(metric.delta, metric.normal !== undefined)}
-      note={hero && annotation ? undefined : note}
-      heroNote={hero ? annotation : undefined}
-      series={metric.series?.points}
-      windowMinutes={vm.windowMinutes}
-      anomalyMinutes={anomalyMinutes}
-      formatPoint={(value) => fmtValue(value, metric.unit)}
+      label={row.label}
+      value={row.value}
+      severity={row.severity}
+      subRows={row.subRows.length > 0 ? row.subRows : undefined}
+      delta={row.delta}
+      note={row.hero && annotation ? undefined : row.note?.text}
+      heroNote={row.hero ? annotation : undefined}
+      series={row.series}
+      windowMinutes={windowMinutes}
+      anomalyMinutes={row.anomalyMinutes}
+      formatPoint={(value) => fmtValue(value, row.unit)}
     />
   );
 }
 
 /**
- * A finding's evidence: its metric grid, then the "why:" block. The verdict
- * itself is the headline or finding line above.
+ * A finding's evidence: its metric grid, then the `why:` block. The verdict itself
+ * is the headline or the finding line above.
  */
 function FindingBody({
-  vm,
   finding,
-  messages,
-  tokens,
+  windowMinutes,
 }: {
-  vm: ReportViewModelPayload;
-  finding: ReportFindingPayload;
-  messages: ReportMessages;
-  tokens: Record<string, string | number>;
+  finding: LayoutFinding;
+  windowMinutes: number;
 }) {
-  const metrics = finding.metricIds
-    .map((id) => vm.metrics.find((m) => m.id === id))
-    .filter((m): m is ReportMetricPayload => m !== undefined);
-
-  // The anomaly window describes the finding's driving metric, which is the first
-  // id (degraded findings list theirs in causal order), so only that sparkline
-  // highlights it.
-  const anomalyMinutes = finding.anomalyWindow?.touchesEnd
-    ? finding.anomalyWindow.minutes
-    : undefined;
-
   return (
     <div className="space-y-2.5">
       <ReportMetricList>
-        {metrics.map((metric, i) => (
-          <MetricRow
-            key={metric.id}
-            vm={vm}
-            metric={metric}
-            messages={messages}
-            anomalyMinutes={i === 0 ? anomalyMinutes : undefined}
-            hero={i === 0}
-          />
+        {finding.metrics.map((row) => (
+          <MetricRow key={row.id} row={row} windowMinutes={windowMinutes} />
         ))}
       </ReportMetricList>
 
-      <ReportNoteBlock label="why:">
-        {finding.attribution ? (
+      <ReportNoteBlock label={REPORT_LABELS.why}>
+        {finding.why.map((line, i) => (
           <ReportProse
-            text={`${Math.round(finding.attribution.share * 100)}% of ${
-              finding.attribution.of
-            } is ${finding.attribution.key}`}
-            entities={[finding.attribution.key]}
-          />
-        ) : null}
-        {(finding.exclusions ?? []).map((exclusion, i) => (
-          <ReportProse
-            key={`x${i}`}
-            text={fillTokens(messages.exclusionMessage(exclusion.code), {
-              ...tokens,
-              ...(exclusion.evidence ?? {}),
-            })}
-          />
-        ))}
-        {(finding.observations ?? []).map((observation, i) => (
-          <ReportProse
-            key={`o${i}`}
-            text={fillTokens(messages.observationMessage(observation.code), {
-              ...tokens,
-              ...(observation.evidence ?? {}),
-            })}
+            key={i}
+            text={line}
+            entities={finding.attributionKey ? [finding.attributionKey] : undefined}
           />
         ))}
       </ReportNoteBlock>
     </div>
   );
-}
-
-/** The finding the headline speaks for: the first one at the report's severity. */
-function heroIndexOf(vm: ReportViewModelPayload): number {
-  const index = vm.findings.findIndex((finding) => finding.severity === vm.summary.severity);
-  return index === -1 ? 0 : index;
 }
 
 // --- card -------------------------------------------------------------------
@@ -432,41 +294,10 @@ export function ReportView({
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
 }) {
-  const messages = messagesFor(vm.title);
-  const tokens = findingTokens(vm);
-  const trustworthy = reportIsTrustworthy(vm);
-  const severity = vm.summary.severity;
+  const layout = buildReportLayout(vm, messagesFor(vm.title));
+  const severity = layout.headline.severity;
   const linkByKey = (key: string | undefined) =>
     key === undefined ? undefined : vm.links.find((link) => link.key === key)?.url;
-
-  const heroIndex = heroIndexOf(vm);
-  const hero = vm.findings[heroIndex] as ReportFindingPayload | undefined;
-  const otherFindings = vm.findings.filter((_, i) => i !== heroIndex);
-  const heroStatement = vm.summary.statements.find((s) => s.findingType === hero?.type);
-
-  // The headline speaks for the hero finding. When its statement carries its own
-  // reason (stale telemetry, no freshness signal) that statement is the whole
-  // sentence; the finding's reason would only repeat it.
-  const headlinePhrase = hero
-    ? messages.statementMessage(hero.type, hero.severity, heroStatement?.reason)
-    : messages.statementMessage(vm.title, severity);
-  const headlineContinuation =
-    hero && !heroStatement?.reason
-      ? fillTokens(
-          messages.findingReason(hero.type, hero.reason, { expanded: hero.severity === "ok" }),
-          tokens
-        ) +
-        (hero.anomalyWindow?.touchesEnd ? ` for the last ${hero.anomalyWindow.minutes} min` : "")
-      : undefined;
-
-  // A statement with no finding behind it still has to be said.
-  const orphanStatements = vm.summary.statements.filter(
-    (statement) => !vm.findings.some((finding) => finding.type === statement.findingType)
-  );
-
-  const reads = (hero ? [hero, ...otherFindings] : otherFindings)
-    .filter((finding) => finding.read !== undefined)
-    .map((finding) => fillTokens(messages.readMessage(finding.read!), tokens));
 
   // Only offered when there is something to recover from, and only for the health
   // report, which is the one with a recovery watch kind.
@@ -485,16 +316,13 @@ export function ReportView({
       : null;
 
   // Links a footer action already speaks for aren't repeated as reading matter.
-  const footerLinkKeys = new Set(vm.footer.map((entry) => entry.link).filter(Boolean));
+  const footerLinkKeys = new Set(layout.footer.map((entry) => entry.link).filter(Boolean));
 
-  const footerItems: ReportFooterItem[] = vm.footer.map((entry) => ({
+  const footerItems: ReportFooterItem[] = layout.footer.map((entry) => ({
     code: entry.code,
     node: footerEntryNode({
       code: entry.code,
-      label: fillTokens(messages.actionMessage(entry.code), {
-        ...tokens,
-        value: entry.value ?? "",
-      }),
+      label: entry.label,
       target: classifyLink(linkByKey(entry.link), resolveUri),
       onIntent,
       pagePath: pagePaths?.[entry.code],
@@ -548,79 +376,57 @@ export function ReportView({
 
   return (
     <ReportCard>
-      <ReportHeaderLine
-        name={vm.title}
-        meta={`${vm.scope} · ${vm.period}${vm.baselineLabel ? ` · ${vm.baselineLabel}` : ""}`}
-      >
-        {trustworthy ? null : (
+      <ReportHeaderLine name={layout.header.name} meta={layout.header.meta}>
+        {layout.trust ? (
           <Badge variant="small" className="border-warning/40 text-warning">
-            stale data
+            {layout.trust.badge}
           </Badge>
-        )}
+        ) : null}
       </ReportHeaderLine>
 
-      <ReportBody dimmed={!trustworthy}>
+      <ReportBody dimmed={layout.trust !== undefined}>
         <ReportHeadline
           severity={severity}
-          phrase={headlinePhrase}
-          continuation={headlineContinuation}
+          tone={layout.headline.tone}
+          phrase={layout.headline.phrase}
+          continuation={layout.headline.text}
         />
 
-        {trustworthy ? null : (
-          <p className="text-sm text-warning">
-            The telemetry behind this report is stale, so the numbers below are informational only.
-          </p>
-        )}
+        {layout.trust ? <p className="text-sm text-warning">{layout.trust.note}</p> : null}
 
-        {hero ? <FindingBody vm={vm} finding={hero} messages={messages} tokens={tokens} /> : null}
+        {layout.hero && layout.hero.expanded ? (
+          <FindingBody finding={layout.hero} windowMinutes={vm.windowMinutes} />
+        ) : null}
 
-        {otherFindings.length > 0 || orphanStatements.length > 0 ? (
+        {layout.findings.length > 0 || layout.statements.length > 0 ? (
           <div className="space-y-2.5">
-            {otherFindings.map((finding, i) => {
-              const degraded = finding.severity !== "ok";
-              return (
-                <div key={`${finding.type}-${i}`} className="space-y-2">
-                  <ReportFindingLine
-                    severity={finding.severity}
-                    type={finding.type}
-                    bright={degraded}
-                    text={
-                      fillTokens(
-                        messages.findingReason(finding.type, finding.reason, {
-                          expanded: !degraded,
-                        }),
-                        tokens
-                      ) +
-                      (finding.anomalyWindow?.touchesEnd
-                        ? ` (last ${finding.anomalyWindow.minutes} min)`
-                        : "")
-                    }
-                  />
-                  {degraded ? (
-                    <div className="pl-[1.375rem]">
-                      <FindingBody vm={vm} finding={finding} messages={messages} tokens={tokens} />
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-            {orphanStatements.map((statement, i) => (
+            {layout.findings.map((finding, i) => (
+              <div key={`${finding.type}-${i}`} className="space-y-2">
+                <ReportFindingLine
+                  severity={finding.severity}
+                  tone={finding.tone}
+                  type={finding.label}
+                  bright={finding.severity !== "ok"}
+                  text={finding.text}
+                />
+                {finding.expanded ? (
+                  <div className="pl-[1.375rem]">
+                    <FindingBody finding={finding} windowMinutes={vm.windowMinutes} />
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {layout.statements.map((statement, i) => (
               <p key={`s${i}`} className="flex items-center gap-1.5 text-sm">
-                <ReportSeverityIcon severity={statement.severity} />
-                <span className="text-text-dimmed">
-                  {messages.statementMessage(
-                    statement.findingType,
-                    statement.severity,
-                    statement.reason
-                  )}
-                </span>
+                <ReportSeverityIcon severity={statement.severity} tone={statement.tone} />
+                <span className="text-text-dimmed">{statement.text}</span>
               </p>
             ))}
           </div>
         ) : null}
 
-        <ReportNoteBlock label="read:">
-          {reads.map((read, i) => (
+        <ReportNoteBlock label={REPORT_LABELS.read}>
+          {layout.reads.map((read, i) => (
             <ReportProse key={i} text={read} />
           ))}
         </ReportNoteBlock>

@@ -18,7 +18,6 @@ import {
   isTriggerUri,
   reportBlockSchema,
   type EnvelopedReportBlock,
-  type ReportViewModelPayload,
 } from "@internal/dashboard-agent-contracts";
 
 /** The tool whose output this adapter understands. */
@@ -70,14 +69,8 @@ export function reportBlockFromToolPart(part: unknown): EnvelopedReportBlock | n
   return parsed.success ? parsed.data : null;
 }
 
-/**
- * `facts.trustworthy === false` means the telemetry behind the verdict is stale,
- * so the numbers are informational only. Absent = trustworthy (the common case,
- * and what pre-`facts` snapshots imply).
- */
-export function reportIsTrustworthy(vm: Pick<ReportViewModelPayload, "facts">): boolean {
-  return vm.facts?.trustworthy !== false;
-}
+// One trust rule for every surface: the shared layout spec owns it.
+export { reportIsTrustworthy } from "~/presenters/v3/reports/report-layout";
 
 /**
  * Pull the view model (and an optional source URI) out of whatever `get_report`

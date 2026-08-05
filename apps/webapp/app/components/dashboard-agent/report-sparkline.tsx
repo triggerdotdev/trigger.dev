@@ -12,9 +12,16 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
+  QuestionMarkCircleIcon,
 } from "@heroicons/react/20/solid";
 import { Children, Fragment, type ReactNode } from "react";
 import { Bar, Cell, type TooltipProps } from "recharts";
+import {
+  REPORT_LABELS,
+  reportFooterStyle,
+  type ReportFooterStyle,
+  type ReportTone,
+} from "~/presenters/v3/reports/report-layout";
 import { ActivityBarChart } from "~/components/metrics/ActivityBarChart";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { formatDateTime } from "~/components/primitives/DateTime";
@@ -28,44 +35,56 @@ import { AgentStatusIcon, type AgentTone } from "./agent-badges";
 export type ReportSeverityKey = "ok" | "warn" | "crit";
 
 // Semantic tokens, not raw palette classes: only these are remapped by the theme
-// layer (see tailwind.css).
-export const SEVERITY_TEXT: Record<ReportSeverityKey, string> = {
+// layer (see tailwind.css). Keyed by tone, so a genuinely-unknown state can't
+// borrow a verdict's colour.
+export const SEVERITY_TEXT: Record<ReportTone, string> = {
   ok: "text-success",
   warn: "text-warning",
   crit: "text-error",
+  neutral: "text-text-dimmed",
 };
 
-/** The same three colours as CSS values, for the sparkline's line. */
-const SEVERITY_COLOR: Record<ReportSeverityKey, string> = {
+/** The same colours as CSS values, for the sparkline's line. */
+const SEVERITY_COLOR: Record<ReportTone, string> = {
   ok: "var(--color-success)",
   warn: "var(--color-warning)",
   crit: "var(--color-error)",
+  neutral: "var(--color-text-dimmed)",
 };
 
-const SEVERITY_TONE: Record<ReportSeverityKey, AgentTone> = {
+const SEVERITY_TONE: Record<ReportTone, AgentTone> = {
   ok: "success",
   warn: "warning",
   crit: "error",
+  neutral: "neutral",
 };
 
 const SEVERITY_ICON = {
   ok: CheckCircleIcon,
   warn: ExclamationTriangleIcon,
   crit: ExclamationCircleIcon,
+  neutral: QuestionMarkCircleIcon,
 } as const;
 
-/** The state marker on a finding or a summary statement. */
+/**
+ * The state marker on a finding or a summary statement. `tone` is the shared
+ * layout's tone, which is the severity unless the state is genuinely unknown —
+ * the card's counterpart to the text surfaces' `○` glyph.
+ */
 export function ReportSeverityIcon({
   severity,
+  tone,
   className,
 }: {
   severity: ReportSeverityKey;
+  tone?: ReportTone;
   className?: string;
 }) {
+  const key = tone ?? severity;
   return (
     <AgentStatusIcon
-      tone={SEVERITY_TONE[severity]}
-      icon={SEVERITY_ICON[severity]}
+      tone={SEVERITY_TONE[key]}
+      icon={SEVERITY_ICON[key]}
       className={cn("size-3.5", className)}
     />
   );
@@ -112,18 +131,20 @@ export function ReportBody({ children, dimmed }: { children: ReactNode; dimmed?:
 /** The verdict as one sentence: icon, the coloured phrase, then why. */
 export function ReportHeadline({
   severity,
+  tone,
   phrase,
   continuation,
 }: {
   severity: ReportSeverityKey;
+  tone?: ReportTone;
   phrase: string;
   continuation?: string;
 }) {
   return (
     <p className="flex items-start gap-2 text-sm">
-      <ReportSeverityIcon severity={severity} className="mt-0.5 shrink-0" />
+      <ReportSeverityIcon severity={severity} tone={tone} className="mt-0.5 shrink-0" />
       <span>
-        <span className={cn("font-medium", SEVERITY_TEXT[severity])}>{phrase}</span>
+        <span className={cn("font-medium", SEVERITY_TEXT[tone ?? severity])}>{phrase}</span>
         {continuation ? <span className="text-text-bright"> — {continuation}</span> : null}
       </span>
     </p>
@@ -136,18 +157,20 @@ export function ReportHeadline({
  */
 export function ReportFindingLine({
   severity,
+  tone,
   type,
   text,
   bright,
 }: {
   severity: ReportSeverityKey;
+  tone?: ReportTone;
   type: string;
   text: string;
   bright?: boolean;
 }) {
   return (
     <p className="grid grid-cols-[1rem_4.5rem_minmax(0,1fr)] items-start gap-x-2">
-      <ReportSeverityIcon severity={severity} className="mt-0.5" />
+      <ReportSeverityIcon severity={severity} tone={tone} className="mt-0.5" />
       <span className="mt-px text-xs uppercase tracking-wide text-text-dimmed">{type}</span>
       <span className={cn("text-sm", bright ? "text-text-bright" : "text-text-dimmed")}>
         {text}
@@ -284,29 +307,11 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
 
 // --- footer -----------------------------------------------------------------
 
-/**
- * How a footer entry renders, keyed off the code rather than the URL so the same
- * code looks the same in both cards. `action` is a primary button, `docs` the docs
- * button, `reference` a text link because a button would promise an action, and
- * `note` is prose for an option stated rather than offered.
- */
-export type ReportFooterStyle = "action" | "docs" | "reference" | "note";
-
-/** Footer codes that state an option rather than offer one. */
-const FOOTER_NOTE_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region_failover"]);
-
-/** Footer codes that only cite a place to look, with nothing to press. */
-const FOOTER_REFERENCE_CODES = new Set(["check_control_plane", "check_platform_status"]);
-
-/** A doc entry names itself one: `concurrency_docs`, `retries_docs`. */
-const FOOTER_DOCS_SUFFIX = "_docs";
-
-export function reportFooterStyle(code: string): ReportFooterStyle {
-  if (FOOTER_NOTE_CODES.has(code)) return "note";
-  if (code.endsWith(FOOTER_DOCS_SUFFIX)) return "docs";
-  if (FOOTER_REFERENCE_CODES.has(code)) return "reference";
-  return "action";
-}
+// The footer vocabulary lives in the shared layout spec, so the card and the text
+// surfaces classify a code the same way. `action` is a primary button, `docs` the
+// docs button, `reference` a text link because a button would promise an action,
+// and `note` is prose for an option stated rather than offered.
+export { reportFooterStyle, type ReportFooterStyle };
 
 /**
  * The recovery-watch offer. No report emits it; the card adds it. Two codes
@@ -344,7 +349,9 @@ export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
 
   return (
     <div className="space-y-2 border-t border-grid-bright pt-3">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">Next steps</h4>
+      <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">
+        {REPORT_LABELS.nextSteps}
+      </h4>
       {row.length > 0 ? (
         // text-xs so a text link in the row (a cited reference) sits at the
         // same size as the buttons beside it.
