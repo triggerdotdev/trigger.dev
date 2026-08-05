@@ -234,7 +234,7 @@ export async function getProjectsMissingMemberDevelopmentEnvironments({
       organizationId,
       ...memberDevelopmentEnvironmentWhere({
         orgMemberId: memberId,
-        projectId: { in: projects.map((project) => project.id) },
+        projectId: { in: boundedIn(projects.map((project) => project.id)) },
       }),
     },
     select: { projectId: true },

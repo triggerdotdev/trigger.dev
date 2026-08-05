@@ -117,6 +117,11 @@ function propertyKeyName(node) {
  * Filters are routinely assembled conditionally, so the walk follows the shapes that carry
  * them: `cond ? { … } : {}`, `cond && { … }`, and `...(cond ? { … } : {})`. Stopping at a
  * plain ObjectExpression would leave those permanently invisible to the rule.
+ *
+ * It also follows call arguments, so a filter fragment built by a helper and spread into
+ * `where` is still inspected, and it descends through properties whose key it cannot read
+ * statically. A computed key inside a filter subtree is a column name, so the value below
+ * it is still predicate territory; skipping it would hide the whole branch.
  */
 function reportListFilters(node, context, depth, messageId = "listFilter", extra = {}) {
   if (!node || typeof node !== "object" || depth > 12) return;
@@ -139,6 +144,9 @@ function reportListFilters(node, context, depth, messageId = "listFilter", extra
       return;
     case "SpreadElement":
       return descend(node.argument);
+    case "CallExpression":
+      for (const argument of node.arguments) descend(argument);
+      return;
     default:
       break;
   }
@@ -153,7 +161,13 @@ function reportListFilters(node, context, depth, messageId = "listFilter", extra
     if (property.type !== "Property") continue;
 
     const name = propertyKeyName(property);
-    if (!name || VALUE_POSITION.has(name)) continue;
+
+    if (!name) {
+      descend(property.value);
+      continue;
+    }
+
+    if (VALUE_POSITION.has(name)) continue;
 
     if (LIST_FILTERS.has(name)) {
       if (!isBounded(property.value)) {
