@@ -14,6 +14,7 @@ import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { buildPrismaConnectionUrl } from "./utils/prismaConnectionUrl";
 import {
   captureInfrastructureErrors,
   infraErrorAlreadyLogged,
@@ -395,11 +396,11 @@ export function buildWriterClient({
   url: string;
   clientType: string;
 }): PrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connectTimeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -542,11 +543,11 @@ export function buildReplicaClient({
   url: string;
   clientType: string;
 }): PrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connectTimeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
@@ -672,11 +673,11 @@ function buildRunOpsWriterClient({
   url: string;
   clientType: string;
 }): RunOpsPrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connectTimeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -723,14 +724,13 @@ function buildRunOpsReplicaClient({
   url: string;
   clientType: string;
 }): RunOpsPrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    // The new run-ops replica connects unpooled, so allow capping it independently of the writer.
-    connection_limit: (
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: (
       env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
     ).toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+    poolTimeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connectTimeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}`);
@@ -787,19 +787,6 @@ export function sameDatabaseTarget(a: string | undefined, b: string | undefined)
   } catch {
     return false;
   }
-}
-
-function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
-  const url = new URL(hrefOrUrl);
-  const query = url.searchParams;
-
-  for (const [key, val] of Object.entries(queryParams)) {
-    query.set(key, val);
-  }
-
-  url.search = query.toString();
-
-  return url;
 }
 
 function redactUrlSecrets(hrefOrUrl: string | URL) {
