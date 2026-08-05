@@ -18,6 +18,7 @@ import {
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
+import { forgetWatchActivity, rememberWatchActivity } from "./watch-activity";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
@@ -146,10 +147,14 @@ export function DashboardAgentPanel({
         const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
         const read = justRead.current;
         justRead.current = new Set();
+        const chats = data.chats ?? [];
+        // Reloaded after every turn and after a watch is created, so this is where the browser
+        // learns whether the wake feed is worth polling.
+        const pending = chats.some((chat) => chat.hasActiveWatch || chat.hasUnreadWake);
+        if (pending) rememberWatchActivity(organization.id);
+        else forgetWatchActivity(organization.id);
         setChats(
-          (data.chats ?? []).map((chat) =>
-            read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat
-          )
+          chats.map((chat) => (read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat))
         );
       } catch (error) {
         console.error("Dashboard agent: failed to load chat history", error);
@@ -160,7 +165,7 @@ export function DashboardAgentPanel({
     })();
     historyInFlight.current = request;
     return request;
-  }, [actionPath, toast]);
+  }, [actionPath, organization.id, toast]);
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
   const openChatRequestSeq = useRef(0);

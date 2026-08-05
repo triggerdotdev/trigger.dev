@@ -20,6 +20,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { startWakePolling } from "./wake-poll";
+import { hasWatchActivity, subscribeWatchActivity } from "./watch-activity";
 import {
   showWatchWakesSummaryToast,
   showWatchWakeToast,
@@ -136,8 +137,18 @@ export function DashboardAgent({
     setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
+  // Nothing to be woken about means nothing to poll for. Once this browser has seen a watch it
+  // keeps polling, so a wake still reaches a tab that was open before the watch existed.
+  const [watching, setWatching] = useState(false);
   useEffect(() => {
-    if (!hasAccess) return;
+    if (hasWatchActivity(organization.id)) setWatching(true);
+    return subscribeWatchActivity(() => {
+      if (hasWatchActivity(organization.id)) setWatching(true);
+    });
+  }, [organization.id]);
+
+  useEffect(() => {
+    if (!hasAccess || !watching) return;
 
     let cancelled = false;
     const load = async () => {
@@ -183,7 +194,7 @@ export function DashboardAgent({
       cancelled = true;
       stop();
     };
-  }, [hasAccess, actionPath, setPanelOpen, openChat]);
+  }, [hasAccess, watching, actionPath, setPanelOpen, openChat]);
 
   // Zeroes the dot right away; the poll restores the truth if another chat has one.
   const markChatRead = useCallback(
