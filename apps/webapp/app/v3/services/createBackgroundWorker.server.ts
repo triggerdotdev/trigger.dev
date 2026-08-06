@@ -775,27 +775,40 @@ export async function syncDeclarativeSchedules(
     },
   });
 
+  const scheduleIdsToDelete: string[] = [];
+  const scheduleIdsToDetachFromEnvironment: string[] = [];
+
   for (const schedule of potentiallyDeletableSchedules) {
     const canDeleteSchedule =
       schedule.instances.length === 0 ||
       schedule.instances.every((instance) => instance.environmentId === environment.id);
 
     if (canDeleteSchedule) {
-      //we can delete schedules with no instances other than ones for the current environment
-      await prisma.taskSchedule.delete({
-        where: {
-          id: schedule.id,
-        },
-      });
-    } else {
-      //otherwise we delete the instance (other environments remain untouched)
-      await prisma.taskScheduleInstance.deleteMany({
-        where: {
-          taskScheduleId: schedule.id,
-          environmentId: environment.id,
-        },
-      });
+      scheduleIdsToDelete.push(schedule.id);
+    } else if (schedule.instances.some((instance) => instance.environmentId === environment.id)) {
+      scheduleIdsToDetachFromEnvironment.push(schedule.id);
     }
+  }
+
+  if (scheduleIdsToDelete.length > 0) {
+    await prisma.taskSchedule.deleteMany({
+      where: {
+        id: {
+          in: scheduleIdsToDelete,
+        },
+      },
+    });
+  }
+
+  if (scheduleIdsToDetachFromEnvironment.length > 0) {
+    await prisma.taskScheduleInstance.deleteMany({
+      where: {
+        taskScheduleId: {
+          in: scheduleIdsToDetachFromEnvironment,
+        },
+        environmentId: environment.id,
+      },
+    });
   }
 }
 
