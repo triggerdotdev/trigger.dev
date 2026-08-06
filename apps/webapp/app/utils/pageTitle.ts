@@ -64,7 +64,8 @@ export function composePageTitle(segments: string[], matches: Matches): string {
 }
 
 export function scopeFromMatches(matches: Matches): string | undefined {
-  const data = matches.find((match) => match.id === ORGANIZATION_MATCH_ID)?.data as
+  const match = matches.find((m) => m.id === ORGANIZATION_MATCH_ID);
+  const data = match?.data as
     | {
         organization?: { title?: string | null };
         project?: { name?: string | null };
@@ -74,7 +75,9 @@ export function scopeFromMatches(matches: Matches): string | undefined {
 
   if (!data) return undefined;
 
-  const project = data.project?.name;
+  // The org loader resolves a "best" project even on org-scoped URLs that name none, so
+  // the project scope is only honest when the URL actually carries one.
+  const project = match?.params?.projectParam ? data.project?.name : undefined;
   if (project) {
     const environment = data.environment ? environmentLabel(data.environment) : undefined;
     return environment ? `${project} (${environment})` : project;

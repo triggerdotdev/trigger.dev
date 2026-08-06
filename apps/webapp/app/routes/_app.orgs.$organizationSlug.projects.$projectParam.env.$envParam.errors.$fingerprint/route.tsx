@@ -85,7 +85,10 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { pageMeta } from "~/utils/pageTitle";
 
-export const meta = pageMeta("Error Details");
+export const meta = pageMeta(({ params }) => [
+  params.fingerprint ? ErrorId.toFriendlyId(params.fingerprint) : "Error",
+  "Errors",
+]);
 
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),

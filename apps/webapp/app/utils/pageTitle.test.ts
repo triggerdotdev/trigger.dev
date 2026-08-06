@@ -12,7 +12,13 @@ type Route = { id: string; data?: unknown; meta?: MetaFunction };
  * match's array is what renders. It also only passes the matches visited *so far*, which is why
  * titles are declared per route rather than centrally.
  */
-function renderTitle(routes: Route[], params: Record<string, string> = {}): string | undefined {
+/** The URL params an environment-scoped page carries; the org scope is only used when they exist. */
+const ENV_PARAMS = { organizationSlug: "acme", projectParam: "my-project", envParam: "prod" };
+
+function renderTitle(
+  routes: Route[],
+  params: Record<string, string> = ENV_PARAMS
+): string | undefined {
   const matches: Array<{ id: string; data: unknown; meta: MetaDescriptor[]; params: any }> = [];
   let leafMeta: MetaDescriptor[] = [];
 
@@ -92,7 +98,10 @@ describe("pageMeta", () => {
     ).toBe("my-task | Tasks | my-project (Prod) | Trigger.dev");
 
     expect(
-      renderTitle([rootRoute, orgRoute, { id: "routes/task", meta }], { taskParam: "other" })
+      renderTitle([rootRoute, orgRoute, { id: "routes/task", meta }], {
+        ...ENV_PARAMS,
+        taskParam: "other",
+      })
     ).toBe("other | Tasks | my-project (Prod) | Trigger.dev");
   });
 
@@ -103,13 +112,26 @@ describe("pageMeta", () => {
       meta: () => [{ title: appTitle("staging") }],
     };
 
-    const title = renderTitle([
-      stagingRoot,
-      { id: ORGANIZATION_MATCH_ID, data: { organization: { title: "Acme" } } },
-      { id: "routes/team", meta: pageMeta("Team") },
-    ]);
+    const title = renderTitle(
+      [
+        stagingRoot,
+        { id: ORGANIZATION_MATCH_ID, data: { organization: { title: "Acme" } } },
+        { id: "routes/team", meta: pageMeta("Team") },
+      ],
+      { organizationSlug: "acme" }
+    );
 
     expect(title).toBe("Team | Acme | Trigger.dev (staging)");
+  });
+
+  it("ignores the project the org loader resolved when the URL names none", () => {
+    // The org loader always resolves a "best" project, so an org page would otherwise
+    // advertise a project the user is not looking at.
+    const title = renderTitle([rootRoute, orgRoute, { id: "routes/team", meta: pageMeta("Team") }], {
+      organizationSlug: "acme",
+    });
+
+    expect(title).toBe("Team | Acme | Trigger.dev");
   });
 
   it("carries the root's non-title tags through", () => {
