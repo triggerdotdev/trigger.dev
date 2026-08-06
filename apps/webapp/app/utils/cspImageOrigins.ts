@@ -1,0 +1,108 @@
+/**
+ * The document `img-src` allowlist. Remote images are a beacon channel: rendering
+ * one is the outbound request, no click needed. So the list is exact origins only —
+ * no wildcard host, no bare scheme, nothing with a path.
+ */
+
+/** Always allowed: own origin, inline data, object URLs, and the GitHub avatar host. */
+export const BASE_IMG_SRC_SOURCES = [
+  "'self'",
+  "data:",
+  "blob:",
+  "https://avatars.githubusercontent.com",
+] as const;
+
+export type RejectedOrigin = { value: string; reason: string };
+
+export type ParsedImageOrigins = {
+  /** Accepted, canonicalised (`scheme://host[:port]`) and deduplicated. */
+  origins: string[];
+  rejected: RejectedOrigin[];
+};
+
+export type ParseImageOriginsOptions = {
+  /** Only a local development deployment may serve images over plain http. */
+  allowHttp?: boolean;
+};
+
+/**
+ * Parses a comma-separated `CSP_IMG_SRC_ALLOWLIST`. Never throws: bad entries are
+ * reported in `rejected` so the caller can warn and boot with the valid ones.
+ */
+export function parseCspImageOrigins(
+  raw: string | undefined | null,
+  options: ParseImageOriginsOptions = {}
+): ParsedImageOrigins {
+  const allowHttp = options.allowHttp ?? false;
+  const origins: string[] = [];
+  const seen = new Set<string>();
+  const rejected: RejectedOrigin[] = [];
+
+  for (const entry of (raw ?? "").split(",")) {
+    const value = entry.trim();
+    if (value.length === 0) continue;
+
+    const reason = rejectionReason(value, allowHttp);
+    if (reason) {
+      rejected.push({ value, reason });
+      continue;
+    }
+
+    const url = new URL(value);
+    const origin = `${url.protocol}//${url.host}`;
+    if (seen.has(origin)) continue;
+    seen.add(origin);
+    origins.push(origin);
+  }
+
+  return { origins, rejected };
+}
+
+/** Returns why the entry is not an acceptable origin, or undefined if it is one. */
+function rejectionReason(value: string, allowHttp: boolean): string | undefined {
+  if (value.includes("*")) {
+    return "wildcards are not allowed, list each origin exactly";
+  }
+  if (/\s/.test(value)) {
+    return "contains whitespace";
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return "is not a valid absolute URL";
+  }
+
+  const allowedProtocols = allowHttp ? ["https:", "http:"] : ["https:"];
+  if (!allowedProtocols.includes(url.protocol)) {
+    return allowHttp
+      ? `scheme "${url.protocol}" is not http: or https:`
+      : `scheme "${url.protocol}" is not https:`;
+  }
+  if (url.host.length === 0) {
+    return "has no host";
+  }
+  if (url.username.length > 0 || url.password.length > 0) {
+    return "must not contain credentials";
+  }
+  if (url.pathname !== "/" || url.search.length > 0 || url.hash.length > 0) {
+    return "must be an origin only, with no path, query or hash";
+  }
+  return undefined;
+}
+
+/** The full directive: the base sources plus any configured extra origins. */
+export function buildImgSrcDirective(extraOrigins: readonly string[] = []): string {
+  return ["img-src", ...BASE_IMG_SRC_SOURCES, ...extraOrigins].join(" ");
+}
+
+/**
+ * Appends the directive to whatever a route already set, rather than replacing it.
+ * A route that set its own `img-src` keeps it.
+ */
+export function withImgSrc(existing: string | null | undefined, directive: string): string {
+  if (!existing) return directive;
+  if (/(^|;)\s*img-src\s/.test(existing)) return existing;
+  return `${existing.replace(/;\s*$/, "")}; ${directive}`;
+}

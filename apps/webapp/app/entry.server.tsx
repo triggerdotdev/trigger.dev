@@ -19,6 +19,7 @@ import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
+import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -52,18 +53,24 @@ const ABORT_DELAY = 30000;
  * all (`components/dashboard-agent/model-markdown.ts`); this is the backstop, so a
  * model-authored image that ever slips through still can't reach a remote host.
  *
- * The two remote hosts are the OAuth providers whose avatar URLs we store. A
- * self-hosted SSO provider serving avatars from its own host has to be added here.
+ * Only exact origins: the GitHub avatar host we store avatar URLs for, plus
+ * whatever `CSP_IMG_SRC_ALLOWLIST` adds (e.g. a self-hosted SSO avatar host).
  */
-const IMG_SRC_DIRECTIVE =
-  "img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.googleusercontent.com";
+const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
+  singleton("CspImageOrigins", () => {
+    const { origins, rejected } = parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST, {
+      allowHttp: env.NODE_ENV === "development",
+    });
 
-/** Appends to whatever a route already set, rather than replacing it. */
-function withImgSrc(existing: string | null): string {
-  if (!existing) return IMG_SRC_DIRECTIVE;
-  if (/(^|;)\s*img-src\s/.test(existing)) return existing;
-  return `${existing.replace(/;\s*$/, "")}; ${IMG_SRC_DIRECTIVE}`;
-}
+    for (const entry of rejected) {
+      logger.warn(
+        `⚠️  CSP_IMG_SRC_ALLOWLIST entry "${entry.value}" was ignored: it ${entry.reason}.`
+      );
+    }
+
+    return origins;
+  })
+);
 
 export default function handleRequest(
   request: Request,
@@ -86,7 +93,7 @@ export default function handleRequest(
 
   responseHeaders.set(
     "Content-Security-Policy",
-    withImgSrc(responseHeaders.get("Content-Security-Policy"))
+    withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)
   );
 
   const acceptLanguage = request.headers.get("accept-language");

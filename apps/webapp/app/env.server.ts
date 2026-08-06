@@ -250,6 +250,9 @@ const EnvironmentSchema = z
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
+    // Extra exact origins (comma separated) added to the document `img-src` CSP,
+    // e.g. an SSO host serving profile images. Wildcards are refused.
+    CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
     API_ORIGIN: z.string().optional(),
     // Alternative API origin for deployed runs whose org has the
     // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
