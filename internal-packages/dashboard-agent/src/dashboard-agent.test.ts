@@ -26,6 +26,7 @@ import {
   turnFailureMessageId,
   type DashboardAgentStore,
 } from "./dashboard-agent";
+import { redactEvalToolValue } from "./eval-policy";
 import {
   CLIENT_DATA,
   collectText,
@@ -364,6 +365,63 @@ describe("the eval judge payload", () => {
       {
         role: "assistant",
         content: [
+          { type: "tool-call", toolCallId: "tc1", toolName: "get_run", input: { runId: "run_1" } },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tc1",
+            toolName: "get_run",
+            output: { type: "json", value: { spans: "y".repeat(80_000) } },
+          },
+        ],
+      },
+    ] as Parameters<typeof extractToolActivity>[0];
+
+    const activity = extractToolActivity(messages);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]!.input).toEqual({ runId: "run_1" });
+    expect(activity[0]!.output).toMatchObject({ truncated: true });
+    // The prompt line the judge actually receives, unindented.
+    expect(JSON.stringify(activity).length).toBeLessThan(2_000);
+  });
+
+  it("replaces the customer's own data with its shape, at any depth", () => {
+    const redacted = redactEvalToolValue({
+      runs: [
+        {
+          id: "run_1",
+          status: "FAILED",
+          payload: { email: "someone@example.com", amount: 42 },
+          output: "the receipt body",
+          error: { name: "TimeoutError", message: "Stripe timed out" },
+        },
+      ],
+      rows: [{ a: 1 }, { a: 2 }],
+    }) as Record<string, any>;
+
+    // The facts the judge grades on survive.
+    expect(redacted.runs[0].id).toBe("run_1");
+    expect(redacted.runs[0].status).toBe("FAILED");
+    expect(redacted.runs[0].error).toEqual({
+      name: "TimeoutError",
+      message: "Stripe timed out",
+    });
+    // The customer's data does not.
+    expect(redacted.runs[0].payload).toEqual({ redacted: "payload", keys: ["email", "amount"] });
+    expect(redacted.runs[0].output).toEqual({ redacted: "output", chars: 16 });
+    expect(redacted.rows).toEqual({ redacted: "rows", items: 2 });
+    expect(JSON.stringify(redacted)).not.toContain("someone@example.com");
+  });
+
+  it("keeps source out of the judge payload entirely", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [
           { type: "tool-call", toolCallId: "tc1", toolName: "read_file", input: { path: "a.ts" } },
         ],
       },
@@ -374,18 +432,14 @@ describe("the eval judge payload", () => {
             type: "tool-result",
             toolCallId: "tc1",
             toolName: "read_file",
-            output: { type: "json", value: { content: "y".repeat(80_000) } },
+            output: { type: "json", value: { content: "const secret = 1;\n".repeat(100) } },
           },
         ],
       },
     ] as Parameters<typeof extractToolActivity>[0];
 
     const activity = extractToolActivity(messages);
-    expect(activity).toHaveLength(1);
-    expect(activity[0]!.input).toEqual({ path: "a.ts" });
-    expect(activity[0]!.output).toMatchObject({ truncated: true });
-    // The prompt line the judge actually receives, unindented.
-    expect(JSON.stringify(activity).length).toBeLessThan(2_000);
+    expect(JSON.stringify(activity)).not.toContain("const secret");
   });
 });
 

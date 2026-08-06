@@ -97,8 +97,10 @@ export const chatTurnEvals = dashboardAgentSchema.table(
     topics: jsonb("topics").$type<string[]>().notNull().default([]),
     signals: jsonb("signals").$type<unknown[]>().notNull().default([]),
     summary: text("summary"),
-    userText: text("user_text"), // the user's question (clustering input)
-    judge: jsonb("judge").$type<Record<string, unknown>>(), // full raw verdict
+    // Legacy, no longer written: both held the turn verbatim (the user's question, and the
+    // judge's raw verdict with its reasoning). Kept only until no deployed agent writes them.
+    userText: text("user_text"),
+    judge: jsonb("judge").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

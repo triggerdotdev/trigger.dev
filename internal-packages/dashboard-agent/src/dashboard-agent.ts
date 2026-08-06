@@ -8,6 +8,7 @@ import {
   type ToolSet,
   type UIMessage,
 } from "ai";
+import { redactEvalToolValue } from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import {
   buildTurnTools,
@@ -163,7 +164,8 @@ export function truncateEvalToolOutput(output: unknown): unknown {
 }
 
 // Pair this turn's tool-calls with their results — the ground truth the eval
-// judge checks the answer against.
+// judge checks the answer against. Redacted first, then capped: the customer's own
+// data (payloads, outputs, query rows, file contents) never leaves as itself.
 export function extractToolActivity(
   messages: ModelMessage[]
 ): Array<{ toolName: string; input?: unknown; output?: unknown }> {
@@ -178,10 +180,13 @@ export function extractToolActivity(
       output?: unknown;
     }>) {
       if (part.type === "tool-call" && part.toolCallId) {
-        byId.set(part.toolCallId, { toolName: String(part.toolName ?? ""), input: part.input });
+        byId.set(part.toolCallId, {
+          toolName: String(part.toolName ?? ""),
+          input: redactEvalToolValue(part.input),
+        });
       } else if (part.type === "tool-result" && part.toolCallId) {
         const existing = byId.get(part.toolCallId);
-        if (existing) existing.output = truncateEvalToolOutput(part.output);
+        if (existing) existing.output = truncateEvalToolOutput(redactEvalToolValue(part.output));
       }
     }
   }

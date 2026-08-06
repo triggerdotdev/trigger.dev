@@ -35,10 +35,15 @@ of truth.
   `public_access_token` and `last_event_id` for resume. Separate table so the
   secret token is isolated from list queries and the hot per-turn write stays off
   the conversation row's indexes.
-- `chat_turn_evals` — one append-only row per evaluated turn, written by the
+- `chat_turn_evals` — one row per judged turn, written by the
   `dashboard-agent-eval-turn` task: quality scores (grounded / answered / concise)
   and insight classification (intent, outcome, capability & docs gaps). Keyed on
-  `(chat_id, turn)` so a re-delivered turn can't double-insert.
+  `(chat_id, turn)` so a re-delivered turn can't double-insert. A row holds the
+  judge's derived verdict only — never the user's question, the agent's answer or
+  any tool data. What is judged and what a row may carry is one file:
+  `@internal/dashboard-agent/src/eval-policy.ts`. Rows are retired after 30 days
+  by the webapp's dashboard-agent sweep. `user_text` and `judge` are legacy
+  columns nothing writes any more.
 - `investigations` — the agent's revisioned working state for a diagnostic thread.
   Keyed by `investigation_id` so a follow-up can load one from the id alone;
   `revision` is bumped by a single atomic `revision = revision + 1` update, and the

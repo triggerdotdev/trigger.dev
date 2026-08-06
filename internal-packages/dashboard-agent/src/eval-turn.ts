@@ -9,13 +9,17 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 /**
- * Runtime eval. The dashboard agent triggers this from `onTurnComplete` after
- * every turn (decoupled task, idempotency-keyed, so it never blocks or bills the
- * agent run). One LLM-judge call produces both a quality verdict (did the agent
- * answer well, grounded in its tool results) and an insight classification
- * (intent, outcome, sentiment, and whether the turn exposes a product / docs /
- * support gap), then writes one `chat_turn_evals` row. Higher-level views ("top
- * capability gaps", "what users struggle with") are aggregations over those rows.
+ * Runtime eval. The dashboard agent triggers this from `onTurnComplete` on a sampled
+ * fraction of turns (decoupled task, idempotency-keyed, so it never blocks or bills the
+ * agent run). One LLM-judge call produces both a quality verdict (did the agent answer
+ * well, grounded in its tool results) and an insight classification (intent, outcome,
+ * sentiment, and whether the turn exposes a product / docs / support gap), then writes one
+ * `chat_turn_evals` row. Higher-level views ("top capability gaps", "what users struggle
+ * with") are aggregations over those rows.
+ *
+ * Which turns are judged, and what a judged turn may carry, is `eval-policy.ts`. The row
+ * keeps the judge's derived verdict only — never the user's question, the answer, or any
+ * tool data verbatim. The comment above `evalTurn` lists exactly what a row holds.
  */
 
 const JUDGE_MODEL = "claude-sonnet-4-6";
@@ -118,8 +122,7 @@ const TurnEval = z.object({
       z.object({
         type: z.enum(SIGNAL_TYPES),
         severity: z.enum(["low", "med", "high"]),
-        detail: z.string(),
-        evidence: z.string().optional().describe("A short quote from the user or answer."),
+        detail: z.string().describe("Describe the signal in your own words; do not quote."),
         suggestedAction: z.string().optional(),
       })
     )
@@ -132,9 +135,24 @@ const JUDGE_SYSTEM = [
   "You are given the user's question, the data the agent retrieved through its tools (treat this as the only ground truth), and the agent's answer.",
   "Reason briefly first, then fill in the scores and classification.",
   "Score quality only on factual grounding and whether the question was answered; do not reward verbosity or confidence. Penalize any run id, error name, count, status, version, or metric not present in the tool data.",
+  'Some tool fields arrive as a shape descriptor like {"redacted":"payload","keys":[...]} — that data was withheld on purpose. Treat it as retrieved but unreadable: judge grounding on the facts you can see, and never penalize an answer for a redacted field.',
   "Then classify the turn for product insight. Flag capabilityGap when the agent could not fully help because it lacked a tool, data, or permission (it is read-only, so any request to change something is a capability gap). Flag docsGap for how-to questions a doc would answer better. Flag supportOpportunity when the user seems stuck or frustrated. Flag featureRequest when they want something the product does not do. Capture concrete, actionable signals.",
 ].join(" ");
 
+/**
+ * What a row keeps, and what it deliberately does not.
+ *
+ * Kept: the turn's identity (chat, turn, org, user, run ids, project, environment, page),
+ * the model and prompt version, the tool names it called and whether one errored, and the
+ * judge's derived verdict — scores, classification, topics, typed signals, one-line summary.
+ *
+ * Not kept: the user's question, the agent's answer, and every tool input and output. Those
+ * reach the judge (redacted per `eval-policy.ts`) and are never written down. The judge's
+ * `reasoning` is dropped for the same reason: it restates the turn.
+ *
+ * `user_text` and `judge` are legacy columns this task no longer writes. They stay until no
+ * deployed agent version writes them; retention clears the rows that still carry them.
+ */
 export const evalTurn = task({
   id: "dashboard-agent-eval-turn",
   run: async (payload: EvalTurnPayload, { ctx }) => {
@@ -186,8 +204,6 @@ export const evalTurn = task({
       topics: object.topics,
       signals: object.signals,
       summary: object.summary,
-      userText: payload.userText,
-      judge: object,
     });
 
     logger.info("dashboard-agent turn evaluated", {
