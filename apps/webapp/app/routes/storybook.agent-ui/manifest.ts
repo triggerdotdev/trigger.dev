@@ -66,8 +66,6 @@ export type GallerySection = {
   sectionId: string;
   title: string;
   group: GalleryGroup;
-  /** A state that only exists after a click. */
-  expandText?: string;
 };
 
 export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: string }[] = [
@@ -226,13 +224,11 @@ export const MANIFEST: GallerySection[] = [
     sectionId: "investigation-card-concluded-code-grounded",
     title: "Concluded, code-grounded — source citation and Show code",
     group: "investigation",
-    expandText: "How I worked this out",
   },
   {
     sectionId: "investigation-card-concluded-not-code-grounded",
     title: "Concluded, not code-grounded — no source citation, no Show code",
     group: "investigation",
-    expandText: "How I worked this out",
   },
   {
     sectionId: "investigation-card-inconclusive",
