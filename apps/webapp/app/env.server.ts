@@ -1035,17 +1035,13 @@ const EnvironmentSchema = z
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
     /**
-     * Ceiling on how long a debounced run can be pushed back, measured from the first trigger.
-     * Acts as the default when a trigger does not set `debounce.maxDelay`; a trigger that does
-     * set it overrides this entirely. A `debounce.delay` at or above the effective ceiling is
-     * rejected at trigger time, since no trigger could ever extend the run.
-     *
-     * Default: 24 hours (86,400,000ms)
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the first
+     * trigger. Unset by default: a continuously triggered debounce key is pushed back for as
+     * long as the triggers keep coming, and `debounce.maxDelay` on the trigger is the only
+     * bound. Setting this applies a ceiling to every debounced run that does not carry its own
+     * `maxDelay`, and any `delay` at or above it stops runs from being pushed at all.
      */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
-      .number()
-      .int()
-      .default(24 * 60 * 60 * 1000),
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce.number().int().optional(),
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`

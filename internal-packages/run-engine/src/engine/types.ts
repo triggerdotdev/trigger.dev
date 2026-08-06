@@ -169,12 +169,14 @@ export type RunEngineOptions = {
   debounce?: {
     redis?: RedisOptions;
     /**
-     * Ceiling on how long a debounced run can be pushed back, measured from the run's
-     * `createdAt`. A trigger's own `debounce.maxDelay` overrides this. Once a trigger would
-     * push `delayUntil` past the ceiling, the existing run is released to execute and the
-     * trigger starts a new one.
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the run's
+     * `createdAt`. A trigger's own `debounce.maxDelay` overrides this. Once a trigger would push
+     * `delayUntil` past the ceiling, the existing run is released to execute and the trigger
+     * starts a new one.
      *
-     * Default: 24 hours
+     * Unset by default, which means a continuously triggered key is pushed back for as long as
+     * the triggers keep coming. Set it to bound that; note that any `delay` at or above the
+     * ceiling stops the run from ever being pushed, so every trigger creates its own run.
      */
     maxDebounceDurationMs?: number;
     /**

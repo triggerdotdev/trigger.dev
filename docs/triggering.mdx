@@ -873,7 +873,7 @@ The `debounce` option accepts:
 - `key` - A unique string to identify the debounce group (scoped to the task)
 - `delay` - Duration string specifying how long to delay. Supported units: `s` (seconds), `m` (minutes), `h`/`hr` (hours), `d` (days), `w` (weeks). Minimum is 1 second. Examples: `"5s"`, `"1m"`, `"2h30m"`
 - `mode` - Optional. Controls which trigger's data is used: `"leading"` (default) or `"trailing"`
-- `maxDelay` - Optional. Maximum total time from the first trigger before the run must execute. Uses the same duration format as `delay`. Defaults to the maximum debounce duration, which is 24 hours on Trigger.dev Cloud
+- `maxDelay` - Optional. Maximum total time from the first trigger before the run must execute. Uses the same duration format as `delay`. Not set by default
 
 **How it works:**
 
@@ -882,38 +882,11 @@ The `debounce` option accepts:
 3. Once no new triggers occur within the delay duration, the run executes
 4. After the run starts executing, a new trigger with the same key will create a new run
 
-**Your delay must fit inside the maximum:**
-
-A run can only be pushed later while its new execution time stays inside `maxDelay`, measured from the first trigger. The room you have to push is therefore `maxDelay` minus `delay`. With `delay: "5s"` and the 24 hour default, a key can be pushed for almost a full day. With `delay: "24h"` and no `maxDelay`, there is no room at all: the first push is already out of bounds, so every trigger would create its own run.
-
-Triggers like that are rejected rather than silently behaving as if you had not set a debounce:
-
-```
-debounce.delay (24h) is at or above the maximum debounce duration of 1d. A debounced run
-can only be extended while it is inside that window, so with this delay every trigger would
-create its own run. Either shorten the delay, or set debounce.maxDelay above 24h to raise
-the ceiling for this trigger.
-```
-
-To debounce for longer than 24 hours, set `maxDelay` above your `delay`:
-
-```ts
-await myTask.trigger(
-  { conversationId: "123" },
-  {
-    debounce: {
-      key: "conversation-123",
-      delay: "12h",   // Wait 12h after each trigger
-      maxDelay: "36h", // Keep extending for up to 36h from the first trigger
-    },
-  }
-);
-```
-
 <Warning>
-  `delay` must be a duration string, not a date. A date is accepted by the `delay` option on a
-  normal trigger, but `debounce.delay` is re-applied every time the run is pushed later, so it has
-  to be relative.
+  There is no time limit on step 2. While triggers keep arriving on the same key, the run keeps
+  being pushed back and never executes. A key triggered every 10 seconds with a `delay` of `"30s"`
+  runs 30 seconds after the triggers stop, however long that takes. Set `maxDelay` whenever the
+  work needs to happen eventually.
 </Warning>
 
 **Limiting total delay with `maxDelay`:**
@@ -954,6 +927,8 @@ Consider `delay: "5s"` and `maxDelay: "30s"` with triggers arriving every 2 seco
 | 30s | Trigger 16 | Run B rescheduled to 35s |
 
 Without `maxDelay`, continuous triggers would prevent the run from ever executing. With `maxDelay: "30s"`, execution is guaranteed within 30 seconds of the first trigger.
+
+Keep `delay` well below `maxDelay`. A run is only pushed back while its new execution time stays inside `maxDelay`, so the room you have to push is `maxDelay` minus `delay`. Setting them equal, or setting `delay` higher, leaves no room at all: every trigger creates its own run and the debounce key has no effect.
 
 <Note>
   The `maxDelay` value is evaluated from each trigger call, not stored with the original run. This

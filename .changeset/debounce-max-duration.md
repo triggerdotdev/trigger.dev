@@ -2,16 +2,16 @@
 "@trigger.dev/core": patch
 ---
 
-Debounce windows can now run up to 24 hours by default, and a `debounce.delay` that leaves no room to extend the run is rejected instead of silently doing nothing.
+Debouncing with a `delay` longer than an hour now works. A hidden server-side limit was releasing debounced runs after an hour, so any `delay` at or above that never got to push its run back at all: every trigger created its own run, with no error and nothing on the run to show the debounce key had been ignored.
 
-A debounced run is only pushed later while its new execution time stays inside `maxDelay` (or the server maximum) measured from the first trigger, so the room you have to push is `maxDelay` minus `delay`. Setting a `delay` at or above that ceiling previously meant every trigger created its own run, with no error and nothing on the run to show the debounce had been ignored. Those triggers now fail with a message naming both values and how to fix them.
+That limit is gone. A debounce key with no `maxDelay` now keeps pushing its run back for as long as triggers keep arriving, which means it never executes while they do. Set `maxDelay` when the work has to happen eventually, and keep `delay` well below it, since the room available to push is the gap between the two.
 
 ```ts
 await myTask.trigger(payload, {
   debounce: {
     key: "conversation-123",
-    delay: "12h",
-    maxDelay: "36h",
+    delay: "10s",
+    maxDelay: "5m",
   },
 });
 ```

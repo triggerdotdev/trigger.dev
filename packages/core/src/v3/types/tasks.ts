@@ -940,13 +940,8 @@ export type TriggerOptions = {
    *
    * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
    *
-   * Extensions are bounded. A run can only be pushed back while its new execution time stays
-   * inside `maxDelay` (or the server's maximum debounce duration, 24 hours on Trigger.dev Cloud)
-   * measured from the first trigger. Once a trigger would push past that, the waiting run is
-   * released to execute and the trigger starts a fresh one. This means `delay` must be shorter
-   * than that ceiling: a `delay` of `"24h"` with no `maxDelay` leaves no room to extend at all,
-   * so every trigger would create its own run. Triggers like that are rejected rather than
-   * silently behaving as if no debounce were set.
+   * There is no time limit by default: while triggers keep arriving on the same key, the run
+   * keeps being pushed back and never executes. Set `maxDelay` to bound that.
    *
    * @example
    *
@@ -972,9 +967,9 @@ export type TriggerOptions = {
      * Duration string specifying how long to delay the run. If another trigger with the same key
      * occurs within this duration, the delay is extended.
      *
-     * Must be shorter than `maxDelay` (or the server's maximum debounce duration when `maxDelay`
-     * is not set), otherwise the trigger is rejected: there would be no room to extend the run
-     * and every trigger would create its own.
+     * When you also set `maxDelay`, keep `delay` well below it. A run is only pushed back while
+     * the new execution time stays inside `maxDelay`, so a `delay` at or above `maxDelay` leaves
+     * no room to push and every trigger creates its own run.
      *
      * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
      * `{number}d` (days), `{number}w` (weeks). Must be a duration, not a date. Minimum delay is
@@ -1001,12 +996,10 @@ export type TriggerOptions = {
      * (measured from the first trigger), the current debounced run will be allowed to execute
      * and a new run will be created for subsequent triggers.
      *
-     * Set this above `delay` to debounce for longer than the server's maximum debounce duration
-     * (24 hours on Trigger.dev Cloud). The gap between the two is what you actually get: a
-     * `delay` of `"12h"` with a `maxDelay` of `"36h"` keeps extending the run for up to 24 hours
-     * after the first trigger, then runs it.
-     *
-     * If not specified, falls back to the server's maximum debounce duration.
+     * Without it a continuously triggered key is pushed back indefinitely and never runs. The
+     * gap between the two values is the room you have to push: a `delay` of `"10s"` with a
+     * `maxDelay` of `"5m"` keeps extending for just under 5 minutes from the first trigger,
+     * then runs.
      *
      * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
      * `{number}d` (days), `{number}w` (weeks).

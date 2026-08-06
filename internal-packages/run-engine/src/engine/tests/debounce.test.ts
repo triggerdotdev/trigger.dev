@@ -3179,7 +3179,7 @@ describe("RunEngine debounce", () => {
   }
 
   containerTest(
-    "Debounce: a long delay under the default maximum keeps extending one run",
+    "Debounce: with no server ceiling configured, a long delay keeps extending one run",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 

@@ -461,7 +461,7 @@ describe("RunEngineTriggerTaskService", () => {
   });
 
   containerTest(
-    "should reject a debounce window that leaves no room to extend the run",
+    "should reject a debounce maxDelay that leaves no room to push the run back",
     async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
@@ -515,7 +515,6 @@ describe("RunEngineTriggerTaskService", () => {
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1,
-        maximumDebounceDurationMs: 24 * 60 * 60 * 1000,
       });
 
       const triggerWithDebounce = (debounce: { key: string; delay: string; maxDelay?: string }) =>
@@ -525,31 +524,27 @@ describe("RunEngineTriggerTaskService", () => {
           body: { payload: { test: "test" }, options: { debounce } },
         });
 
-      await expect(triggerWithDebounce({ key: "at-the-ceiling", delay: "24h" })).rejects.toThrow(
-        /at or above the maximum debounce duration/
-      );
-
-      await expect(triggerWithDebounce({ key: "above-the-ceiling", delay: "48h" })).rejects.toThrow(
-        /at or above the maximum debounce duration/
-      );
+      await expect(
+        triggerWithDebounce({ key: "equal", delay: "12h", maxDelay: "12h" })
+      ).rejects.toThrow(/must be longer than debounce.delay/);
 
       await expect(
-        triggerWithDebounce({ key: "delay-equals-max", delay: "12h", maxDelay: "12h" })
-      ).rejects.toThrow(/must be shorter than debounce.maxDelay/);
+        triggerWithDebounce({ key: "shorter", delay: "12h", maxDelay: "1h" })
+      ).rejects.toThrow(/must be longer than debounce.delay/);
 
       await expect(
-        triggerWithDebounce({ key: "date-not-duration", delay: "2027-01-01T00:00:00.000Z" })
-      ).rejects.toThrow(/must be a duration, not a date/);
+        triggerWithDebounce({ key: "unparseable", delay: "10s", maxDelay: "soon" })
+      ).rejects.toThrow(/Invalid debounce maxDelay/);
 
-      const belowCeiling = await triggerWithDebounce({ key: "below-the-ceiling", delay: "12h" });
-      expect(belowCeiling?.run.friendlyId).toBeDefined();
-
-      const raisedCeiling = await triggerWithDebounce({
-        key: "raised-ceiling",
-        delay: "36h",
-        maxDelay: "72h",
+      const withRoom = await triggerWithDebounce({
+        key: "with-room",
+        delay: "10s",
+        maxDelay: "5m",
       });
-      expect(raisedCeiling?.run.friendlyId).toBeDefined();
+      expect(withRoom?.run.friendlyId).toBeDefined();
+
+      const noMaxDelay = await triggerWithDebounce({ key: "no-max-delay", delay: "12h" });
+      expect(noMaxDelay?.run.friendlyId).toBeDefined();
     }
   );
 });
