@@ -264,19 +264,10 @@ describe("API-key policy controller composition", () => {
 });
 
 describe("API-key policy fallback", () => {
-  it("prepares explicit standalone full access and exposes its scope preview", async () => {
+  it("prepares explicit standalone full access and exposes no preset catalogue", async () => {
     const controller = loader.create(prismaPlaceholder, { forceFallback: true });
 
-    await expect(controller.apiKeyPresets("org_123")).resolves.toEqual([
-      {
-        id: "FULL_ACCESS",
-        label: "No restrictions",
-        description: "Full access to this environment, matching the root API key.",
-        scopes: ["admin"],
-        usesTaskSelection: false,
-        available: true,
-      },
-    ]);
+    await expect(controller.apiKeyPresets("org_123")).resolves.toBeNull();
     await expect(
       controller.prepareApiKeyPolicy({ organizationId: "org_123", presetId: "FULL_ACCESS" })
     ).resolves.toEqual({
