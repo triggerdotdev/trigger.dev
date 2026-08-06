@@ -97,6 +97,11 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "Why does this keep happening?",
           "Investigate this error — why does it keep coming back, and which runs are affected?"
         ),
+        watch: def(
+          "error-watch-recurrence",
+          "Tell me if it comes back",
+          "Watch this error and tell me if it happens again."
+        ),
         explain: def(
           "error-similar",
           "Find similar failures",
@@ -125,6 +130,11 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
                 queueBacklogPrompt(page.name)
               )
             : undefined,
+        watch: def(
+          "queue-watch-drain",
+          "Tell me when the backlog drains",
+          `Watch the ${page.name} queue and tell me when the backlog drains.`
+        ),
         status: def(
           "queue-backlog",
           "How big is the backlog?",

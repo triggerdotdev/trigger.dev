@@ -15,6 +15,7 @@ export function DashboardAgentDraft({
   currentPage,
   pageContext,
   promotedPrompt,
+  watchCard,
 }: {
   onSubmit: (text: string) => void;
   projectSlug: string;
@@ -22,6 +23,7 @@ export function DashboardAgentDraft({
   currentPage: string;
   pageContext?: AgentPageContext;
   promotedPrompt?: SuggestedPrompt;
+  watchCard?: React.ReactNode;
 }) {
   const [input, setInput] = useState("");
 
@@ -56,6 +58,7 @@ export function DashboardAgentDraft({
       promoted={promotedPrompt}
       composer={
         <div className="flex w-full flex-col gap-3">
+          {watchCard}
           <DashboardAgentComposer
             layout="hero"
             value={input}
@@ -63,7 +66,7 @@ export function DashboardAgentDraft({
             onSubmit={() => submit(input)}
             onStop={() => {}}
             isStreaming={false}
-            placeholderSuggestion={placeholderSuggestion}
+            placeholderSuggestion={watchCard ? undefined : placeholderSuggestion}
             context={
               <DashboardAgentContextBanner
                 projectSlug={projectSlug}

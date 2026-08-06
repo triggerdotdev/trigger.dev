@@ -11,7 +11,7 @@ import { type ReportViewModel } from "./report-view-model";
 
 const DEFAULT_PERIOD = "1h";
 
-/** How long a finished report stays reusable. */
+/** How long a finished report stays reusable. Must stay under the watch tick cadence. */
 export const REPORT_CACHE_TTL_MS = 90_000;
 
 /** How many report, environment and period triples one instance keeps. */

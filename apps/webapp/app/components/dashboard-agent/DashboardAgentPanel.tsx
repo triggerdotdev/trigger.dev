@@ -17,10 +17,13 @@ import {
 } from "./DashboardAgentChat";
 import { createCoalescedReload } from "./coalesced-reload";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { WatchCard } from "./WatchCard";
+import { watchDraftFor } from "./watch-card";
+import { forgetWatchActivity, rememberWatchActivity } from "./watch-activity";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt, WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
@@ -65,8 +68,11 @@ type ActiveChat = {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  openChatRequest,
   newChatSeq,
   promotedPrompt,
+  watchRequest,
+  onChatRead,
   isFullscreen = false,
   onToggleFullscreen,
 }: {
@@ -75,8 +81,11 @@ export function DashboardAgentPanel({
   onToggleFullscreen?: () => void;
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
+  openChatRequest?: { chatId: string; seq: number };
   newChatSeq?: number;
   promotedPrompt?: SuggestedPrompt;
+  watchRequest?: { spec: WatchSpec; seq: number };
+  onChatRead?: (chatId: string) => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -126,6 +135,9 @@ export function DashboardAgentPanel({
     );
   }, []);
 
+  // The read POST and its reload can land out of order, so mask the next list.
+  const justRead = useRef<Set<string>>(new Set());
+
   const loadHistory = useMemo(
     () =>
       createCoalescedReload(async () => {
@@ -133,13 +145,23 @@ export function DashboardAgentPanel({
           const res = await fetch(actionPath);
           if (!res.ok) throw new Error(`History request failed (${res.status})`);
           const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
-          setChats(data.chats ?? []);
+          const read = justRead.current;
+          justRead.current = new Set();
+          const chats = data.chats ?? [];
+          // Reloaded after every turn and after a watch is created, so this is where the browser
+          // learns whether the wake feed is worth polling.
+          const pending = chats.some((chat) => chat.hasActiveWatch || chat.hasUnreadWake);
+          if (pending) rememberWatchActivity(organization.id);
+          else forgetWatchActivity(organization.id);
+          setChats(
+            chats.map((chat) => (read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat))
+          );
         } catch (error) {
           console.error("Dashboard agent: failed to load chat history", error);
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, toast]
+    [actionPath, organization.id, toast]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
@@ -239,9 +261,21 @@ export function DashboardAgentPanel({
     openChatRequestSeq.current += 1;
     setActive(null);
     setLoading(false);
+    setWatchDraft(null);
     setChats([]);
     void loadHistory();
   }, [organization.id, loadHistory]);
+
+  const handledOpenChatSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!openChatRequest || handledOpenChatSeq.current === openChatRequest.seq) return;
+    handledOpenChatSeq.current = openChatRequest.seq;
+    // Reloading the visible transcript would drop a turn in flight.
+    if (openChatRequest.chatId === active?.chatId) return;
+    void openChat(openChatRequest.chatId);
+    // `active` is read, not tracked: a later change must not re-run the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openChatRequest, openChat]);
 
   useEffect(() => {
     if (!active?.chatId) return;
@@ -254,6 +288,21 @@ export function DashboardAgentPanel({
       /* ignore */
     }
   }, [active?.chatId, storageKey, location.pathname]);
+
+  useEffect(() => {
+    if (!active?.chatId) return;
+    const chatId = active.chatId;
+    onChatRead?.(chatId);
+    justRead.current.add(chatId);
+    setChats((previous) =>
+      previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
+    );
+    // Read again on the way out: a wake can land while the chat is open.
+    return () => {
+      onChatRead?.(chatId);
+      justRead.current.add(chatId);
+    };
+  }, [active?.chatId, onChatRead]);
 
   // Bound to its chat, which remounts with a fresh guard ref on every switch.
   const [prefill, setPrefill] = useState<{ text: string; seq: number; chatId: string } | undefined>(
@@ -270,6 +319,100 @@ export function DashboardAgentPanel({
       void createChat(requestedMessage.text);
     }
   }, [requestedMessage, loading, active, createChat]);
+
+  const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
+  const [watchPending, setWatchPending] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  // Carries its chat id so a later-mounted chat cannot adopt another chat's block.
+  const [appendedMessages, setAppendedMessages] = useState<
+    { chatId: string; messages: UIMessage[]; seq: number } | undefined
+  >(undefined);
+  // One id per configured card, kept across retries: the server writes the request
+  // and confirmation records under it, so retrying repairs instead of duplicating.
+  const watchRequestId = useRef<string | undefined>(undefined);
+
+  const handledWatchSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
+    handledWatchSeq.current = watchRequest.seq;
+    setWatchError(null);
+    setWatchPending(false);
+    watchRequestId.current = generateFriendlyId("wreq");
+    setWatchDraft(watchDraftFor(watchRequest.spec));
+  }, [watchRequest]);
+
+  // Nothing is posted or persisted until the card is submitted.
+  const openWatchCard = useCallback((spec: WatchSpec) => {
+    setWatchError(null);
+    setWatchPending(false);
+    watchRequestId.current = generateFriendlyId("wreq");
+    setWatchDraft(watchDraftFor(spec));
+  }, []);
+
+  const dismissWatchCard = useCallback(() => {
+    watchRequestId.current = undefined;
+    setWatchDraft(null);
+    setWatchError(null);
+    setWatchPending(false);
+  }, []);
+
+  const submitWatch = useCallback(async () => {
+    if (!watchDraft) return;
+    setWatchPending(true);
+    setWatchError(null);
+    try {
+      const body = new FormData();
+      body.set("intent", "watch-create");
+      body.set("draft", JSON.stringify(watchDraft));
+      // Held across retries, so a resubmit repairs the same pair of records.
+      watchRequestId.current ??= generateFriendlyId("wreq");
+      body.set("clientRequestId", watchRequestId.current);
+      // A watch is chat-bound: with no chat open the server creates one.
+      if (active?.chatId) body.set("chatId", active.chatId);
+
+      const res = await fetch(actionPath, { method: "POST", body });
+      const data = (await res.json()) as {
+        chatId?: string;
+        messages?: UIMessage[];
+        error?: string;
+      };
+      if (!res.ok || !data.chatId || !data.messages) {
+        setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
+        return;
+      }
+
+      const messages = data.messages;
+      if (active?.chatId === data.chatId) {
+        setAppendedMessages((current) => ({
+          chatId: data.chatId!,
+          messages,
+          seq: (current?.seq ?? 0) + 1,
+        }));
+      } else {
+        // No session: nothing is streaming and the records are the whole chat.
+        setActive({ chatId: data.chatId, messages, session: null });
+      }
+      watchRequestId.current = undefined;
+      setWatchDraft(null);
+      void loadHistory();
+    } catch (error) {
+      console.error("Dashboard agent: failed to create watch", error);
+      setWatchError("We couldn't start that watch. Try again in a moment.");
+    } finally {
+      setWatchPending(false);
+    }
+  }, [watchDraft, active?.chatId, actionPath, loadHistory]);
+
+  const watchCard = watchDraft ? (
+    <WatchCard
+      draft={watchDraft}
+      onChange={setWatchDraft}
+      onSubmit={() => void submitWatch()}
+      onCancel={dismissWatchCard}
+      pending={watchPending}
+      error={watchError}
+    />
+  ) : null;
 
   const newChat = useCallback(() => {
     // Invalidate any in-flight open or create so its result can't replace the draft.
@@ -313,9 +456,39 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
+  const cancelWatch = useCallback(
+    async (watchId: string) => {
+      const chatId = active?.chatId;
+      if (!chatId) return;
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, watches: (chat.watches ?? []).filter((watch) => watch.id !== watchId) }
+            : chat
+        )
+      );
+      const body = new FormData();
+      body.set("intent", "watch-cancel");
+      body.set("chatId", chatId);
+      body.set("watchId", watchId);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        if (!res.ok) throw new Error(`Watch cancel failed (${res.status})`);
+      } catch (error) {
+        console.error("Dashboard agent: failed to cancel watch", error);
+        toast.error("We couldn't stop that watch. Try again in a moment.");
+      }
+      void loadHistory();
+    },
+    [actionPath, active?.chatId, loadHistory, toast]
+  );
+
   // Titles are written when the first turn settles, so a new chat has none yet.
   const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
   const headerTitle = active ? (activeChat?.title ?? "Chat") : "New chat";
+
+  // Not filtered to active: the wake banner needs watches that already fired.
+  const chatWatches = activeChat?.watches ?? [];
 
   return (
     <div
@@ -364,7 +537,14 @@ export function DashboardAgentPanel({
             environmentSlug={environment.slug}
             currentPage={currentPage}
             promotedPrompt={promotedPrompt}
+            watches={chatWatches}
             pagePaths={pagePaths}
+            watchCard={watchCard}
+            appendedMessages={
+              appendedMessages?.chatId === active.chatId ? appendedMessages : undefined
+            }
+            onWatchIntent={openWatchCard}
+            onCancelWatch={cancelWatch}
             // The generated chat name is written before the turn-complete chunk lands.
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
@@ -377,6 +557,7 @@ export function DashboardAgentPanel({
             currentPage={currentPage}
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
+            watchCard={watchCard}
           />
         )}
       </AgentPanelColumn>

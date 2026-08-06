@@ -152,14 +152,14 @@ describe("invariant 1: a repeated message id creates no row and keeps its positi
 
       await persistMessages(agentDb, { chatId, messages: [textMessage("u1")] });
       expect(
-        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("ev:1") })
+        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("wake:w1") })
       ).toBe(true);
 
       const before = await rows(prisma, chatId);
 
       // The same durable event, redelivered.
       expect(
-        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("ev:1") })
+        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("wake:w1") })
       ).toBe(false);
 
       expect(await rows(prisma, chatId)).toEqual(before);
@@ -196,7 +196,7 @@ describe("invariant 2: concurrent different messages get distinct positions", ()
       const chatId = "chat_concurrent";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
-      const ids = Array.from({ length: 8 }, (_, i) => `ev:${i}`);
+      const ids = Array.from({ length: 8 }, (_, i) => `wake:w${i}`);
       const results = await Promise.all(
         ids.map((id) =>
           appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage(id) })
@@ -277,10 +277,10 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
       await persistMessages(agentDb, { chatId, messages: [textMessage("u1")] });
-      // A durable event, appended outside a turn.
+      // A durable event: the wake that actually fired.
       await appendChatMessageOnceByChatId(agentDb, {
         chatId,
-        message: textMessage("ev:fired", "send-order-receipt resolved."),
+        message: textMessage("wake:watch_1:fired", "The watch on send-order-receipt resolved."),
       });
       const before = await rows(prisma, chatId);
 
@@ -288,7 +288,7 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       // not a finalisation, so it must not be able to rewrite it.
       await persistMessages(agentDb, {
         chatId,
-        messages: [textMessage("u1"), textMessage("ev:fired", "something else entirely")],
+        messages: [textMessage("u1"), textMessage("wake:watch_1:fired", "something else entirely")],
       });
 
       expect(await rows(prisma, chatId)).toEqual(before);
@@ -573,10 +573,10 @@ describe("a write can no longer lose a message another process appended", () => 
       const snapshot = [textMessage("u1"), textMessage("a1")];
       await persistMessages(agentDb, { chatId, messages: snapshot });
 
-      // Another process appends while the turn is running.
+      // Another process — a wake delivery — appends while the turn is running.
       await appendChatMessageOnceByChatId(agentDb, {
         chatId,
-        message: textMessage("ev:fired"),
+        message: textMessage("wake:watch_1:fired"),
       });
 
       // The turn ends and writes its own snapshot plus what it produced.
@@ -586,12 +586,12 @@ describe("a write can no longer lose a message another process appended", () => 
         session: { publicAccessToken: "pat_store", lastEventId: "1", runId: "run_store" },
       });
 
-      // It is still there, and sits where it happened: after the turn's snapshot,
+      // The wake is still there, and sits where it happened: after the turn's snapshot,
       // before the reply the turn went on to produce.
       expect((await transcript(chatId)).map((message) => message.id)).toEqual([
         "u1",
         "a1",
-        "ev:fired",
+        "wake:watch_1:fired",
         "a2",
       ]);
     },
@@ -677,9 +677,8 @@ describe("countUserMessages", () => {
 
       await persistMessages(agentDb, {
         chatId: "chat_a",
-        // A consent record is a user message but not a turn the user spent, so the
-        // quota's prefix filter must skip it.
-        messages: [userMessage("u1"), textMessage("a1"), userMessage("watch-request:req_1")],
+        // A watch's consent record is a user message but not a turn the user spent.
+        messages: [userMessage("u1"), textMessage("a1"), userMessage("watch-request:watch_1")],
       });
       await persistMessages(agentDb, { chatId: "chat_b", messages: [userMessage("u2")] });
       await persistMessages(agentDb, { chatId: "chat_gone", messages: [userMessage("u3")] });

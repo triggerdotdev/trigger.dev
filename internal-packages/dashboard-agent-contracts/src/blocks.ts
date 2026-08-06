@@ -6,6 +6,7 @@ import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
 import { agentIntentSchema } from "./intent.js";
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
+import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
 /**
@@ -195,12 +196,16 @@ const actionIntentSchema = z.union([
     target: z.string().min(1),
     filters: runFiltersSchema.optional(),
   }),
+  z.object({
+    kind: z.literal("watch"),
+    spec: watchSpecSchema,
+  }),
 ]);
 
 export const actionsBlockActionSchema = z.object({
-  label: z.string().min(1).describe("The button text, e.g. 'See its failed runs'."),
+  label: z.string().min(1).describe("The button text, e.g. 'Set up a watch'."),
   intent: actionIntentSchema.describe(
-    "What the button does. `ask` sends the prompt as the user's next message, phrased in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped, so when in doubt use `ask`."
+    "What the button does. `watch` opens the watch configuration card pre-filled with your spec — the user confirming the card is what starts it. `ask` sends the prompt as the user's next message, phrased in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped, so when in doubt use `ask`."
   ),
 });
 
@@ -213,7 +218,7 @@ const actionsBlockBodySchema = z.object({
     .min(1)
     .max(3)
     .describe(
-      "1-3 buttons, the one to take first. Keep labels short and imperative ('See its failed runs', 'Show the code')."
+      "1-3 buttons, the one to take first. Keep labels short and imperative ('Set up a watch', 'See its failed runs')."
     ),
 });
 
@@ -511,7 +516,12 @@ export function forceSettledInvestigationState(state: InvestigationState): Inves
  */
 export const INVESTIGATION_CAPABILITIES_VERSION = 1;
 
-export const investigationActionKindSchema = z.enum(["show_code", "view_similar", "ask_follow_up"]);
+export const investigationActionKindSchema = z.enum([
+  "show_code",
+  "watch_recurrence",
+  "view_similar",
+  "ask_follow_up",
+]);
 
 export const investigationActionSchema = z.object({
   kind: investigationActionKindSchema,
@@ -539,8 +549,34 @@ const investigationBlockBodyInputSchema = z.object({
 });
 
 /**
- * What `render_view` accepts from the model. `report` is host-emitted and so
- * absent here.
+ * Host-emitted only, so it is absent from `viewBlockInputSchema`. Wording is
+ * frozen at append time: the block carries final English, not a message key.
+ */
+export const watchResultOutcomeSchema = z.enum(["watching", "already_true", "impossible"]);
+export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
+
+const watchResultBlockBodySchema = z.object({
+  type: z.literal("watch_result"),
+  outcome: watchResultOutcomeSchema,
+  headline: z.string(),
+  /** Null on a one-shot result: nothing is watching. */
+  lifetime: z.string().nullable().default(null),
+  detail: z.string().nullable().default(null),
+  followUp: z.array(z.string()).max(4).default([]),
+  /** The live watch this confirms. Null on a one-shot result. */
+  watchId: z.string().nullable().default(null),
+});
+
+export const watchResultBlockSchema = watchResultBlockBodySchema.merge(blockEnvelopeSchema);
+export const legacyWatchResultBlockSchema =
+  watchResultBlockBodySchema.extend(optionalEnvelopeShape);
+
+export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
+export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
+
+/**
+ * What `render_view` accepts from the model. `report` and `watch_result` are
+ * host-emitted and so absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -588,6 +624,7 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   actionsBlockSchema,
   reportBlockSchema,
   investigationBlockSchema,
+  watchResultBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
@@ -611,6 +648,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyActionsBlockSchema,
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
+  legacyWatchResultBlockSchema,
 ]);
 
 /**

@@ -1,3 +1,5 @@
+import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
+
 // Counted per user across their chats in the org, not per chat, which "New chat"
 // would reset.
 export const FREE_PLAN_MESSAGE_LIMIT = 20;
@@ -25,6 +27,12 @@ export function resolveMessageQuota({
     : { kind: "within", used, limit, remaining };
 }
 
-export function countUserMessages(messages: { role: string }[]): number {
-  return messages.reduce((total, message) => (message.role === "user" ? total + 1 : total), 0);
+// A watch's consent record is a user message the person never typed, so it is
+// excluded here exactly as the stored count excludes it.
+export function countUserMessages(messages: { role: string; id?: string }[]): number {
+  return messages.reduce(
+    (total, message) =>
+      message.role === "user" && !isWatchRequestMessageId(message.id) ? total + 1 : total,
+    0
+  );
 }

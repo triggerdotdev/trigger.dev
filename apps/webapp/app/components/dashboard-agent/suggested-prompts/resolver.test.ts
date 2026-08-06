@@ -25,27 +25,33 @@ const docsId = (key: keyof typeof demoPageContexts) =>
   pageSlotPrompts(demoPageContexts[key].page).docs.id;
 
 describe("resolveSuggestedPrompts", () => {
-  it("fills every slot the page has, given a promoted chip, signals and defaults", () => {
+  it("fills all five slots when the page has a promoted chip, signals and defaults", () => {
     const prompts = resolveSuggestedPrompts(demoPageContexts.error, { promoted, now: NOW });
 
-    expect(prompts).toHaveLength(4);
+    expect(prompts).toHaveLength(5);
     expect(ids(prompts)).toEqual([
       promoted.id,
       "sp:fresh-failure",
+      "sp:error-watch-recurrence",
       "sp:error-similar",
       docsId("error"),
     ]);
     expect(prompts[0]?.source).toBe("promoted");
   });
 
-  it("drops a slot when nothing is promoted", () => {
+  it("drops to four slots when nothing is promoted", () => {
     const prompts = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW });
 
-    expect(prompts).toHaveLength(3);
-    expect(ids(prompts)).toEqual(["sp:fresh-failure", "sp:error-similar", docsId("error")]);
+    expect(prompts).toHaveLength(4);
+    expect(ids(prompts)).toEqual([
+      "sp:fresh-failure",
+      "sp:error-watch-recurrence",
+      "sp:error-similar",
+      docsId("error"),
+    ]);
   });
 
-  it("shows explain + docs only when no investigate applies", () => {
+  it("shows explain + docs only when no investigate or watch applies", () => {
     const prompts = resolveSuggestedPrompts(demoPageContexts.deployment, { now: NOW });
 
     expect(ids(prompts)).toEqual(ids(pageDefaultPrompts(demoPageContexts.deployment.page)));
@@ -73,7 +79,7 @@ describe("resolveSuggestedPrompts", () => {
     }
   });
 
-  it("orders promoted, then investigate, then status, then explain", () => {
+  it("orders promoted, then investigate, then watch, then explain", () => {
     const context = {
       ...demoPageContexts.queue,
       signals: [...demoPageContexts.queue.signals, demoFreshFailureSignal],
@@ -84,7 +90,8 @@ describe("resolveSuggestedPrompts", () => {
     expect(ids(prompts)).toEqual([
       promoted.id,
       "sp:fresh-failure",
-      "sp:queue-backlog",
+      // waiting_run beats concurrency_saturation for the watch slot.
+      "sp:waiting-run",
       "sp:queue-state",
       docsId("queue"),
     ]);
@@ -122,10 +129,10 @@ describe("resolveSuggestedPrompts", () => {
     const full = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW });
     const dismissed = resolveSuggestedPrompts(demoPageContexts.error, {
       now: NOW,
-      dismissedIds: ["sp:error-similar"],
+      dismissedIds: ["sp:error-watch-recurrence"],
     });
 
-    expect(ids(dismissed)).not.toContain("sp:error-similar");
+    expect(ids(dismissed)).not.toContain("sp:error-watch-recurrence");
     expect(dismissed).toHaveLength(full.length - 1);
     expect(dismissed.at(-1)?.id).toBe(docsId("error"));
   });
@@ -161,7 +168,12 @@ describe("resolveSuggestedPrompts", () => {
     expect(failure?.prompt).toContain("12m ago");
   });
 
-  it("words the slow-run chip for its slot", () => {
+  it("words the waiting-run and slow-run chips for their slots", () => {
+    const waiting = resolveSuggestedPrompts(demoPageContexts.waitingRun, { now: NOW });
+    const waitingChip = waiting.find((p) => p.id === "sp:waiting-run");
+    expect(waitingChip?.label).toBe("Tell me when this run starts");
+    expect(waitingChip?.prompt).toContain("queue");
+
     const slow = resolveSuggestedPrompts(demoPageContexts.slowRun, { now: NOW });
     expect(slow[0]?.label).toBe("~7.8x slower than usual");
   });

@@ -8,6 +8,8 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -333,7 +335,8 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
-            {/* Self-hides when the agent isn't available. */}
+            {/* Both buttons self-hide when the agent isn't available. Watch is
+                pre-filled with this queue's recommendation. */}
             {degraded ? (
               <InvestigateButton
                 prompt={queueBacklogPrompt(queue.name)}
@@ -341,6 +344,7 @@ export default function Page() {
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}
+            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}

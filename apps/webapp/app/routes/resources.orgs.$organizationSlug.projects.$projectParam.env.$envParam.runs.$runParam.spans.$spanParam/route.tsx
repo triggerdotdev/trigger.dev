@@ -33,6 +33,9 @@ import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { isFinalRunStatus } from "~/v3/taskStatus";
+import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import {
   failedRunPrompt,
   isFailedRunStatus,
@@ -1147,6 +1150,16 @@ function RunBody({
                   runFriendlyId={run.friendlyId}
                 />
               ) : null}
+              {/* The universal `Watch…` entry (§2.1), pre-filled with this run's
+                  recommendation: tell me when it finishes. Only while the run can
+                  still change — a finished run has nothing left to wait for. */}
+              {isFinalRunStatus(run.status) ? null : (
+                <WatchButton
+                  spec={runWatchRecommendation(run.friendlyId)}
+                  variant="primary"
+                  className="self-start"
+                />
+              )}
               <RunTimeline run={run} />
 
               {run.error && (
