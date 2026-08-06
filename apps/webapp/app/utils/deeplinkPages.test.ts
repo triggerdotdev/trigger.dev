@@ -1,7 +1,13 @@
+import { matchPath } from "@remix-run/router";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deeplinkSuffix, ENV_PAGE_TARGETS, resolveDeeplinkPage } from "./deeplinkPages";
+import {
+  DEEPLINK_PATH_PREFIX,
+  deeplinkSuffix,
+  ENV_PAGE_TARGETS,
+  resolveDeeplinkPage,
+} from "./deeplinkPages";
 
 const ROUTES_DIR = join(__dirname, "../routes");
 
@@ -181,6 +187,35 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("metrics")).toBeUndefined();
   });
 
+  it("matches the page name whatever its case, and resolves it to the map's spelling", () => {
+    // `/env/{env}/APIKeys` matches its route, so the short link has to agree rather than falling
+    // through to the environment root.
+    expect(resolveDeeplinkPage("APIKeys")).toBe("apikeys");
+    expect(resolveDeeplinkPage("Waitpoints")).toBe("waitpoints/tokens");
+    expect(resolveDeeplinkPage("TASKS")).toBe("");
+    expect(resolveDeeplinkPage("Bulk-Actions")).toBe("bulk-actions");
+    // Case doesn't turn a non-page into a page.
+    expect(resolveDeeplinkPage("Nonsense")).toBeUndefined();
+    expect(resolveDeeplinkPage("Metrics")).toBeUndefined();
+  });
+
+  it("leaves the case of everything after the name alone", () => {
+    // Only the name is folded. Ids are case-sensitive, so lowercasing one would break the link far
+    // more thoroughly than the miss the folding fixes.
+    expect(resolveDeeplinkPage("runs/run_ABC123")).toBe("runs/run_ABC123");
+    expect(resolveDeeplinkPage("Runs/run_ABC123")).toBe("runs/run_ABC123");
+    expect(resolveDeeplinkPage("TASKS/standard/My-Task")).toBe("tasks/standard/My-Task");
+    // Grafted onto the prefix and already written out under it, both with the id untouched.
+    expect(resolveDeeplinkPage("Waitpoints/waitpoint_ABC")).toBe("waitpoints/tokens/waitpoint_ABC");
+    expect(resolveDeeplinkPage("Waitpoints/tokens/waitpoint_ABC")).toBe(
+      "waitpoints/tokens/waitpoint_ABC"
+    );
+    // An escaped slash inside a capitalised id survives as one segment, as it does in lower case.
+    expect(resolveDeeplinkPage("Tasks/standard/Group%2FMy-Task")).toBe(
+      "tasks/standard/Group%2FMy-Task"
+    );
+  });
+
   it("drops traversal segments, in plain and escaped spellings", () => {
     expect(resolveDeeplinkPage("runs/../../../etc/passwd")).toBe("runs/etc/passwd");
     expect(resolveDeeplinkPage("../runs")).toBe("runs");
@@ -214,6 +249,26 @@ describe("deeplinkSuffix", () => {
     expect(deeplinkSuffix("/deeplink/tasks/standard/group%2Fmy-task")).toBe(
       "tasks/standard/group%2Fmy-task"
     );
+  });
+
+  it("strips the prefix whatever its case, and only the prefix", () => {
+    expect(deeplinkSuffix("/Deeplink/apikeys")).toBe("apikeys");
+    expect(deeplinkSuffix("/DEEPLINK/runs/run_ABC123")).toBe("runs/run_ABC123");
+    // The remainder comes back as it was written, capitals and all.
+    expect(deeplinkSuffix("/DeepLink/tasks/standard/My-Task")).toBe("tasks/standard/My-Task");
+    expect(deeplinkSuffix("/Deeplink")).toBe("");
+    expect(deeplinkSuffix("/Deeplink/")).toBe("");
+  });
+
+  it("folds case because the route it is mounted on does", () => {
+    // The assertion the test above rests on: React Router compiles a route path with the `i` flag
+    // unless it opts into `caseSensitive`, so a capitalised prefix really does reach this loader
+    // instead of 404ing before it. If that ever changed, the folding would be dead weight.
+    const route = `${DEEPLINK_PATH_PREFIX}/*`;
+    expect(matchPath(route, "/deeplink/apikeys")?.params["*"]).toBe("apikeys");
+    expect(matchPath(route, "/Deeplink/apikeys")?.params["*"]).toBe("apikeys");
+    // And the splat keeps the case it was given, which is why only the first segment is folded.
+    expect(matchPath(route, "/DEEPLINK/APIKeys")?.params["*"]).toBe("APIKeys");
   });
 
   it("treats a bare prefix, a trailing slash and anything outside it as no suffix", () => {

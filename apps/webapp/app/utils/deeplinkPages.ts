@@ -69,10 +69,15 @@ export const DEEPLINK_PATH_PREFIX = "/deeplink";
  * Returns "" for anything that is not under the prefix. That includes a pathname the URL parser has
  * already rewritten: it normalises `%2e%2e` to `..` and resolves it, so a traversal attempt can
  * leave the prefix entirely before this ever sees it.
+ *
+ * The prefix is matched case-insensitively because React Router's route matching is: it compiles
+ * every path with the `i` flag unless the route opts into `caseSensitive`, so `/Deeplink/apikeys`
+ * reaches this loader too. Only the prefix is folded — the remainder is returned as it was written,
+ * since the ids after the first segment are case-sensitive.
  */
 export function deeplinkSuffix(pathname: string): string {
   const withSlash = `${DEEPLINK_PATH_PREFIX}/`;
-  if (!pathname.startsWith(withSlash)) return "";
+  if (!pathname.toLowerCase().startsWith(withSlash)) return "";
 
   return pathname.slice(withSlash.length);
 }
@@ -105,18 +110,25 @@ function isUsableSegment(segment: string): boolean {
  *
  * `suffix` is expected already encoded (see `deeplinkSuffix`) and is passed through untouched — an
  * `encodeURIComponent` pass here would double-encode every id that contains an escape.
+ *
+ * Only the first segment is matched case-insensitively, to the same end as the prefix in
+ * `deeplinkSuffix`: `/env/{env}/APIKeys` would have matched its route, so `/deeplink/APIKeys` should
+ * reach it rather than falling through to the environment root. The name resolves to the map's own
+ * spelling, and every segment after it is left exactly as written — folding the case of a task or
+ * run id would break the link far more thoroughly than the miss this fixes.
  */
 export function resolveDeeplinkPage(suffix: string): string | undefined {
-  const segments = suffix.split("/").filter(isUsableSegment);
+  const [first = "", ...rest] = suffix.split("/").filter(isUsableSegment);
 
-  const target = ENV_PAGE_TARGETS.get(segments[0] ?? "");
+  const name = first.toLowerCase();
+  const target = ENV_PAGE_TARGETS.get(name);
   if (target === undefined) return undefined;
 
-  if (segments.length === 1) return target.landing;
+  if (rest.length === 0) return target.landing;
 
-  const written = segments.join("/");
+  const written = [name, ...rest].join("/");
   //already written out under the prefix, so grafting would duplicate it
   if (written === target.prefix || written.startsWith(`${target.prefix}/`)) return written;
 
-  return [target.prefix, ...segments.slice(1)].join("/");
+  return [target.prefix, ...rest].join("/");
 }
