@@ -3,6 +3,7 @@ import {
   checkMessageParts,
   declaredBodyBytes,
   exceedsMessageBodyBytes,
+  MAX_MESSAGE_BODY_BYTES,
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
@@ -16,6 +17,7 @@ import {
 } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
@@ -49,7 +51,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Not found" }, { status: 404 });
   }
 
-  // Refused before any lookup, so an oversized body costs nothing.
+  // The declared size is refused before any lookup. It is advisory, so the read below is
+  // bounded too: without it a chunked body would be buffered whole before being refused.
   if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
     return tooLarge();
   }
@@ -76,12 +79,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
-  const raw = await request.text();
-  // The header is advisory; the body it actually sent is what counts.
-  if (exceedsMessageBodyBytes(Buffer.byteLength(raw, "utf8"))) {
-    return tooLarge();
-  }
+  const read = await readBoundedBodyText(request, MAX_MESSAGE_BODY_BYTES);
+  if (!read.ok) return tooLarge();
 
+  const raw = read.text;
   let body = raw;
   try {
     const parsed = JSON.parse(raw) as {
