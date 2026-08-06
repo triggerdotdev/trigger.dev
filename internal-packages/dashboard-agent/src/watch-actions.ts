@@ -510,8 +510,7 @@ async function narrateWatchWake(args: {
   });
 
   const text = await narrateWithPlan({ plan, action, messageId, tenancy, args });
-  // An empty narration is not a delivered wake. Nothing is written, no investigation is
-  // opened, and the failure travels so the retry says it again.
+  // Must throw: an unnarrated wake stays owed, so the retry says it again.
   if (!text) {
     throw new Error(`the wake narration for ${action.watchId} produced no text`);
   }
@@ -590,13 +589,8 @@ async function resolveInvestigationId(args: {
   return seeded.ok ? seeded.id : undefined;
 }
 
-/** One revision of an investigation card, as the transcript carries it. */
 type TranscriptCard = { id: string; revision: number; state: InvestigationState | null };
 
-/**
- * The investigation cards a message holds. A card only reaches the panel through a
- * `render_view` part's output, so that is the only place worth reading.
- */
 function cardsInMessage(message: UIMessage): TranscriptCard[] {
   const found: TranscriptCard[] = [];
   for (const part of message.parts ?? []) {
@@ -618,7 +612,6 @@ function cardsInMessage(message: UIMessage): TranscriptCard[] {
   return found;
 }
 
-/** The freshest revision of each card the transcript holds. Latest revision wins. */
 function latestCards(messages: UIMessage[]): Map<string, TranscriptCard> {
   const latest = new Map<string, TranscriptCard>();
   for (const message of messages) {
@@ -630,14 +623,6 @@ function latestCards(messages: UIMessage[]): Map<string, TranscriptCard> {
   return latest;
 }
 
-/**
- * Put a terminal card in the transcript for an investigation this turn left running.
- *
- * Settling the row is not a user-facing surface: the panel rebuilds the card, and its
- * "Working…" line, from the transcript. So a forced settle has to arrive as one more
- * revision of the same card, id-deduped like every host-appended block — a retry finds
- * it and adds nothing, and no second investigation is ever opened.
- */
 async function closeCardInTranscript(args: {
   store: DashboardAgentStore;
   chatId: string;
@@ -647,16 +632,13 @@ async function closeCardInTranscript(args: {
   environmentRef: string;
   messageId: string;
   uiMessages: UIMessage[];
-  /** The card's state when the turn rendered none of its own. */
   fallback: () => InvestigationState;
 }): Promise<void> {
   const { store, chatId, investigationId, uiMessages } = args;
 
-  // Already closed by an earlier attempt: the id is what makes this survive a retry.
   if (uiMessages.some((message) => message.id === args.messageId)) return;
 
   const card = latestCards(uiMessages).get(investigationId);
-  // The turn's own verdict is already in the transcript, so there is nothing to close.
   if (card && card.state && card.state.outcome !== "in_progress") return;
 
   const settled = forceSettledInvestigationState(card?.state ?? args.fallback());
@@ -691,8 +673,7 @@ async function closeCardInTranscript(args: {
     return;
   }
 
-  // Shaped like the `render_view` output the panel reads: a card that isn't in a
-  // render_view part leaves the progress line running forever.
+  // A card outside a `render_view` part leaves the panel's progress line running forever.
   const message: UIMessage = {
     id: args.messageId,
     role: "assistant",
@@ -707,8 +688,8 @@ async function closeCardInTranscript(args: {
     ],
   };
 
-  // Persisted first, then put in the turn's history: a retry after a failed append must
-  // still see the card as unclosed.
+  // Persist before the history set, so a retry after a failed append still sees the
+  // card as unclosed.
   if (args.userId) {
     await store.appendMessage({ chatId, userId: args.userId, message });
   } else {
@@ -776,7 +757,6 @@ async function conductWatchInvestigation(args: {
   const projectRef = clientData?.projectRef;
   const environmentRef = clientData?.environmentId;
 
-  /** The card's own words, for a settle where the turn rendered nothing of its own. */
   const seedState = (): InvestigationState => ({
     outcome: "in_progress",
     severity: "warn",
@@ -802,8 +782,6 @@ async function conductWatchInvestigation(args: {
         fallback: seedState,
       });
     } catch (error) {
-      // The findings are already delivered, so a card left open is a worse card, never
-      // a lost answer.
       logger.error("dashboard-agent watch investigation failed to close its card", {
         chatId,
         watchId: action.watchId,
@@ -820,7 +798,6 @@ async function conductWatchInvestigation(args: {
       watchId: action.watchId,
       actionId: action.id,
     });
-    // A retry between the findings and the card still owes the user a finished card.
     const open = [...latestCards(uiMessages).values()].find(
       (card) => card.state === null || card.state.outcome === "in_progress"
     );
@@ -853,7 +830,6 @@ async function conductWatchInvestigation(args: {
   }
 
   const store = getStore();
-  /** The findings message, once it exists: the closing card is appended after it. */
   let answered: UIMessage | undefined;
   const resolved = await getSystemPrompt(modeFor(clientData));
   const result = streamText({
@@ -914,8 +890,6 @@ async function conductWatchInvestigation(args: {
     // No `onTurnComplete` on an action, so the guard runs here: a card left at
     // in_progress is a spinner nothing else will ever stop.
     await settleOpenInvestigations(store, chatId);
-    // The row is settled; the transcript is what the user reads, so it gets the
-    // terminal card too.
     await closeCard(investigationId, answered ? [...uiMessages, answered] : uiMessages);
   }
 }

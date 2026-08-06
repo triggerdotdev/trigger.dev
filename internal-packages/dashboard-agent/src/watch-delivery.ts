@@ -42,7 +42,6 @@ export type WatchTickStore = {
   }): Promise<{ tickCount: number; lastCheckedAt: Date | null } | null>;
 };
 
-/** A deliverer's acknowledgement. Anything but an appended wake leaves the wake owed. */
 export type WatchWakeAck = { appended: boolean };
 
 export type WatchDeliveryDeps = {
@@ -54,10 +53,7 @@ export type WatchDeliveryDeps = {
     | "releaseWatchDelivery"
     | "markWatchDelivered"
   >;
-  /**
-   * Append the wake to the chat's `in` stream. Must throw if the append fails, or report
-   * `{ appended: false }`: a wake that didn't land is never marked delivered.
-   */
+  /** Must throw, or report `{ appended: false }`, if the append fails. */
   deliver: (args: {
     chatId: string;
     action: WatchWakeAction;
@@ -172,8 +168,6 @@ export async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promis
     throw error;
   }
 
-  // Only an acknowledged append is a delivery: an unacknowledged one hands the wake back
-  // still owed, so the retry says it again rather than marking it told.
   if (ack && ack.appended === false) {
     await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
     throw new Error(`the wake for watch ${claimed.id} wasn't appended`);

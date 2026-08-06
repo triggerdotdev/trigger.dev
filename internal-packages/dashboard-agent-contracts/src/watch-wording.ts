@@ -525,10 +525,6 @@ export function watchDurationLabel(spec: WatchSpec): string {
  * The persisted blocks
  * ------------------------------------------------------------------ */
 
-/**
- * What became of the "email me as well" consent, said out loud. A subscription that
- * couldn't be attached is stated, not omitted: the user asked for it.
- */
 export function watchExternalNotificationLine(external: WatchExternalNotification): string | null {
   switch (external.status) {
     case "enabled":
@@ -543,7 +539,6 @@ export function watchExternalNotificationLine(external: WatchExternalNotificatio
 /** The follow-up lines a confirmation states, for the opt-ins that took effect. */
 export function watchFollowUpLines(followUp: {
   investigateOnAttention?: boolean;
-  /** The outcome of the external consent, not the consent itself. */
   external?: WatchExternalNotification;
 }): string[] {
   const lines: string[] = [];

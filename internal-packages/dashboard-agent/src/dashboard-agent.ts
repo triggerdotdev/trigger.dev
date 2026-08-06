@@ -164,16 +164,10 @@ function extractText(message: UIMessage): string {
  */
 export const MAX_EVAL_TOOL_OUTPUT_CHARS = 1500;
 
-/** Cap on each tool input. Smaller: an input is a handful of arguments, or a query. */
 export const MAX_EVAL_TOOL_INPUT_CHARS = 500;
 
-/**
- * Cap on the whole turn's activity. Per-value caps bound one tool call; a ten-step
- * investigation still sends ten of them, and that total is what the judge is billed for.
- */
 export const MAX_EVAL_ACTIVITY_CHARS = 20_000;
 
-/** Marks the prefix as a prefix, so the judge doesn't read a cut value as the whole one. */
 export function truncateEvalToolValue(value: unknown, limit: number): unknown {
   if (value === undefined) return value;
   const serialized = JSON.stringify(value);
@@ -189,14 +183,6 @@ export function truncateEvalToolOutput(output: unknown): unknown {
   return truncateEvalToolValue(output, MAX_EVAL_TOOL_OUTPUT_CHARS);
 }
 
-/**
- * Unfold the SDK's tool-output envelope (`{ type, value }`) before redaction.
- *
- * Left folded, an `error-text` result is one string under a `value` key, so a message
- * that quotes the record the tool choked on travels whole. Unfolded, the error is a
- * fact the judge can see (a tool errored, of this kind) and its text is redacted like
- * any other free-text field.
- */
 export function unfoldEvalToolOutput(output: unknown): unknown {
   if (output === null || typeof output !== "object") return output;
   const envelope = output as { type?: unknown; value?: unknown };
@@ -216,10 +202,6 @@ export function unfoldEvalToolOutput(output: unknown): unknown {
   }
 }
 
-/**
- * Drop the tail of an oversized turn, keeping every tool name. The judge is told which
- * calls it can't see rather than being handed a silently short list.
- */
 export function capEvalToolActivity<T extends { toolName: string }>(activity: T[]): unknown[] {
   const kept: unknown[] = [];
   let used = 0;
@@ -235,10 +217,8 @@ export function capEvalToolActivity<T extends { toolName: string }>(activity: T[
   return kept;
 }
 
-// Pair this turn's tool-calls with their results — the ground truth the eval judge
-// checks the answer against. In this order: unfold the envelope, keep only the
-// structural fields, cap each value, then cap the turn. The customer's own data
-// (payloads, outputs, query rows, file contents, error text) never leaves as itself.
+// The customer's own data (payloads, outputs, query rows, file contents, error text)
+// must never leave here as itself.
 export function extractToolActivity(
   messages: ModelMessage[]
 ): Array<{ toolName: string; input?: unknown; output?: unknown }> {
@@ -358,11 +338,6 @@ function recordPromptCacheUsage(args: {
   }
 }
 
-/**
- * The provider's own per-step cache counts, under the names Anthropic reports them by.
- * `null` means it reported nothing — never a substituted zero, or a step with no cache
- * activity would read the same as a step the provider said nothing about.
- */
 export function stepCacheAttributes(
   step: number | undefined,
   providerMetadata: unknown
@@ -378,21 +353,9 @@ export function stepCacheAttributes(
   };
 }
 
-/**
- * The step-level breakpoint: 5 minutes, because it only has to survive to the next step
- * of the same turn. The stable system + tools prefix keeps the 1-hour breakpoint
- * (`PROMPT_CACHE_CONTROL`), which is what has to survive user think time between turns.
- */
 export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;
 
-/**
- * How much new history a step must have accumulated before it is worth marking.
- *
- * A cache write costs about 1.25x the input price and a read about 0.1x, so a
- * breakpoint pays for itself only if a later step reads it — and Anthropic refuses to
- * cache a prefix shorter than roughly 1024 tokens at all, silently. Below this, marking
- * every step would be pure write premium on a cache that never gets created.
- */
+// Anthropic silently refuses to cache a prefix shorter than roughly 1024 tokens.
 export const MIN_STEP_CACHE_CHARS = 4_096;
 
 type MaybeCached = { providerOptions?: Record<string, unknown> };
@@ -405,25 +368,17 @@ function cacheControlTtl(message: MaybeCached): string | undefined {
   return typeof ttl === "string" ? ttl : undefined;
 }
 
-/** Strips a step breakpoint we set on an earlier step; leaves the long-lived ones. */
 function withoutStepBreakpoint<T extends MaybeCached>(message: T): T {
   if (cacheControlTtl(message) !== STEP_CACHE_CONTROL.ttl) return message;
   const { anthropic: _dropped, ...rest } = message.providerOptions as Record<string, unknown>;
   return { ...message, providerOptions: rest };
 }
 
-/**
- * Roll one 5-minute breakpoint onto the end of the accumulated history, so the next step
- * reads back this step's tool results instead of paying for them again.
- *
- * At most one such breakpoint exists at a time — earlier ones are stripped — which keeps
- * the request inside Anthropic's four-breakpoint limit alongside the system block and the
- * per-turn history breakpoint.
- */
+// Only ever one step breakpoint at a time: Anthropic allows four in total, and the
+// system block and the per-turn history breakpoint take two of them.
 export function markStepCacheBreakpoint<T extends MaybeCached>(messages: T[]): T[] {
   if (messages.length === 0) return messages;
 
-  // Everything after the newest long-lived breakpoint is what this turn has added.
   let lastLongLived = -1;
   messages.forEach((message, index) => {
     const ttl = cacheControlTtl(message);
@@ -452,10 +407,6 @@ type PrepareStepArgs = { messages: ModelMessage[] };
 type PrepareStepResult = { messages?: ModelMessage[] } | undefined;
 type PrepareStepFn = (args: never) => PrepareStepResult | Promise<PrepareStepResult>;
 
-/**
- * Wraps the SDK's own `prepareStep` (compaction, steering, background context) rather
- * than replacing it: whatever it returns is what gets the breakpoint.
- */
 export function withStepCacheBreakpoint(inner: PrepareStepFn | undefined): PrepareStepFn {
   return (async (args: PrepareStepArgs) => {
     const base = await inner?.(args as never);
@@ -708,7 +659,6 @@ export const dashboardAgent = chat.agent({
         ),
       messages,
       abortSignal: signal,
-      // Wraps, never replaces: `toStreamTextOptions` owns compaction and steering here.
       prepareStep: withStepCacheBreakpoint(
         (options as { prepareStep?: PrepareStepFn }).prepareStep
       ) as never,
