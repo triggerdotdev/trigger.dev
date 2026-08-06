@@ -22,7 +22,7 @@ const FETCHING_TAG =
 
 /** Alt text is re-emitted as prose, so it must not itself become markup. */
 function plainAlt(alt: string): string {
-  return alt.replace(/[!\[\]<>`]/g, "").trim();
+  return alt.replace(/[![\]<>`]/g, "").trim();
 }
 
 /**
