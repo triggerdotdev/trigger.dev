@@ -14,21 +14,24 @@ import { newOrganizationPath, newProjectPath, v3EnvironmentPath } from "~/utils/
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
-  const segments = (params["*"] ?? "").split("/").filter(Boolean);
-  //deeper segments are kept, so /deeplink/runs/run_123 reaches the run
-  const page = ENV_PAGE_SEGMENTS.has(segments[0] ?? "") ? segments.join("/") : undefined;
+  //traversal segments are dropped so a crafted suffix can't climb out of the environment path
+  const segments = (params["*"] ?? "")
+    .split("/")
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  //deeper segments are kept, so /deeplink/runs/run_123 reaches the run. They arrive decoded, so
+  //they're re-encoded: a "?" or "#" in a segment must not become the target's query or hash.
+  const page = ENV_PAGE_SEGMENTS.has(segments[0] ?? "")
+    ? segments.map(encodeURIComponent).join("/")
+    : undefined;
+
+  const { search } = new URL(request.url);
 
   const presenter = new SelectBestEnvironmentPresenter();
   try {
     const { project, organization, environment } = await presenter.call({ user });
     const environmentPath = v3EnvironmentPath(organization, project, environment);
 
-    if (!page) {
-      return redirect(environmentPath);
-    }
-
-    const { search } = new URL(request.url);
-    return redirect(`${environmentPath}/${page}${search}`);
+    return redirect(page ? `${environmentPath}/${page}${search}` : environmentPath);
   } catch (_e) {
     //the presenter throws when the user has no projects, same as the dashboard index
     const organization = await prisma.organization.findFirst({
