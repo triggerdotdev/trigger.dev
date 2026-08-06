@@ -87,8 +87,6 @@ vi.mock("~/db.server", () => ({
   $replica: {},
   sqlDatabaseSchema: undefined,
 }));
-// Stub the lookup, not the row: the route only reads id and type, while a raw
-// Prisma row has to satisfy every column `toAuthenticated` reads.
 vi.mock("~/models/runtimeEnvironment.server", () => ({
   findEnvironmentBySlug: async () => ({ id: "env_1", type: "PRODUCTION" }),
 }));

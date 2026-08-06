@@ -584,8 +584,6 @@ describe("RBAC fallback — branch header guards", () => {
   );
 });
 
-// A delegated user-actor token is a downgrade of its user, so the fallback must not hand it the
-// blanket ability it hands a PAT — even though neither has a role to consult without a plugin.
 const USER_ACTOR_SECRET = "test-user-actor-secret";
 
 function userActorController(prisma: PrismaClient) {
@@ -630,7 +628,6 @@ describe("RBAC fallback — user-actor tokens", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // Reads still work, so the token can reach its own JWT exchange.
     expect(result.ability.can("read", { type: "apiKeys" })).toBe(true);
     expect(result.ability.can("read", { type: "runs" })).toBe(true);
     expect(result.ability.can("write", { type: "envvars" })).toBe(false);
@@ -655,7 +652,6 @@ describe("RBAC fallback — user-actor tokens", () => {
     expect(result.subject).toMatchObject({ type: "userActor", environmentId: "env_1" });
   });
 
-  // The non-UAT fallback path is unchanged: a PAT (the CLI / MCP exchange) stays permissive.
   postgresTest("leaves a personal access token permissive", async ({ prisma }) => {
     const { user } = await createTestOrgProjectWithMember(prisma);
     const rbac = userActorController(prisma);

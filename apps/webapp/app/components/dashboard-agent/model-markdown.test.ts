@@ -1,5 +1,3 @@
-// Rendered, not just string-matched: the claim is that the markdown renderer the
-// transcript uses emits no element that fetches a URL.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Streamdown } from "streamdown";
@@ -22,7 +20,6 @@ describe("stripModelImages", () => {
   it("renders no fetching element for a reference-style remote image", () => {
     const markdown = `Look: ![chart][beacon]\n\n[beacon]: ${BEACON}\n`;
     const stripped = stripModelImages(markdown);
-    // The image reference is gone, so the definition below it renders nothing.
     expect(stripped).not.toContain("![");
     const html = render(stripped);
     expect(html).not.toMatch(/<img\b/i);

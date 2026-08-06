@@ -122,8 +122,6 @@ describe("renderBlockAsText", () => {
     );
   });
 
-  // The watch is active either way, so the block still confirms it; the email line states
-  // the failure rather than going missing.
   it("renders a confirmation whose email couldn't be attached", () => {
     const spec = specFor("backlog_drain");
     const block = {

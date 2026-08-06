@@ -344,8 +344,6 @@ describe("the persisted blocks (§2.2)", () => {
     expect(body.followUp).toEqual(["If it turns out badly, I'll investigate straight away."]);
   });
 
-  // The user asked for email and didn't get it. Saying nothing would leave them believing
-  // an alert is coming.
   it("says out loud when the email the user asked for couldn't be added", () => {
     const body = watchConfirmationBlockBody({
       spec: queueWatchRecommendation("email-sends"),

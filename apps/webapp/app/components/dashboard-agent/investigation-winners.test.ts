@@ -1,13 +1,9 @@
-// The map itself is built in `DashboardAgentMessages.tsx`, which can't be imported
-// here (it pulls the chart components and an unbuilt package). What matters for the
-// re-render is the identity rule, which is this module's job.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { reuseWinners, sameOccurrences } from "./investigation-winners";
 
 const source = readFileSync(new URL("./DashboardAgentMessages.tsx", import.meta.url), "utf8");
 
-/** A recompute over a fresh `messages` array: same content, new Map. */
 function recompute(entries: Array<[string, string]>): Map<string, string> {
   return new Map(entries.map(([id, occurrence]) => [id, occurrence]));
 }
@@ -48,7 +44,6 @@ describe("investigation winners identity", () => {
     expect(source).toMatch(/useMemo\(\(\) => winningInvestigationOccurrences\(messages\)/);
     expect(source).toContain("reuseWinners(previous.current, next)");
     expect(source).toContain("useInvestigationWinners(stripped)");
-    // The unmemoized call must be gone from the render path.
     expect(source).not.toMatch(/=\s*winningInvestigationOccurrences\(stripped\)/);
   });
 });

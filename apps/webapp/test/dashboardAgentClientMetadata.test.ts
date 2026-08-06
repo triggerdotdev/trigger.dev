@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The `in` proxy is the one path a browser reaches the agent through, and it injects the turn's
-// identity, tenancy and delegated token. Whatever the browser sends must not be able to set any of
-// those fields — not by overwriting them, and not by smuggling in a field the server doesn't own.
-
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
 }));
@@ -112,7 +108,6 @@ describe("dashboard agent `in` proxy — client metadata", () => {
     expect(metadata.environmentName).toBe("dev");
     expect(metadata.apiOrigin).toBe("https://api.trigger.dev");
     expect(metadata.userActorToken).toBe("tr_uat_real");
-    // Not resolved for this project, so the client's pointer must not stand in for it.
     expect(metadata.repoSnapshot).toBeUndefined();
   });
 
