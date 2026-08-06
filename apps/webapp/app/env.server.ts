@@ -114,11 +114,17 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
-/** As {@link OptionalIntEnv}, but a value that is set must be greater than zero. */
-const OptionalPositiveIntEnv = z.preprocess(
-  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-  z.coerce.number().int().positive().optional()
-);
+/**
+ * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
+ * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
+ */
+const OptionalLimitEnv = z.preprocess((v) => {
+  if (typeof v === "string" && (v.trim() === "" || Number(v.trim()) === 0)) {
+    return undefined;
+  }
+
+  return v === 0 ? undefined : v;
+}, z.coerce.number().int().positive().optional());
 
 const EnvironmentSchema = z
   .object({
@@ -1047,9 +1053,9 @@ const EnvironmentSchema = z
      * bound. Setting this applies a ceiling to every debounced run that does not carry its own
      * `maxDelay`, and any `delay` at or above it is rejected at trigger time. It is a default
      * rather than an enforced limit: a trigger that sets `maxDelay` uses that value even when it
-     * is longer than this.
+     * is longer than this. `0` and blank both mean no ceiling.
      */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalPositiveIntEnv,
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalLimitEnv,
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`

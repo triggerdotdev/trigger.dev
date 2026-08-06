@@ -933,8 +933,9 @@ Keep `delay` well below `maxDelay`. A run is only pushed back while its new exec
 <Note>
   The `maxDelay` value is evaluated from each trigger call, not stored with the original run. This
   means if you pass different `maxDelay` values for the same debounce key, each trigger uses its own
-  `maxDelay` to check against the original run's creation time. For consistent behavior, use the
-  same `maxDelay` value for all triggers with the same debounce key.
+  `maxDelay` to check against the original run's creation time. A trigger that omits `maxDelay`
+  has no bound at all, so a single call without it can push the run past the limit the other calls
+  set. Use the same `maxDelay` value for every trigger with the same debounce key.
 </Note>
 
 **Leading vs Trailing mode:**
