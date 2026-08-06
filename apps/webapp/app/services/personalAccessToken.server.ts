@@ -6,7 +6,11 @@ import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
-import { isUserActorToken } from "@trigger.dev/rbac";
+import {
+  isUserActorToken,
+  type UserActorClaims,
+  verifyUserActorToken,
+} from "@trigger.dev/rbac";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -115,6 +119,11 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
 
 export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
+  /**
+   * Verified claims when the caller presented a delegated user-actor token. They ride on the
+   * result so no caller can hold the actor without its environment scope.
+   */
+  userActor?: UserActorClaims;
 };
 
 /**
@@ -171,7 +180,14 @@ export async function authenticateApiRequestWithPersonalAccessToken(
   // The plugin verifies it (identity path → no org context to floor against).
   if (isUserActorToken(token)) {
     const result = await rbac.authenticateUserActor(request, {});
-    return result.ok ? { userId: result.userId } : undefined;
+    if (!result.ok) return undefined;
+
+    // The claims travel with the identity: a caller that only saw `{ userId }` would act with no
+    // environment scope to enforce. A plugin on an older contract omits them, so verify here.
+    const userActor = result.claims ?? (await verifyUserActorToken(env.SESSION_SECRET, token));
+    if (!userActor) return undefined;
+
+    return { userId: result.userId, userActor };
   }
 
   return authenticatePersonalAccessToken(token);

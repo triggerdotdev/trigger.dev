@@ -409,15 +409,11 @@ function getApiKeyResult(apiKey: string): {
 }
 
 /**
- * The authenticated user-actor. A user-actor token authenticates as its user, so it carries the
- * same `userId` a PAT does — plus the token's verified claims, on the actor itself, so any layer
- * holding the actor holds its environment scope. A caller that only forwards `{ userId }` would
- * silently drop the scope, which is what this shape prevents.
+ * The authenticated user-actor. A user-actor token authenticates as its user, so it is the same
+ * shape a PAT authenticates to — that shape now carries the token's verified claims itself, so
+ * any layer holding the actor holds its environment scope.
  */
-export type UserActorAuthenticatedActor = PersonalAccessTokenAuthenticationResult & {
-  /** Verified claims. Present only when the caller presented a user-actor token. */
-  userActor?: UserActorClaims;
-};
+export type UserActorAuthenticatedActor = PersonalAccessTokenAuthenticationResult;
 
 export type AuthenticationResult =
   | {
