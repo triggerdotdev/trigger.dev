@@ -211,6 +211,15 @@ describe("intent fixtures", () => {
       expect(demoIntent.executable).toBe(demoIntent.intent.kind !== "propose_fix");
     }
   });
+
+  it("points the filtered-runs example at the runs collection, not one run", () => {
+    const target = fixtures.demoIntents.navigateToFailedRuns.intent;
+    expect(target.kind).toBe("navigate");
+    if (target.kind !== "navigate") return;
+    const parsed = safeParseTriggerUri(target.target);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.kind).toBe("runs");
+  });
 });
 
 describe("page context and prompt fixtures", () => {
