@@ -5,6 +5,9 @@ import { LogoIcon } from "~/components/LogoIcon";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { getTimezones } from "~/utils/timezones.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Supported timezones");
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   return typedjson({

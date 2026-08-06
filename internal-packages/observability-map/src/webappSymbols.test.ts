@@ -53,6 +53,10 @@ const MAX_EXTERNAL_GUARDS = 2;
 
 const ROUTES = resolve(REPO, "apps/webapp/app/routes");
 
+/** A tree this package owns, for proving the walkers can answer no. Proving that on the live tree
+ * meant asserting nobody in the webapp ever declares certain names, even as a local variable. */
+const FIXTURES = resolve(__dirname, "../fixtures/webappSymbols");
+
 function walkFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -62,7 +66,7 @@ function walkFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-function declaredNames(): Set<string> {
+function declaredNames(roots: string[]): Set<string> {
   const names = new Set<string>();
   const addBinding = (name: ts.BindingName) => {
     if (ts.isIdentifier(name)) {
@@ -74,7 +78,7 @@ function declaredNames(): Set<string> {
     }
   };
 
-  const files = ROOTS.flatMap((root) => walkFiles(root));
+  const files = roots.flatMap((root) => walkFiles(root));
   for (const file of files) {
     const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, false);
     const visit = (node: ts.Node) => {
@@ -108,9 +112,9 @@ function declaredNames(): Set<string> {
 }
 
 /** Every dot-separated piece of every route name, flat file or directory, e.g. `billing-limits`. */
-function routeSegments(): Set<string> {
+function routeSegments(dir: string): Set<string> {
   const segments = new Set<string>();
-  for (const entry of readdirSync(ROUTES, { withFileTypes: true })) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
     for (const part of entry.name.replace(/\.tsx?$/, "").split(".")) {
       // `sensitivity.ts`'s own normalizer. This validates the vocabulary that file matches on, so
       // a segment has to be trimmed here exactly as it is trimmed there; the local `/_+$/` was
@@ -122,8 +126,8 @@ function routeSegments(): Set<string> {
 }
 
 describe("the names the tool matches on exist in the webapp", () => {
-  const declared = declaredNames();
-  const segments = routeSegments();
+  const declared = declaredNames(ROOTS);
+  const segments = routeSegments(ROUTES);
 
   it("found a codebase to check against", () => {
     expect(declared.size).toBeGreaterThan(5000);
@@ -131,7 +135,11 @@ describe("the names the tool matches on exist in the webapp", () => {
   });
 
   it("every sensitive symbol is declared somewhere", () => {
-    expect(SENSITIVE_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
+    expect(
+      SENSITIVE_SYMBOLS.filter((s) => !declared.has(s)),
+      "renamed or removed? update SENSITIVE_SYMBOLS in " +
+        "internal-packages/observability-map/src/sensitivity.ts in the same PR"
+    ).toEqual([]);
   });
 
   // The list this test did not cover, and it had rotted completely: all three of `auditLog`,
@@ -139,12 +147,20 @@ describe("the names the tool matches on exist in the webapp", () => {
   // not fire and the report said "No audit helper exists in the webapp" while
   // `models/admin.server.ts` was writing `impersonationAuditLog` rows on two paths.
   it("every audit symbol is declared somewhere", () => {
-    expect(AUDIT_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
+    expect(
+      AUDIT_SYMBOLS.filter((s) => !declared.has(s)),
+      "renamed or removed? update AUDIT_SYMBOLS in " +
+        "internal-packages/observability-map/src/checks/auditTrail.ts in the same PR"
+    ).toEqual([]);
   });
 
   it("every auth guard is declared somewhere, or is a listed dependency method", () => {
     const names = [...GUARDS, ...SOFT_GUARDS];
-    expect(names.filter((g) => !declared.has(g) && !EXTERNAL_GUARDS.has(g))).toEqual([]);
+    expect(
+      names.filter((g) => !declared.has(g) && !EXTERNAL_GUARDS.has(g)),
+      "renamed or removed? update GUARDS or SOFT_GUARDS in " +
+        "internal-packages/observability-map/src/checks/authBoundary.ts in the same PR"
+    ).toEqual([]);
   });
 
   // The escape hatch is only worth having while it stays small.
@@ -155,25 +171,41 @@ describe("the names the tool matches on exist in the webapp", () => {
 
   it("every sensitive path segment names a real route segment", () => {
     const live = SENSITIVE_SEGMENTS.filter((s) => !ANTICIPATED_SEGMENTS.includes(s));
-    expect(live.filter((s) => !segments.has(s))).toEqual([]);
+    expect(
+      live.filter((s) => !segments.has(s)),
+      "renamed or removed the last route with this segment? update SENSITIVE_SEGMENTS in " +
+        "internal-packages/observability-map/src/sensitivity.ts in the same PR"
+    ).toEqual([]);
   });
 
-  // The escape hatch is only worth having while it is small and honest about itself.
+  // The escape hatch is only worth having while it is small and honest about itself. Kept required
+  // rather than moved to the nightly on purpose: the PR adding the first such route is the one whose
+  // author knows the route exists, and the segment is scored sensitive either way.
   it("every anticipated segment really does name nothing yet", () => {
-    expect(ANTICIPATED_SEGMENTS.filter((s) => segments.has(s))).toEqual([]);
+    expect(
+      ANTICIPATED_SEGMENTS.filter((s) => segments.has(s)),
+      "added the first route with this segment? move it from ANTICIPATED_SEGMENTS into the live " +
+        "list in internal-packages/observability-map/src/sensitivity.ts in the same PR"
+    ).toEqual([]);
   });
 
-  // The checker has to be able to fail. These run the same predicates over the names the last round
-  // shipped, which is what the test exists to have caught.
-  it("would reject the symbols that named nothing", () => {
-    for (const dead of ["setImpersonation", "createJWT", "signJWT", "updateEnvVars"]) {
-      expect(declared.has(dead)).toBe(false);
-    }
+  // The checker has to be able to fail. Proven on the fixture tree rather than the live one, which
+  // is where the earlier version of these tests asserted that no webapp file declares `createJWT`
+  // even as a local variable, and failed this suite on any pull request that did.
+  it("finds a fixture name however it is declared, and rejects one that is only read", () => {
+    const names = declaredNames([join(FIXTURES, "app")]);
+    // A name per declaration form, so no branch of the walker is covered only by another's name:
+    // deleting any one of the three fails here rather than in the live-tree assertions this fixture
+    // exists to replace.
+    expect(names.has("helper")).toBe(true);
+    expect(names.has("createJWT")).toBe(true);
+    expect(names.has("mintSessionToken")).toBe(true);
+    expect(names.has("signJWT")).toBe(false);
   });
 
-  it("would reject a guard name and a path segment that name nothing", () => {
-    expect(declared.has("requireNothingAtAll")).toBe(false);
-    expect(EXTERNAL_GUARDS.has("requireNothingAtAll")).toBe(false);
-    expect(segments.has("no-such-route-segment")).toBe(false);
+  it("finds a fixture route segment, and rejects the segment's own substring", () => {
+    const fixtureSegments = routeSegments(join(FIXTURES, "routes"));
+    expect(fixtureSegments.has("secrets")).toBe(true);
+    expect(fixtureSegments.has("secret")).toBe(false);
   });
 });

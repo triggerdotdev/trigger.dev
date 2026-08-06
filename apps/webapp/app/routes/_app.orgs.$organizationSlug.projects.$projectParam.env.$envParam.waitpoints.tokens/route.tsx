@@ -1,5 +1,5 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -49,14 +49,9 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Waitpoint tokens | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Waitpoint tokens");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

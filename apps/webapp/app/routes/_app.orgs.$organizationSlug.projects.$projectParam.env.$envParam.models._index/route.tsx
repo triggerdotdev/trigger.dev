@@ -6,12 +6,7 @@ import {
   CubeIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  type ShouldRevalidateFunctionArgs,
-  useFetcher,
-} from "@remix-run/react";
+import { Form, type ShouldRevalidateFunctionArgs, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -110,10 +105,9 @@ import { parseFiniteInt } from "~/utils/searchParams";
 
 import { IconColumns3 } from "@tabler/icons-react";
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Models | Trigger.dev" }];
-};
+export const meta = pageMeta("Models");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

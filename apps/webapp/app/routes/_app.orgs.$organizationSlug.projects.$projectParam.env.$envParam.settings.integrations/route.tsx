@@ -40,6 +40,9 @@ import {
   VercelOnboardingModal,
   VercelSettingsPanel,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Integrations");
 
 export const handle = { pageTitle: "Integrations" };
 

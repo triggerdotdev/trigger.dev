@@ -42,6 +42,12 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.bulkAction?.name || params.bulkActionParam || "Bulk action",
+  "Bulk actions",
+]);
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),

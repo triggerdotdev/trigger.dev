@@ -432,10 +432,15 @@ describe("renderPrComment", () => {
     expect(renderPrComment(head, null)).not.toContain("Warning: parse failures");
   });
 
-  it("footer names the report-only rule and the readme", () => {
+  it("footer names the report-only rule, the required suite that is not it, and the readme", () => {
     const head = buildReport([scanFile("api.v1.a.ts", cleanSource)!], []);
     const out = renderPrComment(head, null);
-    expect(out).toContain("Report only, nothing here gates the merge.");
+    expect(out).toContain("report-only and never gate the merge");
+    expect(out).toContain("a required test suite");
+    // Both directions. A footer naming only the rename case sends the author who added the first
+    // `secrets` route looking for a rename they never made.
+    expect(out).toContain("renames or removes a symbol");
+    expect(out).toContain("adds the first route with a segment");
     expect(out).toContain("internal-packages/observability-map/README.md");
   });
 });

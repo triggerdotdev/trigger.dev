@@ -24,6 +24,9 @@ import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Vercel setup");
 
 const LoaderParamsSchema = z.object({
   organizationId: z.string().optional().nullable(),

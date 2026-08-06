@@ -36,6 +36,9 @@ import {
   v3ProjectPath,
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New project");
 
 const WORKING_ON_OTHER = "Other/not sure yet";
 const GOALS_OTHER = "Other/not sure yet";

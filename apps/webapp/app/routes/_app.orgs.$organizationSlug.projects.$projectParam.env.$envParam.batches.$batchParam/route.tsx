@@ -24,6 +24,9 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.batchParam ?? "Batch", "Batches"]);
 
 const BatchParamSchema = EnvironmentParamSchema.extend({
   batchParam: z.string(),

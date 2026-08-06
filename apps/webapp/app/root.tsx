@@ -30,7 +30,7 @@ import {
 } from "~/utils/themePreference";
 import { cachedFlag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
-import { appEnvTitleTag } from "./utils";
+import { appTitle } from "./utils/pageTitle";
 
 // Derived here (not inside StaleAssetRecovery) so the shared component takes
 // the flag as a prop. NODE_ENV is statically replaced in browser bundles, and
@@ -51,7 +51,8 @@ export const headers = () => ({
 export const meta: MetaFunction = ({ data }) => {
   const typedData = data as UseDataFunctionReturn<typeof loader>;
   return [
-    { title: typedData?.appEnv ? `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` : "Trigger.dev" },
+    // Pages declare their own title with `pageMeta`; this is the fallback.
+    { title: appTitle(typedData?.appEnv) },
     {
       name: "viewport",
       content: "width=1024, initial-scale=1",

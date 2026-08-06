@@ -30,6 +30,9 @@ import { requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Confirm your details");
 
 const referralSourceOptions = [
   "Search engine",

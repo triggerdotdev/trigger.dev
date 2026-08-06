@@ -46,6 +46,9 @@ import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Dev branches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

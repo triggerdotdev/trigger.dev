@@ -7,7 +7,7 @@ import {
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -112,6 +112,7 @@ import {
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
+import { pageMeta } from "~/utils/pageTitle";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -134,13 +135,7 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Queues | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Queues");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

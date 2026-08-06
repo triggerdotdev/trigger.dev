@@ -1,6 +1,6 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { Form, useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
@@ -76,14 +76,9 @@ import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Errors | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Errors");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
