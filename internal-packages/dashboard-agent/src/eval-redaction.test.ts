@@ -12,12 +12,7 @@ import { toolResultErrored } from "./eval-turn";
 
 type Messages = Parameters<typeof extractToolActivity>[0];
 
-function turn(
-  toolName: string,
-  input: unknown,
-  output: unknown,
-  toolCallId = "tc1"
-): Messages {
+function turn(toolName: string, input: unknown, output: unknown, toolCallId = "tc1"): Messages {
   return [
     { role: "assistant", content: [{ type: "tool-call", toolCallId, toolName, input }] },
     { role: "tool", content: [{ type: "tool-result", toolCallId, toolName, output }] },
@@ -106,10 +101,19 @@ describe("the eval judge payload's size", () => {
   it("caps a nine-step turn below the aggregate limit", () => {
     const messages: Messages = [];
     for (let step = 0; step < 9; step++) {
-      messages.push(...turn("get_run_trace", { runId: `run_${step}` }, {
-        type: "json",
-        value: { spans: Array.from({ length: 200 }, () => ({ attributes: { body: "q".repeat(50) } })) },
-      }, `tc${step}`));
+      messages.push(
+        ...turn(
+          "get_run_trace",
+          { runId: `run_${step}` },
+          {
+            type: "json",
+            value: {
+              spans: Array.from({ length: 200 }, () => ({ attributes: { body: "q".repeat(50) } })),
+            },
+          },
+          `tc${step}`
+        )
+      );
     }
 
     const activity = extractToolActivity(messages);
@@ -133,10 +137,14 @@ describe("an errored tool result", () => {
 
   it("still reads as an error after redaction", () => {
     const activity = extractToolActivity(
-      turn("run_query", { runId: "run_1" }, {
-        type: "error-text",
-        value: "boom on alice@example.com",
-      })
+      turn(
+        "run_query",
+        { runId: "run_1" },
+        {
+          type: "error-text",
+          value: "boom on alice@example.com",
+        }
+      )
     );
 
     expect(JSON.stringify(activity)).not.toContain("alice@example.com");

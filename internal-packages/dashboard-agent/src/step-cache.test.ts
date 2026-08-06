@@ -68,7 +68,10 @@ describe("the step cache breakpoint", () => {
   it("drops a stale step breakpoint when the tail is no longer worth one", () => {
     const marked = markStepCacheBreakpoint([turnHistory(), toolResult(MIN_STEP_CACHE_CHARS)]);
     // Compaction rebuilt the history as a short summary.
-    const compacted = markStepCacheBreakpoint([turnHistory(), { ...marked.at(-1)!, content: "ok" }]);
+    const compacted = markStepCacheBreakpoint([
+      turnHistory(),
+      { ...marked.at(-1)!, content: "ok" },
+    ]);
 
     expect(compacted.filter((message) => ttlOf(message) === "5m")).toHaveLength(0);
   });
