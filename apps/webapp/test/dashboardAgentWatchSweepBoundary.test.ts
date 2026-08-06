@@ -227,15 +227,17 @@ describe("the sweep's reads per incident", () => {
     "re-authorizes and builds readers once per user and environment, whatever the group's size",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
-      await createChat(ctx.agentDb, {
-        id: "chat_incident",
-        organizationId: ORGANIZATION_ID,
-        userId: USER_ID,
-      });
 
+      // One chat each, because a chat caps its own active watches. Same user and
+      // environment throughout: that is the pair the sweep must only resolve once.
       for (let index = 0; index < 6; index++) {
+        await createChat(ctx.agentDb, {
+          id: `chat_incident_${index}`,
+          organizationId: ORGANIZATION_ID,
+          userId: USER_ID,
+        });
         await seedOverdueWatch({
-          chatId: "chat_incident",
+          chatId: `chat_incident_${index}`,
           identity: `queue_stalled:queue_${index}`,
           spec: { ...STALLED, queue: `task/queue_${index}` },
         });

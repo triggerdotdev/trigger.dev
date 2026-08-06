@@ -240,8 +240,10 @@ async function evaluateGroup(
 /**
  * Wrap a batch's readers so each distinct read happens once. `now` is fixed for the batch, so
  * a reader's answer is a pure function of its arguments. Failed reads are cached too.
+ *
+ * Exported for the expiry sweep, which finalizes the same rows against the same readers.
  */
-function shareReads(readers: WatchCheckDeps): WatchCheckDeps {
+export function shareReads(readers: WatchCheckDeps): WatchCheckDeps {
   const cache = new Map<string, Promise<unknown>>();
   const once = <A extends unknown[], R>(name: string, read: (...args: A) => Promise<R>) => {
     return (...args: A): Promise<R> => {
@@ -265,7 +267,7 @@ function shareReads(readers: WatchCheckDeps): WatchCheckDeps {
 }
 
 /** `mapper` over `items`, at most `limit` in flight. Order is preserved. */
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
   mapper: (item: T) => Promise<R>

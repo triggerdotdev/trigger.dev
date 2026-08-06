@@ -30,6 +30,7 @@ import {
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
 import { watchCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
+import { mapWithConcurrency, shareReads } from "~/services/dashboardAgentWatchBatch.server";
 import { isDashboardAgentConfigured } from "~/services/dashboardAgent.server";
 import {
   armDashboardAgentWatchBatch,
@@ -59,6 +60,12 @@ export const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Higher than the other caps: retention is one statement, not a row-at-a-time loop. */
 const RETENTION_BATCH_LIMIT = 500;
+
+/**
+ * How many rows one sweep handles at once. An incident expires a whole group together, and a
+ * bound is what stops one slow tenant spending the entire visibility window.
+ */
+const SWEEP_CONCURRENCY = 8;
 
 /** What one finalization did. */
 export type WatchFinalizeOutcome =
@@ -108,7 +115,44 @@ export type WatchSweepDeps = {
   purgeTerminal?: (params: { before: Date; limit: number }) => Promise<number>;
   /** Drop submission-ledger rows older than `before`. */
   purgeSubmissions?: (params: { before: Date; limit: number }) => Promise<number>;
+  /** How many rows are handled at once. */
+  concurrency?: number;
 };
+
+/**
+ * One re-authorization per (user, org, project, environment) for the whole sweep. An incident
+ * expires a group together, and every row of it names the same access question.
+ */
+function authorizeOncePerSweep(deps: WatchSweepDeps): (watch: Watch) => Promise<WatchAuthorization> {
+  const authorize = deps.authorize ?? defaultAuthorize;
+  const seen = new Map<string, Promise<WatchAuthorization>>();
+  return (watch) => {
+    const key = `${watch.userId}:${watch.organizationId}:${watch.projectId}:${watch.environmentId}`;
+    const cached = seen.get(key);
+    if (cached) return cached;
+    const pending = authorize(watch);
+    seen.set(key, pending);
+    return pending;
+  };
+}
+
+/**
+ * One set of readers per environment, read-shared the way the batch's are: `now` is fixed for
+ * the sweep, so the same read can't answer two ways.
+ */
+function readersOncePerSweep(
+  deps: WatchSweepDeps
+): (environment: AuthenticatedEnvironment, now: Date) => WatchCheckDeps {
+  const build = deps.checkDeps ?? watchCheckDeps;
+  const seen = new Map<string, WatchCheckDeps>();
+  return (environment, now) => {
+    const cached = seen.get(environment.id);
+    if (cached) return cached;
+    const readers = shareReads(build(environment, now));
+    seen.set(environment.id, readers);
+    return readers;
+  };
+}
 
 /**
  * Facts for a swept expiry, in the same shape the tick writes. `verified: false` means the
@@ -307,23 +351,41 @@ export async function sweepDashboardAgentWatches(
   });
   result.overdue = overdue.length;
 
-  for (const watch of overdue) {
-    try {
-      const outcome = await finalizeOverdueWatch(watch, { ...deps, now: () => now, canDeliver });
-      if (outcome === "fired") result.fired++;
-      else if (outcome === "expired") result.expired++;
-      else if (outcome === "cancelled") result.cancelled++;
-      else result.alreadyResolved++;
-      // Resolved, but nothing carried the wake away: it stays owed.
-      if (!canDeliver && (outcome === "fired" || outcome === "expired")) {
-        result.deliveryDeferred++;
+  // The authorization and the readers are resolved once for the whole sweep, so a group of
+  // expiries costs one of each rather than one per row.
+  const perSweep: WatchSweepDeps & { canDeliver: boolean } = {
+    ...deps,
+    now: () => now,
+    canDeliver,
+    authorize: authorizeOncePerSweep(deps),
+    checkDeps: readersOncePerSweep(deps),
+  };
+
+  const finalized = await mapWithConcurrency(
+    overdue,
+    deps.concurrency ?? SWEEP_CONCURRENCY,
+    async (watch) => {
+      try {
+        return await finalizeOverdueWatch(watch, perSweep);
+      } catch (error) {
+        logger.error("Dashboard agent watch sweep: failed to finalize a watch", {
+          watchId: watch.id,
+          error,
+        });
+        return null;
       }
-    } catch (error) {
-      result.failed++;
-      logger.error("Dashboard agent watch sweep: failed to finalize a watch", {
-        watchId: watch.id,
-        error,
-      });
+    }
+  );
+
+  for (const outcome of finalized) {
+    if (outcome === null) result.failed++;
+    else if (outcome === "fired") result.fired++;
+    else if (outcome === "expired") result.expired++;
+    else if (outcome === "cancelled") result.cancelled++;
+    else result.alreadyResolved++;
+    // Resolved, but nothing carried the wake away: it stays owed.
+    if (!canDeliver && (outcome === "fired" || outcome === "expired")) {
+      result.deliveryDeferred++;
     }
   }
 
@@ -335,17 +397,26 @@ export async function sweepDashboardAgentWatches(
     });
     result.undelivered = owed.length;
 
-    for (const watch of owed) {
-      try {
-        await recoverWatchDelivery(watch, deps);
-        result.redelivered++;
-      } catch (error) {
-        result.failed++;
-        logger.error("Dashboard agent watch sweep: failed to recover a wake", {
-          watchId: watch.id,
-          error,
-        });
+    const recovered = await mapWithConcurrency(
+      owed,
+      deps.concurrency ?? SWEEP_CONCURRENCY,
+      async (watch) => {
+        try {
+          await recoverWatchDelivery(watch, deps);
+          return true;
+        } catch (error) {
+          logger.error("Dashboard agent watch sweep: failed to recover a wake", {
+            watchId: watch.id,
+            error,
+          });
+          return false;
+        }
       }
+    );
+
+    for (const ok of recovered) {
+      if (ok) result.redelivered++;
+      else result.failed++;
     }
   }
 
