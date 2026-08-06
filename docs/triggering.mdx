@@ -886,7 +886,9 @@ The `debounce` option accepts:
   There is no time limit on step 2. While triggers keep arriving on the same key, the run keeps
   being pushed back and never executes. A key triggered every 10 seconds with a `delay` of `"30s"`
   runs 30 seconds after the triggers stop, however long that takes. Set `maxDelay` whenever the
-  work needs to happen eventually.
+  work needs to happen eventually. This matters most with `triggerAndWait`: every parent waiting
+  on a debounced run stays blocked, and holds its concurrency, for as long as the run keeps being
+  pushed back.
 </Warning>
 
 **Limiting total delay with `maxDelay`:**
