@@ -1,7 +1,9 @@
 import {
   createChat,
   createDashboardAgentDb,
+  getChatMessages,
   getInvestigation,
+  investigationSettlementMessageId,
   listStaleOpenInvestigations,
   settleInvestigationAsInconclusive,
   upsertInvestigationRevision,
@@ -155,7 +157,38 @@ describe("the dashboard agent investigation sweep", () => {
       expect(state.hypotheses).toHaveLength(1);
       expect(state.title).toBe("send-order-receipt keeps failing");
       expect(row?.revision).toBe(1);
-    }
+
+      // The settled row is invisible on its own: the panel resolves the card from the
+      // transcript, so the closing revision has to be in the chat too.
+      const messages = (await getChatMessages(ctx.agentDb, {
+        chatId: "chat_stale",
+        userId: "user_sweep",
+        organizationId: "org_sweep",
+      })) as { id: string; parts: Record<string, any>[] }[] | null;
+      expect(messages?.map((message) => message.id)).toEqual([
+        investigationSettlementMessageId(id, 1),
+      ]);
+      const block = messages![0]!.parts[0]!.output.blocks[0];
+      expect(block).toMatchObject({ type: "investigation", id, revision: 1 });
+      expect(block.investigation.outcome).toBe("inconclusive");
+      expect(result.closed).toBe(1);
+
+      // A second run can't stack a second card: the settle is a no-op and the append
+      // is deduped on the same message id.
+      expect(await sweepDashboardAgentInvestigations()).toMatchObject({ stale: 0, settled: 0 });
+      expect(
+        (
+          (await getChatMessages(ctx.agentDb, {
+            chatId: "chat_stale",
+            userId: "user_sweep",
+            organizationId: "org_sweep",
+          })) as unknown[]
+        ).length
+      ).toBe(1);
+    },
+    // This one pays the container boot and the schema replay, and now asserts the
+    // transcript on top.
+    30_000
   );
 
   postgresTest(
@@ -260,7 +293,13 @@ describe("the dashboard agent investigation sweep", () => {
       expect(concluded.ok).toBe(true);
 
       const result = await sweepDashboardAgentInvestigations({ listStale: async () => stale });
-      expect(result).toMatchObject({ stale: 1, settled: 0, alreadySettled: 1, failed: 0 });
+      expect(result).toMatchObject({
+        stale: 1,
+        settled: 0,
+        closed: 0,
+        alreadySettled: 1,
+        failed: 0,
+      });
 
       const row = await getInvestigation(ctx.agentDb, { id });
       const state = investigationStateSchema.parse(row?.state);

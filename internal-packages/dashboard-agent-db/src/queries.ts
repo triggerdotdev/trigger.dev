@@ -679,14 +679,18 @@ export async function listStaleOpenInvestigations(
   return rows.map((row) => row.investigation);
 }
 
+/** What the settle wrote, which is what the closing card has to render. */
+export type SettledInvestigation = { id: string; revision: number; state: unknown };
+
 /**
  * Backstop for {@link listStaleOpenInvestigations}. One statement, so a turn that
- * concludes the card first wins. The merge mirrors `forceSettledInvestigationState`.
+ * concludes the card first wins — null means it was no longer `in_progress`. The merge
+ * mirrors `forceSettledInvestigationState`.
  */
 export async function settleInvestigationAsInconclusive(
   db: DashboardAgentDb,
   params: { id: string; note: string }
-): Promise<boolean> {
+): Promise<SettledInvestigation | null> {
   const rows = await db
     .update(investigations)
     .set({
@@ -704,7 +708,11 @@ export async function settleInvestigationAsInconclusive(
         sql`${investigations.state}->>'outcome' = 'in_progress'`
       )
     )
-    .returning({ id: investigations.id });
+    .returning({
+      id: investigations.id,
+      revision: investigations.revision,
+      state: investigations.state,
+    });
 
-  return rows.length > 0;
+  return rows[0] ?? null;
 }
