@@ -1,14 +1,14 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { ENV_PAGE_SEGMENTS } from "~/components/navigation/favoritePages";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
+import { ENV_PAGE_SEGMENTS } from "~/utils/deeplinkPages";
 import { newOrganizationPath, newProjectPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 
 /**
  * Stable links that don't name an org, project or environment: /deeplink/apikeys redirects to
- * /orgs/{org}/projects/{project}/env/{env}/apikeys for whoever is signed in. Only pages the
- * dashboard knows about are followed, so an unrecognised path can never become the redirect
+ * /orgs/{org}/projects/{project}/env/{env}/apikeys for whoever is signed in. Only the environment
+ * pages in ENV_PAGE_SEGMENTS are followed, so an unrecognised path can never become the redirect
  * target — it lands on the resolved environment instead.
  */
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {

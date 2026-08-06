@@ -1,0 +1,35 @@
+/**
+ * Pages that /deeplink/* is allowed to redirect to. This mirrors the first path segment of the
+ * environment-layout routes (`_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.*`),
+ * so add an entry here when a new page is added under that layout.
+ */
+export const ENV_PAGE_SEGMENTS: ReadonlySet<string> = new Set([
+  "agents",
+  "alerts",
+  "apikeys",
+  "batches",
+  "branches",
+  "bulk-actions",
+  "concurrency",
+  "dashboards",
+  "deployments",
+  "dev-branches",
+  "environment-variables",
+  "errors",
+  "limits",
+  "logs",
+  "metrics",
+  "models",
+  "playground",
+  "prompts",
+  "query",
+  "queues",
+  "regions",
+  "runs",
+  "schedules",
+  "sessions",
+  "settings",
+  "tasks",
+  "test",
+  "waitpoints",
+]);
