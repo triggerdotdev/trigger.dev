@@ -17,7 +17,6 @@ import {
   getWatch,
   getWatchSubmission,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
-  markWatchSubmissionExternalNotification,
   precheckWatchCreation,
   recordWatchSubmissionOutcome,
   reopenWatchSubmission,
@@ -637,25 +636,13 @@ export async function submitDashboardAgentWatch(params: {
     const confirmed = recordedDraft(recorded, draft);
 
     if (recorded.state === "created" && recorded.watchId) {
-      // The one thing the row can still converge on: the subscribe is idempotent, so a
-      // retry whose first attempt died before subscribing still gets a channel. Only a
-      // move to `enabled` is persisted, so a still-failing subscribe replays as recorded.
-      let external = recordedExternalNotification(recorded);
-      if (external.status !== "enabled" && confirmed.followUp.notifyExternally) {
-        if ((await subscribe({ userId, environment })).ok) {
-          external = { status: "enabled" };
-          await markWatchSubmissionExternalNotification(dashboardAgentDb, {
-            chatId,
-            clientRequestId,
-            external,
-          });
-        }
-      }
       return settle({
         confirmation: watchingConfirmation({
           watchId: recorded.watchId,
           unavailable: recorded.unavailable,
-          external,
+          // Recorded, never re-decided: the confirmation already in the transcript is
+          // append-once, so a second decision here would contradict it forever.
+          external: recordedExternalNotification(recorded),
           confirmed,
         }),
         watchId: recorded.watchId,

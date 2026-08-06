@@ -115,7 +115,7 @@ const { loader: alertsLoader, action: alertsAction } =
 const { action: alertChannelAction } =
   await import("~/routes/api.v1.dashboard-agent.alerts.$channelId");
 const { findProjectBySlug } = await import("~/models/project.server");
-const { DASHBOARD_AGENT_WATCH_ALERT_TYPE } =
+const { DASHBOARD_AGENT_WATCH_ALERT_TYPE, subscribeUserToWatchAlerts } =
   await import("~/services/dashboardAgentWatchAlerts.server");
 
 /** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
@@ -1634,6 +1634,8 @@ function submit(args: {
   clientRequestId?: string;
   checkDeps?: Partial<WatchCheckDeps>;
   subscribed?: boolean;
+  /** Replaces the fake outright, so a test can hand the submit the real subscribe. */
+  subscribe?: typeof subscribeUserToWatchAlerts;
   onSchedule?: () => void;
   /** Wraps the creation step, so a test can die at the exact point after it. */
   create?: typeof createDashboardAgentWatch;
@@ -1650,10 +1652,12 @@ function submit(args: {
       checkDeps: () => fakeCheckDeps(args.checkDeps),
       scheduleTick: async () => args.onSchedule?.(),
       ...(args.create ? { create: args.create } : {}),
-      subscribe: async () =>
-        args.subscribed === false
-          ? { ok: false, reason: "dashboard_agent_disabled" }
-          : { ok: true, email: args.seeded.user.email },
+      subscribe:
+        args.subscribe ??
+        (async () =>
+          args.subscribed === false
+            ? { ok: false, reason: "dashboard_agent_disabled" }
+            : { ok: true, email: args.seeded.user.email }),
     },
   });
 }
@@ -2281,6 +2285,61 @@ describe("the watch card submit", () => {
           userId: seeded.user.id,
         })
       ).toBe(0);
+    }
+  );
+
+  postgresTest(
+    "a replay repeats the recorded email outcome and subscribes nobody",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-external-replay");
+      await seedChat(seeded);
+
+      const draft = draftFor(RUN_START, { notifyExternally: true });
+
+      // The first attempt asked for email and couldn't get it, so `unavailable` is what
+      // the transcript says and what the ledger records.
+      const first = await submit({ seeded, chatId: "chat_1", draft, subscribed: false });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(JSON.stringify(first.messages)).toContain("I couldn't add email notifications");
+      expect(
+        await getWatchSubmission(ctx.agentDb, { chatId: "chat_1", clientRequestId: "wreq_1" })
+      ).toMatchObject({ state: "created", externalNotificationStatus: "unavailable" });
+
+      const transcript = await storedMessages(seeded, "chat_1");
+
+      // The retry gets the real subscribe, which would succeed here. A replay that took the
+      // decision again would leave a channel row and an `enabled` answer the transcript —
+      // append-once, so never rewritten — contradicts for good.
+      let subscribeCalls = 0;
+      const retry = await submit({
+        seeded,
+        chatId: "chat_1",
+        draft,
+        subscribe: async (subscribeParams) => {
+          subscribeCalls++;
+          return subscribeUserToWatchAlerts(subscribeParams);
+        },
+      });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      expect(retry.repaired).toBe(true);
+      expect(retry.watchId).toBe(first.watchId);
+      expect(subscribeCalls).toBe(0);
+
+      expect(JSON.stringify(retry.messages)).toContain("I couldn't add email notifications");
+      expect(JSON.stringify(retry.messages)).not.toContain("You'll get an email");
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(0);
+      expect(
+        await getWatchSubmission(ctx.agentDb, { chatId: "chat_1", clientRequestId: "wreq_1" })
+      ).toMatchObject({ externalNotificationStatus: "unavailable" });
+
+      // The symptom: what the user is told after a refresh has to agree with the answer.
+      expect(await storedMessages(seeded, "chat_1")).toEqual(transcript);
     }
   );
 });
