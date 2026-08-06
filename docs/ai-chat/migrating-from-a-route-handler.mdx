@@ -15,12 +15,16 @@ This guide assumes a Next.js App Router app with `useChat` on the client and an 
 | **Stays** | `streamText` call, model, `system`, `stopWhen`, provider options | Same call, inside `run()` |
 | **Stays** | Tool definitions (`inputSchema`, `execute`, `toModelOutput`) | Same tools, also declared on the agent config |
 | **Stays** | `useChat`, `messages`, `message.parts`, your UI | Unchanged |
-| **Goes** | `app/api/chat/route.ts` | Deleted |
+| **Goes** | `app/api/chat/route.ts` | Deleted, or kept as a [Head Start](#keep-the-first-turn-fast-with-head-start) handler |
 | **Goes** | `convertToModelMessages`, `toUIMessageStreamResponse` | The runtime does both |
 | **Goes** | `resumable-stream` / Redis, the stream-resume `GET` route | The transport resumes from `lastEventId` |
 | **New** | — | A `chat.agent` task in `trigger/chat.ts` |
 | **New** | — | Two server actions: mint a token, start a session |
 | **New** | — | `useTriggerChatTransport` in place of the `api` URL |
+
+<Note>
+  One thing gets slower, and it's the thing you'll notice first: the opening response of a brand-new chat. Your route handler answered out of an already-warm process; the agent run has to boot before it reaches the model. [Head Start](#keep-the-first-turn-fast-with-head-start) gives that back — get the migration working first, then add it.
+</Note>
 
 Before you start, make sure the project has the SDK installed and the CLI authenticated — [Manual setup](/manual-setup), or `npx trigger.dev@latest init` in an existing project.
 
@@ -80,6 +84,14 @@ Constraints:
 - Never mint a token in the browser or expose `TRIGGER_SECRET_KEY` client-side.
 - Do not change the model, prompt, tool schemas, or UI components beyond what the
   transport swap requires.
+
+Do NOT attempt this unless I ask for it separately:
+
+- Head Start (`chat.headStart`), which keeps a route handler around to run the first
+  turn's opening model call in the warm server process. It's a follow-on change with its
+  own constraint — tool schemas have to be split away from tool executes so the route
+  handler's bundle stays light. Read https://trigger.dev/docs/ai-chat/fast-starts.md
+  before touching it.
 
 When you're done, list what you deleted and show the diff for the agent task, the server
 actions, and the client component.
@@ -166,6 +178,7 @@ Your tool definitions don't change. Declare the same set in two places: on `chat
 ```ts lib/tools.ts
 import { tool } from "ai";
 import { z } from "zod";
+import { renderToPng } from "@/lib/charts";
 
 export const tools = {
   renderChart: tool({
@@ -286,7 +299,7 @@ Three things to note in the new version:
 
 - **`import type`, not a value import.** The agent module pulls in your tools' `execute` dependencies; `typeof myChat` gives you compile-time validation of the task id without any of that reaching the browser bundle.
 - **`sessions`** hydrates the transport from what you persisted (the session token and `lastEventId`), so a fresh tab reconnects without a round-trip to create a session.
-- **`resume: true`** reconnects to an in-flight stream on mount. Only enable it when there are existing messages — a brand-new chat has nothing to reconnect to.
+- **`resume`** reconnects to an in-flight stream on mount. Gate it on there being existing messages, as the snippet does — a brand-new chat has nothing to reconnect to.
 
 <Note>
   After a resume, `useChat`'s built-in `stop()` doesn't reach the backend, because the AI SDK doesn't thread its abort signal through `reconnectToStream`. Call `transport.stopGeneration(chatId)` instead — see [Stop generation](/ai-chat/frontend#stop-generation).
@@ -391,6 +404,122 @@ The turn shows up in the dashboard as a run, with a span per model call and per 
 2. **Press Stop.** Generation halts server-side, not just in the UI. If it doesn't, `signal` isn't reaching `streamText`.
 3. **Send a follow-up after a few minutes idle.** The conversation continues with full history.
 
+## Keep the first turn fast with Head Start
+
+Do this once the migration above works, because it's the regression you're about to notice. Opening a brand-new chat now waits on the agent run being dequeued and booted before anything reaches the model, where your route handler started streaming out of a process that was already warm. [Measured on a trivial prompt](/ai-chat/fast-starts#measured-ttfc), that's 2.8s to the first chunk against 1.2s once a warm first-turn call is back in front of it. Only the opening turn pays it — the run stays alive between messages, and a suspended run resumes without booting again.
+
+Head Start brings the route handler back for exactly that first turn. It runs step 1 in your warm process while the agent boots alongside it, so boot time hides inside the model's own time-to-first-byte instead of stacking in front of it. When step 1 finishes as plain text the agent exits without ever calling a model; when it ends in tool calls the agent executes them and step 2 streams into the same assistant message. The user sees one continuous response.
+
+<Steps>
+  <Step title="Split your tools into schemas and executes">
+    This is the constraint the whole feature rests on. Everything your route handler imports, and everything those modules import, ends up in its bundle — so a tool catalog with Puppeteer or native bindings behind its `execute` puts the cold start straight back, just in a different process. Bundlers resolve this at build time, so stripping executes at runtime doesn't help. Schemas need their own module that imports nothing heavier than `ai` and `zod`.
+
+    ```ts lib/chat-tools/schemas.ts
+    import { tool } from "ai";
+    import { z } from "zod";
+
+    export const headStartTools = {
+      renderChart: tool({
+        description: "Render a chart and return it as an image.",
+        inputSchema: z.object({ spec: z.string() }),
+        // No execute — the agent's copy carries it.
+      }),
+    };
+    ```
+
+    Your existing `lib/tools.ts` then builds the real tools on top of those schemas, so the two can't drift apart:
+
+    ```ts lib/tools.ts
+    import { tool } from "ai";
+    import { headStartTools } from "@/lib/chat-tools/schemas";
+    import { renderToPng } from "@/lib/charts";
+
+    export const tools = {
+      renderChart: tool({
+        ...headStartTools.renderChart,
+        execute: async ({ spec }) => renderToPng(spec),
+        toModelOutput: ({ output }) => ({
+          type: "content",
+          value: [{ type: "media", mediaType: "image/png", data: output.base64 }],
+        }),
+      }),
+    };
+    ```
+
+    The agent task is unchanged — it still imports the full `tools`.
+  </Step>
+  <Step title="Build the head-start handler">
+    `chat.headStart` returns a plain Web Fetch handler, `(req: Request) => Promise<Response>`. You call `streamText` inside it much as you did in the original route handler, with the same model and the same system prompt as the agent so there's no tone shift when step 2 takes over.
+
+    ```ts lib/chat-handler.ts
+    import { chat } from "@trigger.dev/sdk/chat-server";
+    import { anthropic } from "@ai-sdk/anthropic";
+    import { streamText } from "ai";
+    import { headStartTools } from "@/lib/chat-tools/schemas";
+
+    export const chatHandler = chat.headStart({
+      agentId: "my-chat",
+      run: async ({ chat: helper }) =>
+        streamText({
+          ...helper.toStreamTextOptions({ tools: headStartTools }),
+          model: anthropic("claude-sonnet-4-5"),
+          system: "You are a helpful assistant.",
+        }),
+    });
+    ```
+
+    <Warning>
+      Spread `toStreamTextOptions()` first and add only your own keys after it. It owns `messages`, `tools`, `abortSignal`, and `stopWhen` — and unlike the agent-side spread, re-setting any of those breaks the handover rather than degrading it. `stopWhen` in particular is pinned to `stepCountIs(1)`: the agent, not the handler, runs step 2 onward.
+    </Warning>
+
+    Your provider keys never leave your server — the first-turn model call runs in your process, so that environment needs whatever the model requires.
+  </Step>
+  <Step title="Mount it where the old handler was, auth check and all">
+    The authorization check you moved into the server actions belongs here too, in the same place it always was. Wrap the handler rather than exporting it directly:
+
+    ```ts app/api/chat/route.ts
+    import { auth } from "@/lib/auth";
+    import { chatHandler } from "@/lib/chat-handler";
+
+    // The handler holds the SSE response open until the agent signals
+    // turn-complete, so this covers the whole first turn, not just step 1.
+    export const maxDuration = 60;
+
+    export async function POST(req: Request) {
+      const session = await auth();
+      if (!session) return new Response("Unauthorized", { status: 401 });
+
+      return chatHandler(req);
+    }
+    ```
+
+    Any framework that hands you a Web `Request` mounts it the same way — Hono, SvelteKit, Remix, TanStack Start, Astro, Nitro, Elysia, Workers, Bun, Deno. Express, Fastify, and Koa need the `chat.toNodeListener` adapter. [Mounting in your framework](/ai-chat/fast-starts#mounting-in-your-framework) has one for each.
+  </Step>
+  <Step title="Point the transport at it">
+    One option on the transport you already wired up. Keep both server actions: Head Start only covers the first turn of a chat that has no session yet, and turns 2 onward go down the direct path that needs `accessToken`.
+
+    ```tsx app/components/chat.tsx
+    const transport = useTriggerChatTransport<typeof myChat>({
+      task: "my-chat",
+      accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+      startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+      headStart: "/api/chat",
+      sessions: initialSessions,
+    });
+    ```
+
+    This isn't a `useChat` `api` URL under a different name. It's the first-turn shortcut only; the transport stops POSTing to it as soon as a session exists.
+  </Step>
+</Steps>
+
+Persistence doesn't change. The handover carries one stable assistant message id across both halves of the turn, so `onTurnComplete` still fires once with the whole message, and `hydrateMessages` still receives the first-turn history as `incomingMessages` — with one caveat: a head-start turn skips preload entirely, so a hydrate hook that assumes its conversation row already exists has to upsert rather than update.
+
+If the first message gets captured somewhere other than the chat page — a "new chat" prompt box that navigates to `/chats/{id}` — there's no open connection to stream step 1 into. Use [`chat.startHeadStart`](/ai-chat/fast-starts#detached-head-start) instead: it drains step 1 into the durable session stream and the destination page resumes it.
+
+<Note>
+  Head Start and [Preload](/ai-chat/fast-starts#preload) solve the same problem from opposite ends, and running both for one chat is wasted work. Preload is the answer when there's no warm server to run step 1 in — a browser-only chat surface, say. [Picking an approach](/ai-chat/fast-starts#picking-an-approach) compares them.
+</Note>
+
 ## What you get once you're moved over
 
 - **Turns aren't bounded by a function timeout.** A tool-heavy turn can run for minutes without a platform deadline to work around.
@@ -407,11 +536,13 @@ The shape is identical outside Next.js. The agent task and the React component d
 - **Hono, SvelteKit, Express, Remix** — expose the token mint and the session start as two small POST endpoints instead of server actions, and point the transport's `accessToken` and `startSession` callbacks at them with `fetch`. Type the handlers with `AccessTokenParams` and `StartSessionParams` from `@trigger.dev/sdk/chat`. See [calling a fetch endpoint instead of a server action](/ai-chat/frontend#calling-a-fetch-endpoint-instead-of-a-server-action).
 - **Non-React clients** implement the same wire protocol directly — see [Client protocol](/ai-chat/client-protocol).
 
-<Tip>
-  You can bring a route handler back later for a different reason. [Head Start](/ai-chat/fast-starts#head-start) runs the first model call in your already-warm server process while the agent boots in parallel, roughly halving time-to-first-chunk. It's opt-in and mounts in Next.js, Hono, SvelteKit, Remix, and others.
-</Tip>
-
 ## Gotchas
+
+**The first response of a new chat is slower than the old route handler.** That's agent boot, and only the opening turn pays it. [Head Start](#keep-the-first-turn-fast-with-head-start) overlaps boot with the first model call and puts you back at the model's own TTFB.
+
+**Head Start is on, and nothing got faster.** The route-handler bundle is pulling in the heavy side of your tools. Check what `lib/chat-tools/schemas.ts` imports transitively — `ai` and `zod` and nothing else.
+
+**The head-start route dies mid-turn on Vercel.** The handler holds the SSE response open until the agent signals turn-complete, so the function timeout has to cover the whole turn, not just step 1. Set `maxDuration` on that route segment.
 
 **Compaction and steering do nothing.** The `...chat.toStreamTextOptions()` spread is missing, or something before it in the object is overwriting `prepareStep`. Spread it as the first property.
 
