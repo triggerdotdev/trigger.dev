@@ -8,7 +8,7 @@ import {
   type ToolSet,
   type UIMessage,
 } from "ai";
-import { redactEvalToolValue } from "./eval-policy";
+import { redactEvalToolValue, turnReadSource } from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import {
   buildTurnTools,
@@ -422,29 +422,36 @@ export const dashboardAgent = chat.agent({
     // bills the agent run. Best-effort: an enqueue failure must not break the turn.
     if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
-        const resolved = await getSystemPrompt(modeFor(clientData));
-        // On a Head Start turn the question arrives in the boot payload rather than
-        // newUIMessages, so read the latest user message from the full transcript.
-        const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
-        await getEvalTrigger()(
-          {
-            chatId,
-            turn,
-            agentRunId: runId,
-            organizationId: clientData.organizationId,
-            userId: clientData.userId,
-            projectRef: clientData.projectRef,
-            environment: clientData.environmentName,
-            currentPage: clientData.currentPage,
-            model: resolved.model,
-            promptSlug: resolved.promptId,
-            promptVersion: resolved.version,
-            userText: userMessage ? extractText(userMessage) : "",
-            assistantText: extractText(responseMessage),
-            toolActivity: extractToolActivity(newMessages),
-          } satisfies EvalTurnPayload,
-          { idempotencyKey: `eval:${chatId}:${turn}` }
-        );
+        const toolActivity = extractToolActivity(newMessages);
+        // A turn that read source is never judged at all: judging it either hands the
+        // customer's code to the judge or grades a source-grounded answer blind.
+        if (turnReadSource(toolActivity)) {
+          logger.debug("dashboard-agent turn eval skipped: the turn read source", { chatId, turn });
+        } else {
+          const resolved = await getSystemPrompt(modeFor(clientData));
+          // On a Head Start turn the question arrives in the boot payload rather than
+          // newUIMessages, so read the latest user message from the full transcript.
+          const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
+          await getEvalTrigger()(
+            {
+              chatId,
+              turn,
+              agentRunId: runId,
+              organizationId: clientData.organizationId,
+              userId: clientData.userId,
+              projectRef: clientData.projectRef,
+              environment: clientData.environmentName,
+              currentPage: clientData.currentPage,
+              model: resolved.model,
+              promptSlug: resolved.promptId,
+              promptVersion: resolved.version,
+              userText: userMessage ? extractText(userMessage) : "",
+              assistantText: extractText(responseMessage),
+              toolActivity,
+            } satisfies EvalTurnPayload,
+            { idempotencyKey: `eval:${chatId}:${turn}` }
+          );
+        }
       } catch (error) {
         logger.error("Failed to enqueue dashboard-agent turn eval", { error });
       }

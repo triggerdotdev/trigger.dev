@@ -3,8 +3,9 @@
 // register at module load.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
 
-import { convertToModelMessages, type UIMessage } from "ai";
+import { convertToModelMessages, tool, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,6 +17,7 @@ import {
   dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
+  dashboardAgentToolsKey,
   DEFAULT_EVAL_SAMPLE_RATE,
   evalSampleRate,
   extractToolActivity,
@@ -506,6 +508,60 @@ describe("per-turn eval sampling", () => {
   it("honours a parseable rate", () => {
     process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "0.5";
     expect(evalSampleRate()).toBe(0.5);
+  });
+});
+
+describe("a turn that read source", () => {
+  let harness: MockChatAgentHarness | undefined;
+  const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+    if (originalRate === undefined) {
+      delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    } else {
+      process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = originalRate;
+    }
+  });
+
+  /** Runs one turn that calls `toolName`, at full sample rate, and returns the eval calls. */
+  async function turnCalling(toolName: string, chatId: string): Promise<unknown[]> {
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "1";
+    const { store } = fakeStore();
+    const { trigger, calls } = fakeEvalTrigger();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentToolsKey, {
+          [toolName]: tool({
+            description: "test double",
+            inputSchema: z.object({ path: z.string().optional() }),
+            execute: async () => ({ content: "const secret = 1;" }),
+          }),
+        });
+        set(
+          dashboardAgentModelKey,
+          mockModel([toolCallStep(toolName, { path: "src/a.ts" }), textStep("answered")])
+        );
+        set(dashboardAgentEvalTriggerKey, trigger);
+      },
+    });
+
+    await harness.sendMessage(userMessage("why does this fail?"));
+    // onTurnComplete enqueues after the turn-complete chunk, so give it a tick.
+    await new Promise((r) => setTimeout(r, 30));
+    return calls;
+  }
+
+  it("is never judged, even at full sample rate", async () => {
+    expect(await turnCalling("read_file", "chat_source_read")).toHaveLength(0);
+  });
+
+  it("still judges a turn that only read platform data", async () => {
+    expect(await turnCalling("list_errors", "chat_no_source")).toHaveLength(1);
   });
 });
 
