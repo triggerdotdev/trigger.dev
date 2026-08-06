@@ -1,8 +1,7 @@
 /**
  * A failed turn is recorded in the transcript by the agent, under the message id
- * `turn-error:{turn}`. Same arrangement as a wake's `wake:watch:…` id: the prefix
- * is the transport convention, recognised here so the panel can tell a stored
- * failure record apart from an ordinary answer.
+ * `turn-error:{turn}`. The prefix is the transport convention, recognised here so
+ * the panel can tell a stored failure record apart from an ordinary answer.
  *
  * Live, a failure arrives as the stream's error chunk and `useChat` surfaces it as
  * the retry callout. The stored record is what a reload reads. Both must never show

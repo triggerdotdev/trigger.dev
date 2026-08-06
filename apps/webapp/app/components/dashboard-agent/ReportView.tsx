@@ -31,7 +31,6 @@ import {
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { AgentBadge } from "./agent-badges";
 import {
-  FOOTER_WATCH_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
@@ -52,9 +51,6 @@ import {
 } from "./report-sparkline";
 
 export type ResolvedUri = { label: string; url: string };
-
-/** How often a recovery watch polls, and how long it lives. Aggregate conditions floor at 5m. */
-const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
 
 // --- messages ---------------------------------------------------------------
 
@@ -299,22 +295,6 @@ export function ReportView({
   const linkByKey = (key: string | undefined) =>
     key === undefined ? undefined : vm.links.find((link) => link.key === key)?.url;
 
-  // Only offered when there is something to recover from, and only for the health
-  // report, which is the one with a recovery watch kind.
-  const recoveryWatch: AgentIntent | null =
-    vm.title === "health" && (severity === "warn" || severity === "crit")
-      ? {
-          kind: "watch",
-          spec: {
-            kind: "health_recovery",
-            report: "health",
-            fromSeverity: severity,
-            note: `${vm.scope} health back to normal`,
-            ...RECOVERY_WATCH,
-          },
-        }
-      : null;
-
   // Links a footer action already speaks for aren't repeated as reading matter.
   const footerLinkKeys = new Set(layout.footer.map((entry) => entry.link).filter(Boolean));
 
@@ -328,22 +308,6 @@ export function ReportView({
       pagePath: pagePaths?.[entry.code],
     }),
   }));
-
-  if (recoveryWatch && onIntent) {
-    const watchItem: ReportFooterItem = {
-      code: FOOTER_WATCH_CODE,
-      // The label is deliberately the same everywhere; only the pre-filled spec is
-      // contextual, so a per-object label would break the pattern.
-      node: <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>Watch…</ReportFooterAction>,
-    };
-    // The watch joins the other buttons, before the trailing prose entry.
-    const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
-    if (noteIndex !== -1) {
-      footerItems.splice(noteIndex, 0, watchItem);
-    } else {
-      footerItems.push(watchItem);
-    }
-  }
 
   // Resources the report cites, resolved to dashboard links by the host. Cited,
   // not offered, so a text link; our docs still get the docs button.

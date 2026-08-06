@@ -18,7 +18,6 @@ export const ApiAlertType = z.enum([
   "deployment_failure",
   "deployment_success",
   "error_group",
-  "dashboard_agent_watch",
 ]);
 
 export type ApiAlertType = z.infer<typeof ApiAlertType>;
@@ -89,8 +88,6 @@ export class ApiAlertChannelPresenter {
         return "deployment_success";
       case "ERROR_GROUP":
         return "error_group";
-      case "DASHBOARD_AGENT_WATCH":
-        return "dashboard_agent_watch";
       default:
         assertNever(alertType);
     }
@@ -108,8 +105,6 @@ export class ApiAlertChannelPresenter {
         return "DEPLOYMENT_SUCCESS";
       case "error_group":
         return "ERROR_GROUP";
-      case "dashboard_agent_watch":
-        return "DASHBOARD_AGENT_WATCH";
       default:
         assertNever(alertType);
     }

@@ -1,12 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import {
-  isWatchRequestMessageId,
-  type AgentIntent,
-  type SuggestedPrompt,
-  type WatchSpec,
-} from "@internal/dashboard-agent-contracts";
+import type { AgentIntent, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,7 +14,7 @@ import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessa
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters } from "./navigate-target";
-import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
+import { pendingNavigateIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
 import {
   fetchChatTranscript,
@@ -28,7 +23,6 @@ import {
 } from "./settled-transcript";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
-import { WatchChips, type WatchChip } from "./WatchChips";
 
 // Resuming with `lastEventId` stops the `.out` stream replaying the previous turn.
 export type DashboardAgentSession = {
@@ -61,12 +55,7 @@ export function DashboardAgentChat({
   streaming,
   prefill,
   promotedPrompt,
-  watches,
   pagePaths,
-  watchCard,
-  appendedMessages,
-  onWatchIntent,
-  onCancelWatch,
   onTurnSettled,
   onActivityChange,
 }: {
@@ -86,13 +75,7 @@ export function DashboardAgentChat({
   // `seq` makes each request distinct so the same text can be sent twice.
   prefill?: { text: string; seq: number };
   promotedPrompt?: SuggestedPrompt;
-  watches: WatchChip[];
   pagePaths?: Record<string, string>;
-  watchCard?: React.ReactNode;
-  appendedMessages?: { messages: UIMessage[]; seq: number };
-  /** Nothing is persisted until the user submits the card. */
-  onWatchIntent?: (spec: WatchSpec) => void;
-  onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
@@ -189,20 +172,6 @@ export function DashboardAgentChat({
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
 
-  // Once per `seq`: the append is already persisted, so a replay would duplicate it.
-  // Ids are stable, so anything already in the transcript is skipped.
-  const appendedSeq = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!appendedMessages || appendedSeq.current === appendedMessages.seq) return;
-    appendedSeq.current = appendedMessages.seq;
-    setMessages((current) => {
-      const missing = appendedMessages.messages.filter(
-        (message) => !current.some((existing) => existing.id === message.id)
-      );
-      return missing.length === 0 ? current : [...current, ...missing];
-    });
-  }, [appendedMessages, setMessages]);
-
   const sentFirst = useRef(false);
   useEffect(() => {
     if (pendingFirstMessage && !sentFirst.current) {
@@ -223,10 +192,7 @@ export function DashboardAgentChat({
   );
 
   const retry = useCallback(() => {
-    // A watch's consent record is a user message nobody typed, so retry skips it.
-    const lastUserMessage = [...messages]
-      .reverse()
-      .find((m) => m.role === "user" && !isWatchRequestMessageId(m.id));
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
     const text = lastUserMessage?.parts
       ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
       .map((p) => p.text)
@@ -264,9 +230,6 @@ export function DashboardAgentChat({
         case "ask":
           submit(intent.prompt);
           return;
-        case "watch":
-          onWatchIntent?.(intent.spec);
-          return;
         case "navigate":
           void goTo(intent);
           return;
@@ -274,7 +237,7 @@ export function DashboardAgentChat({
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, goTo, onWatchIntent]
+    [submit, goTo]
   );
 
   // Seeded from the loaded transcript before first render, so history never re-navigates.
@@ -288,17 +251,6 @@ export function DashboardAgentChat({
     const target = pending.at(-1);
     if (target) void goTo(target);
   }, [messages, goTo]);
-
-  const watchProposedRef = useRef<Set<string> | null>(null);
-  if (watchProposedRef.current === null) {
-    watchProposedRef.current = new Set();
-    pendingWatchIntents(initialMessages, watchProposedRef.current);
-  }
-  useEffect(() => {
-    const pending = pendingWatchIntents(messages, watchProposedRef.current!);
-    const proposed = pending.at(-1);
-    if (proposed) onWatchIntent?.(proposed.spec);
-  }, [messages, onWatchIntent]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
@@ -334,10 +286,6 @@ export function DashboardAgentChat({
 
   return (
     <>
-      <WatchChips
-        watches={watches.filter((watch) => watch.status === "active")}
-        onCancel={onCancelWatch}
-      />
       {messages.length === 0 && !pendingFirstMessage ? (
         <DashboardAgentHero
           onSelect={submit}
@@ -353,11 +301,9 @@ export function DashboardAgentChat({
           onDismissError={clearError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
-          watches={watches}
           resolveUri={resolveUri}
         />
       )}
-      {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
       {quota.kind === "reached" ? (
         <AgentUpgradeBlock
           limit={quota.limit}

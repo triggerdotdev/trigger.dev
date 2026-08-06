@@ -1,7 +1,6 @@
 import {
   BookOpenIcon,
   ChartBarIcon,
-  EyeIcon,
   MagnifyingGlassIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
@@ -23,7 +22,6 @@ export const PROMPT_SLOT_BUTTON: Record<
 > = {
   promoted: { variant: "primary/small", icon: SparklesIcon },
   investigate: { variant: "primary/small", icon: MagnifyingGlassIcon },
-  watch: { variant: "secondary/small", icon: EyeIcon },
   status: { variant: "secondary/small", icon: ChartBarIcon },
   explain: { variant: "tertiary/small", icon: QuestionMarkCircleIcon },
   docs: { variant: "docs/small", icon: BookOpenIcon },

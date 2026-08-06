@@ -310,13 +310,6 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
 // and `note` is prose for an option stated rather than offered.
 export { reportFooterStyle, type ReportFooterStyle };
 
-/**
- * The recovery-watch offer. No report emits it; the card adds it. Two codes
- * because it is phrased differently when it is the only thing on offer.
- */
-export const FOOTER_WATCH_CODE = "watch_recovery";
-export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
-
 /** A dimmed line that accompanies a row entry. */
 const FOOTER_NOTE_LINES: Record<string, string> = {
   check_control_plane: "There's nothing to fix on your side.",

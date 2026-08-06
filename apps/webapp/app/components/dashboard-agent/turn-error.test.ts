@@ -7,7 +7,7 @@ const failure = { id: "turn-error:0" };
 describe("the failed-turn record", () => {
   it("recognises the agent's failure message id", () => {
     expect(isTurnErrorMessageId("turn-error:3")).toBe(true);
-    expect(isTurnErrorMessageId("wake:watch:watch_1:fired")).toBe(false);
+    expect(isTurnErrorMessageId("msg_1")).toBe(false);
     expect(isTurnErrorMessageId(undefined)).toBe(false);
   });
 

@@ -26,11 +26,10 @@ import {
 import { titlePrompt } from "./prompts";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
-import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
 
-// The runtime and the watch lanes live in their own modules; re-exported here so
-// every existing import path still resolves.
+// The runtime lives in its own module; re-exported here so every existing import
+// path still resolves.
 export {
   clientDataSchema,
   dashboardAgentModelKey,
@@ -51,8 +50,8 @@ export {
   shouldEvalTurn,
   turnReadSource,
 } from "./eval-policy";
-// The rolling step cache lives in `step-cache.ts`, shared with the watch lane;
-// re-exported so every existing import path still resolves.
+// The rolling step cache lives in `step-cache.ts`; re-exported so every existing
+// import path still resolves.
 export {
   markStepCacheBreakpoint,
   MIN_STEP_CACHE_CHARS,
@@ -60,15 +59,6 @@ export {
   STEP_CACHE_CONTROL,
   withStepCacheBreakpoint,
 } from "./step-cache";
-export {
-  dashboardAgentActionSchema,
-  wakeStartsInvestigation,
-  watchInvestigateActionSchema,
-  watchWakeActionSchema,
-  type DashboardAgentAction,
-  type WatchInvestigateAction,
-  type WatchWakeAction,
-} from "./watch-actions";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
@@ -321,8 +311,8 @@ export type {
  * message so the growing conversation prefix is read back cheaply.
  *
  * The between-steps compaction path rebuilds history as the summary alone and never
- * reaches `compactModelMessages`, so the live investigation and watch state is pinned
- * back here instead.
+ * reaches `compactModelMessages`, so the live investigation state is pinned back
+ * here instead.
  */
 export function prepareTurnMessages(args: {
   messages: ModelMessage[];
@@ -339,8 +329,6 @@ export function prepareTurnMessages(args: {
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
-  // Actions are not turns — see `narrateWatchWake`.
-  actionSchema: dashboardAgentActionSchema,
   // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
 
@@ -384,11 +372,6 @@ export const dashboardAgent = chat.agent({
       },
     });
   },
-
-  // Every action is a watch action, handled in `watch-actions.ts`: one message
-  // deduped on the action id, piped inside so it reaches the history and read-model.
-  onAction: async ({ action, chatId, clientData, uiMessages, messages }) =>
-    handleWatchAction({ action, chatId, clientData, uiMessages, messages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     locals.set(turnErroredKey, false);

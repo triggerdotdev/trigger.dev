@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "public"."ProjectAlertType" ADD VALUE IF NOT EXISTS 'DASHBOARD_AGENT_WATCH';

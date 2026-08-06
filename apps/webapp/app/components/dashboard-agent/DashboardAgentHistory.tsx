@@ -7,31 +7,25 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
-import type { WatchChip } from "./WatchChips";
 
 // Date fields arrive as strings over the loader's JSON.
 export type DashboardAgentChat = {
   id: string;
   title: string;
   lastMessageAt: string | null;
-  watches?: WatchChip[];
-  hasUnreadWake?: boolean;
-  hasActiveWatch?: boolean;
   hasOpenInvestigation?: boolean;
 };
 
-type ChatProcess = "thinking" | "investigating" | "watching";
+type ChatProcess = "thinking" | "investigating";
 
 const PROCESS_LABELS: Record<ChatProcess, string> = {
   thinking: "Agent is thinking",
   investigating: "Investigation in progress",
-  watching: "Watch active",
 };
 
 function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess | null {
   if (isThinking) return "thinking";
   if (chat.hasOpenInvestigation) return "investigating";
-  if (chat.hasActiveWatch) return "watching";
   return null;
 }
 
@@ -46,13 +40,6 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
         <AgentSpinner size={14} />
       )}
     </span>
-  );
-}
-
-// Must stay a stable sort on one key: everything else keeps the server's order.
-function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
-  return [...chats].sort(
-    (a, b) => Number(b.hasUnreadWake ?? false) - Number(a.hasUnreadWake ?? false)
   );
 }
 
@@ -97,14 +84,13 @@ export function DashboardAgentHistoryMenu({
           </Paragraph>
         ) : (
           <AgentList>
-            {unreadFirst(chats).map((chat) => {
+            {chats.map((chat) => {
               const process = chatProcess(chat, chat.id === thinkingChatId);
               const age = chat.lastMessageAt ? chatAge(chat.lastMessageAt, now) : undefined;
               return (
                 <AgentListRow
                   key={chat.id}
                   label={chat.title}
-                  unread={chat.hasUnreadWake ?? false}
                   status={process ? <ProcessIcon process={process} /> : null}
                   meta={age}
                   variant={chat.id === currentChatId ? "selected" : "default"}

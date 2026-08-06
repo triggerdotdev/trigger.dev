@@ -278,9 +278,6 @@ function makeFixtureTools(
       execute: async (input: unknown) => {
         const output = ((): unknown => {
           if (name === "navigate_to") return input;
-          if (name === "schedule_watch") {
-            return { intent: { kind: "watch", spec: (input as { watch?: unknown }).watch } };
-          }
           if (name === "render_view") {
             const spec = input as { blocks?: Array<{ type?: string }> };
             const hasInvestigation = (spec.blocks ?? []).some((b) => b?.type === "investigation");
@@ -553,7 +550,6 @@ const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "How do I use batchTrigger?", expect: "search_docs" },
   { question: "How deep is the email queue?", expect: "get_queue" },
   { question: "What was deployed recently?", expect: "list_deploys" },
-  { question: "Tell me when run run_a1 finishes.", expect: "schedule_watch" },
 ];
 
 const TOOL_SELECTION_THRESHOLD = 0.83;

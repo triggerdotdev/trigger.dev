@@ -49,20 +49,8 @@ describe("intents", () => {
     expect(isExecutableIntent(parsed)).toBe(true);
   });
 
-  it("parses ask and watch", () => {
+  it("parses ask", () => {
     expect(agentIntentSchema.safeParse({ kind: "ask", prompt: "why?" }).success).toBe(true);
-    expect(
-      agentIntentSchema.safeParse({
-        kind: "watch",
-        spec: {
-          kind: "backlog_drain",
-          queue: "email-sends",
-          checkEveryMinutes: 5,
-          maxHours: 2,
-          note: "waiting for the backlog",
-        },
-      }).success
-    ).toBe(true);
   });
 
   it("keeps propose_fix in the wire format but marks it non-executable", () => {

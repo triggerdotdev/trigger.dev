@@ -4,9 +4,6 @@ The in-dashboard agent, built on `chat.agent` and deployed as its own Trigger
 project. This is the launch-week dogfood: we run our own product on the
 primitive we ship.
 
-Running it locally, what it does, and a walkthrough per flow:
-[GUIDEBOOK.md](./GUIDEBOOK.md).
-
 ## Why a separate package (not inside apps/webapp)
 
 The agent has **no access to the main database, ClickHouse, or webapp
@@ -56,9 +53,9 @@ conversation that rides on top of it.
   accept the snapshot diff (`vitest -u`) — that is the whole point of the numbers.
 - **The conversation** is compacted in `src/compaction.ts`: above 60k tokens of conversation
   (on top of the ~21k prefix) the older part becomes a Haiku-written summary. The UI
-  transcript is never compacted, and an open investigation, a live watch and an already
-  delivered wake are pinned back onto the model's history verbatim, so a summary can never
-  cost the agent the `investigationId` it has to keep revising.
+  transcript is never compacted, and an open investigation is pinned back onto the model's
+  history verbatim, so a summary can never cost the agent the `investigationId` it has to
+  keep revising.
 
 ## Turn evals
 
