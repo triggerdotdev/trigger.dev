@@ -1,1 +1,0 @@
-ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "delivery_claim_id" text;

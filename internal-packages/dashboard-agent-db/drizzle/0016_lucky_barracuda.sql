@@ -1,6 +1,0 @@
-ALTER TABLE "trigger_dashboard_agent"."watch_submissions" ADD COLUMN "external_notification_status" text DEFAULT 'not_requested' NOT NULL;--> statement-breakpoint
-ALTER TABLE "trigger_dashboard_agent"."watch_submissions" ADD COLUMN "external_notification_reason" text;--> statement-breakpoint
-ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "alert_dispatch_key" text;--> statement-breakpoint
-ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "retention_at" timestamp with time zone GENERATED ALWAYS AS (greatest(delivered_at, cancelled_at, fired_at, last_checked_at, created_at)) STORED;--> statement-breakpoint
-CREATE INDEX "watches_env_cadence_delivery_idx" ON "trigger_dashboard_agent"."watches" USING btree ("environment_id","cadence_minutes","delivery_status",coalesce("fired_at", "last_checked_at")) WHERE "trigger_dashboard_agent"."watches"."status" in ('fired', 'expired') and "trigger_dashboard_agent"."watches"."delivery_status" in ('pending', 'delivering');--> statement-breakpoint
-CREATE INDEX "watches_retention_idx" ON "trigger_dashboard_agent"."watches" USING btree ("retention_at") WHERE "trigger_dashboard_agent"."watches"."status" in ('fired', 'expired', 'cancelled') and "trigger_dashboard_agent"."watches"."delivery_status" in ('not_required', 'delivered');

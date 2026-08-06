@@ -1,1 +1,0 @@
-ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN "last_read_at" timestamp with time zone;

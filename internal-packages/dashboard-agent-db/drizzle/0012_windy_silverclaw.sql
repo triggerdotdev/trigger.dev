@@ -1,1 +1,0 @@
-CREATE INDEX "chat_turn_evals_created_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("created_at");

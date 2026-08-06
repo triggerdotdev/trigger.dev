@@ -1,1 +1,0 @@
-ALTER TABLE "trigger_dashboard_agent"."chats" DROP COLUMN "messages";
