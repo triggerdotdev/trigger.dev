@@ -183,7 +183,8 @@ describe("the sweep's boundary evaluation", () => {
       const row = await getWatch(ctx.agentDb, { id: watchId });
       expect(row).toMatchObject({ status: "fired", resolution: "condition_met" });
       // The facts the wake narrates are the streak that closed, not a reset one.
-      expect((row?.lastResult as { notDecreasingStreak?: number }).notDecreasingStreak).toBe(3);
+      const facts = row?.lastResult as { notDecreasingStreak?: number } | undefined;
+      expect(facts?.notDecreasingStreak).toBe(3);
       expect(delivered).toEqual([watchId]);
     }
   );
