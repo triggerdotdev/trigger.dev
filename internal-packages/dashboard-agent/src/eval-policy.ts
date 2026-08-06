@@ -220,7 +220,9 @@ function describeTruncated(value: object): Record<string, unknown> {
  */
 export function redactEvalToolValue(value: unknown, toolName?: string, depth = 0): unknown {
   const allowed = allowedEvalKeys(toolName);
-  return walk(value, allowed, depth);
+  const walked = walk(value, allowed, depth);
+  // Only the top level: a tool's own failure. Classify before the text is dropped.
+  return depth === 0 ? annotateEvalErrorCategory(value, walked) : walked;
 }
 
 function walk(value: unknown, allowed: ReadonlySet<string>, depth: number): unknown {
@@ -233,6 +235,128 @@ function walk(value: unknown, allowed: ReadonlySet<string>, depth: number): unkn
     result[key] = allowed.has(key) ? walk(item, allowed, depth + 1) : describeShape(key, item);
   }
   return result;
+}
+
+/**
+ * The kinds of failure the judge is told apart. A closed vocabulary: the label is derived
+ * here from the failure's own text and fields, and it is the only thing that travels — the
+ * message itself is dropped with every other free-text field.
+ */
+export const EVAL_ERROR_CATEGORIES = [
+  "timeout",
+  "connection_reset",
+  "validation",
+  "rate_limit",
+  "authentication",
+  "application_error",
+  "unknown",
+] as const;
+
+export type EvalErrorCategory = (typeof EVAL_ERROR_CATEGORIES)[number];
+
+/** True when an output is a tool failure: unfolded (`isError`) or a plain `error` field. */
+export function evalOutputErrored(output: unknown): boolean {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return false;
+  return (output as { isError?: unknown }).isError === true || "error" in output;
+}
+
+/**
+ * Keys that describe the failure rather than the data it happened on. Classification reads
+ * only these, so a run payload that happens to say "timeout" can't relabel a failure.
+ */
+const ERROR_SIGNAL_KEYS = new Set([
+  "cause",
+  "code",
+  "detail",
+  "error",
+  "errorMessage",
+  "errors",
+  "message",
+  "name",
+  "reason",
+  "stack",
+  "status",
+  "statusCode",
+  "type",
+  "value",
+]);
+
+/** Text handed to the rules. Bounded so a stack trace can't make matching expensive. */
+const MAX_CLASSIFY_CHARS = 4_000;
+
+function errorSignalText(value: unknown, depth = 0): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null || typeof value !== "object" || depth >= MAX_REDACT_DEPTH) return "";
+  if (Array.isArray(value)) return value.map((item) => errorSignalText(item, depth + 1)).join(" ");
+
+  const parts: string[] = [];
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (ERROR_SIGNAL_KEYS.has(key)) parts.push(errorSignalText(item, depth + 1));
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Ordered, so a specific rule wins over a general one: `TimeoutError` is a timeout, not
+ * just some thrown error, and a 429 is a rate limit before it is anything else.
+ */
+const CATEGORY_RULES: ReadonlyArray<readonly [EvalErrorCategory, RegExp]> = [
+  ["rate_limit", /\b429\b|too many requests|rate ?limit|quota exceeded|throttl/],
+  [
+    "authentication",
+    /\b40[13]\b|unauthori[sz]ed|unauthenticated|forbidden|permission denied|access denied|invalid (api )?(key|token|credentials)|authentication failed/,
+  ],
+  ["timeout", /\b(408|504)\b|etimedout|time[ _-]?out|timed out|deadline exceeded/],
+  [
+    "connection_reset",
+    /econnreset|econnrefused|econnaborted|enotfound|epipe|eai_again|socket hang ?up|connection (reset|refused|closed|aborted)|network (error|failure)|tls handshake/,
+  ],
+  [
+    "validation",
+    /\b(400|422)\b|zoderror|validation ?(error|failed)|invalid (input|argument|parameter)|missing required|failed to parse/,
+  ],
+];
+
+/**
+ * A thrown application error we can recognise as one without knowing its kind: an error
+ * class name, or a server-side status. Checked after the specific rules, so it doesn't
+ * swallow them — and before `unknown`, so `unknown` isn't the bucket for everything.
+ */
+const APPLICATION_ERROR = /\b[A-Z][A-Za-z0-9]*(Error|Exception)\b|\b(Error|Exception):|\b5\d\d\b/;
+
+/**
+ * The failure's kind, derived locally. Conservative on purpose: a failure no cheap check
+ * recognises is `unknown` rather than guessed into a bucket.
+ */
+export function classifyEvalError(output: unknown): EvalErrorCategory {
+  const signal = errorSignalText(output).slice(0, MAX_CLASSIFY_CHARS);
+  const haystack = signal.toLowerCase();
+
+  for (const [category, pattern] of CATEGORY_RULES) {
+    if (pattern.test(haystack)) return category;
+  }
+  // Case-sensitive: an error class name is the signal, and `error-text` is our own envelope.
+  return APPLICATION_ERROR.test(signal) ? "application_error" : "unknown";
+}
+
+/**
+ * Add the derived category to a failed tool result, alongside the structural error facts
+ * already there. A string `error` is replaced by its shape: the label is what the judge
+ * gets, never the sentence it came from.
+ */
+export function annotateEvalErrorCategory(original: unknown, redacted: unknown): unknown {
+  if (!evalOutputErrored(original)) return redacted;
+  if (redacted === null || typeof redacted !== "object" || Array.isArray(redacted)) return redacted;
+
+  const fields = { ...(redacted as Record<string, unknown>) };
+  if (typeof fields.error === "string") {
+    fields.error = describeShape("error", fields.error);
+  }
+  // Ours, not the tool's: drop any incoming field of the same name before adding it back.
+  delete fields.errorCategory;
+  // Derived key first, so a value long enough to be truncated still shows its category.
+  return { errorCategory: classifyEvalError(original), ...fields };
 }
 
 /** True when the value the fetch returned says this org's turns may be judged. */
