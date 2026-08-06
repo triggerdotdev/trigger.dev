@@ -35,6 +35,7 @@ import {
   type PromptCacheUsage,
 } from "./prompt-prefix";
 import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
+import { dashboardAgentCompaction, withDurableState } from "./compaction";
 
 // The runtime and the watch lanes live in their own modules; re-exported here so
 // every existing import path still resolves.
@@ -479,13 +480,22 @@ export const dashboardAgent = chat.agent({
     }
   },
 
+  // Summarise the older conversation once it outgrows the budget. UI messages are
+  // untouched, so the transcript the user reads never loses anything.
+  compaction: dashboardAgentCompaction,
+
   // Roll a cache breakpoint onto the last message every turn so the growing
   // conversation prefix is cached and read back cheaply. Composes with the
   // system-block breakpoint above. chat.agent keeps the Head Start handover's
   // tool-approval tail intact across this hook, so it is safe on a resume turn.
-  prepareMessages: ({ messages }) => {
+  prepareMessages: ({ messages, reason }) => {
     if (messages.length === 0) return messages;
-    const sanitized = sanitizeReplayedToolInputs(messages);
+    // The between-steps compaction path rebuilds history as the summary alone and
+    // never reaches `compactModelMessages`, so the live investigation and watch state
+    // is pinned back here instead.
+    const sanitized = sanitizeReplayedToolInputs(
+      reason === "run" ? messages : withDurableState(messages, chat.history.all())
+    );
 
     const last = sanitized[sanitized.length - 1];
     return [
