@@ -246,12 +246,13 @@ describe("the submission ledger's tenancy", () => {
       const inFirst = await submit({ seeded: first, clientRequestId: "wreq_shared" });
       const inSecond = await submit({ seeded: second, clientRequestId: "wreq_shared" });
 
+      // A shared chat id would have let the second organization's records land in the
+      // first organization's chat, so this is asserted before anything else.
+      const chatIdOf = (result: { chatId?: string }) => result.chatId;
+      expect(chatIdOf(inSecond)).not.toBe(chatIdOf(inFirst));
+
       expect(inFirst.ok && inSecond.ok).toBe(true);
       if (!inFirst.ok || !inSecond.ok) return;
-
-      // A shared chat id would have let the second organization's records land in the
-      // first organization's chat.
-      expect(inSecond.chatId).not.toBe(inFirst.chatId);
 
       const firstChat = await messagesIn(
         inFirst.chatId,
