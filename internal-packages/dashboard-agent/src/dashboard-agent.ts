@@ -24,6 +24,7 @@ import {
   modeFor,
   registry,
   sanitizeReplayedToolInputs,
+  settlementCardMessages,
   settleOpenInvestigations,
   type DashboardAgentStore,
 } from "./agent-runtime";
@@ -529,7 +530,10 @@ export const dashboardAgent = chat.agent({
     // Settle before anything else: the run is over, so a card left `in_progress`
     // never settles on its own and a refresh right after the turn would read a
     // spinner that never stops.
-    await settleOpenInvestigations(store, chatId);
+    const settled = await settleOpenInvestigations(store, chatId);
+    // The row is only half of it — the panel renders the winning revision from the
+    // transcript's own render_view parts and never reads the investigations table.
+    const closingCards = settlementCardMessages(chatId, settled);
 
     // A turn that ended in an error is part of the conversation, not only a stream
     // event: the browser rendered the error chunk but nothing recorded it, so
@@ -537,8 +541,6 @@ export const dashboardAgent = chat.agent({
     const errored =
       error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
     const failure = errored ? turnFailureMessage(turn) : undefined;
-    // Into the accumulator too, so the next turn's wholesale write keeps it.
-    if (failure) chat.history.set([...uiMessages, failure]);
 
     // Transcript and session state in one transaction, so the next page load reads
     // both consistently.
@@ -552,15 +554,20 @@ export const dashboardAgent = chat.agent({
       },
     });
 
-    // After the transcript write, and id-deduped, so a retried error path appends
-    // the record once rather than a second copy.
-    if (failure) {
+    // After the transcript write, and id-deduped, so a retried turn appends each
+    // record once rather than a second copy.
+    const appended = [...closingCards, ...(failure ? [failure] : [])];
+    if (appended.length > 0) {
       const userId = clientData?.userId ?? chatOwners.get(chatId);
       if (userId) {
-        await store.appendMessage({ chatId, userId, message: failure });
+        for (const message of appended) {
+          await store.appendMessage({ chatId, userId, message });
+        }
       } else {
-        logger.error("dashboard-agent failed turn has no userId; skipping the append", { chatId });
+        logger.error("dashboard-agent turn has no userId; skipping the append", { chatId });
       }
+      // Into the accumulator too, so the next turn's wholesale write keeps them.
+      chat.history.set([...uiMessages, ...appended]);
     }
 
     // Score this turn in a separate, idempotency-keyed task so it never blocks or

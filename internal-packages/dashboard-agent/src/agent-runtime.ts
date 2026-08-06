@@ -4,6 +4,7 @@ import {
   createDashboardAgentDb,
   ensureChat,
   findOpenInvestigationForChat,
+  investigationSettlementMessage,
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
@@ -12,7 +13,13 @@ import {
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { locals, logger } from "@trigger.dev/sdk";
-import { createProviderRegistry, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
+import {
+  createProviderRegistry,
+  type LanguageModel,
+  type ModelMessage,
+  type ToolSet,
+  type UIMessage,
+} from "ai";
 import { z } from "zod";
 import {
   agentPageContextSchema,
@@ -118,32 +125,107 @@ function trackInvestigationOutcome(
   openInvestigations.set(chatId, forChat);
 }
 
+/** A revision the settle guard committed, and the card the transcript still needs. */
+export type SettledInvestigationCard = {
+  investigationId: string;
+  revision: number;
+  state: InvestigationState;
+};
+
 /**
  * Force-settle whatever this turn left `in_progress`, as one more revision on
  * the same investigation. Best-effort: a failed settle must not fail a turn the
  * user already got an answer from, but it is logged.
+ *
+ * The settled revisions are returned because settling the row is only half of it:
+ * the panel renders from the transcript, so the caller has to append these too.
  */
 export async function settleOpenInvestigations(
   store: DashboardAgentStore,
   chatId: string
-): Promise<void> {
+): Promise<SettledInvestigationCard[]> {
   const open = openInvestigations.get(chatId);
-  if (!open || open.size === 0) return;
+  if (!open || open.size === 0) return [];
   openInvestigations.delete(chatId);
 
+  const settled: SettledInvestigationCard[] = [];
   for (const [id, entry] of open) {
+    const state = forceSettledInvestigationState(entry.state);
     try {
-      await store.upsertInvestigationRevision({
+      const result = await store.upsertInvestigationRevision({
         id,
         chatId,
         projectRef: entry.projectRef,
         environmentRef: entry.environmentRef,
-        state: forceSettledInvestigationState(entry.state),
+        state,
       });
+      if (result.ok) {
+        settled.push({ investigationId: result.id, revision: result.revision, state });
+      }
     } catch (error) {
       logger.error("Failed to settle an investigation left in progress", { chatId, id, error });
     }
   }
+  return settled;
+}
+
+/**
+ * The settled cards as transcript messages, in the shape the panel's winning-revision
+ * logic reads. A card that can't be rendered is logged and dropped rather than
+ * appended half-formed.
+ */
+export function settlementCardMessages(
+  chatId: string,
+  settled: SettledInvestigationCard[]
+): UIMessage[] {
+  const messages: UIMessage[] = [];
+  for (const card of settled) {
+    const message = investigationSettlementMessage(card);
+    if (!message) {
+      logger.error("A settled investigation's closing card didn't validate", {
+        chatId,
+        investigationId: card.investigationId,
+      });
+      continue;
+    }
+    messages.push(message as UIMessage);
+  }
+  return messages;
+}
+
+export type TranscriptCard = { id: string; revision: number; state: InvestigationState | null };
+
+function cardsInMessage(message: UIMessage): TranscriptCard[] {
+  const found: TranscriptCard[] = [];
+  for (const part of message.parts ?? []) {
+    const typed = part as { type?: string; output?: { blocks?: unknown[] } };
+    if (typed.type !== "tool-render_view" || !Array.isArray(typed.output?.blocks)) continue;
+    for (const block of typed.output.blocks) {
+      const candidate = block as { type?: string; id?: string; revision?: number };
+      if (candidate?.type !== "investigation" || typeof candidate.id !== "string") continue;
+      const parsed = investigationStateSchema.safeParse(
+        (block as { investigation?: unknown }).investigation
+      );
+      found.push({
+        id: candidate.id,
+        revision: typeof candidate.revision === "number" ? candidate.revision : 0,
+        state: parsed.success ? parsed.data : null,
+      });
+    }
+  }
+  return found;
+}
+
+/** Latest revision wins, the same way the panel resolves a card. */
+export function latestCards(messages: UIMessage[]): Map<string, TranscriptCard> {
+  const latest = new Map<string, TranscriptCard>();
+  for (const message of messages) {
+    for (const card of cardsInMessage(message)) {
+      const current = latest.get(card.id);
+      if (!current || card.revision >= current.revision) latest.set(card.id, card);
+    }
+  }
+  return latest;
 }
 
 export function getStore(): DashboardAgentStore {

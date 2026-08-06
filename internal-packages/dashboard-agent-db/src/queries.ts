@@ -1,4 +1,8 @@
-import { WATCH_REQUEST_MESSAGE_ID_PREFIX } from "@internal/dashboard-agent-contracts";
+import {
+  investigationBlockSchema,
+  VIEW_BLOCK_VERSION,
+  WATCH_REQUEST_MESSAGE_ID_PREFIX,
+} from "@internal/dashboard-agent-contracts";
 import { and, desc, eq, ne, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
@@ -351,6 +355,33 @@ export async function appendChatMessageOnce(
 }
 
 /**
+ * Same id-deduped append, for the lanes that have a chat id and no user in context —
+ * the between-turns sweep runs on its own, off any session.
+ */
+export async function appendChatMessageOnceByChatId(
+  db: DashboardAgentDb,
+  params: { chatId: string; message: { id: string } }
+): Promise<boolean> {
+  const rows = await db
+    .update(chats)
+    .set({
+      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
+      lastMessageAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        isNull(chats.deletedAt),
+        sql`not exists (select 1 from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) m where m->>'id' = ${params.message.id})`
+      )
+    )
+    .returning({ id: chats.id });
+
+  return rows.length > 0;
+}
+
+/**
  * One transaction: the frontend reads `messages` and `lastEventId` in parallel, so a
  * torn write resumes from a stale cursor and double-renders the last turn.
  */
@@ -482,6 +513,63 @@ export async function upsertInvestigationRevision(
     .limit(1);
 
   return { ok: false, error: existing.length > 0 ? "context_mismatch" : "not_found" };
+}
+
+/** Structural: this package stores the transcript, the UI types it. */
+export type InvestigationCardMessage = {
+  id: string;
+  role: "assistant";
+  parts: unknown[];
+};
+
+export const INVESTIGATION_SETTLEMENT_MESSAGE_ID_PREFIX = "investigation-settlement";
+
+/** Revision-stable, so a retried settle appends the same message instead of a second card. */
+export function investigationSettlementMessageId(
+  investigationId: string,
+  revision: number
+): string {
+  return `${INVESTIGATION_SETTLEMENT_MESSAGE_ID_PREFIX}:${investigationId}:${revision}`;
+}
+
+/**
+ * A settled investigation as one more transcript revision. The panel builds the winning
+ * revision from `tool-render_view` output blocks and never reads the investigations
+ * table, so a settled row nothing appended is still a permanent spinner.
+ *
+ * Returns null when the state can't be rendered as a card; the caller decides what to
+ * do about it, since it must not be silently taken for a closed card.
+ */
+export function investigationSettlementMessage(params: {
+  investigationId: string;
+  revision: number;
+  state: unknown;
+  messageId?: string;
+}): InvestigationCardMessage | null {
+  const block = investigationBlockSchema.safeParse({
+    type: "investigation",
+    investigation: params.state,
+    id: params.investigationId,
+    revision: params.revision,
+    version: VIEW_BLOCK_VERSION,
+  });
+  if (!block.success) return null;
+
+  const id =
+    params.messageId ?? investigationSettlementMessageId(params.investigationId, params.revision);
+  return {
+    id,
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-render_view",
+        toolCallId: id,
+        state: "output-available",
+        input: { blocks: [{ type: "investigation", investigation: block.data.investigation }] },
+        output: { blocks: [block.data] },
+      },
+    ],
+  };
 }
 
 export async function getInvestigation(

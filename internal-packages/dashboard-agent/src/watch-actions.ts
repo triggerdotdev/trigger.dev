@@ -9,12 +9,10 @@ import {
   type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
+import { investigationSettlementMessage } from "@internal/dashboard-agent-db";
 import {
   forceSettledInvestigationState,
   formatTriggerUri,
-  investigationBlockSchema,
-  investigationStateSchema,
-  VIEW_BLOCK_VERSION,
   watchResolutions,
   watchResultNeedsAttention,
   type InvestigationState,
@@ -31,6 +29,7 @@ import {
   getSystemPrompt,
   modeFor,
   registry,
+  latestCards,
   sanitizeReplayedToolInputs,
   settleOpenInvestigations,
   withCacheBreakpointOnLast,
@@ -589,40 +588,6 @@ async function resolveInvestigationId(args: {
   return seeded.ok ? seeded.id : undefined;
 }
 
-type TranscriptCard = { id: string; revision: number; state: InvestigationState | null };
-
-function cardsInMessage(message: UIMessage): TranscriptCard[] {
-  const found: TranscriptCard[] = [];
-  for (const part of message.parts ?? []) {
-    const typed = part as { type?: string; output?: { blocks?: unknown[] } };
-    if (typed.type !== "tool-render_view" || !Array.isArray(typed.output?.blocks)) continue;
-    for (const block of typed.output.blocks) {
-      const candidate = block as { type?: string; id?: string; revision?: number };
-      if (candidate?.type !== "investigation" || typeof candidate.id !== "string") continue;
-      const parsed = investigationStateSchema.safeParse(
-        (block as { investigation?: unknown }).investigation
-      );
-      found.push({
-        id: candidate.id,
-        revision: typeof candidate.revision === "number" ? candidate.revision : 0,
-        state: parsed.success ? parsed.data : null,
-      });
-    }
-  }
-  return found;
-}
-
-function latestCards(messages: UIMessage[]): Map<string, TranscriptCard> {
-  const latest = new Map<string, TranscriptCard>();
-  for (const message of messages) {
-    for (const card of cardsInMessage(message)) {
-      const current = latest.get(card.id);
-      if (!current || card.revision >= current.revision) latest.set(card.id, card);
-    }
-  }
-  return latest;
-}
-
 async function closeCardInTranscript(args: {
   store: DashboardAgentStore;
   chatId: string;
@@ -658,35 +623,22 @@ async function closeCardInTranscript(args: {
     return;
   }
 
-  const block = investigationBlockSchema.safeParse({
-    type: "investigation",
-    investigation: settled,
-    id: result.id,
+  // The lane's own message id, not the revision-stable one: a redelivered kick must
+  // dedupe on the action, and this lane already checked for it above.
+  const built = investigationSettlementMessage({
+    investigationId: result.id,
     revision: result.revision,
-    version: VIEW_BLOCK_VERSION,
+    state: settled,
+    messageId: args.messageId,
   });
-  if (!block.success) {
+  if (!built) {
     logger.error("dashboard-agent watch investigation's closing card didn't validate", {
       chatId,
       investigationId,
     });
     return;
   }
-
-  // A card outside a `render_view` part leaves the panel's progress line running forever.
-  const message: UIMessage = {
-    id: args.messageId,
-    role: "assistant",
-    parts: [
-      {
-        type: "tool-render_view",
-        toolCallId: args.messageId,
-        state: "output-available",
-        input: { blocks: [{ type: "investigation", investigation: settled }] },
-        output: { blocks: [block.data] },
-      } as unknown as UIMessage["parts"][number],
-    ],
-  };
+  const message = built as UIMessage;
 
   // Persist before the history set, so a retry after a failed append still sees the
   // card as unclosed.

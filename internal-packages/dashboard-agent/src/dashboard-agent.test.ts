@@ -276,6 +276,138 @@ describe("dashboardAgent (mock harness)", () => {
     expect(state.hypotheses).toHaveLength(1);
   });
 
+  /**
+   * The transcript a fresh page load reads: the turn's wholesale write plus the
+   * id-deduped appends, which is exactly what the chat row holds.
+   */
+  const storedTranscript = (calls: StoreCalls): UIMessage[] => {
+    const last = calls.persistTurn[calls.persistTurn.length - 1] as
+      | { messages: UIMessage[] }
+      | undefined;
+    const stored = [...(last?.messages ?? [])];
+    for (const call of calls.appendMessage as { message: UIMessage }[]) {
+      if (!stored.some((message) => message.id === call.message.id)) stored.push(call.message);
+    }
+    return stored;
+  };
+
+  /** Mirrors the panel's winning-revision logic, over `tool-render_view` output blocks. */
+  const winningCards = (messages: UIMessage[]) => {
+    const latest = new Map<string, { revision: number; outcome?: string; progress?: string }>();
+    for (const message of messages) {
+      for (const part of message.parts ?? []) {
+        const typed = part as { type?: string; output?: { blocks?: unknown[] } };
+        if (typed.type !== "tool-render_view" || !Array.isArray(typed.output?.blocks)) continue;
+        for (const block of typed.output.blocks) {
+          const candidate = block as {
+            type?: string;
+            id?: string;
+            revision?: number;
+            investigation?: { outcome?: string; progress?: string };
+          };
+          if (candidate.type !== "investigation" || typeof candidate.id !== "string") continue;
+          const revision = typeof candidate.revision === "number" ? candidate.revision : 0;
+          const current = latest.get(candidate.id);
+          if (!current || revision >= current.revision) {
+            latest.set(candidate.id, {
+              revision,
+              outcome: candidate.investigation?.outcome,
+              progress: candidate.investigation?.progress,
+            });
+          }
+        }
+      }
+    }
+    return latest;
+  };
+
+  // The settled row is invisible: the panel builds the card from the transcript's own
+  // render_view parts, so a turn that ran out of steps left a permanent spinner.
+  it("a turn that runs out of steps closes its card IN THE TRANSCRIPT, not only in the row", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_transcript_settle",
+      clientData: INVESTIGATION_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(
+          dashboardAgentModelKey,
+          mockModel([renderViewStep(openInvestigation, "tc_open"), textStep("still looking")])
+        );
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const settlement = (calls.appendMessage as { message: UIMessage }[]).map((c) => c.message);
+    expect(settlement.map((m) => m.id)).toEqual(["investigation-settlement:inv_fake:1"]);
+
+    const part = settlement[0]!.parts[0] as {
+      type: string;
+      state: string;
+      output: { blocks: Record<string, any>[] };
+    };
+    expect(part.type).toBe("tool-render_view");
+    expect(part.state).toBe("output-available");
+    expect(part.output.blocks[0]).toMatchObject({
+      type: "investigation",
+      id: "inv_fake",
+      revision: 1,
+      version: 1,
+    });
+    expect(part.output.blocks[0]!.investigation.outcome).toBe("inconclusive");
+
+    // The card the panel resolves is the terminal one, at the higher revision.
+    const card = winningCards(storedTranscript(calls)).get("inv_fake");
+    expect(card).toMatchObject({ revision: 1, outcome: "inconclusive" });
+    expect(card?.progress).toBeUndefined();
+
+    // The append comes after the transcript write, so a failed append leaves the card
+    // visibly unclosed instead of silently lost.
+    expect(calls.order.indexOf("appendMessage")).toBeGreaterThan(
+      calls.order.indexOf("persistTurn")
+    );
+  });
+
+  it("a refresh renders the closed card: the next load's transcript carries it", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_transcript_reload",
+      clientData: INVESTIGATION_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(
+          dashboardAgentModelKey,
+          mockModel([
+            renderViewStep(openInvestigation, "tc_open"),
+            textStep("still looking"),
+            textStep("nothing new"),
+          ])
+        );
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // What the panel would render on a fresh load, before anyone asks anything else.
+    expect(winningCards(storedTranscript(calls)).get("inv_fake")?.outcome).toBe("inconclusive");
+
+    // And the next turn's wholesale write keeps it: the transcript it starts from is
+    // the one a reload reads.
+    await harness.sendMessage(userMessage("anything else?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const reloaded = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
+    expect(winningCards(reloaded).get("inv_fake")).toMatchObject({
+      revision: 1,
+      outcome: "inconclusive",
+    });
+    // One settlement, not one per turn.
+    expect(calls.appendMessage).toHaveLength(1);
+  });
+
   it("leaves a concluded investigation alone", async () => {
     const { store, calls } = fakeStore();
     const concluded = {

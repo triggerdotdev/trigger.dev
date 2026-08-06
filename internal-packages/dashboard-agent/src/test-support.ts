@@ -84,6 +84,8 @@ export type StoreCalls = {
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
   findOpenInvestigation: unknown[];
+  /** Every write in the order it happened, for the tests that assert ordering. */
+  order: (keyof Omit<StoreCalls, "order">)[];
 };
 
 export function fakeStore(
@@ -97,19 +99,30 @@ export function fakeStore(
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
     findOpenInvestigation: [],
+    order: [],
   };
+  const record = <K extends keyof Omit<StoreCalls, "order">>(kind: K, args: unknown) => {
+    (calls[kind] as unknown[]).push(args);
+    calls.order.push(kind);
+  };
+  // Revisions bump the way the real query does: latest-wins in the transcript is only
+  // testable if a later revision is actually a higher number.
+  const revisions = new Map<string, number>();
   const store: DashboardAgentStore = {
-    ensureChat: async (args) => void calls.ensureChat.push(args),
-    persistMessages: async (args) => void calls.persistMessages.push(args),
-    appendMessage: async (args) => void calls.appendMessage.push(args),
-    persistTurn: async (args) => void calls.persistTurn.push(args),
-    setChatTitleIfDefault: async (args) => void calls.setChatTitleIfDefault.push(args),
+    ensureChat: async (args) => record("ensureChat", args),
+    persistMessages: async (args) => record("persistMessages", args),
+    appendMessage: async (args) => record("appendMessage", args),
+    persistTurn: async (args) => record("persistTurn", args),
+    setChatTitleIfDefault: async (args) => record("setChatTitleIfDefault", args),
     upsertInvestigationRevision: async (args) => {
-      calls.upsertInvestigationRevision.push(args);
-      return { ok: true, id: args.id ?? "inv_fake", revision: 0, created: !args.id };
+      record("upsertInvestigationRevision", args);
+      const id = args.id ?? "inv_fake";
+      const revision = args.id ? (revisions.get(id) ?? 0) + 1 : 0;
+      revisions.set(id, revision);
+      return { ok: true, id, revision, created: !args.id };
     },
     findOpenInvestigation: async (args) => {
-      calls.findOpenInvestigation.push(args);
+      record("findOpenInvestigation", args);
       return options.openInvestigation ?? null;
     },
   };
