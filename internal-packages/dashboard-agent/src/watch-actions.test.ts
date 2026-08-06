@@ -27,19 +27,25 @@ import {
 } from "./test-support";
 
 /**
- * Stands in for `chat_messages`: the append is keyed on (chat_id, message_id) and does
- * nothing on conflict, so a repeated append is never a second row. Row counts are what
- * the History panel reads, so the retry tests assert those rather than call counts.
+ * Stands in for `chats` + `chat_messages`, as `appendOneMessage`'s upsert sees them: the
+ * insert is scoped to the owning user and — when the caller passes one — the owning
+ * organization, and keyed on (chat_id, message_id) with nothing done on conflict. So a
+ * repeat is never a second row and a foreign tenancy is no row at all. Row counts are
+ * what the History panel reads, which is why these tests assert those, not call counts.
  */
-function transcriptTable() {
+function transcriptTable(owner: { userId: string; organizationId: string }) {
   const rows: { chatId: string; messageId: string }[] = [];
   const countOf = (chatId: string, messageId: string) =>
     rows.filter((row) => row.chatId === chatId && row.messageId === messageId).length;
   return {
     countOf,
-    insert(chatId: string, message: UIMessage) {
-      if (countOf(chatId, message.id) > 0) return false;
-      rows.push({ chatId, messageId: message.id });
+    insert(args: { chatId: string; userId: string; organizationId?: string; message: UIMessage }) {
+      if (args.userId !== owner.userId) return false;
+      if (args.organizationId !== undefined && args.organizationId !== owner.organizationId) {
+        return false;
+      }
+      if (countOf(args.chatId, args.message.id) > 0) return false;
+      rows.push({ chatId: args.chatId, messageId: args.message.id });
       return true;
     },
   };
@@ -58,10 +64,17 @@ function appendingStore(
       await store.appendMessage(args);
       const message = args.message as UIMessage;
       if (failWhen(message)) throw new Error("the append lost the connection");
-      return table.insert(args.chatId, message);
+      return table.insert({ ...args, message });
     },
   };
   return { store: wrapped, calls };
+}
+
+// Every organization a path's appends were scoped to, in order.
+function scopedTo(...stores: { calls: { appendMessage: unknown[] } }[]) {
+  return stores.flatMap((store) =>
+    store.calls.appendMessage.map((call) => (call as { organizationId?: string }).organizationId)
+  );
 }
 
 describe("watch wake narration", () => {
@@ -427,7 +440,7 @@ describe("watch wake narration", () => {
    * its history. Converging on the row is the retry's job.
    */
   it("appends the display copy on a retry that finds the wake already narrated", async () => {
-    const table = transcriptTable();
+    const table = transcriptTable(CLIENT_DATA);
     const chatId = "chat_wake_retry";
     const wakeId = "wake:watch:watch_1:fired";
 
@@ -474,6 +487,39 @@ describe("watch wake narration", () => {
     // A third delivery repairs nothing, because there is nothing left to repair.
     await harness.sendAction(WAKE);
     expect(table.countOf(chatId, wakeId)).toBe(1);
+
+    // Every write on this path is scoped to the organization the append verifies — the
+    // repair included, or the repair would be the one write that skips the check.
+    expect(scopedTo(failing, repairing)).toEqual([
+      CLIENT_DATA.organizationId,
+      CLIENT_DATA.organizationId,
+      CLIENT_DATA.organizationId,
+    ]);
+  });
+
+  /**
+   * The chat id comes from the watch record and the tenancy from the session's
+   * `clientData`. If those ever disagree the append has to write nothing, rather than put
+   * a message in another organization's transcript.
+   */
+  it("writes nothing when the wake's tenancy doesn't own the chat", async () => {
+    const table = transcriptTable(CLIENT_DATA);
+    const chatId = "chat_wake_other_org";
+    const { store, calls } = appendingStore(table, () => false);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: { ...CLIENT_DATA, organizationId: "org_other" },
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
+      },
+    });
+
+    await harness.sendAction(WAKE);
+
+    // Attempted, and refused by the scope the append carries.
+    expect(calls.appendMessage).toHaveLength(1);
+    expect(table.countOf(chatId, "wake:watch:watch_1:fired")).toBe(0);
   });
 });
 
@@ -899,7 +945,7 @@ describe("watch investigation", () => {
    * History panel lost. The retry finds it already answered and must still land the row.
    */
   it("appends the display copy on a retry that finds the investigation already answered", async () => {
-    const table = transcriptTable();
+    const table = transcriptTable(CLIENT_DATA);
     const chatId = "chat_investigate_retry";
     const findingsId = "investigate:watch:watch_1:fired:investigate";
     const seeded = { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" };
@@ -952,5 +998,42 @@ describe("watch investigation", () => {
     // A third delivery repairs nothing, because there is nothing left to repair.
     await harness.sendAction(INVESTIGATE);
     expect(table.countOf(chatId, findingsId)).toBe(1);
+
+    // Every write on this path is scoped to the organization the append verifies — the
+    // repair included, or the repair would be the one write that skips the check.
+    expect(scopedTo(failing, repairing)).toEqual([
+      CLIENT_DATA.organizationId,
+      CLIENT_DATA.organizationId,
+      CLIENT_DATA.organizationId,
+    ]);
+  });
+
+  // Same tenancy crossing as the wake's: the kick names the chat, the session names the
+  // organization, and a disagreement must not write into another organization's chat.
+  it("writes nothing when the kick's tenancy doesn't own the chat", async () => {
+    const table = transcriptTable(CLIENT_DATA);
+    const chatId = "chat_investigate_other_org";
+    const { store, calls } = appendingStore(table, () => false, {
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: { ...CLIENT_DATA_WITH_TOKEN, organizationId: "org_other" },
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(
+          dashboardAgentModelKey,
+          recordingModel([
+            renderStep(concluded, "inv_seeded", "tc_verdict"),
+            textStep("The payload lost order.total."),
+          ]).model
+        );
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    expect(calls.appendMessage).toHaveLength(1);
+    expect(table.countOf(chatId, "investigate:watch:watch_1:fired:investigate")).toBe(0);
   });
 });

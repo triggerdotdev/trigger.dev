@@ -490,7 +490,10 @@ async function narrateWatchWake(args: {
     // wake narrated and the display copy still owed. The append is id-deduped, so
     // repairing when nothing is broken writes nothing.
     const userId = args.clientData?.userId;
-    if (userId) await getStore().appendMessage({ chatId, userId, message: narrated });
+    const organizationId = args.clientData?.organizationId;
+    if (userId) {
+      await getStore().appendMessage({ chatId, userId, organizationId, message: narrated });
+    }
     return;
   }
 
@@ -531,8 +534,9 @@ async function narrateWatchWake(args: {
   // host-appended blocks (a card-born chat starts with only those) and
   // `persistMessages` would drop them.
   const userId = args.clientData?.userId;
+  const organizationId = args.clientData?.organizationId;
   if (userId) {
-    await getStore().appendMessage({ chatId, userId, message });
+    await getStore().appendMessage({ chatId, userId, organizationId, message });
   } else {
     // A wake always carries its watch's tenancy, so reaching this means the
     // metadata contract broke. Deliver anyway: losing blocks beats losing the wake.
@@ -734,7 +738,14 @@ async function conductWatchInvestigation(args: {
     // Same window as the wake's: the findings streamed durably before the append, so a
     // retry can owe only the display copy. Id-deduped, so a repeat writes nothing.
     const userId = clientData?.userId;
-    if (userId) await getStore().appendMessage({ chatId, userId, message: alreadyAnswered });
+    if (userId) {
+      await getStore().appendMessage({
+        chatId,
+        userId,
+        organizationId: clientData?.organizationId,
+        message: alreadyAnswered,
+      });
+    }
     const open = [...latestCards(uiMessages).values()].find(
       (card) => card.state === null || card.state.outcome === "in_progress"
     );
@@ -830,7 +841,12 @@ async function conductWatchInvestigation(args: {
       answered = message;
       const userId = clientData?.userId;
       if (userId) {
-        await store.appendMessage({ chatId, userId, message });
+        await store.appendMessage({
+          chatId,
+          userId,
+          organizationId: clientData?.organizationId,
+          message,
+        });
       } else {
         logger.error("dashboard-agent watch investigation has no userId; skipping the append", {
           chatId,
