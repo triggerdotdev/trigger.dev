@@ -19,6 +19,7 @@ import {
   collectText,
   executedTool,
   fakeStore,
+  finish,
   mockModel,
   textStep,
   toolCallStep,
@@ -324,6 +325,37 @@ describe("watch wake narration", () => {
     expect(calls.appendMessage).toHaveLength(1);
   });
 
+  // A wake nobody can read is not a delivered wake: nothing is written, nothing is
+  // started, and the failure travels so the retry says it again.
+  it("writes nothing and fails the action when the narration comes back empty", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_empty",
+      clientData: WAKE_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        // Streams a finish and no text at all.
+        set(dashboardAgentModelKey, mockModel([[finish("stop")]]));
+      },
+    });
+
+    const turn = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+
+    // The failure is surfaced rather than swallowed, and nothing was written.
+    expect(
+      turn.chunks.some(
+        (chunk) =>
+          (chunk as { type?: string; errorText?: string }).type === "error" &&
+          /produced no text/.test((chunk as { errorText?: string }).errorText ?? "")
+      )
+    ).toBe(true);
+    expect(collectText(turn.chunks)).toBe("");
+    expect(calls.appendMessage).toHaveLength(0);
+    expect(calls.persistMessages).toHaveLength(0);
+    // Nothing to follow up on either: the investigation stays unopened.
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+  });
+
   it("a different outcome on the same watch is a different wake", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
@@ -522,12 +554,18 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    // No open card to find, so the turn seeded one and told the model to revise that.
+    // No open card to find, so the turn seeded one and told the model to revise that. The
+    // model rendered nothing, so the second revision is the one that closes the seed.
     expect(calls.findOpenInvestigation).toHaveLength(1);
-    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    expect(calls.upsertInvestigationRevision).toHaveLength(2);
     expect((calls.upsertInvestigationRevision[0] as { id?: string }).id).toBeUndefined();
+    expect(calls.upsertInvestigationRevision[1]).toMatchObject({
+      id: "inv_fake",
+      state: { outcome: "inconclusive" },
+    });
     expect(JSON.stringify(prompts)).toContain("inv_fake");
-    expect(calls.appendMessage).toHaveLength(1);
+    // The prose answer, then the card that closes the seed it never revised.
+    expect(calls.appendMessage).toHaveLength(2);
   });
 
   it("settles a card the investigating turn left in progress", async () => {
@@ -549,14 +587,131 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    // No onTurnComplete fires on an action, so the guard runs in the handler.
-    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    // No onTurnComplete fires on an action, so the guard runs in the handler. The third
+    // revision is the one the transcript gets, so the card the user sees is terminal too.
+    expect(calls.upsertInvestigationRevision).toHaveLength(3);
     const settle = calls.upsertInvestigationRevision[1] as {
       id?: string;
       state: { outcome: string };
     };
     expect(settle.id).toBe("inv_seeded");
     expect(settle.state.outcome).toBe("inconclusive");
+  });
+
+  /**
+   * Like `fakeStore`, but revisions climb the way the real store's do, and the closing
+   * card's append can be made to fail once — the crash a retry has to recover from.
+   */
+  function revisioningStore(options: { failClosingAppendOnce?: boolean } = {}) {
+    const { store, calls } = fakeStore({
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    let revision = 0;
+    let failed = false;
+    const wrapped: DashboardAgentStore = {
+      ...store,
+      appendMessage: async (args) => {
+        if (options.failClosingAppendOnce && !failed && args.message.id.endsWith(":settled")) {
+          failed = true;
+          throw new Error("the append lost the connection");
+        }
+        return store.appendMessage(args);
+      },
+      upsertInvestigationRevision: async (args) => {
+        await store.upsertInvestigationRevision(args);
+        return {
+          ok: true as const,
+          id: args.id ?? "inv_fake",
+          revision: revision++,
+          created: !args.id,
+        };
+      },
+    };
+    return { store: wrapped, calls };
+  }
+
+  /** The investigation blocks a persisted message carries, as the panel reads them. */
+  function cardsIn(message: UIMessage) {
+    return (message.parts ?? []).flatMap((part) => {
+      const typed = part as { type?: string; output?: { blocks?: unknown[] } };
+      if (typed.type !== "tool-render_view" || !Array.isArray(typed.output?.blocks)) return [];
+      return typed.output.blocks as Array<{
+        type?: string;
+        id?: string;
+        revision?: number;
+        investigation?: { outcome?: string; progress?: string };
+      }>;
+    });
+  }
+
+  // The settled row is not a surface. The panel rebuilds the card, and the "Working…" line
+  // above it, from the transcript — so a forced settle has to land there as a revision.
+  it("puts the settled card in the transcript, once, without opening a second investigation", async () => {
+    const { store, calls } = revisioningStore();
+    const { model } = recordingModel([
+      renderStep({ ...inProgress, progress: "Reading the trace" }, "inv_seeded", "tc_open"),
+      textStep("still looking"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_card",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    // The findings, then the card that closes them.
+    expect(calls.appendMessage).toHaveLength(2);
+    const closing = (calls.appendMessage[1] as { message: UIMessage }).message;
+    expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
+
+    const [card] = cardsIn(closing);
+    expect(card?.id).toBe("inv_seeded");
+    expect(card?.investigation?.outcome).toBe("inconclusive");
+    // Latest revision wins, so this one has to be above the in_progress card's.
+    const [opened] = cardsIn((calls.appendMessage[0] as { message: UIMessage }).message);
+    expect(card!.revision!).toBeGreaterThan(opened!.revision!);
+    // The line the panel keeps showing while a card is running is gone with it.
+    expect(card?.investigation?.progress).toBeUndefined();
+
+    // The same kick again: the card is already closed, so nothing is written and no
+    // second investigation is opened.
+    const revisions = calls.upsertInvestigationRevision.length;
+    await harness.sendAction(INVESTIGATE);
+    expect(calls.appendMessage).toHaveLength(2);
+    expect(calls.upsertInvestigationRevision).toHaveLength(revisions);
+  });
+
+  // A retry after the findings landed but before the card did still owes the user a
+  // finished card.
+  it("closes a card the previous attempt left open, without investigating again", async () => {
+    const { store, calls } = revisioningStore({ failClosingAppendOnce: true });
+    const { model } = recordingModel([
+      renderStep(inProgress, "inv_seeded", "tc_open"),
+      textStep("still looking"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_retry",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    // The findings land; the card that closes them is lost.
+    await harness.sendAction(INVESTIGATE);
+    expect(calls.appendMessage).toHaveLength(1);
+
+    // The retry investigates nothing and writes the card the crash lost.
+    await harness.sendAction(INVESTIGATE);
+    expect(calls.appendMessage).toHaveLength(2);
+    const closing = (calls.appendMessage[1] as { message: UIMessage }).message;
+    expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
+    expect(cardsIn(closing)[0]?.investigation?.outcome).toBe("inconclusive");
   });
 
   it("says nothing when the kick carries no tenancy to scope a card with", async () => {

@@ -1379,3 +1379,33 @@ describe("the hand-off to a batch chain", () => {
     expect(appends).toHaveLength(1);
   });
 });
+
+// A wake counts as told only once something acknowledged putting it in the transcript.
+// Anything less leaves it owed, so the retry says it again.
+describe("the wake's delivery acknowledgement", () => {
+  it("leaves the wake owed when the append isn't acknowledged, and delivers it on the retry", async () => {
+    const { store, calls, row } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { reschedule } = fakeReschedule();
+
+    await expect(
+      runWatchTick(
+        PAYLOAD,
+        deps({ store, fetch, reschedule, deliver: async () => ({ appended: false }) })
+      )
+    ).rejects.toThrow(/wasn't appended/);
+
+    // Resolved, but not told: the claim went back and nothing was marked.
+    expect(row.status).toBe("fired");
+    expect(row.deliveryStatus).toBe("pending");
+    expect(calls.delivered).toHaveLength(0);
+    expect(calls.released).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
+
+    const { appends, deliver } = fakeDeliver();
+    const retry = await runWatchTick(PAYLOAD, deps({ store, fetch, reschedule, deliver }));
+
+    expect(retry).toEqual({ outcome: "delivered_only" });
+    expect(appends).toHaveLength(1);
+    expect(row.deliveryStatus).toBe("delivered");
+  });
+});

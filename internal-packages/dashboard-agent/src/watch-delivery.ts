@@ -42,6 +42,9 @@ export type WatchTickStore = {
   }): Promise<{ tickCount: number; lastCheckedAt: Date | null } | null>;
 };
 
+/** A deliverer's acknowledgement. Anything but an appended wake leaves the wake owed. */
+export type WatchWakeAck = { appended: boolean };
+
 export type WatchDeliveryDeps = {
   store: Pick<
     WatchTickStore,
@@ -51,8 +54,15 @@ export type WatchDeliveryDeps = {
     | "releaseWatchDelivery"
     | "markWatchDelivered"
   >;
-  /** Append the wake to the chat's `in` stream. Must throw if the append fails. */
-  deliver: (args: { chatId: string; action: WatchWakeAction; watch: Watch }) => Promise<void>;
+  /**
+   * Append the wake to the chat's `in` stream. Must throw if the append fails, or report
+   * `{ appended: false }`: a wake that didn't land is never marked delivered.
+   */
+  deliver: (args: {
+    chatId: string;
+    action: WatchWakeAction;
+    watch: Watch;
+  }) => Promise<void | WatchWakeAck>;
   /** Send the user's alerts. Best-effort: a failure here must never fail the tick. */
   notifyFired: (watchId: string) => Promise<void>;
   /** Send the agent off to investigate. Best-effort, like `notifyFired`. */
@@ -150,8 +160,9 @@ export async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promis
 
   const { watch: claimed, claimId } = claim;
   const facts = (claimed.lastResult ?? {}) as Record<string, unknown>;
+  let ack: void | WatchWakeAck;
   try {
-    await deps.deliver({
+    ack = await deps.deliver({
       chatId: claimed.chatId,
       action: wakeAction(claimed, facts),
       watch: claimed,
@@ -160,6 +171,14 @@ export async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promis
     await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
     throw error;
   }
+
+  // Only an acknowledged append is a delivery: an unacknowledged one hands the wake back
+  // still owed, so the retry says it again rather than marking it told.
+  if (ack && ack.appended === false) {
+    await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
+    throw new Error(`the wake for watch ${claimed.id} wasn't appended`);
+  }
+
   await deps.store.markWatchDelivered({ id: claimed.id, claimId });
 
   // Outside the wake's failure path: an alert must never fail the delivery.
