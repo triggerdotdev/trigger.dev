@@ -928,7 +928,7 @@ Consider `delay: "5s"` and `maxDelay: "30s"` with triggers arriving every 2 seco
 
 Without `maxDelay`, continuous triggers would prevent the run from ever executing. With `maxDelay: "30s"`, execution is guaranteed within 30 seconds of the first trigger.
 
-Keep `delay` well below `maxDelay`. A run is only pushed back while its new execution time stays inside `maxDelay`, so the room you have to push is `maxDelay` minus `delay`. Setting them equal, or setting `delay` higher, leaves no room at all: every trigger creates its own run and the debounce key has no effect.
+Keep `delay` well below `maxDelay`. A run is only pushed back while its new execution time stays inside `maxDelay`, so the room you have to push is `maxDelay` minus `delay`. Setting them equal, or setting `delay` higher, leaves no room at all, and the trigger is rejected rather than accepted as a debounce that could never collapse anything.
 
 <Note>
   The `maxDelay` value is evaluated from each trigger call, not stored with the original run. This

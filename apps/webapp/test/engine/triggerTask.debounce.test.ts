@@ -556,6 +556,54 @@ describe("RunEngineTriggerTaskService", () => {
 
       const noMaxDelay = await triggerWithDebounce({ key: "no-max-delay", delay: "12h" });
       expect(noMaxDelay?.run.friendlyId).toBeDefined();
+
+      await expect(
+        triggerWithDebounce({ key: "date-delay", delay: "2027-01-01T00:00:00.000Z" })
+      ).rejects.toThrow(/must be a duration, not a date/);
+
+      const withServerCeiling = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+        maximumDebounceDurationMs: 60 * 60 * 1000,
+      });
+
+      await expect(
+        withServerCeiling.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: {
+            payload: { test: "test" },
+            options: { debounce: { key: "over-server-ceiling", delay: "12h" } },
+          },
+        })
+      ).rejects.toThrow(/at or above this server's maximum debounce duration of 1h/);
+
+      const underServerCeiling = await withServerCeiling.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: { debounce: { key: "under-server-ceiling", delay: "10s" } },
+        },
+      });
+      expect(underServerCeiling?.run.friendlyId).toBeDefined();
+
+      const overCeilingWithMaxDelay = await withServerCeiling.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: { debounce: { key: "override", delay: "12h", maxDelay: "24h" } },
+        },
+      });
+      expect(overCeilingWithMaxDelay?.run.friendlyId).toBeDefined();
     }
   );
 });

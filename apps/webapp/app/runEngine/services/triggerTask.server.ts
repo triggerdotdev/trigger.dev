@@ -7,6 +7,7 @@ import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type TriggerTaskRequestBody,
+  formatDurationMilliseconds,
   RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -90,6 +91,7 @@ export class RunEngineTriggerTaskService {
   private readonly traceEventConcern: TraceEventConcern;
   private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
+  private readonly maximumDebounceDurationMs: number | undefined;
   // Mollifier hooks are DI'd so tests can drive the call-site's mollify branch
   // deterministically (stub the gate to return mollify, inject a real or fake
   // buffer, force the global-enabled predicate to true so the call site
@@ -109,6 +111,7 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    maximumDebounceDurationMs?: number;
     triggerRacepointSystem?: TriggerRacepointSystem;
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
@@ -123,6 +126,8 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.maximumDebounceDurationMs =
+      opts.maximumDebounceDurationMs ?? env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS;
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
     this.evaluateGate = opts.evaluateGate ?? defaultEvaluateGate;
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
@@ -131,36 +136,60 @@ export class RunEngineTriggerTaskService {
   }
 
   /**
-   * A debounced run is only pushed back while its new execution time stays inside `maxDelay`,
-   * so the room available to push is `maxDelay` minus `delay`. When a caller sets both and
-   * leaves no room, the debounce key silently does nothing and every trigger creates its own
-   * run, which is worse than being told. Only an explicit `maxDelay` is checked; with no
-   * `maxDelay` there is no ceiling to conflict with.
+   * A debounced run is only pushed back while its new execution time stays inside the effective
+   * ceiling, which is the trigger's own `maxDelay` or, failing that, whatever ceiling the server
+   * is configured with. The room available to push is that ceiling minus `delay`, so a `delay`
+   * at or above it leaves none: the debounce key does nothing and every trigger creates its own
+   * run. Rejecting is better than accepting a trigger we know cannot debounce.
+   *
+   * With no `maxDelay` and no server ceiling there is nothing to conflict with, which is the
+   * default.
    */
-  #validateDebounceMaxDelay(
+  #validateDebounceWindow(
     debounce: NonNullable<NonNullable<TriggerTaskRequestBody["options"]>["debounce"]>
   ) {
-    if (debounce.maxDelay === undefined) {
-      return;
-    }
+    const delayMs = parseNaturalLanguageDurationInMs(debounce.delay);
 
-    const maxDelayMs = parseNaturalLanguageDurationInMs(debounce.maxDelay);
-
-    if (maxDelayMs === undefined) {
+    if (delayMs === undefined) {
       throw new ServiceValidationError(
-        `Invalid debounce maxDelay: ${debounce.maxDelay}. ` +
-          `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, {number}w, ` +
-          `optionally combined (for example "2h30m").`
+        `Invalid debounce delay: ${debounce.delay}. debounce.delay must be a duration, not a ` +
+          `date, because it is re-applied every time the run is pushed back. Supported formats: ` +
+          `{number}s, {number}m, {number}h or {number}hr, {number}d, {number}w, optionally ` +
+          `combined (for example "2h30m").`
       );
     }
 
-    const delayMs = parseNaturalLanguageDurationInMs(debounce.delay);
+    if (debounce.maxDelay !== undefined) {
+      const maxDelayMs = parseNaturalLanguageDurationInMs(debounce.maxDelay);
 
-    if (delayMs !== undefined && maxDelayMs <= delayMs) {
+      if (maxDelayMs === undefined) {
+        throw new ServiceValidationError(
+          `Invalid debounce maxDelay: ${debounce.maxDelay}. ` +
+            `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, ` +
+            `{number}w, optionally combined (for example "2h30m").`
+        );
+      }
+
+      if (maxDelayMs <= delayMs) {
+        throw new ServiceValidationError(
+          `debounce.maxDelay (${debounce.maxDelay}) must be longer than debounce.delay ` +
+            `(${debounce.delay}). A debounced run is only pushed back while it stays inside ` +
+            `maxDelay, so with these values every trigger would create its own run.`
+        );
+      }
+
+      return;
+    }
+
+    const serverCeilingMs = this.maximumDebounceDurationMs;
+
+    if (serverCeilingMs !== undefined && delayMs >= serverCeilingMs) {
       throw new ServiceValidationError(
-        `debounce.maxDelay (${debounce.maxDelay}) must be longer than debounce.delay (${debounce.delay}). ` +
-          `A debounced run is only pushed back while it stays inside maxDelay, so with these values ` +
-          `every trigger would create its own run.`
+        `debounce.delay (${debounce.delay}) is at or above this server's maximum debounce ` +
+          `duration of ${formatDurationMilliseconds(serverCeilingMs, { style: "short" })}. A ` +
+          `debounced run is only pushed back while it stays inside that window, so with this ` +
+          `delay every trigger would create its own run. Either shorten the delay, or set ` +
+          `debounce.maxDelay above ${debounce.delay}.`
       );
     }
   }
@@ -312,7 +341,7 @@ export class RunEngineTriggerTaskService {
               );
             }
 
-            this.#validateDebounceMaxDelay(body.options.debounce);
+            this.#validateDebounceWindow(body.options.debounce);
           }
 
           const parentRun = body.options?.parentRunId
