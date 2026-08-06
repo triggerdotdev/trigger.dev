@@ -46,6 +46,13 @@ const NOOP_STORE: DashboardAgentStore = {
     revision: 0,
     created: true,
   }),
+  settleInvestigationCard: async (args) => ({
+    ok: true,
+    id: args.id,
+    revision: 1,
+    card: { id: args.messageId, role: "assistant", parts: [] },
+    closed: true,
+  }),
   findOpenInvestigation: async () => null,
 };
 

@@ -850,3 +850,61 @@ export async function settleInvestigationAndCloseCard(
     return { settled, closed };
   });
 }
+
+export type ClosedInvestigationCard =
+  | {
+      ok: true;
+      id: string;
+      revision: number;
+      card: InvestigationCardMessage;
+      /** False when that message id was already in the chat. */
+      closed: boolean;
+    }
+  | { ok: false; error: "not_found" | "context_mismatch" };
+
+/**
+ * Same atomicity as {@link settleInvestigationAndCloseCard}, for a caller that brings
+ * its own terminal state and its own message id — the consented watch investigation,
+ * which dedupes on the action rather than on the revision.
+ *
+ * Throwing is the point: the caller's retry only happens if the failure reaches it, and
+ * a rolled-back settle leaves the `in_progress` row the stale sweep still selects.
+ */
+export async function settleInvestigationStateAndCloseCard(
+  db: DashboardAgentDb,
+  params: {
+    id: string;
+    chatId: string;
+    projectRef: string;
+    environmentRef: string;
+    state: unknown;
+    messageId: string;
+  }
+): Promise<ClosedInvestigationCard> {
+  return db.transaction(async (tx) => {
+    const result = await upsertInvestigationRevision(tx, {
+      id: params.id,
+      chatId: params.chatId,
+      projectRef: params.projectRef,
+      environmentRef: params.environmentRef,
+      state: params.state,
+    });
+    if (!result.ok) return result;
+
+    const card = investigationSettlementMessage({
+      investigationId: result.id,
+      revision: result.revision,
+      state: params.state,
+      messageId: params.messageId,
+    });
+    if (!card) {
+      throw new Error(`Investigation ${result.id} settled to a state that isn't renderable`);
+    }
+
+    const closed = await appendChatMessageOnceByChatId(tx, {
+      chatId: params.chatId,
+      message: card,
+    });
+    return { ok: true, id: result.id, revision: result.revision, card, closed };
+  });
+}

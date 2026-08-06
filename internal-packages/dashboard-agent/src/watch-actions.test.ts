@@ -593,17 +593,20 @@ describe("watch investigation", () => {
     await harness.sendAction(INVESTIGATE);
 
     expect(calls.findOpenInvestigation).toHaveLength(1);
-    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
     expect((calls.upsertInvestigationRevision[0] as { id?: string }).id).toBeUndefined();
-    expect(calls.upsertInvestigationRevision[1]).toMatchObject({
-      id: "inv_fake",
-      state: { outcome: "inconclusive" },
-    });
+    expect(calls.settleInvestigationCard).toMatchObject([
+      { id: "inv_fake", state: { outcome: "inconclusive" } },
+    ]);
     expect(JSON.stringify(prompts)).toContain("inv_fake");
-    expect(calls.appendMessage).toHaveLength(2);
+    expect(calls.appendMessage).toHaveLength(1);
   });
 
-  it("settles a card the investigating turn left in progress", async () => {
+  /**
+   * One settle, not two. The row used to be settled once on its own and then again
+   * with the card, which bumped the revision twice for one outcome.
+   */
+  it("settles a card the investigating turn left in progress, exactly once", async () => {
     const { store, calls } = fakeStore({
       openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
     });
@@ -622,29 +625,45 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    expect(calls.upsertInvestigationRevision).toHaveLength(3);
-    const settle = calls.upsertInvestigationRevision[1] as {
-      id?: string;
+    // Only the turn's own render_view revision; the settle is the atomic close below.
+    expect(calls.upsertInvestigationRevision).toHaveLength(1);
+    expect(calls.settleInvestigationCard).toHaveLength(1);
+    const settle = calls.settleInvestigationCard[0] as {
+      id: string;
+      messageId: string;
       state: { outcome: string };
     };
     expect(settle.id).toBe("inv_seeded");
     expect(settle.state.outcome).toBe("inconclusive");
+    expect(settle.messageId).toBe("investigate:watch:watch_1:fired:investigate:settled");
   });
 
-  function revisioningStore(options: { failClosingAppendOnce?: boolean } = {}) {
+  function revisioningStore(options: { failClosingCard?: boolean } = {}) {
     const { store, calls } = fakeStore({
       openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
     });
+    const closedCards: UIMessage[] = [];
     let revision = 0;
-    let failed = false;
     const wrapped: DashboardAgentStore = {
       ...store,
+      // The closing write, however the lane makes it: whether it is one atomic call or
+      // a bare append, the transcript half fails here.
       appendMessage: async (args) => {
-        if (options.failClosingAppendOnce && !failed && args.message.id.endsWith(":settled")) {
-          failed = true;
+        if (options.failClosingCard && args.message.id.endsWith(":settled")) {
           throw new Error("the append lost the connection");
         }
         return store.appendMessage(args);
+      },
+      // The real query commits the revision and the card together, so a card that
+      // can't be delivered leaves the row exactly as it was.
+      settleInvestigationCard: async (args) => {
+        if (options.failClosingCard) {
+          calls.settleInvestigationCard.push(args);
+          throw new Error("the append lost the connection");
+        }
+        const result = await store.settleInvestigationCard(args);
+        if (result.ok) closedCards.push(result.card as UIMessage);
+        return result;
       },
       upsertInvestigationRevision: async (args) => {
         await store.upsertInvestigationRevision(args);
@@ -656,7 +675,7 @@ describe("watch investigation", () => {
         };
       },
     };
-    return { store: wrapped, calls };
+    return { store: wrapped, calls, closedCards };
   }
 
   function cardsIn(message: UIMessage) {
@@ -673,7 +692,7 @@ describe("watch investigation", () => {
   }
 
   it("puts the settled card in the transcript, once, without opening a second investigation", async () => {
-    const { store, calls } = revisioningStore();
+    const { store, calls, closedCards } = revisioningStore();
     const { model } = recordingModel([
       renderStep({ ...inProgress, progress: "Reading the trace" }, "inv_seeded", "tc_open"),
       textStep("still looking"),
@@ -689,8 +708,11 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    expect(calls.appendMessage).toHaveLength(2);
-    const closing = (calls.appendMessage[1] as { message: UIMessage }).message;
+    // The findings message is the only ordinary append; the closing card lands with the
+    // terminal revision, in one operation.
+    expect(calls.appendMessage).toHaveLength(1);
+    expect(closedCards).toHaveLength(1);
+    const closing = closedCards[0]!;
     expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
 
     const [card] = cardsIn(closing);
@@ -702,18 +724,25 @@ describe("watch investigation", () => {
 
     const revisions = calls.upsertInvestigationRevision.length;
     await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage).toHaveLength(2);
+    expect(calls.appendMessage).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(revisions);
   });
 
-  it("closes a card the previous attempt left open, without investigating again", async () => {
-    const { store, calls } = revisioningStore({ failClosingAppendOnce: true });
+  /**
+   * The failure window this lane used to have: the row settled, the closing append
+   * failed, the error was logged and swallowed, and the action reported success. The
+   * row was then terminal, so the stale sweep no longer selected it and the panel span
+   * forever. Nothing in production calls the action again on its own — only a thrown
+   * error gets it retried.
+   */
+  it("fails the action when the closing card can't be written, instead of reporting success", async () => {
+    const { store, calls } = revisioningStore({ failClosingCard: true });
     const { model } = recordingModel([
       renderStep(inProgress, "inv_seeded", "tc_open"),
       textStep("still looking"),
     ]);
     harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_investigate_retry",
+      chatId: "chat_investigate_close_fails",
       clientData: CLIENT_DATA_WITH_TOKEN,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
@@ -721,14 +750,24 @@ describe("watch investigation", () => {
       },
     });
 
-    await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage).toHaveLength(1);
+    const turn = await harness.sendAction(INVESTIGATE);
 
-    await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage).toHaveLength(2);
-    const closing = (calls.appendMessage[1] as { message: UIMessage }).message;
-    expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
-    expect(cardsIn(closing)[0]?.investigation?.outcome).toBe("inconclusive");
+    expect(
+      turn.chunks.some(
+        (chunk) =>
+          (chunk as { type?: string }).type === "error" &&
+          /lost the connection/.test((chunk as { errorText?: string }).errorText ?? "")
+      )
+    ).toBe(true);
+
+    // The close was attempted as one operation, so no separate settle could have made
+    // the row terminal ahead of the card.
+    expect(calls.settleInvestigationCard).toHaveLength(1);
+    expect(
+      calls.upsertInvestigationRevision.filter(
+        (call) => (call as { state: { outcome: string } }).state.outcome !== "in_progress"
+      )
+    ).toEqual([]);
   });
 
   it("says nothing when the kick carries no tenancy to scope a card with", async () => {

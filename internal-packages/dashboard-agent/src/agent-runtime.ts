@@ -8,7 +8,9 @@ import {
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
+  settleInvestigationStateAndCloseCard,
   upsertInvestigationRevision,
+  type ClosedInvestigationCard,
   type DashboardAgentDbClient,
   type PendingInvestigationSettlement,
   type PersistTurnResult,
@@ -84,6 +86,15 @@ export interface DashboardAgentStore {
   upsertInvestigationRevision(
     args: Parameters<typeof upsertInvestigationRevision>[1]
   ): Promise<UpsertInvestigationResult>;
+  /**
+   * Commit an investigation's terminal revision and its closing card together. The
+   * lanes that have no `onTurnComplete` to hand settlements to write through this:
+   * separately, a committed settle whose card failed is a terminal row the stale sweep
+   * no longer selects, and a spinner nothing can stop.
+   */
+  settleInvestigationCard(
+    args: Parameters<typeof settleInvestigationStateAndCloseCard>[1]
+  ): Promise<ClosedInvestigationCard>;
   /**
    * The freshest card this chat still has open. A consented wake's investigating
    * turn must revise the row the wake seeded, not open a second one.
@@ -272,6 +283,7 @@ export function getStore(): DashboardAgentStore {
     persistTurn: (args) => persistTurn(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
+    settleInvestigationCard: (args) => settleInvestigationStateAndCloseCard(db, args),
     findOpenInvestigation: (args) => findOpenInvestigationForChat(db, args),
   });
 }

@@ -9,7 +9,6 @@ import {
   type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
-import { investigationSettlementMessage } from "@internal/dashboard-agent-db";
 import {
   forceSettledInvestigationState,
   formatTriggerUri,
@@ -31,7 +30,7 @@ import {
   registry,
   latestCards,
   sanitizeReplayedToolInputs,
-  settleOpenInvestigations,
+  clearOpenInvestigations,
   withCacheBreakpointOnLast,
 } from "./agent-runtime";
 import { planWatchNarration, type WatchNarrationPlan } from "./watch-narration";
@@ -589,10 +588,16 @@ async function resolveInvestigationId(args: {
   return seeded.ok ? seeded.id : undefined;
 }
 
+/**
+ * Close the card this lane opened: its terminal revision and the closing card in one
+ * transaction, so a terminal row whose card never landed cannot exist.
+ *
+ * Nothing is caught. The row settles only if the card lands, and the failure has to
+ * reach the action for the task's retry to be a real retry.
+ */
 async function closeCardInTranscript(args: {
   store: DashboardAgentStore;
   chatId: string;
-  userId?: string;
   investigationId: string;
   projectRef: string;
   environmentRef: string;
@@ -607,13 +612,15 @@ async function closeCardInTranscript(args: {
   const card = latestCards(uiMessages).get(investigationId);
   if (card && card.state && card.state.outcome !== "in_progress") return;
 
-  const settled = forceSettledInvestigationState(card?.state ?? args.fallback());
-  const result = await store.upsertInvestigationRevision({
+  // The lane's own message id, not the revision-stable one: a redelivered kick must
+  // dedupe on the action, and this lane already checked for it above.
+  const result = await store.settleInvestigationCard({
     id: investigationId,
     chatId,
     projectRef: args.projectRef,
     environmentRef: args.environmentRef,
-    state: settled,
+    state: forceSettledInvestigationState(card?.state ?? args.fallback()),
+    messageId: args.messageId,
   });
   if (!result.ok) {
     logger.error("dashboard-agent watch investigation couldn't close its card", {
@@ -624,33 +631,7 @@ async function closeCardInTranscript(args: {
     return;
   }
 
-  // The lane's own message id, not the revision-stable one: a redelivered kick must
-  // dedupe on the action, and this lane already checked for it above.
-  const built = investigationSettlementMessage({
-    investigationId: result.id,
-    revision: result.revision,
-    state: settled,
-    messageId: args.messageId,
-  });
-  if (!built) {
-    logger.error("dashboard-agent watch investigation's closing card didn't validate", {
-      chatId,
-      investigationId,
-    });
-    return;
-  }
-  const message = built as UIMessage;
-
-  // Persist before the history set, so a retry after a failed append still sees the
-  // card as unclosed.
-  if (args.userId) {
-    await store.appendMessage({ chatId, userId: args.userId, message });
-  } else {
-    logger.error("dashboard-agent watch investigation has no userId; skipping the append", {
-      chatId,
-    });
-  }
-  chat.history.set([...uiMessages, message]);
+  chat.history.set([...uiMessages, result.card as UIMessage]);
 }
 
 // The investigating turn's framing only. The protocol itself lives in the managed
@@ -722,25 +703,16 @@ async function conductWatchInvestigation(args: {
 
   const closeCard = async (investigationId: string, messages: UIMessage[]) => {
     if (!projectRef || !environmentRef) return;
-    try {
-      await closeCardInTranscript({
-        store: getStore(),
-        chatId,
-        userId: clientData?.userId,
-        investigationId,
-        projectRef,
-        environmentRef,
-        messageId: closingMessageId,
-        uiMessages: messages,
-        fallback: seedState,
-      });
-    } catch (error) {
-      logger.error("dashboard-agent watch investigation failed to close its card", {
-        chatId,
-        watchId: action.watchId,
-        error: (error as Error).message,
-      });
-    }
+    await closeCardInTranscript({
+      store: getStore(),
+      chatId,
+      investigationId,
+      projectRef,
+      environmentRef,
+      messageId: closingMessageId,
+      uiMessages: messages,
+      fallback: seedState,
+    });
   };
 
   // Dedup on the action id, against the durable transcript — a redelivered kick
@@ -855,9 +827,11 @@ async function conductWatchInvestigation(args: {
     }
   } finally {
     // No `onTurnComplete` on an action, so the guard runs here: a card left at
-    // in_progress is a spinner nothing else will ever stop.
-    await settleOpenInvestigations(store, chatId);
+    // in_progress is a spinner nothing else will ever stop. `closeCard` is the settle,
+    // so nothing settles the row separately first.
     await closeCard(investigationId, answered ? [...uiMessages, answered] : uiMessages);
+    // Only once the close committed: a retry needs the tracked entry to still be there.
+    clearOpenInvestigations(chatId);
   }
 }
 

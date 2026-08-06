@@ -84,6 +84,7 @@ export type StoreCalls = {
   persistTurn: unknown[];
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
+  settleInvestigationCard: unknown[];
   findOpenInvestigation: unknown[];
   /** Every write in the order it happened, for the tests that assert ordering. */
   order: (keyof Omit<StoreCalls, "order">)[];
@@ -99,6 +100,7 @@ export function fakeStore(
     persistTurn: [],
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
+    settleInvestigationCard: [],
     findOpenInvestigation: [],
     order: [],
   };
@@ -109,6 +111,7 @@ export function fakeStore(
   // Revisions bump the way the real query does: latest-wins in the transcript is only
   // testable if a later revision is actually a higher number.
   const revisions = new Map<string, number>();
+  const closedCards = new Set<string>();
   const store: DashboardAgentStore = {
     ensureChat: async (args) => record("ensureChat", args),
     persistMessages: async (args) => record("persistMessages", args),
@@ -145,6 +148,23 @@ export function fakeStore(
       const revision = args.id ? (revisions.get(id) ?? 0) + 1 : 0;
       revisions.set(id, revision);
       return { ok: true, id, revision, created: !args.id };
+    },
+    // Mirrors the real query: the terminal revision and its closing card are one
+    // operation, so a card that can't be delivered leaves no settled row behind.
+    settleInvestigationCard: async (args) => {
+      record("settleInvestigationCard", args);
+      const revision = (revisions.get(args.id) ?? 0) + 1;
+      const card = investigationSettlementMessage({
+        investigationId: args.id,
+        revision,
+        state: args.state,
+        messageId: args.messageId,
+      });
+      if (!card) throw new Error(`${args.id} settled to a state that isn't renderable`);
+      revisions.set(args.id, revision);
+      const closed = !closedCards.has(args.messageId);
+      closedCards.add(args.messageId);
+      return { ok: true, id: args.id, revision, card, closed };
     },
     findOpenInvestigation: async (args) => {
       record("findOpenInvestigation", args);
