@@ -314,10 +314,20 @@ export async function appendChatMessage(
   return rows.length > 0;
 }
 
-/** Idempotent on the message's `id`, for retrying callers like the wake narration. */
+/**
+ * Idempotent on the message's `id`, for retrying callers like the wake narration.
+ *
+ * `organizationId` is optional only because the agent runtime's callers don't carry one
+ * yet; when it is given it is verified, so a chat id from another org appends nothing.
+ */
 export async function appendChatMessageOnce(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; message: { id: string } }
+  params: {
+    chatId: string;
+    userId: string;
+    organizationId?: string;
+    message: { id: string };
+  }
 ): Promise<boolean> {
   const rows = await db
     .update(chats)
@@ -330,6 +340,7 @@ export async function appendChatMessageOnce(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        ...(params.organizationId ? [eq(chats.organizationId, params.organizationId)] : []),
         isNull(chats.deletedAt),
         sql`not exists (select 1 from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) m where m->>'id' = ${params.message.id})`
       )

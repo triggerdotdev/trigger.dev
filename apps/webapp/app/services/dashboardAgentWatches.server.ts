@@ -17,7 +17,7 @@ import {
   getWatch,
   getWatchSubmission,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
-  markWatchSubmissionNotified,
+  markWatchSubmissionExternalNotification,
   precheckWatchCreation,
   recordWatchSubmissionOutcome,
   reopenWatchSubmission,
@@ -34,11 +34,13 @@ import {
   WATCH_CONFIRMATION_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
   watchConfirmationBlockBody,
+  watchDraftSchema,
   watchIdentity,
   watchOneShotBlockBody,
   watchRequestSentence,
   watchSubjectLabel,
   type WatchDraft,
+  type WatchExternalNotification,
   type WatchObservedOutcome,
   type WatchResolution,
   type WatchSpec,
@@ -395,11 +397,24 @@ export type SubmitWatchCardResult =
 
 /**
  * A fresh panel's chat id, derived from the request id so a retried submit lands in the
- * chat the first attempt created instead of leaving an empty one behind. The user id is
- * mixed in so a client-chosen request id can never name another user's chat.
+ * chat the first attempt created instead of leaving an empty one behind.
+ *
+ * The whole tenancy of the request is mixed in, not just the user: `clientRequestId` is
+ * client-chosen, and one user can be in several organizations, so a user id alone lets two
+ * organizations derive the same id — where `createChat(...).onConflictDoNothing()` keeps
+ * the first org's chat and the second org's records land in it.
  */
-function chatIdForRequest(userId: string, clientRequestId: string): string {
-  const digest = createHash("sha256").update(`${userId}:${clientRequestId}`).digest("hex");
+function chatIdForRequest(params: {
+  organizationId: string;
+  userId: string;
+  environmentId: string;
+  clientRequestId: string;
+}): string {
+  const digest = createHash("sha256")
+    .update(
+      `${params.organizationId}:${params.userId}:${params.environmentId}:${params.clientRequestId}`
+    )
+    .digest("hex");
   return `chat_${digest.slice(0, 24)}`;
 }
 
@@ -417,8 +432,8 @@ function comparableSpec(spec: WatchSpec | PersistedWatchSpec): string {
 /**
  * Whether an existing watch is the one this submission asked for. A retry is byte-identical,
  * so anything else — a different window, cadence, note or investigate consent — is a genuinely
- * different request and still conflicts. `notifyExternally` is not persisted on the row, so it
- * is not compared; the subscribe below is idempotent and converges instead.
+ * different request and still conflicts. `notifyExternally` is not on the watch row, so it is
+ * compared through the ledger's draft digest instead, which covers the whole configuration.
  */
 function isSameWatchRequest(existing: Watch, draft: WatchDraft): boolean {
   return (
@@ -461,13 +476,35 @@ function confirmationMessage(args: {
 }
 
 /**
- * A submitted draft's comparable digest. `notifyExternally` is left out: it is not part of
- * the operation, and the subscribe below converges on a replay instead of conflicting.
+ * A submitted draft's comparable digest: the whole confirmed configuration, `notifyExternally`
+ * included. It is user consent, and the transcript records it, so a retry that flips it is a
+ * different request — not something to converge on behind the durable record.
  */
 function draftDigest(draft: WatchDraft): string {
   return createHash("sha256")
-    .update(JSON.stringify([comparableSpec(draft.spec), draft.followUp.investigateOnAttention]))
+    .update(
+      JSON.stringify([
+        comparableSpec(draft.spec),
+        draft.followUp.investigateOnAttention,
+        draft.followUp.notifyExternally,
+      ])
+    )
     .digest("hex");
+}
+
+/** The recorded outcome of the external consent, replayed rather than re-decided. */
+function recordedExternalNotification(recorded: WatchSubmission): WatchExternalNotification {
+  if (recorded.externalNotificationStatus === "enabled") return { status: "enabled" };
+  if (recorded.externalNotificationStatus === "unavailable") {
+    return { status: "unavailable", reason: recorded.externalNotificationReason ?? "unknown" };
+  }
+  return { status: "not_requested" };
+}
+
+/** The draft the ledger recorded, which is what a replay must be built from. */
+function recordedDraft(recorded: WatchSubmission, fallback: WatchDraft): WatchDraft {
+  const parsed = watchDraftSchema.safeParse(recorded.draft);
+  return parsed.success ? parsed.data : fallback;
 }
 
 /** The refusal record, keyed off the request so a retry's success can still follow it. */
@@ -514,7 +551,14 @@ export async function submitDashboardAgentWatch(params: {
   const create = params.deps?.create ?? createDashboardAgentWatch;
   const subscribe = params.deps?.subscribe ?? subscribeUserToWatchAlerts;
 
-  const chatId = params.chatId ?? chatIdForRequest(userId, clientRequestId);
+  const chatId =
+    params.chatId ??
+    chatIdForRequest({
+      organizationId,
+      userId,
+      environmentId: environment.id,
+      clientRequestId,
+    });
   if (!params.chatId) {
     // Idempotent on the id, so a retry reuses the same chat rather than making another.
     await createChat(dashboardAgentDb, {
@@ -534,7 +578,12 @@ export async function submitDashboardAgentWatch(params: {
     watchId: string | null;
     repaired: boolean;
   }): Promise<SubmitWatchCardResult> => {
-    await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: args.confirmation });
+    await appendChatMessageOnce(dashboardAgentDb, {
+      chatId,
+      userId,
+      organizationId,
+      message: args.confirmation,
+    });
     return {
       ok: true,
       chatId,
@@ -545,50 +594,69 @@ export async function submitDashboardAgentWatch(params: {
     };
   };
 
+  /** `confirmed` is the draft the confirmation speaks for: the recorded one on a replay. */
   const watchingConfirmation = (args: {
     watchId: string;
     unavailable: boolean;
-    notifiedExternally: boolean;
-  }) =>
-    confirmationMessage({
+    external: WatchExternalNotification;
+    confirmed?: WatchDraft;
+  }) => {
+    const confirmed = args.confirmed ?? draft;
+    return confirmationMessage({
       id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${args.watchId}`,
       blockId: args.watchId,
       body: watchConfirmationBlockBody({
-        spec: draft.spec,
+        spec: confirmed.spec,
         watchId: args.watchId,
         unavailable: args.unavailable,
         followUp: {
-          investigateOnAttention: draft.followUp.investigateOnAttention,
-          notifyExternally: args.notifiedExternally,
+          investigateOnAttention: confirmed.followUp.investigateOnAttention,
+          external: args.external,
         },
       }),
     });
+  };
 
-  const oneShotConfirmation = (result: "satisfied" | "terminal_unsatisfied") =>
+  const oneShotConfirmation = (
+    result: "satisfied" | "terminal_unsatisfied",
+    confirmed: WatchDraft = draft
+  ) =>
     confirmationMessage({
       // No watch exists, so the request id is the only stable key for a one-shot.
       id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}one-shot:${clientRequestId}`,
-      blockId: watchIdentity(draft.spec),
-      body: watchOneShotBlockBody({ spec: draft.spec, result }),
+      blockId: watchIdentity(confirmed.spec),
+      body: watchOneShotBlockBody({ spec: confirmed.spec, result }),
     });
 
-  /** Rebuild the transcript from a recorded outcome. Nothing is evaluated or created. */
+  /**
+   * Rebuild the transcript from a recorded outcome. Nothing is evaluated or created, and
+   * the record is built from the recorded draft, never the body of this attempt: the
+   * durable user message states what the first attempt confirmed.
+   */
   const replay = async (recorded: WatchSubmission): Promise<SubmitWatchCardResult> => {
+    const confirmed = recordedDraft(recorded, draft);
+
     if (recorded.state === "created" && recorded.watchId) {
       // The one thing the row can still converge on: the subscribe is idempotent, so a
-      // retry that asks for an external channel gets one even if the first attempt died.
-      let notified = recorded.notifiedExternally;
-      if (!notified && draft.followUp.notifyExternally) {
-        notified = (await subscribe({ userId, environment })).ok;
-        if (notified) {
-          await markWatchSubmissionNotified(dashboardAgentDb, { chatId, clientRequestId });
+      // retry whose first attempt died before subscribing still gets a channel. Only a
+      // move to `enabled` is persisted, so a still-failing subscribe replays as recorded.
+      let external = recordedExternalNotification(recorded);
+      if (external.status !== "enabled" && confirmed.followUp.notifyExternally) {
+        if ((await subscribe({ userId, environment })).ok) {
+          external = { status: "enabled" };
+          await markWatchSubmissionExternalNotification(dashboardAgentDb, {
+            chatId,
+            clientRequestId,
+            external,
+          });
         }
       }
       return settle({
         confirmation: watchingConfirmation({
           watchId: recorded.watchId,
           unavailable: recorded.unavailable,
-          notifiedExternally: notified,
+          external,
+          confirmed,
         }),
         watchId: recorded.watchId,
         repaired: true,
@@ -598,7 +666,8 @@ export async function submitDashboardAgentWatch(params: {
     if (recorded.state === "immediate") {
       return settle({
         confirmation: oneShotConfirmation(
-          recorded.immediateResult === "satisfied" ? "satisfied" : "terminal_unsatisfied"
+          recorded.immediateResult === "satisfied" ? "satisfied" : "terminal_unsatisfied",
+          confirmed
         ),
         watchId: null,
         repaired: true,
@@ -610,6 +679,7 @@ export async function submitDashboardAgentWatch(params: {
     await appendChatMessageOnce(dashboardAgentDb, {
       chatId,
       userId,
+      organizationId,
       message: refusalMessage(clientRequestId, error),
     });
     return {
@@ -645,6 +715,7 @@ export async function submitDashboardAgentWatch(params: {
     await appendChatMessageOnce(dashboardAgentDb, {
       chatId,
       userId,
+      organizationId,
       message: refusalMessage(clientRequestId, refusal.error),
     });
     return { ok: false, chatId, ...refusal };
@@ -664,6 +735,24 @@ export async function submitDashboardAgentWatch(params: {
     watchId: generateWatchId(),
   });
 
+  // A chat can by design span environments, so a matching draft is not enough: the row
+  // has to have been written by this same tenancy, or a staging retry would replay a
+  // production watch. A mismatch is refused, never replayed.
+  const recordedScope = claim.submission;
+  if (
+    recordedScope.organizationId !== organizationId ||
+    recordedScope.userId !== userId ||
+    recordedScope.projectId !== environment.projectId ||
+    recordedScope.environmentId !== environment.id
+  ) {
+    return {
+      ok: false,
+      chatId,
+      code: "request_conflict",
+      error: "That request was already submitted somewhere else.",
+    };
+  }
+
   // A different draft under the same request id is a different request, not a retry.
   if (claim.submission.draftHash !== digest) {
     return {
@@ -676,7 +765,7 @@ export async function submitDashboardAgentWatch(params: {
 
   // Step two, before the watch can exist: a false here means the record is already there
   // from an earlier attempt, and a deleted chat is caught by the create below.
-  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: request });
+  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, organizationId, message: request });
 
   let submission = claim.submission;
 
@@ -706,10 +795,14 @@ export async function submitDashboardAgentWatch(params: {
     /** The watch was already there: this call adopted it rather than creating it. */
     adopted: boolean;
   }): Promise<SubmitWatchCardResult> => {
-    // Attached after the watch exists, and a failure here never fails the creation.
-    let notifiedExternally = false;
+    // Attached after the watch exists, and a failure here never fails the creation — it is
+    // said out loud in the confirmation instead, and recorded so a replay repeats it.
+    let external: WatchExternalNotification = { status: "not_requested" };
     if (draft.followUp.notifyExternally) {
-      notifiedExternally = (await subscribe({ userId, environment })).ok;
+      const subscribed = await subscribe({ userId, environment });
+      external = subscribed.ok
+        ? { status: "enabled" }
+        : { status: "unavailable", reason: subscribed.reason };
     }
 
     const recorded = await recordWatchSubmissionOutcome(dashboardAgentDb, {
@@ -718,7 +811,7 @@ export async function submitDashboardAgentWatch(params: {
       state: "created",
       watchId: args.watchId,
       unavailable: args.unavailable,
-      notifiedExternally,
+      external,
     });
     if (!recorded) {
       const winner = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
@@ -734,7 +827,7 @@ export async function submitDashboardAgentWatch(params: {
       confirmation: watchingConfirmation({
         watchId: args.watchId,
         unavailable: args.unavailable,
-        notifiedExternally,
+        external,
       }),
       watchId: args.watchId,
       repaired: args.adopted,

@@ -1,4 +1,8 @@
-import { getWatch } from "@internal/dashboard-agent-db";
+import {
+  claimWatchAlertDispatch,
+  getWatch,
+  releaseWatchAlertDispatch,
+} from "@internal/dashboard-agent-db";
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -78,9 +82,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
 
-    await enqueueWatchFiredAlert(watch, "fired");
+    // The durable marker, keyed on this watch's terminal outcome: a token holder can call
+    // this as often as they like, and only the first call sends an alert.
+    const claimed = await claimWatchAlertDispatch(dashboardAgentDb, {
+      id: watch.id,
+      terminalStatus: "fired",
+    });
+    if (!claimed) {
+      logger.info("Dashboard agent watch fired callback repeated; no second alert", { watchId });
+      return json({ ok: true, alerted: false });
+    }
 
-    return json({ ok: true });
+    try {
+      await enqueueWatchFiredAlert(watch, "fired");
+    } catch (error) {
+      // Nothing was queued, so the claim goes back rather than muting the alert for good.
+      await releaseWatchAlertDispatch(dashboardAgentDb, { id: watch.id, terminalStatus: "fired" });
+      throw error;
+    }
+
+    return json({ ok: true, alerted: true });
   } catch (error) {
     logger.error("Dashboard agent watch fire callback failed", {
       error,

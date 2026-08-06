@@ -154,6 +154,15 @@ export async function canUseDashboardAgentEmailAlerts(
   return { allowed: true };
 }
 
+/**
+ * The dedup key a user's own watch-alert channel is created under. A channel has no owner
+ * column, so this key is the only thing that says whose channel it is — the subscribe and
+ * the unsubscribe must derive it the same way.
+ */
+export function watchAlertDeduplicationKey(email: string): string {
+  return `dashboard-agent-watch:${email}`;
+}
+
 export type SubscribeToWatchAlertsResult =
   | { ok: true; email: string }
   | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" };
@@ -189,7 +198,7 @@ export async function subscribeUserToWatchAlerts(params: {
     name: `Watch alerts for ${user.email}`,
     alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
     environmentTypes: [environment.type as never],
-    deduplicationKey: `dashboard-agent-watch:${user.email}`,
+    deduplicationKey: watchAlertDeduplicationKey(user.email),
     channel: { type: "EMAIL", email: user.email },
   });
 
@@ -206,18 +215,39 @@ const UNSUBSCRIBE_ATTEMPTS = 3;
 /**
  * Take `DASHBOARD_AGENT_WATCH` off a channel, disabling one left with no alert types. The
  * write is conditional on the list the read saw, so a concurrent edit fails this attempt.
+ *
+ * A project is not a tenant: every member can see it, so `projectId` alone would let one
+ * member turn off another member's alerts. `organizationId` and `ownerUserId` are the
+ * scope a request-driven caller must pass.
  */
 export async function unsubscribeChannelFromWatchAlerts(
   channelId: string,
-  options: { projectId?: string } = {},
+  options: { projectId?: string; organizationId?: string; ownerUserId?: string } = {},
   db: PrismaClientOrTransaction = prisma
 ): Promise<UnsubscribeResult> {
-  const scope = { id: channelId, ...(options.projectId ? { projectId: options.projectId } : {}) };
+  // The owner is not a column: the channel's dedup key carries the address it was created
+  // for, so it is what scopes this to the caller's own channel.
+  let ownerKey: string | undefined;
+  if (options.ownerUserId) {
+    const owner = await db.user.findFirst({
+      where: { id: options.ownerUserId },
+      select: { email: true },
+    });
+    if (!owner) return { ok: false, reason: "not_found" };
+    ownerKey = watchAlertDeduplicationKey(owner.email);
+  }
+
+  const scope = {
+    id: channelId,
+    ...(options.projectId ? { projectId: options.projectId } : {}),
+    ...(options.organizationId ? { project: { organizationId: options.organizationId } } : {}),
+    ...(ownerKey ? { deduplicationKey: ownerKey } : {}),
+  };
 
   for (let attempt = 0; attempt < UNSUBSCRIBE_ATTEMPTS; attempt++) {
     const channel = await db.projectAlertChannel.findFirst({
       where: scope,
-      select: { name: true, alertTypes: true },
+      select: { name: true, alertTypes: true, projectId: true, deduplicationKey: true },
     });
     // A channel this alert type was never on is out of scope: stripping nothing off it
     // would still report success, and an empty list would disable it.
@@ -230,8 +260,14 @@ export async function unsubscribeChannelFromWatchAlerts(
     );
 
     const { count } = await db.projectAlertChannel.updateMany({
-      // Compare-and-swap: the row must still hold the exact list this attempt read.
-      where: { ...scope, alertTypes: { equals: channel.alertTypes } },
+      // Compare-and-swap on the row the scoped read returned. Scalars only: `updateMany`
+      // takes no relation filter, so the org scope is carried by the read's `projectId`.
+      where: {
+        id: channelId,
+        projectId: channel.projectId,
+        deduplicationKey: channel.deduplicationKey,
+        alertTypes: { equals: channel.alertTypes },
+      },
       data: {
         alertTypes: remaining,
         ...(remaining.length === 0 ? { enabled: false } : {}),

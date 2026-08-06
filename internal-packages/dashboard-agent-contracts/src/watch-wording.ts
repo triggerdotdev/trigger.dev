@@ -19,6 +19,7 @@
 import {
   isWatchKind,
   resolveWatchResult,
+  type WatchExternalNotification,
   type WatchHeadlineKey,
   type WatchKind,
   type WatchObservedOutcome,
@@ -524,16 +525,33 @@ export function watchDurationLabel(spec: WatchSpec): string {
  * The persisted blocks
  * ------------------------------------------------------------------ */
 
+/**
+ * What became of the "email me as well" consent, said out loud. A subscription that
+ * couldn't be attached is stated, not omitted: the user asked for it.
+ */
+export function watchExternalNotificationLine(external: WatchExternalNotification): string | null {
+  switch (external.status) {
+    case "enabled":
+      return "You'll get an email as well as the chat.";
+    case "not_requested":
+      return null;
+    case "unavailable":
+      return "I couldn't add email notifications, so updates will appear in the dashboard only.";
+  }
+}
+
 /** The follow-up lines a confirmation states, for the opt-ins that took effect. */
 export function watchFollowUpLines(followUp: {
   investigateOnAttention?: boolean;
-  notifyExternally?: boolean;
+  /** The outcome of the external consent, not the consent itself. */
+  external?: WatchExternalNotification;
 }): string[] {
   const lines: string[] = [];
   if (followUp.investigateOnAttention) {
     lines.push("If it turns out badly, I'll investigate straight away.");
   }
-  if (followUp.notifyExternally) lines.push("You'll get an email as well as the chat.");
+  const external = followUp.external ? watchExternalNotificationLine(followUp.external) : null;
+  if (external) lines.push(external);
   return lines;
 }
 
@@ -569,7 +587,7 @@ export function watchConfirmationBlockBody(args: {
   watchId: string;
   /** The creation-time check couldn't run. Stated plainly rather than hidden. */
   unavailable?: boolean;
-  followUp?: { investigateOnAttention?: boolean; notifyExternally?: boolean };
+  followUp?: { investigateOnAttention?: boolean; external?: WatchExternalNotification };
 }): {
   type: "watch_result";
   outcome: "watching";

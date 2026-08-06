@@ -21,6 +21,7 @@ export {
   watchConditionWording,
   watchConfirmationBlockBody,
   watchDurationLabel,
+  watchExternalNotificationLine,
   watchFollowUpLines,
   watchIdentityValue,
   watchLifetimeSentence,

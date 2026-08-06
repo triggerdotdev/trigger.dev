@@ -10,6 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
+  WatchExternalNotificationStatus,
   WatchObservedOutcome,
   WatchResolution,
   WatchSpec,
@@ -86,6 +87,18 @@ export const watches = dashboardAgentSchema.table(
     // Check idempotency keys are `watch:{id}:tick:{n}`.
     tickCount: integer("tick_count").notNull().default(0),
     /**
+     * The durable "this outcome has already been alerted" marker, `watch:{id}:alert:{status}`.
+     * Written once by {@link claimWatchAlertDispatch}, so a repeated callback sends nothing.
+     */
+    alertDispatchKey: text("alert_dispatch_key"),
+    /**
+     * The retention clock, materialized so the sweep is an index range scan instead of a
+     * seq scan over a `greatest(...)` expression. Generated, so no writer can let it drift.
+     */
+    retentionAt: timestamp("retention_at", { withTimezone: true }).generatedAlwaysAs(
+      sql`greatest(delivered_at, cancelled_at, fired_at, last_checked_at, created_at)`
+    ),
+    /**
      * The batch group's second key. Generated from `spec`, so no write path can let it
      * drift, and the batch predicate is served by an index instead of re-parsing JSON.
      */
@@ -125,6 +138,25 @@ export const watches = dashboardAgentSchema.table(
         t.expiresAt
       )
       .where(sql`${t.status} = 'active'`),
+    // The batch delivery backstop. `watches_active_env_cadence_idx` is partial on
+    // `status = 'active'`, so it cannot serve a resolved-but-undelivered lookup at all.
+    index("watches_env_cadence_delivery_idx")
+      .on(
+        t.environmentId,
+        t.cadenceMinutes,
+        t.deliveryStatus,
+        sql`coalesce(${t.firedAt}, ${t.lastCheckedAt})`
+      )
+      .where(
+        sql`${t.status} in ('fired', 'expired') and ${t.deliveryStatus} in ('pending', 'delivering')`
+      ),
+    // Retention. Plain B-tree on the materialized clock, partial on the settled set the
+    // sweep is allowed to delete.
+    index("watches_retention_idx")
+      .on(t.retentionAt)
+      .where(
+        sql`${t.status} in ('fired', 'expired', 'cancelled') and ${t.deliveryStatus} in ('not_required', 'delivered')`
+      ),
   ]
 );
 
@@ -187,8 +219,15 @@ export const watchSubmissions = dashboardAgentSchema.table(
     watchId: text("watch_id"),
     /** `created` only: the creation-time check couldn't run. */
     unavailable: boolean("unavailable").notNull().default(false),
-    /** `created` only: an external notification channel was attached. */
-    notifiedExternally: boolean("notified_externally").notNull().default(false),
+    /**
+     * `created` only: what became of the external ("email me as well") consent. The reason
+     * is kept so a replay reproduces the same confirmation instead of guessing again.
+     */
+    externalNotificationStatus: text("external_notification_status")
+      .$type<WatchExternalNotificationStatus>()
+      .notNull()
+      .default("not_requested"),
+    externalNotificationReason: text("external_notification_reason"),
     /** `immediate` only: `satisfied` or `terminal_unsatisfied`. */
     immediateResult: text("immediate_result"),
     // `refused` only. Kept verbatim so the replayed refusal reads identically.

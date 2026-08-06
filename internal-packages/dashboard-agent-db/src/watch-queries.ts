@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, or, sql, isNull } from "drizzle-orm";
 import {
   watchResolutionToWireStatus,
+  type WatchExternalNotification,
   type WatchObservedOutcome,
   type WatchResolution,
 } from "@internal/dashboard-agent-contracts";
@@ -81,11 +82,19 @@ export async function createWatch(
       await lockChatForWatches(tx, params.chatId);
 
       // Re-read under the lock, or a delete that committed while this call was
-      // validating gets overtaken by the insert below.
+      // validating gets overtaken by the insert below. Owner-scoped: a chat in another
+      // org, or another user's, does not exist for this create.
       const chat = await tx
         .select({ id: chats.id })
         .from(chats)
-        .where(and(eq(chats.id, params.chatId), isNull(chats.deletedAt)))
+        .where(
+          and(
+            eq(chats.id, params.chatId),
+            eq(chats.organizationId, params.organizationId),
+            eq(chats.userId, params.userId),
+            isNull(chats.deletedAt)
+          )
+        )
         .limit(1);
       if (chat.length === 0) return { ok: false, error: "chat_not_found" } as const;
 
@@ -284,7 +293,8 @@ export async function reopenWatchSubmission(
       state: "pending",
       watchId: params.watchId,
       unavailable: false,
-      notifiedExternally: false,
+      externalNotificationStatus: "not_requested",
+      externalNotificationReason: null,
       immediateResult: null,
       refusalCode: null,
       refusalError: null,
@@ -306,7 +316,8 @@ export interface WatchSubmissionOutcome {
   state: Exclude<WatchSubmissionState, "pending">;
   watchId?: string | null;
   unavailable?: boolean;
-  notifiedExternally?: boolean;
+  /** What became of the external consent. Replayed verbatim, never re-decided. */
+  external?: WatchExternalNotification;
   immediateResult?: string | null;
   refusalCode?: string | null;
   refusalError?: string | null;
@@ -327,7 +338,9 @@ export async function recordWatchSubmissionOutcome(
       state: params.state,
       ...(params.watchId !== undefined ? { watchId: params.watchId } : {}),
       unavailable: params.unavailable ?? false,
-      notifiedExternally: params.notifiedExternally ?? false,
+      externalNotificationStatus: params.external?.status ?? "not_requested",
+      externalNotificationReason:
+        params.external?.status === "unavailable" ? params.external.reason : null,
       immediateResult: params.immediateResult ?? null,
       refusalCode: params.refusalCode ?? null,
       refusalError: params.refusalError ?? null,
@@ -349,13 +362,18 @@ export async function recordWatchSubmissionOutcome(
  * The one field a settled submission may still gain: the external channel, attached by a
  * retry whose first attempt died before subscribing. Subscribing is idempotent.
  */
-export async function markWatchSubmissionNotified(
+export async function markWatchSubmissionExternalNotification(
   db: DashboardAgentDb,
-  params: { chatId: string; clientRequestId: string }
+  params: { chatId: string; clientRequestId: string; external: WatchExternalNotification }
 ): Promise<void> {
   await db
     .update(watchSubmissions)
-    .set({ notifiedExternally: true, updatedAt: sql`now()` })
+    .set({
+      externalNotificationStatus: params.external.status,
+      externalNotificationReason:
+        params.external.status === "unavailable" ? params.external.reason : null,
+      updatedAt: sql`now()`,
+    })
     .where(
       and(
         eq(watchSubmissions.chatId, params.chatId),
@@ -929,6 +947,51 @@ export async function listWatchesAwaitingDelivery(
   return rows.map((row) => row.watch);
 }
 
+/** The marker one terminal outcome's alert is dispatched under. */
+export function watchAlertDispatchKey(params: { id: string; terminalStatus: string }): string {
+  return `watch:${params.id}:alert:${params.terminalStatus}`;
+}
+
+/**
+ * Claim the right to alert for this watch's terminal outcome, exactly once. The marker is
+ * on the row, so a repeated callback — a retried task, a replayed token — sends nothing.
+ * `false` means the alert was already dispatched; the caller answers success anyway.
+ */
+export async function claimWatchAlertDispatch(
+  db: DashboardAgentDb,
+  params: { id: string; terminalStatus: WatchStatus }
+): Promise<boolean> {
+  const key = watchAlertDispatchKey({ id: params.id, terminalStatus: params.terminalStatus });
+  const rows = await db
+    .update(watches)
+    .set({ alertDispatchKey: key })
+    .where(
+      and(
+        eq(watches.id, params.id),
+        // The row must still be in the outcome the caller is alerting for.
+        eq(watches.status, params.terminalStatus),
+        isNull(watches.alertDispatchKey)
+      )
+    )
+    .returning({ id: watches.id });
+  return rows.length > 0;
+}
+
+/**
+ * Hand the claim back when the dispatch it was taken for could not be queued, so the
+ * caller's retry can alert. Fenced on the key, so it can't clear a later claim.
+ */
+export async function releaseWatchAlertDispatch(
+  db: DashboardAgentDb,
+  params: { id: string; terminalStatus: WatchStatus }
+): Promise<void> {
+  const key = watchAlertDispatchKey({ id: params.id, terminalStatus: params.terminalStatus });
+  await db
+    .update(watches)
+    .set({ alertDispatchKey: null })
+    .where(and(eq(watches.id, params.id), eq(watches.alertDispatchKey, key)));
+}
+
 /**
  * Retention sweep. Guarded on settled delivery, so a row that still owes a wake is
  * never deleted from under the delivery sweep. Only `watches` rows, never history.
@@ -944,7 +1007,9 @@ export async function deleteTerminalWatchesOlderThan(
       and(
         inArray(watches.status, ["fired", "expired", "cancelled"]),
         inArray(watches.deliveryStatus, ["not_required", "delivered"]),
-        sql`greatest(${watches.deliveredAt}, ${watches.cancelledAt}, ${watches.firedAt}, ${watches.lastCheckedAt}, ${watches.createdAt}) <= ${params.before.toISOString()}::timestamptz`
+        // The materialized clock, so this is an index range scan on
+        // `watches_retention_idx` rather than a seq scan over an expression.
+        sql`${watches.retentionAt} <= ${params.before.toISOString()}::timestamptz`
       )
     )
     .limit(params.limit ?? 500);

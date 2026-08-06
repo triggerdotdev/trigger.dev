@@ -567,6 +567,19 @@ export const watchDraftSchema = z.object({
 
 export type WatchDraft = z.infer<typeof watchDraftSchema>;
 
+/**
+ * What actually happened to the "email me as well" consent. A failed subscription is
+ * `unavailable` with a reason, never a silently dropped line.
+ */
+export const watchExternalNotificationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("enabled") }),
+  z.object({ status: z.literal("not_requested") }),
+  z.object({ status: z.literal("unavailable"), reason: z.string() }),
+]);
+
+export type WatchExternalNotification = z.infer<typeof watchExternalNotificationSchema>;
+export type WatchExternalNotificationStatus = WatchExternalNotification["status"];
+
 /** The window lengths the card offers, in hours. Capped by {@link WATCH_MAX_HOURS}. */
 export const WATCH_WINDOW_HOURS_OPTIONS = [0.5, 1, 2, 6, 12, 24] as const;
 

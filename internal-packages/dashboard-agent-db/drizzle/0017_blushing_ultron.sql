@@ -1,0 +1,1 @@
+ALTER TABLE "trigger_dashboard_agent"."watch_submissions" DROP COLUMN "notified_externally";
