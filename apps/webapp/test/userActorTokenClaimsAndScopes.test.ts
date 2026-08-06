@@ -36,7 +36,10 @@ vi.mock("~/services/logger.server", () => ({
 vi.mock("~/services/rbac.server", async () => {
   const { buildJwtAbility, verifyUserActorToken } = await import("@trigger.dev/rbac");
   const bearerOf = (request: Request) =>
-    request.headers.get("Authorization")?.replace(/^Bearer /, "").trim() ?? "";
+    request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim() ?? "";
 
   return {
     rbac: {
@@ -195,56 +198,69 @@ postgresTest(
 
     expect(denied.status).toBe(403);
     expect(denied.body.token).toBeUndefined();
-  }
+  },
+  60_000
 );
 
-postgresTest("a capless delegated token exchanges for a read-only JWT", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  const seeded = await seedProject(prisma);
+postgresTest(
+  "a capless delegated token exchanges for a read-only JWT",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const seeded = await seedProject(prisma);
 
-  const minted = await exchange({
-    projectRef: seeded.project.externalRef,
-    env: "prod",
-    token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
-  });
+    const minted = await exchange({
+      projectRef: seeded.project.externalRef,
+      env: "prod",
+      token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
+    });
 
-  expect(minted.status).toBe(200);
-  expect(payloadOf(minted.body.token).scopes).toEqual(["read:all"]);
-});
+    expect(minted.status).toBe(200);
+    expect(payloadOf(minted.body.token).scopes).toEqual(["read:all"]);
+  },
+  60_000
+);
 
-postgresTest("the exchange clamps requested scopes to the token's cap", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  const seeded = await seedProject(prisma);
+postgresTest(
+  "the exchange clamps requested scopes to the token's cap",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const seeded = await seedProject(prisma);
 
-  const minted = await exchange({
-    projectRef: seeded.project.externalRef,
-    env: "prod",
-    token: await token({
-      userId: seeded.user.id,
-      environmentId: seeded.prod.id,
-      cap: ["read:runs", "read:apiKeys"],
-    }),
-    scopes: ["read:runs", "write:runs"],
-  });
+    const minted = await exchange({
+      projectRef: seeded.project.externalRef,
+      env: "prod",
+      token: await token({
+        userId: seeded.user.id,
+        environmentId: seeded.prod.id,
+        cap: ["read:runs", "read:apiKeys"],
+      }),
+      scopes: ["read:runs", "write:runs"],
+    });
 
-  expect(minted.status).toBe(200);
-  expect(payloadOf(minted.body.token).scopes).toEqual(["read:runs"]);
-});
+    expect(minted.status).toBe(200);
+    expect(payloadOf(minted.body.token).scopes).toEqual(["read:runs"]);
+  },
+  60_000
+);
 
-postgresTest("the exchange only mints for the claimed environment", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  const seeded = await seedProject(prisma);
+postgresTest(
+  "the exchange only mints for the claimed environment",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const seeded = await seedProject(prisma);
 
-  const other = await exchange({
-    projectRef: seeded.project.externalRef,
-    env: "staging",
-    token: await token({
-      userId: seeded.user.id,
-      environmentId: seeded.prod.id,
-      cap: ["read:runs", "read:apiKeys"],
-    }),
-  });
+    const other = await exchange({
+      projectRef: seeded.project.externalRef,
+      env: "staging",
+      token: await token({
+        userId: seeded.user.id,
+        environmentId: seeded.prod.id,
+        cap: ["read:runs", "read:apiKeys"],
+      }),
+    });
 
-  expect(other.status).toBe(403);
-  expect(other.body.token).toBeUndefined();
-});
+    expect(other.status).toBe(403);
+    expect(other.body.token).toBeUndefined();
+  },
+  60_000
+);

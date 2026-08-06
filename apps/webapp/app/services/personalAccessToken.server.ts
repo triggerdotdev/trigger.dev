@@ -6,11 +6,7 @@ import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
-import {
-  isUserActorToken,
-  type UserActorClaims,
-  verifyUserActorToken,
-} from "@trigger.dev/rbac";
+import { isUserActorToken, type UserActorClaims, verifyUserActorToken } from "@trigger.dev/rbac";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion

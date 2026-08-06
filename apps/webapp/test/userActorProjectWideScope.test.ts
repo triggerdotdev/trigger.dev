@@ -57,15 +57,20 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
 
 // The run list itself isn't under test — which environment the presenter is handed is.
 vi.mock("~/presenters/v3/ApiRunListPresenter.server", async () => {
-  const actual = await vi.importActual<
-    typeof import("~/presenters/v3/ApiRunListPresenter.server")
-  >("~/presenters/v3/ApiRunListPresenter.server");
+  const actual: any = await vi.importActual("~/presenters/v3/ApiRunListPresenter.server");
   return {
     ApiRunListSearchParams: actual.ApiRunListSearchParams,
     ApiRunListPresenter: class {
-      async call(_project: unknown, _searchParams: unknown, _apiVersion: unknown, environment?: any) {
+      async call(
+        _project: unknown,
+        _searchParams: unknown,
+        _apiVersion: unknown,
+        environment?: any
+      ) {
         ctx.presenterEnvironments.push(
-          environment ? { id: environment.id, organizationId: environment.organizationId } : undefined
+          environment
+            ? { id: environment.id, organizationId: environment.organizationId }
+            : undefined
         );
         return { data: [] };
       }
@@ -77,7 +82,10 @@ vi.mock("~/presenters/v3/ApiRunListPresenter.server", async () => {
 vi.mock("~/services/rbac.server", async () => {
   const { buildJwtAbility, verifyUserActorToken } = await import("@trigger.dev/rbac");
   const bearerOf = (request: Request) =>
-    request.headers.get("Authorization")?.replace(/^Bearer /, "").trim() ?? "";
+    request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim() ?? "";
 
   return {
     rbac: {
@@ -205,25 +213,30 @@ postgresTest(
 
     expect(scoped.status).toBe(200);
     expect(scoped.body.map((env: any) => env.id)).toEqual([seeded.envA.id]);
-  }
+  },
+  60_000
 );
 
-postgresTest("a user-actor token sees only its own environment's runs", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  ctx.presenterEnvironments = [];
-  const seeded = await seedProject(prisma);
-  ctx.patUserId = seeded.user.id;
+postgresTest(
+  "a user-actor token sees only its own environment's runs",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    ctx.presenterEnvironments = [];
+    const seeded = await seedProject(prisma);
+    ctx.patUserId = seeded.user.id;
 
-  const scoped = await call(runsLoader, {
-    projectRef: seeded.project.externalRef,
-    token: await agentToken(seeded.user.id, seeded.envA.id),
-  });
+    const scoped = await call(runsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: await agentToken(seeded.user.id, seeded.envA.id),
+    });
 
-  expect(scoped.status).toBe(200);
-  expect(ctx.presenterEnvironments).toEqual([
-    { id: seeded.envA.id, organizationId: seeded.organization.id },
-  ]);
-});
+    expect(scoped.status).toBe(200);
+    expect(ctx.presenterEnvironments).toEqual([
+      { id: seeded.envA.id, organizationId: seeded.organization.id },
+    ]);
+  },
+  60_000
+);
 
 postgresTest(
   "a user-actor token asking for another environment is refused, not overridden",
@@ -242,47 +255,56 @@ postgresTest(
     expect(conflicting.status).toBe(403);
     expect(conflicting.body.code).toBe("forbidden_environment");
     expect(ctx.presenterEnvironments).toEqual([]);
-  }
+  },
+  60_000
 );
 
-postgresTest("a claimless user-actor token gets nothing project-wide", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  const seeded = await seedProject(prisma);
-  ctx.patUserId = seeded.user.id;
+postgresTest(
+  "a claimless user-actor token gets nothing project-wide",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const seeded = await seedProject(prisma);
+    ctx.patUserId = seeded.user.id;
 
-  // Any delegated client, not just the agent: a project-wide route has no scope to narrow to.
-  const claimless = await call(environmentsLoader, {
-    projectRef: seeded.project.externalRef,
-    token: await agentToken(seeded.user.id, undefined, "mcp"),
-  });
+    // Any delegated client, not just the agent: a project-wide route has no scope to narrow to.
+    const claimless = await call(environmentsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: await agentToken(seeded.user.id, undefined, "mcp"),
+    });
 
-  expect(claimless.status).toBe(403);
-  expect(claimless.body.code).toBe("forbidden_environment");
-});
+    expect(claimless.status).toBe(403);
+    expect(claimless.body.code).toBe("forbidden_environment");
+  },
+  60_000
+);
 
-postgresTest("a personal access token still gets the project-wide answer", async ({ prisma }) => {
-  ctx.prisma = prisma;
-  ctx.presenterEnvironments = [];
-  const seeded = await seedProject(prisma);
-  ctx.patUserId = seeded.user.id;
+postgresTest(
+  "a personal access token still gets the project-wide answer",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    ctx.presenterEnvironments = [];
+    const seeded = await seedProject(prisma);
+    ctx.patUserId = seeded.user.id;
 
-  const environments = await call(environmentsLoader, {
-    projectRef: seeded.project.externalRef,
-    token: PAT,
-  });
+    const environments = await call(environmentsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: PAT,
+    });
 
-  expect(environments.status).toBe(200);
-  expect(environments.body.map((env: any) => env.id).sort()).toEqual(
-    [seeded.envA.id, seeded.envB.id].sort()
-  );
+    expect(environments.status).toBe(200);
+    expect(environments.body.map((env: any) => env.id).sort()).toEqual(
+      [seeded.envA.id, seeded.envB.id].sort()
+    );
 
-  const runs = await call(runsLoader, {
-    projectRef: seeded.project.externalRef,
-    token: PAT,
-    search: `?filter[env]=${seeded.envB.slug}`,
-  });
+    const runs = await call(runsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: PAT,
+      search: `?filter[env]=${seeded.envB.slug}`,
+    });
 
-  // No forced environment: the request's own filter decides, as before.
-  expect(runs.status).toBe(200);
-  expect(ctx.presenterEnvironments).toEqual([undefined]);
-});
+    // No forced environment: the request's own filter decides, as before.
+    expect(runs.status).toBe(200);
+    expect(ctx.presenterEnvironments).toEqual([undefined]);
+  },
+  60_000
+);

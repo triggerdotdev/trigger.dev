@@ -52,9 +52,7 @@ export const loader = createLoaderPATApiRoute(
       project,
       searchParams,
       apiVersion,
-      scope.scoped
-        ? { id: scope.environmentId, organizationId: scope.organizationId }
-        : undefined
+      scope.scoped ? { id: scope.environmentId, organizationId: scope.organizationId } : undefined
     );
 
     if (!result) {
