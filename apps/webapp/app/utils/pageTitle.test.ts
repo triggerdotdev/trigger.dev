@@ -127,9 +127,12 @@ describe("pageMeta", () => {
   it("ignores the project the org loader resolved when the URL names none", () => {
     // The org loader always resolves a "best" project, so an org page would otherwise
     // advertise a project the user is not looking at.
-    const title = renderTitle([rootRoute, orgRoute, { id: "routes/team", meta: pageMeta("Team") }], {
-      organizationSlug: "acme",
-    });
+    const title = renderTitle(
+      [rootRoute, orgRoute, { id: "routes/team", meta: pageMeta("Team") }],
+      {
+        organizationSlug: "acme",
+      }
+    );
 
     expect(title).toBe("Team | Acme | Trigger.dev");
   });
