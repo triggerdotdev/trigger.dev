@@ -99,7 +99,7 @@ export async function canUseDashboardAgentAlerts(params: {
 }
 
 /**
- * Whether a fired watch in this environment would already reach the user outside the
+ * Whether a fired watch in this environment would already reach this user outside the
  * chat. Advisory only: the watch already exists, so every failure answers `none`.
  */
 export async function resolveWatchEmailAlertsState(params: {
@@ -108,16 +108,21 @@ export async function resolveWatchEmailAlertsState(params: {
 }): Promise<"subscribed" | "none" | "unavailable"> {
   const { userId, environment } = params;
   try {
-    // The same predicate the delivery job selects channels with.
-    const channel = await $replica.projectAlertChannel.findFirst({
-      where: {
-        projectId: environment.project.id,
-        enabled: true,
-        alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
-        environmentTypes: { has: environment.type },
-      },
-      select: { id: true },
-    });
+    // Another member's channel mails them, not this user, so only this user's own channel
+    // answers "subscribed".
+    const owner = await resolveWatchAlertOwnership(userId, $replica);
+    const channel = owner
+      ? await $replica.projectAlertChannel.findFirst({
+          where: {
+            projectId: environment.project.id,
+            deduplicationKey: owner.deduplicationKey,
+            enabled: true,
+            alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
+            environmentTypes: { has: environment.type },
+          },
+          select: { id: true },
+        })
+      : null;
     if (channel) return "subscribed";
 
     const gate = await canUseDashboardAgentAlerts({
@@ -159,6 +164,19 @@ export function watchAlertDeduplicationKey(email: string): string {
   return `dashboard-agent-watch:${email}`;
 }
 
+/**
+ * The one place a user id becomes watch-alert ownership. Reading state, subscribing and
+ * unsubscribing all go through here, so they cannot disagree about whose channel is whose.
+ */
+async function resolveWatchAlertOwnership(
+  userId: string,
+  db: PrismaClientOrTransaction = prisma
+): Promise<{ email: string; deduplicationKey: string } | undefined> {
+  const user = await db.user.findFirst({ where: { id: userId }, select: { email: true } });
+  if (!user) return undefined;
+  return { email: user.email, deduplicationKey: watchAlertDeduplicationKey(user.email) };
+}
+
 export type SubscribeToWatchAlertsResult =
   | { ok: true; email: string }
   | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" };
@@ -186,19 +204,19 @@ export async function subscribeUserToWatchAlerts(params: {
   });
   if (!gate.allowed) return { ok: false, reason: gate.reason };
 
-  const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
-  if (!user) return { ok: false, reason: "user_not_found" };
+  const owner = await resolveWatchAlertOwnership(userId);
+  if (!owner) return { ok: false, reason: "user_not_found" };
 
   const service = new CreateAlertChannelService();
   await service.call(environment.project.externalRef, userId, {
-    name: `Watch alerts for ${user.email}`,
+    name: `Watch alerts for ${owner.email}`,
     alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
     environmentTypes: [environment.type as never],
-    deduplicationKey: watchAlertDeduplicationKey(user.email),
-    channel: { type: "EMAIL", email: user.email },
+    deduplicationKey: owner.deduplicationKey,
+    channel: { type: "EMAIL", email: owner.email },
   });
 
-  return { ok: true, email: user.email };
+  return { ok: true, email: owner.email };
 }
 
 export type UnsubscribeResult =
@@ -222,12 +240,9 @@ export async function unsubscribeChannelFromWatchAlerts(
 ): Promise<UnsubscribeResult> {
   let ownerKey: string | undefined;
   if (options.ownerUserId) {
-    const owner = await db.user.findFirst({
-      where: { id: options.ownerUserId },
-      select: { email: true },
-    });
+    const owner = await resolveWatchAlertOwnership(options.ownerUserId, db);
     if (!owner) return { ok: false, reason: "not_found" };
-    ownerKey = watchAlertDeduplicationKey(owner.email);
+    ownerKey = owner.deduplicationKey;
   }
 
   const scope = {
