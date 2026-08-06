@@ -587,9 +587,7 @@ function NewApiKeyDialog({
     presets?.find((preset) => preset.available)?.id ??
     "FULL_ACCESS";
   const additionalPresetIds =
-    presets
-      ?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id))
-      .map((preset) => preset.id) ?? [];
+    presets?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id)).map((preset) => preset.id) ?? [];
   const expiresAt = expirationDate(expiration);
   const [presetId, setPresetId] = useState(defaultPresetId);
   const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
@@ -860,13 +858,7 @@ const API_KEY_EXPIRATIONS = [
   { value: "never", label: "Never" },
 ];
 
-type CapId =
-  | "tasks"
-  | "runs"
-  | "batches"
-  | "queues"
-  | "deployments"
-  | "envvars";
+type CapId = "tasks" | "runs" | "batches" | "queues" | "deployments" | "envvars";
 
 // Capability rows shown in the scope pane, in a fixed order so two presets read
 // as a diff of the same list rather than a reshuffled one.
@@ -936,9 +928,7 @@ function scopeDetailForPreset(preset?: ApiKeyPreset): PresetScopeDetail | undefi
 
   return {
     scopable: preset.usesTaskSelection,
-    taskLabel: scopes.some((scope) => scope.split(":")[1] === "tasks")
-      ? "All tasks"
-      : "No tasks",
+    taskLabel: scopes.some((scope) => scope.split(":")[1] === "tasks") ? "All tasks" : "No tasks",
     caps,
   };
 }
@@ -1077,72 +1067,74 @@ function ApiKeyScopePanel({
             </div>
           </div>
 
-        {detail.admin ? (
-          <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.08] p-3">
-            <code className="font-mono text-xs text-amber-400">admin</code>
-            <p className="mt-1.5 text-xs text-text-dimmed">
-              A single scope that grants everything below, including anything added to the API
-              later.
-            </p>
-          </div>
-        ) : null}
+          {detail.admin ? (
+            <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.08] p-3">
+              <code className="font-mono text-xs text-amber-400">admin</code>
+              <p className="mt-1.5 text-xs text-text-dimmed">
+                A single scope that grants everything below, including anything added to the API
+                later.
+              </p>
+            </div>
+          ) : null}
 
-        <ul className="flex flex-col">
-          {SCOPE_CAPABILITIES.map(([key, label]) => {
-            const cap = detail.admin ? undefined : detail.caps[key];
-            const level = detail.admin ? 4 : cap ? cap[0] : 0;
-            const rawScopes = cap?.[1];
-            const tone: ScopeTone = SCOPE_LEVEL_TONES[level] ?? "none";
-            const rows = rawScopes?.flatMap((raw) => expandScopeString(raw, scoped, selectedTasks));
+          <ul className="flex flex-col">
+            {SCOPE_CAPABILITIES.map(([key, label]) => {
+              const cap = detail.admin ? undefined : detail.caps[key];
+              const level = detail.admin ? 4 : cap ? cap[0] : 0;
+              const rawScopes = cap?.[1];
+              const tone: ScopeTone = SCOPE_LEVEL_TONES[level] ?? "none";
+              const rows = rawScopes?.flatMap((raw) =>
+                expandScopeString(raw, scoped, selectedTasks)
+              );
 
-            return (
-              <li key={key} className="border-t border-grid-dimmed py-2.5 first:border-t-0">
-                <div className="flex items-baseline gap-2.5">
-                  <span
-                    className={cn(
-                      "mt-1.5 size-1.5 shrink-0 rounded-[2px]",
-                      tone === "read"
-                        ? "bg-blue-500"
-                        : tone === "write"
-                          ? "bg-amber-500"
-                          : "bg-charcoal-600"
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 text-sm",
-                      level === 0 ? "text-text-dimmed" : "text-text-bright"
-                    )}
-                  >
-                    {label}
-                  </span>
-                  <span className="whitespace-nowrap text-xs text-text-dimmed">
-                    {SCOPE_LEVEL_WORDS[level] ?? "No access"}
-                  </span>
-                </div>
-                {rows && rows.length > 0 ? (
-                  <div className="ml-4 mt-1 flex flex-col gap-0.5">
-                    {rows.map((row) => (
-                      <code
-                        key={row}
-                        className={cn(
-                          "break-all font-mono text-xxs leading-relaxed",
-                          row.startsWith("…")
-                            ? "text-text-dimmed"
-                            : tone === "read"
-                              ? "text-blue-400/80"
-                              : "text-amber-400/80"
-                        )}
-                      >
-                        {row}
-                      </code>
-                    ))}
+              return (
+                <li key={key} className="border-t border-grid-dimmed py-2.5 first:border-t-0">
+                  <div className="flex items-baseline gap-2.5">
+                    <span
+                      className={cn(
+                        "mt-1.5 size-1.5 shrink-0 rounded-[2px]",
+                        tone === "read"
+                          ? "bg-blue-500"
+                          : tone === "write"
+                            ? "bg-amber-500"
+                            : "bg-charcoal-600"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 text-sm",
+                        level === 0 ? "text-text-dimmed" : "text-text-bright"
+                      )}
+                    >
+                      {label}
+                    </span>
+                    <span className="whitespace-nowrap text-xs text-text-dimmed">
+                      {SCOPE_LEVEL_WORDS[level] ?? "No access"}
+                    </span>
                   </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                  {rows && rows.length > 0 ? (
+                    <div className="ml-4 mt-1 flex flex-col gap-0.5">
+                      {rows.map((row) => (
+                        <code
+                          key={row}
+                          className={cn(
+                            "break-all font-mono text-xxs leading-relaxed",
+                            row.startsWith("…")
+                              ? "text-text-dimmed"
+                              : tone === "read"
+                                ? "text-blue-400/80"
+                                : "text-amber-400/80"
+                          )}
+                        >
+                          {row}
+                        </code>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <ApiKeyScopeUpgradeCta show={showUpgradeCta} />
       </div>
