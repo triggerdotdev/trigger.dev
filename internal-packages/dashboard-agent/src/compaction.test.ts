@@ -166,14 +166,40 @@ describe("the state a summary may not swallow", () => {
         outcome: "in_progress",
         revision: 0,
       }),
-      investigationMessage({ id: "inv_1", title: "first pass", outcome: "concluded", revision: 3 }),
+      investigationMessage({
+        id: "inv_1",
+        title: "first pass",
+        outcome: "in_progress",
+        revision: 3,
+      }),
     ]);
     expect(state.investigations).toEqual([
-      { id: "inv_1", title: "first pass", outcome: "concluded", revision: 3 },
+      { id: "inv_1", title: "first pass", outcome: "in_progress", revision: 3 },
     ]);
   });
 
-  it("keeps an active watch's confirmation and its result", () => {
+  it("stops pinning a card once it has settled", () => {
+    const settled = [
+      investigationMessage({
+        id: "inv_1",
+        title: "first pass",
+        outcome: "in_progress",
+        revision: 0,
+      }),
+      investigationMessage({ id: "inv_1", title: "first pass", outcome: "concluded", revision: 3 }),
+    ];
+    expect(collectDurableState(settled).investigations).toEqual([]);
+    expect(describeDurableState(settled)).toBeUndefined();
+
+    // …and only that card: one still running alongside it stays pinned.
+    const mixed = [
+      ...settled,
+      investigationMessage({ id: "inv_2", title: "second pass", outcome: "in_progress" }),
+    ];
+    expect(collectDurableState(mixed).investigations.map((i) => i.id)).toEqual(["inv_2"]);
+  });
+
+  it("pins no watch, live or otherwise — a watch's lifecycle is server-side", () => {
     const note = describeDurableState([
       watchConfirmationMessage({
         watchId: "watch_9",
@@ -182,39 +208,7 @@ describe("the state a summary may not swallow", () => {
       }),
       wakeMessage("watch_9:fired", "orders queue drained — 0 pending after 42 minutes."),
     ]);
-
-    expect(note).toContain("watch_9");
-    expect(note).toContain("Watching orders queue until it drains.");
-    expect(note).toContain("It reports once, then stops.");
-    expect(note).toContain("0 pending after 42 minutes");
-  });
-
-  it("pins nothing for a one-shot result, which started no watch", () => {
-    const state = collectDurableState([
-      {
-        id: "watch-card:queue:orders",
-        role: "assistant",
-        parts: [
-          {
-            type: "data-view",
-            data: {
-              blocks: [
-                {
-                  type: "watch_result",
-                  id: "watch:orders",
-                  revision: 0,
-                  version: 1,
-                  outcome: "already_true",
-                  watchId: null,
-                  headline: "That already happened, so there's nothing left to watch.",
-                },
-              ],
-            },
-          } as never,
-        ],
-      },
-    ]);
-    expect(state.watches).toEqual([]);
+    expect(note).toBeUndefined();
     expect(describeDurableState([])).toBeUndefined();
   });
 
@@ -314,18 +308,21 @@ describe("the summariser's input", () => {
 });
 
 /** Records what each model call was actually given, and summarises predictably. */
-function capturingModel(prompts: string[]) {
+function capturingModel(prompts: string[], summarized: string[] = []) {
   return new MockLanguageModelV3({
     doStream: async (options) => {
       prompts.push(JSON.stringify(options.prompt));
       return { stream: simulateReadableStream({ chunks: textStep("answered") }) };
     },
-    doGenerate: async () => ({
-      content: [{ type: "text" as const, text: "SUMMARY-OF-THE-CHAT" }],
-      finishReason: { unified: "stop", raw: "stop" } as const,
-      usage: USAGE,
-      warnings: [],
-    }),
+    doGenerate: async (options) => {
+      summarized.push(JSON.stringify(options.prompt));
+      return {
+        content: [{ type: "text" as const, text: "SUMMARY-OF-THE-CHAT" }],
+        finishReason: { unified: "stop", raw: "stop" } as const,
+        usage: USAGE,
+        warnings: [],
+      };
+    },
   });
 }
 
@@ -340,7 +337,12 @@ describe("dashboardAgent compaction (mock harness)", () => {
   /** An oversized prior conversation, replayed from the boot snapshot. */
   const FILLER = "the queue was busy. ".repeat(20_000);
 
-  function runOverBudget(args: { chatId: string; seeded: UIMessage[]; prompts: string[] }) {
+  function runOverBudget(args: {
+    chatId: string;
+    seeded: UIMessage[];
+    prompts: string[];
+    summarized?: string[];
+  }) {
     const { store } = fakeStore();
     return mockChatAgent(dashboardAgent, {
       chatId: args.chatId,
@@ -357,7 +359,7 @@ describe("dashboardAgent compaction (mock harness)", () => {
       },
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, capturingModel(args.prompts));
+        set(dashboardAgentModelKey, capturingModel(args.prompts, args.summarized));
       },
     });
   }
@@ -391,11 +393,13 @@ describe("dashboardAgent compaction (mock harness)", () => {
     expect(prompts.at(-1)!).toContain("never open a second card");
   });
 
-  it("keeps a live watch and the wake it already delivered", async () => {
+  it("hands a watch to the summariser instead of pinning it as live", async () => {
     const prompts: string[] = [];
+    const summarized: string[] = [];
     harness = runOverBudget({
       chatId: "chat_compaction_watch",
       prompts,
+      summarized,
       seeded: [
         userMessage("tell me when the orders queue drains", "u0"),
         watchConfirmationMessage({
@@ -412,8 +416,11 @@ describe("dashboardAgent compaction (mock harness)", () => {
 
     const after = prompts.at(-1)!;
     expect(after.length).toBeLessThan(FILLER.length);
-    expect(after).toContain("watch_9");
-    expect(after).toContain("It reports once, then stops.");
-    expect(after).toContain("0 pending after 42 minutes");
+    expect(after).toContain("SUMMARY-OF-THE-CHAT");
+    // The watch is the summary's job. Pinning the old confirmation would state a watch
+    // is running when it may have fired, expired or been cancelled since.
+    expect(after).not.toContain("It reports once, then stops.");
+    // But the summariser did see what the watch reported.
+    expect(summarized.join("\n")).toContain("0 pending after 42 minutes");
   });
 });

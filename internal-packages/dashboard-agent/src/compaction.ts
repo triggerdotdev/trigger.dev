@@ -9,10 +9,13 @@ import { dashboardAgentModelKey, registry, sanitizeReplayedToolInputs } from "./
  *
  * A chat re-sends its whole history on every call, so an old chat pays for a tail
  * that grows forever and eventually stops fitting. Above the budget below the older
- * part becomes a summary — but an active investigation and an active watch are
- * pinned back deterministically, read off the UI transcript rather than trusted to
- * the summary. If the model loses an `investigationId` it opens a SECOND card for
- * the same question, which is the failure this module exists to prevent.
+ * part becomes a summary — but an investigation still in progress is pinned back
+ * deterministically, read off the UI transcript rather than trusted to the summary.
+ * If the model loses an `investigationId` it opens a SECOND card for the same
+ * question, which is the failure this module exists to prevent.
+ *
+ * Nothing else is pinned. Finished work and watches are the summary's job: a pin has
+ * to be exact, and only a live card is both exact and needed verbatim.
  */
 
 /**
@@ -43,9 +46,6 @@ export const COMPACTION_KEPT_TAIL_CHARS = 40_000;
 
 /** Per message, when the transcript is rendered for the summariser. */
 const SUMMARY_INPUT_MESSAGE_CHARS = 2_000;
-
-/** Of a pinned wake, in the state note: enough to know what it said. */
-const PINNED_WAKE_CHARS = 240;
 
 /** The summariser: cheap, bounded, and told exactly what it may not drop. */
 const SUMMARY_MODEL = "anthropic:claude-haiku-4-5" as const;
@@ -113,13 +113,6 @@ function viewBlocks(message: UIMessage): unknown[] {
   );
 }
 
-function messageText(message: UIMessage): string {
-  return (message.parts ?? [])
-    .flatMap((part) => (part.type === "text" ? [(part as { text: string }).text] : []))
-    .join(" ")
-    .trim();
-}
-
 export type PinnedInvestigation = {
   id: string;
   title: string;
@@ -127,23 +120,26 @@ export type PinnedInvestigation = {
   revision?: number;
 };
 
-export type PinnedWatch = { watchId: string; headline: string; lifetime?: string };
-
 export type DurableState = {
   investigations: PinnedInvestigation[];
-  watches: PinnedWatch[];
-  /** Wakes already delivered, as the transcript said them. */
-  wakes: string[];
 };
 
 /**
  * The state read off the UI transcript, which compaction never touches. Keyed by id,
  * so the freshest revision of a card wins and one card stays one card.
+ *
+ * Only an `in_progress` card is state: a concluded or inconclusive one is finished
+ * work the summary already covers, and pinning it would grow the note forever and
+ * invite the model to keep revising a card that closed long ago.
+ *
+ * Watches are deliberately not read from here. A watch's lifecycle is server-side —
+ * it can fire, expire, or be cancelled with nothing written back into the transcript
+ * — so an old confirmation block cannot tell us whether it is still running. There is
+ * no watch state on the store either, and nothing about a watch depends on the model
+ * remembering it, so the summary is where a watch belongs.
  */
 export function collectDurableState(uiMessages: UIMessage[]): DurableState {
   const investigations = new Map<string, PinnedInvestigation>();
-  const watches = new Map<string, PinnedWatch>();
-  const wakes: string[] = [];
 
   for (const message of uiMessages) {
     for (const block of viewBlocks(message)) {
@@ -152,46 +148,30 @@ export function collectDurableState(uiMessages: UIMessage[]): DurableState {
         id?: string;
         revision?: number;
         investigation?: { title?: string; outcome?: string };
-        watchId?: string | null;
-        headline?: string;
-        lifetime?: string | null;
       };
-      if (typed.type === "investigation" && typeof typed.id === "string") {
-        investigations.set(typed.id, {
-          id: typed.id,
-          title: typed.investigation?.title ?? "",
-          outcome: typed.investigation?.outcome ?? "in_progress",
-          revision: typed.revision,
-        });
-      }
-      // A one-shot result carries no watchId: nothing is running, so nothing to pin.
-      if (typed.type === "watch_result" && typeof typed.watchId === "string") {
-        watches.set(typed.watchId, {
-          watchId: typed.watchId,
-          headline: typed.headline ?? "",
-          ...(typed.lifetime ? { lifetime: typed.lifetime } : {}),
-        });
-      }
-    }
+      if (typed.type !== "investigation" || typeof typed.id !== "string") continue;
 
-    // The wake's id is `wake:{actionId}` — the one place a watch's result enters the
-    // transcript as prose rather than as a block.
-    if (message.id?.startsWith("wake:")) {
-      const text = messageText(message);
-      if (text) wakes.push(text.slice(0, PINNED_WAKE_CHARS));
+      const outcome = typed.investigation?.outcome ?? "in_progress";
+      // A later revision that settles the card removes the pin the earlier one added.
+      if (outcome !== "in_progress") {
+        investigations.delete(typed.id);
+        continue;
+      }
+      investigations.set(typed.id, {
+        id: typed.id,
+        title: typed.investigation?.title ?? "",
+        outcome,
+        revision: typed.revision,
+      });
     }
   }
 
-  return {
-    investigations: [...investigations.values()],
-    watches: [...watches.values()],
-    wakes,
-  };
+  return { investigations: [...investigations.values()] };
 }
 
 /**
  * The state note that rides with every summary. Written as instructions rather than
- * notes for the investigation line: the id is the thing the model has to hand back.
+ * notes: the id is the thing the model has to hand back.
  */
 export function describeDurableState(uiMessages: UIMessage[]): string | undefined {
   const state = collectDurableState(uiMessages);
@@ -203,14 +183,6 @@ export function describeDurableState(uiMessages: UIMessage[]): string | undefine
     lines.push(
       `Investigation ${investigation.id}${revision} — "${investigation.title}", currently ${investigation.outcome}. To revise this card pass investigationId "${investigation.id}" to render_view; never open a second card for it.`
     );
-  }
-  for (const watch of state.watches) {
-    lines.push(
-      `Watch ${watch.watchId} — ${watch.headline}${watch.lifetime ? ` ${watch.lifetime}` : ""}`
-    );
-  }
-  for (const wake of state.wakes) {
-    lines.push(`A watch has already reported, in your own words: ${wake}`);
   }
 
   if (lines.length === 0) return undefined;
