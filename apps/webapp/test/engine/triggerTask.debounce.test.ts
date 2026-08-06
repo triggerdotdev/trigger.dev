@@ -459,4 +459,97 @@ describe("RunEngineTriggerTaskService", () => {
     expect(result).toBeDefined();
     expect(result?.run.friendlyId).toBeDefined();
   });
+
+  containerTest(
+    "should reject a debounce window that leaves no room to extend the run",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      onTestFinished(() => engine.quit());
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const queuesManager = new DefaultQueueManager(prisma, engine);
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern()
+      );
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+        maximumDebounceDurationMs: 24 * 60 * 60 * 1000,
+      });
+
+      const triggerWithDebounce = (debounce: { key: string; delay: string; maxDelay?: string }) =>
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { test: "test" }, options: { debounce } },
+        });
+
+      await expect(triggerWithDebounce({ key: "at-the-ceiling", delay: "24h" })).rejects.toThrow(
+        /at or above the maximum debounce duration/
+      );
+
+      await expect(triggerWithDebounce({ key: "above-the-ceiling", delay: "48h" })).rejects.toThrow(
+        /at or above the maximum debounce duration/
+      );
+
+      await expect(
+        triggerWithDebounce({ key: "delay-equals-max", delay: "12h", maxDelay: "12h" })
+      ).rejects.toThrow(/must be shorter than debounce.maxDelay/);
+
+      await expect(
+        triggerWithDebounce({ key: "date-not-duration", delay: "2027-01-01T00:00:00.000Z" })
+      ).rejects.toThrow(/must be a duration, not a date/);
+
+      const belowCeiling = await triggerWithDebounce({ key: "below-the-ceiling", delay: "12h" });
+      expect(belowCeiling?.run.friendlyId).toBeDefined();
+
+      const raisedCeiling = await triggerWithDebounce({
+        key: "raised-ceiling",
+        delay: "36h",
+        maxDelay: "72h",
+      });
+      expect(raisedCeiling?.run.friendlyId).toBeDefined();
+    }
+  );
 });

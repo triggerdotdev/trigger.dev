@@ -7,6 +7,7 @@ import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type TriggerTaskRequestBody,
+  formatDurationMilliseconds,
   RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -14,6 +15,7 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
+  parseNaturalLanguageDurationInMs,
   parseTraceparent,
   RunId,
   serializeTraceparent,
@@ -89,6 +91,7 @@ export class RunEngineTriggerTaskService {
   private readonly traceEventConcern: TraceEventConcern;
   private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
+  private readonly maximumDebounceDurationMs: number;
   // Mollifier hooks are DI'd so tests can drive the call-site's mollify branch
   // deterministically (stub the gate to return mollify, inject a real or fake
   // buffer, force the global-enabled predicate to true so the call site
@@ -108,6 +111,7 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    maximumDebounceDurationMs?: number;
     triggerRacepointSystem?: TriggerRacepointSystem;
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
@@ -122,11 +126,73 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.maximumDebounceDurationMs =
+      opts.maximumDebounceDurationMs ?? env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS;
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
     this.evaluateGate = opts.evaluateGate ?? defaultEvaluateGate;
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
     this.isMollifierGloballyEnabled =
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
+  }
+
+  /**
+   * Rejects debounce settings that can never debounce anything.
+   *
+   * A trigger extends an existing debounced run by moving its `delayUntil` to `now + delay`,
+   * and that is only allowed while the new time stays inside `createdAt + ceiling`, where the
+   * ceiling is the trigger's own `maxDelay` or the server default. So a `delay` at or above the
+   * ceiling means the very first extension is already out of bounds: every trigger starts its
+   * own run and the debounce key does nothing. The usable window for extensions is
+   * `ceiling - delay`.
+   */
+  #validateDebounceWindow(
+    debounce: NonNullable<NonNullable<TriggerTaskRequestBody["options"]>["debounce"]>
+  ) {
+    const delayMs = parseNaturalLanguageDurationInMs(debounce.delay);
+
+    if (delayMs === undefined) {
+      throw new ServiceValidationError(
+        `Invalid debounce delay: ${debounce.delay}. ` +
+          `debounce.delay must be a duration, not a date. ` +
+          `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+      );
+    }
+
+    const maxDelayMs = debounce.maxDelay
+      ? parseNaturalLanguageDurationInMs(debounce.maxDelay)
+      : undefined;
+
+    if (debounce.maxDelay && maxDelayMs === undefined) {
+      throw new ServiceValidationError(
+        `Invalid debounce maxDelay: ${debounce.maxDelay}. ` +
+          `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+      );
+    }
+
+    const ceilingMs = maxDelayMs ?? this.maximumDebounceDurationMs;
+
+    if (delayMs < ceilingMs) {
+      return;
+    }
+
+    const delayText = formatDurationMilliseconds(delayMs, { style: "short" });
+    const ceilingText = formatDurationMilliseconds(ceilingMs, { style: "short" });
+
+    if (maxDelayMs !== undefined) {
+      throw new ServiceValidationError(
+        `debounce.delay (${delayText}) must be shorter than debounce.maxDelay (${ceilingText}). ` +
+          `A debounced run can only be extended while it is inside the maxDelay window, so with ` +
+          `these values every trigger would create its own run. Raise maxDelay above the delay ` +
+          `to give yourself an extension window of maxDelay minus delay.`
+      );
+    }
+
+    throw new ServiceValidationError(
+      `debounce.delay (${delayText}) is at or above the maximum debounce duration of ${ceilingText}. ` +
+        `A debounced run can only be extended while it is inside that window, so with this delay ` +
+        `every trigger would create its own run. Either shorten the delay, or set ` +
+        `debounce.maxDelay above ${delayText} to raise the ceiling for this trigger.`
+    );
   }
 
   // Mint a new run's friendlyId. The id-kind decides which store the run is born
@@ -274,6 +340,8 @@ export class RunEngineTriggerTaskService {
                   `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
               );
             }
+
+            this.#validateDebounceWindow(body.options.debounce);
           }
 
           const parentRun = body.options?.parentRunId

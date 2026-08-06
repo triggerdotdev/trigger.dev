@@ -384,7 +384,7 @@ export class RunEngine {
       redis: options.debounce?.redis ?? options.runLock.redis,
       executionSnapshotSystem: this.executionSnapshotSystem,
       delayedRunSystem: this.delayedRunSystem,
-      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 24 * 60 * 60 * 1000,
       quantizeNewDelayUntilMs: options.debounce?.quantizeNewDelayUntilMs ?? 1000,
       fastPathSkipEnabled: options.debounce?.fastPathSkipEnabled ?? true,
       useReplicaForFastPathRead: options.debounce?.useReplicaForFastPathRead ?? false,
