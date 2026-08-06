@@ -47,6 +47,24 @@ import { workerRegionRegistry } from "./v3/workerRegions.server";
 
 const ABORT_DELAY = 30000;
 
+/**
+ * Where a document may load images from. The agent's markdown renders no images at
+ * all (`components/dashboard-agent/model-markdown.ts`); this is the backstop, so a
+ * model-authored image that ever slips through still can't reach a remote host.
+ *
+ * The two remote hosts are the OAuth providers whose avatar URLs we store. A
+ * self-hosted SSO provider serving avatars from its own host has to be added here.
+ */
+const IMG_SRC_DIRECTIVE =
+  "img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.googleusercontent.com";
+
+/** Appends to whatever a route already set, rather than replacing it. */
+function withImgSrc(existing: string | null): string {
+  if (!existing) return IMG_SRC_DIRECTIVE;
+  if (/(^|;)\s*img-src\s/.test(existing)) return existing;
+  return `${existing.replace(/;\s*$/, "")}; ${IMG_SRC_DIRECTIVE}`;
+}
+
 export default function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -65,6 +83,11 @@ export default function handleRequest(
     responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
   }
+
+  responseHeaders.set(
+    "Content-Security-Policy",
+    withImgSrc(responseHeaders.get("Content-Security-Policy"))
+  );
 
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {

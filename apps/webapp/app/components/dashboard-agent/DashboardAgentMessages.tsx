@@ -18,6 +18,7 @@ import {
   ChatTurn,
   ChatWakeSlot,
 } from "./chat-layout";
+import { stripModelImages } from "./model-markdown";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
@@ -138,7 +139,10 @@ function renderDashboardPart(
   const type = part.type as string;
 
   if (type === "text") {
-    return p.text ? <ChatText key={i} text={resolveTriggerLinks(p.text, resolveUri)} /> : null;
+    // Images last: the link resolver's output is model-supplied too.
+    return p.text ? (
+      <ChatText key={i} text={stripModelImages(resolveTriggerLinks(p.text, resolveUri))} />
+    ) : null;
   }
 
   if (type.startsWith("tool-")) {
