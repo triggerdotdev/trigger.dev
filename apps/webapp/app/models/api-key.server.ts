@@ -1,8 +1,4 @@
 import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
-// HostRbacController, not RoleBaseAccessController: the policy methods are
-// optional on the plugin-facing contract, and `rbac` (LazyController) has
-// already substituted the fail-closed defaults for any an installed plugin
-// omits. Depending on the host surface keeps this call site guard-free.
 import type { HostRbacController } from "@trigger.dev/rbac";
 import { trail } from "agentcrumbs"; // @crumbs
 import { customAlphabet } from "nanoid";
@@ -122,9 +118,6 @@ export async function createEnvironmentApiKey(
     userId: string;
     name: string;
     expiresAt?: Date;
-    // Required, and passed straight through to `prepareApiKeyPolicy` — callers
-    // name the access level rather than leaning on a default that would grant
-    // full access. Installs with no preset catalogue pass FULL_ACCESS_PRESET_ID.
     presetId: string;
     taskIdentifiers?: string[];
   },

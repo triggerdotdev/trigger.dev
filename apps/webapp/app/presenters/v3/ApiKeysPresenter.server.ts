@@ -1,8 +1,4 @@
 import { type RuntimeEnvironment } from "@trigger.dev/database";
-// HostRbacController, not RoleBaseAccessController: the policy methods are
-// optional on the plugin-facing contract, and `rbac` (LazyController) has
-// already substituted the fail-closed defaults for any an installed plugin
-// omits. Depending on the host surface keeps these call sites guard-free.
 import { scopesGrantFullAccess, type HostRbacController } from "@trigger.dev/rbac";
 import { type PrismaReplicaClient, $replica } from "~/db.server";
 import { type Project } from "~/models/project.server";
