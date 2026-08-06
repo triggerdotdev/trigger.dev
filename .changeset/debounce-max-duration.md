@@ -6,6 +6,8 @@ Debouncing with a `delay` longer than an hour now works. A hidden server-side li
 
 That limit is gone. A debounce key with no `maxDelay` now keeps pushing its run back for as long as triggers keep arriving, which means it never executes while they do. Set `maxDelay` when the work has to happen eventually, and keep `delay` well below it, since the room available to push is the gap between the two.
 
+Triggers that set a `maxDelay` no longer than their `delay` are now rejected, as are unparseable `maxDelay` values. Both previously went through and left debouncing doing nothing.
+
 ```ts
 await myTask.trigger(payload, {
   debounce: {

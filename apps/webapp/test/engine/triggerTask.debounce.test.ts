@@ -536,6 +536,17 @@ describe("RunEngineTriggerTaskService", () => {
         triggerWithDebounce({ key: "unparseable", delay: "10s", maxDelay: "soon" })
       ).rejects.toThrow(/Invalid debounce maxDelay/);
 
+      await expect(
+        triggerWithDebounce({ key: "empty", delay: "10s", maxDelay: "" })
+      ).rejects.toThrow(/Invalid debounce maxDelay/);
+
+      const compound = await triggerWithDebounce({
+        key: "compound",
+        delay: "2h30m",
+        maxDelay: "1d",
+      });
+      expect(compound?.run.friendlyId).toBeDefined();
+
       const withRoom = await triggerWithDebounce({
         key: "with-room",
         delay: "10s",

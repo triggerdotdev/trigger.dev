@@ -971,11 +971,14 @@ export type TriggerOptions = {
      * the new execution time stays inside `maxDelay`, so a `delay` at or above `maxDelay` leaves
      * no room to push and every trigger creates its own run.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks). Must be a duration, not a date. Minimum delay is
-     * 1 second.
+     * Must be a duration, not a date: the value is re-applied every time the run is pushed
+     * back, so an absolute date cannot work and debouncing silently stops collapsing.
      *
-     * @example "1s", "5s", "1m", "30m", "1h"
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
+     * Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h", "2h30m"
      */
     delay: string;
     /**
@@ -1001,10 +1004,10 @@ export type TriggerOptions = {
      * `maxDelay` of `"5m"` keeps extending for just under 5 minutes from the first trigger,
      * then runs.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks).
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
      *
-     * @example "30m", "2h", "1d"
+     * @example "30m", "2h", "1d", "2h30m"
      */
     maxDelay?: string;
   };

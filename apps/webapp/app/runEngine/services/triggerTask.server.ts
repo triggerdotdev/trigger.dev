@@ -140,7 +140,7 @@ export class RunEngineTriggerTaskService {
   #validateDebounceMaxDelay(
     debounce: NonNullable<NonNullable<TriggerTaskRequestBody["options"]>["debounce"]>
   ) {
-    if (!debounce.maxDelay) {
+    if (debounce.maxDelay === undefined) {
       return;
     }
 
@@ -149,7 +149,8 @@ export class RunEngineTriggerTaskService {
     if (maxDelayMs === undefined) {
       throw new ServiceValidationError(
         `Invalid debounce maxDelay: ${debounce.maxDelay}. ` +
-          `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+          `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, {number}w, ` +
+          `optionally combined (for example "2h30m").`
       );
     }
 
@@ -306,7 +307,8 @@ export class RunEngineTriggerTaskService {
             if (debounceDelayError || !debounceDelayUntil) {
               throw new ServiceValidationError(
                 `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-                  `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+                  `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, ` +
+                  `{number}w, optionally combined (for example "2h30m").`
               );
             }
 

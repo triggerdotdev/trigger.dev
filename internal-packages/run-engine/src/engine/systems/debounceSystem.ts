@@ -579,7 +579,7 @@ return 0
    * which is itself unset by default. An unparseable `maxDelay` falls back to the ceiling.
    */
   #resolveMaxDurationMs(debounce: DebounceOptions): number | undefined {
-    if (!debounce.maxDelay) {
+    if (debounce.maxDelay === undefined) {
       return this.maxDebounceDurationMs;
     }
 
