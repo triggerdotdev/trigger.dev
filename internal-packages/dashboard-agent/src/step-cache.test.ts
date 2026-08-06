@@ -26,6 +26,17 @@ function turnHistory(): Message {
   };
 }
 
+function stepBreakpointWith(otherAnthropicOptions: Record<string, unknown>): Message {
+  return {
+    role: "tool",
+    content: "ok",
+    providerOptions: {
+      anthropic: { cacheControl: STEP_CACHE_CONTROL, ...otherAnthropicOptions },
+      openai: { store: false },
+    },
+  };
+}
+
 function ttlOf(message: Message | undefined): unknown {
   return (message?.providerOptions?.anthropic as { cacheControl?: { ttl?: unknown } } | undefined)
     ?.cacheControl?.ttl;
@@ -71,6 +82,28 @@ describe("the step cache breakpoint", () => {
     ]);
 
     expect(compacted.filter((message) => ttlOf(message) === "5m")).toHaveLength(0);
+  });
+
+  it("keeps the other anthropic options when it rolls the breakpoint off", () => {
+    const marked = markStepCacheBreakpoint([
+      stepBreakpointWith({ anotherOption: "keep" }),
+      toolResult(MIN_STEP_CACHE_CHARS),
+    ]);
+
+    expect(marked[0]!.providerOptions).toEqual({
+      anthropic: { anotherOption: "keep" },
+      openai: { store: false },
+    });
+    expect(ttlOf(marked.at(-1))).toBe("5m");
+  });
+
+  it("leaves no empty anthropic object behind", () => {
+    const marked = markStepCacheBreakpoint([
+      stepBreakpointWith({}),
+      toolResult(MIN_STEP_CACHE_CHARS),
+    ]);
+
+    expect(marked[0]!.providerOptions).toEqual({ openai: { store: false } });
   });
 
   it("does nothing to an empty step", () => {

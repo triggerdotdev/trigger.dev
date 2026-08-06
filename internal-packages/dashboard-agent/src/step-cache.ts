@@ -32,8 +32,12 @@ function cacheControlTtl(message: MaybeCached): string | undefined {
 
 function withoutStepBreakpoint<T extends MaybeCached>(message: T): T {
   if (cacheControlTtl(message) !== STEP_CACHE_CONTROL.ttl) return message;
-  const { anthropic: _dropped, ...rest } = message.providerOptions as Record<string, unknown>;
-  return { ...message, providerOptions: rest };
+  const { anthropic, ...rest } = message.providerOptions as Record<string, unknown>;
+  const { cacheControl: _dropped, ...anthropicRest } = anthropic as Record<string, unknown>;
+  // An empty `anthropic` is not the same as no Anthropic options, so drop the key.
+  const providerOptions =
+    Object.keys(anthropicRest).length > 0 ? { ...rest, anthropic: anthropicRest } : rest;
+  return { ...message, providerOptions };
 }
 
 // Only ever one step breakpoint at a time: Anthropic allows four in total, and the
