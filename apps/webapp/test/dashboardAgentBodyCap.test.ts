@@ -18,7 +18,7 @@ async function listen(): Promise<{ url: string; buffered: () => number }> {
   let buffered = 0;
   const app = express();
   app.use(dashboardAgentBodyCap);
-  app.post("*", async (req, res) => {
+  app.all("*", async (req, res) => {
     try {
       for await (const chunk of req) buffered += (chunk as Buffer).byteLength;
     } catch {
@@ -112,6 +112,28 @@ describe("the dashboard agent's ingress cap", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ bytes: size });
+  });
+
+  it("caps a mixed-case path, because Remix matches routes case-insensitively", async () => {
+    const { url } = await listen();
+
+    const response = await postChunked(
+      `${url}/api/v1/Dashboard-Agent/watches/batch-check`,
+      DASHBOARD_AGENT_MAX_INGRESS_BYTES * 4
+    );
+
+    expect(response.status).toBe(413);
+  });
+
+  it("caps a DELETE, which reads a body on the alerts route", async () => {
+    const { url } = await listen();
+
+    const response = await fetch(`${url}/api/v1/dashboard-agent/alerts/ch_1`, {
+      method: "DELETE",
+      body: "x".repeat(DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024),
+    });
+
+    expect(response.status).toBe(413);
   });
 
   it("leaves every other path alone", async () => {

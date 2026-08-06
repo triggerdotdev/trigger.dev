@@ -18,6 +18,9 @@ export const DASHBOARD_AGENT_MAX_INGRESS_BYTES = MAX_MESSAGE_BODY_BYTES + INGRES
 
 const AGENT_PATH = /\/dashboard-agent(\/|$)/;
 
+/** Methods that can carry one. GET and HEAD cannot, and streaming them would be wasted work. */
+const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 function refuse(res: Response): void {
   if (res.headersSent) return;
   res.status(413).json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE });
@@ -51,9 +54,12 @@ export function capRequestBody(req: Request, res: Response, limit: number): void
   req.once("end", () => req.off("data", onData));
 }
 
-/** Only the agent's own paths: every other route keeps the body handling it had. */
+/**
+ * Only the agent's own paths: every other route keeps the body handling it had. Matched
+ * case-insensitively because Remix routes are, and on every method — a DELETE reads a body too.
+ */
 export function dashboardAgentBodyCap(req: Request, res: Response, next: NextFunction): void {
-  if (req.method !== "POST" || !AGENT_PATH.test(req.path)) {
+  if (!BODY_METHODS.has(req.method) || !AGENT_PATH.test(req.path.toLowerCase())) {
     next();
     return;
   }
