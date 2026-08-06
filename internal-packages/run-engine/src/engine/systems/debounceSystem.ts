@@ -576,7 +576,9 @@ return 0
   /**
    * How long after a run's `createdAt` triggers may keep pushing it back, or `undefined` for
    * no bound at all. A trigger's own `maxDelay` wins; otherwise the server ceiling applies,
-   * which is itself unset by default. An unparseable `maxDelay` falls back to the ceiling.
+   * which is itself unset by default. An unparseable `maxDelay` falls back to the ceiling, and
+   * so to no bound when no ceiling is configured. Callers that reach the engine through the
+   * trigger API never get that far, since an unparseable `maxDelay` is rejected there.
    */
   #resolveMaxDurationMs(debounce: DebounceOptions): number | undefined {
     if (debounce.maxDelay === undefined) {
@@ -586,10 +588,15 @@ return 0
     const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
 
     if (parsedMaxDelay === undefined) {
-      this.$.logger.warn("handleExistingRun: invalid maxDelay duration, using server ceiling", {
-        maxDelay: debounce.maxDelay,
-        fallbackMs: this.maxDebounceDurationMs,
-      });
+      this.$.logger.warn(
+        this.maxDebounceDurationMs === undefined
+          ? "handleExistingRun: invalid maxDelay duration and no server ceiling, the run can be pushed back indefinitely"
+          : "handleExistingRun: invalid maxDelay duration, using server ceiling",
+        {
+          maxDelay: debounce.maxDelay,
+          fallbackMs: this.maxDebounceDurationMs,
+        }
+      );
       return this.maxDebounceDurationMs;
     }
 
