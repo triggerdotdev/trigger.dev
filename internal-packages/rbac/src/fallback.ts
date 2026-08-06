@@ -22,9 +22,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 import { BearerCredentialResolver } from "./bearerCredentials.js";
 
-// What a user-actor token with no declared cap can do without a plugin. Reads
-// only: writes need a role the fallback can't resolve, and denying everything
-// would break the token's own JWT exchange (gated on `read:apiKeys`).
+// Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
 const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
 
 export type FallbackPrismaClients = {
@@ -218,9 +216,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         organizationId: context.organizationId ?? "",
         projectId: context.projectId,
       },
-      // A delegated token is a downgrade of the user, so it never gets the
-      // blanket ability a PAT gets here: its own cap, or read-only when it
-      // declares none (a capless token still has to reach the JWT exchange).
+      // A delegated token is a downgrade of the user: never the blanket ability a PAT gets here.
       ability: buildJwtAbility(claims.cap ?? CAPLESS_USER_ACTOR_SCOPES),
     };
   }

@@ -88,7 +88,6 @@ export type RbacSubject =
       userId: string;
       client?: string;
       // The environment the token was signed for, when it carries the claim.
-      // Carried on the subject so an authorization path can't lose it.
       environmentId?: string;
       organizationId: string;
       projectId?: string;
@@ -399,10 +398,8 @@ export type UserActorAuthResult =
   | {
       ok: true;
       userId: string;
-      // The verified claims, so the caller gets the token's environment scope
-      // with the identity instead of re-deriving it. Optional only because a
-      // plugin built against an older contract can't return it — a host that
-      // enforces the environment claim must fail closed on its absence.
+      // Optional only for plugins built against an older contract: a host enforcing the
+      // environment claim must fail closed when it is absent.
       claims?: UserActorClaims;
       subject: RbacSubject;
       ability: RbacAbility;
@@ -453,9 +450,8 @@ export interface RoleBaseAccessController {
   // user: floor = the user's role in the target org (rejects non-members,
   // like authenticatePat), cap = the token's optional scope cap.
   //
-  // No plugin installed → the fallback verifies the token and builds the
-  // ability from the token's own cap (read-only when it declares none). A
-  // delegated token never gets the blanket ability the fallback gives a PAT.
+  // No plugin installed → the fallback builds the ability from the token's own cap
+  // (read-only when it declares none), never the blanket ability it gives a PAT.
   authenticateUserActor(
     request: Request,
     context: { organizationId?: string; projectId?: string }
