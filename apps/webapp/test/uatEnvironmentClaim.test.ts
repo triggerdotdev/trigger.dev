@@ -116,10 +116,10 @@ const ENV_A = environment("env_aaaa", "prod", "PRODUCTION");
 const ENV_B = environment("env_bbbb", "stg", "STAGING");
 const ENVIRONMENTS = [ENV_A, ENV_B];
 
-function mintToken(opts: { environmentId?: string } = {}) {
+function mintToken(opts: { environmentId?: string; client?: string } = {}) {
   return signUserActorToken(SESSION_SECRET, {
     userId: USER_ID,
-    client: "dashboard-agent",
+    client: opts.client ?? "dashboard-agent",
     ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
     cap: ["read:apiKeys", "read:runs", "read:deployments"],
   });
@@ -251,8 +251,18 @@ describe("user-actor token environment scope", () => {
       expect(response.status).toBe(200);
     });
 
-    it("allows an environment-agnostic token (no claim)", async () => {
+    it("refuses an agent token that carries no environment claim", async () => {
+      // A mint that couldn't resolve an environment must not produce a token that passes
+      // every gate, so a claimless agent token is a bug rather than a flow.
       const token = await mintToken();
+
+      const response = await call(token, "staging");
+
+      expect(response.status).toBe(403);
+    });
+
+    it("allows an environment-agnostic token from another client", async () => {
+      const token = await mintToken({ client: "personal-access-token" });
 
       const response = await call(token, "staging");
 

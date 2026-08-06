@@ -9,6 +9,7 @@ import {
 } from "~/components/dashboard-agent/message-limits";
 import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
   dashboardAgentEnvironmentName,
@@ -69,12 +70,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const url = new URL(request.url);
   const upstreamUrl = `${apiOrigin.replace(/\/$/, "")}/${upstreamPath}${url.search}`;
 
-  // Resolve the dashboard env slug to the canonical API env name its tools use.
-  const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
-    where: { projectId: project.id, slug: envParam },
-    select: { id: true, type: true },
-  });
-  const environmentName = dashboardAgentEnvironmentName(runtimeEnv?.type);
+  // Membership-scoped: `(projectId, slug)` is not unique because every developer has their own
+  // dev row, and a token must never be minted for someone else's environment — or for none.
+  const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, user.id);
+  if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+  const environmentName = dashboardAgentEnvironmentName(runtimeEnv.type);
 
   // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
@@ -106,13 +106,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       parsed.payload.metadata = {
         ...(parsed.payload.metadata ?? {}),
         userActorToken: await mintDashboardAgentUserActorToken(user.id, {
-          environmentId: runtimeEnv?.id,
+          environmentId: runtimeEnv.id,
         }),
         apiOrigin,
         projectRef: project.externalRef,
+        // Server-owned: the browser sends these too, and the eval opt-out and every tenancy
+        // check key on them, so the client's copy must never win.
+        organizationId: project.organizationId,
+        userId: user.id,
         // `(projectId, slug)` isn't unique (dev is per-member), so anything addressing
         // one environment row uses this id. `environmentName` is for name-addressed tools.
-        environmentId: runtimeEnv?.id,
+        environmentId: runtimeEnv.id,
         environmentName,
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };

@@ -294,11 +294,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         ...(clientData ? { metadata: { context: clientData } } : {}),
       });
 
-      const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
-        where: { projectId: project.id, slug: envParam },
-        select: { id: true, type: true },
-      });
-      const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
+      // Membership-scoped: dev rows are per-developer, so a token must never be minted for
+      // someone else's environment — or, when nothing resolves, for no environment at all.
+      const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+      if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+      const environmentName = ENV_NAME_BY_TYPE[runtimeEnv.type];
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
       const headStarted = Boolean(env.ANTHROPIC_API_KEY);
@@ -313,12 +313,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             // per-turn clientData must accompany the injected auth and context fields.
             ...(clientData ?? {}),
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
-              environmentId: runtimeEnv?.id,
+              environmentId: runtimeEnv.id,
             }),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
+            // Server-owned, like the `in` proxy: the eval opt-out and every tenancy check
+            // key on these, so a client-sent copy must not win.
+            organizationId: project.organizationId,
+            userId,
             // Same environment identity the `in` proxy injects.
-            environmentId: runtimeEnv?.id,
+            environmentId: runtimeEnv.id,
             environmentName,
             ...(repoSnapshot ? { repoSnapshot } : {}),
           },
