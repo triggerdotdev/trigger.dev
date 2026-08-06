@@ -20,6 +20,7 @@ import {
   settlementCardMessages,
   clearOpenInvestigations,
   pendingInvestigationSettlements,
+  withCacheBreakpointOnLast,
   type DashboardAgentStore,
 } from "./agent-runtime";
 import { titlePrompt } from "./prompts";
@@ -314,6 +315,27 @@ export type {
   AgentPageSignal,
 } from "@internal/dashboard-agent-contracts";
 
+/**
+ * What the turn's model actually sees: replayed tool inputs the API would reject
+ * coerced back, the durable state pinned back on, and a cache breakpoint on the last
+ * message so the growing conversation prefix is read back cheaply.
+ *
+ * The between-steps compaction path rebuilds history as the summary alone and never
+ * reaches `compactModelMessages`, so the live investigation and watch state is pinned
+ * back here instead.
+ */
+export function prepareTurnMessages(args: {
+  messages: ModelMessage[];
+  reason: string;
+}): ModelMessage[] {
+  if (args.messages.length === 0) return args.messages;
+  return withCacheBreakpointOnLast(
+    sanitizeReplayedToolInputs(
+      args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+    )
+  );
+}
+
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
@@ -525,27 +547,7 @@ export const dashboardAgent = chat.agent({
   // conversation prefix is cached and read back cheaply. Composes with the
   // system-block breakpoint above. chat.agent keeps the Head Start handover's
   // tool-approval tail intact across this hook, so it is safe on a resume turn.
-  prepareMessages: ({ messages, reason }) => {
-    if (messages.length === 0) return messages;
-    // The between-steps compaction path rebuilds history as the summary alone and
-    // never reaches `compactModelMessages`, so the live investigation and watch state
-    // is pinned back here instead.
-    const sanitized = sanitizeReplayedToolInputs(
-      reason === "run" ? messages : withDurableState(messages, chat.history.all())
-    );
-
-    const last = sanitized[sanitized.length - 1];
-    return [
-      ...sanitized.slice(0, -1),
-      {
-        ...last,
-        providerOptions: {
-          ...last.providerOptions,
-          anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
-        },
-      },
-    ];
-  },
+  prepareMessages: ({ messages, reason }) => prepareTurnMessages({ messages, reason }),
 
   // System prompt and model come from the managed prompt set in onTurnStart, so
   // they are dashboard-editable. toStreamTextOptions() supplies the system text

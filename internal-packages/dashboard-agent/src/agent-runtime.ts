@@ -349,7 +349,9 @@ export function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessag
       ...last,
       providerOptions: {
         ...last.providerOptions,
-        anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
+        // Merged, not replaced: the breakpoint is one Anthropic option among any
+        // others the message already carries.
+        anthropic: { ...last.providerOptions?.anthropic, cacheControl: PROMPT_CACHE_CONTROL },
       },
     },
   ];
