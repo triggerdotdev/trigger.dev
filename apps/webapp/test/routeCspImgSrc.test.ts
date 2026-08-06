@@ -15,7 +15,14 @@ const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const CSP_HEADER_OWNER = "app/entry.server.tsx";
 
 /** Sources that resolve inside the document itself, so they carry nothing outward. */
-const LOCAL_SOURCES = new Set(["'self'", "'none'", "data:", "blob:", "filesystem:", "mediastream:"]);
+const LOCAL_SOURCES = new Set([
+  "'self'",
+  "'none'",
+  "data:",
+  "blob:",
+  "filesystem:",
+  "mediastream:",
+]);
 
 /**
  * Hosts that serve content any stranger can upload. Necessarily incomplete — the
@@ -68,7 +75,7 @@ function overBroadReason(source: string): string | undefined {
 }
 
 /** Every over-broad image source in a policy string, as `directive source: reason`. */
-export function overBroadImageSources(policy: string): string[] {
+function overBroadImageSources(policy: string): string[] {
   const findings: string[] = [];
 
   for (const segment of policy.split(";")) {
