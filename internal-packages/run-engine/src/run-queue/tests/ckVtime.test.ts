@@ -917,6 +917,147 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   );
 
   redisTest(
+    "a pass-1 window filled entirely with unservable variants degrades to age order, and recovers",
+    async ({ redisContainer }) => {
+      // The single-stalled case above is handled by the minServableTag route: a servable
+      // variant inside the window raises the floor over the stalled tag. That route needs
+      // pass 1 to serve something. With every window slot (actualMaxCount * multiplier,
+      // 3 here) held by unservable variants, pass 1 serves nothing, minServableTag stays
+      // nil, and the min-tag route is pinned by those same stalled tags, so the floor
+      // cannot move for as long as the block lasts.
+      //
+      // Two properties of that state are worth pinning down. It stays work-conserving:
+      // pass 2 keeps serving in age order, which is the flag-off behaviour, so a full
+      // block is a fairness degradation rather than a stall. And the recovery is bounded:
+      // a key arriving mid-freeze registers at the pinned floor, below the incumbent that
+      // pass 2 has been advancing, so it does lead once the block clears, but only by the
+      // virtual time the incumbent accrued during the freeze.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        // Names decide tie order at equal tags, and the point of the fixture is that the
+        // blockers hold every window slot: a0/a1/a2 sort below zbusy, so the window read
+        // returns only them.
+        const blockers = ["a0", "a1", "a2"];
+        for (const ck of blockers) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-${ck}-stalled`,
+              concurrencyKey: ck,
+              timestamp: Date.now() + 60 * 60 * 1000,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+        for (let i = 0; i < 80; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-busy-${i}`,
+              concurrencyKey: "zbusy",
+              timestamp: t0 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const busyVariant = variantName("zbusy");
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(busyVariant);
+        const floorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(busyVariant);
+
+        // maxCount 1 gives window = 3, exactly the three blockers.
+        const drainOne = async () => {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+          for (const m of messages) {
+            await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+          return messages.map((m) => m.message.concurrencyKey);
+        };
+
+        const FREEZE_CALLS = 8;
+        let busyServedDuringFreeze = 0;
+        for (let call = 0; call < FREEZE_CALLS; call++) {
+          busyServedDuringFreeze += (await drainOne()).filter((ck) => ck === "zbusy").length;
+        }
+
+        // Work conservation held: pass 2 served on every call while pass 1 served nothing.
+        expect(busyServedDuringFreeze).toBe(FREEZE_CALLS);
+
+        // Neither floor route could move, and the blockers still hold their initial tags.
+        expect(Number((await queue.redis.get(floorKey)) ?? "0")).toBe(0);
+        for (const ck of blockers) {
+          expect(Number(await queue.redis.zscore(ckVtimeKey, variantName(ck)))).toBe(0);
+        }
+
+        // Pass 2 advanced the incumbent's own tag even though it may not raise the floor,
+        // and that gap is the debt a mid-freeze arrival gets to spend.
+        const busyTagAfterFreeze = Number(await queue.redis.zscore(ckVtimeKey, busyVariant));
+        expect(busyTagAfterFreeze).toBe(FREEZE_CALLS);
+
+        for (let i = 0; i < 40; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-new-${i}`,
+              concurrencyKey: "zznew",
+              timestamp: t0 + 500 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // The arrival registers at the pinned floor, so it starts below the incumbent by
+        // exactly the freeze debt rather than level with it.
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("zznew")))).toBe(0);
+
+        // Unblock by giving each blocker ready work, which is what the elapsed-backoff
+        // case looks like from the script's side. Their tags are untouched (ZADD NX).
+        for (const ck of blockers) {
+          for (let i = 0; i < 40; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `r-${ck}-ready-${i}`,
+                concurrencyKey: ck,
+                timestamp: t0 + 200 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const servedAfter: Record<string, number> = {};
+        for (let call = 0; call < 60; call++) {
+          for (const ck of await drainOne()) {
+            servedAfter[ck] = (servedAfter[ck] ?? 0) + 1;
+          }
+        }
+
+        // The incumbent is not starved by the unblocked cohort: it is served again once
+        // they have spent their entitlement, well inside this many calls.
+        expect(servedAfter["zbusy"] ?? 0).toBeGreaterThan(0);
+
+        // And the mid-freeze arrival's lead over the incumbent is capped by the debt it
+        // registered against, not unbounded. Slack covers tie-order and the fair share
+        // both keys earn once the cohort has levelled.
+        const newcomerLead = (servedAfter["zznew"] ?? 0) - (servedAfter["zbusy"] ?? 0);
+        expect(newcomerLead).toBeLessThanOrEqual(FREEZE_CALLS + 3);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "enqueue registers the variant at the current floor with NX",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer);
@@ -1182,6 +1323,71 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "a ckVtime entry stranded by an ack is collected by the next scan",
+    async ({ redisContainer }) => {
+      // ckVtime is maintained by the enqueue, nack and dequeue scripts. Ack is not one of
+      // them: acknowledgeMessageCkTracked ZREMs the variant from ckIndex when the zset
+      // empties, has no vtime counterpart, and its caller does not branch on the flag, so
+      // acking a message that is still QUEUED (a cancellation) leaves a ckVtime entry with
+      // no ckIndex member. The TTL-expiry and dead-letter scripts strand one the same way.
+      // The membership test above records that this direction of the invariant is allowed
+      // to break; what it does not cover is the other half of the bargain, that a scan
+      // collects the orphan. It does, and promptly: a stranded tag stops advancing while
+      // live variants climb, so it sorts to the front of the window and is visited at no
+      // cost to the batch.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-ghost", concurrencyKey: "ghost", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        for (let i = 0; i < 10; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-live-${i}`,
+              concurrencyKey: "live",
+              timestamp: t0 + 100 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const ghostVariant = variantName("ghost");
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(ghostVariant);
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(ghostVariant);
+
+        expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).not.toBeNull();
+        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).not.toBeNull();
+
+        // Never dequeued, so this is the cancellation path rather than a normal completion.
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r-ghost", {
+          skipDequeueProcessing: true,
+        });
+
+        expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).toBeNull();
+        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).not.toBeNull();
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+
+        // ghost holds the lowest tag, so the very next scan visits and collects it, and the
+        // wasted candidate slot costs the batch nothing: the call still served real work.
+        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).toBeNull();
+        expect(messages.length).toBe(1);
+        expect(messages[0]!.message.concurrencyKey).toBe("live");
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest(
     "flag off creates no vtime keys and matches head-timestamp order",
