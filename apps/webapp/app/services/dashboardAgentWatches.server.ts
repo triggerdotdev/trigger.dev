@@ -765,7 +765,12 @@ export async function submitDashboardAgentWatch(params: {
 
   // Step two, before the watch can exist: a false here means the record is already there
   // from an earlier attempt, and a deleted chat is caught by the create below.
-  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, organizationId, message: request });
+  await appendChatMessageOnce(dashboardAgentDb, {
+    chatId,
+    userId,
+    organizationId,
+    message: request,
+  });
 
   let submission = claim.submission;
 

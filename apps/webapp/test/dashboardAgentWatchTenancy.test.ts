@@ -254,16 +254,8 @@ describe("the submission ledger's tenancy", () => {
       expect(inFirst.ok && inSecond.ok).toBe(true);
       if (!inFirst.ok || !inSecond.ok) return;
 
-      const firstChat = await messagesIn(
-        inFirst.chatId,
-        first.organization.id,
-        first.user.id
-      );
-      const secondChat = await messagesIn(
-        inSecond.chatId,
-        second.organization.id,
-        second.user.id
-      );
+      const firstChat = await messagesIn(inFirst.chatId, first.organization.id, first.user.id);
+      const secondChat = await messagesIn(inSecond.chatId, second.organization.id, second.user.id);
       expect(firstChat).toHaveLength(2);
       expect(secondChat).toHaveLength(2);
 
@@ -362,7 +354,8 @@ describe("the submission ledger's tenancy", () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const line = "I couldn't add email notifications, so updates will appear in the dashboard only.";
+      const line =
+        "I couldn't add email notifications, so updates will appear in the dashboard only.";
       expect(JSON.stringify(created.messages[1])).toContain(line);
 
       // Normalised on the row, so the replay says the same thing rather than guessing.
@@ -507,9 +500,9 @@ describe("the alert unsubscribe", () => {
         deleteRequest(theirs.id, "chat_caller")
       )) as Response;
       expect(refused.status).toBe(404);
-      expect(await prisma.projectAlertChannel.findFirst({ where: { id: theirs.id } })).toMatchObject(
-        { enabled: true, alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE] }
-      );
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: theirs.id } })
+      ).toMatchObject({ enabled: true, alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE] });
 
       // The caller's own channel still comes off.
       const removed = (await alertChannelAction(deleteRequest(own.id, "chat_caller"))) as Response;
