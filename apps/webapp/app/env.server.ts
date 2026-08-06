@@ -114,6 +114,12 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
+/** As {@link OptionalIntEnv}, but a value that is set must be greater than zero. */
+const OptionalPositiveIntEnv = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.coerce.number().int().positive().optional()
+);
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -1041,7 +1047,7 @@ const EnvironmentSchema = z
      * bound. Setting this applies a ceiling to every debounced run that does not carry its own
      * `maxDelay`, and any `delay` at or above it stops runs from being pushed at all.
      */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce.number().int().positive().optional(),
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalPositiveIntEnv,
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
