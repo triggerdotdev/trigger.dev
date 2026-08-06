@@ -358,31 +358,6 @@ export async function recordWatchSubmissionOutcome(
   return rows[0] ?? null;
 }
 
-/**
- * The one field a settled submission may still gain: the external channel, attached by a
- * retry whose first attempt died before subscribing. Subscribing is idempotent.
- */
-export async function markWatchSubmissionExternalNotification(
-  db: DashboardAgentDb,
-  params: { chatId: string; clientRequestId: string; external: WatchExternalNotification }
-): Promise<void> {
-  await db
-    .update(watchSubmissions)
-    .set({
-      externalNotificationStatus: params.external.status,
-      externalNotificationReason:
-        params.external.status === "unavailable" ? params.external.reason : null,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(watchSubmissions.chatId, params.chatId),
-        eq(watchSubmissions.clientRequestId, params.clientRequestId),
-        eq(watchSubmissions.state, "created")
-      )
-    );
-}
-
 /** Retention. A submission outlives its watch only as the key that stops a re-create. */
 export async function deleteWatchSubmissionsOlderThan(
   db: DashboardAgentDb,
