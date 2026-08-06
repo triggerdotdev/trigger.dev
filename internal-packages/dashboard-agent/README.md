@@ -44,6 +44,22 @@ import type { dashboardAgent } from "@internal/dashboard-agent";
 
 Never a value import (see `src/index.ts`).
 
+## What a call costs
+
+Two numbers decide the bill: the cacheable prefix every call pays for, and the
+conversation that rides on top of it.
+
+- **The prefix** (system prompt + tool schemas) is measured in `src/prompt-prefix.ts` and
+  budgeted in `src/prompt-prefix.test.ts`: explicit ceilings per mode, plus a committed
+  snapshot of prompt chars/tokens, tool-schema chars/tokens, tool count and the fingerprints.
+  A change that grows the prefix past a ceiling must **move that ceiling in the same PR** and
+  accept the snapshot diff (`vitest -u`) — that is the whole point of the numbers.
+- **The conversation** is compacted in `src/compaction.ts`: above 60k tokens of conversation
+  (on top of the ~21k prefix) the older part becomes a Haiku-written summary. The UI
+  transcript is never compacted, and an open investigation, a live watch and an already
+  delivered wake are pinned back onto the model's history verbatim, so a summary can never
+  cost the agent the `investigationId` it has to keep revising.
+
 ## Turn evals
 
 A sampled fraction of turns is scored by an LLM judge (`dashboard-agent-eval-turn`), which

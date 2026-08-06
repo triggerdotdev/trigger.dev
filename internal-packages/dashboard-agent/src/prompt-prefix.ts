@@ -59,6 +59,33 @@ export function describePromptPrefix(args: {
   };
 }
 
+/** The prefix split into the two halves that grow independently. */
+export type PromptPrefixParts = {
+  prompt: { chars: number; estimatedTokens: number };
+  tools: { count: number; chars: number; estimatedTokens: number };
+  total: PromptPrefixMeasurement;
+};
+
+/**
+ * The same measurement, itemised. Every call pays for both halves, so a budget has
+ * to say which one grew: an edited prompt and four more tools read very differently.
+ */
+export function describePromptPrefixParts(args: {
+  system: string;
+  tools: Record<string, Tool<any, any>>;
+}): PromptPrefixParts {
+  const toolChars = serializeToolDefinitions(args.tools).length;
+  return {
+    prompt: { chars: args.system.length, estimatedTokens: Math.round(args.system.length / 4) },
+    tools: {
+      count: Object.keys(args.tools).length,
+      chars: toolChars,
+      estimatedTokens: Math.round(toolChars / 4),
+    },
+    total: describePromptPrefix(args),
+  };
+}
+
 /** FNV-1a, so the fingerprint needs no crypto import in either bundle. */
 function fnv1a32(input: string): string {
   let hash = 0x811c9dc5;

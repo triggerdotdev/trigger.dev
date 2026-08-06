@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describePromptPrefix, PROMPT_CACHE_CONTROL, promptCacheAttributes } from "./prompt-prefix";
+import {
+  describePromptPrefix,
+  describePromptPrefixParts,
+  PROMPT_CACHE_CONTROL,
+  promptCacheAttributes,
+} from "./prompt-prefix";
 import {
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
@@ -73,6 +78,50 @@ describe("the head-start and agent prefixes are the same prefix", () => {
 
   it("caches on the 1-hour breakpoint", () => {
     expect(PROMPT_CACHE_CONTROL).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+});
+
+/**
+ * The prefix is paid on every call of every chat, so it gets a ceiling rather than a
+ * comment. Growing past one of these is allowed — but the PR that grows it moves the
+ * ceiling in the same change, which is what makes the cost a decision instead of a
+ * drift. The snapshot below is the itemised diff a reviewer reads.
+ */
+const PREFIX_BUDGET = {
+  assistant: { chars: 77_000, estimatedTokens: 19_500, tools: 24, promptChars: 26_000 },
+  code: { chars: 83_000, estimatedTokens: 21_000, tools: 28, promptChars: 29_000 },
+} as const;
+
+describe("the prefix stays inside its budget", () => {
+  const assistant = describePromptPrefixParts({
+    system: DASHBOARD_AGENT_SYSTEM_PROMPT,
+    tools: dashboardAgentToolSchemas,
+  });
+  const code = describePromptPrefixParts({
+    system: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
+    tools: dashboardAgentCodeToolSchemas,
+  });
+
+  it("holds the assistant-mode ceilings", () => {
+    expect(assistant.total.chars).toBeLessThanOrEqual(PREFIX_BUDGET.assistant.chars);
+    expect(assistant.total.estimatedTokens).toBeLessThanOrEqual(
+      PREFIX_BUDGET.assistant.estimatedTokens
+    );
+    expect(assistant.tools.count).toBeLessThanOrEqual(PREFIX_BUDGET.assistant.tools);
+    expect(assistant.prompt.chars).toBeLessThanOrEqual(PREFIX_BUDGET.assistant.promptChars);
+  });
+
+  it("holds the code-mode ceilings", () => {
+    expect(code.total.chars).toBeLessThanOrEqual(PREFIX_BUDGET.code.chars);
+    expect(code.total.estimatedTokens).toBeLessThanOrEqual(PREFIX_BUDGET.code.estimatedTokens);
+    expect(code.tools.count).toBeLessThanOrEqual(PREFIX_BUDGET.code.tools);
+    expect(code.prompt.chars).toBeLessThanOrEqual(PREFIX_BUDGET.code.promptChars);
+  });
+
+  // The committed numbers themselves, in `__snapshots__/prompt-prefix.test.ts.snap`.
+  // A prompt edit or a new tool shows up here as a diff; `vitest -u` accepts it.
+  it("matches the committed measurement", () => {
+    expect({ assistant, code }).toMatchSnapshot();
   });
 });
 
