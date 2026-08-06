@@ -3,7 +3,7 @@ import {
   VIEW_BLOCK_VERSION,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
@@ -280,22 +280,41 @@ export async function softDeleteChat(
   });
 }
 
-/** Row identity. No fallback: `message_id` is `NOT NULL`, so the database rejects a message with no id. */
-function messageIdOf(message: unknown): string {
-  return (message as { id: string }).id;
+/** Enough of the payload to recognise it in an error, without logging a whole transcript. */
+function describeMessage(message: unknown): string {
+  try {
+    return JSON.stringify(message)?.slice(0, 200) ?? String(message);
+  } catch {
+    return String(message);
+  }
+}
+
+/** Row identity. Checked here so a malformed message names itself, not a `NOT NULL` violation. */
+function messageIdOf(chatId: string, message: unknown): string {
+  const id = (message as { id?: unknown } | null | undefined)?.id;
+  if (typeof id !== "string" || id.length === 0) {
+    throw new Error(`Chat ${chatId} was handed a message with no id: ${describeMessage(message)}`);
+  }
+  return id;
 }
 
 /** Lifted out of the payload so the quota count never opens the JSONB. */
-function messageRoleOf(message: unknown): string {
-  return (message as { role: string }).role;
+function messageRoleOf(chatId: string, message: unknown): string {
+  const role = (message as { role?: unknown } | null | undefined)?.role;
+  if (typeof role !== "string" || role.length === 0) {
+    throw new Error(
+      `Chat ${chatId} was handed a message with no role: ${describeMessage(message)}`
+    );
+  }
+  return role;
 }
 
 /**
  * Reserve `count` contiguous positions on the chat, or null when there is no such chat.
  *
- * One statement, so two writers are handed disjoint ranges and the row lock is released
- * with the statement rather than held across a round trip. `scope` is the caller's
- * tenancy check, applied here because this is the statement that has the chat row.
+ * One statement, so two writers are handed disjoint ranges and the row lock it takes is
+ * held for the rest of this short transaction rather than across a round trip. `scope` is
+ * the caller's tenancy check, applied here because this is the statement that has the row.
  */
 async function reserveMessagePositions(
   tx: DashboardAgentDbOrTx,
@@ -316,13 +335,16 @@ async function reserveMessagePositions(
 }
 
 /**
- * Store a batch of messages: insert the ones that aren't there, and update one that is
- * only when its content genuinely changed. Nothing is ever deleted and no message
- * outside `messages` is touched, so a wake or a terminal card that landed mid-turn
- * cannot be written away — the property the old read-modify-write merge only approximated.
+ * Store a batch of messages, insert-only. A message id already in the chat is left exactly
+ * as it was recorded — body, position and role — so a stale snapshot cannot overwrite a
+ * durable event, and nothing outside `messages` is touched either. Changing a message that
+ * is already stored is a different operation: {@link finalizeChatMessage}.
  *
  * The batch keeps its incoming order, and a message already stored keeps the position it
  * was first given, which is why a mid-turn append sits before the turn's later messages.
+ *
+ * The already-stored ids are dropped before any position is reserved, so re-sending a whole
+ * snapshot costs one slot per genuinely new message instead of one per message sent.
  */
 async function storeChatMessages(
   tx: DashboardAgentDbOrTx,
@@ -330,9 +352,34 @@ async function storeChatMessages(
 ): Promise<void> {
   const deduped = new Map<string, unknown>();
   for (const message of params.messages) {
-    const id = messageIdOf(message);
-    if (!deduped.has(id)) deduped.set(id, message);
+    const id = messageIdOf(params.chatId, message);
+    if (deduped.has(id)) {
+      throw new Error(`Chat ${params.chatId} was handed message id ${id} twice in one batch`);
+    }
+    deduped.set(id, message);
   }
+  if (deduped.size === 0) return;
+
+  // Hold the chat row before reading which ids are missing, so a concurrent batch can't
+  // reserve a slot for a message this one is about to insert.
+  const locked = await tx
+    .select({ id: chats.id })
+    .from(chats)
+    .where(and(eq(chats.id, params.chatId), isNull(chats.deletedAt)))
+    .limit(1)
+    .for("update");
+  if (locked.length === 0) return;
+
+  const stored = await tx
+    .select({ messageId: chatMessages.messageId })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatId, params.chatId),
+        inArray(chatMessages.messageId, [...deduped.keys()])
+      )
+    );
+  for (const row of stored) deduped.delete(row.messageId);
   if (deduped.size === 0) return;
 
   const start = await reserveMessagePositions(tx, { chatId: params.chatId, count: deduped.size });
@@ -345,15 +392,47 @@ async function storeChatMessages(
         chatId: params.chatId,
         messageId,
         position: start + offset,
-        role: messageRoleOf(message),
+        role: messageRoleOf(params.chatId, message),
         message,
       }))
     )
-    .onConflictDoUpdate({
-      target: [chatMessages.chatId, chatMessages.messageId],
-      set: { message: sql`excluded.message` },
-      setWhere: sql`${chatMessages.message} is distinct from excluded.message`,
-    });
+    .onConflictDoNothing({ target: [chatMessages.chatId, chatMessages.messageId] });
+}
+
+/**
+ * Rewrite one already-stored message's body, deliberately. The only operation that may
+ * change a message the transcript already holds; every other write is insert-only.
+ *
+ * `expectedRole` is verified rather than updated, on both sides: the stored row's `role`
+ * column has to match, and so does the incoming body's own `role`. So the structural
+ * column and the payload cannot drift apart, and a finalisation aimed at the wrong
+ * message — or at a message some other lane has since replaced — writes nothing and says
+ * so by returning false. Position and id are never touched.
+ */
+export async function finalizeChatMessage(
+  db: DashboardAgentDbOrTx,
+  params: { chatId: string; messageId: string; expectedRole: string; message: unknown }
+): Promise<boolean> {
+  const role = messageRoleOf(params.chatId, params.message);
+  if (role !== params.expectedRole) {
+    throw new Error(
+      `Chat ${params.chatId} finalisation of ${params.messageId} expected role ${params.expectedRole} but its body carries ${role}`
+    );
+  }
+
+  const rows = await db
+    .update(chatMessages)
+    .set({ message: params.message })
+    .where(
+      and(
+        eq(chatMessages.chatId, params.chatId),
+        eq(chatMessages.messageId, params.messageId),
+        eq(chatMessages.role, params.expectedRole)
+      )
+    )
+    .returning({ messageId: chatMessages.messageId });
+
+  return rows.length > 0;
 }
 
 /** No session state, unlike {@link persistTurn}. */
@@ -376,7 +455,7 @@ async function appendOneMessage(
   db: DashboardAgentDbOrTx,
   params: { chatId: string; message: unknown; scope: SQL[] }
 ): Promise<boolean> {
-  const messageId = messageIdOf(params.message);
+  const messageId = messageIdOf(params.chatId, params.message);
   const rows = await db.execute<{ message_id: string }>(sql`
     with reserved as (
       update ${chats}
@@ -393,7 +472,7 @@ async function appendOneMessage(
       returning "next_message_position" - 1 as "position"
     )
     insert into ${chatMessages} ("chat_id", "message_id", "position", "role", "message")
-    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.message)},
+    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.chatId, params.message)},
            ${JSON.stringify(params.message)}::jsonb
     from reserved
     on conflict ("chat_id", "message_id") do nothing

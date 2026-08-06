@@ -27,10 +27,27 @@ of truth.
 
 ## Tables
 
-- `chats` — one row per conversation: org/user scope, title, a `messages` JSONB
-  display copy of the transcript, and `metadata` (the project/env context the chat
-  ran in). Soft-deleted via `deleted_at`, pinned via `pinned_at`, read-marked via
-  `last_read_at` (NULL = never read, so every watch wake in it counts as unread).
+- `chats` — one row per conversation: org/user scope, title, `metadata` (the
+  project/env context the chat ran in), and `next_message_position`, the allocator the
+  transcript's ordering comes from. No transcript of its own. Soft-deleted via
+  `deleted_at`, pinned via `pinned_at`, read-marked via `last_read_at` (NULL = never
+  read, so every watch wake in it counts as unread).
+- `chat_messages` — the transcript, one row per message. Identity is
+  `(chat_id, message_id)` and order is `position`, unique per chat and reserved from
+  `chats.next_message_position` by the same single statement that reads it, so
+  concurrent writers get disjoint contiguous ranges. `role` is lifted out of the
+  payload so the message-quota count is an index scan.
+
+  Three write modes, and only the third may change a message the chat already holds:
+  a new message is a plain insert; a redelivered durable event (a watch wake, a
+  settlement card) is `ON CONFLICT DO NOTHING` on `(chat_id, message_id)`, so it
+  leaves the recorded row untouched; a deliberate finalisation is
+  `finalizeChatMessage`, which rewrites one body under a verified `role` and never
+  moves the id or the position. So re-sending a whole turn snapshot is a no-op.
+
+  Positions are monotonic, not gapless: a reservation whose insert then conflicts,
+  or a batch that rolls back, leaves the slot unused. Only the relative order
+  matters, so a gap is expected and harmless.
 - `chat_sessions` — live transport state keyed by `chat_id`: the session-scoped
   `public_access_token` and `last_event_id` for resume. Separate table so the
   secret token is isolated from list queries and the hot per-turn write stays off

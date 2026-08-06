@@ -3,6 +3,7 @@ import {
   countUserMessages,
   createChat,
   createDashboardAgentDb,
+  finalizeChatMessage,
   getChatMessages,
   getInvestigation,
   investigationSettlementMessageId,
@@ -90,6 +91,35 @@ async function rows(prisma: PrismaClient, chatId: string): Promise<StoredRow[]> 
      order by position`,
     chatId
   );
+}
+
+/** The position allocator itself: what a wasted reservation is visible in. */
+async function nextPosition(prisma: PrismaClient, chatId: string): Promise<number> {
+  const rows = await prisma.$queryRawUnsafe<{ next_message_position: number }[]>(
+    `select next_message_position from trigger_dashboard_agent.chats where id = $1`,
+    chatId
+  );
+  return rows[0]!.next_message_position;
+}
+
+async function chatStamps(
+  prisma: PrismaClient,
+  chatId: string
+): Promise<{ last_message_at: Date | null; updated_at: Date }[]> {
+  return prisma.$queryRawUnsafe(
+    `select last_message_at, updated_at from trigger_dashboard_agent.chats where id = $1`,
+    chatId
+  );
+}
+
+/** The structural column, which the JSONB payload must never be able to contradict. */
+async function roleOf(prisma: PrismaClient, chatId: string, messageId: string): Promise<string> {
+  const rows = await prisma.$queryRawUnsafe<{ role: string }[]>(
+    `select role from trigger_dashboard_agent.chat_messages where chat_id = $1 and message_id = $2`,
+    chatId,
+    messageId
+  );
+  return rows[0]!.role;
 }
 
 function openState(): InvestigationState {
@@ -231,9 +261,94 @@ describe("invariant 2: concurrent different messages get distinct positions", ()
   );
 });
 
-describe("invariant 3: a controlled update changes the body and nothing else", () => {
+describe("invariant 3: an ordinary transcript write can never change a stored message", () => {
   postgresTest(
-    "finalising a message keeps its id, its position and its row",
+    "a differing body under an existing id leaves the durable row exactly as it was",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_no_implicit_update";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("u1")] });
+      // A durable event: the wake that actually fired.
+      await appendChatMessageOnceByChatId(agentDb, {
+        chatId,
+        message: textMessage("wake:watch_1:fired", "The watch on send-order-receipt resolved."),
+      });
+      const before = await rows(prisma, chatId);
+
+      // A stale snapshot carrying the same id with a different body. `persistMessages` is
+      // not a finalisation, so it must not be able to rewrite it.
+      await persistMessages(agentDb, {
+        chatId,
+        messages: [textMessage("u1"), textMessage("wake:watch_1:fired", "something else entirely")],
+      });
+
+      expect(await rows(prisma, chatId)).toEqual(before);
+    },
+    30_000
+  );
+
+  postgresTest(
+    "persistTurn cannot rewrite a stored message either",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_no_implicit_update_turn";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1", "the answer")] });
+      const before = await rows(prisma, chatId);
+
+      await persistTurn(agentDb, {
+        chatId,
+        messages: [textMessage("a1", "a different answer")],
+        session: { publicAccessToken: "pat_store" },
+      });
+
+      expect(await rows(prisma, chatId)).toEqual(before);
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a batch carrying the same id twice is refused rather than silently picking one",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_dup_in_batch";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await expect(
+        persistMessages(agentDb, {
+          chatId,
+          messages: [textMessage("a1", "first"), textMessage("a1", "second")],
+        })
+      ).rejects.toThrow(/message id a1 twice in one batch/);
+
+      // And nothing landed: the throw is before any reservation.
+      expect(await rows(prisma, chatId)).toHaveLength(0);
+      expect(await nextPosition(prisma, chatId)).toBe(1);
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a message with no id or no role is refused by name, not by a NOT NULL violation",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_malformed";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await expect(
+        persistMessages(agentDb, { chatId, messages: [{ role: "user", parts: [] }] })
+      ).rejects.toThrow(/Chat chat_malformed was handed a message with no id: .*"role":"user"/);
+
+      await expect(
+        persistMessages(agentDb, { chatId, messages: [{ id: "a1", parts: [] }] })
+      ).rejects.toThrow(/Chat chat_malformed was handed a message with no role: .*"id":"a1"/);
+    },
+    30_000
+  );
+});
+
+describe("invariant 4: a controlled finalisation changes the body and nothing else", () => {
+  postgresTest(
+    "finalising a message keeps its id, its position and its role",
     async ({ prisma, postgresContainer }) => {
       const chatId = "chat_finalise";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
@@ -244,19 +359,143 @@ describe("invariant 3: a controlled update changes the body and nothing else", (
       });
       const before = await rows(prisma, chatId);
 
-      await persistMessages(agentDb, {
-        chatId,
-        messages: [textMessage("u1"), textMessage("a1", "here is the answer")],
-      });
+      expect(
+        await finalizeChatMessage(agentDb, {
+          chatId,
+          messageId: "a1",
+          expectedRole: "assistant",
+          message: textMessage("a1", "here is the answer"),
+        })
+      ).toBe(true);
 
       const after = await rows(prisma, chatId);
       expect(after).toHaveLength(2);
       expect(after.map((row) => [row.message_id, row.position])).toEqual(
         before.map((row) => [row.message_id, row.position])
       );
-      // Only the one message that changed changed.
+      // Only the one message named changed.
       expect(after[0]!.message).toEqual(before[0]!.message);
       expect(after[1]!.message).toMatchObject({ parts: [{ text: "here is the answer" }] });
+      expect(await roleOf(prisma, chatId, "a1")).toBe("assistant");
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a finalisation aimed at the wrong role writes nothing",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_finalise_role";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1", "still working")] });
+      const before = await rows(prisma, chatId);
+
+      // The stored row is an assistant message, so a user finalisation is not its own.
+      expect(
+        await finalizeChatMessage(agentDb, {
+          chatId,
+          messageId: "a1",
+          expectedRole: "user",
+          message: { id: "a1", role: "user", parts: [{ type: "text", text: "hijacked" }] },
+        })
+      ).toBe(false);
+
+      expect(await rows(prisma, chatId)).toEqual(before);
+      expect(await roleOf(prisma, chatId, "a1")).toBe("assistant");
+    },
+    30_000
+  );
+
+  postgresTest(
+    "the row's role and the body's role cannot be made to disagree",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_finalise_drift";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1")] });
+
+      // The column says assistant, the body would say user. Refused outright rather
+      // than stored as a row whose column and payload disagree.
+      await expect(
+        finalizeChatMessage(agentDb, {
+          chatId,
+          messageId: "a1",
+          expectedRole: "assistant",
+          message: { id: "a1", role: "user", parts: [] },
+        })
+      ).rejects.toThrow(/expected role assistant but its body carries user/);
+
+      expect(await roleOf(prisma, chatId, "a1")).toBe("assistant");
+      expect((await rows(prisma, chatId))[0]!.message).toMatchObject({ role: "assistant" });
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a finalisation of a message that isn't there writes nothing",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_finalise_missing";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      expect(
+        await finalizeChatMessage(agentDb, {
+          chatId,
+          messageId: "never-stored",
+          expectedRole: "assistant",
+          message: textMessage("never-stored"),
+        })
+      ).toBe(false);
+      expect(await rows(prisma, chatId)).toHaveLength(0);
+    },
+    30_000
+  );
+});
+
+describe("invariant 5: re-sending a snapshot is free", () => {
+  postgresTest(
+    "a re-sent snapshot reserves no position, touches no row and writes no timestamp",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_snapshot_free";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      const snapshot = Array.from({ length: 6 }, (_, i) => textMessage(`m${i}`));
+      await persistMessages(agentDb, { chatId, messages: snapshot });
+
+      const before = await rows(prisma, chatId);
+      const positionBefore = await nextPosition(prisma, chatId);
+      const chatBefore = await chatStamps(prisma, chatId);
+
+      await persistMessages(agentDb, { chatId, messages: snapshot });
+      await persistTurn(agentDb, {
+        chatId,
+        messages: snapshot,
+        session: { publicAccessToken: "pat_store" },
+      });
+
+      expect(await rows(prisma, chatId)).toEqual(before);
+      // The allocator is the observable cost: a re-send that reserved slots would grow it.
+      expect(await nextPosition(prisma, chatId)).toBe(positionBefore);
+      expect(await chatStamps(prisma, chatId)).toEqual(chatBefore);
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a transcript grown by re-sent snapshots spends one position per message",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_snapshot_slots";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      // The real write pattern: every turn hands over the whole transcript again. With
+      // the old insert-everything path this cost 1+2+…+40 = 820 slots for 40 rows.
+      const snapshot: ReturnType<typeof textMessage>[] = [];
+      for (let i = 0; i < 40; i++) {
+        snapshot.push(textMessage(`m${i}`));
+        await persistMessages(agentDb, { chatId, messages: [...snapshot] });
+      }
+
+      expect(await rows(prisma, chatId)).toHaveLength(40);
+      expect(await nextPosition(prisma, chatId)).toBe(41);
     },
     30_000
   );
