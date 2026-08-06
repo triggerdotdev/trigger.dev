@@ -12,7 +12,7 @@ type Route = { id: string; data?: unknown; meta?: MetaFunction };
  * match's array is what renders. It also only passes the matches visited *so far*, which is why
  * titles are declared per route rather than centrally.
  */
-/** The URL params an environment-scoped page carries; the org scope is only used when they exist. */
+/** The URL params a page inside a project carries; the org scope is dropped when they are present. */
 const ENV_PARAMS = { organizationSlug: "acme", projectParam: "my-project", envParam: "prod" };
 
 function renderTitle(
@@ -51,7 +51,7 @@ const orgRoute: Route = {
 };
 
 describe("pageMeta", () => {
-  it("adds the project and environment scope to an environment page", () => {
+  it("titles a page inside a project without any scope", () => {
     const title = renderTitle([rootRoute, orgRoute, { id: "routes/runs", meta: pageMeta("Runs") }]);
 
     expect(title).toBe("Runs | Trigger.dev");
