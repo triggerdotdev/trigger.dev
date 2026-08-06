@@ -4,13 +4,12 @@ import { appEnvTitleTag } from "~/utils";
 
 /**
  * Tab titles. Every page exports `export const meta = pageMeta(...)` and only says what the page
- * is; the shared scope suffix is added here.
+ * is; the app title is added here.
  *
  * Shape (leading words carry the information, so a narrow tab still reads):
- *   env-scoped page:   `Runs | my-project (Prod) | Trigger.dev`
- *   env-scoped entity: `run_abc | Runs | my-project (Prod) | Trigger.dev`
- *   org-scoped page:   `Team | Acme | Trigger.dev`
- *   everything else:   `Login to Trigger.dev` etc. (no scope to add)
+ *   page:   `Runs | Trigger.dev`
+ *   entity: `run_abc | Runs | Trigger.dev`
+ *   else:   `Login to Trigger.dev` etc.
  *
  * Remix v2 picks the meta of the deepest route that exports one; a route without a meta export
  * inherits its nearest ancestor's. So a layout's `pageMeta` is the fallback for children that
@@ -19,9 +18,6 @@ import { appEnvTitleTag } from "~/utils";
  */
 
 const APP_NAME = "Trigger.dev";
-
-/** The org route holds the project/environment the URL resolved to. */
-const ORGANIZATION_MATCH_ID = "routes/_app.orgs.$organizationSlug";
 
 /** One or more title segments, most specific first: `["run_abc", "Runs"]`. */
 export type TitleSegments = string | string[];
@@ -56,51 +52,11 @@ export function pageMeta<TLoader = unknown>(page: PageInput<TLoader>): MetaFunct
   };
 }
 
-/** Builds the full title from the page segments plus the scope found in `matches`. */
+/** Builds the full title from the page segments plus the app title. */
 export function composePageTitle(segments: string[], matches: Matches): string {
-  return [...segments, scopeFromMatches(matches), appTitle(appEnvFromMatches(matches))]
+  return [...segments, appTitle(appEnvFromMatches(matches))]
     .filter((segment): segment is string => Boolean(segment))
     .join(" | ");
-}
-
-export function scopeFromMatches(matches: Matches): string | undefined {
-  const match = matches.find((m) => m.id === ORGANIZATION_MATCH_ID);
-  const data = match?.data as
-    | {
-        organization?: { title?: string | null };
-        project?: { name?: string | null };
-        environment?: { type?: string | null; branchName?: string | null } | null;
-      }
-    | undefined;
-
-  if (!data) return undefined;
-
-  // The org loader resolves a "best" project even on org-scoped URLs that name none, so
-  // the project scope is only honest when the URL actually carries one.
-  const project = match?.params?.projectParam ? data.project?.name : undefined;
-  if (project) {
-    const environment = data.environment ? environmentLabel(data.environment) : undefined;
-    return environment ? `${project} (${environment})` : project;
-  }
-
-  return data.organization?.title ?? undefined;
-}
-
-function environmentLabel(environment: { type?: string | null; branchName?: string | null }) {
-  if (environment.branchName) return environment.branchName;
-
-  switch (environment.type) {
-    case "PRODUCTION":
-      return "Prod";
-    case "STAGING":
-      return "Staging";
-    case "DEVELOPMENT":
-      return "Dev";
-    case "PREVIEW":
-      return "Preview";
-    default:
-      return undefined;
-  }
 }
 
 function appEnvFromMatches(matches: Matches): string | undefined {

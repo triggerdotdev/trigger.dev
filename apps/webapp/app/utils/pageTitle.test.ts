@@ -47,8 +47,6 @@ const orgRoute: Route = {
   id: ORGANIZATION_MATCH_ID,
   data: {
     organization: { title: "Acme" },
-    project: { name: "my-project" },
-    environment: { type: "PRODUCTION" },
   },
 };
 
@@ -56,7 +54,7 @@ describe("pageMeta", () => {
   it("adds the project and environment scope to an environment page", () => {
     const title = renderTitle([rootRoute, orgRoute, { id: "routes/runs", meta: pageMeta("Runs") }]);
 
-    expect(title).toBe("Runs | my-project (Prod) | Trigger.dev");
+    expect(title).toBe("Runs | Trigger.dev");
   });
 
   it("uses the deepest declared title", () => {
@@ -67,7 +65,7 @@ describe("pageMeta", () => {
       { id: "routes/runs.$runParam", meta: pageMeta(["run_abc", "Runs"]) },
     ]);
 
-    expect(title).toBe("run_abc | Runs | my-project (Prod) | Trigger.dev");
+    expect(title).toBe("run_abc | Runs | Trigger.dev");
   });
 
   it("falls back to the nearest declared title, then the app title", () => {
@@ -78,7 +76,7 @@ describe("pageMeta", () => {
         { id: "routes/runs", meta: pageMeta("Runs") },
         { id: "routes/runs._index" },
       ])
-    ).toBe("Runs | my-project (Prod) | Trigger.dev");
+    ).toBe("Runs | Trigger.dev");
 
     expect(renderTitle([rootRoute, orgRoute, { id: "routes/runs._index" }])).toBe("Trigger.dev");
   });
@@ -95,17 +93,17 @@ describe("pageMeta", () => {
         orgRoute,
         { id: "routes/task", data: { task: { slug: "my-task" } }, meta },
       ])
-    ).toBe("my-task | Tasks | my-project (Prod) | Trigger.dev");
+    ).toBe("my-task | Tasks | Trigger.dev");
 
     expect(
       renderTitle([rootRoute, orgRoute, { id: "routes/task", meta }], {
         ...ENV_PARAMS,
         taskParam: "other",
       })
-    ).toBe("other | Tasks | my-project (Prod) | Trigger.dev");
+    ).toBe("other | Tasks | Trigger.dev");
   });
 
-  it("keeps the org name for org-scoped pages and the app env tag", () => {
+  it("keeps the app env tag", () => {
     const stagingRoot: Route = {
       id: "root",
       data: { appEnv: "staging" },
@@ -121,20 +119,7 @@ describe("pageMeta", () => {
       { organizationSlug: "acme" }
     );
 
-    expect(title).toBe("Team | Acme | Trigger.dev (staging)");
-  });
-
-  it("ignores the project the org loader resolved when the URL names none", () => {
-    // The org loader always resolves a "best" project, so an org page would otherwise
-    // advertise a project the user is not looking at.
-    const title = renderTitle(
-      [rootRoute, orgRoute, { id: "routes/team", meta: pageMeta("Team") }],
-      {
-        organizationSlug: "acme",
-      }
-    );
-
-    expect(title).toBe("Team | Acme | Trigger.dev");
+    expect(title).toBe("Team | Trigger.dev (staging)");
   });
 
   it("carries the root's non-title tags through", () => {
@@ -150,6 +135,6 @@ describe("pageMeta", () => {
     } as any) as MetaDescriptor[];
 
     expect(descriptors).toContainEqual({ name: "viewport", content: "width=1024" });
-    expect(renderTitle(routes)).toBe("Runs | my-project (Prod) | Trigger.dev");
+    expect(renderTitle(routes)).toBe("Runs | Trigger.dev");
   });
 });
