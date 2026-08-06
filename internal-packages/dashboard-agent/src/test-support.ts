@@ -6,7 +6,11 @@ import type {
 import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 
-import type { DashboardAgentEvalTrigger, DashboardAgentStore } from "./dashboard-agent";
+import type {
+  DashboardAgentEvalPolicyCheck,
+  DashboardAgentEvalTrigger,
+  DashboardAgentStore,
+} from "./dashboard-agent";
 
 // Scaffolding shared by the agent's test files. Type-only import of the agent
 // module, so a test file still controls when the agent registers.
@@ -119,6 +123,11 @@ export function fakeEvalTrigger(): { trigger: DashboardAgentEvalTrigger; calls: 
     trigger: async (payload, options) => void calls.push({ payload, options }),
     calls,
   };
+}
+
+/** Stands in for the org opt-out check, so no test depends on a network call. */
+export function fakeEvalPolicy(allowed = true): DashboardAgentEvalPolicyCheck {
+  return async () => allowed;
 }
 
 export const CLIENT_DATA = { userId: "user_1", organizationId: "org_1" };

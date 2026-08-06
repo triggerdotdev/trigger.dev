@@ -8,7 +8,7 @@ import {
   type ToolSet,
   type UIMessage,
 } from "ai";
-import { redactEvalToolValue, turnReadSource } from "./eval-policy";
+import { orgAllowsTurnEvals, redactEvalToolValue, turnReadSource } from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import {
   buildTurnTools,
@@ -105,6 +105,24 @@ export type DashboardAgentEvalTrigger = (
 export const dashboardAgentEvalTriggerKey = locals.create<DashboardAgentEvalTrigger>(
   "dashboard-agent.eval-trigger"
 );
+
+/**
+ * The org opt-out check. Unset in production; tests inject one so no turn depends on a
+ * network call.
+ */
+export type DashboardAgentEvalPolicyCheck = (params: {
+  apiOrigin?: string;
+  userActorToken?: string;
+  organizationId: string;
+}) => Promise<boolean>;
+
+export const dashboardAgentEvalPolicyKey = locals.create<DashboardAgentEvalPolicyCheck>(
+  "dashboard-agent.eval-policy"
+);
+
+function getEvalPolicyCheck(): DashboardAgentEvalPolicyCheck {
+  return locals.get(dashboardAgentEvalPolicyKey) ?? orgAllowsTurnEvals;
+}
 
 function getEvalTrigger(): DashboardAgentEvalTrigger {
   return (
@@ -427,6 +445,15 @@ export const dashboardAgent = chat.agent({
         // customer's code to the judge or grades a source-grounded answer blind.
         if (turnReadSource(toolActivity)) {
           logger.debug("dashboard-agent turn eval skipped: the turn read source", { chatId, turn });
+        } else if (
+          // Fails closed: an org that opted out, or a setting we couldn't read, is not judged.
+          !(await getEvalPolicyCheck()({
+            apiOrigin: clientData.apiOrigin,
+            userActorToken: clientData.userActorToken,
+            organizationId: clientData.organizationId,
+          }))
+        ) {
+          logger.debug("dashboard-agent turn eval skipped: the org doesn't allow it", { chatId });
         } else {
           const resolved = await getSystemPrompt(modeFor(clientData));
           // On a Head Start turn the question arrives in the boot payload rather than

@@ -7,6 +7,7 @@ export const FEATURE_FLAG = {
   hasLogsPageAccess: "hasLogsPageAccess",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
+  dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
   promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
@@ -40,6 +41,12 @@ export const FeatureFlagCatalog = {
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
   [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
+  // Whether this org's agent turns may be sampled for the quality judge. A data-handling
+  // switch, not an entitlement: an org that turns it off has its turns judged never, and a
+  // setting that can't be read is treated as off. Per-org override wins; on by default.
+  // Strict z.boolean(): coercion reads the string "false" as true, which would keep judging
+  // an org that asked us to stop.
+  [FEATURE_FLAG.dashboardAgentTurnEvalsEnabled]: z.boolean(),
   // A JSON string because this catalog is scalar-only. Validated where it's read, in
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),

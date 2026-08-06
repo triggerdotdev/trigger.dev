@@ -14,6 +14,7 @@ import { disposeRepoWorkspaces, workdirFor, type RepoSnapshot } from "./repo-too
 import {
   clientDataSchema,
   dashboardAgent,
+  dashboardAgentEvalPolicyKey,
   dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
@@ -26,13 +27,15 @@ import {
   truncateEvalToolOutput,
   TURN_FAILED_MESSAGE,
   turnFailureMessageId,
+  type DashboardAgentEvalPolicyCheck,
   type DashboardAgentStore,
 } from "./dashboard-agent";
-import { redactEvalToolValue } from "./eval-policy";
+import { orgAllowsTurnEvals, redactEvalToolValue } from "./eval-policy";
 import {
   CLIENT_DATA,
   collectText,
   executedTool,
+  fakeEvalPolicy,
   fakeEvalTrigger,
   fakeStore,
   mockModel,
@@ -470,6 +473,7 @@ describe("per-turn eval sampling", () => {
         set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, mockModel([textStep("answered")]));
         set(dashboardAgentEvalTriggerKey, trigger);
+        set(dashboardAgentEvalPolicyKey, fakeEvalPolicy());
       },
     });
 
@@ -511,6 +515,113 @@ describe("per-turn eval sampling", () => {
   });
 });
 
+describe("the per-org opt-out", () => {
+  let harness: MockChatAgentHarness | undefined;
+  const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+    if (originalRate === undefined) {
+      delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    } else {
+      process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = originalRate;
+    }
+  });
+
+  /** One turn at full sample rate, with the given opt-out check. */
+  async function turnWithPolicy(
+    policy: DashboardAgentEvalPolicyCheck,
+    chatId: string
+  ): Promise<unknown[]> {
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "1";
+    const { store } = fakeStore();
+    const { trigger, calls } = fakeEvalTrigger();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("answered")]));
+        set(dashboardAgentEvalTriggerKey, trigger);
+        set(dashboardAgentEvalPolicyKey, policy);
+      },
+    });
+
+    await harness.sendMessage(userMessage("hi"));
+    await new Promise((r) => setTimeout(r, 30));
+    return calls;
+  }
+
+  it("does not judge a turn when the org has opted out", async () => {
+    expect(await turnWithPolicy(fakeEvalPolicy(false), "chat_opted_out")).toHaveLength(0);
+  });
+
+  it("does not judge a turn when the check itself fails", async () => {
+    const throwing: DashboardAgentEvalPolicyCheck = async () => {
+      throw new Error("the API is down");
+    };
+    expect(await turnWithPolicy(throwing, "chat_policy_error")).toHaveLength(0);
+  });
+
+  it("judges the turn when the org allows it", async () => {
+    expect(await turnWithPolicy(fakeEvalPolicy(true), "chat_opted_in")).toHaveLength(1);
+  });
+});
+
+describe("orgAllowsTurnEvals", () => {
+  const ORG = { organizationId: "org_1", apiOrigin: "https://app.test", userActorToken: "uat_1" };
+
+  it("allows only an explicit yes", async () => {
+    const allowed = await orgAllowsTurnEvals({
+      ...ORG,
+      fetchImpl: async () => new Response(JSON.stringify({ turnEvalsEnabled: true })),
+    });
+    expect(allowed).toBe(true);
+  });
+
+  it("fails closed on a no, an unreadable body, a non-200 and a thrown request", async () => {
+    const responses: Array<() => Promise<Response>> = [
+      async () => new Response(JSON.stringify({ turnEvalsEnabled: false })),
+      // A string "true" is not a yes: only the boolean counts.
+      async () => new Response(JSON.stringify({ turnEvalsEnabled: "true" })),
+      async () => new Response(JSON.stringify({})),
+      async () => new Response("not json"),
+      async () => new Response("", { status: 500 }),
+      async () => new Response("", { status: 403 }),
+      async () => {
+        throw new Error("network down");
+      },
+    ];
+
+    for (const fetchImpl of responses) {
+      expect(await orgAllowsTurnEvals({ ...ORG, fetchImpl })).toBe(false);
+    }
+  });
+
+  it("fails closed when there is nothing to ask with", async () => {
+    const neverCalled = async () => {
+      throw new Error("must not be called");
+    };
+    expect(
+      await orgAllowsTurnEvals({
+        organizationId: "org_1",
+        apiOrigin: undefined,
+        userActorToken: "uat_1",
+        fetchImpl: neverCalled,
+      })
+    ).toBe(false);
+    expect(
+      await orgAllowsTurnEvals({
+        organizationId: "org_1",
+        apiOrigin: "https://app.test",
+        userActorToken: undefined,
+        fetchImpl: neverCalled,
+      })
+    ).toBe(false);
+  });
+});
+
 describe("a turn that read source", () => {
   let harness: MockChatAgentHarness | undefined;
   const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
@@ -547,6 +658,7 @@ describe("a turn that read source", () => {
           mockModel([toolCallStep(toolName, { path: "src/a.ts" }), textStep("answered")])
         );
         set(dashboardAgentEvalTriggerKey, trigger);
+        set(dashboardAgentEvalPolicyKey, fakeEvalPolicy());
       },
     });
 
