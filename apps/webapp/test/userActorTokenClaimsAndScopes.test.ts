@@ -1,0 +1,250 @@
+/**
+ * Two seams a delegated user-actor token passes through outside the route builder:
+ * the direct PAT authentication (which used to hand back identity only, dropping the
+ * environment scope), and the environment JWT exchange (which used to mint whatever
+ * scopes the caller asked for when the token declared no cap).
+ */
+
+import { postgresTest } from "@internal/testcontainers";
+import type { PrismaClient } from "@trigger.dev/database";
+import { signUserActorToken } from "@trigger.dev/rbac";
+import { expect, it, vi } from "vitest";
+
+const SESSION_SECRET = "test-session-secret-for-user-actor-claims";
+
+const ctx = vi.hoisted(() => ({
+  prisma: undefined as unknown as PrismaClient,
+  /** Set when the RBAC controller should behave like a plugin on an older contract. */
+  omitClaims: false,
+}));
+
+vi.mock("~/db.server", () => {
+  const proxy = new Proxy(
+    {},
+    { get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string] }
+  );
+  return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
+});
+vi.mock("~/env.server", () => ({
+  env: { SESSION_SECRET: "test-session-secret-for-user-actor-claims" },
+}));
+vi.mock("~/services/logger.server", () => ({
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
+
+// The RBAC controller is the OSS fallback's behaviour: verify the token, ability from its own cap.
+vi.mock("~/services/rbac.server", async () => {
+  const { buildJwtAbility, verifyUserActorToken } = await import("@trigger.dev/rbac");
+  const bearerOf = (request: Request) =>
+    request.headers.get("Authorization")?.replace(/^Bearer /, "").trim() ?? "";
+
+  return {
+    rbac: {
+      authenticateUserActor: async (request: Request, context: any) => {
+        const claims = await verifyUserActorToken(
+          "test-session-secret-for-user-actor-claims",
+          bearerOf(request)
+        );
+        if (!claims) return { ok: false, status: 401, error: "Invalid user-actor token" };
+        return {
+          ok: true,
+          userId: claims.userId,
+          ...(ctx.omitClaims ? {} : { claims }),
+          subject: {
+            type: "userActor",
+            userId: claims.userId,
+            organizationId: context.organizationId ?? "",
+          },
+          ability: buildJwtAbility(claims.cap ?? ["read:all"]),
+        };
+      },
+    },
+  };
+});
+
+const { authenticateApiRequestWithPersonalAccessToken } =
+  await import("~/services/personalAccessToken.server");
+const { action: jwtAction } = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
+
+const USER_ID = "usr_claims_1";
+
+function token(opts: { userId?: string; environmentId?: string; cap?: string[] } = {}) {
+  return signUserActorToken(SESSION_SECRET, {
+    userId: opts.userId ?? USER_ID,
+    client: "dashboard-agent",
+    ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+    ...(opts.cap ? { cap: opts.cap } : {}),
+  });
+}
+
+function bearer(value: string) {
+  return new Request("https://api.trigger.dev/api/v1/whatever", {
+    headers: { Authorization: `Bearer ${value}` },
+  });
+}
+
+it("keeps a user-actor token's environment claim on the authenticated identity", async () => {
+  ctx.omitClaims = false;
+
+  const result = await authenticateApiRequestWithPersonalAccessToken(
+    bearer(await token({ environmentId: "env_claimed" }))
+  );
+
+  expect(result?.userId).toBe(USER_ID);
+  expect(result?.userActor?.environmentId).toBe("env_claimed");
+});
+
+it("recovers the claim when the RBAC controller doesn't return it", async () => {
+  ctx.omitClaims = true;
+
+  const result = await authenticateApiRequestWithPersonalAccessToken(
+    bearer(await token({ environmentId: "env_claimed" }))
+  );
+
+  ctx.omitClaims = false;
+  expect(result?.userActor?.environmentId).toBe("env_claimed");
+});
+
+function suffix() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/** An org with one project, a prod and a staging environment, and a member user. */
+async function seedProject(prisma: PrismaClient) {
+  const slug = `jwt_${suffix()}`;
+  const user = await prisma.user.create({
+    data: { email: `${slug}@example.com`, authenticationMethod: "MAGIC_LINK" },
+  });
+  const organization = await prisma.organization.create({ data: { title: slug, slug } });
+  await prisma.orgMember.create({
+    data: { organizationId: organization.id, userId: user.id, role: "ADMIN" },
+  });
+  const project = await prisma.project.create({
+    data: { name: slug, slug, organizationId: organization.id, externalRef: `proj_${slug}` },
+  });
+
+  const environmentFor = (envSlug: "prod" | "stg") =>
+    prisma.runtimeEnvironment.create({
+      data: {
+        slug: envSlug,
+        type: envSlug === "prod" ? "PRODUCTION" : "STAGING",
+        projectId: project.id,
+        organizationId: organization.id,
+        apiKey: `tr_${envSlug}_${slug}`,
+        pkApiKey: `pk_${envSlug}_${slug}`,
+        shortcode: `${envSlug}${suffix()}`,
+      },
+    });
+
+  return {
+    user,
+    organization,
+    project,
+    prod: await environmentFor("prod"),
+    staging: await environmentFor("stg"),
+  };
+}
+
+async function exchange(opts: {
+  projectRef: string;
+  env: string;
+  token: string;
+  scopes?: string[];
+}) {
+  const request = new Request(
+    `https://api.trigger.dev/api/v1/projects/${opts.projectRef}/${opts.env}/jwt`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${opts.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(opts.scopes ? { claims: { scopes: opts.scopes } } : {}),
+    }
+  );
+
+  try {
+    const response = await jwtAction({
+      request,
+      params: { projectRef: opts.projectRef, env: opts.env },
+      context: {},
+    } as any);
+    return { status: response.status, body: await response.json() };
+  } catch (thrown) {
+    if (thrown instanceof Response) {
+      return { status: thrown.status, body: await thrown.json() };
+    }
+    throw thrown;
+  }
+}
+
+/** The minted env JWT's payload. Signature verification isn't what's under test here. */
+function payloadOf(jwt: string): any {
+  return JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString("utf8"));
+}
+
+postgresTest(
+  "the exchange never mints scopes a capless delegated token doesn't have",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const seeded = await seedProject(prisma);
+
+    const denied = await exchange({
+      projectRef: seeded.project.externalRef,
+      env: "prod",
+      token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
+      scopes: ["write:runs"],
+    });
+
+    expect(denied.status).toBe(403);
+    expect(denied.body.token).toBeUndefined();
+  }
+);
+
+postgresTest("a capless delegated token exchanges for a read-only JWT", async ({ prisma }) => {
+  ctx.prisma = prisma;
+  const seeded = await seedProject(prisma);
+
+  const minted = await exchange({
+    projectRef: seeded.project.externalRef,
+    env: "prod",
+    token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
+  });
+
+  expect(minted.status).toBe(200);
+  expect(payloadOf(minted.body.token).scopes).toEqual(["read:all"]);
+});
+
+postgresTest("the exchange clamps requested scopes to the token's cap", async ({ prisma }) => {
+  ctx.prisma = prisma;
+  const seeded = await seedProject(prisma);
+
+  const minted = await exchange({
+    projectRef: seeded.project.externalRef,
+    env: "prod",
+    token: await token({
+      userId: seeded.user.id,
+      environmentId: seeded.prod.id,
+      cap: ["read:runs", "read:apiKeys"],
+    }),
+    scopes: ["read:runs", "write:runs"],
+  });
+
+  expect(minted.status).toBe(200);
+  expect(payloadOf(minted.body.token).scopes).toEqual(["read:runs"]);
+});
+
+postgresTest("the exchange only mints for the claimed environment", async ({ prisma }) => {
+  ctx.prisma = prisma;
+  const seeded = await seedProject(prisma);
+
+  const other = await exchange({
+    projectRef: seeded.project.externalRef,
+    env: "staging",
+    token: await token({
+      userId: seeded.user.id,
+      environmentId: seeded.prod.id,
+      cap: ["read:runs", "read:apiKeys"],
+    }),
+  });
+
+  expect(other.status).toBe(403);
+  expect(other.body.token).toBeUndefined();
+});

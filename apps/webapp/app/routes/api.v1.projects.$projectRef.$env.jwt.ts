@@ -8,6 +8,11 @@ import {
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import { rbac } from "~/services/rbac.server";
+import {
+  assertUserActorEnvironment,
+  clampUserActorScopes,
+} from "~/services/userActorEnvironment.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -34,8 +39,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const { authenticationResult, userActor } = authentication;
-    const isUat = Boolean(userActor);
-    const uatCap = userActor?.cap;
     const userActorId = userActor?.userId;
 
     const parsedParams = ParamsSchema.safeParse(params);
@@ -53,6 +56,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       env,
       triggerBranch
     );
+
+    // The exchange only ever mints for the environment the token was signed for.
+    assertUserActorEnvironment(userActor, runtimeEnv.id);
 
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
@@ -77,21 +83,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
 
-    // The env JWT carries scopes only — downstream auth builds its ability
-    // from them with no role context. So for a user-actor token we ceiling
-    // the scopes by the token's own cap here (a read-only agent token can't
-    // widen its grant through the exchange) and stamp the user via `act` so
-    // the minted env JWT stays attributable. The cap is a ceiling, not a
-    // replacement: intersect what the caller asked for with the cap (or use
-    // the full cap if they asked for nothing). No cap → the request passes
-    // through, same as a PAT.
+    // The env JWT carries scopes only — downstream auth builds its ability from them with no role
+    // context. So for a user-actor token the ceiling is the actor's own ability (role floor ∩ the
+    // token's cap), never the request: a delegated token can't mint a credential more capable than
+    // itself, and a capless token is read-only rather than unbounded. A PAT passes through, gated
+    // by the env-tier check above.
     const requestedScopes = parsedBody.data.claims?.scopes;
-    const scopes =
-      isUat && uatCap
-        ? requestedScopes && requestedScopes.length > 0
-          ? requestedScopes.filter((scope) => uatCap.includes(scope))
-          : uatCap
-        : requestedScopes;
+    let scopes = requestedScopes;
+
+    if (userActor) {
+      const actorAuth = await rbac.authenticateUserActor(request, {
+        organizationId: runtimeEnv.organizationId,
+        projectId: runtimeEnv.project.id,
+      });
+      if (!actorAuth.ok) {
+        return json({ error: actorAuth.error }, { status: actorAuth.status });
+      }
+
+      const clamped = clampUserActorScopes(requestedScopes, userActor, actorAuth.ability);
+      if (clamped.scopes.length === 0) {
+        return json(
+          { error: "This token isn't allowed the requested scopes", scopes: clamped.deniedScopes },
+          { status: 403 }
+        );
+      }
+      scopes = clamped.scopes;
+    }
 
     // Attribution: stamp the acting user on the minted env JWT. A UAT carries
     // its user as `userActorId`; a PAT exchange resolves the user from the
