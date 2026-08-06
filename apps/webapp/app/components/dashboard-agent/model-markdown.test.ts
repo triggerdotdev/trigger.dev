@@ -9,9 +9,7 @@ import { stripModelImages } from "./model-markdown";
 const BEACON = "https://attacker.example/collect?session=abc";
 
 function render(markdown: string): string {
-  return renderToStaticMarkup(
-    createElement(Streamdown as never, { children: markdown } as never)
-  );
+  return renderToStaticMarkup(createElement(Streamdown as never, { children: markdown } as never));
 }
 
 describe("stripModelImages", () => {
