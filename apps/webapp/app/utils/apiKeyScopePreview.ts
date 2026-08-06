@@ -25,7 +25,7 @@ export function getApiKeyScopePreview({
 
   const fullAccess = scopes.includes("admin");
   const selectedTaskScope =
-    preset?.usesTaskSelection && taskScope === "selected" && selectedTasks.length > 0;
+    Boolean(preset?.usesTaskSelection) && taskScope === "selected" && selectedTasks.length > 0;
 
   return {
     fullAccess,
