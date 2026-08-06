@@ -16,11 +16,7 @@ import {
   renameChat,
   setChatPinned,
 } from "@internal/dashboard-agent-db";
-import {
-  watchDraftSchema,
-  watchIdentity,
-  type WatchDraft,
-} from "@internal/dashboard-agent-contracts";
+import { watchDraftSchema, type WatchDraft } from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -99,6 +95,7 @@ const ActionBody = z.object({
   // The configured card, for `watch-create`: a JSON `WatchDraft`.
   draft: z.string().optional(),
   // Stable per card submission, so a retried `watch-create` repairs instead of repeating.
+  // Required for `watch-create`: see the check in that branch.
   clientRequestId: z.string().min(1).max(64).optional(),
 });
 
@@ -423,6 +420,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // The configuration card's submit path. The environment comes from the URL and goes
   // through the same re-authorization a background tick passes, never from the body.
   if (parsed.data.intent === "watch-create") {
+    // No fallback: a per-condition key would identify the condition rather than this
+    // submit, so a re-watch could replay a stale terminal outcome.
+    const clientRequestId = parsed.data.clientRequestId;
+    if (!clientRequestId) {
+      return json(
+        { error: "That watch isn't valid.", code: "invalid_request" },
+        { status: 400 }
+      );
+    }
+
     let draft: WatchDraft;
     try {
       const result = watchDraftSchema.safeParse(JSON.parse(parsed.data.draft ?? ""));
@@ -465,8 +472,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       userId,
       organizationId: project.organizationId,
       chatId: targetChatId,
-      // An older client without one degrades to per-condition dedup, not to no dedup.
-      clientRequestId: parsed.data.clientRequestId ?? `identity:${watchIdentity(draft.spec)}`,
+      clientRequestId,
       draft,
     });
 
