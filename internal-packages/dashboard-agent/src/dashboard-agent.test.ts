@@ -3,7 +3,6 @@
 // register at module load.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
 
-import { mergeStoredMessages } from "@internal/dashboard-agent-db";
 import { convertToModelMessages, tool, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
@@ -966,24 +965,24 @@ describe("a turn that ends in an error", () => {
   });
 
   /**
-   * A store that keeps the transcript the way the real one does: the snapshot writes
-   * merge with what the row already holds, `appendMessage` adds one message unless its
-   * id is already there. Lets the test read history back rather than only count calls.
+   * A store that keeps the transcript the way the real one does: one row per message id,
+   * kept in the order the ids were first seen, and a repeat updates that message in
+   * place. Lets the test read history back rather than only count calls.
    */
   function transcriptStore(): { store: DashboardAgentStore; history: () => UIMessage[] } {
-    let messages: UIMessage[] = [];
-    const merge = (incoming: unknown[]) => {
-      messages = mergeStoredMessages(incoming, messages) as UIMessage[];
+    const rows = new Map<string, UIMessage>();
+    const record = (incoming: unknown[]) => {
+      for (const message of incoming as UIMessage[]) rows.set(message.id, message);
     };
     const store: DashboardAgentStore = {
       ensureChat: async () => undefined,
-      persistMessages: async (args) => merge(args.messages),
+      persistMessages: async (args) => record(args.messages),
       appendMessage: async (args) => {
         const message = args.message as UIMessage;
-        if (!messages.some((m) => m.id === message.id)) messages = [...messages, message];
+        if (!rows.has(message.id)) rows.set(message.id, message);
       },
       persistTurn: async (args) => {
-        merge(args.messages);
+        record(args.messages);
         return { settled: [] };
       },
       setChatTitleIfDefault: async () => undefined,
@@ -1002,7 +1001,7 @@ describe("a turn that ends in an error", () => {
       }),
       findOpenInvestigation: async () => null,
     };
-    return { store, history: () => messages };
+    return { store, history: () => [...rows.values()] };
   }
 
   /** A model that fails the turn, the way a provider outage does. */

@@ -8,6 +8,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 import { dashboardAgentSchema } from "./schema-base.js";
 
@@ -28,7 +29,7 @@ export const chats = dashboardAgentSchema.table(
     organizationId: text("organization_id").notNull(),
     userId: text("user_id").notNull(),
     title: text("title").notNull().default("New chat"),
-    // Display copy. Never read to rebuild model context.
+    // Superseded by `chat_messages`; nothing reads or writes it. Dropped in a later migration.
     messages: jsonb("messages").$type<unknown[]>().notNull().default([]),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
@@ -36,6 +37,9 @@ export const chats = dashboardAgentSchema.table(
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    // The position allocator for `chat_messages`. Bumped by the same single statement
+    // that reads it, so concurrent writers get disjoint contiguous ranges.
+    nextMessagePosition: integer("next_message_position").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -44,6 +48,35 @@ export const chats = dashboardAgentSchema.table(
     index("chats_org_user_last_msg_idx")
       .on(t.organizationId, t.userId, t.lastMessageAt.desc())
       .where(sql`${t.deletedAt} is null`),
+  ]
+);
+
+/**
+ * One row per message. Never rewritten wholesale: a new message is an insert, a repeat
+ * of the same `messageId` is a no-op, and finalising one message updates only that row.
+ *
+ * `position` orders the transcript and comes from `chats.next_message_position`; it is
+ * unique per chat, which is what makes a lost or duplicated allocation impossible rather
+ * than unlikely. `role` is lifted out of the payload so the quota count is an index scan.
+ */
+export const chatMessages = dashboardAgentSchema.table(
+  "chat_messages",
+  {
+    chatId: text("chat_id").notNull(), // = chats.id (FK-free, cross-db)
+    // = the UI message's own `id`, so a redelivered write is a conflict, not a duplicate.
+    messageId: text("message_id").notNull(),
+    position: integer("position").notNull(),
+    role: text("role").notNull(),
+    message: jsonb("message").$type<unknown>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.chatId, t.messageId] }),
+    unique("chat_messages_chat_position_key").on(t.chatId, t.position),
+    // Covers the quota count without touching the heap.
+    index("chat_messages_chat_user_role_idx")
+      .on(t.chatId, t.messageId)
+      .where(sql`${t.role} = 'user'`),
   ]
 );
 
@@ -145,6 +178,8 @@ export const investigations = dashboardAgentSchema.table(
 
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type NewChatMessage = typeof chatMessages.$inferInsert;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type NewChatSession = typeof chatSessions.$inferInsert;
 export type ChatTurnEval = typeof chatTurnEvals.$inferSelect;

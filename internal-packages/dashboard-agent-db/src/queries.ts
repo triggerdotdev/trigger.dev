@@ -3,11 +3,13 @@ import {
   VIEW_BLOCK_VERSION,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, ne, sql, isNull } from "drizzle-orm";
+import { and, desc, eq, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
+  chatMessages,
   chats,
   chatSessions,
   chatTurnEvals,
@@ -65,14 +67,15 @@ export async function listChats(
     .limit(params.limit ?? 50);
 }
 
-/** Null if the chat is missing, deleted, or not this user's. */
+/** Null if the chat is missing, deleted, or not this user's; `[]` if it has no messages. */
 export async function getChatMessages(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string }
 ): Promise<unknown[] | null> {
   const rows = await db
-    .select({ messages: chats.messages })
-    .from(chats)
+    .select({ message: chatMessages.message })
+    .from(chatMessages)
+    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
     .where(
       and(
         eq(chats.id, params.chatId),
@@ -81,12 +84,15 @@ export async function getChatMessages(
         isNull(chats.deletedAt)
       )
     )
-    .limit(1);
-  return rows[0]?.messages ?? null;
+    .orderBy(chatMessages.position);
+
+  if (rows.length > 0) return rows.map((row) => row.message);
+  // An empty transcript and a chat this caller can't see look the same until we ask.
+  return (await chatExists(db, params)) ? [] : null;
 }
 
 /**
- * Counted from the stored transcripts, not a counter column, so a deleted chat stops
+ * Counted from the stored messages, not a counter column, so a deleted chat stops
  * counting. `excludeChatId` is for a caller that counts that chat's live messages itself.
  * A watch's consent record is a user message but not a turn the user spent, so it is
  * excluded here and by the client-side count.
@@ -96,21 +102,17 @@ export async function countUserMessages(
   params: { organizationId: string; userId: string; excludeChatId?: string }
 ): Promise<number> {
   const rows = await db
-    .select({
-      count: sql<number>`coalesce(sum((
-        select count(*)
-        from jsonb_array_elements(${chats.messages}) as message
-        where message->>'role' = 'user'
-          and coalesce(message->>'id', '') not like ${`${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`}
-      )), 0)::int`,
-    })
-    .from(chats)
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chatMessages)
+    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
     .where(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
-        params.excludeChatId ? ne(chats.id, params.excludeChatId) : undefined
+        eq(chatMessages.role, "user"),
+        notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
+        params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
       )
     );
   return rows[0]?.count ?? 0;
@@ -279,56 +281,85 @@ export async function softDeleteChat(
   });
 }
 
-/** Identity for the merge: the stable message id, or the content when a message has none. */
-function messageKey(message: unknown): string {
+/** The row identity: the message's own id, or its content when a legacy message has none. */
+function messageIdOf(message: unknown): string {
   const id = (message as { id?: unknown } | null)?.id;
-  return typeof id === "string" && id.length > 0 ? `id:${id}` : `raw:${JSON.stringify(message)}`;
+  if (typeof id === "string" && id.length > 0) return id;
+  return `content:${createHash("sha1")
+    .update(JSON.stringify(message) ?? "null")
+    .digest("hex")}`;
+}
+
+/** Lifted out of the payload so the quota count never opens the JSONB. */
+function messageRoleOf(message: unknown): string {
+  const role = (message as { role?: unknown } | null)?.role;
+  return typeof role === "string" && role.length > 0 ? role : "assistant";
 }
 
 /**
- * The turn's snapshot, plus whatever the row gained while the turn was running.
+ * Reserve `count` contiguous positions on the chat, or null when there is no such chat.
  *
- * A wholesale `SET messages = <snapshot>` deletes anything another process appended
- * after the snapshot was taken — a wake, a watch consent record, or the terminal card
- * of a settled investigation, which is unrecoverable: the row is already terminal, so
- * the stale sweep never selects it again and the panel spins for ever.
- *
- * Incoming order is kept, a stored message the snapshot doesn't have goes at the end,
- * and no key appears twice.
+ * One statement, so two writers are handed disjoint ranges and the row lock is released
+ * with the statement rather than held across a round trip. `scope` is the caller's
+ * tenancy check, applied here because this is the statement that has the chat row.
  */
-export function mergeStoredMessages(incoming: unknown[], stored: unknown[]): unknown[] {
-  const seen = new Set<string>();
-  const merged: unknown[] = [];
-  for (const message of [...incoming, ...stored]) {
-    const key = messageKey(message);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(message);
-  }
-  return merged;
-}
-
-/** Reads the row under its own lock, so a concurrent append can't be merged away. */
-async function writeMergedMessages(
+async function reserveMessagePositions(
   tx: DashboardAgentDbOrTx,
-  params: { chatId: string; messages: unknown[] }
-): Promise<void> {
+  params: { chatId: string; count: number; scope?: SQL[] }
+): Promise<number | null> {
   const rows = await tx
-    .select({ messages: chats.messages })
-    .from(chats)
-    .where(eq(chats.id, params.chatId))
-    .limit(1)
-    .for("update");
-
-  const stored = rows[0]?.messages;
-  await tx
     .update(chats)
     .set({
-      messages: mergeStoredMessages(params.messages, Array.isArray(stored) ? stored : []),
+      nextMessagePosition: sql`${chats.nextMessagePosition} + ${params.count}`,
       lastMessageAt: sql`now()`,
       updatedAt: sql`now()`,
     })
-    .where(eq(chats.id, params.chatId));
+    .where(and(eq(chats.id, params.chatId), isNull(chats.deletedAt), ...(params.scope ?? [])))
+    .returning({ next: chats.nextMessagePosition });
+
+  const next = rows[0]?.next;
+  return next === undefined ? null : next - params.count;
+}
+
+/**
+ * Store a batch of messages: insert the ones that aren't there, and update one that is
+ * only when its content genuinely changed. Nothing is ever deleted and no message
+ * outside `messages` is touched, so a wake or a terminal card that landed mid-turn
+ * cannot be written away — the property the old read-modify-write merge only approximated.
+ *
+ * The batch keeps its incoming order, and a message already stored keeps the position it
+ * was first given, which is why a mid-turn append sits before the turn's later messages.
+ */
+async function storeChatMessages(
+  tx: DashboardAgentDbOrTx,
+  params: { chatId: string; messages: unknown[] }
+): Promise<void> {
+  const deduped = new Map<string, unknown>();
+  for (const message of params.messages) {
+    const id = messageIdOf(message);
+    if (!deduped.has(id)) deduped.set(id, message);
+  }
+  if (deduped.size === 0) return;
+
+  const start = await reserveMessagePositions(tx, { chatId: params.chatId, count: deduped.size });
+  if (start === null) return;
+
+  await tx
+    .insert(chatMessages)
+    .values(
+      [...deduped].map(([messageId, message], offset) => ({
+        chatId: params.chatId,
+        messageId,
+        position: start + offset,
+        role: messageRoleOf(message),
+        message,
+      }))
+    )
+    .onConflictDoUpdate({
+      target: [chatMessages.chatId, chatMessages.messageId],
+      set: { message: sql`excluded.message` },
+      setWhere: sql`${chatMessages.message} is distinct from excluded.message`,
+    });
 }
 
 /** No session state, unlike {@link persistTurn}. */
@@ -336,33 +367,44 @@ export async function persistMessages(
   db: DashboardAgentDb,
   params: { chatId: string; messages: unknown[] }
 ): Promise<void> {
-  await db.transaction((tx) => writeMergedMessages(tx, params));
+  await db.transaction((tx) => storeChatMessages(tx, params));
 }
 
 /**
- * `||` on the JSONB column is one statement, so it can't lose a concurrent turn's
- * write the way a read-modify-write would. Owner- and live-chat-scoped.
+ * Append one message, exactly once. A repeat of the same id writes nothing at all — not
+ * the row, not the position, not the chat's timestamps — and says so by returning false.
+ *
+ * Reserve-and-insert is one statement so a concurrent append can neither take the same
+ * position nor be lost, and `on conflict do nothing` is what settles the race two
+ * callers that both saw the message missing would otherwise lose.
  */
-export async function appendChatMessage(
-  db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string; message: unknown }
+async function appendOneMessage(
+  db: DashboardAgentDbOrTx,
+  params: { chatId: string; message: unknown; scope: SQL[] }
 ): Promise<boolean> {
-  const rows = await db
-    .update(chats)
-    .set({
-      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
-      lastMessageAt: sql`now()`,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(chats.id, params.chatId),
-        eq(chats.userId, params.userId),
-        eq(chats.organizationId, params.organizationId),
-        isNull(chats.deletedAt)
-      )
+  const messageId = messageIdOf(params.message);
+  const rows = await db.execute<{ message_id: string }>(sql`
+    with reserved as (
+      update ${chats}
+      set "next_message_position" = "next_message_position" + 1,
+          "last_message_at" = now(),
+          "updated_at" = now()
+      where "id" = ${params.chatId}
+        and "deleted_at" is null
+        ${params.scope.length > 0 ? sql`and ${and(...params.scope)}` : sql``}
+        and not exists (
+          select 1 from ${chatMessages}
+          where "chat_id" = ${params.chatId} and "message_id" = ${messageId}
+        )
+      returning "next_message_position" - 1 as "position"
     )
-    .returning({ id: chats.id });
+    insert into ${chatMessages} ("chat_id", "message_id", "position", "role", "message")
+    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.message)},
+           ${JSON.stringify(params.message)}::jsonb
+    from reserved
+    on conflict ("chat_id", "message_id") do nothing
+    returning "message_id"
+  `);
 
   return rows.length > 0;
 }
@@ -382,25 +424,14 @@ export async function appendChatMessageOnce(
     message: { id: string };
   }
 ): Promise<boolean> {
-  const rows = await db
-    .update(chats)
-    .set({
-      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
-      lastMessageAt: sql`now()`,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(chats.id, params.chatId),
-        eq(chats.userId, params.userId),
-        ...(params.organizationId ? [eq(chats.organizationId, params.organizationId)] : []),
-        isNull(chats.deletedAt),
-        sql`not exists (select 1 from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) m where m->>'id' = ${params.message.id})`
-      )
-    )
-    .returning({ id: chats.id });
-
-  return rows.length > 0;
+  return appendOneMessage(db, {
+    chatId: params.chatId,
+    message: params.message,
+    scope: [
+      eq(chats.userId, params.userId),
+      ...(params.organizationId ? [eq(chats.organizationId, params.organizationId)] : []),
+    ],
+  });
 }
 
 /**
@@ -411,23 +442,7 @@ export async function appendChatMessageOnceByChatId(
   db: DashboardAgentDbOrTx,
   params: { chatId: string; message: { id: string } }
 ): Promise<boolean> {
-  const rows = await db
-    .update(chats)
-    .set({
-      messages: sql`coalesce(${chats.messages}, '[]'::jsonb) || ${JSON.stringify([params.message])}::jsonb`,
-      lastMessageAt: sql`now()`,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(chats.id, params.chatId),
-        isNull(chats.deletedAt),
-        sql`not exists (select 1 from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) m where m->>'id' = ${params.message.id})`
-      )
-    )
-    .returning({ id: chats.id });
-
-  return rows.length > 0;
+  return appendOneMessage(db, { chatId: params.chatId, message: params.message, scope: [] });
 }
 
 /** An investigation the turn left running, and the terminal state to close it with. */
@@ -496,7 +511,7 @@ export async function persistTurn(
     );
     const messages = [...params.messages, ...cards.filter((card) => !existing.has(card.id))];
 
-    await writeMergedMessages(tx, { chatId: params.chatId, messages });
+    await storeChatMessages(tx, { chatId: params.chatId, messages });
 
     await tx
       .insert(chatSessions)
@@ -868,19 +883,14 @@ async function storedMessageById(
   params: { chatId: string; messageId: string }
 ): Promise<InvestigationCardMessage | null> {
   const rows = await tx
-    .select({
-      message: sql<InvestigationCardMessage | null>`(
-        select message
-        from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) as message
-        where message->>'id' = ${params.messageId}
-        limit 1
-      )`,
-    })
-    .from(chats)
-    .where(eq(chats.id, params.chatId))
+    .select({ message: chatMessages.message })
+    .from(chatMessages)
+    .where(
+      and(eq(chatMessages.chatId, params.chatId), eq(chatMessages.messageId, params.messageId))
+    )
     .limit(1);
 
-  return rows[0]?.message ?? null;
+  return (rows[0]?.message as InvestigationCardMessage | undefined) ?? null;
 }
 
 /**
