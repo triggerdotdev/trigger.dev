@@ -15,11 +15,6 @@ export async function canAccessDashboardAgent(options: {
   // The org's already-loaded `featureFlags`. Omitted means we query the org ourselves.
   orgFeatureFlags?: Record<string, unknown> | null;
 }): Promise<boolean> {
-  // TEMPORARY (V1 rollout testing, TRI-12870): open to everyone. Flip back to
-  // false to restore the flag gate below.
-  const OPEN_TO_EVERYONE: boolean = true;
-  if (OPEN_TO_EVERYONE) return true;
-
   const { userId, isAdmin, isImpersonating, organizationSlug, orgFeatureFlags } = options;
 
   if ((isAdmin || isImpersonating) && env.DASHBOARD_AGENT_ADMIN_PREVIEW === "1") {
