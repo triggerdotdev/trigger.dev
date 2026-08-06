@@ -130,12 +130,19 @@ const TurnEval = z.object({
   summary: z.string().describe("One line: what the user asked and how it went."),
 });
 
+/** An errored result reaches here unfolded (`isError`) or as a plain `error` field. */
+export function toolResultErrored(output: unknown): boolean {
+  if (output === null || typeof output !== "object") return false;
+  const result = output as { isError?: unknown };
+  return result.isError === true || "error" in (output as object);
+}
+
 const JUDGE_SYSTEM = [
   "You evaluate one turn of the Trigger.dev dashboard assistant, a read-only agent that answers questions about a user's runs, tasks, errors, deployments, and environments by calling read tools.",
   "You are given the user's question, the data the agent retrieved through its tools (treat this as the only ground truth), and the agent's answer.",
   "Reason briefly first, then fill in the scores and classification.",
   "Score quality only on factual grounding and whether the question was answered; do not reward verbosity or confidence. Penalize any run id, error name, count, status, version, or metric not present in the tool data.",
-  'Some tool fields arrive as a shape descriptor like {"redacted":"payload","keys":[...]} — that data was withheld on purpose. Treat it as retrieved but unreadable: judge grounding on the facts you can see, and never penalize an answer for a redacted field.',
+  'Some tool fields arrive as a shape descriptor like {"redacted":"payload","keys":[...]} — that data was withheld on purpose. Only a fixed set of structural fields (ids, names, statuses, counts, timestamps, versions) is passed through, so most free text, including error messages, arrives this way. Treat it as retrieved but unreadable: judge grounding on the facts you can see, and never penalize an answer for a redacted field, for a value cut short with {"truncated":true}, or for a tool call listed as {"omitted":true}.',
   "Then classify the turn for product insight. Flag capabilityGap when the agent could not fully help because it lacked a tool, data, or permission (it is read-only, so any request to change something is a capability gap). Flag docsGap for how-to questions a doc would answer better. Flag supportOpportunity when the user seems stuck or frustrated. Flag featureRequest when they want something the product does not do. Capture concrete, actionable signals.",
 ].join(" ");
 
@@ -170,9 +177,7 @@ export const evalTurn = task({
       ].join("\n\n"),
     });
 
-    const toolError = payload.toolActivity.some(
-      (t) => t.output != null && typeof t.output === "object" && "error" in (t.output as object)
-    );
+    const toolError = payload.toolActivity.some((t) => toolResultErrored(t.output));
 
     await insertTurnEval(getEvalDb().db, {
       chatId: payload.chatId,

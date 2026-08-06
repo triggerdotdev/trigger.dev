@@ -66,26 +66,124 @@ export function turnReadSource(toolActivity: Array<{ toolName: string }>): boole
 }
 
 /**
- * Tool-call fields replaced by their shape before a turn leaves the agent. The judge only
- * has to check the answer against the facts — ids, statuses, task and error names — and
- * these are the fields that carry the customer's own data instead: run payloads and
- * outputs, query result rows, file contents, span attributes.
+ * The fields a judged turn may carry, by name. An allow-list rather than a deny-list:
+ * a tool result is arbitrary JSON, so any name we didn't think of can hold the
+ * customer's own text — a payload field renamed, a free-text column in a query row,
+ * an error string that quotes the record it failed on. Naming what may pass fails
+ * closed; naming what may not fails open on every field added after this list.
+ *
+ * What the judge grades on is narrow: did the answer use the ids, statuses, names,
+ * counts and timestamps the tools returned. Everything else reaches it as a shape
+ * descriptor, which `JUDGE_SYSTEM` tells it to read as retrieved-but-unreadable.
  */
-const REDACTED_KEYS = new Set([
-  "attributes",
-  "body",
-  "code",
-  "content",
-  "contents",
-  "lines",
-  "matches",
-  "output",
-  "payload",
-  "rows",
-  "snippet",
-  "snippets",
-  "source",
+const STRUCTURAL_KEYS = new Set([
+  // Containers the walk descends into.
+  "alerts",
+  "data",
+  "deploys",
+  "environments",
+  "errors",
+  "error",
+  "items",
+  "projects",
+  "queues",
+  "results",
+  "runs",
+  "schedules",
+  "tasks",
+  "watches",
+  // Identity.
+  "batchId",
+  "deployId",
+  "environmentId",
+  "id",
+  "ids",
+  "organizationId",
+  "projectId",
+  "projectRef",
+  "queueId",
+  "runId",
+  "scheduleId",
+  "spanId",
+  "taskId",
+  "taskIdentifier",
+  "traceId",
+  "watchId",
+  "friendlyId",
+  // Names and kinds — a task, queue, error class or environment name is a fact.
+  "environment",
+  "kind",
+  "name",
+  "slug",
+  "type",
+  "queue",
+  "machine",
+  "region",
+  "runtime",
+  // State.
+  "isError",
+  "level",
+  "outcome",
+  "state",
+  "status",
+  "statuses",
+  "verdict",
+  // Shape and size.
+  "attempts",
+  "attemptCount",
+  "count",
+  "cursor",
+  "hasMore",
+  "limit",
+  "page",
+  "rowCount",
+  "total",
+  "totalCount",
+  // Time.
+  "completedAt",
+  "createdAt",
+  "durationMs",
+  "expiresAt",
+  "finishedAt",
+  "from",
+  "startedAt",
+  "timestamp",
+  "to",
+  "updatedAt",
+  "window",
+  // Versions.
+  "cliVersion",
+  "sdkVersion",
+  "version",
+  // Markers this module and the truncation step add themselves.
+  "chars",
+  "keys",
+  "note",
+  "omitted",
+  "redacted",
+  "truncated",
 ]);
+
+/**
+ * Fields that are structural for one tool only. Kept per tool rather than added to the
+ * shared list, so a column name that is a fact for `run_query` doesn't become one
+ * everywhere.
+ */
+const TOOL_STRUCTURAL_KEYS: Record<string, readonly string[]> = {
+  run_query: ["columns"],
+  get_query_schema: ["columns", "tables", "table", "column"],
+  get_report: ["sections", "section", "title", "metric", "metrics"],
+  list_alerts: ["channel", "enabled"],
+  get_queue: ["concurrencyLimit", "paused"],
+  correlate_version: ["versions", "before", "after"],
+};
+
+/** The keys a given tool's activity may carry. */
+export function allowedEvalKeys(toolName?: string): ReadonlySet<string> {
+  const extras = toolName ? TOOL_STRUCTURAL_KEYS[toolName] : undefined;
+  if (!extras) return STRUCTURAL_KEYS;
+  return new Set([...STRUCTURAL_KEYS, ...extras]);
+}
 
 /** Max keys listed in a shape descriptor, so a wide object can't grow the prompt. */
 const MAX_SHAPE_KEYS = 20;
@@ -114,19 +212,25 @@ function describeTruncated(value: object): Record<string, unknown> {
 }
 
 /**
- * Replace every redacted field with its shape, at any depth. Not a scrub of stored text:
- * the value never reaches the judge or the row in the first place.
+ * Keep the allowed structural fields, at any depth, and replace everything else with its
+ * shape. Not a scrub of stored text: the value never reaches the judge or the row in the
+ * first place.
+ *
+ * Pass the tool's name so its own structural fields are allowed too.
  */
-export function redactEvalToolValue(value: unknown, depth = 0): unknown {
+export function redactEvalToolValue(value: unknown, toolName?: string, depth = 0): unknown {
+  const allowed = allowedEvalKeys(toolName);
+  return walk(value, allowed, depth);
+}
+
+function walk(value: unknown, allowed: ReadonlySet<string>, depth: number): unknown {
   if (value === null || typeof value !== "object") return value;
   if (depth >= MAX_REDACT_DEPTH) return describeTruncated(value);
-  if (Array.isArray(value)) return value.map((item) => redactEvalToolValue(item, depth + 1));
+  if (Array.isArray(value)) return value.map((item) => walk(item, allowed, depth + 1));
 
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    result[key] = REDACTED_KEYS.has(key)
-      ? describeShape(key, item)
-      : redactEvalToolValue(item, depth + 1);
+    result[key] = allowed.has(key) ? walk(item, allowed, depth + 1) : describeShape(key, item);
   }
   return result;
 }
