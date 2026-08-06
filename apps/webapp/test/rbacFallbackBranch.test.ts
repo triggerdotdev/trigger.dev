@@ -1,6 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import plugin from "@trigger.dev/rbac";
-import { signUserActorToken } from "@trigger.dev/rbac";
+import plugin, { signUserActorToken } from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";

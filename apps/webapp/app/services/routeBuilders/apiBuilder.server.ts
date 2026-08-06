@@ -1,5 +1,8 @@
 import type { z } from "zod";
-import type { ApiAuthenticationResultSuccess } from "../apiAuth.server";
+import type {
+  ApiAuthenticationResultSuccess,
+  UserActorAuthenticatedActor,
+} from "../apiAuth.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
@@ -7,11 +10,9 @@ import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
-import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
-import type { UserActorClaims } from "@trigger.dev/rbac";
+import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
 import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
-import type { UserActorAuthenticatedActor } from "../apiAuth.server";
 import { assertUserActorScope } from "../userActorEnvironment.server";
 import { env } from "~/env.server";
 import { safeJsonParse } from "~/utils/json";
