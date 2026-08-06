@@ -207,6 +207,7 @@ The route handler was doing two jobs: authorizing the request, and terminating t
 import { auth as triggerAuth } from "@trigger.dev/sdk";
 import { chat, type ChatStartSessionParams } from "@trigger.dev/sdk/ai";
 import { auth } from "@/lib/auth";
+import { assertChatOwner, claimChat } from "@/lib/chat-access";
 import type { myChat } from "@/trigger/chat";
 
 const start = chat.createStartSessionAction<typeof myChat>("my-chat");
@@ -217,6 +218,8 @@ export async function startChatSession(params: ChatStartSessionParams<typeof myC
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
 
+  await claimChat(params.chatId, session.user.id);
+
   return start(params);
 }
 
@@ -224,6 +227,8 @@ export async function startChatSession(params: ChatStartSessionParams<typeof myC
 export async function mintChatAccessToken(chatId: string) {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
+
+  await assertChatOwner(chatId, session.user.id);
 
   return triggerAuth.createPublicToken({
     scopes: {
@@ -236,6 +241,10 @@ export async function mintChatAccessToken(chatId: string) {
 ```
 
 Both run on your server, so the browser never sees `TRIGGER_SECRET_KEY`. This is where per-user and per-plan authorization belongs, alongside any database writes you want paired with session creation.
+
+<Warning>
+  Signed in is not the same as entitled to this chat, and `chatId` arrives from the browser. Bind the two yourself: `claimChat` records the owner the first time a chat id is seen and rejects it if someone else already holds it, and `assertChatOwner` requires a row the caller owns. Check only that a session exists and any signed-in user can mint a read/write token for someone else's conversation.
+</Warning>
 
 <Note>
   If you'd rather keep REST endpoints than use server actions, both callbacks accept any async function — see [calling a fetch endpoint instead](/ai-chat/frontend#calling-a-fetch-endpoint-instead-of-a-server-action).
@@ -475,10 +484,11 @@ Head Start brings the route handler back for exactly that first turn. It runs st
     Your provider keys never leave your server — the first-turn model call runs in your process, so that environment needs whatever the model requires.
   </Step>
   <Step title="Mount it where the old handler was, auth check and all">
-    The authorization check you moved into the server actions belongs here too, in the same place it always was. Wrap the handler rather than exporting it directly:
+    The authorization check you moved into the server actions belongs here too, in the same place it always was, ownership check included. Wrap the handler rather than exporting it directly:
 
     ```ts app/api/chat/route.ts
     import { auth } from "@/lib/auth";
+    import { claimChat } from "@/lib/chat-access";
     import { chatHandler } from "@/lib/chat-handler";
 
     // The handler holds the SSE response open until the agent signals
@@ -488,6 +498,10 @@ Head Start brings the route handler back for exactly that first turn. It runs st
     export async function POST(req: Request) {
       const session = await auth();
       if (!session) return new Response("Unauthorized", { status: 401 });
+
+      // Clone so the handler still gets an unread body.
+      const { chatId } = await req.clone().json();
+      await claimChat(chatId, session.user.id);
 
       return chatHandler(req);
     }
