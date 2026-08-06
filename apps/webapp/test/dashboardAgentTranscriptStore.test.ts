@@ -334,13 +334,30 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       const chatId = "chat_malformed";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
+      // The shape, never the values: a malformed message can carry user text.
       await expect(
-        persistMessages(agentDb, { chatId, messages: [{ role: "user", parts: [] }] })
-      ).rejects.toThrow(/Chat chat_malformed was handed a message with no id: .*"role":"user"/);
+        persistMessages(agentDb, {
+          chatId,
+          messages: [
+            { role: "user", parts: [{ type: "text", text: "card 4242 for alice@x.test" }] },
+          ],
+        })
+      ).rejects.toThrow(
+        /Chat chat_malformed was handed a message with no id: object with keys: role, parts$/
+      );
 
       await expect(
         persistMessages(agentDb, { chatId, messages: [{ id: "a1", parts: [] }] })
-      ).rejects.toThrow(/Chat chat_malformed was handed a message with no role: .*"id":"a1"/);
+      ).rejects.toThrow(
+        /Chat chat_malformed was handed a message with no role: object with keys: id, parts$/
+      );
+
+      const leaked = await persistMessages(agentDb, {
+        chatId,
+        messages: [{ role: "user", parts: [{ type: "text", text: "alice@x.test" }] }],
+      }).catch((error: Error) => error.message);
+      expect(leaked).not.toContain("alice@x.test");
+      expect(leaked).not.toContain("4242");
     },
     30_000
   );
@@ -402,6 +419,31 @@ describe("invariant 4: a controlled finalisation changes the body and nothing el
 
       expect(await rows(prisma, chatId)).toEqual(before);
       expect(await roleOf(prisma, chatId, "a1")).toBe("assistant");
+    },
+    30_000
+  );
+
+  postgresTest(
+    "a finalisation whose body names another message is refused",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_finalise_id";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1", "still working")] });
+      const before = await rows(prisma, chatId);
+
+      // The row key would stay `a1` while the body claims `a2`, so a later read
+      // would hand the UI a message under the wrong identity.
+      await expect(
+        finalizeChatMessage(agentDb, {
+          chatId,
+          messageId: "a1",
+          expectedRole: "assistant",
+          message: { id: "a2", role: "assistant", parts: [{ type: "text", text: "done" }] },
+        })
+      ).rejects.toThrow(/finalisation target a1 carries body id a2/);
+
+      expect(await rows(prisma, chatId)).toEqual(before);
     },
     30_000
   );

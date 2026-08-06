@@ -281,19 +281,20 @@ export async function softDeleteChat(
 }
 
 /** Enough of the payload to recognise it in an error, without logging a whole transcript. */
-function describeMessage(message: unknown): string {
-  try {
-    return JSON.stringify(message)?.slice(0, 200) ?? String(message);
-  } catch {
-    return String(message);
-  }
+// Shape only. A malformed message can carry user text, tool output or source.
+function describeMessageShape(message: unknown): string {
+  if (!message || typeof message !== "object") return typeof message;
+  const keys = Object.keys(message);
+  return `object with keys: ${keys.slice(0, 10).join(", ")}${keys.length > 10 ? ", …" : ""}`;
 }
 
 /** Row identity. Checked here so a malformed message names itself, not a `NOT NULL` violation. */
 function messageIdOf(chatId: string, message: unknown): string {
   const id = (message as { id?: unknown } | null | undefined)?.id;
   if (typeof id !== "string" || id.length === 0) {
-    throw new Error(`Chat ${chatId} was handed a message with no id: ${describeMessage(message)}`);
+    throw new Error(
+      `Chat ${chatId} was handed a message with no id: ${describeMessageShape(message)}`
+    );
   }
   return id;
 }
@@ -303,7 +304,7 @@ function messageRoleOf(chatId: string, message: unknown): string {
   const role = (message as { role?: unknown } | null | undefined)?.role;
   if (typeof role !== "string" || role.length === 0) {
     throw new Error(
-      `Chat ${chatId} was handed a message with no role: ${describeMessage(message)}`
+      `Chat ${chatId} was handed a message with no role: ${describeMessageShape(message)}`
     );
   }
   return role;
@@ -417,6 +418,13 @@ export async function finalizeChatMessage(
   if (role !== params.expectedRole) {
     throw new Error(
       `Chat ${params.chatId} finalisation of ${params.messageId} expected role ${params.expectedRole} but its body carries ${role}`
+    );
+  }
+
+  const bodyMessageId = messageIdOf(params.chatId, params.message);
+  if (bodyMessageId !== params.messageId) {
+    throw new Error(
+      `Chat ${params.chatId} finalisation target ${params.messageId} carries body id ${bodyMessageId}`
     );
   }
 
