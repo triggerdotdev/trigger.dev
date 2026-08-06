@@ -50,6 +50,12 @@ const SUMMARY_INPUT_MESSAGE_CHARS = 2_000;
 /** The summariser: cheap, bounded, and told exactly what it may not drop. */
 const SUMMARY_MODEL = "anthropic:claude-haiku-4-5" as const;
 
+/**
+ * A hard ceiling on the summary, because "under 400 words" is an instruction and not a
+ * budget. 400 words is ~530 tokens, so this is roughly double what the summary needs.
+ */
+const SUMMARY_MAX_OUTPUT_TOKENS = 1_000;
+
 const SUMMARY_INSTRUCTION = `You are compacting a support conversation between a user and an agent that reads a Trigger.dev dashboard, so the agent can keep going with a shorter history.
 
 Write a summary in under 400 words, as notes rather than prose. Keep, in this order:
@@ -284,6 +290,7 @@ async function summarizeConversation(event: SummarizeEvent): Promise<string> {
     model: locals.get(dashboardAgentModelKey) ?? registry.languageModel(SUMMARY_MODEL),
     system: SUMMARY_INSTRUCTION,
     prompt: renderTranscriptForSummary(event.messages),
+    maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
   });
   return text.trim();
 }

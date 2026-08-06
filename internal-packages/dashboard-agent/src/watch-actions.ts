@@ -372,6 +372,12 @@ async function openConsentedInvestigation(args: {
 const HAIKU_WAKE_BRIEF =
   'You are the Trigger.dev dashboard agent, reporting on a watch the user asked you to keep. Write ONE short message, two sentences at most: the fact as given, then what it means for them and the single most useful next step. Never say the watch "fired" or "expired", never invent a number that isn\'t given, and don\'t recap the conversation — nobody is waiting on a reply.';
 
+/**
+ * A hard ceiling on that message, because "two sentences at most" is an instruction and
+ * not a budget. Two sentences are well under 100 tokens, so this leaves plenty of room.
+ */
+const HAIKU_WAKE_MAX_OUTPUT_TOKENS = 300;
+
 /** The fixed narration, as the panel's stream sees it. Same shape a model would emit. */
 async function* fixedNarrationChunks(
   messageId: string,
@@ -423,6 +429,7 @@ async function narrateWithPlan(input: {
               content: `${wake}\n\nOpen with this fact, in these words: ${plan.presentation.headline}.`,
             },
           ],
+          maxOutputTokens: HAIKU_WAKE_MAX_OUTPUT_TOKENS,
         })
       : streamText({
           model:
