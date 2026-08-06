@@ -97,6 +97,21 @@ describe("the step cache breakpoint", () => {
     expect(ttlOf(marked.at(-1))).toBe("5m");
   });
 
+  it("keeps the marked message's other anthropic options when it sets the breakpoint", () => {
+    const marked = markStepCacheBreakpoint([
+      turnHistory(),
+      {
+        ...toolResult(MIN_STEP_CACHE_CHARS),
+        providerOptions: { anthropic: { anotherOption: "keep" }, openai: { store: false } },
+      },
+    ]);
+
+    expect(marked.at(-1)!.providerOptions).toEqual({
+      anthropic: { anotherOption: "keep", cacheControl: STEP_CACHE_CONTROL },
+      openai: { store: false },
+    });
+  });
+
   it("leaves no empty anthropic object behind", () => {
     const marked = markStepCacheBreakpoint([
       stepBreakpointWith({}),
@@ -131,6 +146,24 @@ describe("wrapping the SDK's prepareStep", () => {
     } as never);
 
     expect(ttlOf(prepared!.messages!.at(-1) as Message)).toBe("5m");
+  });
+
+  it("keeps the last message's other anthropic options", async () => {
+    const inner = () => ({
+      messages: [
+        turnHistory(),
+        {
+          ...toolResult(MIN_STEP_CACHE_CHARS),
+          providerOptions: { anthropic: { anotherOption: "keep" } },
+        },
+      ],
+    });
+
+    const prepared = await withStepCacheBreakpoint(inner as never)({ messages: [] } as never);
+
+    expect((prepared!.messages!.at(-1) as Message).providerOptions).toEqual({
+      anthropic: { anotherOption: "keep", cacheControl: STEP_CACHE_CONTROL },
+    });
   });
 
   it("keeps the rest of the inner result", async () => {

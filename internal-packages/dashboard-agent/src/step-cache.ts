@@ -30,6 +30,13 @@ function cacheControlTtl(message: MaybeCached): string | undefined {
   return typeof ttl === "string" ? ttl : undefined;
 }
 
+function anthropicOptions(message: MaybeCached): Record<string, unknown> {
+  const anthropic = message.providerOptions?.anthropic;
+  return typeof anthropic === "object" && anthropic !== null
+    ? (anthropic as Record<string, unknown>)
+    : {};
+}
+
 function withoutStepBreakpoint<T extends MaybeCached>(message: T): T {
   if (cacheControlTtl(message) !== STEP_CACHE_CONTROL.ttl) return message;
   const { anthropic, ...rest } = message.providerOptions as Record<string, unknown>;
@@ -63,7 +70,7 @@ export function markStepCacheBreakpoint<T extends MaybeCached>(messages: T[]): T
       ...last,
       providerOptions: {
         ...last.providerOptions,
-        anthropic: { cacheControl: STEP_CACHE_CONTROL },
+        anthropic: { ...anthropicOptions(last), cacheControl: STEP_CACHE_CONTROL },
       },
     },
   ];
