@@ -169,49 +169,12 @@ export function clearOpenInvestigations(chatId: string): void {
   openInvestigations.delete(chatId);
 }
 
-/** A revision the settle guard committed, and the card the transcript still needs. */
+/** A revision a settling write committed, and the card the transcript still needs. */
 export type SettledInvestigationCard = {
   investigationId: string;
   revision: number;
   state: unknown;
 };
-
-/**
- * Force-settle whatever this turn left `in_progress`, as one more revision on
- * the same investigation. Best-effort: a failed settle must not fail a turn the
- * user already got an answer from, but it is logged.
- *
- * The settled revisions are returned because settling the row is only half of it:
- * the panel renders from the transcript, so the caller has to append these too.
- */
-export async function settleOpenInvestigations(
-  store: DashboardAgentStore,
-  chatId: string
-): Promise<SettledInvestigationCard[]> {
-  const open = openInvestigations.get(chatId);
-  if (!open || open.size === 0) return [];
-  openInvestigations.delete(chatId);
-
-  const settled: SettledInvestigationCard[] = [];
-  for (const [id, entry] of open) {
-    const state = forceSettledInvestigationState(entry.state);
-    try {
-      const result = await store.upsertInvestigationRevision({
-        id,
-        chatId,
-        projectRef: entry.projectRef,
-        environmentRef: entry.environmentRef,
-        state,
-      });
-      if (result.ok) {
-        settled.push({ investigationId: result.id, revision: result.revision, state });
-      }
-    } catch (error) {
-      logger.error("Failed to settle an investigation left in progress", { chatId, id, error });
-    }
-  }
-  return settled;
-}
 
 /**
  * The settled cards as transcript messages, in the shape the panel's winning-revision
