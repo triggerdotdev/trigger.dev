@@ -1,54 +1,74 @@
 /**
- * Where each /deeplink/<name> lands, relative to the resolved environment. Most names are a page
- * in their own right and map to themselves. A few exist only as the parent of param routes
- * (`tasks.standard.$taskParam`, `waitpoints.tokens`) — a bare `/tasks` matches no route and would
- * 404 — so those map to the page a user actually wants instead.
+ * Where each /deeplink/<name> goes, relative to the resolved environment.
+ *
+ * Two pieces, because a name's own page and the things underneath it are not always in the same
+ * place. `landing` is used for a bare `/deeplink/<name>`; `prefix` is what deeper segments hang off.
+ * They differ only where a segment is not a page in its own right:
+ *
+ * - `tasks` has no bare route, and the task list is the environment root — but task detail pages do
+ *   live under `/tasks`, so the landing is the root while the prefix stays `tasks`.
+ * - `waitpoints` has no bare route either, and its only page and its detail pages are both under
+ *   `/waitpoints/tokens`, so both are that.
  *
  * This mirrors the environment-layout routes
  * (`_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.*`): add a page here when one
- * is added there. `deeplinkPages.test.ts` checks every target against the route files and fails if
- * a page is missing or a target stops resolving.
+ * is added there. `deeplinkPages.test.ts` checks every landing and every deep path against the
+ * route files and fails if a page is missing or a target stops resolving.
  */
-export const ENV_PAGE_TARGETS: ReadonlyMap<string, string> = new Map([
-  ["agents", "agents"],
-  ["alerts", "alerts"],
-  ["apikeys", "apikeys"],
-  ["batches", "batches"],
-  ["branches", "branches"],
-  ["bulk-actions", "bulk-actions"],
-  ["concurrency", "concurrency"],
-  ["dashboards", "dashboards"],
-  ["deployments", "deployments"],
-  ["dev-branches", "dev-branches"],
-  ["environment-variables", "environment-variables"],
-  ["errors", "errors"],
-  ["limits", "limits"],
-  ["logs", "logs"],
-  ["models", "models"],
-  ["playground", "playground"],
-  ["prompts", "prompts"],
-  ["query", "query"],
-  ["queues", "queues"],
-  ["regions", "regions"],
-  ["runs", "runs"],
-  ["schedules", "schedules"],
-  ["sessions", "sessions"],
-  ["settings", "settings"],
-  // The environment root is the task list (its route is the env `_index`, titled "Tasks"), so a
-  // bare /deeplink/tasks belongs there rather than at the secondary /tasks/dashboard view.
-  ["tasks", ""],
-  ["test", "test"],
-  ["waitpoints", "waitpoints/tokens"],
+export type DeeplinkTarget = {
+  /** Path for a bare `/deeplink/<name>`. "" is the environment root. */
+  landing: string;
+  /** Deeper segments are appended to this: `/deeplink/<name>/a/b` -> `<prefix>/a/b`. */
+  prefix: string;
+};
+
+/** An ordinary page: its own segment is the page, and its children hang off it. */
+function page(name: string): DeeplinkTarget {
+  return { landing: name, prefix: name };
+}
+
+export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
+  ["agents", page("agents")],
+  ["alerts", page("alerts")],
+  ["apikeys", page("apikeys")],
+  ["batches", page("batches")],
+  ["branches", page("branches")],
+  ["bulk-actions", page("bulk-actions")],
+  ["concurrency", page("concurrency")],
+  ["dashboards", page("dashboards")],
+  ["deployments", page("deployments")],
+  ["dev-branches", page("dev-branches")],
+  ["environment-variables", page("environment-variables")],
+  ["errors", page("errors")],
+  ["limits", page("limits")],
+  ["logs", page("logs")],
+  ["models", page("models")],
+  ["playground", page("playground")],
+  ["prompts", page("prompts")],
+  ["query", page("query")],
+  ["queues", page("queues")],
+  ["regions", page("regions")],
+  ["runs", page("runs")],
+  ["schedules", page("schedules")],
+  ["sessions", page("sessions")],
+  ["settings", page("settings")],
+  ["tasks", { landing: "", prefix: "tasks" }],
+  ["test", page("test")],
+  ["waitpoints", { landing: "waitpoints/tokens", prefix: "waitpoints/tokens" }],
 ]);
 
 /**
  * The path a deeplink suffix should redirect to, relative to the environment, or undefined when the
  * first segment names no page. Returns "" for a target that is the environment root itself.
  *
- * Segments beyond the first are kept as given, because they address a real sub-route
- * (`/deeplink/runs/run_123`, `/deeplink/tasks/standard/my-task`); only a bare name uses the mapped
- * landing page. They arrive decoded, so they are re-encoded: a "?" or "#" in a segment must not
- * become the target's query or hash.
+ * A bare name uses its landing path. Deeper segments are grafted onto the prefix, so
+ * `/deeplink/waitpoints/waitpoint_123` reaches the token that actually lives at
+ * `/waitpoints/tokens/waitpoint_123`. A suffix that already spells out a path under the prefix is
+ * kept as it was written, so both `/deeplink/waitpoints/waitpoint_123` and the longhand
+ * `/deeplink/waitpoints/tokens/waitpoint_123` arrive at the same place.
+ *
+ * Only the caller's own segments are encoded — the prefix is our own literal. They arrive decoded,
+ * so a "?" or "#" in a segment must not become the target's query or hash.
  */
 export function resolveDeeplinkPage(splat: string): string | undefined {
   //traversal segments are dropped so a crafted suffix can't climb out of the environment path
@@ -59,5 +79,12 @@ export function resolveDeeplinkPage(splat: string): string | undefined {
   const target = ENV_PAGE_TARGETS.get(segments[0] ?? "");
   if (target === undefined) return undefined;
 
-  return segments.length > 1 ? segments.map(encodeURIComponent).join("/") : target;
+  if (segments.length === 1) return target.landing;
+
+  const encoded = segments.map(encodeURIComponent);
+  const written = encoded.join("/");
+  //already written out under the prefix, so grafting would duplicate it
+  if (written === target.prefix || written.startsWith(`${target.prefix}/`)) return written;
+
+  return [target.prefix, ...encoded.slice(1)].join("/");
 }

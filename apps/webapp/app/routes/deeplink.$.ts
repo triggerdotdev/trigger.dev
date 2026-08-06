@@ -22,13 +22,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const { project, organization, environment } = await presenter.call({ user });
     const environmentPath = v3EnvironmentPath(organization, project, environment);
 
-    //an unrecognised path keeps nothing: it lands on the environment as if no suffix was given
-    if (page === undefined) {
-      return redirect(environmentPath);
-    }
+    //Both an unrecognised name and `tasks` (which targets the environment root) leave no suffix,
+    //and the query survives either way, so all three spellings of "the environment" agree.
+    const suffix = page ? `/${page}` : "";
 
-    //`tasks` targets the environment root, so there is no suffix to append
-    return redirect(page ? `${environmentPath}/${page}${search}` : `${environmentPath}${search}`);
+    return redirect(`${environmentPath}${suffix}${search}`);
   } catch (_e) {
     //the presenter throws when the user has no projects, same as the dashboard index
     const organization = await prisma.organization.findFirst({

@@ -17,6 +17,9 @@ const ENV_ROUTE_PREFIX = "_app.orgs.$organizationSlug.projects.$projectParam.env
  */
 const NOT_DEEPLINK_NAMES = new Set(["_index", "queues_"]);
 
+/** Stands in for a param segment, so a deep path under test looks like a real URL. */
+const PROBE = "probe_01ABC";
+
 const routeEntries = readdirSync(ROUTES_DIR);
 
 /** A route directory only contributes a route if it actually holds a `route` module. */
@@ -27,21 +30,28 @@ function isRouteModule(entry: string): boolean {
 }
 
 /**
- * The route file that a bare `/env/{env}/{target}` URL matches, or undefined when nothing does.
- * `target` may span segments ("waitpoints/tokens"); "" is the environment root.
- *
- * Only literal route names are considered — a param route (`metrics.$dashboardKey`) is not a page
- * you can land on without supplying the param, which is exactly what this needs to reject.
+ * Every environment route as its URL segments. A trailing `_index` is dropped (it supplies the
+ * parent's bare URL) and a trailing `_` is trimmed from each segment, because `queues_.$queueParam`
+ * serves `/queues/{id}` — the underscore only opts out of the parent layout.
  */
-function routeForTarget(target: string): string | undefined {
-  if (target === "") {
-    return isRouteModule(`${ENV_ROUTE_PREFIX}_index`) ? `${ENV_ROUTE_PREFIX}_index` : undefined;
-  }
+const envRoutes: string[][] = routeEntries
+  .filter((entry) => entry.startsWith(ENV_ROUTE_PREFIX) && isRouteModule(entry))
+  .map((entry) =>
+    entry
+      .slice(ENV_ROUTE_PREFIX.length)
+      .replace(/\.(tsx|ts)$/, "")
+      .split(".")
+  )
+  .map((segments) => (segments.at(-1) === "_index" ? segments.slice(0, -1) : segments))
+  .map((segments) => segments.map((segment) => segment.replace(/_+$/, "")));
 
-  const base = ENV_ROUTE_PREFIX + target.split("/").join(".");
-  // A leaf route, or a layout whose index child supplies the bare URL.
-  return [base, `${base}.tsx`, `${base}.ts`, `${base}._index`].find(
-    (candidate) => routeEntries.includes(candidate) && isRouteModule(candidate)
+/** Does any route match this environment-relative URL? Param segments match the deep case only. */
+function routeMatches(path: string, { allowParams }: { allowParams: boolean }): boolean {
+  const wanted = path === "" ? [] : path.split("/");
+  return envRoutes.some(
+    (route) =>
+      route.length === wanted.length &&
+      route.every((segment, i) => (segment.startsWith("$") ? allowParams : segment === wanted[i]))
   );
 }
 
@@ -59,25 +69,68 @@ function envRouteSegments(): Set<string> {
   return segments;
 }
 
+/**
+ * Every route below this prefix, as the segments that follow it, with param segments replaced by a
+ * value a real URL would carry. These are the deep links that can actually be made under a name.
+ */
+function descendantsOf(prefix: string): string[][] {
+  const depth = prefix === "" ? 0 : prefix.split("/").length;
+  return envRoutes
+    .filter((route) => route.length > depth && route.slice(0, depth).join("/") === prefix)
+    .map((route) =>
+      route.slice(depth).map((segment) => (segment.startsWith("$") ? PROBE : segment))
+    );
+}
+
 describe("deeplink targets", () => {
   it("found the routes directory", () => {
     // Without this, every assertion below would pass vacuously if the glob ever broke.
     expect(envRouteSegments().size).toBeGreaterThan(20);
+    expect(envRoutes.length).toBeGreaterThan(40);
   });
 
-  it("every target resolves to a real environment route", () => {
-    const unresolved = [...ENV_PAGE_TARGETS.entries()]
-      .filter(([, target]) => !routeForTarget(target))
-      .map(([name, target]) => `${name} -> ${target || "(environment root)"}`);
+  it("every bare name lands on a real page", () => {
+    // A landing page is a page you arrive at with no id, so a param route does not count.
+    const broken = [...ENV_PAGE_TARGETS.entries()]
+      .filter(([name]) => !routeMatches(resolveDeeplinkPage(name) ?? " ", { allowParams: false }))
+      .map(([name, { landing }]) => `${name} -> ${landing || "(environment root)"}`);
 
-    expect(unresolved).toEqual([]);
+    expect(broken).toEqual([]);
+  });
+
+  it("every deep path lands on a real route", () => {
+    // The invariant a bare segment list could not express: /deeplink/waitpoints/{id} has to reach
+    // waitpoints/tokens/{id}, not waitpoints/{id}. Driven off the real child routes rather than one
+    // synthetic segment, so names whose children are all literal (settings/general) count too.
+    const broken: string[] = [];
+
+    for (const [name, { prefix }] of ENV_PAGE_TARGETS) {
+      for (const rest of descendantsOf(prefix)) {
+        const suffix = [name, ...rest].join("/");
+        const resolved = resolveDeeplinkPage(suffix);
+        if (!routeMatches(resolved ?? " ", { allowParams: true })) {
+          broken.push(`${suffix} -> ${resolved}`);
+        }
+      }
+    }
+
+    expect(broken).toEqual([]);
+  });
+
+  it("has deep paths worth checking", () => {
+    // Keeps the assertion above from passing because it iterated nothing.
+    expect(descendantsOf("waitpoints/tokens").length).toBeGreaterThan(0);
+    expect(descendantsOf("tasks").length).toBeGreaterThan(2);
+    expect(descendantsOf("runs").length).toBeGreaterThan(0);
   });
 
   it("every environment page has a deeplink name", () => {
     // A segment that resolves bare is a page someone could reasonably want to link to.
     const missing = [...envRouteSegments()]
       .filter((segment) => !NOT_DEEPLINK_NAMES.has(segment))
-      .filter((segment) => routeForTarget(segment) && !ENV_PAGE_TARGETS.has(segment))
+      .filter(
+        (segment) => routeMatches(segment, { allowParams: false }) && !ENV_PAGE_TARGETS.has(segment)
+      )
       .sort();
 
     expect(missing).toEqual([]);
@@ -86,13 +139,16 @@ describe("deeplink targets", () => {
   it("names whose own segment 404s are redirected, not mapped to themselves", () => {
     // These exist only as the parent of param/child routes, so a bare URL matches no route.
     for (const segment of ["tasks", "waitpoints", "metrics"]) {
-      expect(routeForTarget(segment)).toBeUndefined();
+      expect(routeMatches(segment, { allowParams: false })).toBe(false);
     }
 
-    // `tasks` and `waitpoints` therefore point somewhere else; `metrics` is only a legacy redirect
-    // shim with no page of its own, so it is deliberately not a deeplink name at all.
-    expect(ENV_PAGE_TARGETS.get("tasks")).toBe("");
-    expect(ENV_PAGE_TARGETS.get("waitpoints")).toBe("waitpoints/tokens");
+    // `tasks` and `waitpoints` therefore point elsewhere; `metrics` is only a legacy redirect shim
+    // with no page of its own, so it is deliberately not a deeplink name at all.
+    expect(ENV_PAGE_TARGETS.get("tasks")).toEqual({ landing: "", prefix: "tasks" });
+    expect(ENV_PAGE_TARGETS.get("waitpoints")).toEqual({
+      landing: "waitpoints/tokens",
+      prefix: "waitpoints/tokens",
+    });
     expect(ENV_PAGE_TARGETS.has("metrics")).toBe(false);
   });
 });
@@ -104,10 +160,19 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("tasks")).toBe("");
   });
 
-  it("keeps deeper segments, which address a real sub-route", () => {
+  it("grafts deeper segments onto the prefix", () => {
     expect(resolveDeeplinkPage("runs/run_123")).toBe("runs/run_123");
+    // The landing is the environment root, but task detail still lives under /tasks.
     expect(resolveDeeplinkPage("tasks/standard/my-task")).toBe("tasks/standard/my-task");
+    // The prefix supplies the `tokens` segment the caller did not have to know about.
+    expect(resolveDeeplinkPage("waitpoints/waitpoint_123")).toBe("waitpoints/tokens/waitpoint_123");
+  });
+
+  it("does not duplicate a prefix the caller already wrote out", () => {
     expect(resolveDeeplinkPage("waitpoints/tokens")).toBe("waitpoints/tokens");
+    expect(resolveDeeplinkPage("waitpoints/tokens/waitpoint_123")).toBe(
+      "waitpoints/tokens/waitpoint_123"
+    );
   });
 
   it("rejects a name that is not a page", () => {
