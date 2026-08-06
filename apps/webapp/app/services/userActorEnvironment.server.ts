@@ -73,8 +73,9 @@ export async function assertUserActorScope(
 }
 
 /**
- * The environment a project-wide route must narrow to. `scoped: false` is every non-delegated
- * caller (session, PAT, org token) — project-wide, unchanged.
+ * The environment a project-wide route must narrow to. `scoped: false` is every caller with no
+ * environment claim to narrow to — a session, a PAT, an org token, or an environment-agnostic
+ * UAT — and stays project-wide, unchanged.
  */
 export type UserActorEnvironmentScope =
   | { scoped: false }
@@ -85,10 +86,11 @@ export type UserActorEnvironmentScope =
  * across a project. Without this, an environment-scoped token reads every environment its user
  * is a member of — the claim would only bind the per-environment routes.
  *
- * Throws a 403 Response when the claim can't be honoured: no claim (nothing to narrow to), a
- * claim outside the target project, or a request filter that names anything else. A conflicting
- * filter is refused rather than overridden, so a caller never gets another environment's shape
- * of answer under its own filter.
+ * Throws a 403 Response when a claim can't be honoured: a claim outside the target project, or a
+ * request filter that names anything else. A conflicting filter is refused rather than overridden,
+ * so a caller never gets another environment's shape of answer under its own filter. A token with
+ * no claim keeps the project-wide answer, as the public PAT exchange's MCP and CLI callers expect —
+ * except a dashboard-agent token, which always carries one, so its absence is a bug.
  */
 export async function resolveUserActorEnvironmentScope(
   userActor: UserActorClaims | undefined,
@@ -97,7 +99,8 @@ export async function resolveUserActorEnvironmentScope(
   if (!userActor) return { scoped: false };
 
   if (!userActor.environmentId) {
-    throw forbiddenEnvironment("This token isn't scoped to an environment.");
+    assertClaimIsOptional(userActor);
+    return { scoped: false };
   }
 
   const environment = await $replica.runtimeEnvironment.findFirst({

@@ -260,20 +260,53 @@ postgresTest(
 );
 
 postgresTest(
-  "a claimless user-actor token gets nothing project-wide",
+  "a claimless dashboard-agent token is refused",
   async ({ prisma }) => {
     ctx.prisma = prisma;
     const seeded = await seedProject(prisma);
     ctx.patUserId = seeded.user.id;
 
-    // Any delegated client, not just the agent: a project-wide route has no scope to narrow to.
+    // The agent always mints per-environment, so a claimless one of its own is a bug, not a flow.
     const claimless = await call(environmentsLoader, {
       projectRef: seeded.project.externalRef,
-      token: await agentToken(seeded.user.id, undefined, "mcp"),
+      token: await agentToken(seeded.user.id, undefined),
     });
 
     expect(claimless.status).toBe(403);
     expect(claimless.body.code).toBe("forbidden_environment");
+  },
+  60_000
+);
+
+postgresTest(
+  "a claimless user-actor token from another client still gets the project-wide answer",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    ctx.presenterEnvironments = [];
+    const seeded = await seedProject(prisma);
+    ctx.patUserId = seeded.user.id;
+
+    // The public PAT exchange used by MCP and the CLI may issue an environment-agnostic token.
+    // Narrowing it would be a breaking change, so it reads the whole project as it always has.
+    const environments = await call(environmentsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: await agentToken(seeded.user.id, undefined, "mcp"),
+    });
+
+    expect(environments.status).toBe(200);
+    expect(environments.body.map((env: any) => env.id).sort()).toEqual(
+      [seeded.envA.id, seeded.envB.id].sort()
+    );
+
+    const runs = await call(runsLoader, {
+      projectRef: seeded.project.externalRef,
+      token: await agentToken(seeded.user.id, undefined, "mcp"),
+      search: `?filter[env]=${seeded.envB.slug}`,
+    });
+
+    // No forced environment, and its own filter is honoured rather than refused.
+    expect(runs.status).toBe(200);
+    expect(ctx.presenterEnvironments).toEqual([undefined]);
   },
   60_000
 );
