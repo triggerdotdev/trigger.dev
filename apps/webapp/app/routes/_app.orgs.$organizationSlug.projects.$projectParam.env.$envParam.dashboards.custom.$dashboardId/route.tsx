@@ -60,6 +60,12 @@ import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projec
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data }) => [
+  data?.title ?? "Dashboard",
+  "Dashboards",
+]);
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),

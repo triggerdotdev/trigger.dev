@@ -1,4 +1,5 @@
 import { type MetaFunction } from "@remix-run/react";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -43,13 +44,9 @@ export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("apikeys"),
 };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `API keys | Trigger.dev`,
-    },
-  ];
-};
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("API keys");
 
 export const loader = dashboardLoader(
   {

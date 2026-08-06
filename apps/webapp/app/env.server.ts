@@ -108,6 +108,12 @@ const isNotInsecureSecret = (value: string) =>
 const INSECURE_SECRET_MESSAGE =
   "must not be a known-insecure published default; set a strong, unique value. If you cannot rotate it yet (e.g. it protects existing encrypted data or active sessions), set ALLOW_INSECURE_DEFAULT_SECRETS=1 to boot while you migrate.";
 
+/** Optional int env var; blank/whitespace normalises to undefined (z.coerce turns "" into 0). */
+const OptionalIntEnv = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.coerce.number().int().optional()
+);
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -120,6 +126,10 @@ const EnvironmentSchema = z
     DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
     DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
     DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
+    DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
     // Dashboard-agent conversation store. Cloud points this at a dedicated
     // database; when unset it falls back to DATABASE_URL (OSS), where
     // the tables live in the isolated `trigger_dashboard_agent` schema.
@@ -185,7 +195,15 @@ const EnvironmentSchema = z
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
     // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
-    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: OptionalIntEnv,
+    RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
     // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
     // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
     // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.

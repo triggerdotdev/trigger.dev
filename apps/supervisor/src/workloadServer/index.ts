@@ -23,6 +23,8 @@ import EventEmitter from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { Counter } from "prom-client";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
@@ -30,6 +32,7 @@ import {
   workloadTokenEnforced,
   workloadTokensEnabled,
 } from "../workloadToken.js";
+import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   ComputeSnapshotService,
   type RunTraceContext,
@@ -49,6 +52,20 @@ interface DefaultEventsMap {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [event: string]: (...args: any[]) => void;
 }
+
+const checkpointDeleteRequests = new Counter({
+  name: "checkpoint_delete_requests_total",
+  help: "Checkpoint delete requests attempted at run completion, by outcome",
+  labelNames: ["result"],
+  registers: [register],
+});
+
+const checkpointCancelRequests = new Counter({
+  name: "checkpoint_cancel_requests_total",
+  help: "Checkpoint cancel requests attempted when a run continues, by outcome",
+  labelNames: ["result"],
+  registers: [register],
+});
 
 const WorkloadActionParams = z.object({
   runFriendlyId: z.string(),
@@ -181,10 +198,15 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
    * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   *
+   * `claims` are returned on any valid token, for local use only - never to scope the platform,
+   * which is why environmentId stays gated on enforce.
    */
   private async authorizeWorkloadRequest(
     req: IncomingMessage
-  ): Promise<{ ok: true; environmentId?: string } | { ok: false }> {
+  ): Promise<
+    { ok: true; environmentId?: string; claims?: WorkloadDeploymentTokenClaims } | { ok: false }
+  > {
     if (!workloadTokensEnabled) {
       return { ok: true };
     }
@@ -201,7 +223,95 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         workloadTokenEnforced && result.outcome === "jwt_valid"
           ? result.claims.environment_id
           : undefined,
+      claims: result.outcome === "jwt_valid" ? result.claims : undefined,
     };
+  }
+
+  /**
+   * reclaimCheckpoints asks the checkpoint service to delete a finished run's checkpoint storage.
+   * Must be called after the reply is sent: it never delays the runner.
+   */
+  private async reclaimCheckpoints(
+    req: IncomingMessage,
+    runFriendlyId: string,
+    attemptStatus: string,
+    claims: WorkloadDeploymentTokenClaims | undefined
+  ): Promise<void> {
+    if (!env.DELETE_CHECKPOINTS_ON_COMPLETION) {
+      checkpointDeleteRequests.inc({ result: "disabled" });
+      return;
+    }
+
+    if (!this.checkpointClient) {
+      checkpointDeleteRequests.inc({ result: "no_client" });
+      return;
+    }
+
+    if (this.snapshotService) {
+      checkpointDeleteRequests.inc({ result: "not_applicable" });
+      return;
+    }
+
+    if (attemptStatus !== "RUN_FINISHED" && attemptStatus !== "RUN_PENDING_CANCEL") {
+      checkpointDeleteRequests.inc({ result: "not_terminal" });
+      return;
+    }
+
+    if (!claims) {
+      checkpointDeleteRequests.inc({ result: "no_claims" });
+      return;
+    }
+
+    const projectRef = this.projectRefFromRequest(req);
+    if (!projectRef) {
+      checkpointDeleteRequests.inc({ result: "no_project_ref" });
+      this.logger.error("Cannot reclaim checkpoints without a project ref", { runFriendlyId });
+      return;
+    }
+
+    const [error, accepted] = await tryCatch(
+      this.checkpointClient.deleteCheckpoints({
+        runFriendlyId,
+        body: {
+          orgId: claims.org_id,
+          envId: claims.environment_id,
+          deploymentVersion: claims.deployment_version,
+          projectRef,
+        },
+      })
+    );
+
+    if (error || !accepted) {
+      checkpointDeleteRequests.inc({ result: "http_error" });
+      this.logger.error("Failed to request checkpoint reclaim", { runFriendlyId, error });
+      return;
+    }
+
+    checkpointDeleteRequests.inc({ result: "sent" });
+  }
+
+  private async cancelCheckpointsAfterReply(runFriendlyId: string): Promise<void> {
+    if (!this.checkpointClient) {
+      checkpointCancelRequests.inc({ result: "no_client" });
+      return;
+    }
+
+    if (this.snapshotService) {
+      checkpointCancelRequests.inc({ result: "not_applicable" });
+      return;
+    }
+
+    const [error, accepted] = await tryCatch(
+      this.checkpointClient.cancelCheckpoints({ runFriendlyId })
+    );
+
+    if (error || !accepted) {
+      checkpointCancelRequests.inc({ result: "http_error" });
+      this.logger.error("Failed to request checkpoint cancel", { runFriendlyId, error });
+      return;
+    }
+
+    checkpointCancelRequests.inc({ result: "sent" });
   }
 
   /**
@@ -364,6 +474,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 reply.json(completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody);
+
+                await this.reclaimCheckpoints(
+                  req,
+                  params.runFriendlyId,
+                  completeResponse.data.result.attemptStatus,
+                  auth.claims
+                );
                 return;
               }
             ),
@@ -557,6 +674,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
+
+                await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }
             ),
         }

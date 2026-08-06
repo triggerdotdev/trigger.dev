@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   Bar,
@@ -44,9 +43,11 @@ export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
 };
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Prompts | Trigger.dev" }];
-};
+import { LinkButton } from "~/components/primitives/Buttons";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Prompts");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

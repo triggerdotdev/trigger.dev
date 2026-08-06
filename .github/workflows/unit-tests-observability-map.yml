@@ -1,0 +1,43 @@
+name: "🧪 Unit Tests: Observability Map"
+
+permissions:
+  contents: read
+
+# Its own workflow rather than a job inside observability-map.yml, because that workflow is not
+# reachable from pr_checks.yml's all-checks aggregate and so gates nothing. Called from there
+# instead, behind a paths filter, which is how every other test suite in this repo is gated.
+on:
+  workflow_call:
+
+jobs:
+  unitTests:
+    name: "🧪 Unit Tests: Observability Map"
+    # No containers and no database: the package is a static analyser over source text, so the
+    # suite is CPU bound on parsing the route tree and needs nothing the runner does not have.
+    runs-on: warp-ubuntu-latest-x64-4x
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      # This suite reads apps/webapp/app (the route tree for the scan, the whole app tree for the
+      # symbol check) and the report workflow's text, which is why the filter that gates this
+      # workflow watches all of those and not only the routes folder.
+      - name: 🧪 Run tests
+        run: pnpm --filter @internal/observability-map run test

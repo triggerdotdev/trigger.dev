@@ -1,5 +1,6 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
 import { tryCatch } from "@trigger.dev/core";
@@ -53,14 +54,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: (data) => limitsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Limits | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Limits");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

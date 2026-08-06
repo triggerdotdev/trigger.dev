@@ -20,6 +20,9 @@ import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Query");
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {

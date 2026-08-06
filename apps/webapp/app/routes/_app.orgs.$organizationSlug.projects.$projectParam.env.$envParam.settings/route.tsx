@@ -1,4 +1,4 @@
-import { Outlet, useMatches, type MetaFunction } from "@remix-run/react";
+import { Outlet, useMatches } from "@remix-run/react";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -18,14 +18,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("settings"),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Project settings | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Project settings");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   await requireUserId(request);

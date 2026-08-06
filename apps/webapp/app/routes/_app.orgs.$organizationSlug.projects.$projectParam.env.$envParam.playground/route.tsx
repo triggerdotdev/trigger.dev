@@ -1,5 +1,5 @@
 import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { Outlet, useLoaderData, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
@@ -30,10 +30,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: (data) => playgroundAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Playground | Trigger.dev" }];
-};
+export const meta = pageMeta("Playground");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);

@@ -19,7 +19,7 @@ import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
 import { type AnyQueueItem, SimpleQueue } from "./queue.js";
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
 
 export const CronSchema = z.object({
   cron: z.string(),
@@ -1130,9 +1130,10 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private calculateNextScheduledAt(cron: string, lastTimestamp?: Date): Date {
-    const scheduledAt = parseExpression(cron, {
-      currentDate: lastTimestamp,
-    })
+    const scheduledAt = cronParser
+      .parseExpression(cron, {
+        currentDate: lastTimestamp,
+      })
       .next()
       .toDate();
 

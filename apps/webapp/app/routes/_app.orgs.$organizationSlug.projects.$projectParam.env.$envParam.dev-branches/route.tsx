@@ -47,6 +47,9 @@ import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Dev branches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

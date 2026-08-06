@@ -1,5 +1,6 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useParams } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";
@@ -42,13 +43,9 @@ export const handle: Handle = {
   agentPageContext: (data) => testAgentPageContext(data),
 };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Test | Trigger.dev`,
-    },
-  ];
-};
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Test");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

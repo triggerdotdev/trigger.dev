@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -34,10 +33,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("tasks"),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Tasks | Trigger.dev" }];
-};
+export const meta = pageMeta("Tasks");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -75,7 +73,7 @@ function formatDay(value: string) {
   return isoDateFormatter.format(d);
 }
 
-const STANDARD_EXAMPLE = `import { task } from "@trigger.dev/sdk";
+const STANDARD_EXAMPLE = `import { schedules, task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -85,7 +83,7 @@ export const helloWorld = task({
 });
 `;
 
-const SCHEDULED_EXAMPLE = `import { schedules } from "@trigger.dev/sdk";
+const SCHEDULED_EXAMPLE = `
 
 export const dailyReport = schedules.task({
   id: "daily-report",

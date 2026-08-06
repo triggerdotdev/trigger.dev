@@ -1,4 +1,5 @@
 import { type MetaFunction } from "@remix-run/react";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
@@ -28,14 +29,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: (data) => sessionsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Sessions | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Sessions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

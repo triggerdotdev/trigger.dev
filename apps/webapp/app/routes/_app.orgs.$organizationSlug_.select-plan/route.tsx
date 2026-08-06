@@ -9,6 +9,9 @@ import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Choose a plan");
 
 export const loader = dashboardLoader(
   {

@@ -4,7 +4,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { Form, useRevalidator } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
@@ -33,10 +33,9 @@ import {
 } from "~/utils/pathBuilder";
 import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Private Connections | Trigger.dev` }];
-};
+export const meta = pageMeta("Private Connections");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);

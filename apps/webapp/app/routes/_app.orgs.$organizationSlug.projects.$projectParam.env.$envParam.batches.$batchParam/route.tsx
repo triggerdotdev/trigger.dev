@@ -26,6 +26,9 @@ import { formatNumber } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
 import { batchAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.batchParam ?? "Batch", "Batches"]);
 
 const BatchParamSchema = EnvironmentParamSchema.extend({
   batchParam: z.string(),

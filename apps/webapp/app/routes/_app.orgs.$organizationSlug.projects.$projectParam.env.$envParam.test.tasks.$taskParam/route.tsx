@@ -82,6 +82,9 @@ import { TestSidebarTabs } from "./TestSidebarTabs";
 import { Header2 } from "~/components/primitives/Headers";
 import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.taskParam ?? "Task", "Test"]);
 
 type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 

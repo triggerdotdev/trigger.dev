@@ -1,6 +1,7 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
@@ -69,6 +70,8 @@ import { EnvironmentParamSchema, v3RunPath, v3RunsPath, v3SessionsPath } from "~
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
+import { pageMeta } from "~/utils/pageTitle";
+
 const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
 });
@@ -77,9 +80,7 @@ export const handle: Handle = {
   agentPageContext: (data) => sessionsAgentPageContext(data),
 };
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Session | Trigger.dev` }];
-};
+export const meta = pageMeta(({ params }) => [params.sessionParam ?? "Session", "Sessions"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

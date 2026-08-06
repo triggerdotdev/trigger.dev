@@ -7,13 +7,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
@@ -80,14 +74,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("concurrency"),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Manage concurrency | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Manage concurrency");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { buildPrismaConnectionUrl } from "./utils/prismaConnectionUrl";
 import {
   captureInfrastructureErrors,
   infraErrorAlreadyLogged,
@@ -123,7 +124,15 @@ async function $transactionInner<R>(
 
 export { Prisma };
 
-function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica", client: T): T {
+type DatasourceLabel =
+  | "control-plane-writer"
+  | "control-plane-replica"
+  | "legacy-run-ops-writer"
+  | "legacy-run-ops-replica"
+  | "run-ops-writer"
+  | "run-ops-replica";
+
+function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
   return client.$extends({
     name: "datasource-tagger",
     query: {
@@ -141,7 +150,7 @@ function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica",
 // Same extension as tagDatasource but typed for RunOpsPrismaClient (different
 // generated package — does not extend @trigger.dev/database.PrismaClient).
 function tagDatasourceRunOps(
-  datasource: "writer" | "replica",
+  datasource: DatasourceLabel,
   client: RunOpsPrismaClient
 ): RunOpsPrismaClient {
   return client.$extends({
@@ -167,7 +176,7 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 }
 
 export const prisma = singleton("prisma", () =>
-  captureInfrastructureErrors(tagDatasource("writer", getClient()))
+  captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient()))
 );
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
@@ -175,7 +184,9 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
   // Brand ONLY a real replica so the run-store routing layer keeps replica reads off the primary.
   // No replica configured → fall back to the writer `prisma`, which must stay UNBRANDED.
   return replica
-    ? markReadReplicaClient(captureInfrastructureErrors(tagDatasource("replica", replica)))
+    ? markReadReplicaClient(
+        captureInfrastructureErrors(tagDatasource("control-plane-replica", replica))
+      )
     : prisma;
 });
 
@@ -295,7 +306,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       controlPlane: { writer: prisma, replica: $replica },
       buildNewWriter: (url, clientType) =>
         captureInfraErrorsRunOps(
-          tagDatasourceRunOps("writer", buildRunOpsWriterClient({ url, clientType }))
+          tagDatasourceRunOps("run-ops-writer", buildRunOpsWriterClient({ url, clientType }))
         ),
       // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
       // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
@@ -303,19 +314,35 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       buildNewReplica: (url, clientType) =>
         markReadReplicaClient(
           captureInfraErrorsRunOps(
-            tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
+            tagDatasourceRunOps("run-ops-replica", buildRunOpsReplicaClient({ url, clientType }))
           )
         ),
       // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
       // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
       buildLegacyWriter: (url, clientType) =>
         captureInfrastructureErrors(
-          tagDatasource("writer", buildWriterClient({ url, clientType }))
+          tagDatasource(
+            "legacy-run-ops-writer",
+            buildWriterClient({
+              url,
+              clientType,
+              poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
+              connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
+            })
+          )
         ),
       buildLegacyReplica: (url, clientType) =>
         markReadReplicaClient(
           captureInfrastructureErrors(
-            tagDatasource("replica", buildReplicaClient({ url, clientType }))
+            tagDatasource(
+              "legacy-run-ops-replica",
+              buildReplicaClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
+              })
+            )
           )
         ),
     }
@@ -382,7 +409,12 @@ function getClient() {
   const url = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
   invariant(typeof url === "string", "neither CONTROL_PLANE_DATABASE_URL nor DATABASE_URL is set");
 
-  return buildWriterClient({ url, clientType: "writer" });
+  return buildWriterClient({
+    url,
+    clientType: "writer",
+    poolTimeout: env.DATABASE_WRITER_POOL_TIMEOUT,
+    connectTimeout: env.DATABASE_WRITER_CONNECTION_TIMEOUT,
+  });
 }
 
 // Generalized writer builder shared by the control-plane client and the run-ops
@@ -391,15 +423,19 @@ function getClient() {
 export function buildWriterClient({
   url,
   clientType,
+  poolTimeout,
+  connectTimeout,
 }: {
   url: string;
   clientType: string;
+  poolTimeout?: number;
+  connectTimeout?: number;
 }): PrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -529,7 +565,12 @@ function getReplicaClient() {
     return;
   }
 
-  return buildReplicaClient({ url, clientType: "reader" });
+  return buildReplicaClient({
+    url,
+    clientType: "reader",
+    poolTimeout: env.DATABASE_READ_REPLICA_POOL_TIMEOUT,
+    connectTimeout: env.DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
+  });
 }
 
 // Generalized replica builder shared by the control-plane replica and the run-ops
@@ -538,15 +579,19 @@ function getReplicaClient() {
 export function buildReplicaClient({
   url,
   clientType,
+  poolTimeout,
+  connectTimeout,
 }: {
   url: string;
   clientType: string;
+  poolTimeout?: number;
+  connectTimeout?: number;
 }): PrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
@@ -672,11 +717,13 @@ function buildRunOpsWriterClient({
   url: string;
   clientType: string;
 }): RunOpsPrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: (env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (
+      env.RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
+    ).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -723,14 +770,17 @@ function buildRunOpsReplicaClient({
   url: string;
   clientType: string;
 }): RunOpsPrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    // The new run-ops replica connects unpooled, so allow capping it independently of the writer.
-    connection_limit: (
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: (
       env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
     ).toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+    poolTimeout: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
+    ).toString(),
+    connectTimeout: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
+    ).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
   console.log(`🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}`);
@@ -787,19 +837,6 @@ export function sameDatabaseTarget(a: string | undefined, b: string | undefined)
   } catch {
     return false;
   }
-}
-
-function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
-  const url = new URL(hrefOrUrl);
-  const query = url.searchParams;
-
-  for (const [key, val] of Object.entries(queryParams)) {
-    query.set(key, val);
-  }
-
-  url.search = query.toString();
-
-  return url;
 }
 
 function redactUrlSecrets(hrefOrUrl: string | URL) {

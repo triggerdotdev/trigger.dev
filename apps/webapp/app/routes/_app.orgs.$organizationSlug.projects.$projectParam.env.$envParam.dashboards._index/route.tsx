@@ -1,5 +1,5 @@
 import { PlusIcon } from "@heroicons/react/20/solid";
-import { Link, type MetaFunction } from "@remix-run/react";
+import { Link } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -24,10 +24,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Dashboards | Trigger.dev" }];
-};
+export const meta = pageMeta("Dashboards");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

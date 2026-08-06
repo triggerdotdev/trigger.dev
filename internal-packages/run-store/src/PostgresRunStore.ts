@@ -84,7 +84,10 @@ export interface RunOpsCapableClient {
  * per-call `tx` so they share one transaction (see `runInTransaction`).
  */
 export interface RunOpsTransactionalClient extends RunOpsCapableClient {
-  $transaction: <R>(fn: (tx: RunOpsCapableClient) => Promise<R>) => Promise<R>;
+  $transaction: <R>(
+    fn: (tx: RunOpsCapableClient) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number; isolationLevel?: unknown }
+  ) => Promise<R>;
 }
 
 /**
@@ -98,6 +101,8 @@ export type RunStoreSchemaVariant = "legacy" | "dedicated";
 // Mirrors the webapp's `CONNECTED_RUNS_DISPLAY_LIMIT`
 // (apps/webapp/app/presenters/v3/WaitpointPresenter.server.ts) — keep the values in sync.
 export const CONNECTED_RUNS_LIMIT = 5;
+
+export const RUN_OPS_WRITE_TX_TIMEOUT_MS = 15_000;
 
 export type PostgresRunStoreOptions = {
   prisma: RunOpsCapableClient;
@@ -661,16 +666,26 @@ export class PostgresRunStore implements RunStore {
   // (snapshot + completed-waitpoints, run + associated-waitpoint) which must commit together.
   #withOptionalTransaction<R>(
     tx: PrismaClientOrTransaction | undefined,
-    fn: (client: PrismaClientOrTransaction) => Promise<R>
+    fn: (client: PrismaClientOrTransaction) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number }
   ): Promise<R> {
     const alreadyInTransaction =
       tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
     if (alreadyInTransaction) {
       return fn(tx);
     }
-    return (this.prisma as RunOpsTransactionalClient).$transaction((t) =>
-      fn(t as unknown as PrismaClientOrTransaction)
+    return (this.prisma as RunOpsTransactionalClient).$transaction(
+      (t) => fn(t as unknown as PrismaClientOrTransaction),
+      options
     );
+  }
+
+  #writeClientWithoutTransaction(
+    tx: PrismaClientOrTransaction | undefined
+  ): PrismaClientOrTransaction {
+    const alreadyInTransaction =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    return (alreadyInTransaction ? tx : this.prisma) as PrismaClientOrTransaction;
   }
 
   async createRun(
@@ -694,19 +709,31 @@ export class PostgresRunStore implements RunStore {
     };
 
     if (this.schemaVariant === "dedicated") {
-      // The run + its associated RUN-type waitpoint are two writes here (the legacy branch below nests
-      // them). Commit them together so a crash / lagging read never leaves a run without its waitpoint.
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: {
             ...params.data,
             executionSnapshots: { create: snapshotCreate },
           },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: {
+              ...params.data,
+              executionSnapshots: { create: snapshotCreate },
+            },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({
@@ -784,15 +811,25 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     if (this.schemaVariant === "dedicated") {
-      // Run + associated RUN-type waitpoint are two writes here; commit them together (see createRun).
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: { ...params.data },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: { ...params.data },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({

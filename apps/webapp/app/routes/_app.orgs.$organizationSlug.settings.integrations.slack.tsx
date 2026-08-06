@@ -40,6 +40,9 @@ import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
 import { OrganizationParamsSchema, organizationSlackIntegrationPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Slack integration");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);

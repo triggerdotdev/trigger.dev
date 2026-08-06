@@ -44,6 +44,12 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
 import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data }) => [
+  data?.title ?? "Dashboard",
+  "Dashboards",
+]);
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),

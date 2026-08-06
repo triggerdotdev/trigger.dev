@@ -1,4 +1,6 @@
-import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -54,13 +56,9 @@ export const handle: Handle = {
   agentPageContext: (data) => waitpointsAgentPageContext(data),
 };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Waitpoint tokens | Trigger.dev`,
-    },
-  ];
-};
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Waitpoint tokens");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

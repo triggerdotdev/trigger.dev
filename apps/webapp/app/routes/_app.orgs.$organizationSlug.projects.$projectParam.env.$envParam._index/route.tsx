@@ -1,5 +1,6 @@
 import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
+
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
@@ -105,10 +106,9 @@ import type { Handle } from "~/utils/handle";
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("tasks"),
 };
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Tasks | Trigger.dev` }];
-};
+export const meta = pageMeta("Tasks");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -803,7 +803,7 @@ export const myChat = chat.agent({
   },
 });`;
 
-const STANDARD_TASK_CODE = `import { task } from "@trigger.dev/sdk";
+const STANDARD_TASK_CODE = `import { schedules, task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -812,7 +812,7 @@ export const helloWorld = task({
   },
 });`;
 
-const SCHEDULED_TASK_CODE = `import { schedules } from "@trigger.dev/sdk";
+const SCHEDULED_TASK_CODE = `
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",

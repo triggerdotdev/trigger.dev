@@ -82,3 +82,6 @@ ailogger-output.log
 
 # local planning/design docs, not committed
 **/docs/superpowers/
+
+# observability-map CLI output artifact, not committed
+observability-map.json

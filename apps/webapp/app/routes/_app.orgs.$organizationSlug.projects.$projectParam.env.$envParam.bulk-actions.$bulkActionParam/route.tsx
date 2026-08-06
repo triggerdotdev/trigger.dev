@@ -44,6 +44,12 @@ import {
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.bulkAction?.name || params.bulkActionParam || "Bulk action",
+  "Bulk actions",
+]);
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),

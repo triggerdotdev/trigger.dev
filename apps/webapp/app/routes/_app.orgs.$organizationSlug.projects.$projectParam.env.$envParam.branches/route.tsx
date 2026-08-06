@@ -79,6 +79,9 @@ import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Preview branches");
 
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({

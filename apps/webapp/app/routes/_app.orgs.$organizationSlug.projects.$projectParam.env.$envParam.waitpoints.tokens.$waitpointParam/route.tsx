@@ -27,6 +27,12 @@ import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { logger } from "~/services/logger.server";
 import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.waitpointParam ?? "Waitpoint",
+  "Waitpoint tokens",
+]);
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),

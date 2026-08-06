@@ -4,7 +4,6 @@ import {
   ClockIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { redirect } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "@remix-run/react";
@@ -48,8 +47,9 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
+export const meta = pageMeta("SSO & Directory Sync");
 
 const Params = z.object({ organizationSlug: z.string() });
 

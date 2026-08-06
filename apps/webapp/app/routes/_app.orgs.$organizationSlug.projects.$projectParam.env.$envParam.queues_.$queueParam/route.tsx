@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
@@ -86,12 +85,16 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { pageMeta } from "~/utils/pageTitle";
 
 export const handle: Handle = {
   agentPageContext: (data) => queueAgentPageContext(data),
 };
 
-export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.queue?.name ?? params.queueParam ?? "Queue",
+  "Queues",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({ queueParam: z.string() });
 
