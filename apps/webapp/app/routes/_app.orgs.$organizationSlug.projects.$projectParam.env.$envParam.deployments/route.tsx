@@ -4,15 +4,7 @@ import {
   BookOpenIcon,
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useNavigation,
-  useParams,
-} from "@remix-run/react";
+import { Form, Outlet, useLocation, useNavigate, useNavigation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
@@ -87,14 +79,9 @@ import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Deployments | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Deployments");
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),

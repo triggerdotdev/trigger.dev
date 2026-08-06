@@ -46,6 +46,9 @@ import {
   assertSafeWebhookUrl,
   UnsafeWebhookUrlError,
 } from "~/v3/services/alerts/safeWebhookUrl.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New alert");
 
 const FormSchema = z
   .object({

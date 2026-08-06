@@ -15,6 +15,9 @@ import {
   isAuthorizationCodeMintable,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Authorize login");
 
 const ParamsSchema = z.object({
   authorizationCode: z.string(),

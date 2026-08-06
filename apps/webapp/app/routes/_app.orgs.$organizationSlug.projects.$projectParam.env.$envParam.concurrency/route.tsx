@@ -7,13 +7,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
@@ -74,14 +68,9 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Manage concurrency | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Manage concurrency");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -50,11 +49,12 @@ import {
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
-  return [{ title: slug ? `${slug} | Agents | Trigger.dev` : "Agent | Trigger.dev" }];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.agent?.slug ?? params.agentParam ?? "Agent",
+  "Agents",
+]);
 
 const AgentParamSchema = EnvironmentParamSchema.extend({
   agentParam: z.string(),

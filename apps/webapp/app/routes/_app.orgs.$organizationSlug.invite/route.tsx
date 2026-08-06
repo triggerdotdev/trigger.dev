@@ -38,6 +38,9 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { isAtOrBelow } from "~/utils/inviteRoleLadder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Invite team members");
 
 const Params = z.object({
   organizationSlug: z.string(),

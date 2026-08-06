@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { Form, useActionData, useParams, type MetaFunction } from "@remix-run/react";
+import { Form, useActionData, useParams } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useState } from "react";
@@ -45,10 +45,9 @@ import {
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Add Private Connection | Trigger.dev` }];
-};
+export const meta = pageMeta("Add Private Connection");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);

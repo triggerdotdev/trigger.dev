@@ -1,5 +1,5 @@
 import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useParams } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";
@@ -36,14 +36,9 @@ import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Test | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Test");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

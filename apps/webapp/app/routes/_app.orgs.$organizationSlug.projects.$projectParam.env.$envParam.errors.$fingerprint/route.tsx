@@ -1,6 +1,6 @@
 import { parseWithZod } from "@conform-to/zod";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
@@ -83,14 +83,12 @@ import {
 } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  return [
-    {
-      title: `Error Details | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta(({ params }) => [
+  params.fingerprint ? ErrorId.toFriendlyId(params.fingerprint) : "Error",
+  "Errors",
+]);
 
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),

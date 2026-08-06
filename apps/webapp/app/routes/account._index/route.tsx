@@ -2,13 +2,7 @@ import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { useEffect, useState } from "react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { ComputerDesktopIcon, MoonIcon, SunIcon, SwatchIcon } from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useFetcher,
-  useLoaderData,
-} from "@remix-run/react";
+import { Form, useActionData, useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
@@ -44,6 +38,7 @@ import { cachedFlag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
 const THEME_LABELS: Record<ThemePreference, string> = {
   classic: "Classic",
@@ -75,13 +70,7 @@ function themeIcon(value: ThemePreference) {
   }
 }
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Your profile | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Your profile");
 
 function createSchema(
   constraints: {

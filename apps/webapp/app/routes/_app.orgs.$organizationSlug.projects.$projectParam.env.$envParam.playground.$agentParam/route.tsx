@@ -2,7 +2,6 @@ import type { UIMessage } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
 import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
 import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
@@ -59,10 +58,9 @@ import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Playground | Trigger.dev" }];
-};
+export const meta = pageMeta(({ params }) => [params.agentParam ?? "Agent", "Playground"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

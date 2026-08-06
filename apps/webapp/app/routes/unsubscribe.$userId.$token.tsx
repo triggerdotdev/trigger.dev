@@ -11,6 +11,9 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Unsubscribe");
 
 export const ParamsSchema = z.object({
   userId: z.string(),

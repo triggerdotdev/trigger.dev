@@ -27,6 +27,9 @@ import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.
 import { requireUser, requireUserId } from "~/services/session.server";
 import { extractDomain, faviconUrl } from "~/utils/favicon";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New organization");
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),

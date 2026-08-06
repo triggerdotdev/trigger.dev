@@ -121,6 +121,9 @@ import {
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.runParam ?? "Run", "Runs"]);
 
 const resizableSettings = {
   parent: {
