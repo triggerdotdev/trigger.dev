@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -60,7 +60,6 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("New environment variable");
 
-import { boundedIn } from "@trigger.dev/database";
 const Variable = z.object({
   key: EnvironmentVariableKey,
   value: z.string().nonempty("Value is required"),

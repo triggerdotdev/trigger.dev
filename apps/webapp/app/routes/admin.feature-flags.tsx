@@ -5,7 +5,7 @@ import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
@@ -28,7 +28,6 @@ import {
   DialogFooter,
 } from "~/components/primitives/Dialog";
 import { cn } from "~/utils/cn";
-import { boundedIn } from "@trigger.dev/database";
 import {
   UNSET_VALUE,
   BooleanControl,
