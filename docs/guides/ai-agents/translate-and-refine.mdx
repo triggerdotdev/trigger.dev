@@ -35,9 +35,17 @@ interface TranslationPayload {
   rejectionCount?: number;
 }
 
+interface TranslationResult {
+  finalTranslation: string | undefined;
+  iterations: number;
+  status: "MAX_ITERATIONS_REACHED" | "APPROVED";
+}
+
 export const translateAndRefine = task({
   id: "translate-and-refine",
-  run: async (payload: TranslationPayload) => {
+  // Explicit return type: the task returns its own recursive result, so
+  // annotate it to avoid TypeScript's circular-inference error.
+  run: async (payload: TranslationPayload): Promise<TranslationResult> => {
     const rejectionCount = payload.rejectionCount || 0;
 
     // Bail out if we've hit the maximum attempts

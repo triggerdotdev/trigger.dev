@@ -63,10 +63,12 @@ export const myChat = chat.agent({
   tools: { getCurrentTime },
   run: async ({ messages, tools, signal }) => {
     return streamText({
-      ...chat.toStreamTextOptions(),
+      // Pass tools INTO toStreamTextOptions (not separately to streamText):
+      // this is what detects tool calls needing HITL approval and merges any
+      // auto-injected skill tools. It sets streamText's `tools` for you.
+      ...chat.toStreamTextOptions({ tools }),
       model: anthropic("claude-sonnet-4-5"),
       messages,
-      tools,
       stopWhen: stepCountIs(15),
       abortSignal: signal,
     });
