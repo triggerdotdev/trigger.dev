@@ -2,6 +2,8 @@
 // Each test seeds a User + session cookie via seedTestUser / seedTestSession
 // (helpers/seedTestSession.ts) and hits the shared webapp container.
 
+import { randomBytes } from "node:crypto";
+import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it } from "vitest";
 import { getTestServer } from "./helpers/sharedTestServer";
 import { seedTestSession, seedTestUser } from "./helpers/seedTestSession";
@@ -113,6 +115,68 @@ describe("Dashboard", () => {
       expect(res.status).toBe(302);
       const location = res.headers.get("location") ?? "";
       expect(new URL(location, "http://localhost").pathname).toBe("/");
+    });
+  });
+
+  // Cross-tenant tenant floor on org settings routes. settings/roles is the case
+  // the route-level membership scoping (SSO/Team) did NOT cover, so it exercises
+  // the RBAC fallback's org-membership floor specifically: the fallback ability
+  // is permissive (can: () => true), so that floor is the only thing stopping a
+  // non-member from reading the org's role and permission catalogue.
+  //
+  // The request hits the route's own loader directly via Remix's `?_data`, which
+  // is the exact exploit shape: a plain document GET 404s at the org layout
+  // (membership) and never reaches this leaf, so it wouldn't test the leaf floor.
+  // Both users have confirmedBasicDetails set so the `_app` onboarding redirect
+  // can't stand in for the deny.
+  describe("Org settings — cross-tenant tenant floor (settings/roles)", () => {
+    const ROLES_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings.roles";
+    const rolesData = (slug: string) =>
+      `/orgs/${slug}/settings/roles?_data=${encodeURIComponent(ROLES_ROUTE_ID)}`;
+
+    async function seedConfirmedUser(prisma: PrismaClient) {
+      const user = await seedTestUser(prisma);
+      await prisma.user.update({ where: { id: user.id }, data: { confirmedBasicDetails: true } });
+      return user;
+    }
+
+    async function seedOrgWithOwner() {
+      const server = getTestServer();
+      const owner = await seedConfirmedUser(server.prisma);
+      const org = await server.prisma.organization.create({
+        data: {
+          title: "E2E tenant-floor org",
+          slug: `e2e-tenant-${randomBytes(6).toString("hex")}`,
+          members: { create: { userId: owner.id, role: "ADMIN" } },
+        },
+      });
+      return { server, owner, org };
+    }
+
+    it("denies a non-member: no roles catalogue leaked", async () => {
+      const { server, org } = await seedOrgWithOwner();
+      const outsider = await seedConfirmedUser(server.prisma);
+      const cookie = await seedTestSession({ userId: outsider.id });
+      const res = await server.webapp.fetch(rolesData(org.slug), {
+        redirect: "manual",
+        headers: { Cookie: cookie },
+      });
+      const body = await res.text();
+      // With the tenant floor a non-member is denied (a redirect), so they never
+      // get the loader's 200 payload. Before the fix the permissive ability let
+      // the loader return the org's role/permission catalogue.
+      expect(res.status).not.toBe(200);
+      expect(body).not.toContain("manage:members");
+    });
+
+    it("allows a member: the loader returns the catalogue", async () => {
+      const { server, owner, org } = await seedOrgWithOwner();
+      const cookie = await seedTestSession({ userId: owner.id });
+      const res = await server.webapp.fetch(rolesData(org.slug), {
+        redirect: "manual",
+        headers: { Cookie: cookie },
+      });
+      expect(res.status).toBe(200);
     });
   });
 });
