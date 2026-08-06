@@ -279,15 +279,64 @@ export async function softDeleteChat(
   });
 }
 
+/** Identity for the merge: the stable message id, or the content when a message has none. */
+function messageKey(message: unknown): string {
+  const id = (message as { id?: unknown } | null)?.id;
+  return typeof id === "string" && id.length > 0 ? `id:${id}` : `raw:${JSON.stringify(message)}`;
+}
+
+/**
+ * The turn's snapshot, plus whatever the row gained while the turn was running.
+ *
+ * A wholesale `SET messages = <snapshot>` deletes anything another process appended
+ * after the snapshot was taken — a wake, a watch consent record, or the terminal card
+ * of a settled investigation, which is unrecoverable: the row is already terminal, so
+ * the stale sweep never selects it again and the panel spins for ever.
+ *
+ * Incoming order is kept, a stored message the snapshot doesn't have goes at the end,
+ * and no key appears twice.
+ */
+export function mergeStoredMessages(incoming: unknown[], stored: unknown[]): unknown[] {
+  const seen = new Set<string>();
+  const merged: unknown[] = [];
+  for (const message of [...incoming, ...stored]) {
+    const key = messageKey(message);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(message);
+  }
+  return merged;
+}
+
+/** Reads the row under its own lock, so a concurrent append can't be merged away. */
+async function writeMergedMessages(
+  tx: DashboardAgentDbOrTx,
+  params: { chatId: string; messages: unknown[] }
+): Promise<void> {
+  const rows = await tx
+    .select({ messages: chats.messages })
+    .from(chats)
+    .where(eq(chats.id, params.chatId))
+    .limit(1)
+    .for("update");
+
+  const stored = rows[0]?.messages;
+  await tx
+    .update(chats)
+    .set({
+      messages: mergeStoredMessages(params.messages, Array.isArray(stored) ? stored : []),
+      lastMessageAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(chats.id, params.chatId));
+}
+
 /** No session state, unlike {@link persistTurn}. */
 export async function persistMessages(
   db: DashboardAgentDb,
   params: { chatId: string; messages: unknown[] }
 ): Promise<void> {
-  await db
-    .update(chats)
-    .set({ messages: params.messages, lastMessageAt: sql`now()`, updatedAt: sql`now()` })
-    .where(eq(chats.id, params.chatId));
+  await db.transaction((tx) => writeMergedMessages(tx, params));
 }
 
 /**
@@ -447,10 +496,7 @@ export async function persistTurn(
     );
     const messages = [...params.messages, ...cards.filter((card) => !existing.has(card.id))];
 
-    await tx
-      .update(chats)
-      .set({ messages, lastMessageAt: sql`now()`, updatedAt: sql`now()` })
-      .where(eq(chats.id, params.chatId));
+    await writeMergedMessages(tx, { chatId: params.chatId, messages });
 
     await tx
       .insert(chatSessions)

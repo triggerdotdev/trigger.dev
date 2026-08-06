@@ -3,6 +3,7 @@
 // register at module load.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
 
+import { mergeStoredMessages } from "@internal/dashboard-agent-db";
 import { convertToModelMessages, tool, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
@@ -965,21 +966,24 @@ describe("a turn that ends in an error", () => {
   });
 
   /**
-   * A store that keeps the transcript the way the real one does: `persistTurn`
-   * overwrites it, `appendMessage` adds one message unless its id is already there.
-   * Lets the test read history back rather than only count calls.
+   * A store that keeps the transcript the way the real one does: the snapshot writes
+   * merge with what the row already holds, `appendMessage` adds one message unless its
+   * id is already there. Lets the test read history back rather than only count calls.
    */
   function transcriptStore(): { store: DashboardAgentStore; history: () => UIMessage[] } {
     let messages: UIMessage[] = [];
+    const merge = (incoming: unknown[]) => {
+      messages = mergeStoredMessages(incoming, messages) as UIMessage[];
+    };
     const store: DashboardAgentStore = {
       ensureChat: async () => undefined,
-      persistMessages: async (args) => void (messages = args.messages as UIMessage[]),
+      persistMessages: async (args) => merge(args.messages),
       appendMessage: async (args) => {
         const message = args.message as UIMessage;
         if (!messages.some((m) => m.id === message.id)) messages = [...messages, message];
       },
       persistTurn: async (args) => {
-        messages = args.messages as UIMessage[];
+        merge(args.messages);
         return { settled: [] };
       },
       setChatTitleIfDefault: async () => undefined,
@@ -988,6 +992,13 @@ describe("a turn that ends in an error", () => {
         id: "inv_fake",
         revision: 0,
         created: true,
+      }),
+      settleInvestigationCard: async (args) => ({
+        ok: true,
+        id: args.id,
+        revision: 1,
+        card: { id: args.messageId, role: "assistant", parts: [] },
+        closed: true,
       }),
       findOpenInvestigation: async () => null,
     };
