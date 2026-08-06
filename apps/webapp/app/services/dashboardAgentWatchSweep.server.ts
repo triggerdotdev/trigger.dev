@@ -25,6 +25,7 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { enqueueWatchFiredAlert } from "~/services/dashboardAgentWatchAlerts.server";
 import {
   checkWatch,
+  previousCheckFacts,
   type WatchCheckDeps,
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
@@ -210,7 +211,9 @@ export async function finalizeOverdueWatch(
   const outcome = await checkWatch(
     watch.spec,
     buildCheckDeps(authorization.environment, now),
-    { now, since },
+    // A stateful condition is a transition across checks, so the boundary evaluation needs
+    // the previous facts to see one — and to record what it saw, not a reset.
+    { now, since, previous: previousCheckFacts(watch.lastResult) },
     (error) =>
       logger.error("Dashboard agent watch sweep: the final check failed", {
         watchId: watch.id,
