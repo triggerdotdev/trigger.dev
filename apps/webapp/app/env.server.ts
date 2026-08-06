@@ -1045,7 +1045,9 @@ const EnvironmentSchema = z
      * trigger. Unset by default: a continuously triggered debounce key is pushed back for as
      * long as the triggers keep coming, and `debounce.maxDelay` on the trigger is the only
      * bound. Setting this applies a ceiling to every debounced run that does not carry its own
-     * `maxDelay`, and any `delay` at or above it stops runs from being pushed at all.
+     * `maxDelay`, and any `delay` at or above it is rejected at trigger time. It is a default
+     * rather than an enforced limit: a trigger that sets `maxDelay` uses that value even when it
+     * is longer than this.
      */
     RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalPositiveIntEnv,
 
