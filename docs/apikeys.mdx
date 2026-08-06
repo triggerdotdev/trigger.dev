@@ -103,19 +103,29 @@ Revoking a key takes effect immediately and cannot be reversed. Requests using t
 
 Removing a team member does not revoke keys they created. Review and revoke their keys separately when their access changes.
 
+## Root keys
+
+<Warning>
+  Root keys are legacy, and are likely to be deprecated in the future. We recommend against using them.
+</Warning>
+
+Each environment has a single legacy root key. It can be regenerated, which creates a new value immediately. The previous root key remains valid for 24 hours so you can update services without downtime, then stops authenticating.
+
+Public access tokens signed with the previous root key remain valid until the earlier of their own expiration and the end of the 24-hour grace period.
+
 ## Create public access tokens
 
-Keys can create scoped [Public Access Tokens](/realtime/auth) without receiving the environment's root key. Use `@trigger.dev/sdk` version 4.5.8 or later with keys.
+API keys can be used create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
 
-When a key calls `auth.createPublicToken()`:
+In order to do so with the newer non-root keys, you must use `@trigger.dev/sdk` version 4.5.8 or later. Creating public tokens with non-root keys has the following restrictions:
 
 - The token must request at least one scope.
 - Its scopes cannot exceed the key's access.
-- It expires after 15 minutes by default.
 - Its expiration cannot exceed 30 days.
-- A numeric `expirationTime` is a Unix timestamp in seconds.
 
-Revoking or expiring a key does not revoke tokens it already created. Those tokens remain valid until their own expiration, unless the environment's root key is regenerated first.
+<Note>
+Revoking or expiring an API key does not revoke tokens it already created. Those tokens remain valid until their own expiration, unless the environment's root key is regenerated.
+</Note>
 
 ## Target Preview and Development branches
 
@@ -127,16 +137,6 @@ TRIGGER_PREVIEW_BRANCH="feature/new-checkout"
 ```
 
 The SDK sends the branch automatically. When calling the API directly, send the same value in the `x-trigger-branch` header.
-
-## Root keys
-
-<Warning>
-  Root keys are legacy, and are likely to be deprecated in the future. We recommend against using them.
-</Warning>
-
-Each environment has a single legacy root key. It can be regenerated, which creates a new value immediately. The previous root key remains valid for 24 hours so you can update services without downtime, then stops authenticating.
-
-Public access tokens signed with the previous root key remain valid until the earlier of their own expiration and the end of the 24-hour grace period.
 
 ## Self-hosting
 
