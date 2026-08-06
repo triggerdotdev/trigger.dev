@@ -424,6 +424,49 @@ describe("the eval judge payload", () => {
     expect(JSON.stringify(redacted)).not.toContain("someone@example.com");
   });
 
+  it("never lets a sensitive field through below the depth limit", () => {
+    // `payload` sits nine levels down, past MAX_REDACT_DEPTH. The walk stops before it,
+    // so what it carries must never reach the judge.
+    let deep: Record<string, unknown> = { payload: { email: "someone@example.com" } };
+    for (let i = 0; i < 9; i++) deep = { level: deep };
+
+    const serialized = JSON.stringify(redactEvalToolValue(deep));
+    expect(serialized).not.toContain("someone@example.com");
+    expect(serialized).toContain('"truncated":true');
+  });
+
+  it("describes the shape at the depth limit instead of returning the value", () => {
+    let deepObject: Record<string, unknown> = { rows: [{ a: 1 }], status: "FAILED" };
+    for (let i = 0; i < 8; i++) deepObject = { level: deepObject };
+    expect(redactEvalToolValue(deepObject)).toMatchObject({
+      level: {
+        level: {
+          level: {
+            level: {
+              level: {
+                level: {
+                  level: { level: { truncated: true, keys: ["rows", "status"] } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    let deepArray: unknown = [{ a: 1 }, { a: 2 }, { a: 3 }];
+    for (let i = 0; i < 8; i++) deepArray = { level: deepArray };
+    expect(JSON.stringify(redactEvalToolValue(deepArray))).toContain(
+      '{"truncated":true,"items":3}'
+    );
+  });
+
+  it("still passes a primitive at the depth limit through", () => {
+    let deep: unknown = "FAILED";
+    for (let i = 0; i < 8; i++) deep = { level: deep };
+    expect(JSON.stringify(redactEvalToolValue(deep))).toContain('"level":"FAILED"');
+  });
+
   it("keeps source out of the judge payload entirely", () => {
     const messages = [
       {

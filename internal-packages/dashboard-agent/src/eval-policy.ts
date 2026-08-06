@@ -103,11 +103,23 @@ function describeShape(key: string, value: unknown): Record<string, unknown> {
 const MAX_REDACT_DEPTH = 8;
 
 /**
+ * What a value becomes at the depth cap. The walk stops here, so it cannot know whether
+ * anything below is sensitive — passing the value on would leak exactly what it can no
+ * longer inspect.
+ */
+function describeTruncated(value: object): Record<string, unknown> {
+  return Array.isArray(value)
+    ? { truncated: true, items: value.length }
+    : { truncated: true, keys: Object.keys(value).slice(0, MAX_SHAPE_KEYS) };
+}
+
+/**
  * Replace every redacted field with its shape, at any depth. Not a scrub of stored text:
  * the value never reaches the judge or the row in the first place.
  */
 export function redactEvalToolValue(value: unknown, depth = 0): unknown {
-  if (depth >= MAX_REDACT_DEPTH || value === null || typeof value !== "object") return value;
+  if (value === null || typeof value !== "object") return value;
+  if (depth >= MAX_REDACT_DEPTH) return describeTruncated(value);
   if (Array.isArray(value)) return value.map((item) => redactEvalToolValue(item, depth + 1));
 
   const result: Record<string, unknown> = {};
