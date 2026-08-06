@@ -2423,6 +2423,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            debounce: item.options?.debounce,
           },
         };
       })
@@ -2854,6 +2855,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
         };
       })
