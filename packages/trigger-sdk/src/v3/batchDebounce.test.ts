@@ -5,7 +5,14 @@ import { batch } from "./batch.js";
 import { createTask } from "./shared.js";
 import { tasks } from "./tasks.js";
 
-const DEBOUNCE = { key: "warm-conn-notify", delay: "12h", mode: "trailing" as const };
+const debounceFor = (i: number) => ({
+  key: `warm-conn-notify:${i}`,
+  delay: "12h",
+  maxDelay: "24h",
+  mode: "trailing" as const,
+});
+
+const EXPECTED = [debounceFor(0), debounceFor(1)];
 
 type Payload = { i: number };
 
@@ -55,11 +62,12 @@ function installBatchCapture() {
       });
     }
 
-    return Response.json({});
+    throw new Error(`Unexpected request during batch trigger: ${url}`);
   }) as typeof fetch;
 
   return {
-    debounceOptions: () => sent.sort((a, b) => a.index - b.index).map((i) => i.options?.debounce),
+    debounceOptions: () =>
+      [...sent].sort((a, b) => a.index - b.index).map((item) => item.options?.debounce),
     restore: () => {
       globalThis.fetch = originalFetch;
     },
@@ -93,8 +101,8 @@ describe("batch trigger debounce forwarding", () => {
       name: "task.batchTrigger(array)",
       call: () =>
         taskA.batchTrigger([
-          { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -102,8 +110,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         taskA.batchTrigger(
           asAsyncIterable([
-            { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -111,16 +119,16 @@ describe("batch trigger debounce forwarding", () => {
       name: "tasks.batchTrigger(array)",
       call: () =>
         tasks.batchTrigger<typeof taskA>("task-a", [
-          { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
       name: "batch.trigger(array)",
       call: () =>
         batch.trigger<typeof taskA | typeof taskB>([
-          { id: "task-a", payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { id: "task-b", payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { id: "task-a", payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { id: "task-b", payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -128,8 +136,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         batch.trigger<typeof taskA | typeof taskB>(
           asAsyncIterable([
-            { id: "task-a" as const, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { id: "task-b" as const, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { id: "task-a" as const, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { id: "task-b" as const, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -137,8 +145,8 @@ describe("batch trigger debounce forwarding", () => {
       name: "batch.triggerByTask(array)",
       call: () =>
         batch.triggerByTask([
-          { task: taskA, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { task: taskB, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { task: taskA, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { task: taskB, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -146,8 +154,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         batch.triggerByTask(
           asAsyncIterable([
-            { task: taskA, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { task: taskB, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { task: taskA, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { task: taskB, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -156,7 +164,7 @@ describe("batch trigger debounce forwarding", () => {
   it.each(surfaces)("$name forwards debounce for every item", async ({ call }) => {
     await call();
 
-    expect(capture.debounceOptions()).toEqual([DEBOUNCE, DEBOUNCE]);
+    expect(capture.debounceOptions()).toEqual(EXPECTED);
   });
 
   const waitSurfaces: Array<{ name: string; call: () => Promise<unknown> }> = [
@@ -164,8 +172,8 @@ describe("batch trigger debounce forwarding", () => {
       name: "task.batchTriggerAndWait(array)",
       call: () =>
         taskA.batchTriggerAndWait([
-          { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -173,8 +181,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         taskA.batchTriggerAndWait(
           asAsyncIterable([
-            { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -182,16 +190,16 @@ describe("batch trigger debounce forwarding", () => {
       name: "tasks.batchTriggerAndWait(array)",
       call: () =>
         tasks.batchTriggerAndWait<typeof taskA>("task-a", [
-          { payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
       name: "batch.triggerAndWait(array)",
       call: () =>
         batch.triggerAndWait<typeof taskA | typeof taskB>([
-          { id: "task-a", payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { id: "task-b", payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { id: "task-a", payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { id: "task-b", payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -199,8 +207,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         batch.triggerAndWait<typeof taskA | typeof taskB>(
           asAsyncIterable([
-            { id: "task-a" as const, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { id: "task-b" as const, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { id: "task-a" as const, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { id: "task-b" as const, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -208,8 +216,8 @@ describe("batch trigger debounce forwarding", () => {
       name: "batch.triggerByTaskAndWait(array)",
       call: () =>
         batch.triggerByTaskAndWait([
-          { task: taskA, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-          { task: taskB, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+          { task: taskA, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+          { task: taskB, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
         ]),
     },
     {
@@ -217,8 +225,8 @@ describe("batch trigger debounce forwarding", () => {
       call: () =>
         batch.triggerByTaskAndWait(
           asAsyncIterable([
-            { task: taskA, payload: { i: 0 }, options: { debounce: DEBOUNCE } },
-            { task: taskB, payload: { i: 1 }, options: { debounce: DEBOUNCE } },
+            { task: taskA, payload: { i: 0 }, options: { debounce: debounceFor(0) } },
+            { task: taskB, payload: { i: 1 }, options: { debounce: debounceFor(1) } },
           ])
         ),
     },
@@ -229,6 +237,6 @@ describe("batch trigger debounce forwarding", () => {
       await call();
     });
 
-    expect(capture.debounceOptions()).toEqual([DEBOUNCE, DEBOUNCE]);
+    expect(capture.debounceOptions()).toEqual(EXPECTED);
   });
 });

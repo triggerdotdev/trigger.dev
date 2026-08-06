@@ -749,7 +749,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1005,7 +1005,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1271,7 +1271,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1532,7 +1532,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -2019,7 +2019,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2071,7 +2071,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2122,7 +2122,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2173,7 +2173,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2226,7 +2226,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2286,7 +2286,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2425,7 +2425,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -2857,7 +2857,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
