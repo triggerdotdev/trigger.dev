@@ -43,3 +43,23 @@ import type { dashboardAgent } from "@internal/dashboard-agent";
 ```
 
 Never a value import (see `src/index.ts`).
+
+## Turn evals
+
+A sampled fraction of turns is scored by an LLM judge (`dashboard-agent-eval-turn`), which
+writes one `chat_turn_evals` row. The rules live in one file, `src/eval-policy.ts`:
+
+- **Sampling.** `DASHBOARD_AGENT_EVAL_SAMPLE_RATE`, default **0.1** — the judge is a full
+  model call per turn and nothing reads the rows yet. Golden / CI runs are a separate lane:
+  `DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI` (default 1) applies only when
+  `DASHBOARD_AGENT_EVAL_CONTEXT=ci`, so neither lane can change the other's rate.
+- **Redaction.** Run payloads and outputs, query result rows, file contents and span
+  attributes are replaced by their shape before the turn leaves the agent. The row keeps the
+  judge's derived verdict only — never the question, the answer, or any tool data.
+- **Code mode.** A turn that called a source tool is not judged at all.
+- **Opt-out.** Per-org, via the `dashboardAgentTurnEvalsEnabled` feature flag. The agent asks
+  the API before every judged turn and judges only on an explicit yes.
+- **Retention.** Rows are dropped after 30 days by the webapp's dashboard-agent sweep.
+
+When a document and the code disagree about any of the above, the code is the fact and the
+document is the bug: fix the document in the same change.

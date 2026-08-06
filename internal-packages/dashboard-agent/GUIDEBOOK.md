@@ -479,5 +479,7 @@ left standing ages into its own baseline and starts reading as normal.
 - Invent numbers or claim something doesn't exist beyond a truncated page.
 - Trust a report whose telemetry is stale.
 
-Feedback → #dashboard-agent-feedback, or just tell the agent — every
-conversation is evaluated and capability gaps are collected automatically.
+Feedback → #dashboard-agent-feedback, or just tell the agent — a sample of turns
+is scored automatically and capability gaps are collected from it (a tenth by
+default, none for a turn that read source, none for an org that opted out; see
+[README.md](./README.md#turn-evals)).
