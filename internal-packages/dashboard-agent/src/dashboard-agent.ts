@@ -8,7 +8,12 @@ import {
   type ToolSet,
   type UIMessage,
 } from "ai";
-import { orgAllowsTurnEvals, redactEvalToolValue, turnReadSource } from "./eval-policy";
+import {
+  orgAllowsTurnEvals,
+  redactEvalToolValue,
+  shouldEvalTurn,
+  turnReadSource,
+} from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import {
   buildTurnTools,
@@ -41,6 +46,18 @@ export {
   sanitizeReplayedToolInputs,
   type DashboardAgentStore,
 } from "./agent-runtime";
+// The eval's data-handling policy lives in `eval-policy.ts`; re-exported so every
+// existing import path still resolves.
+export {
+  DEFAULT_CI_EVAL_SAMPLE_RATE,
+  DEFAULT_EVAL_SAMPLE_RATE,
+  evalSampleRate,
+  isCiEvalContext,
+  orgAllowsTurnEvals,
+  redactEvalToolValue,
+  shouldEvalTurn,
+  turnReadSource,
+} from "./eval-policy";
 export {
   dashboardAgentActionSchema,
   wakeStartsInvestigation,
@@ -130,29 +147,6 @@ function getEvalTrigger(): DashboardAgentEvalTrigger {
     ((payload, options) =>
       tasks.trigger<typeof evalTurn>("dashboard-agent-eval-turn", payload, options))
   );
-}
-
-/**
- * Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Read per turn
- * so the rate can change without a redeploy.
- *
- * The judge is a full model call per turn, and nothing reads `chat_turn_evals`
- * yet, so the default samples a tenth — including when the value is unparseable,
- * where the old fallback of 1 quietly turned a typo into full-rate billing.
- */
-export const DEFAULT_EVAL_SAMPLE_RATE = 0.1;
-
-export function evalSampleRate(): number {
-  const raw = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
-  if (raw === undefined || raw.trim() === "") return DEFAULT_EVAL_SAMPLE_RATE;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return DEFAULT_EVAL_SAMPLE_RATE;
-  return parsed;
-}
-
-// `Math.random()` is in [0, 1), so rate 0 never samples and rate 1 always does.
-function shouldEvalTurn(): boolean {
-  return Math.random() < evalSampleRate();
 }
 
 function extractText(message: UIMessage): string {

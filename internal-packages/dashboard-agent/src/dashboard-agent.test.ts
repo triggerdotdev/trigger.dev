@@ -19,9 +19,11 @@ import {
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
   dashboardAgentToolsKey,
+  DEFAULT_CI_EVAL_SAMPLE_RATE,
   DEFAULT_EVAL_SAMPLE_RATE,
   evalSampleRate,
   extractToolActivity,
+  isCiEvalContext,
   MAX_EVAL_TOOL_OUTPUT_CHARS,
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
@@ -512,6 +514,63 @@ describe("per-turn eval sampling", () => {
   it("honours a parseable rate", () => {
     process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "0.5";
     expect(evalSampleRate()).toBe(0.5);
+  });
+});
+
+describe("the CI sample rate", () => {
+  const original = {
+    context: process.env.DASHBOARD_AGENT_EVAL_CONTEXT,
+    ci: process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI,
+    production: process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE,
+  };
+
+  function restore(name: string, value: string | undefined) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+
+  afterEach(() => {
+    restore("DASHBOARD_AGENT_EVAL_CONTEXT", original.context);
+    restore("DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI", original.ci);
+    restore("DASHBOARD_AGENT_EVAL_SAMPLE_RATE", original.production);
+  });
+
+  it("judges every turn in the CI lane", () => {
+    process.env.DASHBOARD_AGENT_EVAL_CONTEXT = "ci";
+    delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI;
+    expect(isCiEvalContext()).toBe(true);
+    expect(evalSampleRate()).toBe(DEFAULT_CI_EVAL_SAMPLE_RATE);
+    expect(DEFAULT_CI_EVAL_SAMPLE_RATE).toBe(1);
+  });
+
+  it("does not let the CI rate reach production", () => {
+    delete process.env.DASHBOARD_AGENT_EVAL_CONTEXT;
+    delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI = "1";
+    expect(isCiEvalContext()).toBe(false);
+    expect(evalSampleRate()).toBe(DEFAULT_EVAL_SAMPLE_RATE);
+  });
+
+  it("does not let the production rate de-sample CI", () => {
+    process.env.DASHBOARD_AGENT_EVAL_CONTEXT = "ci";
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "0";
+    delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI;
+    expect(evalSampleRate()).toBe(1);
+  });
+
+  it("honours a parseable CI rate, and falls back to full on a bad one", () => {
+    process.env.DASHBOARD_AGENT_EVAL_CONTEXT = "ci";
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI = "0.25";
+    expect(evalSampleRate()).toBe(0.25);
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE_CI = "nope";
+    expect(evalSampleRate()).toBe(DEFAULT_CI_EVAL_SAMPLE_RATE);
+  });
+
+  it("only the exact context value selects the CI lane", () => {
+    for (const raw of ["CI", "true", "1", "golden", ""]) {
+      process.env.DASHBOARD_AGENT_EVAL_CONTEXT = raw;
+      expect(isCiEvalContext()).toBe(false);
+    }
   });
 });
 
