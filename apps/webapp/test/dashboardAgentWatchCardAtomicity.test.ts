@@ -5,6 +5,7 @@ import {
   getInvestigation,
   listStaleOpenInvestigations,
   settleInvestigationStateAndCloseCard,
+  softDeleteChat,
   upsertInvestigationRevision,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
@@ -121,7 +122,8 @@ describe("closing a consented watch investigation's card", () => {
         investigationStateSchema.parse((await getInvestigation(agentDb, { id }))?.state).outcome
       ).toBe("inconclusive");
 
-      // The lane dedupes on the action, so a redelivered kick closes nothing twice.
+      // The lane dedupes on the action, so a redelivered kick closes nothing twice —
+      // and must not bump the revision, or the row runs ahead of the stored card.
       const again = await settleInvestigationStateAndCloseCard(agentDb, {
         id,
         chatId,
@@ -130,8 +132,65 @@ describe("closing a consented watch investigation's card", () => {
         state: forceSettledInvestigationState(openState()),
         messageId: MESSAGE_ID,
       });
-      expect(again).toMatchObject({ ok: true, closed: false });
-      expect((await transcript(chatId)).length).toBe(1);
+      expect(again).toMatchObject({ ok: true, id, revision: 1, closed: false });
+      expect((await getInvestigation(agentDb, { id }))?.revision).toBe(1);
+
+      const after = await transcript(chatId);
+      expect(after.map((message) => message.id)).toEqual([MESSAGE_ID]);
+      expect(after[0]!.parts[0]!.output.blocks[0]).toMatchObject({ id, revision: 1 });
+      // The replayed result is the card the transcript holds, not a second rendering.
+      expect((again as { card: unknown }).card).toEqual(after[0]);
+    },
+    30_000
+  );
+
+  postgresTest(
+    "settles nothing when the chat was deleted, so the sweep still selects the row",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_watch_card_deleted";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+      const id = await seed(chatId, openState());
+      await softDeleteChat(agentDb, { chatId, userId: USER_ID });
+
+      expect(
+        await settleInvestigationStateAndCloseCard(agentDb, {
+          id,
+          chatId,
+          projectRef: PROJECT_REF,
+          environmentRef: ENV_REF,
+          state: forceSettledInvestigationState(openState()),
+          messageId: MESSAGE_ID,
+        })
+      ).toEqual({ ok: false, error: "chat_missing" });
+
+      const row = await getInvestigation(agentDb, { id });
+      expect(row?.revision).toBe(0);
+      expect((row!.state as { outcome?: string }).outcome).toBe("in_progress");
+    },
+    30_000
+  );
+
+  postgresTest(
+    "settles nothing when the chat row was never there",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_watch_card_absent";
+      await boot(prisma, postgresContainer.getConnectionUri(), "chat_watch_card_present");
+      const id = await seed(chatId, openState());
+
+      expect(
+        await settleInvestigationStateAndCloseCard(agentDb, {
+          id,
+          chatId,
+          projectRef: PROJECT_REF,
+          environmentRef: ENV_REF,
+          state: forceSettledInvestigationState(openState()),
+          messageId: MESSAGE_ID,
+        })
+      ).toEqual({ ok: false, error: "chat_missing" });
+
+      const row = await getInvestigation(agentDb, { id });
+      expect(row?.revision).toBe(0);
+      expect((row!.state as { outcome?: string }).outcome).toBe("in_progress");
     },
     30_000
   );

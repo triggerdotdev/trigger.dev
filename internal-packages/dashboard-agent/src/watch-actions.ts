@@ -623,11 +623,12 @@ async function closeCardInTranscript(args: {
     messageId: args.messageId,
   });
   if (!result.ok) {
-    logger.error("dashboard-agent watch investigation couldn't close its card", {
-      chatId,
-      investigationId,
-      error: result.error,
-    });
+    // A chat deleted mid-investigation is a race, not a fault: nothing settled, and
+    // there is no transcript left to close the card in.
+    const message = "dashboard-agent watch investigation couldn't close its card";
+    const details = { chatId, investigationId, error: result.error };
+    if (result.error === "chat_missing") logger.warn(message, details);
+    else logger.error(message, details);
     return;
   }
 

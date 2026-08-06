@@ -857,15 +857,42 @@ export type ClosedInvestigationCard =
       id: string;
       revision: number;
       card: InvestigationCardMessage;
-      /** False when that message id was already in the chat. */
+      /** False when that message id was already in the chat, so this call wrote nothing. */
       closed: boolean;
     }
-  | { ok: false; error: "not_found" | "context_mismatch" };
+  | { ok: false; error: "not_found" | "context_mismatch" | "chat_missing" };
+
+/** The stored message under `messageId`, read from the transcript rather than rebuilt. */
+async function storedMessageById(
+  tx: DashboardAgentDbOrTx,
+  params: { chatId: string; messageId: string }
+): Promise<InvestigationCardMessage | null> {
+  const rows = await tx
+    .select({
+      message: sql<InvestigationCardMessage | null>`(
+        select message
+        from jsonb_array_elements(coalesce(${chats.messages}, '[]'::jsonb)) as message
+        where message->>'id' = ${params.messageId}
+        limit 1
+      )`,
+    })
+    .from(chats)
+    .where(eq(chats.id, params.chatId))
+    .limit(1);
+
+  return rows[0]?.message ?? null;
+}
 
 /**
  * Same atomicity as {@link settleInvestigationAndCloseCard}, for a caller that brings
  * its own terminal state and its own message id — the consented watch investigation,
  * which dedupes on the action rather than on the revision.
+ *
+ * Idempotent on that message id, and the locks are what make it so: a redelivered
+ * action must not bump the revision, or the row moves ahead of the card the transcript
+ * already holds and the panel renders a different revision before and after a refresh.
+ * A missing or deleted chat settles nothing — a terminal row with no card is the
+ * permanent spinner this transaction exists to prevent.
  *
  * Throwing is the point: the caller's retry only happens if the failure reaches it, and
  * a rolled-back settle leaves the `in_progress` row the stale sweep still selects.
@@ -882,6 +909,56 @@ export async function settleInvestigationStateAndCloseCard(
   }
 ): Promise<ClosedInvestigationCard> {
   return db.transaction(async (tx) => {
+    // Investigation before chat, the order `persistTurn` and the sweep's
+    // `settleInvestigationAndCloseCard` already take. Reversing it here would deadlock
+    // against them.
+    const investigationRows = await tx
+      .select({
+        id: investigations.id,
+        revision: investigations.revision,
+        chatId: investigations.chatId,
+        projectRef: investigations.projectRef,
+        environmentRef: investigations.environmentRef,
+      })
+      .from(investigations)
+      .where(eq(investigations.id, params.id))
+      .limit(1)
+      .for("update");
+
+    const investigation = investigationRows[0];
+    if (!investigation) return { ok: false, error: "not_found" };
+    if (
+      investigation.chatId !== params.chatId ||
+      investigation.projectRef !== params.projectRef ||
+      investigation.environmentRef !== params.environmentRef
+    ) {
+      return { ok: false, error: "context_mismatch" };
+    }
+
+    const chatRows = await tx
+      .select({ id: chats.id, deletedAt: chats.deletedAt })
+      .from(chats)
+      .where(eq(chats.id, params.chatId))
+      .limit(1)
+      .for("update");
+
+    const chat = chatRows[0];
+    if (!chat || chat.deletedAt) return { ok: false, error: "chat_missing" };
+
+    const already = await storedMessageById(tx, {
+      chatId: params.chatId,
+      messageId: params.messageId,
+    });
+    if (already) {
+      return {
+        ok: true,
+        id: investigation.id,
+        revision: investigation.revision,
+        card: already,
+        closed: false,
+      };
+    }
+
     const result = await upsertInvestigationRevision(tx, {
       id: params.id,
       chatId: params.chatId,
@@ -905,6 +982,10 @@ export async function settleInvestigationStateAndCloseCard(
       chatId: params.chatId,
       message: card,
     });
+    if (!closed) {
+      throw new Error(`Investigation ${result.id} settled without appending its closing card`);
+    }
+
     return { ok: true, id: result.id, revision: result.revision, card, closed };
   });
 }
