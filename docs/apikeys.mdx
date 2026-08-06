@@ -1,27 +1,14 @@
 ---
 title: "API keys"
-description: "Authenticate backend requests with environment-specific API keys and restrict additional keys to the access each integration needs."
+description: "Authenticate backend requests with environment-specific API keys."
 ---
 
-**API keys authenticate backend requests to a specific Trigger.dev project and environment.** Each environment has a root key, and you can create additional named keys for separate services and integrations.
+**API keys authenticate backend requests to a specific Trigger.dev project and environment.** Each environment can have multiple keys, with optional scopes and restrictions attached.
 
 <Warning>
   API keys grant access to your Trigger.dev environment. Store them in a secret manager or backend
   environment variable, never commit them to source control, and never expose them in frontend code.
 </Warning>
-
-## Root and additional keys
-
-Each environment has two types of API key:
-
-| Key type | Access | Secret visibility | Lifecycle |
-| --- | --- | --- | --- |
-| **Root key** | Full access to the environment | Available to copy from the dashboard | Regenerate it with a 24-hour grace period for the previous value |
-| **Additional key** | Full or restricted access | Shown once when created, then stored as a hash and displayed only by its suffix | Set an optional expiration date or revoke it immediately |
-
-Root keys use prefixes such as `tr_dev_`, `tr_stg_`, `tr_prod_`, and `tr_preview_`. Additional keys include `_sk_` after the environment, for example `tr_prod_sk_…`.
-
-Use additional keys to give each backend service, deployment pipeline, or external integration its own credential. This lets you revoke one integration without rotating the environment's root key.
 
 ## Find your API keys
 
@@ -39,12 +26,6 @@ API keys belong to one environment. A Development key cannot access Production, 
 Set `TRIGGER_SECRET_KEY` in your backend environment. The SDK reads it automatically for operations such as triggering tasks and retrieving runs.
 
 ```bash .env
-TRIGGER_SECRET_KEY="tr_prod_…"
-```
-
-Additional keys use the same environment variable:
-
-```bash .env
 TRIGGER_SECRET_KEY="tr_prod_sk_…"
 ```
 
@@ -52,12 +33,13 @@ To configure the SDK in code, pass the key to `configure`:
 
 ```ts Your backend code
 import { configure, tasks } from "@trigger.dev/sdk";
+import type { sendEmail } from "./trigger/send-email";
 
 configure({
   secretKey: process.env.TRIGGER_SECRET_KEY,
 });
 
-await tasks.trigger("send-email", {
+await tasks.trigger<typeof sendEmail>("send-email", {
   to: "user@example.com",
 });
 ```
@@ -71,7 +53,7 @@ TRIGGER_API_URL="https://trigger.example.com"
 
 The default API URL is `https://api.trigger.dev`.
 
-## Create an additional key
+## Create a key
 
 Create a separate key for each service or integration that accesses Trigger.dev.
 
@@ -97,79 +79,74 @@ Create a separate key for each service or integration that accesses Trigger.dev.
   </Step>
 </Steps>
 
-The dashboard displays the key's status, access, creator, creation time, and last-used time without storing or revealing its plaintext value.
-
 ## Access presets
 
-Access presets define what an additional key can do. The dashboard shows which presets are available for your plan.
+Access presets define what a key can do. Some presets require a paid plan. The dashboard shows which presets your organization can use — see [pricing](https://trigger.dev/pricing).
 
 | Preset | Access |
 | --- | --- |
 | **Trigger only** | Trigger runs and batches for all or selected tasks. Trigger responses include scoped public access tokens for the runs and batches they create |
 | **Task operator** | Trigger all or selected tasks and inspect or operate on their runs |
-| **Environment observer** | Read runs, tasks, batches, logs, traces, and queues |
-| **Environment operator** | Observe and operate on runs and queues, and trigger tasks |
+| **Observer** | Read runs, tasks, batches, logs, traces, and queues |
+| **Operator** | Observe and operate on runs and queues, and trigger tasks |
 | **Deploy only** | Deploy new versions, read deployment status, and read environment variables |
-| **Environment variables only** | Read and write environment variables in this environment |
-| **No restrictions** | Full access to the environment, matching the root key |
+| **Variables only** | Read and write environment variables in this environment |
+| **No restrictions** | Full access to the environment |
 
-**Trigger only** and **Task operator** can be restricted to selected tasks. Task restrictions use task identifiers, such as `send-email`, and continue to apply across deployments. A request involving multiple tasks succeeds only when the key can access every task in the request.
+**Trigger only** and **Task operator** can be restricted to selected tasks. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks — such as a batch trigger — succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
 
-Access is fixed when you create a key. Changes to a preset do not alter existing keys. To change a key's access, revoke it and create a replacement.
-
-<Warning>
-  Streamed batch ingestion is not atomic. When using a task-restricted key, earlier items may be
-  accepted before a later item fails validation or authorization.
-</Warning>
-
-## Expire and revoke additional keys
+## Expire and revoke keys
 
 Set an expiration date when creating a key if the integration only needs temporary access. An expired key stops authenticating automatically.
 
 Revoking a key takes effect immediately and cannot be reversed. Requests using the key fail, and the key can no longer create public access tokens. Create a replacement before revoking a key when you need to rotate it without interrupting the integration.
 
-Removing a team member does not revoke additional keys they created. Review and revoke their keys separately when their access changes.
-
-## Regenerate the root key
-
-Regenerating the root key creates a new value immediately. The previous root key remains valid for 24 hours so you can update services without downtime, then stops authenticating.
-
-Public access tokens signed with the previous root key remain valid until the earlier of their own expiration and the end of the 24-hour grace period. Additional-key revocation does not have a grace period.
+Removing a team member does not revoke keys they created. Review and revoke their keys separately when their access changes.
 
 ## Create public access tokens
 
-Additional keys can create scoped [Public Access Tokens](/realtime/auth) without receiving the environment's root key. Use `@trigger.dev/sdk` version 4.5.8 or later with additional keys.
+Keys can create scoped [Public Access Tokens](/realtime/auth) without receiving the environment's root key. Use `@trigger.dev/sdk` version 4.5.8 or later with keys.
 
-When an additional key calls `auth.createPublicToken()`:
+When a key calls `auth.createPublicToken()`:
 
 - The token must request at least one scope.
-- Its scopes cannot exceed the additional key's access.
+- Its scopes cannot exceed the key's access.
 - It expires after 15 minutes by default.
 - Its expiration cannot exceed 30 days.
 - A numeric `expirationTime` is a Unix timestamp in seconds.
 
-Revoking or expiring an additional key does not revoke tokens it already created. Those tokens remain valid until their own expiration, unless the environment's root key is regenerated first.
+Revoking or expiring a key does not revoke tokens it already created. Those tokens remain valid until their own expiration, unless the environment's root key is regenerated first.
 
 ## Target Preview and Development branches
 
-Preview and named Development branches use their parent environment's key set. Select the branch by setting `TRIGGER_PREVIEW_BRANCH` alongside the environment key:
+Preview and named Development branches use their parent environment's keys. Select the branch by setting `TRIGGER_PREVIEW_BRANCH` alongside the environment key:
 
 ```bash .env
-TRIGGER_SECRET_KEY="tr_preview_…"
+TRIGGER_SECRET_KEY="tr_preview_sk_…"
 TRIGGER_PREVIEW_BRANCH="feature/new-checkout"
 ```
 
 The SDK sends the branch automatically. When calling the API directly, send the same value in the `x-trigger-branch` header.
 
+## Root keys
+
+<Warning>
+  Root keys are legacy, and are likely to be deprecated in the future. We recommend against using them.
+</Warning>
+
+Each environment has a single legacy root key. It can be regenerated, which creates a new value immediately. The previous root key remains valid for 24 hours so you can update services without downtime, then stops authenticating.
+
+Public access tokens signed with the previous root key remain valid until the earlier of their own expiration and the end of the 24-hour grace period.
+
 ## Self-hosting
 
-Self-hosted installations support multiple additional keys with **No restrictions**. The restricted access presets are available in Trigger.dev Cloud.
+Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets are available in Trigger.dev Cloud.
 
-Keep your instance and SDK current before creating additional keys. Calling a public-token API with an additional key on a server that does not support server-minted tokens returns an upgrade error; use the root key until the server is upgraded.
+Keep your instance and SDK current before creating keys. Calling a public-token API with a key on a server that does not support server-minted tokens returns an upgrade error; use the root key until the server is upgraded.
 
 ## Security recommendations
 
-- Create one additional key per service or integration instead of sharing the root key.
+- Create one key per service or integration instead of sharing keys.
 - Choose the narrowest access preset and task selection that supports the integration.
 - Store keys in a secret manager and inject them as backend environment variables.
 - Set expiration dates for temporary integrations and deployment credentials.
