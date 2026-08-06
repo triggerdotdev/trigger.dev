@@ -23,6 +23,7 @@ import {
   markWatchDelivered,
   readWatchWakeFeed,
   recordWatchCheck,
+  recordWatchSubmissionOutcome,
   releaseWatchDelivery,
   transitionWatchCondition,
   WATCH_DELIVERY_CLAIM_STALE_MS,
@@ -2227,6 +2228,41 @@ describe("the watch card submit", () => {
         clientRequestId: "wreq_1",
       });
       expect(settled).toMatchObject({ state: "created", watchId: reservedWatchId });
+    }
+  );
+
+  postgresTest(
+    "a refusal that wins the race leaves no live watch behind",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-refused-race");
+      await seedChat(seeded);
+
+      // A concurrent attempt refuses this submission after the watch exists under the
+      // reserved id, so the ledger's winner keeps naming that id.
+      let reservedWatchId = "";
+      const result = await submit({
+        seeded,
+        chatId: "chat_1",
+        create: async (createParams) => {
+          reservedWatchId = createParams.watchId!;
+          const created = await createDashboardAgentWatch(createParams);
+          const refused = await recordWatchSubmissionOutcome(ctx.agentDb, {
+            chatId: "chat_1",
+            clientRequestId: "wreq_1",
+            state: "refused",
+            refusalCode: "internal",
+            refusalError: "That watch couldn't be started.",
+          });
+          expect(refused).toMatchObject({ state: "refused", watchId: reservedWatchId });
+          return created;
+        },
+      });
+
+      // The user is told nothing is being watched, so nothing may be watching.
+      expect(result.ok).toBe(false);
+      const row = await getWatch(ctx.agentDb, { id: reservedWatchId });
+      expect(row).toMatchObject({ status: "cancelled", cancelReason: "superseded" });
     }
   );
 

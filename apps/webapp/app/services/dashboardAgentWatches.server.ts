@@ -820,12 +820,14 @@ export async function submitDashboardAgentWatch(params: {
     });
     if (!recorded) {
       const winner = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
-      if (winner && winner.state !== "pending" && winner.watchId !== args.watchId) {
-        // Another attempt settled this submission differently, so this watch is an orphan.
-        await cancelWatch(dashboardAgentDb, { id: args.watchId, reason: "superseded" });
+      if (winner && winner.state !== "pending") {
+        // The winning outcome doesn't name this watch as created, so this watch is an orphan:
+        // cancel it before replaying, or a refusal would leave a live watch behind.
+        if (!(winner.state === "created" && winner.watchId === args.watchId)) {
+          await cancelWatch(dashboardAgentDb, { id: args.watchId, reason: "superseded" });
+        }
         return replay(winner);
       }
-      if (winner && winner.state !== "pending") return replay(winner);
     }
 
     return settle({
