@@ -237,6 +237,14 @@ const ENV_PAGE_META: Record<string, PageMeta> = {
   playground: { icon: "test", name: "Test", singular: "Test" },
 };
 
+/**
+ * The page segments that live under an environment ("apikeys", "runs", …), derived from the pages
+ * navigation knows about. Used by the /deeplink/* route to validate its redirect target.
+ */
+export const ENV_PAGE_SEGMENTS: ReadonlySet<string> = new Set(
+  Object.keys(ENV_PAGE_META).filter((segment) => segment.length > 0)
+);
+
 const ORG_SETTINGS_PAGE_META: Record<string, PageMeta> = {
   "": { icon: "org-settings", name: "Organization settings" },
   team: { icon: "team", name: "Team" },
