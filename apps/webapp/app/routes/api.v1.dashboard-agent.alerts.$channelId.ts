@@ -7,8 +7,7 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 
 /**
  * `DELETE /api/v1/dashboard-agent/alerts/:channelId` — stop alerting this channel
- * when a watch fires. The channel is looked up scoped to the chat's project, the caller's
- * organization and the caller's own address.
+ * when a watch fires. The channel is looked up scoped to the chat's project.
  */
 
 const ParamsSchema = z.object({ channelId: z.string().min(1) });
@@ -74,8 +73,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     const result = await unsubscribeChannelFromWatchAlerts(parsedParams.data.channelId, {
       projectId: context.environment.project.id,
-      // A project is shared by every member, so the owner is part of the scope: the agent
-      // may only turn off the alerts the caller's own address subscribed.
+      // A project is shared by every member, so the caller's own address is part of the scope.
       organizationId: context.environment.organizationId,
       ownerUserId: userId,
     });

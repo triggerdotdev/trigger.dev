@@ -465,16 +465,12 @@ export function createLoaderApiRoute<
   };
 }
 
-// What the request targets, resolved from its params. `environmentId` is checked against a
-// user-actor token's environment claim, so an env-scoped route enforces the scope by declaring it.
+// `environmentId` is checked against a user-actor token's environment claim, so an env-scoped
+// route enforces the scope by declaring it here.
 type PATRouteContext = { organizationId?: string; projectId?: string; environmentId?: string };
 
-/**
- * The verified claims of the presented user-actor token.
- *
- * The controller returns them, but a plugin built against an older contract may not — in that case
- * verify the token here rather than continue with no environment scope to enforce.
- */
+// Fail closed: a plugin built against an older contract returns no claims, so verify here rather
+// than continue with no environment scope to enforce.
 async function resolveUserActorClaims(
   claims: UserActorClaims | undefined,
   bearer: string
@@ -662,7 +658,6 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        // The token's environment scope is enforced against what the URL targets.
         await assertUserActorScope(claims, ctx);
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;

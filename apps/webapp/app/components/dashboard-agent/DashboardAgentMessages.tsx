@@ -97,14 +97,7 @@ export function winningInvestigationOccurrences(messages: UIMessage[]): Map<stri
   return new Map([...best.entries()].map(([id, w]) => [id, w.occurrence]));
 }
 
-/**
- * The winners map, with a stable identity while the winners hold.
- *
- * The recompute itself still runs on every streamed token — `messages` is a fresh
- * array each time the stream appends — so this doesn't save the walk. What it saves
- * is handing a fresh `Map` to the memoized turns, which would re-render the whole
- * transcript per token even though nothing about the winners moved.
- */
+// The stable identity is the point: a fresh `Map` re-renders the whole transcript per token.
 function useInvestigationWinners(messages: UIMessage[]): Map<string, string> {
   const previous = useRef<Map<string, string>>();
   const next = useMemo(() => winningInvestigationOccurrences(messages), [messages]);

@@ -32,10 +32,8 @@ const FORWARDED_HEADERS = [
   "x-trigger-branch",
 ];
 
-// The only turn metadata a browser may set. Everything else the agent reads — identity, tenancy,
-// the delegated token, the eval opt-out's inputs — is injected server-side, so a client-sent copy
-// is dropped rather than merged. A whitelist, not a deny-list: a field added to the agent's
-// clientData is server-owned until it is listed here on purpose.
+// The only turn metadata a browser may set: everything else the agent reads is injected
+// server-side. A whitelist — a new clientData field is server-owned until listed here on purpose.
 const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
 
 export function pickAgentClientMetadata(
@@ -120,8 +118,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return tooLarge();
       }
       parsed.payload.metadata = {
-        // Whitelisted: only the page context the browser is allowed to set survives, so it can
-        // neither overwrite nor smuggle in any of the server-owned fields below.
         ...pickAgentClientMetadata(parsed.payload.metadata),
         userActorToken: await mintDashboardAgentUserActorToken(user.id, {
           environmentId: runtimeEnv.id,

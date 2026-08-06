@@ -154,11 +154,7 @@ export async function canUseDashboardAgentEmailAlerts(
   return { allowed: true };
 }
 
-/**
- * The dedup key a user's own watch-alert channel is created under. A channel has no owner
- * column, so this key is the only thing that says whose channel it is — the subscribe and
- * the unsubscribe must derive it the same way.
- */
+// A channel has no owner column, so this key is the only record of whose channel it is.
 export function watchAlertDeduplicationKey(email: string): string {
   return `dashboard-agent-watch:${email}`;
 }
@@ -216,17 +212,14 @@ const UNSUBSCRIBE_ATTEMPTS = 3;
  * Take `DASHBOARD_AGENT_WATCH` off a channel, disabling one left with no alert types. The
  * write is conditional on the list the read saw, so a concurrent edit fails this attempt.
  *
- * A project is not a tenant: every member can see it, so `projectId` alone would let one
- * member turn off another member's alerts. `organizationId` and `ownerUserId` are the
- * scope a request-driven caller must pass.
+ * A project is shared by every member, so a request-driven caller must pass
+ * `organizationId` and `ownerUserId` too.
  */
 export async function unsubscribeChannelFromWatchAlerts(
   channelId: string,
   options: { projectId?: string; organizationId?: string; ownerUserId?: string } = {},
   db: PrismaClientOrTransaction = prisma
 ): Promise<UnsubscribeResult> {
-  // The owner is not a column: the channel's dedup key carries the address it was created
-  // for, so it is what scopes this to the caller's own channel.
   let ownerKey: string | undefined;
   if (options.ownerUserId) {
     const owner = await db.user.findFirst({
@@ -260,8 +253,8 @@ export async function unsubscribeChannelFromWatchAlerts(
     );
 
     const { count } = await db.projectAlertChannel.updateMany({
-      // Compare-and-swap on the row the scoped read returned. Scalars only: `updateMany`
-      // takes no relation filter, so the org scope is carried by the read's `projectId`.
+      // Compare-and-swap on the row the scoped read returned. `updateMany` takes no relation
+      // filter, so the org scope is carried by the read's `projectId`.
       where: {
         id: channelId,
         projectId: channel.projectId,

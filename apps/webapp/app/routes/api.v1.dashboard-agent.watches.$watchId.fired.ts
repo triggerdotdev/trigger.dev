@@ -82,8 +82,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
 
-    // The durable marker, keyed on this watch's terminal outcome: a token holder can call
-    // this as often as they like, and only the first call sends an alert.
     const claimed = await claimWatchAlertDispatch(dashboardAgentDb, {
       id: watch.id,
       terminalStatus: "fired",
@@ -96,7 +94,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     try {
       await enqueueWatchFiredAlert(watch, "fired");
     } catch (error) {
-      // Nothing was queued, so the claim goes back rather than muting the alert for good.
       await releaseWatchAlertDispatch(dashboardAgentDb, { id: watch.id, terminalStatus: "fired" });
       throw error;
     }
