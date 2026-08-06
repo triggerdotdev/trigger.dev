@@ -106,7 +106,7 @@ describe("renderBlockAsText", () => {
       ...watchConfirmationBlockBody({
         spec: { ...spec, note: noteFor(spec) },
         watchId: "watch_1",
-        followUp: { notifyExternally: true },
+        followUp: { external: { status: "enabled" } },
       }),
       id: "watch_1",
       revision: 0,
@@ -118,6 +118,30 @@ describe("renderBlockAsText", () => {
         "Watching email-sends until the queue drains.",
         "Checking every 5 min for up to 1 hour. It reports once, then stops.",
         "You'll get an email as well as the chat.",
+      ].join("\n")
+    );
+  });
+
+  // The watch is active either way, so the block still confirms it; the email line states
+  // the failure rather than going missing.
+  it("renders a confirmation whose email couldn't be attached", () => {
+    const spec = specFor("backlog_drain");
+    const block = {
+      ...watchConfirmationBlockBody({
+        spec: { ...spec, note: noteFor(spec) },
+        watchId: "watch_1",
+        followUp: { external: { status: "unavailable", reason: "email_alerts_not_configured" } },
+      }),
+      id: "watch_1",
+      revision: 0,
+      version: 1,
+    };
+
+    expect(renderBlockAsText(block)).toBe(
+      [
+        "Watching email-sends until the queue drains.",
+        "Checking every 5 min for up to 1 hour. It reports once, then stops.",
+        "I couldn't add email notifications, so updates will appear in the dashboard only.",
       ].join("\n")
     );
   });

@@ -339,9 +339,22 @@ describe("the persisted blocks (§2.2)", () => {
     const body = watchConfirmationBlockBody({
       spec: queueWatchRecommendation("email-sends"),
       watchId: "watch_1",
-      followUp: { investigateOnAttention: true, notifyExternally: false },
+      followUp: { investigateOnAttention: true, external: { status: "not_requested" } },
     });
     expect(body.followUp).toEqual(["If it turns out badly, I'll investigate straight away."]);
+  });
+
+  // The user asked for email and didn't get it. Saying nothing would leave them believing
+  // an alert is coming.
+  it("says out loud when the email the user asked for couldn't be added", () => {
+    const body = watchConfirmationBlockBody({
+      spec: queueWatchRecommendation("email-sends"),
+      watchId: "watch_1",
+      followUp: { external: { status: "unavailable", reason: "email_alerts_not_configured" } },
+    });
+    expect(body.followUp).toEqual([
+      "I couldn't add email notifications, so updates will appear in the dashboard only.",
+    ]);
   });
 
   it("makes a one-shot result carry no lifetime and no watch", () => {
