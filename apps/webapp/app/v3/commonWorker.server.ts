@@ -152,9 +152,18 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      // All four dashboard agent backstops run on this one cron: watch expiry, wake
-      // redelivery, stuck investigation cards, and dead batch chains.
-      "dashboardAgent.sweepWatches": {
+      // Stuck investigation cards and turn-eval retention.
+      "dashboardAgent.maintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        cron: "*/5 * * * *",
+        jitterInMs: 30_000,
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      // The watch backstops: expiry, wake redelivery, retention and dead batch chains.
+      "dashboardAgent.watchMaintenance": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
         cron: "*/5 * * * *",
@@ -221,18 +230,9 @@ function initializeWorker() {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
       },
-      "dashboardAgent.sweepWatches": async () => {
+      "dashboardAgent.maintenance": async () => {
         // Each backstop runs independently; the first failure is rethrown at the end.
         let failure: unknown;
-
-        try {
-          const watches = await sweepDashboardAgentWatches();
-          if (watches.overdue > 0 || watches.undelivered > 0 || watches.purged > 0) {
-            logger.debug("Dashboard agent watch sweep", watches);
-          }
-        } catch (error) {
-          failure = error;
-        }
 
         try {
           const investigations = await sweepDashboardAgentInvestigations();
@@ -243,20 +243,35 @@ function initializeWorker() {
           failure ??= error;
         }
 
-        try {
-          const batches = await rearmDashboardAgentWatchBatches();
-          if (batches.stale > 0) {
-            logger.debug("Dashboard agent watch batch re-arm", batches);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
         // Retention on the judged-turn rows. Independent of the agent being configured.
         try {
           const evals = await sweepDashboardAgentTurnEvals();
           if (evals.purged > 0) {
             logger.debug("Dashboard agent turn-eval retention", evals);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        if (failure) throw failure;
+      },
+      "dashboardAgent.watchMaintenance": async () => {
+        // Each backstop runs independently; the first failure is rethrown at the end.
+        let failure: unknown;
+
+        try {
+          const watches = await sweepDashboardAgentWatches();
+          if (watches.overdue > 0 || watches.undelivered > 0 || watches.purged > 0) {
+            logger.debug("Dashboard agent watch sweep", watches);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        try {
+          const batches = await rearmDashboardAgentWatchBatches();
+          if (batches.stale > 0) {
+            logger.debug("Dashboard agent watch batch re-arm", batches);
           }
         } catch (error) {
           failure ??= error;
