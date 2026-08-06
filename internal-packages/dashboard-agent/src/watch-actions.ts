@@ -35,6 +35,7 @@ import {
   withCacheBreakpointOnLast,
 } from "./agent-runtime";
 import { planWatchNarration, type WatchNarrationPlan } from "./watch-narration";
+import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
 
 /**
  * The watch lanes: the wake narration and the consented investigation that can
@@ -784,6 +785,8 @@ async function conductWatchInvestigation(args: {
   const store = getStore();
   let answered: UIMessage | undefined;
   const resolved = await getSystemPrompt(modeFor(clientData));
+  const tools = buildTurnTools(chatId, clientData);
+  let step = 0;
   const result = streamText({
     model:
       locals.get(dashboardAgentModelKey) ??
@@ -791,7 +794,19 @@ async function conductWatchInvestigation(args: {
         (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
       ),
     system: resolved.text,
-    tools: buildTurnTools(chatId, clientData),
+    tools,
+    // Ten steps of accumulating tool output is exactly what the rolling breakpoint
+    // is for; without it every step re-sends the lot uncached.
+    prepareStep: stepCachePrepareStep(undefined) as never,
+    onStepFinish: (finished) =>
+      recordPromptCacheUsage({
+        source: "watch-investigation",
+        usage: finished.usage,
+        system: resolved.text,
+        tools,
+        step: step++,
+        providerMetadata: finished.providerMetadata,
+      }),
     messages: [
       ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
       {

@@ -5,6 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import { investigationSettlementMessage } from "@internal/dashboard-agent-db";
 
 import type {
   DashboardAgentEvalPolicyCheck,
@@ -112,7 +113,31 @@ export function fakeStore(
     ensureChat: async (args) => record("ensureChat", args),
     persistMessages: async (args) => record("persistMessages", args),
     appendMessage: async (args) => record("appendMessage", args),
-    persistTurn: async (args) => record("persistTurn", args),
+    // Mirrors the real query: the settlements commit with the transcript, and the
+    // closing cards are part of the messages the write stores.
+    persistTurn: async (args) => {
+      const settled: { id: string; revision: number; state: unknown }[] = [];
+      const cards: UIMessage[] = [];
+      for (const pending of args.settlements ?? []) {
+        const result = await store.upsertInvestigationRevision({ ...pending, chatId: args.chatId });
+        if (!result.ok) continue;
+        const message = investigationSettlementMessage({
+          investigationId: result.id,
+          revision: result.revision,
+          state: pending.state,
+        });
+        if (!message) throw new Error(`${result.id} settled to a state that isn't renderable`);
+        settled.push({ id: result.id, revision: result.revision, state: pending.state });
+        cards.push(message as UIMessage);
+      }
+      const stored = args.messages as UIMessage[];
+      const messages = [
+        ...stored,
+        ...cards.filter((card) => !stored.some((message) => message.id === card.id)),
+      ];
+      record("persistTurn", { ...args, messages });
+      return { settled };
+    },
     setChatTitleIfDefault: async (args) => record("setChatTitleIfDefault", args),
     upsertInvestigationRevision: async (args) => {
       record("upsertInvestigationRevision", args);

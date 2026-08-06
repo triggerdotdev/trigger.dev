@@ -5,7 +5,7 @@ import {
   stepCacheAttributes,
   STEP_CACHE_CONTROL,
   withStepCacheBreakpoint,
-} from "./dashboard-agent";
+} from "./step-cache";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 
 type Message = {

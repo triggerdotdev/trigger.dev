@@ -535,6 +535,49 @@ describe("watch investigation", () => {
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
   });
 
+  /**
+   * The consented investigation gets the same ten-step budget a turn does, so without a
+   * rolling breakpoint every step re-sends the accumulated tool output at full price.
+   */
+  it("rolls a step cache breakpoint across the investigation's steps", async () => {
+    const bulky = {
+      ...concluded,
+      // Past the provider's minimum cacheable prefix, so a breakpoint is worth setting.
+      headline: `${concluded.headline} ${"the same TypeError on order.total. ".repeat(200)}`,
+    };
+    const { store } = fakeStore({
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    const { model, prompts } = recordingModel([
+      renderStep(bulky, "inv_seeded", "tc_verdict"),
+      textStep("The payload lost order.total."),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_investigate_step_cache",
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    const ttlOf = (message: unknown) =>
+      (message as { providerOptions?: { anthropic?: { cacheControl?: { ttl?: unknown } } } })
+        ?.providerOptions?.anthropic?.cacheControl?.ttl;
+
+    expect(prompts.length).toBeGreaterThan(1);
+    // Step two's last message is the accumulated tool output, and it carries the short-lived
+    // breakpoint — the one the next step reads back instead of re-sending.
+    const second = prompts[1] as unknown[];
+    expect(ttlOf(second.at(-1))).toBe("5m");
+    // Never more than one: Anthropic allows four, and the prefix breakpoints take two.
+    expect(second.filter((message) => ttlOf(message) === "5m")).toHaveLength(1);
+    // Step one has nothing accumulated yet, so nothing short-lived is marked.
+    expect((prompts[0] as unknown[]).filter((m) => ttlOf(m) === "5m")).toHaveLength(0);
+  });
+
   it("opens a card of its own when the wake's seed never landed", async () => {
     const { store, calls } = fakeStore();
     const { model, prompts } = recordingModel([textStep("Couldn't get far — the trace is gone.")]);

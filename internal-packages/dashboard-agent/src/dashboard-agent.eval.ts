@@ -38,7 +38,7 @@ const NOOP_STORE: DashboardAgentStore = {
   ensureChat: async () => {},
   persistMessages: async () => {},
   appendMessage: async () => {},
-  persistTurn: async () => {},
+  persistTurn: async () => ({ settled: [] }),
   setChatTitleIfDefault: async () => {},
   upsertInvestigationRevision: async () => ({
     ok: true,

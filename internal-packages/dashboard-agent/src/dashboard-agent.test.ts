@@ -277,18 +277,14 @@ describe("dashboardAgent (mock harness)", () => {
   });
 
   /**
-   * The transcript a fresh page load reads: the turn's wholesale write plus the
-   * id-deduped appends, which is exactly what the chat row holds.
+   * The transcript a fresh page load reads. One write holds all of it: the terminal
+   * settlement goes into the same array `persistTurn` stores.
    */
   const storedTranscript = (calls: StoreCalls): UIMessage[] => {
     const last = calls.persistTurn[calls.persistTurn.length - 1] as
       | { messages: UIMessage[] }
       | undefined;
-    const stored = [...(last?.messages ?? [])];
-    for (const call of calls.appendMessage as { message: UIMessage }[]) {
-      if (!stored.some((message) => message.id === call.message.id)) stored.push(call.message);
-    }
-    return stored;
+    return [...(last?.messages ?? [])];
   };
 
   /** Mirrors the panel's winning-revision logic, over `tool-render_view` output blocks. */
@@ -340,7 +336,8 @@ describe("dashboardAgent (mock harness)", () => {
     await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
     await new Promise((r) => setTimeout(r, 30));
 
-    const settlement = (calls.appendMessage as { message: UIMessage }[]).map((c) => c.message);
+    const stored = storedTranscript(calls);
+    const settlement = stored.filter((m) => m.id.startsWith("investigation-settlement:"));
     expect(settlement.map((m) => m.id)).toEqual(["investigation-settlement:inv_fake:1"]);
 
     const part = settlement[0]!.parts[0] as {
@@ -359,15 +356,63 @@ describe("dashboardAgent (mock harness)", () => {
     expect(part.output.blocks[0]!.investigation.outcome).toBe("inconclusive");
 
     // The card the panel resolves is the terminal one, at the higher revision.
-    const card = winningCards(storedTranscript(calls)).get("inv_fake");
+    const card = winningCards(stored).get("inv_fake");
     expect(card).toMatchObject({ revision: 1, outcome: "inconclusive" });
     expect(card?.progress).toBeUndefined();
+  });
 
-    // The append comes after the transcript write, so a failed append leaves the card
-    // visibly unclosed instead of silently lost.
-    expect(calls.order.indexOf("appendMessage")).toBeGreaterThan(
-      calls.order.indexOf("persistTurn")
-    );
+  /**
+   * The failure window. Settling the row used to be its own operation, so a transcript
+   * write that failed afterwards left a row that was already terminal and a card that
+   * said `in_progress`. The stale sweep only selects `in_progress` rows, so nothing
+   * could ever repair it. The row and its card must land together or not at all.
+   */
+  it("a failed transcript write settles nothing, and the retry closes the card", async () => {
+    const { store, calls } = fakeStore();
+    const attempted: unknown[] = [];
+    let failNext = true;
+    const flaky: DashboardAgentStore = {
+      ...store,
+      persistTurn: async (args) => {
+        attempted.push(args.settlements);
+        if (failNext) {
+          failNext = false;
+          throw new Error("the transcript write failed");
+        }
+        return store.persistTurn(args);
+      },
+    };
+
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_settle_write_fails",
+      clientData: INVESTIGATION_CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, flaky);
+        set(
+          dashboardAgentModelKey,
+          mockModel([renderViewStep(openInvestigation, "tc_open"), textStep("still looking")])
+        );
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // The settlement is handed to the one write that also stores the transcript, and it
+    // is still pending on the retry — the failed attempt committed no row of its own.
+    expect(attempted).toHaveLength(2);
+    expect(attempted[0]).toMatchObject([{ id: "inv_fake", projectRef: "proj_abc" }]);
+    expect(attempted[1]).toMatchObject([{ id: "inv_fake", projectRef: "proj_abc" }]);
+
+    // Exactly one settling revision, written by the attempt that stored the transcript:
+    // the model's render, then the settle. Never a settle without its card.
+    expect(calls.upsertInvestigationRevision).toHaveLength(2);
+    expect(calls.persistTurn).toHaveLength(1);
+    expect(calls.appendMessage).toHaveLength(0);
+
+    // And the retry's transcript carries the terminal card.
+    const card = winningCards(storedTranscript(calls)).get("inv_fake");
+    expect(card).toMatchObject({ revision: 1, outcome: "inconclusive" });
   });
 
   it("a refresh renders the closed card: the next load's transcript carries it", async () => {
@@ -405,7 +450,9 @@ describe("dashboardAgent (mock harness)", () => {
       outcome: "inconclusive",
     });
     // One settlement, not one per turn.
-    expect(calls.appendMessage).toHaveLength(1);
+    expect(
+      reloaded.filter((message) => message.id.startsWith("investigation-settlement:"))
+    ).toHaveLength(1);
   });
 
   it("leaves a concluded investigation alone", async () => {
@@ -931,7 +978,10 @@ describe("a turn that ends in an error", () => {
         const message = args.message as UIMessage;
         if (!messages.some((m) => m.id === message.id)) messages = [...messages, message];
       },
-      persistTurn: async (args) => void (messages = args.messages as UIMessage[]),
+      persistTurn: async (args) => {
+        messages = args.messages as UIMessage[];
+        return { settled: [] };
+      },
       setChatTitleIfDefault: async () => undefined,
       upsertInvestigationRevision: async () => ({
         ok: true,

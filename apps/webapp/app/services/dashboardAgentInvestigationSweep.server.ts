@@ -4,13 +4,10 @@
  */
 
 import {
-  appendChatMessageOnceByChatId,
-  investigationSettlementMessage,
   listStaleOpenInvestigations,
-  settleInvestigationAsInconclusive,
+  settleInvestigationAndCloseCard,
   type Investigation,
-  type InvestigationCardMessage,
-  type SettledInvestigation,
+  type SettledInvestigationCard,
 } from "@internal/dashboard-agent-db";
 import { UNSETTLED_INVESTIGATION_NOTE } from "@internal/dashboard-agent-contracts";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -40,10 +37,15 @@ export type InvestigationSweepDeps = {
   now?: () => Date;
   limit?: number;
   listStale?: (params: { olderThan: Date; limit: number }) => Promise<Investigation[]>;
-  /** Settle one row. Null when it was no longer `in_progress`. */
-  settle?: (params: { id: string; note: string }) => Promise<SettledInvestigation | null>;
-  /** Append the closing card to the chat. False when that message id is already there. */
-  closeCard?: (params: { chatId: string; message: InvestigationCardMessage }) => Promise<boolean>;
+  /**
+   * Settle one row and deliver its closing card as a single operation. Null when the
+   * row was no longer `in_progress`.
+   */
+  settleAndClose?: (params: {
+    id: string;
+    chatId: string;
+    note: string;
+  }) => Promise<SettledInvestigationCard | null>;
 };
 
 /**
@@ -57,10 +59,8 @@ export async function sweepDashboardAgentInvestigations(
   const limit = deps.limit ?? SWEEP_BATCH_LIMIT;
   const listStale =
     deps.listStale ?? ((params) => listStaleOpenInvestigations(dashboardAgentDb, params));
-  const settle =
-    deps.settle ?? ((params) => settleInvestigationAsInconclusive(dashboardAgentDb, params));
-  const closeCard =
-    deps.closeCard ?? ((params) => appendChatMessageOnceByChatId(dashboardAgentDb, params));
+  const settleAndClose =
+    deps.settleAndClose ?? ((params) => settleInvestigationAndCloseCard(dashboardAgentDb, params));
 
   const result: InvestigationSweepResult = {
     stale: 0,
@@ -78,29 +78,20 @@ export async function sweepDashboardAgentInvestigations(
 
   for (const investigation of stale) {
     try {
-      const settled = await settle({ id: investigation.id, note: UNSETTLED_INVESTIGATION_NOTE });
-      if (!settled) {
+      // Settling the row fixes nothing on its own: the chat renders the winning card
+      // from its own transcript, so an unappended settle is still a stuck spinner —
+      // which is why both writes are one operation that rolls back together.
+      const outcome = await settleAndClose({
+        id: investigation.id,
+        chatId: investigation.chatId,
+        note: UNSETTLED_INVESTIGATION_NOTE,
+      });
+      if (!outcome) {
         result.alreadySettled++;
         continue;
       }
       result.settled++;
-
-      // Settling the row fixes nothing on its own: the chat renders the winning card
-      // from its own transcript, so an unappended settle is still a stuck spinner.
-      const message = investigationSettlementMessage({
-        investigationId: settled.id,
-        revision: settled.revision,
-        state: settled.state,
-      });
-      if (!message) {
-        result.failed++;
-        logger.error("Dashboard agent investigation sweep: the closing card didn't validate", {
-          investigationId: settled.id,
-          chatId: investigation.chatId,
-        });
-        continue;
-      }
-      if (await closeCard({ chatId: investigation.chatId, message })) result.closed++;
+      if (outcome.closed) result.closed++;
     } catch (error) {
       result.failed++;
       logger.error("Dashboard agent investigation sweep: failed to settle an investigation", {

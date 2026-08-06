@@ -6,7 +6,7 @@ import {
 import { and, desc, eq, ne, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
-import { lockChatForWatches } from "./internal.js";
+import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
   chats,
   chatSessions,
@@ -359,7 +359,7 @@ export async function appendChatMessageOnce(
  * the between-turns sweep runs on its own, off any session.
  */
 export async function appendChatMessageOnceByChatId(
-  db: DashboardAgentDb,
+  db: DashboardAgentDbOrTx,
   params: { chatId: string; message: { id: string } }
 ): Promise<boolean> {
   const rows = await db
@@ -381,9 +381,23 @@ export async function appendChatMessageOnceByChatId(
   return rows.length > 0;
 }
 
+/** An investigation the turn left running, and the terminal state to close it with. */
+export type PendingInvestigationSettlement = {
+  id: string;
+  projectRef: string;
+  environmentRef: string;
+  state: unknown;
+};
+
+export type PersistTurnResult = { settled: SettledInvestigation[] };
+
 /**
  * One transaction: the frontend reads `messages` and `lastEventId` in parallel, so a
  * torn write resumes from a stale cursor and double-renders the last turn.
+ *
+ * `settlements` closes the cards the turn left running in that same transaction. It has
+ * to be the same one: a settled row whose closing card didn't land is a terminal row the
+ * stale sweep no longer selects, and the panel renders the spinner forever.
  */
 export async function persistTurn(
   db: DashboardAgentDb,
@@ -395,12 +409,47 @@ export async function persistTurn(
       lastEventId?: string | null;
       runId?: string | null;
     };
+    settlements?: PendingInvestigationSettlement[];
   }
-): Promise<void> {
-  await db.transaction(async (tx) => {
+): Promise<PersistTurnResult> {
+  return db.transaction(async (tx) => {
+    const settled: SettledInvestigation[] = [];
+    const cards: InvestigationCardMessage[] = [];
+    for (const pending of params.settlements ?? []) {
+      const result = await upsertInvestigationRevision(tx, {
+        id: pending.id,
+        chatId: params.chatId,
+        projectRef: pending.projectRef,
+        environmentRef: pending.environmentRef,
+        state: pending.state,
+      });
+      // A row that no longer belongs to this chat/project/env has nothing to close.
+      if (!result.ok) continue;
+
+      const message = investigationSettlementMessage({
+        investigationId: result.id,
+        revision: result.revision,
+        state: pending.state,
+      });
+      if (!message) {
+        throw new Error(`Investigation ${result.id} settled to a state that isn't renderable`);
+      }
+      settled.push({ id: result.id, revision: result.revision, state: pending.state });
+      cards.push(message);
+    }
+
+    // Revision-stable ids, so a replayed turn writes the same transcript, not a second card.
+    const existing = new Set(
+      params.messages.flatMap((message) => {
+        const id = (message as { id?: unknown }).id;
+        return typeof id === "string" ? [id] : [];
+      })
+    );
+    const messages = [...params.messages, ...cards.filter((card) => !existing.has(card.id))];
+
     await tx
       .update(chats)
-      .set({ messages: params.messages, lastMessageAt: sql`now()`, updatedAt: sql`now()` })
+      .set({ messages, lastMessageAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(chats.id, params.chatId));
 
     await tx
@@ -420,6 +469,8 @@ export async function persistTurn(
           updatedAt: sql`now()`,
         },
       });
+
+    return { settled };
   });
 }
 
@@ -461,7 +512,7 @@ export type UpsertInvestigationResult =
  * revisions. The chat/project/environment triple is in the `WHERE`: the tenancy check.
  */
 export async function upsertInvestigationRevision(
-  db: DashboardAgentDb,
+  db: DashboardAgentDbOrTx,
   params: {
     id?: string;
     chatId: string;
@@ -688,7 +739,7 @@ export type SettledInvestigation = { id: string; revision: number; state: unknow
  * mirrors `forceSettledInvestigationState`.
  */
 export async function settleInvestigationAsInconclusive(
-  db: DashboardAgentDb,
+  db: DashboardAgentDbOrTx,
   params: { id: string; note: string }
 ): Promise<SettledInvestigation | null> {
   const rows = await db
@@ -715,4 +766,41 @@ export async function settleInvestigationAsInconclusive(
     });
 
   return rows[0] ?? null;
+}
+
+export type SettledInvestigationCard = { settled: SettledInvestigation; closed: boolean };
+
+/**
+ * Settle a stale card and put its closing revision in the transcript, atomically.
+ *
+ * The two halves cannot be separate operations: a settle that commits without its
+ * card leaves a terminal row the stale sweep no longer selects, and the panel — which
+ * renders from the transcript — keeps the spinner forever. Rolling back restores the
+ * `in_progress` row the sweep already looks for, so the next run retries it.
+ *
+ * Null when the row was no longer `in_progress`; `closed` is false when that message
+ * id is already in the chat.
+ */
+export async function settleInvestigationAndCloseCard(
+  db: DashboardAgentDb,
+  params: { id: string; chatId: string; note: string }
+): Promise<SettledInvestigationCard | null> {
+  return db.transaction(async (tx) => {
+    const settled = await settleInvestigationAsInconclusive(tx, params);
+    if (!settled) return null;
+
+    const message = investigationSettlementMessage({
+      investigationId: settled.id,
+      revision: settled.revision,
+      state: settled.state,
+    });
+    // Nothing to deliver means the settle must not stand: a terminal row with no card
+    // is the permanent spinner this transaction exists to prevent.
+    if (!message) {
+      throw new Error(`Investigation ${settled.id} settled to a state that isn't renderable`);
+    }
+
+    const closed = await appendChatMessageOnceByChatId(tx, { chatId: params.chatId, message });
+    return { settled, closed };
+  });
 }

@@ -5,7 +5,6 @@ import {
   stepCountIs,
   streamText,
   type ModelMessage,
-  type ToolSet,
   type UIMessage,
 } from "ai";
 import {
@@ -25,16 +24,13 @@ import {
   registry,
   sanitizeReplayedToolInputs,
   settlementCardMessages,
-  settleOpenInvestigations,
+  clearOpenInvestigations,
+  pendingInvestigationSettlements,
   type DashboardAgentStore,
 } from "./agent-runtime";
 import { titlePrompt } from "./prompts";
-import {
-  describePromptPrefix,
-  PROMPT_CACHE_CONTROL,
-  promptCacheAttributes,
-  type PromptCacheUsage,
-} from "./prompt-prefix";
+import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
+import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
 import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
 
@@ -60,6 +56,15 @@ export {
   shouldEvalTurn,
   turnReadSource,
 } from "./eval-policy";
+// The rolling step cache lives in `step-cache.ts`, shared with the watch lane;
+// re-exported so every existing import path still resolves.
+export {
+  markStepCacheBreakpoint,
+  MIN_STEP_CACHE_CHARS,
+  stepCacheAttributes,
+  STEP_CACHE_CONTROL,
+  withStepCacheBreakpoint,
+} from "./step-cache";
 export {
   dashboardAgentActionSchema,
   wakeStartsInvestigation,
@@ -80,13 +85,6 @@ export {
  */
 
 /**
- * The chat's owner, remembered per run. The id-deduped append is scoped to the
- * user, and the error path's `onTurnComplete` gets no parsed `clientData` —
- * parsing it may be what failed.
- */
-const chatOwners = new Map<string, string>();
-
-/**
  * What a failed turn leaves in the transcript. Fixed wording: the provider's error
  * string is not something to show a user, and this is persisted forever.
  */
@@ -105,6 +103,18 @@ export function turnFailureMessageId(turn: number): string {
  * Reset every turn in `onTurnStart`.
  */
 const turnErroredKey = locals.create<boolean>("dashboard-agent.turnErrored");
+
+/**
+ * Append-only by message id. Both the terminal settlement cards and the failure
+ * record carry stable ids, so a retried turn writes the same transcript rather
+ * than a second copy of either.
+ */
+export function mergeMessagesById(current: UIMessage[], incoming: UIMessage[]): UIMessage[] {
+  const missing = incoming.filter(
+    (message) => !current.some((existing) => existing.id === message.id)
+  );
+  return missing.length === 0 ? current : [...current, ...missing];
+}
 
 function turnFailureMessage(turn: number): UIMessage {
   return {
@@ -310,112 +320,6 @@ export type {
   AgentPageSignal,
 } from "@internal/dashboard-agent-contracts";
 
-/**
- * One line per model call: what the provider billed as a cache write, a cache read
- * and uncached input, against the prefix we expect to be cached. The estimate and
- * the fingerprint are ours; the token counts are the provider's, and are logged as
- * `null` when it reported none.
- */
-function recordPromptCacheUsage(args: {
-  source: string;
-  usage: PromptCacheUsage | undefined;
-  system: string;
-  tools: ToolSet;
-  step?: number;
-  providerMetadata?: unknown;
-}): void {
-  try {
-    logger.info("dashboard-agent prompt cache", {
-      ...promptCacheAttributes({
-        source: args.source,
-        usage: args.usage,
-        prefix: describePromptPrefix({ system: args.system, tools: args.tools }),
-      }),
-      ...stepCacheAttributes(args.step, args.providerMetadata),
-    });
-  } catch (error) {
-    // Measurement must never fail a turn.
-    logger.debug("dashboard-agent prompt cache measurement failed", { error });
-  }
-}
-
-export function stepCacheAttributes(
-  step: number | undefined,
-  providerMetadata: unknown
-): Record<string, unknown> {
-  const anthropic = (providerMetadata as { anthropic?: Record<string, unknown> } | undefined)
-    ?.anthropic;
-  const write = anthropic?.cacheCreationInputTokens;
-  const read = anthropic?.cacheReadInputTokens;
-  return {
-    "dashboard_agent.step": step ?? null,
-    "gen_ai.usage.cache_creation_input_tokens": typeof write === "number" ? write : null,
-    "gen_ai.usage.cache_read_input_tokens": typeof read === "number" ? read : null,
-  };
-}
-
-export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;
-
-// Anthropic silently refuses to cache a prefix shorter than roughly 1024 tokens.
-export const MIN_STEP_CACHE_CHARS = 4_096;
-
-type MaybeCached = { providerOptions?: Record<string, unknown> };
-
-function cacheControlTtl(message: MaybeCached): string | undefined {
-  const anthropic = message.providerOptions?.anthropic as
-    | { cacheControl?: { ttl?: unknown } }
-    | undefined;
-  const ttl = anthropic?.cacheControl?.ttl;
-  return typeof ttl === "string" ? ttl : undefined;
-}
-
-function withoutStepBreakpoint<T extends MaybeCached>(message: T): T {
-  if (cacheControlTtl(message) !== STEP_CACHE_CONTROL.ttl) return message;
-  const { anthropic: _dropped, ...rest } = message.providerOptions as Record<string, unknown>;
-  return { ...message, providerOptions: rest };
-}
-
-// Only ever one step breakpoint at a time: Anthropic allows four in total, and the
-// system block and the per-turn history breakpoint take two of them.
-export function markStepCacheBreakpoint<T extends MaybeCached>(messages: T[]): T[] {
-  if (messages.length === 0) return messages;
-
-  let lastLongLived = -1;
-  messages.forEach((message, index) => {
-    const ttl = cacheControlTtl(message);
-    if (ttl !== undefined && ttl !== STEP_CACHE_CONTROL.ttl) lastLongLived = index;
-  });
-  const tail = messages.slice(lastLongLived + 1);
-  if ((JSON.stringify(tail)?.length ?? 0) < MIN_STEP_CACHE_CHARS) {
-    return messages.map(withoutStepBreakpoint);
-  }
-
-  const stripped = messages.map(withoutStepBreakpoint);
-  const last = stripped[stripped.length - 1]!;
-  return [
-    ...stripped.slice(0, -1),
-    {
-      ...last,
-      providerOptions: {
-        ...last.providerOptions,
-        anthropic: { cacheControl: STEP_CACHE_CONTROL },
-      },
-    },
-  ];
-}
-
-type PrepareStepArgs = { messages: ModelMessage[] };
-type PrepareStepResult = { messages?: ModelMessage[] } | undefined;
-type PrepareStepFn = (args: never) => PrepareStepResult | Promise<PrepareStepResult>;
-
-export function withStepCacheBreakpoint(inner: PrepareStepFn | undefined): PrepareStepFn {
-  return (async (args: PrepareStepArgs) => {
-    const base = await inner?.(args as never);
-    const messages = base?.messages ?? args.messages;
-    return { ...base, messages: markStepCacheBreakpoint(messages) };
-  }) as PrepareStepFn;
-}
-
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
@@ -451,7 +355,6 @@ export const dashboardAgent = chat.agent({
   },
 
   onChatStart: async ({ chatId, clientData }) => {
-    chatOwners.set(chatId, clientData.userId);
     await getStore().ensureChat({
       id: chatId,
       organizationId: clientData.organizationId,
@@ -472,8 +375,6 @@ export const dashboardAgent = chat.agent({
     handleWatchAction({ action, chatId, clientData, uiMessages, messages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
-    // Set every turn, not only on chat start: a continuation run skips onChatStart.
-    if (clientData?.userId) chatOwners.set(chatId, clientData.userId);
     locals.set(turnErroredKey, false);
 
     // Awaited, never chat.defer: a mid-stream refresh must not read an empty
@@ -527,13 +428,9 @@ export const dashboardAgent = chat.agent({
   }) => {
     const store = getStore();
 
-    // Settle before anything else: the run is over, so a card left `in_progress`
-    // never settles on its own and a refresh right after the turn would read a
-    // spinner that never stops.
-    const settled = await settleOpenInvestigations(store, chatId);
-    // The row is only half of it — the panel renders the winning revision from the
-    // transcript's own render_view parts and never reads the investigations table.
-    const closingCards = settlementCardMessages(chatId, settled);
+    // The run is over, so a card left `in_progress` never settles on its own. The
+    // entry survives until the write commits, so a retried `onTurnComplete` settles it.
+    const settlements = pendingInvestigationSettlements(chatId);
 
     // A turn that ended in an error is part of the conversation, not only a stream
     // event: the browser rendered the error chunk but nothing recorded it, so
@@ -542,32 +439,39 @@ export const dashboardAgent = chat.agent({
       error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
     const failure = errored ? turnFailureMessage(turn) : undefined;
 
-    // Transcript and session state in one transaction, so the next page load reads
-    // both consistently.
-    await store.persistTurn({
+    // One database operation for all of it: transcript, session state, and the rows
+    // and closing cards of whatever was left running. Settling a row on a separate
+    // operation is what could leave a terminal row whose card never arrived — and the
+    // stale sweep only selects `in_progress`, so nothing would ever repair it.
+    const { settled } = await store.persistTurn({
       chatId,
-      messages: uiMessages,
+      messages: mergeMessagesById(uiMessages, failure ? [failure] : []),
       session: {
         publicAccessToken: chatAccessToken,
         lastEventId,
         runId,
       },
+      settlements,
     });
+    clearOpenInvestigations(chatId);
 
-    // After the transcript write, and id-deduped, so a retried turn appends each
-    // record once rather than a second copy.
-    const appended = [...closingCards, ...(failure ? [failure] : [])];
-    if (appended.length > 0) {
-      const userId = clientData?.userId ?? chatOwners.get(chatId);
-      if (userId) {
-        for (const message of appended) {
-          await store.appendMessage({ chatId, userId, message });
-        }
-      } else {
-        logger.error("dashboard-agent turn has no userId; skipping the append", { chatId });
-      }
+    // The row is only half of it — the panel renders the winning revision from the
+    // transcript's own render_view parts and never reads the investigations table.
+    const closingCards = settlementCardMessages(
+      chatId,
+      settled.map((card) => ({
+        investigationId: card.id,
+        revision: card.revision,
+        state: card.state,
+      }))
+    );
+    const terminal = mergeMessagesById(uiMessages, [
+      ...closingCards,
+      ...(failure ? [failure] : []),
+    ]);
+    if (terminal.length > uiMessages.length) {
       // Into the accumulator too, so the next turn's wholesale write keeps them.
-      chat.history.set([...uiMessages, ...appended]);
+      chat.history.set(terminal);
     }
 
     // Score this turn in a separate, idempotency-keyed task so it never blocks or
@@ -666,9 +570,7 @@ export const dashboardAgent = chat.agent({
         ),
       messages,
       abortSignal: signal,
-      prepareStep: withStepCacheBreakpoint(
-        (options as { prepareStep?: PrepareStepFn }).prepareStep
-      ) as never,
+      prepareStep: stepCachePrepareStep(options) as never,
       // Per model call, so the head-start prefix and this one can be compared.
       onStepFinish: (finished) =>
         recordPromptCacheUsage({

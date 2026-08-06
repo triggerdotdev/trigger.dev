@@ -21,6 +21,11 @@ import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
+import {
+  fetchChatTranscript,
+  hasOpenInvestigation,
+  pollSettledTranscript,
+} from "./settled-transcript";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
@@ -300,13 +305,27 @@ export function DashboardAgentChat({
     aiStop();
   }, [transport, chatId, aiStop]);
 
+  // Read by the settle effect, which must not re-run when the transcript changes.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const prevStatus = useRef(status);
   useEffect(() => {
     const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
     const nowSettled = status === "ready" || status === "error";
-    if (wasInFlight && nowSettled) onTurnSettled();
     prevStatus.current = status;
-  }, [status, onTurnSettled]);
+    if (!wasInFlight || !nowSettled) return;
+
+    onTurnSettled();
+    // The terminal card is written to the chat row after the stream closes, so this
+    // mounted panel would otherwise keep showing the last `in_progress` revision.
+    if (!hasOpenInvestigation(messagesRef.current)) return;
+    void pollSettledTranscript<UIMessage>({
+      fetchTranscript: () => fetchChatTranscript(actionPath, chatId),
+      apply: (merge) => setMessages((current) => merge(current)),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+  }, [status, onTurnSettled, actionPath, chatId, setMessages]);
 
   // Not cleared on unmount: the turn carries on server-side and reports again on remount.
   useEffect(() => {

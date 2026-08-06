@@ -10,6 +10,8 @@ import {
   setChatTitleIfDefault,
   upsertInvestigationRevision,
   type DashboardAgentDbClient,
+  type PendingInvestigationSettlement,
+  type PersistTurnResult,
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { locals, logger } from "@trigger.dev/sdk";
@@ -72,7 +74,11 @@ export interface DashboardAgentStore {
    * view can miss host-appended blocks and a wholesale write would drop them.
    */
   appendMessage(args: Parameters<typeof appendChatMessageOnce>[1]): Promise<unknown>;
-  persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
+  /**
+   * The turn's one write. Its `settlements` close the cards the turn left running in
+   * the same transaction as the transcript, and it reports back what it settled.
+   */
+  persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<PersistTurnResult>;
   setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
   /** Commit one investigation revision. The only write the tool lane performs. */
   upsertInvestigationRevision(
@@ -125,11 +131,38 @@ function trackInvestigationOutcome(
   openInvestigations.set(chatId, forChat);
 }
 
+/**
+ * Whatever this turn left `in_progress`, as the terminal states to close them with.
+ * Nothing is written here: the caller hands these to `persistTurn`, which commits the
+ * rows and their closing cards in one transaction. Settling the row on its own
+ * operation is what left terminal rows with an `in_progress` card — a state the stale
+ * sweep no longer selects, so nothing ever repaired it.
+ *
+ * Read-only on purpose: `onTurnComplete` is retried, and a retry that found the entry
+ * already dropped would settle nothing.
+ */
+export function pendingInvestigationSettlements(chatId: string): PendingInvestigationSettlement[] {
+  const open = openInvestigations.get(chatId);
+  if (!open || open.size === 0) return [];
+
+  return [...open].map(([id, entry]) => ({
+    id,
+    projectRef: entry.projectRef,
+    environmentRef: entry.environmentRef,
+    state: forceSettledInvestigationState(entry.state),
+  }));
+}
+
+/** Called once the settling write has committed, so the next turn starts clean. */
+export function clearOpenInvestigations(chatId: string): void {
+  openInvestigations.delete(chatId);
+}
+
 /** A revision the settle guard committed, and the card the transcript still needs. */
 export type SettledInvestigationCard = {
   investigationId: string;
   revision: number;
-  state: InvestigationState;
+  state: unknown;
 };
 
 /**
