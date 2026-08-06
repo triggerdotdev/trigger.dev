@@ -111,24 +111,32 @@ function isUsableSegment(segment: string): boolean {
  * `suffix` is expected already encoded (see `deeplinkSuffix`) and is passed through untouched — an
  * `encodeURIComponent` pass here would double-encode every id that contains an escape.
  *
- * Only the first segment is matched case-insensitively, to the same end as the prefix in
- * `deeplinkSuffix`: `/env/{env}/APIKeys` would have matched its route, so `/deeplink/APIKeys` should
- * reach it rather than falling through to the environment root. The name resolves to the map's own
- * spelling, and every segment after it is left exactly as written — folding the case of a task or
- * run id would break the link far more thoroughly than the miss this fixes.
+ * The name is matched case-insensitively, to the same end as the prefix in `deeplinkSuffix`:
+ * `/env/{env}/APIKeys` would have matched its route, so `/deeplink/APIKeys` should reach it rather
+ * than falling through to the environment root. So is the written-out prefix, which is why the
+ * comparison is against the lowercased path rather than the path itself — a prefix can be more than
+ * one segment (`waitpoints/tokens`), and reading only `Tokens` as a segment of its own would graft
+ * the prefix on top of it and produce `waitpoints/tokens/Tokens/{id}`.
+ *
+ * The prefix comes back in the map's own spelling and everything past it exactly as written, since
+ * folding the case of a task or run id would break the link far more thoroughly than the miss this
+ * fixes.
  */
 export function resolveDeeplinkPage(suffix: string): string | undefined {
-  const [first = "", ...rest] = suffix.split("/").filter(isUsableSegment);
+  const segments = suffix.split("/").filter(isUsableSegment);
+  const [first = "", ...rest] = segments;
 
-  const name = first.toLowerCase();
-  const target = ENV_PAGE_TARGETS.get(name);
+  const target = ENV_PAGE_TARGETS.get(first.toLowerCase());
   if (target === undefined) return undefined;
 
   if (rest.length === 0) return target.landing;
 
-  const written = [name, ...rest].join("/");
-  //already written out under the prefix, so grafting would duplicate it
-  if (written === target.prefix || written.startsWith(`${target.prefix}/`)) return written;
+  //however many segments the prefix spans, so the whole of it is compared and none of it re-grafted
+  const prefixDepth = target.prefix.split("/").length;
+  const writesPrefix = segments.slice(0, prefixDepth).join("/").toLowerCase() === target.prefix;
 
-  return [target.prefix, ...rest].join("/");
+  //already written out under the prefix, so grafting would duplicate it
+  const beyondPrefix = writesPrefix ? segments.slice(prefixDepth) : rest;
+
+  return [target.prefix, ...beyondPrefix].join("/");
 }

@@ -216,6 +216,37 @@ describe("resolveDeeplinkPage", () => {
     );
   });
 
+  it("recognises a written-out prefix whatever its case, however many segments it spans", () => {
+    // `waitpoints`' prefix is two segments, so folding only the first left `Tokens` looking like a
+    // segment of its own: the graft fired on top of it and produced waitpoints/tokens/Tokens/{id},
+    // which matches no route. The lowercase spelling worked, so this was case-folding's own bug.
+    expect(resolveDeeplinkPage("Waitpoints/Tokens/wp_123")).toBe("waitpoints/tokens/wp_123");
+    expect(resolveDeeplinkPage("waitpoints/Tokens/wp_123")).toBe("waitpoints/tokens/wp_123");
+    expect(resolveDeeplinkPage("WAITPOINTS/TOKENS/wp_123")).toBe("waitpoints/tokens/wp_123");
+    // The bare longhand, with nothing beyond the prefix to carry.
+    expect(resolveDeeplinkPage("Waitpoints/Tokens")).toBe("waitpoints/tokens");
+  });
+
+  it("holds for every multi-segment prefix in the map, not just waitpoints", () => {
+    // Driven off the map so a second such entry is covered the day it is added rather than the day
+    // someone notices. Every prefix segment is upper-cased and the id is left mixed.
+    const multiSegment = [...ENV_PAGE_TARGETS.values()].filter(({ prefix }) =>
+      prefix.includes("/")
+    );
+
+    // Guards against this passing because it iterated nothing.
+    expect(multiSegment.length).toBeGreaterThan(0);
+
+    for (const { prefix } of multiSegment) {
+      const shouted = prefix
+        .split("/")
+        .map((segment) => segment.toUpperCase())
+        .join("/");
+      expect(resolveDeeplinkPage(`${shouted}/${PROBE}`)).toBe(`${prefix}/${PROBE}`);
+      expect(resolveDeeplinkPage(shouted)).toBe(prefix);
+    }
+  });
+
   it("drops traversal segments, in plain and escaped spellings", () => {
     expect(resolveDeeplinkPage("runs/../../../etc/passwd")).toBe("runs/etc/passwd");
     expect(resolveDeeplinkPage("../runs")).toBe("runs");
