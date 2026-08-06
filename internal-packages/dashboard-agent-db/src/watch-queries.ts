@@ -11,11 +11,14 @@ import { chats } from "./schema.js";
 import {
   watchBatches,
   watches,
+  watchSubmissions,
   type PersistedWatchSpec,
   type Watch,
   type WatchBatch,
   type WatchCancelReason,
   type WatchStatus,
+  type WatchSubmission,
+  type WatchSubmissionState,
 } from "./watch-schema.js";
 
 // The watch, wake and batch-chain half of the query layer. Same tenancy rule as
@@ -201,6 +204,184 @@ export async function getWatch(
 ): Promise<Watch | null> {
   const rows = await db.select().from(watches).where(eq(watches.id, params.id)).limit(1);
   return rows[0] ?? null;
+}
+
+/* ------------------------------------------------------------------ *
+ * The submission ledger
+ * ------------------------------------------------------------------ */
+
+export interface WatchSubmissionClaim {
+  submission: WatchSubmission;
+  /** This call inserted the row, so no earlier attempt exists. */
+  claimed: boolean;
+}
+
+/**
+ * Reserve the ledger row for one submission, or return the row an earlier attempt left.
+ * The insert is the mutual exclusion: `(chat_id, client_request_id)` is the primary key,
+ * so exactly one attempt is ever the first, and the rest read its outcome.
+ */
+export async function claimWatchSubmission(
+  db: DashboardAgentDb,
+  params: {
+    chatId: string;
+    clientRequestId: string;
+    organizationId: string;
+    userId: string;
+    projectId: string;
+    environmentId: string;
+    draftHash: string;
+    draft: Record<string, unknown>;
+    /** Reserved up front, so a converging retry finds the watch by id. */
+    watchId: string;
+  }
+): Promise<WatchSubmissionClaim> {
+  const inserted = await db
+    .insert(watchSubmissions)
+    .values({ ...params, state: "pending" })
+    .onConflictDoNothing({
+      target: [watchSubmissions.chatId, watchSubmissions.clientRequestId],
+    })
+    .returning();
+
+  if (inserted[0]) return { submission: inserted[0], claimed: true };
+
+  const existing = await getWatchSubmission(db, params);
+  // Only reachable if retention deleted the row between the insert and this read.
+  if (!existing) throw new Error("Watch submission vanished between insert and read");
+  return { submission: existing, claimed: false };
+}
+
+export async function getWatchSubmission(
+  db: DashboardAgentDb,
+  params: { chatId: string; clientRequestId: string }
+): Promise<WatchSubmission | null> {
+  const rows = await db
+    .select()
+    .from(watchSubmissions)
+    .where(
+      and(
+        eq(watchSubmissions.chatId, params.chatId),
+        eq(watchSubmissions.clientRequestId, params.clientRequestId)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Re-open a refused submission for another attempt, with a fresh reserved watch id: the
+ * previous one may already name a cancelled row. A refusal has no side effect to repeat,
+ * which is what makes this safe; `created` and `immediate` are never re-opened.
+ */
+export async function reopenWatchSubmission(
+  db: DashboardAgentDb,
+  params: { chatId: string; clientRequestId: string; watchId: string }
+): Promise<WatchSubmission | null> {
+  const rows = await db
+    .update(watchSubmissions)
+    .set({
+      state: "pending",
+      watchId: params.watchId,
+      unavailable: false,
+      notifiedExternally: false,
+      immediateResult: null,
+      refusalCode: null,
+      refusalError: null,
+      refusalExistingId: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(watchSubmissions.chatId, params.chatId),
+        eq(watchSubmissions.clientRequestId, params.clientRequestId),
+        eq(watchSubmissions.state, "refused")
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+export interface WatchSubmissionOutcome {
+  state: Exclude<WatchSubmissionState, "pending">;
+  watchId?: string | null;
+  unavailable?: boolean;
+  notifiedExternally?: boolean;
+  immediateResult?: string | null;
+  refusalCode?: string | null;
+  refusalError?: string | null;
+  refusalExistingId?: string | null;
+}
+
+/**
+ * Write the outcome, guarded on `pending`, so the first attempt to finish wins and a
+ * concurrent one reads its record instead of overwriting it. `null` means it lost.
+ */
+export async function recordWatchSubmissionOutcome(
+  db: DashboardAgentDb,
+  params: { chatId: string; clientRequestId: string } & WatchSubmissionOutcome
+): Promise<WatchSubmission | null> {
+  const rows = await db
+    .update(watchSubmissions)
+    .set({
+      state: params.state,
+      ...(params.watchId !== undefined ? { watchId: params.watchId } : {}),
+      unavailable: params.unavailable ?? false,
+      notifiedExternally: params.notifiedExternally ?? false,
+      immediateResult: params.immediateResult ?? null,
+      refusalCode: params.refusalCode ?? null,
+      refusalError: params.refusalError ?? null,
+      refusalExistingId: params.refusalExistingId ?? null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(watchSubmissions.chatId, params.chatId),
+        eq(watchSubmissions.clientRequestId, params.clientRequestId),
+        eq(watchSubmissions.state, "pending")
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * The one field a settled submission may still gain: the external channel, attached by a
+ * retry whose first attempt died before subscribing. Subscribing is idempotent.
+ */
+export async function markWatchSubmissionNotified(
+  db: DashboardAgentDb,
+  params: { chatId: string; clientRequestId: string }
+): Promise<void> {
+  await db
+    .update(watchSubmissions)
+    .set({ notifiedExternally: true, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(watchSubmissions.chatId, params.chatId),
+        eq(watchSubmissions.clientRequestId, params.clientRequestId),
+        eq(watchSubmissions.state, "created")
+      )
+    );
+}
+
+/** Retention. A submission outlives its watch only as the key that stops a re-create. */
+export async function deleteWatchSubmissionsOlderThan(
+  db: DashboardAgentDb,
+  params: { before: Date; limit?: number }
+): Promise<number> {
+  const eligible = db
+    .select({ ctid: sql`ctid` })
+    .from(watchSubmissions)
+    .where(sql`${watchSubmissions.createdAt} <= ${params.before.toISOString()}::timestamptz`)
+    .limit(params.limit ?? 500);
+
+  const deleted = await db
+    .delete(watchSubmissions)
+    .where(sql`ctid in ${eligible}`)
+    .returning({ chatId: watchSubmissions.chatId });
+
+  return deleted.length;
 }
 
 /** Covered by `watches_chat_active_identity_key`, which leads with `chat_id`. */

@@ -449,7 +449,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     if (!result.ok) {
       const status =
-        result.code === "limit_reached" || result.code === "duplicate"
+        result.code === "limit_reached" ||
+        result.code === "duplicate" ||
+        result.code === "request_conflict"
           ? 409
           : result.code === "invalid_target" || result.code === "chat_not_found"
             ? 404

@@ -26,7 +26,13 @@ export type WatchStatus = "active" | "fired" | "expired" | "cancelled";
  */
 export type WatchDeliveryStatus = "not_required" | "pending" | "delivering" | "delivered";
 /** Cancellations are silent: no resolution, no wake. */
-export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted" | "scheduling_failed";
+export type WatchCancelReason =
+  | "user"
+  | "access_revoked"
+  | "chat_deleted"
+  | "scheduling_failed"
+  /** A concurrent attempt at the same submission recorded a different outcome first. */
+  | "superseded";
 
 /** `since` is server-set at creation, so `error_recurrence` can't match older errors. */
 export type PersistedWatchSpec = WatchSpec & { since?: string };
@@ -146,6 +152,61 @@ export const watchBatches = dashboardAgentSchema.table(
   (t) => [primaryKey({ columns: [t.environmentId, t.cadenceMinutes] })]
 );
 
+/**
+ * `pending` is the only re-enterable state: the attempt that owns it died before it wrote
+ * an outcome. `created` and `immediate` are terminal — replayed, never re-evaluated.
+ * `refused` records an attempt that produced no side effect, so it may be re-attempted.
+ */
+export type WatchSubmissionState = "pending" | "created" | "immediate" | "refused";
+
+/**
+ * The authoritative record of one card submission, keyed by `(chat_id, client_request_id)`.
+ * Written before the watch, so a retry replays this row's outcome instead of re-evaluating
+ * the condition and creating a second operation. Main-DB ids, FK-free.
+ */
+export const watchSubmissions = dashboardAgentSchema.table(
+  "watch_submissions",
+  {
+    chatId: text("chat_id").notNull(), // = chats.id
+    /** Stable per card submission, held across the client's retries. */
+    clientRequestId: text("client_request_id").notNull(),
+    // Immutable tenancy snapshot, same rule as `watches`.
+    organizationId: text("organization_id").notNull(),
+    userId: text("user_id").notNull(),
+    projectId: text("project_id").notNull(),
+    environmentId: text("environment_id").notNull(),
+    /** sha256 of the normalized draft. A different draft under this key is a conflict. */
+    draftHash: text("draft_hash").notNull(),
+    /** The draft itself, so a replay rebuilds both records from the row alone. */
+    draft: jsonb("draft").$type<Record<string, unknown>>().notNull(),
+    state: text("state").$type<WatchSubmissionState>().notNull().default("pending"),
+    /**
+     * Reserved before the insert into `watches`, so an attempt that died mid-create is
+     * recognised by id rather than by looking for an active duplicate.
+     */
+    watchId: text("watch_id"),
+    /** `created` only: the creation-time check couldn't run. */
+    unavailable: boolean("unavailable").notNull().default(false),
+    /** `created` only: an external notification channel was attached. */
+    notifiedExternally: boolean("notified_externally").notNull().default(false),
+    /** `immediate` only: `satisfied` or `terminal_unsatisfied`. */
+    immediateResult: text("immediate_result"),
+    // `refused` only. Kept verbatim so the replayed refusal reads identically.
+    refusalCode: text("refusal_code"),
+    refusalError: text("refusal_error"),
+    refusalExistingId: text("refusal_existing_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The uniqueness that makes the ledger authoritative: one row per submission.
+    primaryKey({ columns: [t.chatId, t.clientRequestId] }),
+    // Retention scans by age across every tenant.
+    index("watch_submissions_created_idx").on(t.createdAt),
+  ]
+);
+
 export type Watch = typeof watches.$inferSelect;
 export type NewWatch = typeof watches.$inferInsert;
 export type WatchBatch = typeof watchBatches.$inferSelect;
+export type WatchSubmission = typeof watchSubmissions.$inferSelect;

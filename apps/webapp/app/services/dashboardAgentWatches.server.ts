@@ -9,18 +9,25 @@ import {
   armWatchBatch,
   cancelWatch,
   chatExists,
+  claimWatchSubmission,
   createChat,
   createWatch,
+  generateWatchId,
   getChatWatchContext,
   getWatch,
+  getWatchSubmission,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
+  markWatchSubmissionNotified,
   precheckWatchCreation,
+  recordWatchSubmissionOutcome,
+  reopenWatchSubmission,
   softDeleteChat,
   stopWatchBatch,
   type ChatWatchContext,
   type PersistedWatchSpec,
   type Watch,
   type WatchStatus,
+  type WatchSubmission,
 } from "@internal/dashboard-agent-db";
 import {
   VIEW_BLOCK_VERSION,
@@ -223,6 +230,8 @@ export async function createDashboardAgentWatch(params: {
   spec: WatchSpec;
   /** Consent to investigate after an attention outcome. Never inferred. */
   investigateOnAttention?: boolean;
+  /** Reserved by the submission ledger, so a converging retry finds the row by id. */
+  watchId?: string;
   now?: Date;
   /** IO seams: tests inject fakes here instead of mocking the readers. */
   deps?: {
@@ -285,6 +294,7 @@ export async function createDashboardAgentWatch(params: {
   const expiresAt = new Date(now.getTime() + spec.maxHours * 60 * 60 * 1000);
 
   const created = await createWatch(dashboardAgentDb, {
+    ...(params.watchId ? { id: params.watchId } : {}),
     chatId,
     identity,
     spec: persistedSpec,
@@ -360,6 +370,9 @@ export type WatchTranscriptMessage = {
   parts: unknown[];
 };
 
+/** A submit can also refuse a request id that arrives carrying a different draft. */
+export type SubmitWatchErrorCode = CreateWatchErrorCode | "request_conflict";
+
 export type SubmitWatchCardResult =
   | {
       ok: true;
@@ -368,12 +381,12 @@ export type SubmitWatchCardResult =
       watchId: string | null;
       /** The request record and the confirmation, in transcript order. */
       messages: WatchTranscriptMessage[];
-      /** The watch already existed and this call only filled in a missing record. */
+      /** Nothing was created: this call replayed a recorded outcome. */
       repaired: boolean;
     }
   | {
       ok: false;
-      code: CreateWatchErrorCode;
+      code: SubmitWatchErrorCode;
       error: string;
       existingId?: string | null;
       /** Set once a chat exists, so the caller can still open it. */
@@ -448,14 +461,39 @@ function confirmationMessage(args: {
 }
 
 /**
+ * A submitted draft's comparable digest. `notifyExternally` is left out: it is not part of
+ * the operation, and the subscribe below converges on a replay instead of conflicting.
+ */
+function draftDigest(draft: WatchDraft): string {
+  return createHash("sha256")
+    .update(JSON.stringify([comparableSpec(draft.spec), draft.followUp.investigateOnAttention]))
+    .digest("hex");
+}
+
+/** The refusal record, keyed off the request so a retry's success can still follow it. */
+function refusalMessage(clientRequestId: string, error: string): WatchTranscriptMessage {
+  return {
+    id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}refused:${clientRequestId}`,
+    role: "assistant",
+    parts: [{ type: "text", text: error }],
+  };
+}
+
+/**
  * Submit a configured watch card, for an already-authorized environment and a chat the caller
  * owns.
  *
- * The ordering is the invariant: the record of what the user confirmed is written *before*
- * anything starts running, and the confirmation is written after. A crash in between leaves a
- * watch that is visible but unconfirmed, never one that is live and invisible — and a retry
- * repairs it, because both records carry stable ids and a duplicate watch is loaded rather
- * than refused.
+ * The submission ledger is the idempotency boundary, not the transcript ids: a row keyed
+ * `(chatId, clientRequestId)` is written *before* the condition is evaluated, and it carries
+ * the outcome once there is one. So a retry looks the submission up first and replays what
+ * was recorded — it never re-evaluates and never creates a second operation, even after the
+ * first watch has fired, expired or answered in one shot. Only a `pending` row, left by an
+ * attempt that died before writing its outcome, is allowed to proceed, and it converges on
+ * the watch id reserved up front rather than creating another.
+ *
+ * The transcript ordering is the second invariant: the record of what the user confirmed is
+ * written before anything starts running, and the confirmation after, so a crash can leave a
+ * watch that is visible but unconfirmed, never one that is live and invisible.
  */
 export async function submitDashboardAgentWatch(params: {
   environment: AuthenticatedEnvironment;
@@ -487,97 +525,294 @@ export async function submitDashboardAgentWatch(params: {
     });
   }
 
-  // Step one, before the watch can exist: a false here means the record is already
-  // there from an earlier attempt, and a deleted chat is caught by the create below.
+  const digest = draftDigest(draft);
   const request = requestMessage(clientRequestId, draft);
+
+  /** Append-once, then return. Both records are deterministic, so a replay rewrites bytes. */
+  const settle = async (args: {
+    confirmation: WatchTranscriptMessage;
+    watchId: string | null;
+    repaired: boolean;
+  }): Promise<SubmitWatchCardResult> => {
+    await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: args.confirmation });
+    return {
+      ok: true,
+      chatId,
+      watching: args.watchId !== null,
+      watchId: args.watchId,
+      messages: [request, args.confirmation],
+      repaired: args.repaired,
+    };
+  };
+
+  const watchingConfirmation = (args: {
+    watchId: string;
+    unavailable: boolean;
+    notifiedExternally: boolean;
+  }) =>
+    confirmationMessage({
+      id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${args.watchId}`,
+      blockId: args.watchId,
+      body: watchConfirmationBlockBody({
+        spec: draft.spec,
+        watchId: args.watchId,
+        unavailable: args.unavailable,
+        followUp: {
+          investigateOnAttention: draft.followUp.investigateOnAttention,
+          notifyExternally: args.notifiedExternally,
+        },
+      }),
+    });
+
+  const oneShotConfirmation = (result: "satisfied" | "terminal_unsatisfied") =>
+    confirmationMessage({
+      // No watch exists, so the request id is the only stable key for a one-shot.
+      id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}one-shot:${clientRequestId}`,
+      blockId: watchIdentity(draft.spec),
+      body: watchOneShotBlockBody({ spec: draft.spec, result }),
+    });
+
+  /** Rebuild the transcript from a recorded outcome. Nothing is evaluated or created. */
+  const replay = async (recorded: WatchSubmission): Promise<SubmitWatchCardResult> => {
+    if (recorded.state === "created" && recorded.watchId) {
+      // The one thing the row can still converge on: the subscribe is idempotent, so a
+      // retry that asks for an external channel gets one even if the first attempt died.
+      let notified = recorded.notifiedExternally;
+      if (!notified && draft.followUp.notifyExternally) {
+        notified = (await subscribe({ userId, environment })).ok;
+        if (notified) {
+          await markWatchSubmissionNotified(dashboardAgentDb, { chatId, clientRequestId });
+        }
+      }
+      return settle({
+        confirmation: watchingConfirmation({
+          watchId: recorded.watchId,
+          unavailable: recorded.unavailable,
+          notifiedExternally: notified,
+        }),
+        watchId: recorded.watchId,
+        repaired: true,
+      });
+    }
+
+    if (recorded.state === "immediate") {
+      return settle({
+        confirmation: oneShotConfirmation(
+          recorded.immediateResult === "satisfied" ? "satisfied" : "terminal_unsatisfied"
+        ),
+        watchId: null,
+        repaired: true,
+      });
+    }
+
+    // Refused. Replayed verbatim, so the transcript and the response agree.
+    const error = recorded.refusalError ?? "That watch couldn't be started.";
+    await appendChatMessageOnce(dashboardAgentDb, {
+      chatId,
+      userId,
+      message: refusalMessage(clientRequestId, error),
+    });
+    return {
+      ok: false,
+      chatId,
+      code: (recorded.refusalCode as SubmitWatchErrorCode | null) ?? "internal",
+      error,
+      existingId: recorded.refusalExistingId,
+    };
+  };
+
+  /**
+   * Record a refusal, then write it under the consent record rather than leaving it to a
+   * toast the reload forgets. Losing the write means another attempt already settled it.
+   */
+  const refuse = async (refusal: {
+    code: SubmitWatchErrorCode;
+    error: string;
+    existingId?: string | null;
+  }): Promise<SubmitWatchCardResult> => {
+    const recorded = await recordWatchSubmissionOutcome(dashboardAgentDb, {
+      chatId,
+      clientRequestId,
+      state: "refused",
+      refusalCode: refusal.code,
+      refusalError: refusal.error,
+      refusalExistingId: refusal.existingId ?? null,
+    });
+    if (!recorded) {
+      const winner = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
+      if (winner && winner.state !== "pending") return replay(winner);
+    }
+    await appendChatMessageOnce(dashboardAgentDb, {
+      chatId,
+      userId,
+      message: refusalMessage(clientRequestId, refusal.error),
+    });
+    return { ok: false, chatId, ...refusal };
+  };
+
+  // Step one, before the condition is even read: the ledger row. Its primary key is what
+  // makes a retry a replay instead of a second operation.
+  const claim = await claimWatchSubmission(dashboardAgentDb, {
+    chatId,
+    clientRequestId,
+    organizationId,
+    userId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    draftHash: digest,
+    draft: { spec: draft.spec, followUp: draft.followUp } as unknown as Record<string, unknown>,
+    watchId: generateWatchId(),
+  });
+
+  // A different draft under the same request id is a different request, not a retry.
+  if (claim.submission.draftHash !== digest) {
+    return {
+      ok: false,
+      chatId,
+      code: "request_conflict",
+      error: "That request was already submitted with different settings.",
+    };
+  }
+
+  // Step two, before the watch can exist: a false here means the record is already there
+  // from an earlier attempt, and a deleted chat is caught by the create below.
   await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: request });
 
-  let result = await create({
+  let submission = claim.submission;
+
+  // A recorded outcome is replayed. A refusal produced no side effect, so it is the one
+  // state that may be attempted again — under a fresh reserved id, since the old one may
+  // already name a cancelled row.
+  if (submission.state === "refused") {
+    const reopened = await reopenWatchSubmission(dashboardAgentDb, {
+      chatId,
+      clientRequestId,
+      watchId: generateWatchId(),
+    });
+    if (!reopened) {
+      const current = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
+      if (current && current.state !== "pending") return replay(current);
+      return refuse({ code: "internal", error: "That watch couldn't be started." });
+    }
+    submission = reopened;
+  } else if (submission.state !== "pending") {
+    return replay(submission);
+  }
+
+  /** Attach the channel, record the outcome, then confirm. A lost race replays the winner. */
+  const settleCreated = async (args: {
+    watchId: string;
+    unavailable: boolean;
+    /** The watch was already there: this call adopted it rather than creating it. */
+    adopted: boolean;
+  }): Promise<SubmitWatchCardResult> => {
+    // Attached after the watch exists, and a failure here never fails the creation.
+    let notifiedExternally = false;
+    if (draft.followUp.notifyExternally) {
+      notifiedExternally = (await subscribe({ userId, environment })).ok;
+    }
+
+    const recorded = await recordWatchSubmissionOutcome(dashboardAgentDb, {
+      chatId,
+      clientRequestId,
+      state: "created",
+      watchId: args.watchId,
+      unavailable: args.unavailable,
+      notifiedExternally,
+    });
+    if (!recorded) {
+      const winner = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
+      if (winner && winner.state !== "pending" && winner.watchId !== args.watchId) {
+        // Another attempt settled this submission differently, so this watch is an orphan.
+        await cancelWatch(dashboardAgentDb, { id: args.watchId, reason: "superseded" });
+        return replay(winner);
+      }
+      if (winner && winner.state !== "pending") return replay(winner);
+    }
+
+    return settle({
+      confirmation: watchingConfirmation({
+        watchId: args.watchId,
+        unavailable: args.unavailable,
+        notifiedExternally,
+      }),
+      watchId: args.watchId,
+      repaired: args.adopted,
+    });
+  };
+
+  // Converge: an attempt that died mid-create left its row under the reserved id.
+  const reservedWatchId = submission.watchId ?? generateWatchId();
+  const reserved = await getWatch(dashboardAgentDb, { id: reservedWatchId });
+  if (reserved) {
+    if (reserved.status === "cancelled") {
+      // The previous attempt created it and then took it back. The id is spent, so this
+      // submission can't be completed; a fresh submit gets a fresh request id.
+      return refuse({
+        code: "internal",
+        error: "The watch couldn't be scheduled. Nothing is being watched.",
+      });
+    }
+    // `unavailable` isn't recoverable here: it belonged to the attempt that died.
+    return settleCreated({ watchId: reserved.id, unavailable: false, adopted: true });
+  }
+
+  const result = await create({
     environment,
     userId,
     chatId,
     spec: draft.spec,
     investigateOnAttention: draft.followUp.investigateOnAttention,
+    watchId: reservedWatchId,
     now: params.now,
     deps: params.deps,
   });
 
-  // A duplicate is a retry until proven otherwise: the same request repairs whatever
-  // record is missing, a different one still conflicts.
-  let repaired = false;
-  if (!result.ok && result.code === "duplicate" && result.existingId) {
-    const existing = await getWatch(dashboardAgentDb, { id: result.existingId });
-    if (
-      existing &&
-      existing.chatId === chatId &&
-      existing.status === "active" &&
-      isSameWatchRequest(existing, draft)
-    ) {
-      repaired = true;
-      result = {
-        ok: true,
-        watching: true,
-        watchId: existing.id,
-        identity: existing.identity,
-        status: existing.status,
-        expiresAt: existing.expiresAt,
-      };
-    }
-  }
-
-  // The consent record is already in the transcript, so the refusal is recorded under it
-  // rather than left to a toast the reload forgets. Keyed off the request, so a retry
-  // that succeeds adds its confirmation and this stays the record of the attempt.
   if (!result.ok) {
-    const refusal: WatchTranscriptMessage = {
-      id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}refused:${clientRequestId}`,
-      role: "assistant",
-      parts: [{ type: "text", text: result.error }],
-    };
-    await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: refusal });
-    return { ...result, chatId };
+    // Pre-ledger fallback: a submit that started before this ledger existed has no row of
+    // its own, so an active watch matching the draft is still adopted rather than refused.
+    // This only ever loads a watch; it never creates one.
+    if (result.code === "duplicate" && result.existingId) {
+      const existing = await getWatch(dashboardAgentDb, { id: result.existingId });
+      if (
+        existing &&
+        existing.chatId === chatId &&
+        existing.status === "active" &&
+        isSameWatchRequest(existing, draft)
+      ) {
+        return settleCreated({ watchId: existing.id, unavailable: false, adopted: true });
+      }
+    }
+    return refuse(result);
   }
 
-  // Attached after the watch exists, and a refusal never fails the creation.
-  let notifiedExternally = false;
-  if (result.watching && draft.followUp.notifyExternally) {
-    notifiedExternally = (await subscribe({ userId, environment })).ok;
+  if (!result.watching) {
+    const recorded = await recordWatchSubmissionOutcome(dashboardAgentDb, {
+      chatId,
+      clientRequestId,
+      state: "immediate",
+      // No watch exists, so the reserved id is released rather than left dangling.
+      watchId: null,
+      immediateResult: result.immediate.result,
+    });
+    if (!recorded) {
+      const winner = await getWatchSubmission(dashboardAgentDb, { chatId, clientRequestId });
+      if (winner && winner.state !== "pending") return replay(winner);
+    }
+    return settle({
+      confirmation: oneShotConfirmation(
+        result.immediate.result as "satisfied" | "terminal_unsatisfied"
+      ),
+      watchId: null,
+      repaired: false,
+    });
   }
 
-  const confirmation = result.watching
-    ? confirmationMessage({
-        id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${result.watchId}`,
-        blockId: result.watchId,
-        body: watchConfirmationBlockBody({
-          spec: draft.spec,
-          watchId: result.watchId,
-          unavailable: result.unavailable,
-          followUp: {
-            investigateOnAttention: draft.followUp.investigateOnAttention,
-            notifyExternally: notifiedExternally,
-          },
-        }),
-      })
-    : confirmationMessage({
-        // No watch exists, so the request id is the only stable key for a one-shot.
-        id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}one-shot:${clientRequestId}`,
-        blockId: result.identity,
-        body: watchOneShotBlockBody({
-          spec: draft.spec,
-          result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
-        }),
-      });
-
-  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: confirmation });
-
-  return {
-    ok: true,
-    chatId,
-    watching: result.watching,
-    watchId: result.watching ? result.watchId : null,
-    messages: [request, confirmation],
-    repaired,
-  };
+  return settleCreated({
+    watchId: result.watchId,
+    unavailable: result.unavailable === true,
+    adopted: false,
+  });
 }
 
 /** The two guardrail refusals, worded once for both the pre-check and the insert. */

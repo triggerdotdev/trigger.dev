@@ -7,6 +7,7 @@ import {
   claimWatchBatchTick,
   claimWatchDelivery,
   claimWatchTick,
+  getWatchSubmission,
   listActiveWatchesForBatch,
   listWatchBatchGroupsToArm,
   stopWatchBatch,
@@ -245,6 +246,7 @@ function create(args: {
   chatId?: string;
   environmentId?: string;
   investigateOnAttention?: boolean;
+  watchId?: string;
   checkDeps?: Partial<WatchCheckDeps>;
   scheduled?: Array<{ watchId: string; token: string; tick: number }>;
   onSchedule?: () => void;
@@ -256,6 +258,7 @@ function create(args: {
     chatId: args.chatId ?? "chat_1",
     spec: args.spec ?? RUN_START,
     investigateOnAttention: args.investigateOnAttention,
+    watchId: args.watchId,
     deps: {
       configured: () => true,
       checkDeps: () => fakeCheckDeps(args.checkDeps),
@@ -1631,6 +1634,8 @@ function submit(args: {
   checkDeps?: Partial<WatchCheckDeps>;
   subscribed?: boolean;
   onSchedule?: () => void;
+  /** Wraps the creation step, so a test can die at the exact point after it. */
+  create?: typeof createDashboardAgentWatch;
 }) {
   return submitDashboardAgentWatch({
     environment: authenticated(args.seeded),
@@ -1643,6 +1648,7 @@ function submit(args: {
       configured: () => true,
       checkDeps: () => fakeCheckDeps(args.checkDeps),
       scheduleTick: async () => args.onSchedule?.(),
+      ...(args.create ? { create: args.create } : {}),
       subscribe: async () =>
         args.subscribed === false
           ? { ok: false, reason: "dashboard_agent_disabled" }
@@ -2073,6 +2079,154 @@ describe("the watch card submit", () => {
         "watch-confirmation:one-shot:wreq_1",
       ]);
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  /** Every watch row for a chat, terminal ones included. `listActiveWatchesForChat` can't see those. */
+  async function countWatchRows(prisma: PrismaClient, chatId: string) {
+    const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `select count(*)::bigint as count from trigger_dashboard_agent.watches where chat_id = $1`,
+      chatId
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  postgresTest(
+    "a retry after the watch has already fired creates no second watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-fired");
+      await seedChat(seeded);
+
+      const first = await submit({ seeded, chatId: "chat_1" });
+      expect(first.ok).toBe(true);
+      if (!first.ok || !first.watchId) return;
+
+      // The watch resolves and leaves the active set, so a duplicate check would find
+      // nothing. Only the ledger still knows this request already ran.
+      await transitionWatchCondition(ctx.agentDb, {
+        id: first.watchId,
+        resolution: "condition_met",
+      });
+
+      const retry = await submit({ seeded, chatId: "chat_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      expect(retry.repaired).toBe(true);
+      expect(retry.watchId).toBe(first.watchId);
+      expect(await countWatchRows(prisma, "chat_1")).toBe(1);
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${first.watchId}`,
+      ]);
+    }
+  );
+
+  postgresTest(
+    "a retry of an answered one-shot never becomes a watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-oneshot-retry");
+      await seedChat(seeded);
+
+      const first = await submit({
+        seeded,
+        chatId: "chat_1",
+        checkDeps: { readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }) },
+      });
+      expect(first.ok && first.watching === false).toBe(true);
+
+      // The world moved on: the same condition would now be pending, so a re-evaluation
+      // would start a real watch. The recorded outcome is replayed instead.
+      const retry = await submit({ seeded, chatId: "chat_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      expect(retry.watching).toBe(false);
+      expect(retry.watchId).toBeNull();
+      expect(retry.repaired).toBe(true);
+      expect(await countWatchRows(prisma, "chat_1")).toBe(0);
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        "watch-confirmation:one-shot:wreq_1",
+      ]);
+    }
+  );
+
+  postgresTest(
+    "the same request id carrying a different draft is a conflict",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-hash");
+      await seedChat(seeded);
+
+      const first = await submit({ seeded, chatId: "chat_1" });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      const changed = await submit({
+        seeded,
+        chatId: "chat_1",
+        draft: draftFor({ ...RUN_START, maxHours: 6 }),
+      });
+      expect(changed).toMatchObject({ ok: false, code: "request_conflict" });
+
+      // A conflict writes nothing at all: no watch, and no record under the request.
+      expect(await countWatchRows(prisma, "chat_1")).toBe(1);
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${first.watchId}`,
+      ]);
+    }
+  );
+
+  postgresTest(
+    "a pending submission converges on the watch its first attempt created",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-converge");
+      await seedChat(seeded);
+
+      // The crash state the ledger exists for: the row is reserved, the watch is live
+      // under the reserved id, and the process died before the outcome was written.
+      let reservedWatchId = "";
+      await expect(
+        submit({
+          seeded,
+          chatId: "chat_1",
+          create: async (createParams) => {
+            reservedWatchId = createParams.watchId!;
+            await createDashboardAgentWatch(createParams);
+            throw new Error("died after the watch was created");
+          },
+        })
+      ).rejects.toThrow("died after the watch was created");
+
+      const pending = await getWatchSubmission(ctx.agentDb, {
+        chatId: "chat_1",
+        clientRequestId: "wreq_1",
+      });
+      expect(pending).toMatchObject({ state: "pending", watchId: reservedWatchId });
+
+      const retry = await submit({ seeded, chatId: "chat_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      // Reached the reserved row rather than creating another.
+      expect(retry.watchId).toBe(reservedWatchId);
+      expect(await countWatchRows(prisma, "chat_1")).toBe(1);
+
+      const settled = await getWatchSubmission(ctx.agentDb, {
+        chatId: "chat_1",
+        clientRequestId: "wreq_1",
+      });
+      expect(settled).toMatchObject({ state: "created", watchId: reservedWatchId });
     }
   );
 

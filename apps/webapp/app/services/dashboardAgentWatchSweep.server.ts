@@ -6,6 +6,7 @@
 import {
   cancelWatch,
   deleteTerminalWatchesOlderThan,
+  deleteWatchSubmissionsOlderThan,
   listExpiredActiveWatches,
   listWatchBatchGroupsToArm,
   listWatchesAwaitingDelivery,
@@ -82,6 +83,8 @@ export type WatchSweepResult = {
   deliveryDeferred: number;
   /** Long-terminal rows dropped by retention. */
   purged: number;
+  /** Ledger rows dropped by retention. */
+  purgedSubmissions: number;
   failed: number;
 };
 
@@ -102,6 +105,8 @@ export type WatchSweepDeps = {
   configured?: () => boolean;
   /** Drop terminal rows older than `before`. Returns how many went. */
   purgeTerminal?: (params: { before: Date; limit: number }) => Promise<number>;
+  /** Drop submission-ledger rows older than `before`. */
+  purgeSubmissions?: (params: { before: Date; limit: number }) => Promise<number>;
 };
 
 /**
@@ -267,6 +272,9 @@ export async function sweepDashboardAgentWatches(
     ((params) => listWatchesAwaitingDelivery(dashboardAgentDb, params));
   const purgeTerminal =
     deps.purgeTerminal ?? ((params) => deleteTerminalWatchesOlderThan(dashboardAgentDb, params));
+  const purgeSubmissions =
+    deps.purgeSubmissions ??
+    ((params) => deleteWatchSubmissionsOlderThan(dashboardAgentDb, params));
 
   const result: WatchSweepResult = {
     overdue: 0,
@@ -278,6 +286,7 @@ export async function sweepDashboardAgentWatches(
     redelivered: 0,
     deliveryDeferred: 0,
     purged: 0,
+    purgedSubmissions: 0,
     failed: 0,
   };
 
@@ -340,10 +349,10 @@ export async function sweepDashboardAgentWatches(
   // Retention runs last, over rows both halves are finished with. Its own try/catch so a
   // lost retention pass can't mask the other failures.
   try {
-    result.purged = await purgeTerminal({
-      before: new Date(now.getTime() - WATCH_RETENTION_MS),
-      limit: RETENTION_BATCH_LIMIT,
-    });
+    const before = new Date(now.getTime() - WATCH_RETENTION_MS);
+    result.purged = await purgeTerminal({ before, limit: RETENTION_BATCH_LIMIT });
+    // The ledger's rows age out on the same window: past it no client is still retrying.
+    result.purgedSubmissions = await purgeSubmissions({ before, limit: RETENTION_BATCH_LIMIT });
   } catch (error) {
     result.failed++;
     logger.error("Dashboard agent watch sweep: failed to purge terminal watches", { error });
