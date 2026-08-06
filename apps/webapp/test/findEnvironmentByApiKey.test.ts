@@ -1,7 +1,10 @@
 import { postgresTest } from "@internal/testcontainers";
 import { type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
-import { findEnvironmentByApiKey } from "~/models/runtimeEnvironment.server";
+import {
+  findEnvironmentByApiKey,
+  resolvePrivateApiKeyRateLimitScope,
+} from "~/models/runtimeEnvironment.server";
 import { generateAdditionalApiKey, hashApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
@@ -141,6 +144,36 @@ describe("findEnvironmentByApiKey — PREVIEW (regression guard)", () => {
       const resolved = await findEnvironmentByApiKey(previewParent.apiKey, "pr-123", prisma);
       expect(resolved?.id).toBe(previewBranch.id);
       expect(resolved?.apiKey).toBe(previewParent.apiKey);
+    }
+  );
+
+  postgresTest(
+    "rate limit scope resolves root and additional keys to the preview parent",
+    async ({ prisma }) => {
+      const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+      const previewParent = await createEnv(prisma, project.id, organization.id, {
+        type: "PREVIEW",
+        isBranchableEnvironment: true,
+      });
+      const additional = generateAdditionalApiKey("PREVIEW").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "Preview integration",
+          keyHash: hashApiKey(additional),
+          lastFour: additional.slice(-4),
+          runtimeEnvironmentId: previewParent.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+        },
+      });
+
+      const rootScope = await resolvePrivateApiKeyRateLimitScope(previewParent.apiKey, prisma);
+      const additionalScope = await resolvePrivateApiKeyRateLimitScope(additional, prisma);
+
+      expect(rootScope?.environmentId).toBe(previewParent.id);
+      expect(additionalScope?.environmentId).toBe(previewParent.id);
     }
   );
 });
@@ -366,4 +399,30 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
       ).resolves.toMatchObject({ id: environment.id });
     }
   );
+
+  postgresTest("does not resolve additional keys for deleted projects", async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+    });
+    const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Deleted project key",
+        keyHash: hashApiKey(additional),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(resolvePrivateApiKeyRateLimitScope(additional, prisma)).resolves.toBeNull();
+  });
 });

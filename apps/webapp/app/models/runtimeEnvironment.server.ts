@@ -301,6 +301,89 @@ export async function findEnvironmentByApiKeyWithResolution(
   return resolveEnvironmentByApiKey(apiKey, branchName, tx, additionalApiKeyLookupEnabled);
 }
 
+export type PrivateApiKeyRateLimitScope = {
+  environmentId: string;
+  apiRateLimiterConfig: unknown;
+};
+
+export async function resolvePrivateApiKeyRateLimitScope(
+  apiKey: string,
+  tx: PrismaClientOrTransaction = $replica
+): Promise<PrivateApiKeyRateLimitScope | null> {
+  const now = new Date();
+
+  if (isAdditionalApiKey(apiKey)) {
+    const match = await tx.apiKey.findFirst({
+      where: {
+        keyHash: hashApiKey(apiKey),
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            project: { select: { deletedAt: true } },
+            organization: { select: { apiRateLimiterConfig: true } },
+          },
+        },
+      },
+    });
+
+    if (!match?.runtimeEnvironment || match.runtimeEnvironment.project.deletedAt) {
+      return null;
+    }
+
+    return {
+      environmentId: match.runtimeEnvironment.id,
+      apiRateLimiterConfig: match.runtimeEnvironment.organization.apiRateLimiterConfig,
+    };
+  }
+
+  const environment = await tx.runtimeEnvironment.findFirst({
+    where: { apiKey },
+    select: {
+      id: true,
+      project: { select: { deletedAt: true } },
+      organization: { select: { apiRateLimiterConfig: true } },
+    },
+  });
+
+  if (environment) {
+    if (environment.project.deletedAt) {
+      return null;
+    }
+
+    return {
+      environmentId: environment.id,
+      apiRateLimiterConfig: environment.organization.apiRateLimiterConfig,
+    };
+  }
+
+  const revokedApiKey = await tx.revokedApiKey.findFirst({
+    where: { apiKey, expiresAt: { gt: now } },
+    select: {
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          project: { select: { deletedAt: true } },
+          organization: { select: { apiRateLimiterConfig: true } },
+        },
+      },
+    },
+  });
+
+  const revokedEnvironment = revokedApiKey?.runtimeEnvironment;
+  if (!revokedEnvironment || revokedEnvironment.project.deletedAt) {
+    return null;
+  }
+
+  return {
+    environmentId: revokedEnvironment.id,
+    apiRateLimiterConfig: revokedEnvironment.organization.apiRateLimiterConfig,
+  };
+}
+
 /**
  * @deprecated We don't use public API keys (`pk_*` tokens) anymore — public
  * access goes through public JWTs (see `isPublicJWT` / `validatePublicJwtKey`).
