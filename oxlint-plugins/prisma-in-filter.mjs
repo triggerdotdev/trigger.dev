@@ -36,7 +36,13 @@ const VALUE_POSITION = new Set([
   "_count",
 ]);
 
-const LIST_FILTERS = new Set(["in", "notIn"]);
+/**
+ * Scalar-list membership filters expand the same way `in` does: one bind parameter per element,
+ * so arity changes the statement text. `hasSome` becomes `&&` and `hasEvery` becomes `@>`, and
+ * both ignore duplicates in the right-hand array, so padding is as safe here as it is for `in`.
+ * `has` takes a single value, not a list, so it is deliberately absent.
+ */
+const LIST_FILTERS = new Set(["in", "notIn", "hasSome", "hasEvery"]);
 
 /**
  * Helpers whose first argument IS a where clause, so the filter arrives as a bare object

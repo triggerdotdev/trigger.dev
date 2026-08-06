@@ -200,7 +200,7 @@ export class WaitpointListPresenter extends BasePresenter {
                   },
                 }
               : {}),
-            ...(tags && tags.length > 0 ? { tags: { hasSome: tags } } : {}),
+            ...(tags && tags.length > 0 ? { tags: { hasSome: boundedIn(tags) } } : {}),
           },
           orderBy: { id: direction === "forward" ? "desc" : "asc" },
           take: pageSize + 1,
