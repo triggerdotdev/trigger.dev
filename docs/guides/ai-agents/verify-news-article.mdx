@@ -68,6 +68,10 @@ export const extractClaims = task({
       const response = await generateText({
         model: anthropic("claude-sonnet-4-5"),
         messages,
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: "extract-claims",
+        },
       });
 
       const claims = response.text
