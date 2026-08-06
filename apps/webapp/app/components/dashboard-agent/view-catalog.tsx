@@ -5,6 +5,7 @@ import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
 import { blockKey, latestRevisionEntries } from "./view-blocks";
+import { WatchResultBlock } from "./WatchResultBlock";
 
 // Unknown block types are skipped, so an older or newer agent cannot render
 // arbitrary content. A new block needs a `case` here and a `viewBlockSchema` member.
@@ -47,6 +48,9 @@ export function ViewBlocks({
                 answered={answered}
               />
             );
+          // Host-emitted only, so the model cannot fabricate a confirmation.
+          case "watch_result":
+            return <WatchResultBlock key={key} block={block} />;
           case "report":
             return (
               <ReportView

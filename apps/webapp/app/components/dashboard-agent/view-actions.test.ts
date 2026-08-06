@@ -3,6 +3,20 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { answerContinuesAfter, renderableActions } from "./view-actions";
 
+const watchAction: ActionsBlockAction = {
+  label: "Set up a watch",
+  intent: {
+    kind: "watch",
+    spec: {
+      kind: "error_recurrence",
+      fingerprint: "a1b2c3",
+      checkEveryMinutes: 15,
+      maxHours: 6,
+      note: "the TypeError in send-order-receipt",
+    },
+  },
+};
+
 const askAction: ActionsBlockAction = {
   label: "Investigate it",
   intent: { kind: "ask", prompt: "Investigate the send-order-receipt failures." },
@@ -23,6 +37,10 @@ describe("renderableActions", () => {
       intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/runs" },
     };
     expect(renderableActions([navigate])).toEqual([navigate]);
+  });
+
+  it("keeps a watch action, spec intact — that spec is what pre-fills the card", () => {
+    expect(renderableActions([watchAction, askAction])).toEqual([watchAction, askAction]);
   });
 
   it("can filter every action out, leaving nothing to render", () => {

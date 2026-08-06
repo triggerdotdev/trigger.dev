@@ -93,6 +93,44 @@ function hostInvestigationMessage(args: {
   };
 }
 
+function watchConfirmationMessage(args: {
+  watchId: string;
+  headline: string;
+  lifetime?: string;
+}): UIMessage {
+  return {
+    id: `watch-card:${args.watchId}`,
+    role: "assistant",
+    parts: [
+      {
+        type: "data-view",
+        data: {
+          blocks: [
+            {
+              type: "watch_result",
+              id: `watch:${args.watchId}`,
+              revision: 0,
+              version: 1,
+              outcome: "watching",
+              watchId: args.watchId,
+              headline: args.headline,
+              lifetime: args.lifetime ?? null,
+            },
+          ],
+        },
+      } as never,
+    ],
+  };
+}
+
+function wakeMessage(actionId: string, body: string): UIMessage {
+  return {
+    id: `wake:${actionId}`,
+    role: "assistant",
+    parts: [{ type: "text", text: body }],
+  };
+}
+
 describe("when the conversation is compacted", () => {
   it("stays under the budget for an ordinary conversation", () => {
     expect(shouldCompactConversation({ messages: bulk(20, 500), inputTokens: 22_000 })).toBe(false);
@@ -241,6 +279,19 @@ describe("the state a summary may not swallow", () => {
       investigationMessage({ id: "inv_2", title: "second pass", outcome: "in_progress" }),
     ];
     expect(collectDurableState(mixed).investigations.map((i) => i.id)).toEqual(["inv_2"]);
+  });
+
+  it("pins no watch, live or otherwise — a watch's lifecycle is server-side", () => {
+    const note = describeDurableState([
+      watchConfirmationMessage({
+        watchId: "watch_9",
+        headline: "Watching orders queue until it drains.",
+        lifetime: "Checking every 15 min for up to 6 hours. It reports once, then stops.",
+      }),
+      wakeMessage("watch_9:fired", "orders queue drained — 0 pending after 42 minutes."),
+    ]);
+    expect(note).toBeUndefined();
+    expect(describeDurableState([])).toBeUndefined();
   });
 
   it("pins the same state onto the between-steps rebuild path", () => {
@@ -422,5 +473,36 @@ describe("dashboardAgent compaction (mock harness)", () => {
     // …and the card the next render has to revise came through with it.
     expect(prompts.at(-1)!).toContain("inv_abc123");
     expect(prompts.at(-1)!).toContain("never open a second card");
+  });
+
+  it("hands a watch to the summariser instead of pinning it as live", async () => {
+    const prompts: string[] = [];
+    const summarized: string[] = [];
+    harness = runOverBudget({
+      chatId: "chat_compaction_watch",
+      prompts,
+      summarized,
+      seeded: [
+        userMessage("tell me when the orders queue drains", "u0"),
+        watchConfirmationMessage({
+          watchId: "watch_9",
+          headline: "Watching orders queue until it drains.",
+          lifetime: "Checking every 15 min for up to 6 hours. It reports once, then stops.",
+        }),
+        wakeMessage("watch_9:fired", "orders queue drained — 0 pending after 42 minutes."),
+      ],
+    });
+
+    await harness.sendMessage(userMessage("what happened with that?", "u1"));
+    await harness.sendMessage(userMessage("and now?", "u2"));
+
+    const after = prompts.at(-1)!;
+    expect(after.length).toBeLessThan(FILLER.length);
+    expect(after).toContain("SUMMARY-OF-THE-CHAT");
+    // The watch is the summary's job. Pinning the old confirmation would state a watch
+    // is running when it may have fired, expired or been cancelled since.
+    expect(after).not.toContain("It reports once, then stops.");
+    // But the summariser did see what the watch reported.
+    expect(summarized.join("\n")).toContain("0 pending after 42 minutes");
   });
 });

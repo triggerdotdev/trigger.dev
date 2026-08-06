@@ -68,7 +68,7 @@ export function resolveSuggestedPromptsBySlot(
   }
 
   // Over the cap, optional slots yield in this order; promoted, explain and docs never yield.
-  const yieldOrder: ResolvedPromptSlot[] = ["status", "investigate"];
+  const yieldOrder: ResolvedPromptSlot[] = ["status", "watch", "investigate"];
   let trimmed = resolved;
   for (const slot of yieldOrder) {
     if (trimmed.length <= SUGGESTED_PROMPT_CAP) break;

@@ -232,9 +232,18 @@ describe("chart actions", () => {
 });
 
 describe("actions block", () => {
-  const navigateAction = {
-    label: "See its failed runs",
-    intent: { kind: "navigate", target: "trigger://runs?status=FAILED" },
+  const watchAction = {
+    label: "Set up a watch",
+    intent: {
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "a1b2c3",
+        checkEveryMinutes: 15,
+        maxHours: 6,
+        note: "the TypeError in send-order-receipt",
+      },
+    },
   };
 
   const askAction = {
@@ -243,11 +252,11 @@ describe("actions block", () => {
   };
 
   it("round-trips through both schemas", () => {
-    const body = { type: "actions", actions: [navigateAction, askAction] };
+    const body = { type: "actions", actions: [watchAction, askAction] };
     const input = viewBlockInputSchema.parse(body);
     expect(input.type === "actions" && input.actions).toHaveLength(2);
     const strict = viewBlockSchema.parse({ ...body, ...envelope });
-    expect(strict.type === "actions" && strict.actions[0].intent.kind).toBe("navigate");
+    expect(strict.type === "actions" && strict.actions[0].intent.kind).toBe("watch");
     expect(parseStoredViewBlock(body).type).toBe("actions");
   });
 

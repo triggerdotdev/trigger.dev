@@ -16,6 +16,7 @@ import {
   ChatText,
   ChatTranscript,
   ChatTurn,
+  ChatWakeSlot,
 } from "./chat-layout";
 import { reuseWinners } from "./investigation-winners";
 import { stripModelImages } from "./model-markdown";
@@ -24,6 +25,7 @@ import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
 import { answerContinuesAfter } from "./view-actions";
 import { ViewBlocks } from "./view-catalog";
+import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 export type { TurnActivity };
 
@@ -36,6 +38,8 @@ export type DashboardAgentMessagesProps = {
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  /** Optional: without it a wake banner falls back to kind-agnostic wording. */
+  watches?: WakeWatch[];
 };
 
 // Returns the same reference when there are no `step-start` parts, so memoization holds.
@@ -211,12 +215,14 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
   investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
 }) {
@@ -275,6 +281,21 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, resolveUri));
   }
 
+  const wake = wakeRefFromMessageId(message.id);
+  if (wake) {
+    return (
+      <ChatTurn>
+        <ChatWakeSlot
+          banner={
+            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
+          }
+        >
+          {body}
+        </ChatWakeSlot>
+      </ChatTurn>
+    );
+  }
+
   return <ChatTurn>{body}</ChatTurn>;
 });
 
@@ -287,6 +308,7 @@ export function DashboardAgentTurns({
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
@@ -307,6 +329,7 @@ export function DashboardAgentTurns({
           onIntent={onIntent}
           resolveUri={resolveUri}
           pagePaths={pagePaths}
+          watches={watches}
           investigationWinners={investigationWinners}
         />
       ))}

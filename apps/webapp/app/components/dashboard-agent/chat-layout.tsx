@@ -12,6 +12,7 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 const ROW_GAP = "gap-2";
 const CHIP_GAP = "gap-1.5";
+const UNIT_GAP = "space-y-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
@@ -144,6 +145,21 @@ export function ChatStatusLine({
     <div className={cn("flex items-start", ROW_GAP)}>
       {icon}
       <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>
+    </div>
+  );
+}
+
+export function ChatWakeSlot({
+  banner,
+  children,
+}: {
+  banner: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0", UNIT_GAP)}>
+      {banner}
+      {children}
     </div>
   );
 }
