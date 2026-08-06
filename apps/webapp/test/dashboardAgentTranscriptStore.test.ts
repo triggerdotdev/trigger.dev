@@ -175,6 +175,37 @@ describe("invariant 2: concurrent different messages get distinct positions", ()
   );
 
   postgresTest(
+    "concurrent batches reserve ranges that don't overlap",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_concurrent_batches";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+
+      // Four turns writing three messages each, all at once. The ranges have to be
+      // disjoint: if two batches read the same allocator value they collide on position.
+      const batches = Array.from({ length: 4 }, (_, batch) =>
+        Array.from({ length: 3 }, (_, index) => textMessage(`b${batch}m${index}`))
+      );
+      await Promise.all(batches.map((messages) => persistMessages(agentDb, { chatId, messages })));
+
+      const stored = await rows(prisma, chatId);
+      expect(stored).toHaveLength(12);
+      expect(new Set(stored.map((row) => row.position)).size).toBe(12);
+      // And each batch's own three messages stayed together and in order.
+      for (const [batch, messages] of batches.entries()) {
+        const positions = messages.map(
+          (message) => stored.find((row) => row.message_id === message.id)!.position
+        );
+        expect(positions, `batch ${batch}`).toEqual([
+          positions[0]!,
+          positions[0]! + 1,
+          positions[0]! + 2,
+        ]);
+      }
+    },
+    30_000
+  );
+
+  postgresTest(
     "the database is what forbids two messages sharing a position",
     async ({ prisma, postgresContainer }) => {
       const chatId = "chat_position_unique";
