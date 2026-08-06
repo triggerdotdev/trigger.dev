@@ -7,9 +7,10 @@ import { appEnvTitleTag } from "~/utils";
  * is; the app title is added here.
  *
  * Shape (leading words carry the information, so a narrow tab still reads):
- *   page:   `Runs | Trigger.dev`
- *   entity: `run_abc | Runs | Trigger.dev`
- *   else:   `Login to Trigger.dev` etc.
+ *   env page:   `Runs | Trigger.dev`
+ *   env entity: `run_abc | Runs | Trigger.dev`
+ *   org page:   `Team | Acme | Trigger.dev`
+ *   else:       `Login to Trigger.dev` etc.
  *
  * Remix v2 picks the meta of the deepest route that exports one; a route without a meta export
  * inherits its nearest ancestor's. So a layout's `pageMeta` is the fallback for children that
@@ -18,6 +19,9 @@ import { appEnvTitleTag } from "~/utils";
  */
 
 const APP_NAME = "Trigger.dev";
+
+/** The org route carries the organization the URL resolved to. */
+const ORGANIZATION_MATCH_ID = "routes/_app.orgs.$organizationSlug";
 
 /** One or more title segments, most specific first: `["run_abc", "Runs"]`. */
 export type TitleSegments = string | string[];
@@ -52,11 +56,22 @@ export function pageMeta<TLoader = unknown>(page: PageInput<TLoader>): MetaFunct
   };
 }
 
-/** Builds the full title from the page segments plus the app title. */
+/** Builds the full title from the page segments, the org scope and the app title. */
 export function composePageTitle(segments: string[], matches: Matches): string {
-  return [...segments, appTitle(appEnvFromMatches(matches))]
+  return [...segments, scopeFromMatches(matches), appTitle(appEnvFromMatches(matches))]
     .filter((segment): segment is string => Boolean(segment))
     .join(" | ");
+}
+
+/**
+ * The organization, and only on its own pages: inside a project the tab is already about one
+ * project, and the dashboard switches projects in every tab at once, so naming it adds nothing.
+ */
+export function scopeFromMatches(matches: Matches): string | undefined {
+  const match = matches.find((m) => m.id === ORGANIZATION_MATCH_ID);
+  if (!match || match.params?.projectParam) return undefined;
+  const data = match.data as { organization?: { title?: string | null } } | undefined;
+  return data?.organization?.title ?? undefined;
 }
 
 function appEnvFromMatches(matches: Matches): string | undefined {

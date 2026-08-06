@@ -103,7 +103,7 @@ describe("pageMeta", () => {
     ).toBe("other | Tasks | Trigger.dev");
   });
 
-  it("keeps the app env tag", () => {
+  it("names the organization on its own pages, with the app env tag", () => {
     const stagingRoot: Route = {
       id: "root",
       data: { appEnv: "staging" },
@@ -119,7 +119,7 @@ describe("pageMeta", () => {
       { organizationSlug: "acme" }
     );
 
-    expect(title).toBe("Team | Trigger.dev (staging)");
+    expect(title).toBe("Team | Acme | Trigger.dev (staging)");
   });
 
   it("carries the root's non-title tags through", () => {
@@ -136,5 +136,12 @@ describe("pageMeta", () => {
 
     expect(descriptors).toContainEqual({ name: "viewport", content: "width=1024" });
     expect(renderTitle(routes)).toBe("Runs | Trigger.dev");
+  });
+
+  it("does not name the organization inside a project", () => {
+    // The dashboard switches projects in every tab at once, so the scope adds nothing there.
+    expect(renderTitle([rootRoute, orgRoute, { id: "routes/runs", meta: pageMeta("Runs") }])).toBe(
+      "Runs | Trigger.dev"
+    );
   });
 });
