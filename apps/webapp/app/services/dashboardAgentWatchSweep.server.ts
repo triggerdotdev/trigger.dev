@@ -123,7 +123,9 @@ export type WatchSweepDeps = {
  * One re-authorization per (user, org, project, environment) for the whole sweep. An incident
  * expires a group together, and every row of it names the same access question.
  */
-function authorizeOncePerSweep(deps: WatchSweepDeps): (watch: Watch) => Promise<WatchAuthorization> {
+function authorizeOncePerSweep(
+  deps: WatchSweepDeps
+): (watch: Watch) => Promise<WatchAuthorization> {
   const authorize = deps.authorize ?? defaultAuthorize;
   const seen = new Map<string, Promise<WatchAuthorization>>();
   return (watch) => {
