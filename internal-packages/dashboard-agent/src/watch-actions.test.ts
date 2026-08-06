@@ -55,12 +55,16 @@ describe("watch wake narration", () => {
       clientData: CLIENT_DATA,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
       },
     });
 
     const first = await harness.sendAction(WAKE);
-    expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
+    // A drained queue is a fact the check already established, so the sentence is the
+    // dashboard's own wording and no model is called for it.
+    expect(collectText(first.chunks)).toBe(
+      "task/send-receipt queue drained\n\nNothing to do — I've stopped watching it."
+    );
 
     // The streamed message must carry the same id the read-model copy is persisted
     // under, or the panel renders the narration twice.
@@ -171,7 +175,7 @@ describe("watch wake narration", () => {
   // A wake from a watcher predating the resolution model still narrates.
   it("falls back to the transport encoding when a wake carries no resolution", async () => {
     const { store } = fakeStore();
-    const { model, prompts } = recordingModel("That can't happen any more.");
+    const { model, prompts } = recordingModel("never asked for");
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_wake_legacy",
       clientData: CLIENT_DATA,
@@ -181,14 +185,16 @@ describe("watch wake narration", () => {
       },
     });
 
-    await harness.sendAction({
+    const wake = await harness.sendAction({
       ...WAKE,
       type: "watch.expired" as const,
       id: "watch:watch_1:expired",
       facts: { reason: "terminal_unsatisfied" },
     });
 
-    expect(wakeText(prompts)).toContain("condition_impossible");
+    // Read as `condition_impossible`: only that resolution says the queue is gone.
+    expect(collectText(wake.chunks)).toContain("task/send-receipt queue no longer exists");
+    expect(wakeText(prompts)).toBe("[]");
   });
 
   // A wake needs the project's external ref to scope the investigation the way a turn

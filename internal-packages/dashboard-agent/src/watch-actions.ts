@@ -6,6 +6,7 @@ import {
   streamText,
   type ModelMessage,
   type UIMessage,
+  type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
 import {
@@ -28,6 +29,7 @@ import {
   settleOpenInvestigations,
   withCacheBreakpointOnLast,
 } from "./agent-runtime";
+import { planWatchNarration, type WatchNarrationPlan } from "./watch-narration";
 
 /**
  * The watch lanes: the wake narration and the consented investigation that can
@@ -359,6 +361,92 @@ async function openConsentedInvestigation(args: {
 }
 
 /**
+ * The narrating model, when there is one.
+ *
+ * Haiku gets the wake and nothing else: every number the sentence may use is in the
+ * facts, and the deterministic headline is handed over as the opening fact so the
+ * wording matches every other surface. Sonnet keeps the consented-investigation
+ * wake, where the promise and the findings that follow must read as one voice — and
+ * only there does the whole conversation come along.
+ */
+const HAIKU_WAKE_BRIEF =
+  'You are the Trigger.dev dashboard agent, reporting on a watch the user asked you to keep. Write ONE short message, two sentences at most: the fact as given, then what it means for them and the single most useful next step. Never say the watch "fired" or "expired", never invent a number that isn\'t given, and don\'t recap the conversation — nobody is waiting on a reply.';
+
+/** The fixed narration, as the panel's stream sees it. Same shape a model would emit. */
+async function* fixedNarrationChunks(
+  messageId: string,
+  text: string
+): AsyncGenerator<UIMessageChunk> {
+  yield { type: "start", messageId };
+  yield { type: "text-start", id: "wake" };
+  yield { type: "text-delta", id: "wake", delta: text };
+  yield { type: "text-end", id: "wake" };
+  yield { type: "finish" };
+}
+
+/**
+ * Stream the wake and return its final text.
+ *
+ * The streamed message must carry the SAME id the persisted copy uses: the panel
+ * merges live stream and loaded history by message id, so two ids render it twice.
+ */
+async function narrateWithPlan(input: {
+  plan: WatchNarrationPlan;
+  action: WatchWakeAction;
+  messageId: string;
+  tenancy: { projectRef?: string; environmentId?: string };
+  args: {
+    clientData: z.infer<typeof clientDataSchema> | undefined;
+    messages: ModelMessage[];
+  };
+}): Promise<string> {
+  const { plan, action, messageId, tenancy, args } = input;
+
+  if (plan.model === "none") {
+    await chat.pipe(fixedNarrationChunks(messageId, plan.text));
+    return plan.text;
+  }
+
+  const resolved = await getSystemPrompt(modeFor(args.clientData));
+  const wake = wakePrompt(action, tenancy);
+  const result =
+    plan.model === "haiku"
+      ? streamText({
+          model:
+            locals.get(dashboardAgentModelKey) ??
+            registry.languageModel("anthropic:claude-haiku-4-5"),
+          system: HAIKU_WAKE_BRIEF,
+          // Bounded on purpose: the wake alone, no conversation and no tools.
+          messages: [
+            {
+              role: "user" as const,
+              content: `${wake}\n\nOpen with this fact, in these words: ${plan.presentation.headline}.`,
+            },
+          ],
+        })
+      : streamText({
+          model:
+            locals.get(dashboardAgentModelKey) ??
+            registry.languageModel(
+              (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
+            ),
+          system: resolved.text,
+          // No tools: a wake reports what the check already established, and carries no
+          // delegated token to read with. The breakpoint goes on the last message of the
+          // existing prefix, not on the unique wake, so the wake reads back the same
+          // cached prefix a normal turn would instead of only writing cache.
+          messages: [
+            ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
+            { role: "user" as const, content: wake },
+          ],
+          ...resolved.toAISDKTelemetry(),
+        });
+
+  await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
+  return (await result.text).trim();
+}
+
+/**
  * Narrate one wake, exactly once.
  *
  * Streams so the panel shows it arriving live, then writes it to both `chat.history`
@@ -388,37 +476,27 @@ async function narrateWatchWake(args: {
     return;
   }
 
-  const resolved = await getSystemPrompt(modeFor(args.clientData));
-  const result = streamText({
-    model:
-      locals.get(dashboardAgentModelKey) ??
-      registry.languageModel(
-        (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-      ),
-    system: resolved.text,
-    // No tools: a wake reports what the check already established, and carries no
-    // delegated token to read with. The breakpoint goes on the last message of the
-    // existing prefix, not on the unique wake, so the wake reads back the same
-    // cached prefix a normal turn would instead of only writing cache.
-    messages: [
-      ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
-      {
-        role: "user" as const,
-        content: wakePrompt(action, {
-          projectRef: args.clientData?.projectRef,
-          environmentId: args.clientData?.environmentId,
-        }),
-      },
-    ],
-    ...resolved.toAISDKTelemetry(),
+  const tenancy = {
+    projectRef: args.clientData?.projectRef,
+    environmentId: args.clientData?.environmentId,
+  };
+  const plan: WatchNarrationPlan = planWatchNarration({
+    kind: action.spec.kind,
+    identity: action.identity,
+    resolution: wakeResolution(action),
+    observed: action.observed,
+    note: action.note,
+    subjectLink: wakeSubjectLink(action, tenancy),
+    startsInvestigation: wakeStartsInvestigation(action),
+  });
+  logger.info("dashboard-agent watch wake narration lane", {
+    chatId,
+    watchId: action.watchId,
+    kind: action.spec.kind,
+    model: plan.model,
   });
 
-  // Piped explicitly, rather than returned, so the final text is in hand for the
-  // writes below. The streamed message must carry the SAME id the copy below is
-  // persisted under: the panel merges live stream and loaded history by message
-  // id, so two ids for one narration render it twice.
-  await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
-  const text = (await result.text).trim();
+  const text = await narrateWithPlan({ plan, action, messageId, tenancy, args });
   if (!text) return;
 
   const message: UIMessage = {
