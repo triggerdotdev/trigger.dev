@@ -313,6 +313,14 @@ export default function Page() {
     presets,
   } = useTypedLoaderData<typeof loader>();
 
+  const apiKeyEnvironmentLabel = {
+    ...environment,
+    branchName:
+      environment.type === "DEVELOPMENT" || environment.type === "PREVIEW"
+        ? null
+        : environment.branchName,
+  };
+
   const envBlock = environment.apiKey
     ? [
         `TRIGGER_SECRET_KEY="${environment.apiKey}"`,
@@ -348,7 +356,7 @@ export default function Page() {
               availableTasks={availableTasks}
               presets={presets}
               isRbacPluginAvailable={isRbacPluginAvailable}
-              environment={environment}
+              environment={apiKeyEnvironmentLabel}
             />
           ) : null}
         </PageAccessories>
@@ -365,7 +373,7 @@ export default function Page() {
                   )}
                 >
                   <EnvironmentCombo
-                    environment={environment}
+                    environment={apiKeyEnvironmentLabel}
                     className="text-base"
                     iconClassName="size-5"
                   />
@@ -463,7 +471,7 @@ export default function Page() {
                         canWriteApiKeys ? (
                           <RegenerateApiKeyModal
                             id={environment.keyEnvironmentId}
-                            title={environmentFullTitle(environment)}
+                            title={environmentFullTitle(apiKeyEnvironmentLabel)}
                             hasVercelIntegration={hasVercelIntegration}
                             isDevelopment={environment.type === "DEVELOPMENT"}
                           />
@@ -531,7 +539,7 @@ export default function Page() {
           <MainHorizontallyCenteredContainer className="py-6">
             <PermissionDenied
               message={`With your current role, you can't view the API keys for ${environmentFullTitle(
-                environment
+                apiKeyEnvironmentLabel
               )}.`}
             />
           </MainHorizontallyCenteredContainer>
