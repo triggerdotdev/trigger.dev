@@ -525,7 +525,16 @@ export async function submitDashboardAgentWatch(params: {
     }
   }
 
+  // The consent record is already in the transcript, so the refusal is recorded under it
+  // rather than left to a toast the reload forgets. Keyed off the request, so a retry
+  // that succeeds adds its confirmation and this stays the record of the attempt.
   if (!result.ok) {
+    const refusal: WatchTranscriptMessage = {
+      id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}refused:${clientRequestId}`,
+      role: "assistant",
+      parts: [{ type: "text", text: result.error }],
+    };
+    await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: refusal });
     return { ...result, chatId };
   }
 

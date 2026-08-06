@@ -1,5 +1,6 @@
 import {
   appendChatMessage,
+  appendChatMessageOnce,
   armWatchBatch,
   cancelWatch,
   chatExists,
@@ -10,6 +11,7 @@ import {
   listWatchBatchGroupsToArm,
   stopWatchBatch,
   countUnreadWatchWakes,
+  countUserMessages,
   createChat,
   createDashboardAgentDb,
   getChatMessages,
@@ -27,7 +29,7 @@ import {
   type DashboardAgentDbClient,
   type Watch,
 } from "@internal/dashboard-agent-db";
-import type { WatchSpec } from "@internal/dashboard-agent-contracts";
+import type { WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { readdirSync, readFileSync } from "node:fs";
@@ -86,6 +88,7 @@ const {
   createDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
+  submitDashboardAgentWatch,
   watchBatchStaleMs,
 } = await import("~/services/dashboardAgentWatches.server");
 const { action: checkAction } =
@@ -1600,6 +1603,251 @@ describe("the check endpoint", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: "cancelled" });
   });
+});
+
+/** A configured card, with both follow-ups off unless a test turns one on. */
+function draftFor(spec: WatchSpec, followUp: Partial<WatchDraft["followUp"]> = {}): WatchDraft {
+  return {
+    spec,
+    followUp: { investigateOnAttention: false, notifyExternally: false, ...followUp },
+  };
+}
+
+function submit(args: {
+  seeded: Seeded;
+  draft?: WatchDraft;
+  chatId?: string;
+  clientRequestId?: string;
+  checkDeps?: Partial<WatchCheckDeps>;
+  subscribed?: boolean;
+  onSchedule?: () => void;
+}) {
+  return submitDashboardAgentWatch({
+    environment: authenticated(args.seeded),
+    userId: args.seeded.user.id,
+    organizationId: args.seeded.organization.id,
+    chatId: args.chatId,
+    clientRequestId: args.clientRequestId ?? "wreq_1",
+    draft: args.draft ?? draftFor(RUN_START),
+    deps: {
+      configured: () => true,
+      checkDeps: () => fakeCheckDeps(args.checkDeps),
+      scheduleTick: async () => args.onSchedule?.(),
+      subscribe: async () =>
+        args.subscribed === false
+          ? { ok: false, reason: "dashboard_agent_disabled" }
+          : { ok: true, email: args.seeded.user.email },
+    },
+  });
+}
+
+function storedMessages(seeded: Seeded, chatId: string) {
+  return getChatMessages(ctx.agentDb, {
+    chatId,
+    userId: seeded.user.id,
+    organizationId: seeded.organization.id,
+  }) as Promise<Array<{ id: string; role: string }> | null>;
+}
+
+describe("the watch card submit", () => {
+  postgresTest(
+    "records what the user confirmed before the watch, and confirms it after",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit");
+      await seedChat(seeded);
+
+      const result = await submit({
+        seeded,
+        chatId: "chat_1",
+        draft: draftFor(RUN_START, { investigateOnAttention: true }),
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.watching).toBe(true);
+      expect(result.repaired).toBe(false);
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${result.watchId}`,
+      ]);
+      // The consent record is the user's, and it states the condition and the lifetime.
+      expect(stored?.[0]).toMatchObject({ role: "user" });
+      expect(JSON.stringify(stored?.[0])).toContain("Watch run run_1 until it starts.");
+      expect(JSON.stringify(stored?.[0])).toContain("Investigate straight away");
+      expect(result.messages.map((message) => message.id)).toEqual(
+        stored?.map((message) => message.id)
+      );
+    }
+  );
+
+  postgresTest(
+    "leaves a repairable state when the confirmation never lands, and the retry repairs it",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-repair");
+      await seedChat(seeded);
+
+      // The crash state: the request record is written and the watch is live, but the
+      // process died before the confirmation was appended.
+      await appendChatMessageOnce(ctx.agentDb, {
+        chatId: "chat_1",
+        userId: seeded.user.id,
+        message: { id: "watch-request:wreq_1", role: "user", parts: [] } as never,
+      });
+      const created = await create({ seeded, chatId: "chat_1" });
+      expect(created.ok).toBe(true);
+      if (!created.ok || !created.watching) return;
+
+      const retry = await submit({ seeded, chatId: "chat_1", clientRequestId: "wreq_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      expect(retry.repaired).toBe(true);
+      expect(retry.watchId).toBe(created.watchId);
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${created.watchId}`,
+      ]);
+
+      // Still exactly one watch: the repair loaded it rather than creating another.
+      const active = await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" });
+      expect(active).toHaveLength(1);
+    }
+  );
+
+  postgresTest(
+    "a retried submit duplicates neither record",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-retry");
+      await seedChat(seeded);
+
+      const first = await submit({ seeded, chatId: "chat_1" });
+      const second = await submit({ seeded, chatId: "chat_1" });
+
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
+      expect(second.repaired).toBe(true);
+      expect(second.watchId).toBe(first.watchId);
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${first.watchId}`,
+      ]);
+    }
+  );
+
+  postgresTest(
+    "a genuinely different request still conflicts",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-conflict");
+      await seedChat(seeded);
+
+      const first = await submit({ seeded, chatId: "chat_1" });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      // Same condition, so the same identity, but a different window: not a retry.
+      const longer = await submit({
+        seeded,
+        chatId: "chat_1",
+        clientRequestId: "wreq_2",
+        draft: draftFor({ ...RUN_START, maxHours: 6 }),
+      });
+      expect(longer).toMatchObject({ ok: false, code: "duplicate", existingId: first.watchId });
+
+      // Same spec, different consent: also not a retry.
+      const investigating = await submit({
+        seeded,
+        chatId: "chat_1",
+        clientRequestId: "wreq_3",
+        draft: draftFor(RUN_START, { investigateOnAttention: true }),
+      });
+      expect(investigating).toMatchObject({ ok: false, code: "duplicate" });
+
+      // The refused attempts are recorded under their own consent records, so the
+      // transcript never shows a request with no answer.
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        `watch-confirmation:${first.watchId}`,
+        "watch-request:wreq_2",
+        "watch-confirmation:refused:wreq_2",
+        "watch-request:wreq_3",
+        "watch-confirmation:refused:wreq_3",
+      ]);
+    }
+  );
+
+  postgresTest(
+    "a fresh panel's retry reuses the chat the first attempt created",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-fresh");
+
+      const first = await submit({ seeded, clientRequestId: "wreq_fresh" });
+      const second = await submit({ seeded, clientRequestId: "wreq_fresh" });
+
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
+      expect(second.chatId).toBe(first.chatId);
+
+      const stored = await storedMessages(seeded, first.chatId);
+      expect(stored).toHaveLength(2);
+    }
+  );
+
+  postgresTest(
+    "an answered condition records the request and a one-shot result, and never a watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-oneshot");
+      await seedChat(seeded);
+
+      const result = await submit({
+        seeded,
+        chatId: "chat_1",
+        checkDeps: { readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }) },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.watching).toBe(false);
+      expect(result.watchId).toBeNull();
+
+      const stored = await storedMessages(seeded, "chat_1");
+      expect(stored?.map((message) => message.id)).toEqual([
+        "watch-request:wreq_1",
+        "watch-confirmation:one-shot:wreq_1",
+      ]);
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "the consent record never spends a message from the cap",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-quota");
+      await seedChat(seeded);
+
+      await submit({ seeded, chatId: "chat_1" });
+
+      expect(
+        await countUserMessages(ctx.agentDb, {
+          organizationId: seeded.organization.id,
+          userId: seeded.user.id,
+        })
+      ).toBe(0);
+    }
+  );
 });
 
 describe("appendChatMessage", () => {
