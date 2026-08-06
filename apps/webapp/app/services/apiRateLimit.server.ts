@@ -1,5 +1,4 @@
 import { tryCatch } from "@trigger.dev/core/v3";
-import { trail } from "agentcrumbs"; // @crumbs
 import { env } from "~/env.server";
 import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.server";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
@@ -8,7 +7,6 @@ import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddle
 import type { Duration } from "./rateLimiter.server";
 
 const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
-const crumb = trail("webapp"); // @crumbs
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
@@ -40,12 +38,6 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
       if (!scope) {
         return;
       }
-
-      // #region @crumbs
-      crumb("resolved private API key rate limit scope", {
-        environmentId: scope.environmentId,
-      });
-      // #endregion @crumbs
 
       return {
         config: scope.apiRateLimiterConfig,
