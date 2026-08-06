@@ -479,12 +479,18 @@ async function narrateWatchWake(args: {
 
   // Dedup on the action id. Durable, because the history it checks is the
   // snapshot the SDK reseeds on every boot — not per-process state.
-  if (uiMessages.some((message) => message.id === messageId)) {
-    logger.info("dashboard-agent watch wake already narrated; skipping", {
+  const narrated = uiMessages.find((message) => message.id === messageId);
+  if (narrated) {
+    logger.info("dashboard-agent watch wake already narrated; repairing the display copy", {
       chatId,
       watchId: action.watchId,
       actionId: action.id,
     });
+    // The streamed message is durable before the append is, so a retry can find the
+    // wake narrated and the display copy still owed. The append is id-deduped, so
+    // repairing when nothing is broken writes nothing.
+    const userId = args.clientData?.userId;
+    if (userId) await getStore().appendMessage({ chatId, userId, message: narrated });
     return;
   }
 
@@ -718,12 +724,17 @@ async function conductWatchInvestigation(args: {
 
   // Dedup on the action id, against the durable transcript — a redelivered kick
   // must not investigate (or answer) twice.
-  if (uiMessages.some((message) => message.id === messageId)) {
-    logger.info("dashboard-agent watch investigation already ran; skipping", {
+  const alreadyAnswered = uiMessages.find((message) => message.id === messageId);
+  if (alreadyAnswered) {
+    logger.info("dashboard-agent watch investigation already ran; repairing the display copy", {
       chatId,
       watchId: action.watchId,
       actionId: action.id,
     });
+    // Same window as the wake's: the findings streamed durably before the append, so a
+    // retry can owe only the display copy. Id-deduped, so a repeat writes nothing.
+    const userId = clientData?.userId;
+    if (userId) await getStore().appendMessage({ chatId, userId, message: alreadyAnswered });
     const open = [...latestCards(uiMessages).values()].find(
       (card) => card.state === null || card.state.outcome === "in_progress"
     );

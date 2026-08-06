@@ -26,6 +26,44 @@ import {
   USAGE,
 } from "./test-support";
 
+/**
+ * Stands in for `chat_messages`: the append is keyed on (chat_id, message_id) and does
+ * nothing on conflict, so a repeated append is never a second row. Row counts are what
+ * the History panel reads, so the retry tests assert those rather than call counts.
+ */
+function transcriptTable() {
+  const rows: { chatId: string; messageId: string }[] = [];
+  const countOf = (chatId: string, messageId: string) =>
+    rows.filter((row) => row.chatId === chatId && row.messageId === messageId).length;
+  return {
+    countOf,
+    insert(chatId: string, message: UIMessage) {
+      if (countOf(chatId, message.id) > 0) return false;
+      rows.push({ chatId, messageId: message.id });
+      return true;
+    },
+  };
+}
+
+// A store that writes into `table`, failing the appends `failWhen` selects.
+function appendingStore(
+  table: ReturnType<typeof transcriptTable>,
+  failWhen: (message: UIMessage) => boolean,
+  options?: Parameters<typeof fakeStore>[0]
+) {
+  const { store, calls } = fakeStore(options);
+  const wrapped: DashboardAgentStore = {
+    ...store,
+    appendMessage: async (args) => {
+      await store.appendMessage(args);
+      const message = args.message as UIMessage;
+      if (failWhen(message)) throw new Error("the append lost the connection");
+      return table.insert(args.chatId, message);
+    },
+  };
+  return { store: wrapped, calls };
+}
+
 describe("watch wake narration", () => {
   let harness: MockChatAgentHarness | undefined;
 
@@ -84,10 +122,14 @@ describe("watch wake narration", () => {
     expect(appended.userId).toBe(CLIENT_DATA.userId);
     expect(appended.message).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
 
-    // Same action id again (the watcher retried after appending): deduped.
+    // Same action id again (the watcher retried after appending): nothing is narrated,
+    // and the only write is the id-deduped repair of the same message.
     const second = await harness.sendAction(WAKE);
     expect(collectText(second.chunks)).toBe("");
-    expect(calls.appendMessage).toHaveLength(1);
+    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
+      "wake:watch:watch_1:fired",
+      "wake:watch:watch_1:fired",
+    ]);
   });
 
   // Records the prompt it was asked with, so the wake's framing can be asserted.
@@ -377,6 +419,62 @@ describe("watch wake narration", () => {
       "wake:watch:watch_2:expired",
     ]);
   });
+
+  /**
+   * The wake is durable on `session.out` the moment it streams, which is before the
+   * display copy is written. So an append that fails leaves the model seeing a message
+   * the History panel doesn't have — and the retry boots with that message already in
+   * its history. Converging on the row is the retry's job.
+   */
+  it("appends the display copy on a retry that finds the wake already narrated", async () => {
+    const table = transcriptTable();
+    const chatId = "chat_wake_retry";
+    const wakeId = "wake:watch:watch_1:fired";
+
+    const failing = appendingStore(table, (message) => message.id === wakeId);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, failing.store);
+        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
+      },
+    });
+
+    const first = await harness.sendAction(WAKE);
+    // Streamed — so it is on `session.out` and in the next boot's history — while the
+    // row it was supposed to land alongside never arrived.
+    expect(collectText(first.chunks)).toContain("queue drained");
+    expect(failing.calls.appendMessage).toHaveLength(1);
+    expect(table.countOf(chatId, wakeId)).toBe(0);
+    const durable = first.chunks;
+    await harness.close();
+
+    // The retry is a new run picking up the session, booting its history from the
+    // chunks the failed one left on `session.out`.
+    const repairing = appendingStore(table, () => false);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      continuation: true,
+      previousRunId: "run_wake_failed",
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, repairing.store);
+        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
+      },
+    });
+    harness.seedSessionOutTail(durable);
+
+    const retry = await harness.sendAction(WAKE);
+
+    // Nothing narrated twice, and the display copy converged on exactly one row.
+    expect(collectText(retry.chunks)).toBe("");
+    expect(table.countOf(chatId, wakeId)).toBe(1);
+
+    // A third delivery repairs nothing, because there is nothing left to repair.
+    await harness.sendAction(WAKE);
+    expect(table.countOf(chatId, wakeId)).toBe(1);
+  });
 });
 
 describe("watch investigation", () => {
@@ -529,9 +627,13 @@ describe("watch investigation", () => {
     expect(appended.message.id).toBe("investigate:watch:watch_1:fired:investigate");
     expect(appended.message.parts.some((part) => part.type === "tool-render_view")).toBe(true);
 
-    // The same kick again: nothing runs, nothing is written.
+    // The same kick again: nothing runs, and the only write is the id-deduped repair of
+    // the findings message.
     await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage).toHaveLength(1);
+    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
+      "investigate:watch:watch_1:fired:investigate",
+      "investigate:watch:watch_1:fired:investigate",
+    ]);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
   });
 
@@ -724,7 +826,10 @@ describe("watch investigation", () => {
 
     const revisions = calls.upsertInvestigationRevision.length;
     await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage).toHaveLength(1);
+    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
+      "investigate:watch:watch_1:fired:investigate",
+      "investigate:watch:watch_1:fired:investigate",
+    ]);
     expect(calls.upsertInvestigationRevision).toHaveLength(revisions);
   });
 
@@ -786,5 +891,66 @@ describe("watch investigation", () => {
     expect(calls.findOpenInvestigation).toHaveLength(0);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
     expect(calls.appendMessage).toHaveLength(0);
+  });
+
+  /**
+   * The same window the wake has: the findings stream to `session.out` before the display
+   * copy is appended, so an append that fails leaves the model holding a message the
+   * History panel lost. The retry finds it already answered and must still land the row.
+   */
+  it("appends the display copy on a retry that finds the investigation already answered", async () => {
+    const table = transcriptTable();
+    const chatId = "chat_investigate_retry";
+    const findingsId = "investigate:watch:watch_1:fired:investigate";
+    const seeded = { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" };
+    const steps = [
+      renderStep(concluded, "inv_seeded", "tc_verdict"),
+      textStep("The payload lost order.total."),
+    ];
+
+    const failing = appendingStore(table, (message) => message.id === findingsId, {
+      openInvestigation: seeded,
+    });
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, failing.store);
+        set(dashboardAgentModelKey, recordingModel(steps).model);
+      },
+    });
+
+    const first = await harness.sendAction(INVESTIGATE);
+    // Streamed whole, card part and all, while the row it belongs to never landed.
+    expect(executedTool(first.chunks)).toBe(true);
+    expect(failing.calls.appendMessage).toHaveLength(1);
+    expect(table.countOf(chatId, findingsId)).toBe(0);
+    const durable = first.chunks;
+    await harness.close();
+
+    // The retry is a new run picking up the session, booting its history from the chunks
+    // the failed one left on `session.out`.
+    const repairing = appendingStore(table, () => false, { openInvestigation: seeded });
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      continuation: true,
+      previousRunId: "run_investigate_failed",
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, repairing.store);
+        set(dashboardAgentModelKey, recordingModel(steps).model);
+      },
+    });
+    harness.seedSessionOutTail(durable);
+
+    const retry = await harness.sendAction(INVESTIGATE);
+
+    // Nothing investigated a second time, and the display copy converged on one row.
+    expect(collectText(retry.chunks)).toBe("");
+    expect(table.countOf(chatId, findingsId)).toBe(1);
+
+    // A third delivery repairs nothing, because there is nothing left to repair.
+    await harness.sendAction(INVESTIGATE);
+    expect(table.countOf(chatId, findingsId)).toBe(1);
   });
 });
