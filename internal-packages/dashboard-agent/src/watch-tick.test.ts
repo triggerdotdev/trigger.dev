@@ -1380,8 +1380,6 @@ describe("the hand-off to a batch chain", () => {
   });
 });
 
-// A wake counts as told only once something acknowledged putting it in the transcript.
-// Anything less leaves it owed, so the retry says it again.
 describe("the wake's delivery acknowledgement", () => {
   it("leaves the wake owed when the append isn't acknowledged, and delivers it on the retry", async () => {
     const { store, calls, row } = fakeStore(watchRow());
@@ -1395,7 +1393,6 @@ describe("the wake's delivery acknowledgement", () => {
       )
     ).rejects.toThrow(/wasn't appended/);
 
-    // Resolved, but not told: the claim went back and nothing was marked.
     expect(row.status).toBe("fired");
     expect(row.deliveryStatus).toBe("pending");
     expect(calls.delivered).toHaveLength(0);

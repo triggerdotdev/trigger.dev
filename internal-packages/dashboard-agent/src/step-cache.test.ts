@@ -42,7 +42,6 @@ describe("the step cache breakpoint", () => {
     const marked = markStepCacheBreakpoint(messages);
 
     expect(ttlOf(marked.at(-1))).toBe("5m");
-    // The long-lived breakpoint on the turn's history is untouched.
     expect(ttlOf(marked[0])).toBe("1h");
   });
 
@@ -61,13 +60,11 @@ describe("the step cache breakpoint", () => {
     const stepBreakpoints = second.filter((message) => ttlOf(message) === "5m");
     expect(stepBreakpoints).toHaveLength(1);
     expect(ttlOf(second.at(-1))).toBe("5m");
-    // Three breakpoints at most reach the provider: system, turn history, step.
     expect(second.filter((message) => ttlOf(message) !== undefined)).toHaveLength(2);
   });
 
   it("drops a stale step breakpoint when the tail is no longer worth one", () => {
     const marked = markStepCacheBreakpoint([turnHistory(), toolResult(MIN_STEP_CACHE_CHARS)]);
-    // Compaction rebuilt the history as a short summary.
     const compacted = markStepCacheBreakpoint([
       turnHistory(),
       { ...marked.at(-1)!, content: "ok" },

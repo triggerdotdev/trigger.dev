@@ -391,7 +391,6 @@ describe("the eval judge payload", () => {
     const activity = extractToolActivity(messages);
     expect(activity).toHaveLength(1);
     expect(activity[0]!.input).toEqual({ runId: "run_1" });
-    // `spans` is not a structural field, so its shape goes and the size problem with it.
     expect(activity[0]!.output).toMatchObject({ spans: { redacted: "spans", chars: 80_000 } });
     // The prompt line the judge actually receives, unindented.
     expect(JSON.stringify(activity).length).toBeLessThan(2_000);
@@ -415,7 +414,6 @@ describe("the eval judge payload", () => {
     expect(redacted.runs[0].id).toBe("run_1");
     expect(redacted.runs[0].status).toBe("FAILED");
     expect(redacted.runs[0].error.name).toBe("TimeoutError");
-    // The message is free text, so only its shape goes.
     expect(redacted.runs[0].error.message).toEqual({ redacted: "message", chars: 16 });
     // The customer's data does not.
     expect(redacted.runs[0].payload).toEqual({ redacted: "payload", keys: ["email", "amount"] });
