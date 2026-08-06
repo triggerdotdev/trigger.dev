@@ -33,6 +33,23 @@ const FORWARDED_HEADERS = [
   "x-trigger-branch",
 ];
 
+// The only turn metadata a browser may set. Everything else the agent reads — identity, tenancy,
+// the delegated token, the eval opt-out's inputs — is injected server-side, so a client-sent copy
+// is dropped rather than merged. A whitelist, not a deny-list: a field added to the agent's
+// clientData is server-owned until it is listed here on purpose.
+const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
+
+export function pickAgentClientMetadata(
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  if (!metadata) return picked;
+  for (const key of CLIENT_METADATA_KEYS) {
+    if (metadata[key] !== undefined) picked[key] = metadata[key];
+  }
+  return picked;
+}
+
 function tooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
 }
@@ -104,16 +121,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return tooLarge();
       }
       parsed.payload.metadata = {
-        ...(parsed.payload.metadata ?? {}),
+        // Whitelisted: only the page context the browser is allowed to set survives, so it can
+        // neither overwrite nor smuggle in any of the server-owned fields below.
+        ...pickAgentClientMetadata(parsed.payload.metadata),
         userActorToken: await mintDashboardAgentUserActorToken(user.id, {
           environmentId: runtimeEnv.id,
         }),
         apiOrigin,
         projectRef: project.externalRef,
-        // Server-owned: the browser sends these too, and the eval opt-out and every tenancy
-        // check key on them, so the client's copy must never win.
+        // Server-owned: the eval opt-out and every tenancy check key on these.
         organizationId: project.organizationId,
         userId: user.id,
+        projectId: project.id,
         // `(projectId, slug)` isn't unique (dev is per-member), so anything addressing
         // one environment row uses this id. `environmentName` is for name-addressed tools.
         environmentId: runtimeEnv.id,

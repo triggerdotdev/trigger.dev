@@ -57,6 +57,9 @@ import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+// The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
+// drift apart.
+import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
 
 // The agent's tools address the canonical env name, not the dashboard URL slug.
 const ENV_NAME_BY_TYPE: Record<string, string> = {
@@ -284,6 +287,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     } catch {
       /* invalid JSON — create without context metadata */
     }
+    // Only the whitelisted page context survives; the rest is injected below.
+    const clientContext = pickAgentClientMetadata(clientData);
 
     const chatId = generateFriendlyId("chat");
     try {
@@ -291,7 +296,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         id: chatId,
         organizationId: project.organizationId,
         userId,
-        ...(clientData ? { metadata: { context: clientData } } : {}),
+        ...(clientData ? { metadata: { context: clientContext } } : {}),
       });
 
       // Membership-scoped: dev rows are per-developer, so a token must never be minted for
@@ -310,17 +315,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           mode: repoSnapshot ? "code" : "assistant",
           metadata: {
             // The agent validates run metadata against its clientDataSchema, so the
-            // per-turn clientData must accompany the injected auth and context fields.
-            ...(clientData ?? {}),
+            // per-turn client context must accompany the injected auth and context fields.
+            ...clientContext,
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
             }),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
             // Server-owned, like the `in` proxy: the eval opt-out and every tenancy check
-            // key on these, so a client-sent copy must not win.
+            // key on these, so the client can't set them at all.
             organizationId: project.organizationId,
             userId,
+            projectId: project.id,
             // Same environment identity the `in` proxy injects.
             environmentId: runtimeEnv.id,
             environmentName,
@@ -330,7 +336,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       } else {
         // Cold start: the client sends the first message through the `in` proxy, which
         // injects the token.
-        await startDashboardAgentSession({ chatId, clientData });
+        // Same server-owned identity the head-start path injects; the `in` proxy adds the
+        // delegated token on the first turn.
+        await startDashboardAgentSession({
+          chatId,
+          clientData: {
+            ...clientContext,
+            organizationId: project.organizationId,
+            userId,
+            projectId: project.id,
+            environmentId: runtimeEnv.id,
+            environmentName,
+          },
+        });
       }
 
       const publicAccessToken = await mintDashboardAgentToken(chatId);
