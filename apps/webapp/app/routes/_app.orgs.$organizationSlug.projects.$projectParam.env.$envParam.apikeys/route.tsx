@@ -16,11 +16,7 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
-import {
-  EnvironmentCombo,
-  environmentFullTitle,
-  environmentTextClassName,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -28,12 +24,6 @@ import {
 } from "~/components/layout/AppLayout";
 import { Feedback } from "~/components/Feedback";
 import { PermissionDenied } from "~/components/PermissionDenied";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "~/components/primitives/Accordion";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -43,7 +33,6 @@ import { CopyButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -349,191 +338,135 @@ export default function Page() {
           <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/v3/apikeys")}>
             API keys docs
           </LinkButton>
-
-          {canReadApiKeys && additionalApiKeyIssuanceEnabled ? (
-            <NewApiKeyDialog
-              canWrite={canWriteApiKeys}
-              availableTasks={availableTasks}
-              presets={presets}
-              isRbacPluginAvailable={isRbacPluginAvailable}
-              environment={apiKeyEnvironmentLabel}
-            />
-          ) : null}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         {canReadApiKeys ? (
-          <div className="grid max-h-full min-h-full grid-rows-[auto_auto_1fr]">
-            <MainHorizontallyCenteredContainer className="w-full py-3">
-              <div className="mb-3 border-b border-grid-dimmed pb-1">
-                <Header2
-                  className={cn(
-                    "inline-flex items-center gap-1 font-normal",
-                    environmentTextClassName(environment)
-                  )}
-                >
-                  <EnvironmentCombo
+          <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
+            <div className="flex h-fit items-center justify-end gap-2 p-2">
+              <div className="flex items-center gap-2">
+                <EnvironmentVariablesDialog
+                  environmentType={environment.type}
+                  envBlock={envBlock}
+                />
+                <RevokedFilter checked={showRevoked} />
+                {additionalApiKeyIssuanceEnabled ? (
+                  <NewApiKeyDialog
+                    canWrite={canWriteApiKeys}
+                    availableTasks={availableTasks}
+                    presets={presets}
+                    isRbacPluginAvailable={isRbacPluginAvailable}
                     environment={apiKeyEnvironmentLabel}
-                    className="text-base"
-                    iconClassName="size-5"
                   />
-                  API keys
-                </Header2>
+                ) : null}
               </div>
+            </div>
 
-              {environment.type === "DEVELOPMENT" ? (
-                <Callout variant="info" className="mb-3">
-                  Every team member gets their own dev API keys. Make sure you're using one from
-                  this page, otherwise you will trigger runs on your team member's machine.
-                </Callout>
-              ) : null}
-
-              <Accordion type="single" collapsible>
-                <AccordionItem
-                  value="environment-variables"
-                  className="bg-white dark:bg-transparent"
-                >
-                  <AccordionTrigger>How to set these environment variables</AccordionTrigger>
-                  <AccordionContent>
-                    <div className="flex flex-col gap-2">
-                      <div>
-                        Set these environment variables in your backend so the SDK can authenticate
-                        with Trigger.dev.
-                      </div>
-                      {envBlock ? (
-                        <CodeBlock
-                          language="javascript"
-                          code={envBlock}
-                          showOpenInModal={false}
-                          showLineNumbers={false}
-                        />
+            <Table>
+              <ApiKeyTableHeader />
+              <TableBody>
+                <TableRow className="h-[3.25rem] [&_td]:py-2">
+                  <TableCell>
+                    <div className="flex items-center gap-1.5 text-text-bright">
+                      <KeyIcon className="size-4" />
+                      {rootApiKey.name}
+                      <Badge variant="extra-small">Root</Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex w-64 items-center justify-between gap-2">
+                      <span className="font-mono text-text-dimmed">
+                        {rootApiKey.obfuscated ?? "–"}
+                      </span>
+                      {rootApiKey.value ? (
+                        <CopyButton value={rootApiKey.value} variant="icon" size="small" />
                       ) : null}
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </MainHorizontallyCenteredContainer>
-
-            <div className="flex items-center justify-end border-t border-grid-dimmed p-2">
-              <RevokedFilter checked={showRevoked} />
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table showTopBorder={false}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>Name</TableHeaderCell>
-                    <TableHeaderCell>Secret key</TableHeaderCell>
-                    <TableHeaderCell>Status</TableHeaderCell>
-                    <TableHeaderCell>Access</TableHeaderCell>
-                    <TableHeaderCell>Created by</TableHeaderCell>
-                    <TableHeaderCell>Created</TableHeaderCell>
-                    <TableHeaderCell>Last used</TableHeaderCell>
-                    <TableHeaderCell className="w-32" hiddenLabel>
-                      Actions
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow isSelected>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-text-bright">
-                        <KeyIcon className="size-4" />
-                        {rootApiKey.name}
-                        <Badge variant="extra-small">Root</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex w-64 items-center justify-between gap-2">
-                        <span className="font-mono text-text-dimmed">
-                          {rootApiKey.obfuscated ?? "–"}
-                        </span>
-                        {rootApiKey.value ? (
-                          <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyStatus />
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyAccess label="No restrictions" />
-                    </TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCell>
-                      <DateTime date={rootApiKey.createdAt} />
-                    </TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCellMenu
-                      isSticky
-                      className="w-32 bg-background-hover group-hover/table-row:bg-background-bright"
-                      visibleButtons={
-                        canWriteApiKeys ? (
-                          <RegenerateApiKeyModal
-                            id={environment.keyEnvironmentId}
-                            title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                            hasVercelIntegration={hasVercelIntegration}
-                            isDevelopment={environment.type === "DEVELOPMENT"}
-                          />
-                        ) : null
-                      }
-                    />
-                  </TableRow>
-
-                  {apiKeys.map((apiKey) => {
-                    const isExpired = apiKey.expiresAt
-                      ? new Date(apiKey.expiresAt).getTime() <= Date.now()
-                      : false;
-                    const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
-                    const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
-                    const creator =
-                      apiKey.createdBy?.displayName ??
-                      apiKey.createdBy?.name ??
-                      apiKey.createdBy?.email ??
-                      "–";
-
-                    return (
-                      <TableRow key={apiKey.id} disabled={cannotAuthenticate}>
-                        <TableCell>{apiKey.name}</TableCell>
-                        <TableCell>
-                          <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
-                        </TableCell>
-                        <TableCell>
-                          <ApiKeyStatus revokedAt={apiKey.revokedAt} expiresAt={apiKey.expiresAt} />
-                        </TableCell>
-                        <TableCell>
-                          <ApiKeyAccess
-                            label={apiKey.access.label}
-                            taskIdentifiers={apiKey.access.taskIdentifiers}
-                            usesTaskSelection={apiKey.access.usesTaskSelection}
-                          />
-                        </TableCell>
-                        <TableCell>{creator}</TableCell>
-                        <TableCell>
-                          <DateTime date={apiKey.createdAt} />
-                        </TableCell>
-                        <TableCell>
-                          {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
-                        </TableCell>
-                        <TableCellMenu
-                          isSticky
-                          className="w-32"
-                          visibleButtons={
-                            cannotRevoke ? null : (
-                              <RevokeApiKeyButton
-                                id={apiKey.id}
-                                name={apiKey.name}
-                                canWrite={canWriteApiKeys}
-                              />
-                            )
-                          }
+                  </TableCell>
+                  <TableCell>
+                    <ApiKeyStatus />
+                  </TableCell>
+                  <TableCell>
+                    <ApiKeyAccess label="No restrictions" />
+                  </TableCell>
+                  <TableCell>–</TableCell>
+                  <TableCell>
+                    <DateTime date={rootApiKey.createdAt} />
+                  </TableCell>
+                  <TableCell>–</TableCell>
+                  <TableCellMenu
+                    isSticky
+                    className="w-32"
+                    hiddenButtons={
+                      canWriteApiKeys ? (
+                        <RegenerateApiKeyModal
+                          id={environment.keyEnvironmentId}
+                          title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                          hasVercelIntegration={hasVercelIntegration}
+                          isDevelopment={environment.type === "DEVELOPMENT"}
                         />
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                      ) : null
+                    }
+                  />
+                </TableRow>
+
+                {apiKeys.map((apiKey) => {
+                  const isExpired = apiKey.expiresAt
+                    ? new Date(apiKey.expiresAt).getTime() <= Date.now()
+                    : false;
+                  const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
+                  const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                  const creator =
+                    apiKey.createdBy?.displayName ??
+                    apiKey.createdBy?.name ??
+                    apiKey.createdBy?.email ??
+                    "–";
+
+                  return (
+                    <TableRow
+                      key={apiKey.id}
+                      disabled={cannotAuthenticate}
+                      className="h-[3.25rem] [&_td]:py-2"
+                    >
+                      <TableCell>{apiKey.name}</TableCell>
+                      <TableCell>
+                        <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                      </TableCell>
+                      <TableCell>
+                        <ApiKeyStatus revokedAt={apiKey.revokedAt} expiresAt={apiKey.expiresAt} />
+                      </TableCell>
+                      <TableCell>
+                        <ApiKeyAccess
+                          label={apiKey.access.label}
+                          taskIdentifiers={apiKey.access.taskIdentifiers}
+                          usesTaskSelection={apiKey.access.usesTaskSelection}
+                        />
+                      </TableCell>
+                      <TableCell>{creator}</TableCell>
+                      <TableCell>
+                        <DateTime date={apiKey.createdAt} />
+                      </TableCell>
+                      <TableCell>
+                        {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                      </TableCell>
+                      <TableCellMenu
+                        isSticky
+                        className="w-32"
+                        hiddenButtons={
+                          cannotRevoke ? null : (
+                            <RevokeApiKeyButton
+                              id={apiKey.id}
+                              name={apiKey.name}
+                              canWrite={canWriteApiKeys}
+                            />
+                          )
+                        }
+                      />
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         ) : (
           <MainHorizontallyCenteredContainer className="py-6">
@@ -546,6 +479,64 @@ export default function Page() {
         )}
       </PageBody>
     </PageContainer>
+  );
+}
+
+function ApiKeyTableHeader() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHeaderCell>Name</TableHeaderCell>
+        <TableHeaderCell>Secret key</TableHeaderCell>
+        <TableHeaderCell>Status</TableHeaderCell>
+        <TableHeaderCell>Access</TableHeaderCell>
+        <TableHeaderCell>Created by</TableHeaderCell>
+        <TableHeaderCell>Created</TableHeaderCell>
+        <TableHeaderCell>Last used</TableHeaderCell>
+        <TableHeaderCell className="w-32" hiddenLabel>
+          Actions
+        </TableHeaderCell>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+function EnvironmentVariablesDialog({
+  environmentType,
+  envBlock,
+}: {
+  environmentType: string;
+  envBlock: string | null;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="secondary/small">How to set env vars</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>Set environment variables</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          {environmentType === "DEVELOPMENT" ? (
+            <Callout variant="info">
+              Every team member gets their own dev API keys. Make sure you're using one from this
+              page, otherwise you will trigger runs on your team member's machine.
+            </Callout>
+          ) : null}
+          <Paragraph>
+            Set these environment variables in your backend so the SDK can authenticate with
+            Trigger.dev.
+          </Paragraph>
+          {envBlock ? (
+            <CodeBlock
+              language="javascript"
+              code={envBlock}
+              showOpenInModal={false}
+              showLineNumbers={false}
+            />
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -616,8 +607,10 @@ function NewApiKeyDialog({
 
   const selectedPreset = presets?.find((preset) => preset.id === presetId);
   const showAccessControls = isRbacPluginAvailable && presets !== null;
+  const selectedPresetIsAvailable = !showAccessControls || selectedPreset?.available === true;
   const scopeDetail = scopeDetailForPreset(selectedPreset);
   const usesTaskSelection = showAccessControls && (selectedPreset?.usesTaskSelection ?? false);
+  const showTaskAccess = selectedPresetIsAvailable && usesTaskSelection;
   const needsSelectedTask = usesTaskSelection && taskScope === "selected";
 
   return (
@@ -649,11 +642,11 @@ function NewApiKeyDialog({
       </DialogTrigger>
       <DialogContent
         className={cn(
-          "gap-0 overflow-hidden p-0 pt-2.5",
+          "max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 pt-2.5",
           showAccessControls ? "lg:max-w-[62rem]" : "lg:max-w-[40rem]"
         )}
       >
-        <DialogHeader className="flex flex-row items-center gap-2.5 px-5">
+        <DialogHeader className="flex flex-row items-center gap-2.5 px-5 pb-3">
           New API key
           <EnvironmentCombo environment={environment} className="text-xs" iconClassName="size-4" />
         </DialogHeader>
@@ -683,7 +676,11 @@ function NewApiKeyDialog({
             />
           </div>
         ) : (
-          <fetcher.Form method="post" onSubmit={() => setShowError(false)}>
+          <fetcher.Form
+            method="post"
+            onSubmit={() => setShowError(false)}
+            className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
+          >
             <input type="hidden" name="action" value="create" />
             {expiresAt ? (
               <input type="hidden" name="expiresAt" value={expiresAt.toISOString()} />
@@ -702,7 +699,7 @@ function NewApiKeyDialog({
               : null}
             <div
               className={cn(
-                "grid max-h-[68vh] grid-cols-1 overflow-y-auto",
+                "grid min-h-0 grid-cols-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                 showAccessControls && "lg:grid-cols-[minmax(0,1fr)_21rem]"
               )}
             >
@@ -761,6 +758,26 @@ function NewApiKeyDialog({
                       presets={presets}
                       ids={["TRIGGER_ONLY", "TASK_OPERATOR"]}
                     />
+                    <div
+                      className={cn(
+                        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                        showTaskAccess
+                          ? "grid-rows-[1fr] opacity-100"
+                          : "pointer-events-none grid-rows-[0fr] opacity-0"
+                      )}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <TaskAccessPanel
+                          scopable={usesTaskSelection}
+                          taskLabel={scopeDetail?.taskLabel ?? "Scope details unavailable"}
+                          taskScope={taskScope}
+                          setTaskScope={setTaskScope}
+                          selectedTasks={selectedTasks}
+                          setSelectedTasks={setSelectedTasks}
+                          availableTasks={availableTasks}
+                        />
+                      </div>
+                    </div>
                     <PresetGroup
                       title="Environment capabilities"
                       presets={presets}
@@ -780,18 +797,6 @@ function NewApiKeyDialog({
                     ) : null}
                   </RadioGroup>
                 ) : null}
-
-                {showAccessControls ? (
-                  <TaskAccessPanel
-                    scopable={usesTaskSelection}
-                    taskLabel={scopeDetail?.taskLabel ?? "Scope details unavailable"}
-                    taskScope={taskScope}
-                    setTaskScope={setTaskScope}
-                    selectedTasks={selectedTasks}
-                    setSelectedTasks={setSelectedTasks}
-                    availableTasks={availableTasks}
-                  />
-                ) : null}
               </div>
 
               {showAccessControls ? (
@@ -799,7 +804,7 @@ function NewApiKeyDialog({
                   preset={selectedPreset}
                   taskScope={usesTaskSelection ? taskScope : undefined}
                   selectedTasks={selectedTasks}
-                  showUpgradeCta={presets?.some((preset) => !preset.available) ?? false}
+                  showUpgradeCta={selectedPreset ? !selectedPreset.available : false}
                 />
               ) : null}
             </div>
@@ -831,6 +836,7 @@ function NewApiKeyDialog({
                   variant="primary/small"
                   disabled={
                     !name.trim() ||
+                    !selectedPresetIsAvailable ||
                     (needsSelectedTask &&
                       (selectedTasks.length === 0 ||
                         selectedTasks.length > MAX_API_KEY_TASK_IDENTIFIERS)) ||
@@ -1020,7 +1026,6 @@ function PresetOptions({
               )
             }
             description={preset.description}
-            disabled={!preset.available}
             badges={preset.available ? undefined : ["Upgrade"]}
           />
         ))}
@@ -1042,18 +1047,20 @@ function ApiKeyScopePanel({
   const detail = scopeDetailForPreset(preset);
   const scoped = Boolean(detail?.scopable && taskScope === "selected" && selectedTasks.length > 0);
 
+  if (showUpgradeCta) {
+    return (
+      <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
+        <div className="px-5 pb-6 pt-4">
+          <ApiKeyScopeUpgradeCta show />
+        </div>
+      </aside>
+    );
+  }
+
   if (!detail) {
     return (
       <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
-        <div className="sticky top-0 space-y-4 px-5 pb-6 pt-4">
-          <div>
-            <div className="text-xxs font-semibold uppercase tracking-wider text-text-dimmed">
-              Scopes
-            </div>
-            <div className="mt-1 text-sm font-semibold text-text-bright">
-              {preset?.label ?? "Scope details unavailable"}
-            </div>
-          </div>
+        <div className="px-5 pb-6 pt-4">
           <p className="text-xs text-text-dimmed">
             Scope details are unavailable for this access preset.
           </p>
@@ -1064,27 +1071,8 @@ function ApiKeyScopePanel({
 
   return (
     <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
-      <div className="sticky top-0 flex h-full flex-col px-5 pb-6 pt-4">
+      <div className="px-5 pb-6 pt-4">
         <div className="space-y-4">
-          <div>
-            <div className="text-xxs font-semibold uppercase tracking-wider text-text-dimmed">
-              Scopes
-            </div>
-            <div className="mt-1 text-sm font-semibold text-text-bright">
-              {preset?.label ?? "No restrictions"}
-            </div>
-          </div>
-
-          {detail.admin ? (
-            <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.08] p-3">
-              <code className="font-mono text-xs text-amber-400">admin</code>
-              <p className="mt-1.5 text-xs text-text-dimmed">
-                A single scope that grants everything below, including anything added to the API
-                later.
-              </p>
-            </div>
-          ) : null}
-
           <ul className="flex flex-col">
             {SCOPE_CAPABILITIES.map(([key, label]) => {
               const cap = detail.admin ? undefined : detail.caps[key];
@@ -1144,7 +1132,6 @@ function ApiKeyScopePanel({
             })}
           </ul>
         </div>
-        <ApiKeyScopeUpgradeCta show={showUpgradeCta} />
       </div>
     </aside>
   );
@@ -1158,7 +1145,7 @@ function ApiKeyScopeUpgradeCta({ show }: { show: boolean }) {
   if (!show || !isManagedCloud) return null;
 
   return (
-    <div className="mt-auto flex flex-col items-end border-t border-grid-dimmed pt-4 text-right">
+    <div className="flex flex-col items-end text-right">
       <Paragraph variant="small" className="mb-3">
         Upgrade to create restricted keys.
       </Paragraph>
