@@ -4,6 +4,7 @@ import {
   createDashboardAgentDb,
   createWatch,
   getWatch,
+  listActiveWatchesForBatch,
   recordWatchCheck,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
@@ -44,7 +45,7 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
 
 process.env.SESSION_SECRET = "test-session-secret-for-watch-batch";
 
-const { runWatchBatchCheck } = await import("~/services/dashboardAgentWatchBatch.server");
+const { isDue, runWatchBatchCheck } = await import("~/services/dashboardAgentWatchBatch.server");
 const { previousCheckFacts } = await import("~/services/dashboardAgentWatchChecks");
 
 /** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
@@ -158,7 +159,29 @@ async function armChain(): Promise<number> {
   return armed.epoch;
 }
 
-async function tick(params: { epoch: number; tick: number; checkDeps: WatchCheckDeps }) {
+/** A second watch in the same group, on its own queue so one reader can fail alone. */
+async function seedSecondQueue(queue: string): Promise<string> {
+  const created = await createWatch(ctx.agentDb, {
+    chatId: "chat_batch",
+    identity: `queue_stalled:${queue}`,
+    spec: { ...STALLED, queue } as any,
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    environmentId: ENVIRONMENT_ID,
+    userId: USER_ID,
+    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+  });
+  if (!created.ok) throw new Error(`the watch wasn't created: ${created.error}`);
+  return created.watch.id;
+}
+
+async function tick(params: {
+  epoch: number;
+  tick: number;
+  checkDeps: WatchCheckDeps;
+  /** The group's per-tick cap, so an over-cap group can be exercised. */
+  limit?: number;
+}) {
   return runWatchBatchCheck(
     {
       environmentId: ENVIRONMENT_ID,
@@ -170,6 +193,12 @@ async function tick(params: { epoch: number; tick: number; checkDeps: WatchCheck
       checkDeps: () => params.checkDeps,
       authorize: async () => ({ ok: true, environment }) as const,
       mintToken: async () => "watch_token",
+      ...(params.limit
+        ? {
+            listActive: (args: { environmentId: string; cadenceMinutes: number }) =>
+              listActiveWatchesForBatch(ctx.agentDb, { ...args, limit: params.limit }),
+          }
+        : {}),
     }
   );
 }
@@ -196,7 +225,7 @@ describe("what a batch tick records", () => {
       expect(response.watches?.[0]).toMatchObject({ watchId, result: "unavailable" });
 
       const row = await getWatch(ctx.agentDb, { id: watchId });
-      // The rotation head is unchanged, so this watch is still the next one due.
+      // Nothing was checked, so the watch is still due at the next tick.
       expect(row?.lastCheckedAt?.getTime()).toBe(checkedAt.getTime());
       // And the streak the ticks built is still there to be continued.
       expect(previousCheckFacts(row?.lastResult)).toMatchObject({
@@ -231,6 +260,46 @@ describe("what a batch tick records", () => {
       // A real evaluation does move the row's last look on.
       expect(row?.lastCheckedAt?.getTime()).toBeGreaterThan(checkedAt.getTime());
       expect(previousCheckFacts(row?.lastResult)).toMatchObject({ notDecreasingStreak: 3 });
+    }
+  );
+
+  postgresTest(
+    "a permanently unreadable watch rotates out of an over-cap group's head",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const checkedAt = new Date(Date.now() - 60 * 60 * 1000);
+      // Looked at an hour ago, so it leads the group; its reader never comes back.
+      const broken = await seedStalling(checkedAt);
+      const neighbour = await seedSecondQueue("task/send-invoice");
+      const epoch = await armChain();
+
+      const brokenQueue = STALLED.kind === "queue_stalled" ? STALLED.queue : "";
+      const oneReaderDown = readers({
+        readQueueDepth: async (queue: string) => {
+          if (queue === brokenQueue) throw new Error("the queue reader is down");
+          return { depth: 412, source: "live_queue", current: true };
+        },
+      });
+
+      // A cap of one: whatever leads the group is the only watch the tick reaches.
+      const first = await tick({ epoch, tick: 1, checkDeps: oneReaderDown, limit: 1 });
+      expect(first.watches?.map((entry) => entry.watchId)).toEqual([broken]);
+      expect(first.watches?.[0]).toMatchObject({ result: "unavailable" });
+
+      // The neighbour is no longer crowded out by a watch that never reads anything.
+      const second = await tick({ epoch, tick: 2, checkDeps: oneReaderDown, limit: 1 });
+      expect(second.watches?.map((entry) => entry.watchId)).toEqual([neighbour]);
+      expect(second.watches?.[0]).toMatchObject({ result: "pending" });
+
+      // And nothing about the unreadable watch's own state moved: not its last check, not
+      // the streak the earlier ticks built, and not its dueness.
+      const row = await getWatch(ctx.agentDb, { id: broken });
+      expect(row?.lastCheckedAt?.getTime()).toBe(checkedAt.getTime());
+      expect(previousCheckFacts(row?.lastResult)).toMatchObject({
+        depth: 412,
+        notDecreasingStreak: 2,
+      });
+      expect(isDue(row!, CADENCE, new Date())).toBe(true);
     }
   );
 });

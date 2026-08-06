@@ -74,6 +74,11 @@ export const watches = dashboardAgentSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    /**
+     * Every look, a check that could read nothing included. Dueness reads `lastCheckedAt`;
+     * this is only the batch's fairness key, so a broken reader can't hold the group's head.
+     */
+    lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
     firedAt: timestamp("fired_at", { withTimezone: true }),
     // A claim older than the delivery grace is abandoned and may be re-claimed.
     deliveryClaimedAt: timestamp("delivery_claimed_at", { withTimezone: true }),
@@ -134,7 +139,7 @@ export const watches = dashboardAgentSchema.table(
       .on(
         t.environmentId,
         t.cadenceMinutes,
-        sql`coalesce(${t.lastCheckedAt}, ${t.createdAt})`,
+        sql`coalesce(${t.lastAttemptedAt}, ${t.lastCheckedAt}, ${t.createdAt})`,
         t.expiresAt
       )
       .where(sql`${t.status} = 'active'`),

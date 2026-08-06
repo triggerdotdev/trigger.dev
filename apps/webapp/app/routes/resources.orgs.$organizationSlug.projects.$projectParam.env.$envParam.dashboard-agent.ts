@@ -424,10 +424,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // submit, so a re-watch could replay a stale terminal outcome.
     const clientRequestId = parsed.data.clientRequestId;
     if (!clientRequestId) {
-      return json(
-        { error: "That watch isn't valid.", code: "invalid_request" },
-        { status: 400 }
-      );
+      return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
     }
 
     let draft: WatchDraft;

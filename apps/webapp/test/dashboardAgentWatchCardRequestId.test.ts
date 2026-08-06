@@ -43,9 +43,8 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
 
 process.env.SESSION_SECRET = "test-session-secret-for-watch-card-request-id";
 
-const { action } = await import(
-  "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent"
-);
+const { action } =
+  await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent");
 
 /** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
 async function applyAgentSchema(prisma: PrismaClient) {
@@ -162,4 +161,3 @@ describe("the watch card submit's request id", () => {
     }
   );
 });
-

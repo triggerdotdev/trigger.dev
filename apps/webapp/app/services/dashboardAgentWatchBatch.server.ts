@@ -8,6 +8,7 @@ import {
   claimWatchBatchTick,
   listActiveWatchesForBatch,
   listWatchesAwaitingDeliveryForBatch,
+  recordWatchAttempt,
   recordWatchCheck,
   stopWatchBatch,
   WATCH_DELIVERY_CLAIM_STALE_MS,
@@ -218,6 +219,10 @@ async function evaluateGroup(
           final,
         },
       });
+    } else {
+      // Looked at, not checked: this rotates the watch out of its group's head without
+      // touching its dueness or the facts its streak lives in.
+      await recordWatchAttempt(dashboardAgentDb, { id: watch.id });
     }
 
     return { ...base, result: outcome.result, facts: outcome.facts, observed: outcome.observed };
@@ -234,7 +239,9 @@ async function evaluateGroup(
         environmentId: params.environmentId,
         error,
       });
-      // `unavailable` is never read as true or false: the watch keeps its state.
+      // `unavailable` is never read as true or false: the watch keeps its state. Still a
+      // look, so the fairness key moves even when nothing else does.
+      await recordWatchAttempt(dashboardAgentDb, { id: watch.id }).catch(() => {});
       return { ...base, result: "unavailable" as const, error: (error as Error).message };
     }
   });

@@ -1,0 +1,3 @@
+DROP INDEX "trigger_dashboard_agent"."watches_active_env_cadence_idx";--> statement-breakpoint
+ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "last_attempted_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "watches_active_env_cadence_idx" ON "trigger_dashboard_agent"."watches" USING btree ("environment_id","cadence_minutes",coalesce("last_attempted_at", "last_checked_at", "created_at"),"expires_at") WHERE "trigger_dashboard_agent"."watches"."status" = 'active';

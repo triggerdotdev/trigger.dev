@@ -913,11 +913,28 @@ export async function recordWatchCheck(
     .update(watches)
     .set({
       lastCheckedAt: params.lastCheckedAt ?? sql`now()`,
+      // A check is also a look, so the fairness key moves with it.
+      lastAttemptedAt: params.lastCheckedAt ?? sql`now()`,
       ...(params.lastResult !== undefined ? { lastResult: params.lastResult } : {}),
     })
     .where(and(eq(watches.id, params.id), eq(watches.status, "active")))
     .returning({ tickCount: watches.tickCount, lastCheckedAt: watches.lastCheckedAt });
   return rows[0] ?? null;
+}
+
+/**
+ * A look that read nothing. Moves the batch's fairness key only, so a permanently broken
+ * reader rotates out of its group's head while its dueness and streak facts stay untouched.
+ * Guarded on `active`, like {@link recordWatchCheck}.
+ */
+export async function recordWatchAttempt(
+  db: DashboardAgentDb,
+  params: { id: string; lastAttemptedAt?: Date }
+): Promise<void> {
+  await db
+    .update(watches)
+    .set({ lastAttemptedAt: params.lastAttemptedAt ?? sql`now()` })
+    .where(and(eq(watches.id, params.id), eq(watches.status, "active")));
 }
 
 /**
@@ -1053,13 +1070,16 @@ const watchCadenceMinutes = watches.cadenceMinutes;
 /** A group larger than this is checked across several ticks, oldest check first. */
 const BATCH_GROUP_LIMIT = 500;
 
-/** How long ago this watch was last looked at. A never-checked watch sorts by creation. */
-const watchLastLookedAt = sql`coalesce(${watches.lastCheckedAt}, ${watches.createdAt})`;
+/**
+ * How long ago this watch was last looked at, a look that read nothing included. A
+ * never-looked-at watch sorts by creation. Dueness reads `lastCheckedAt` instead.
+ */
+const watchLastLookedAt = sql`coalesce(${watches.lastAttemptedAt}, ${watches.lastCheckedAt}, ${watches.createdAt})`;
 
 /**
  * Which of these are due is the caller's decision, from the tick's own clock.
  *
- * Least-recently-checked first is the fairness invariant: a group over the cap rotates, so
+ * Least-recently-looked-at first is the fairness invariant: a group over the cap rotates, so
  * every watch is reached within `ceil(group / cap)` ticks instead of the same prefix winning
  * every tick. Watches whose window closes within a cadence still sort first, so a group over
  * the cap never defers a final evaluation.
