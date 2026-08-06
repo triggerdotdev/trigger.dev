@@ -80,7 +80,7 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
 
-export const meta = pageMeta("Runs metrics");
+export const meta = pageMeta("Runs");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
