@@ -2,7 +2,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { ArrowPathIcon, BookOpenIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentIntent } from "@internal/dashboard-agent-contracts";
 import { useNavigate } from "@remix-run/react";
-import { memo } from "react";
+import { memo, useMemo, useRef } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
@@ -18,6 +18,7 @@ import {
   ChatTurn,
   ChatWakeSlot,
 } from "./chat-layout";
+import { reuseWinners } from "./investigation-winners";
 import { stripModelImages } from "./model-markdown";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
@@ -94,6 +95,21 @@ export function winningInvestigationOccurrences(messages: UIMessage[]): Map<stri
     });
   }
   return new Map([...best.entries()].map(([id, w]) => [id, w.occurrence]));
+}
+
+/**
+ * The winners map, with a stable identity while the winners hold.
+ *
+ * The recompute itself still runs on every streamed token — `messages` is a fresh
+ * array each time the stream appends — so this doesn't save the walk. What it saves
+ * is handing a fresh `Map` to the memoized turns, which would re-render the whole
+ * transcript per token even though nothing about the winners moved.
+ */
+function useInvestigationWinners(messages: UIMessage[]): Map<string, string> {
+  const previous = useRef<Map<string, string>>();
+  const next = useMemo(() => winningInvestigationOccurrences(messages), [messages]);
+  previous.current = reuseWinners(previous.current, next);
+  return previous.current;
 }
 
 function withoutSupersededInvestigations(
@@ -291,12 +307,12 @@ export function DashboardAgentTurns({
   watches,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
-  const stripped = messages.map(stripStepParts);
+  const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
 
   // Must stay the last child of this fragment; see `progress-line.ts`.
   const progress = liveProgress(stripped, activity);
 
-  const investigationWinners = winningInvestigationOccurrences(stripped);
+  const investigationWinners = useInvestigationWinners(stripped);
 
   const liveError = shouldShowLiveTurnError(error, stripped) ? error : undefined;
 
