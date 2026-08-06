@@ -752,6 +752,7 @@ model BackgroundWorkerTask {
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
+  @@index([projectId, slug, createdAt])
   @@index([runtimeEnvironmentId, projectId])
   @@index([runtimeEnvironmentId, slug, triggerSource])
 }
