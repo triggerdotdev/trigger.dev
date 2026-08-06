@@ -10,7 +10,6 @@ import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAg
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
 import { liveProgress } from "~/components/dashboard-agent/progress-line";
-import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { cn } from "~/utils/cn";
@@ -175,9 +174,9 @@ const promotedPrompt: SuggestedPrompt = {
   source: "promoted",
 };
 
-const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
-  .slice(0, 1)
-  .map((prompt) => prompt.id);
+// Pinned, not resolved: the fixture's signal has a fixed timestamp, so a live resolve would
+// dismiss a different chip once that timestamp aged out of the freshness window.
+const dismissedPromptIds = demoFixtures.demoDismissedPromptIds;
 
 function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   return {
