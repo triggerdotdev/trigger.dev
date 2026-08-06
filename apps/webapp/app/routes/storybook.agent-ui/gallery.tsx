@@ -141,14 +141,12 @@ export function GalleryPage({
             {meta.blurb} {sections.length} states, rendered in isolation at panel width (380px) from
             the demo fixtures in{" "}
             <code className="font-mono text-xs">app/components/dashboard-agent/demo/fixtures</code>.
-            The list lives in <code className="font-mono text-xs">manifest.ts</code>, which the
-            screenshot script walks too.
+            The list lives in <code className="font-mono text-xs">manifest.ts</code>.
           </Paragraph>
           <Paragraph variant="extra-small">
             Run ids, queues, errors and reports are fabricated. Deep links resolve inside a project,
             so here they render as plain text or navigate nowhere. The theme buttons flip{" "}
-            <code className="font-mono text-xs">data-theme</code> on the root element, which is how
-            the screenshot pack captures both themes.
+            <code className="font-mono text-xs">data-theme</code> on the root element.
           </Paragraph>
         </div>
 

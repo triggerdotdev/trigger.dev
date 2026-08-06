@@ -1,5 +1,5 @@
 import { isExecutableIntent, type AgentIntent } from "@internal/dashboard-agent-contracts";
-import { DEMO_WORLD, demoRunUri } from "../ids";
+import { DEMO_WORLD, demoRunUri, demoRunsUri } from "../ids";
 import { demoBacklogDrainWatch } from "./watches";
 
 export type DemoIntent = {
@@ -19,7 +19,7 @@ const demoIntent = (intent: AgentIntent, outcome: string, deepLinkLabel?: string
 export const demoNavigateToFailedRuns = demoIntent(
   {
     kind: "navigate",
-    target: demoRunUri(DEMO_WORLD.failedRunId),
+    target: demoRunsUri(),
     filters: {
       statuses: ["COMPLETED_WITH_ERROR"],
       period: "24h",

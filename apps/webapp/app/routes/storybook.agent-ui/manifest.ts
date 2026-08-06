@@ -1,5 +1,4 @@
-// Keep this file free of imports and JSX: the screenshot script is plain node and
-// cannot import a Remix route module.
+// Keep this file free of imports and JSX so plain node can read it.
 
 export type GalleryPageId = "chat" | "view-blocks" | "report" | "investigation" | "watch";
 
@@ -63,11 +62,11 @@ export type GalleryGroup =
   | "banner";
 
 export type GallerySection = {
-  /** DOM id, deep-link anchor and screenshot filename. Renaming breaks both. */
+  /** DOM id and deep-link anchor. Renaming breaks the link. */
   sectionId: string;
   title: string;
   group: GalleryGroup;
-  /** A state that only exists after a click. The screenshot script clicks matching text first. */
+  /** A state that only exists after a click. */
   expandText?: string;
 };
 
