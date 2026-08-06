@@ -240,7 +240,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "Not found" }, { status: 404 });
   }
 
-  // Refused before any lookup, so an oversized body costs nothing.
+  // A declared oversize is refused here, before any lookup. Without a content-length the
+  // ingress cap has already ended the request mid-stream, so this never sees it.
   if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
     return messageTooLarge();
   }
