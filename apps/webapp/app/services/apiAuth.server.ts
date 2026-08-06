@@ -408,10 +408,21 @@ function getApiKeyResult(apiKey: string): {
   return { apiKey, type };
 }
 
+/**
+ * The authenticated user-actor. A user-actor token authenticates as its user, so it carries the
+ * same `userId` a PAT does — plus the token's verified claims, on the actor itself, so any layer
+ * holding the actor holds its environment scope. A caller that only forwards `{ userId }` would
+ * silently drop the scope, which is what this shape prevents.
+ */
+export type UserActorAuthenticatedActor = PersonalAccessTokenAuthenticationResult & {
+  /** Verified claims. Present only when the caller presented a user-actor token. */
+  userActor?: UserActorClaims;
+};
+
 export type AuthenticationResult =
   | {
       type: "personalAccessToken";
-      result: PersonalAccessTokenAuthenticationResult;
+      result: UserActorAuthenticatedActor;
       /**
        * Claims of the delegated user-actor token the caller presented, if any. A UAT authenticates
        * as its user, so it rides on this variant; its environment scope is enforced on resolution.
@@ -557,7 +568,8 @@ export async function authenticatedEnvironmentForAuthentication(
   const environment = await resolveEnvironmentForAuthentication(auth, projectRef, slug, branch);
 
   if (auth.type === "personalAccessToken") {
-    assertUserActorEnvironment(auth.userActor, environment.id);
+    // Either place the claims ride: on the actor (the shape every layer keeps) or beside it.
+    assertUserActorEnvironment(auth.result.userActor ?? auth.userActor, environment.id);
   }
 
   return environment;

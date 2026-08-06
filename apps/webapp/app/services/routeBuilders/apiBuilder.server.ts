@@ -8,9 +8,12 @@ import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
-import { isUserActorToken } from "@trigger.dev/rbac";
-import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
+import type { UserActorClaims } from "@trigger.dev/rbac";
+import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
+import type { UserActorAuthenticatedActor } from "../apiAuth.server";
+import { assertUserActorScope } from "../userActorEnvironment.server";
+import { env } from "~/env.server";
 import { safeJsonParse } from "~/utils/json";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
@@ -461,6 +464,23 @@ export function createLoaderApiRoute<
   };
 }
 
+// What the request targets, resolved from its params. `environmentId` is checked against a
+// user-actor token's environment claim, so an env-scoped route enforces the scope by declaring it.
+type PATRouteContext = { organizationId?: string; projectId?: string; environmentId?: string };
+
+/**
+ * The verified claims of the presented user-actor token.
+ *
+ * The controller returns them, but a plugin built against an older contract may not — in that case
+ * verify the token here rather than continue with no environment scope to enforce.
+ */
+async function resolveUserActorClaims(
+  claims: UserActorClaims | undefined,
+  bearer: string
+): Promise<UserActorClaims | undefined> {
+  return claims ?? (await verifyUserActorToken(env.SESSION_SECRET, bearer));
+}
+
 type PATRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -482,9 +502,7 @@ type PATRouteBuilderOptions<
       ? z.infer<TParamsSchema>
       : undefined,
     request: Request
-  ) =>
-    | { organizationId?: string; projectId?: string }
-    | Promise<{ organizationId?: string; projectId?: string }>;
+  ) => PATRouteContext | Promise<PATRouteContext>;
   authorization?: {
     action: string;
     resource: (
@@ -519,7 +537,7 @@ type PATHandlerFunction<
   headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<THeadersSchema>
     : undefined;
-  authentication: PersonalAccessTokenAuthenticationResult;
+  authentication: UserActorAuthenticatedActor;
   ability: RbacAbility;
   request: Request;
   apiVersion: API_VERSIONS;
@@ -617,7 +635,7 @@ export function createLoaderPATApiRoute<
       // cached timestamp is fresher than the throttle window).
       const ctx = contextFn ? await contextFn(parsedParams, request) : {};
 
-      let authenticationResult: PersonalAccessTokenAuthenticationResult;
+      let authenticationResult: UserActorAuthenticatedActor;
       let ability: RbacAbility;
 
       const bearer = request.headers
@@ -635,7 +653,17 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        authenticationResult = { userId: uatAuth.userId };
+        const claims = await resolveUserActorClaims(uatAuth.claims, bearer);
+        if (!claims) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid user-actor token" }, { status: 401 }),
+            corsStrategy !== "none"
+          );
+        }
+        // The token's environment scope is enforced against what the URL targets.
+        await assertUserActorScope(claims, ctx);
+        authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
         // PAT: validate + compute the cap-and-floor ability in one query.
@@ -746,7 +774,7 @@ type PATActionHandlerFunction<
   body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TBodySchema>
     : undefined;
-  authentication: PersonalAccessTokenAuthenticationResult;
+  authentication: UserActorAuthenticatedActor;
   ability: RbacAbility;
   request: Request;
   apiVersion: API_VERSIONS;
@@ -882,7 +910,7 @@ export function createActionPATApiRoute<
       // caller's role floor for the cap intersection (see the loader builder).
       const ctx = contextFn ? await contextFn(parsedParams, request) : {};
 
-      let authenticationResult: PersonalAccessTokenAuthenticationResult;
+      let authenticationResult: UserActorAuthenticatedActor;
       let ability: RbacAbility;
 
       const bearer = request.headers
@@ -898,7 +926,16 @@ export function createActionPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        authenticationResult = { userId: uatAuth.userId };
+        const claims = await resolveUserActorClaims(uatAuth.claims, bearer);
+        if (!claims) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid user-actor token" }, { status: 401 }),
+            corsStrategy !== "none"
+          );
+        }
+        await assertUserActorScope(claims, ctx);
+        authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
         const patAuth = await rbac.authenticatePat(request, ctx);
