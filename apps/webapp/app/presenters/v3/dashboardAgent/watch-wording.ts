@@ -26,6 +26,7 @@ export {
   watchLifetimeSentence,
   watchNoteLine,
   watchOneShotBlockBody,
+  watchRequestSentence,
   watchSubjectLabel,
   watchSubline,
   watchTooltipLabel,

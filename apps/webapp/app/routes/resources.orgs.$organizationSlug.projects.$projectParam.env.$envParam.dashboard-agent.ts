@@ -1,6 +1,5 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
-  appendChatMessage,
   cancelWatch,
   chatExists,
   countUnreadWatchWakes,
@@ -18,8 +17,8 @@ import {
   setChatPinned,
 } from "@internal/dashboard-agent-db";
 import {
-  VIEW_BLOCK_VERSION,
   watchDraftSchema,
+  watchIdentity,
   type WatchDraft,
 } from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
@@ -38,16 +37,10 @@ import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  watchConfirmationBlockBody,
-  watchOneShotBlockBody,
-  watchSubjectLabel,
-} from "~/presenters/v3/dashboardAgent";
-import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
-import {
   authorizeWatchEnvironmentById,
-  createDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
+  submitDashboardAgentWatch,
 } from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentApiOrigin,
@@ -102,6 +95,8 @@ const ActionBody = z.object({
   watchId: z.string().min(1).optional(),
   // The configured card, for `watch-create`: a JSON `WatchDraft`.
   draft: z.string().optional(),
+  // Stable per card submission, so a retried `watch-create` repairs instead of repeating.
+  clientRequestId: z.string().min(1).max(64).optional(),
 });
 
 // History list by default. `?chatId=` returns the stored transcript plus session,
@@ -428,36 +423,30 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     // A watch is chat-bound, so a card submitted from a fresh panel creates a chat.
-    let targetChatId = parsed.data.chatId;
-    if (targetChatId) {
-      if (
-        !(await chatExists(dashboardAgentDb, {
-          chatId: targetChatId,
-          userId,
-          organizationId: project.organizationId,
-        }))
-      ) {
-        return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
-      }
-    } else {
-      targetChatId = generateFriendlyId("chat");
-      await createChat(dashboardAgentDb, {
-        id: targetChatId,
-        organizationId: project.organizationId,
+    const targetChatId = parsed.data.chatId;
+    if (
+      targetChatId &&
+      !(await chatExists(dashboardAgentDb, {
+        chatId: targetChatId,
         userId,
-        title: `Watch ${watchSubjectLabel(draft.spec)}`,
-      });
+        organizationId: project.organizationId,
+      }))
+    ) {
+      return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
     }
 
-    const result = await createDashboardAgentWatch({
+    // The request record is written before the watch and the confirmation after, so a
+    // half-finished submit is repairable and never leaves a watch nobody can see.
+    const result = await submitDashboardAgentWatch({
       environment,
       userId,
+      organizationId: project.organizationId,
       chatId: targetChatId,
-      spec: draft.spec,
-      investigateOnAttention: draft.followUp.investigateOnAttention,
+      // An older client without one degrades to per-condition dedup, not to no dedup.
+      clientRequestId: parsed.data.clientRequestId ?? `identity:${watchIdentity(draft.spec)}`,
+      draft,
     });
 
-    // Returns before any append, so a failed creation persists nothing.
     if (!result.ok) {
       const status =
         result.code === "limit_reached" || result.code === "duplicate"
@@ -477,62 +466,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       );
     }
 
-    // Attached after the watch exists, and a refusal never fails the creation.
-    let notifiedExternally = false;
-    if (result.watching && draft.followUp.notifyExternally) {
-      const subscribed = await subscribeUserToWatchAlerts({ userId, environment });
-      notifiedExternally = subscribed.ok;
-    }
-
-    const body = result.watching
-      ? watchConfirmationBlockBody({
-          spec: draft.spec,
-          watchId: result.watchId,
-          unavailable: result.unavailable,
-          followUp: {
-            investigateOnAttention: draft.followUp.investigateOnAttention,
-            notifyExternally: notifiedExternally,
-          },
-        })
-      : watchOneShotBlockBody({
-          spec: draft.spec,
-          result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
-        });
-
-    // `id` is the watch (or the identity, for a one-shot), so a retried submit
-    // replaces the block.
-    const message = {
-      id: `watch-card:${result.watching ? result.watchId : result.identity}`,
-      role: "assistant" as const,
-      parts: [
-        {
-          type: "data-view" as const,
-          data: {
-            blocks: [
-              {
-                ...body,
-                revision: 0,
-                version: VIEW_BLOCK_VERSION,
-                id: `watch:${result.watching ? result.watchId : result.identity}`,
-              },
-            ],
-          },
-        },
-      ],
-    };
-
-    await appendChatMessage(dashboardAgentDb, {
-      chatId: targetChatId,
-      userId,
-      organizationId: project.organizationId,
-      message,
-    });
-
     return json({
-      chatId: targetChatId,
+      chatId: result.chatId,
       watching: result.watching,
-      watchId: result.watching ? result.watchId : null,
-      message,
+      watchId: result.watchId,
+      messages: result.messages,
     });
   }
 

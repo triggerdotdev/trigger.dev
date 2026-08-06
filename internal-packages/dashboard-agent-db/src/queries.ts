@@ -1,3 +1,4 @@
+import { WATCH_REQUEST_MESSAGE_ID_PREFIX } from "@internal/dashboard-agent-contracts";
 import { and, desc, eq, ne, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
@@ -83,6 +84,8 @@ export async function getChatMessages(
 /**
  * Counted from the stored transcripts, not a counter column, so a deleted chat stops
  * counting. `excludeChatId` is for a caller that counts that chat's live messages itself.
+ * A watch's consent record is a user message but not a turn the user spent, so it is
+ * excluded here and by the client-side count.
  */
 export async function countUserMessages(
   db: DashboardAgentDb,
@@ -94,6 +97,7 @@ export async function countUserMessages(
         select count(*)
         from jsonb_array_elements(${chats.messages}) as message
         where message->>'role' = 'user'
+          and coalesce(message->>'id', '') not like ${`${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`}
       )), 0)::int`,
     })
     .from(chats)

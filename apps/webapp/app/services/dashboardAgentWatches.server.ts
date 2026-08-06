@@ -5,25 +5,38 @@
 
 import {
   MAX_ACTIVE_WATCHES_PER_CHAT,
+  appendChatMessageOnce,
   armWatchBatch,
   cancelWatch,
   chatExists,
+  createChat,
   createWatch,
   getChatWatchContext,
+  getWatch,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
   precheckWatchCreation,
   softDeleteChat,
   stopWatchBatch,
   type ChatWatchContext,
   type PersistedWatchSpec,
+  type Watch,
   type WatchStatus,
 } from "@internal/dashboard-agent-db";
 import {
+  VIEW_BLOCK_VERSION,
+  WATCH_CONFIRMATION_MESSAGE_ID_PREFIX,
+  WATCH_REQUEST_MESSAGE_ID_PREFIX,
+  watchConfirmationBlockBody,
   watchIdentity,
+  watchOneShotBlockBody,
+  watchRequestSentence,
+  watchSubjectLabel,
+  type WatchDraft,
   type WatchObservedOutcome,
   type WatchResolution,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
+import { createHash } from "node:crypto";
 import { TriggerClient } from "@trigger.dev/sdk";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { $replica, prisma } from "~/db.server";
@@ -42,6 +55,7 @@ import {
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
 import { watchCreationCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
+import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
 import {
   mintDashboardAgentWatchBatchToken,
   mintDashboardAgentWatchToken,
@@ -332,6 +346,228 @@ export async function createDashboardAgentWatch(params: {
     status: "active",
     expiresAt,
     ...(immediate.result === "unavailable" ? { unavailable: true } : {}),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * The card submit: a durable record of the request, then the watch
+ * ------------------------------------------------------------------ */
+
+/** A stored transcript record. Deterministic, so a retry rewrites the same bytes. */
+export type WatchTranscriptMessage = {
+  id: string;
+  role: "user" | "assistant";
+  parts: unknown[];
+};
+
+export type SubmitWatchCardResult =
+  | {
+      ok: true;
+      chatId: string;
+      watching: boolean;
+      watchId: string | null;
+      /** The request record and the confirmation, in transcript order. */
+      messages: WatchTranscriptMessage[];
+      /** The watch already existed and this call only filled in a missing record. */
+      repaired: boolean;
+    }
+  | {
+      ok: false;
+      code: CreateWatchErrorCode;
+      error: string;
+      existingId?: string | null;
+      /** Set once a chat exists, so the caller can still open it. */
+      chatId?: string;
+    };
+
+/**
+ * A fresh panel's chat id, derived from the request id so a retried submit lands in the
+ * chat the first attempt created instead of leaving an empty one behind. The user id is
+ * mixed in so a client-chosen request id can never name another user's chat.
+ */
+function chatIdForRequest(userId: string, clientRequestId: string): string {
+  const digest = createHash("sha256").update(`${userId}:${clientRequestId}`).digest("hex");
+  return `chat_${digest.slice(0, 24)}`;
+}
+
+/**
+ * A spec's comparable form. `since` is server-set on every attempt, so it is excluded:
+ * two attempts at the same request differ by it and are still the same request.
+ */
+function comparableSpec(spec: WatchSpec | PersistedWatchSpec): string {
+  const entries = Object.entries(spec as Record<string, unknown>)
+    .filter(([key]) => key !== "since")
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+}
+
+/**
+ * Whether an existing watch is the one this submission asked for. A retry is byte-identical,
+ * so anything else — a different window, cadence, note or investigate consent — is a genuinely
+ * different request and still conflicts. `notifyExternally` is not persisted on the row, so it
+ * is not compared; the subscribe below is idempotent and converges instead.
+ */
+function isSameWatchRequest(existing: Watch, draft: WatchDraft): boolean {
+  return (
+    comparableSpec(existing.spec) === comparableSpec(draft.spec) &&
+    existing.investigateOnAttention === draft.followUp.investigateOnAttention
+  );
+}
+
+/** The record of what the user confirmed. Written with no model call. */
+function requestMessage(clientRequestId: string, draft: WatchDraft): WatchTranscriptMessage {
+  return {
+    id: `${WATCH_REQUEST_MESSAGE_ID_PREFIX}${clientRequestId}`,
+    role: "user",
+    parts: [
+      { type: "text", text: watchRequestSentence({ spec: draft.spec, followUp: draft.followUp }) },
+    ],
+  };
+}
+
+/** The confirmation block, keyed on the watch so a repair rebuilds exactly the same record. */
+function confirmationMessage(args: {
+  id: string;
+  blockId: string;
+  body: Record<string, unknown>;
+}): WatchTranscriptMessage {
+  return {
+    id: args.id,
+    role: "assistant",
+    parts: [
+      {
+        type: "data-view",
+        data: {
+          blocks: [
+            { ...args.body, revision: 0, version: VIEW_BLOCK_VERSION, id: `watch:${args.blockId}` },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Submit a configured watch card, for an already-authorized environment and a chat the caller
+ * owns.
+ *
+ * The ordering is the invariant: the record of what the user confirmed is written *before*
+ * anything starts running, and the confirmation is written after. A crash in between leaves a
+ * watch that is visible but unconfirmed, never one that is live and invisible — and a retry
+ * repairs it, because both records carry stable ids and a duplicate watch is loaded rather
+ * than refused.
+ */
+export async function submitDashboardAgentWatch(params: {
+  environment: AuthenticatedEnvironment;
+  userId: string;
+  organizationId: string;
+  /** The chat the card was submitted from. A fresh panel has none, so one is created. */
+  chatId?: string;
+  /** Stable per card submission: both transcript records are keyed off it. */
+  clientRequestId: string;
+  draft: WatchDraft;
+  now?: Date;
+  deps?: {
+    create?: typeof createDashboardAgentWatch;
+    subscribe?: typeof subscribeUserToWatchAlerts;
+  } & NonNullable<Parameters<typeof createDashboardAgentWatch>[0]["deps"]>;
+}): Promise<SubmitWatchCardResult> {
+  const { environment, userId, organizationId, clientRequestId, draft } = params;
+  const create = params.deps?.create ?? createDashboardAgentWatch;
+  const subscribe = params.deps?.subscribe ?? subscribeUserToWatchAlerts;
+
+  const chatId = params.chatId ?? chatIdForRequest(userId, clientRequestId);
+  if (!params.chatId) {
+    // Idempotent on the id, so a retry reuses the same chat rather than making another.
+    await createChat(dashboardAgentDb, {
+      id: chatId,
+      organizationId,
+      userId,
+      title: `Watch ${watchSubjectLabel(draft.spec)}`,
+    });
+  }
+
+  // Step one, before the watch can exist: a false here means the record is already
+  // there from an earlier attempt, and a deleted chat is caught by the create below.
+  const request = requestMessage(clientRequestId, draft);
+  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: request });
+
+  let result = await create({
+    environment,
+    userId,
+    chatId,
+    spec: draft.spec,
+    investigateOnAttention: draft.followUp.investigateOnAttention,
+    now: params.now,
+    deps: params.deps,
+  });
+
+  // A duplicate is a retry until proven otherwise: the same request repairs whatever
+  // record is missing, a different one still conflicts.
+  let repaired = false;
+  if (!result.ok && result.code === "duplicate" && result.existingId) {
+    const existing = await getWatch(dashboardAgentDb, { id: result.existingId });
+    if (
+      existing &&
+      existing.chatId === chatId &&
+      existing.status === "active" &&
+      isSameWatchRequest(existing, draft)
+    ) {
+      repaired = true;
+      result = {
+        ok: true,
+        watching: true,
+        watchId: existing.id,
+        identity: existing.identity,
+        status: existing.status,
+        expiresAt: existing.expiresAt,
+      };
+    }
+  }
+
+  if (!result.ok) {
+    return { ...result, chatId };
+  }
+
+  // Attached after the watch exists, and a refusal never fails the creation.
+  let notifiedExternally = false;
+  if (result.watching && draft.followUp.notifyExternally) {
+    notifiedExternally = (await subscribe({ userId, environment })).ok;
+  }
+
+  const confirmation = result.watching
+    ? confirmationMessage({
+        id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${result.watchId}`,
+        blockId: result.watchId,
+        body: watchConfirmationBlockBody({
+          spec: draft.spec,
+          watchId: result.watchId,
+          unavailable: result.unavailable,
+          followUp: {
+            investigateOnAttention: draft.followUp.investigateOnAttention,
+            notifyExternally: notifiedExternally,
+          },
+        }),
+      })
+    : confirmationMessage({
+        // No watch exists, so the request id is the only stable key for a one-shot.
+        id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}one-shot:${clientRequestId}`,
+        blockId: result.identity,
+        body: watchOneShotBlockBody({
+          spec: draft.spec,
+          result: result.immediate.result as "satisfied" | "terminal_unsatisfied",
+        }),
+      });
+
+  await appendChatMessageOnce(dashboardAgentDb, { chatId, userId, message: confirmation });
+
+  return {
+    ok: true,
+    chatId,
+    watching: result.watching,
+    watchId: result.watching ? result.watchId : null,
+    messages: [request, confirmation],
+    repaired,
   };
 }
 

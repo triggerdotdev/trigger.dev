@@ -122,6 +122,23 @@ export function isWatchKind(kind: string): kind is WatchKind {
 }
 
 /**
+ * The transcript id of the record of what a user confirmed on a watch card, keyed
+ * by the card's request id. Stable, so a retried submit repairs rather than repeats.
+ */
+export const WATCH_REQUEST_MESSAGE_ID_PREFIX = "watch-request:";
+
+/** The transcript id of the confirmation that a watch is running, keyed by the watch. */
+export const WATCH_CONFIRMATION_MESSAGE_ID_PREFIX = "watch-confirmation:";
+
+/**
+ * A deterministic consent record, not a turn the user spent, so it never counts
+ * against the message cap and the retry button never resends it.
+ */
+export function isWatchRequestMessageId(id: string | undefined | null): boolean {
+  return typeof id === "string" && id.startsWith(WATCH_REQUEST_MESSAGE_ID_PREFIX);
+}
+
+/**
  * The dedup key for a watched condition, scoped to one environment. Cadence, note
  * and maxHours are deliberately not part of it.
  */

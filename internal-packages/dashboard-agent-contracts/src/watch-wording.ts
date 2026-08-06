@@ -538,6 +538,29 @@ export function watchFollowUpLines(followUp: {
 }
 
 /**
+ * What the user confirmed on the card, in their own voice. Written into the
+ * transcript before the watch is created, so a running watch can never be
+ * missing from the chat that owns it. Deterministic: no model writes this.
+ */
+export function watchRequestSentence(args: {
+  spec: WatchSpec;
+  followUp?: { investigateOnAttention?: boolean; notifyExternally?: boolean };
+}): string {
+  const parts = [
+    `Watch ${watchSubjectLabel(args.spec)} ${watchConditionWording(args.spec).clause}.`,
+    watchLifetimeSentence({
+      checkEveryMinutes: args.spec.checkEveryMinutes,
+      maxHours: args.spec.maxHours,
+    }),
+  ];
+  if (args.followUp?.investigateOnAttention) {
+    parts.push("Investigate straight away if it turns out badly.");
+  }
+  if (args.followUp?.notifyExternally) parts.push("Email me as well as the chat.");
+  return parts.join(" ");
+}
+
+/**
  * The confirmation block: a watch is running. It states the lifetime facts and
  * nothing else, because this block is the transcript record of the request.
  */

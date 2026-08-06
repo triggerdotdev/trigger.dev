@@ -1,7 +1,12 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
+import {
+  isWatchRequestMessageId,
+  type AgentIntent,
+  type SuggestedPrompt,
+  type WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -54,7 +59,7 @@ export function DashboardAgentChat({
   watches,
   pagePaths,
   watchCard,
-  appendedMessage,
+  appendedMessages,
   onWatchIntent,
   onCancelWatch,
   onTurnSettled,
@@ -79,7 +84,7 @@ export function DashboardAgentChat({
   watches: WatchChip[];
   pagePaths?: Record<string, string>;
   watchCard?: React.ReactNode;
-  appendedMessage?: { message: UIMessage; seq: number };
+  appendedMessages?: { messages: UIMessage[]; seq: number };
   /** Nothing is persisted until the user submits the card. */
   onWatchIntent?: (spec: WatchSpec) => void;
   onCancelWatch: (watchId: string) => void;
@@ -180,16 +185,18 @@ export function DashboardAgentChat({
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
 
   // Once per `seq`: the append is already persisted, so a replay would duplicate it.
+  // Ids are stable, so anything already in the transcript is skipped.
   const appendedSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!appendedMessage || appendedSeq.current === appendedMessage.seq) return;
-    appendedSeq.current = appendedMessage.seq;
-    setMessages((current) =>
-      current.some((message) => message.id === appendedMessage.message.id)
-        ? current
-        : [...current, appendedMessage.message]
-    );
-  }, [appendedMessage, setMessages]);
+    if (!appendedMessages || appendedSeq.current === appendedMessages.seq) return;
+    appendedSeq.current = appendedMessages.seq;
+    setMessages((current) => {
+      const missing = appendedMessages.messages.filter(
+        (message) => !current.some((existing) => existing.id === message.id)
+      );
+      return missing.length === 0 ? current : [...current, ...missing];
+    });
+  }, [appendedMessages, setMessages]);
 
   const sentFirst = useRef(false);
   useEffect(() => {
@@ -211,7 +218,10 @@ export function DashboardAgentChat({
   );
 
   const retry = useCallback(() => {
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    // A watch's consent record is a user message nobody typed, so retry skips it.
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((m) => m.role === "user" && !isWatchRequestMessageId(m.id));
     const text = lastUserMessage?.parts
       ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
       .map((p) => p.text)

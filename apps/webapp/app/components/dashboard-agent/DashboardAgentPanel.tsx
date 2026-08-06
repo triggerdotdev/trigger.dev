@@ -344,9 +344,12 @@ export function DashboardAgentPanel({
   const [watchPending, setWatchPending] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
   // Carries its chat id so a later-mounted chat cannot adopt another chat's block.
-  const [appendedMessage, setAppendedMessage] = useState<
-    { chatId: string; message: UIMessage; seq: number } | undefined
+  const [appendedMessages, setAppendedMessages] = useState<
+    { chatId: string; messages: UIMessage[]; seq: number } | undefined
   >(undefined);
+  // One id per configured card, kept across retries: the server writes the request
+  // and confirmation records under it, so retrying repairs instead of duplicating.
+  const watchRequestId = useRef<string | undefined>(undefined);
 
   const handledWatchSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -354,6 +357,7 @@ export function DashboardAgentPanel({
     handledWatchSeq.current = watchRequest.seq;
     setWatchError(null);
     setWatchPending(false);
+    watchRequestId.current = generateFriendlyId("wreq");
     setWatchDraft(watchDraftFor(watchRequest.spec));
   }, [watchRequest]);
 
@@ -361,10 +365,12 @@ export function DashboardAgentPanel({
   const openWatchCard = useCallback((spec: WatchSpec) => {
     setWatchError(null);
     setWatchPending(false);
+    watchRequestId.current = generateFriendlyId("wreq");
     setWatchDraft(watchDraftFor(spec));
   }, []);
 
   const dismissWatchCard = useCallback(() => {
+    watchRequestId.current = undefined;
     setWatchDraft(null);
     setWatchError(null);
     setWatchPending(false);
@@ -378,30 +384,35 @@ export function DashboardAgentPanel({
       const body = new FormData();
       body.set("intent", "watch-create");
       body.set("draft", JSON.stringify(watchDraft));
+      // Held across retries, so a resubmit repairs the same pair of records.
+      watchRequestId.current ??= generateFriendlyId("wreq");
+      body.set("clientRequestId", watchRequestId.current);
       // A watch is chat-bound: with no chat open the server creates one.
       if (active?.chatId) body.set("chatId", active.chatId);
 
       const res = await fetch(actionPath, { method: "POST", body });
       const data = (await res.json()) as {
         chatId?: string;
-        message?: UIMessage;
+        messages?: UIMessage[];
         error?: string;
       };
-      if (!res.ok || !data.chatId || !data.message) {
+      if (!res.ok || !data.chatId || !data.messages) {
         setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
         return;
       }
 
+      const messages = data.messages;
       if (active?.chatId === data.chatId) {
-        setAppendedMessage((current) => ({
+        setAppendedMessages((current) => ({
           chatId: data.chatId!,
-          message: data.message!,
+          messages,
           seq: (current?.seq ?? 0) + 1,
         }));
       } else {
-        // No session: nothing is streaming and the block is the whole chat.
-        setActive({ chatId: data.chatId, messages: [data.message], session: null });
+        // No session: nothing is streaming and the records are the whole chat.
+        setActive({ chatId: data.chatId, messages, session: null });
       }
+      watchRequestId.current = undefined;
       setWatchDraft(null);
       void loadHistory();
     } catch (error) {
@@ -549,8 +560,8 @@ export function DashboardAgentPanel({
             watches={chatWatches}
             pagePaths={pagePaths}
             watchCard={watchCard}
-            appendedMessage={
-              appendedMessage?.chatId === active.chatId ? appendedMessage : undefined
+            appendedMessages={
+              appendedMessages?.chatId === active.chatId ? appendedMessages : undefined
             }
             onWatchIntent={openWatchCard}
             onCancelWatch={cancelWatch}
