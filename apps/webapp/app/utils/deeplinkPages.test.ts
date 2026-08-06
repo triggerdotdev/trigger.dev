@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ENV_PAGE_TARGETS, resolveDeeplinkPage } from "./deeplinkPages";
+import { deeplinkSuffix, ENV_PAGE_TARGETS, resolveDeeplinkPage } from "./deeplinkPages";
 
 const ROUTES_DIR = join(__dirname, "../routes");
 
@@ -181,10 +181,60 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("metrics")).toBeUndefined();
   });
 
-  it("drops traversal segments and encodes the rest", () => {
+  it("drops traversal segments, in plain and escaped spellings", () => {
     expect(resolveDeeplinkPage("runs/../../../etc/passwd")).toBe("runs/etc/passwd");
     expect(resolveDeeplinkPage("../runs")).toBe("runs");
-    expect(resolveDeeplinkPage("runs/a?b#c")).toBe("runs/a%3Fb%23c");
     expect(resolveDeeplinkPage("runs//run_1")).toBe("runs/run_1");
+    // `%2e%2e` decodes to `..`, so it has to be rejected in the encoded form too.
+    expect(resolveDeeplinkPage("runs/%2e%2e/%2E%2E/run_1")).toBe("runs/run_1");
+    expect(resolveDeeplinkPage("runs/%2e/run_1")).toBe("runs/run_1");
+    // A malformed escape can't be part of a URL we build.
+    expect(resolveDeeplinkPage("runs/%ZZ/run_1")).toBe("runs/run_1");
+  });
+
+  it("passes encoded segments through without re-encoding them", () => {
+    // The dashboard writes a task id containing a slash this way, so it must survive as one
+    // segment rather than being split or double-encoded into %252F.
+    expect(resolveDeeplinkPage("tasks/standard/group%2Fmy-task")).toBe(
+      "tasks/standard/group%2Fmy-task"
+    );
+    expect(resolveDeeplinkPage("runs/a%3Fb%23c")).toBe("runs/a%3Fb%23c");
+    // An escaped slash stays escaped, so this addresses one odd id rather than climbing out.
+    expect(resolveDeeplinkPage("runs/..%2f..%2fetc")).toBe("runs/..%2f..%2fetc");
+  });
+});
+
+describe("deeplinkSuffix", () => {
+  it("strips the route's own prefix", () => {
+    expect(deeplinkSuffix("/deeplink/tasks")).toBe("tasks");
+    expect(deeplinkSuffix("/deeplink/runs/run_123")).toBe("runs/run_123");
+  });
+
+  it("keeps an escaped slash intact, unlike the decoded splat param", () => {
+    expect(deeplinkSuffix("/deeplink/tasks/standard/group%2Fmy-task")).toBe(
+      "tasks/standard/group%2Fmy-task"
+    );
+  });
+
+  it("treats a bare prefix, a trailing slash and anything outside it as no suffix", () => {
+    expect(deeplinkSuffix("/deeplink")).toBe("");
+    expect(deeplinkSuffix("/deeplink/")).toBe("");
+    // What `new URL` leaves behind once it has normalised and resolved `%2e%2e` itself.
+    expect(deeplinkSuffix("/etc")).toBe("");
+  });
+
+  it("matches what the URL parser actually produces", () => {
+    // The behaviour above is only correct if `new URL` really does keep %2F and really does
+    // resolve %2e%2e, so assert that rather than assuming it.
+    const encodedSlash = new URL("http://x/deeplink/tasks/standard/group%2Fmy-task");
+    expect(deeplinkSuffix(encodedSlash.pathname)).toBe("tasks/standard/group%2Fmy-task");
+    expect(resolveDeeplinkPage(deeplinkSuffix(encodedSlash.pathname))).toBe(
+      "tasks/standard/group%2Fmy-task"
+    );
+
+    // `%2e%2e` is normalised to `..` and resolved by the parser, leaving the prefix behind.
+    const traversal = new URL("http://x/deeplink/runs/%2e%2e/%2e%2e/etc");
+    expect(traversal.pathname).toBe("/etc");
+    expect(resolveDeeplinkPage(deeplinkSuffix(traversal.pathname))).toBeUndefined();
   });
 });

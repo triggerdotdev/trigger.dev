@@ -1,9 +1,15 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { getUsersInvites } from "~/models/member.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { resolveDeeplinkPage } from "~/utils/deeplinkPages";
-import { newOrganizationPath, newProjectPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { deeplinkSuffix, resolveDeeplinkPage } from "~/utils/deeplinkPages";
+import {
+  invitesPath,
+  newOrganizationPath,
+  newProjectPath,
+  v3EnvironmentPath,
+} from "~/utils/pathBuilder";
 
 /**
  * Stable links that don't name an org, project or environment: /deeplink/apikeys redirects to
@@ -11,11 +17,20 @@ import { newOrganizationPath, newProjectPath, v3EnvironmentPath } from "~/utils/
  * ENV_PAGE_TARGETS are followed, so an unrecognised path can never become the redirect target —
  * it lands on the resolved environment instead.
  */
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
-  const page = resolveDeeplinkPage(params["*"] ?? "");
-  const { search } = new URL(request.url);
+  //the suffix comes from the pathname, not the splat param, so an id containing an escaped slash
+  //survives — see deeplinkSuffix
+  const { pathname, search } = new URL(request.url);
+  const page = resolveDeeplinkPage(deeplinkSuffix(pathname));
+
+  //a deeplink is the kind of URL a new invitee is sent, so take them to the invite first, exactly
+  //as the dashboard index does
+  const invites = await getUsersInvites({ email: user.email });
+  if (invites.length > 0) {
+    return redirect(invitesPath());
+  }
 
   const presenter = new SelectBestEnvironmentPresenter();
   try {

@@ -57,6 +57,42 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["waitpoints", { landing: "waitpoints/tokens", prefix: "waitpoints/tokens" }],
 ]);
 
+/** Where this route is mounted. Matches the `deeplink.$` route filename. */
+export const DEEPLINK_PATH_PREFIX = "/deeplink";
+
+/**
+ * The still-encoded suffix after /deeplink, taken from the request's pathname rather than the
+ * splat param. React Router decodes the splat, which turns an id containing an escaped slash
+ * (`group%2Fmy-task`, as the dashboard's own link builder writes it) into two segments that match
+ * no route. The pathname keeps `%2F` intact.
+ *
+ * Returns "" for anything that is not under the prefix. That includes a pathname the URL parser has
+ * already rewritten: it normalises `%2e%2e` to `..` and resolves it, so a traversal attempt can
+ * leave the prefix entirely before this ever sees it.
+ */
+export function deeplinkSuffix(pathname: string): string {
+  const withSlash = `${DEEPLINK_PATH_PREFIX}/`;
+  if (!pathname.startsWith(withSlash)) return "";
+
+  return pathname.slice(withSlash.length);
+}
+
+/** Segments that must not reach the target path, tested in the encoded form we receive. */
+function isUsableSegment(segment: string): boolean {
+  if (segment.length === 0 || segment === "." || segment === "..") return false;
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    //malformed escape, so it can't be part of a URL we build
+    return false;
+  }
+
+  //`%2e%2e` and friends, which would otherwise climb out of the environment path
+  return decoded !== "." && decoded !== "..";
+}
+
 /**
  * The path a deeplink suffix should redirect to, relative to the environment, or undefined when the
  * first segment names no page. Returns "" for a target that is the environment root itself.
@@ -67,24 +103,20 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
  * kept as it was written, so both `/deeplink/waitpoints/waitpoint_123` and the longhand
  * `/deeplink/waitpoints/tokens/waitpoint_123` arrive at the same place.
  *
- * Only the caller's own segments are encoded — the prefix is our own literal. They arrive decoded,
- * so a "?" or "#" in a segment must not become the target's query or hash.
+ * `suffix` is expected already encoded (see `deeplinkSuffix`) and is passed through untouched — an
+ * `encodeURIComponent` pass here would double-encode every id that contains an escape.
  */
-export function resolveDeeplinkPage(splat: string): string | undefined {
-  //traversal segments are dropped so a crafted suffix can't climb out of the environment path
-  const segments = splat
-    .split("/")
-    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+export function resolveDeeplinkPage(suffix: string): string | undefined {
+  const segments = suffix.split("/").filter(isUsableSegment);
 
   const target = ENV_PAGE_TARGETS.get(segments[0] ?? "");
   if (target === undefined) return undefined;
 
   if (segments.length === 1) return target.landing;
 
-  const encoded = segments.map(encodeURIComponent);
-  const written = encoded.join("/");
+  const written = segments.join("/");
   //already written out under the prefix, so grafting would duplicate it
   if (written === target.prefix || written.startsWith(`${target.prefix}/`)) return written;
 
-  return [target.prefix, ...encoded.slice(1)].join("/");
+  return [target.prefix, ...segments.slice(1)].join("/");
 }
