@@ -1,12 +1,6 @@
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
-import {
-  generateText,
-  stepCountIs,
-  streamText,
-  type ModelMessage,
-  type UIMessage,
-} from "ai";
+import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
 import {
   orgAllowsTurnEvals,
   redactEvalToolValue,

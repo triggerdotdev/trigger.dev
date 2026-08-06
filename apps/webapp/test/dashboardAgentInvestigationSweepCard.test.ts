@@ -1,4 +1,5 @@
 import {
+  investigationSettlementMessage,
   investigationSettlementMessageId,
   type Investigation,
   type InvestigationCardMessage,
@@ -93,7 +94,8 @@ function staleRow(state: InvestigationState): Investigation {
 
 /**
  * Stands in for the datastore: the conditional settle (`in_progress` only, mirroring
- * `forceSettledInvestigationState`) and the id-deduped append.
+ * `forceSettledInvestigationState`) and the id-deduped append, as one operation —
+ * which is what the real query is, so a half-applied settle can't exist.
  */
 function fakeStore(initial: InvestigationState) {
   const row = { revision: 0, state: initial };
@@ -101,16 +103,23 @@ function fakeStore(initial: InvestigationState) {
   return {
     row,
     appended,
-    settle: async (params: { id: string; note: string }) => {
+    settleAndClose: async (params: { id: string; chatId: string; note: string }) => {
       if (investigationStateSchema.parse(row.state).outcome !== "in_progress") return null;
-      row.state = forceSettledInvestigationState(investigationStateSchema.parse(row.state));
-      row.revision += 1;
-      return { id: params.id, revision: row.revision, state: row.state };
-    },
-    closeCard: async (params: { chatId: string; message: InvestigationCardMessage }) => {
-      if (appended.some((message) => message.id === params.message.id)) return false;
-      appended.push(params.message);
-      return true;
+      const state = forceSettledInvestigationState(investigationStateSchema.parse(row.state));
+      const revision = row.revision + 1;
+
+      const message = investigationSettlementMessage({
+        investigationId: params.id,
+        revision,
+        state,
+      });
+      if (!message) throw new Error("the closing card didn't validate");
+
+      row.state = state;
+      row.revision = revision;
+      const closed = !appended.some((existing) => existing.id === message.id);
+      if (closed) appended.push(message);
+      return { settled: { id: params.id, revision, state }, closed };
     },
   };
 }
@@ -122,8 +131,7 @@ describe("the dashboard agent investigation sweep's closing card", () => {
 
     const result = await sweepDashboardAgentInvestigations({
       listStale: async () => [staleRow(open)],
-      settle: store.settle,
-      closeCard: store.closeCard,
+      settleAndClose: store.settleAndClose,
     });
 
     expect(store.appended).toHaveLength(1);
@@ -166,8 +174,7 @@ describe("the dashboard agent investigation sweep's closing card", () => {
     const store = fakeStore(open);
     const deps = {
       listStale: async () => [staleRow(open)],
-      settle: store.settle,
-      closeCard: store.closeCard,
+      settleAndClose: store.settleAndClose,
     };
 
     await sweepDashboardAgentInvestigations(deps);

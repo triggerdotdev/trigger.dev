@@ -5,7 +5,7 @@ import {
   getInvestigation,
   investigationSettlementMessageId,
   listStaleOpenInvestigations,
-  settleInvestigationAsInconclusive,
+  settleInvestigationAndCloseCard,
   upsertInvestigationRevision,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
@@ -309,6 +309,52 @@ describe("the dashboard agent investigation sweep", () => {
     }
   );
 
+  /**
+   * The failure window. Settling the row and delivering its card used to be two
+   * operations: once the row was terminal, a failed append left a card reading
+   * `in_progress` that nothing would ever repair, because this sweep only selects
+   * `in_progress` rows. They must land together or not at all.
+   */
+  postgresTest(
+    "a card that can't be delivered leaves the row in_progress, so the next run retries it",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      await seedChat("chat_undeliverable");
+      // A state the settle can merge but no card can be rendered from, so the delivery
+      // half genuinely fails against a real database.
+      const id = await seedInvestigation({
+        chatId: "chat_undeliverable",
+        state: { outcome: "in_progress" } as unknown as InvestigationState,
+        ageMs: STALE_AGE_MS,
+      });
+
+      await expect(sweepDashboardAgentInvestigations()).rejects.toThrow(
+        /failed on 1 investigations/
+      );
+
+      // The settle rolled back with the card: no half-applied terminal row.
+      const row = await getInvestigation(ctx.agentDb, { id });
+      expect(row?.revision).toBe(0);
+      expect((row?.state as { outcome?: string }).outcome).toBe("in_progress");
+      expect(
+        await getChatMessages(ctx.agentDb, {
+          chatId: "chat_undeliverable",
+          userId: "user_sweep",
+          organizationId: "org_sweep",
+        })
+      ).toEqual([]);
+
+      // And it is still in the selection, so the sweep keeps trying rather than
+      // leaving a permanent spinner behind.
+      const stale = await listStaleOpenInvestigations(ctx.agentDb, {
+        olderThan: new Date(),
+        limit: 10,
+      });
+      expect(stale.map((candidate) => candidate.id)).toEqual([id]);
+    },
+    30_000
+  );
+
   postgresTest(
     "one failing row doesn't cost the batch, and the run throws so the job retries",
     async ({ prisma, postgresContainer }) => {
@@ -328,10 +374,10 @@ describe("the dashboard agent investigation sweep", () => {
       const attempted: string[] = [];
       await expect(
         sweepDashboardAgentInvestigations({
-          settle: async (params) => {
+          settleAndClose: async (params) => {
             attempted.push(params.id);
             if (params.id === first) throw new Error("the settle failed");
-            return settleInvestigationAsInconclusive(ctx.agentDb, params);
+            return settleInvestigationAndCloseCard(ctx.agentDb, params);
           },
         })
       ).rejects.toThrow(/failed on 1 investigations/);
