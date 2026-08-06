@@ -1,5 +1,6 @@
 import { tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.server";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
@@ -29,6 +30,21 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     maxItems: 1000,
   },
   limiterConfigOverride: async (authorizationValue) => {
+    const rawApiKey = authorizationValue.replace(/^Bearer /, "");
+
+    if (rawApiKey.startsWith("tr_")) {
+      const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
+
+      if (!scope) {
+        return;
+      }
+
+      return {
+        config: scope.apiRateLimiterConfig,
+        identifier: scope.environmentId,
+      };
+    }
+
     const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
       allowPublicKey: true,
       allowJWT: true,
@@ -40,13 +56,19 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
 
     if (authenticatedEnv.type === "PUBLIC_JWT") {
       return {
-        type: "fixedWindow",
-        window: env.API_RATE_LIMIT_JWT_WINDOW,
-        tokens: env.API_RATE_LIMIT_JWT_TOKENS,
+        config: {
+          type: "fixedWindow",
+          window: env.API_RATE_LIMIT_JWT_WINDOW,
+          tokens: env.API_RATE_LIMIT_JWT_TOKENS,
+        },
       };
-    } else {
-      return authenticatedEnv.environment.organization.apiRateLimiterConfig;
     }
+
+    return {
+      config: authenticatedEnv.environment.organization.apiRateLimiterConfig,
+      // Public keys are browser-distributed, so keep them on per-key buckets.
+      identifier: authenticatedEnv.type === "PRIVATE" ? authenticatedEnv.environment.id : undefined,
+    };
   },
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret

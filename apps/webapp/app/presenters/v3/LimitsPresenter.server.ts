@@ -1,6 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import {
@@ -90,13 +89,11 @@ export class LimitsPresenter extends BasePresenter {
     projectId,
     environmentId,
     environmentType,
-    environmentApiKey,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
-    environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
     const organization = await this._replica.organization.findFirstOrThrow({
@@ -168,10 +165,21 @@ export class LimitsPresenter extends BasePresenter {
       where: { organizationId },
     });
 
-    // Get current rate limit tokens for this environment's API key
+    const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        id: true,
+        parentEnvironmentId: true,
+        maximumConcurrencyLimit: true,
+        concurrencyLimitBurstFactor: true,
+      },
+    });
+    const apiRateLimitEnvironmentId = runtimeEnv?.parentEnvironmentId ?? environmentId;
+
+    // Get current rate limit tokens for this environment's API bucket
     const apiRateLimitTokens = await getRateLimitRemainingTokens(
       "api",
-      environmentApiKey,
+      apiRateLimitEnvironmentId,
       apiRateLimitConfig
     );
     // Batch rate limiter uses environment ID directly (not hashed) with a different key prefix
@@ -181,15 +189,6 @@ export class LimitsPresenter extends BasePresenter {
     );
 
     // Get current queue size for this environment
-    // We need the runtime environment fields for the engine query
-    const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
-      where: { id: environmentId },
-      select: {
-        id: true,
-        maximumConcurrencyLimit: true,
-        concurrencyLimitBurstFactor: true,
-      },
-    });
 
     let currentQueueSize = 0;
     if (runtimeEnv) {
@@ -454,20 +453,14 @@ function resolveBatchConcurrencyConfig(batchConcurrencyConfig?: unknown): {
 
 /**
  * Query the current remaining tokens for a rate limiter using the Upstash getRemaining method.
- * This uses the same configuration and hashing logic as the rate limit middleware.
+ * The API limiter uses the environment ID as the bucket identifier for private API keys.
  */
 async function getRateLimitRemainingTokens(
   keyPrefix: string,
-  apiKey: string,
+  identifier: string,
   config: RateLimiterConfig
 ): Promise<number | null> {
   try {
-    // Hash the authorization header the same way the rate limiter does
-    const authorizationValue = `Bearer ${apiKey}`;
-    const hash = createHash("sha256");
-    hash.update(authorizationValue);
-    const hashedKey = hash.digest("hex");
-
     // Create a Ratelimit instance with the same configuration
     const limiter = createLimiterFromConfig(config);
     const ratelimit = new Ratelimit({
@@ -478,9 +471,9 @@ async function getRateLimitRemainingTokens(
       prefix: `ratelimit:${keyPrefix}`,
     });
 
-    // Use the getRemaining method to get the current remaining tokens
+    // Use the same identifier as the API rate-limit middleware.
     // getRemaining returns a Promise<number>
-    const remaining = await ratelimit.getRemaining(hashedKey);
+    const remaining = await ratelimit.getRemaining(identifier);
     return remaining;
   } catch (error) {
     logger.warn("Failed to get rate limit remaining tokens", {

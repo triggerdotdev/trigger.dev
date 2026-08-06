@@ -1,6 +1,5 @@
 import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
 import type { HostRbacController } from "@trigger.dev/rbac";
-import { trail } from "agentcrumbs"; // @crumbs
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { prisma } from "~/db.server";
@@ -10,8 +9,6 @@ import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetr
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-
-const crumb = trail("webapp"); // @crumbs
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -220,12 +217,6 @@ export async function createEnvironmentApiKey(
   })();
   telemetryRecorder.recordOperation("create", "success");
 
-  crumb("environment API key created", {
-    apiKeyId: apiKey.id,
-    environmentId,
-    presetId: apiKey.presetId,
-  }); // @crumbs
-
   return { apiKey, plaintext: generated.apiKey };
 }
 
@@ -267,7 +258,6 @@ export async function revokeEnvironmentApiKey(
   }
 
   telemetryRecorder.recordOperation("revoke", "success");
-  crumb("environment API key revoked", { apiKeyId, environmentId }); // @crumbs
 }
 
 export function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
