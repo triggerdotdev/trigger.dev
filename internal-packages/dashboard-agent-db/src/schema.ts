@@ -29,8 +29,6 @@ export const chats = dashboardAgentSchema.table(
     organizationId: text("organization_id").notNull(),
     userId: text("user_id").notNull(),
     title: text("title").notNull().default("New chat"),
-    // Superseded by `chat_messages`; nothing reads or writes it. Dropped in a later migration.
-    messages: jsonb("messages").$type<unknown[]>().notNull().default([]),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     // NULL means never read, so everything in the chat counts as unread.

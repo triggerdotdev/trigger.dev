@@ -1,5 +1,4 @@
 import {
-  appendChatMessage,
   appendChatMessageOnce,
   armWatchBatch,
   cancelWatch,
@@ -2344,7 +2343,7 @@ describe("the watch card submit", () => {
   );
 });
 
-describe("appendChatMessage", () => {
+describe("appendChatMessageOnce", () => {
   postgresTest(
     "appends in order without rewriting the transcript",
     async ({ prisma, postgresContainer }) => {
@@ -2356,14 +2355,14 @@ describe("appendChatMessage", () => {
       const second = { id: "watch-card:watch_2", role: "assistant", parts: [] };
 
       expect(
-        await appendChatMessage(ctx.agentDb, {
+        await appendChatMessageOnce(ctx.agentDb, {
           chatId: "chat_1",
           userId: seeded.user.id,
           organizationId: seeded.organization.id,
           message: first,
         })
       ).toBe(true);
-      await appendChatMessage(ctx.agentDb, {
+      await appendChatMessageOnce(ctx.agentDb, {
         chatId: "chat_1",
         userId: seeded.user.id,
         organizationId: seeded.organization.id,
@@ -2387,7 +2386,7 @@ describe("appendChatMessage", () => {
       await seedChat(seeded);
 
       expect(
-        await appendChatMessage(ctx.agentDb, {
+        await appendChatMessageOnce(ctx.agentDb, {
           chatId: "chat_1",
           userId: "user_someone_else",
           organizationId: seeded.organization.id,

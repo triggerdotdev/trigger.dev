@@ -4,7 +4,6 @@ import {
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
 import { and, desc, eq, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
-import { createHash } from "node:crypto";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
@@ -40,7 +39,7 @@ export interface ChatListItem {
   metadata: Record<string, unknown>;
 }
 
-/** Never selects `messages` or the session token. Covered by `chats_org_user_last_msg_idx`. */
+/** Never joins the messages or selects the session token. Covered by `chats_org_user_last_msg_idx`. */
 export async function listChats(
   db: DashboardAgentDb,
   params: { organizationId: string; userId: string; limit?: number }
@@ -281,19 +280,14 @@ export async function softDeleteChat(
   });
 }
 
-/** The row identity: the message's own id, or its content when a legacy message has none. */
+/** Row identity. No fallback: `message_id` is `NOT NULL`, so the database rejects a message with no id. */
 function messageIdOf(message: unknown): string {
-  const id = (message as { id?: unknown } | null)?.id;
-  if (typeof id === "string" && id.length > 0) return id;
-  return `content:${createHash("sha1")
-    .update(JSON.stringify(message) ?? "null")
-    .digest("hex")}`;
+  return (message as { id: string }).id;
 }
 
 /** Lifted out of the payload so the quota count never opens the JSONB. */
 function messageRoleOf(message: unknown): string {
-  const role = (message as { role?: unknown } | null)?.role;
-  return typeof role === "string" && role.length > 0 ? role : "assistant";
+  return (message as { role: string }).role;
 }
 
 /**

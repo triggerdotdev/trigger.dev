@@ -25,7 +25,7 @@ const { sweepDashboardAgentInvestigations } =
  * The transcript half of the sweep, without a container: settling the row is invisible
  * to the panel, which resolves a card from the chat's own `render_view` parts.
  *
- * The database half — that the closing card actually lands in `chats.messages` — is
+ * The database half — that the closing card actually lands in `chat_messages` — is
  * covered by `dashboardAgentInvestigationSweep.test.ts`, which needs Postgres.
  */
 
