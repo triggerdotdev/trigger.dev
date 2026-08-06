@@ -5,6 +5,7 @@ export type ApiKeyPreset = {
   available: boolean;
   label: string;
   description: string;
+  scopes?: string[];
   usesTaskSelection?: boolean;
 };
 

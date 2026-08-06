@@ -105,6 +105,7 @@ containerTest(
         id: "RESTRICTED_TEST_PRESET",
         label: "Restricted access",
         description: "Restricted test access",
+        scopes: ["read:deployments"],
         usesTaskSelection: false,
         available: true,
       },

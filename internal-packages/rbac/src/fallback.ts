@@ -223,7 +223,16 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   }
 
   async apiKeyPresets(_organizationId: string) {
-    return null;
+    return [
+      {
+        id: FULL_ACCESS_PRESET_ID,
+        label: "No restrictions",
+        description: "Full access to this environment, matching the root API key.",
+        scopes: ["admin"],
+        usesTaskSelection: false,
+        available: true,
+      },
+    ];
   }
 
   async prepareApiKeyPolicy(params: {
@@ -231,15 +240,15 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     presetId: string;
     taskIdentifiers?: string[];
   }) {
-    // Without a plugin there is no preset catalogue, so full access is the only
-    // policy on offer — but the caller still has to ask for it by name. Any
-    // other preset, or any task selection, is a restricted key and unavailable.
+    // Full access is the only policy on offer without a plugin, but the caller
+    // still has to ask for it by name. Any other preset, or any task selection,
+    // is a restricted key and unavailable.
     if (params.presetId !== FULL_ACCESS_PRESET_ID || (params.taskIdentifiers?.length ?? 0) > 0) {
       return { ok: false as const, error: "API key access presets are not available" };
     }
 
-    // `presetId: null` because this install has no catalogue to reference — the
-    // key is full-access, not an instance of a named preset.
+    // Persist no preset ID: this is the standalone full-access policy rather
+    // than an enterprise plugin-defined preset.
     return {
       ok: true as const,
       policy: { presetId: null, scopes: ["admin"] },
