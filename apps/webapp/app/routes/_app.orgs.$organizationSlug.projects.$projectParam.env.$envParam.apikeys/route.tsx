@@ -1,5 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";

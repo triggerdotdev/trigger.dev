@@ -1,6 +1,5 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";

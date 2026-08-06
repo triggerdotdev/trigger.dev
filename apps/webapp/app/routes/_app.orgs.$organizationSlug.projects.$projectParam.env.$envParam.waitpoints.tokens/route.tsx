@@ -1,5 +1,4 @@
 import { Outlet, useParams } from "@remix-run/react";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";

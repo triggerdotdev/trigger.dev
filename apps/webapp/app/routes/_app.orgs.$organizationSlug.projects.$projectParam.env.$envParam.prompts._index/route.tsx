@@ -43,8 +43,6 @@ export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
 };
 
-import { LinkButton } from "~/components/primitives/Buttons";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Prompts");

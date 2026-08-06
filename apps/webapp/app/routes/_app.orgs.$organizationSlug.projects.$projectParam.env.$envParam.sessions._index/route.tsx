@@ -1,5 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";

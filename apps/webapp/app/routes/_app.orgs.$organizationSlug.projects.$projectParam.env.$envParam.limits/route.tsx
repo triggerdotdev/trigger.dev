@@ -1,5 +1,4 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
