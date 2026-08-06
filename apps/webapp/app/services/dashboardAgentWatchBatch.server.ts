@@ -205,17 +205,20 @@ async function evaluateGroup(
         })
     );
 
-    // Recorded even on the final evaluation. Guarded on `active`, never touches
-    // `tickCount`.
-    await recordWatchCheck(dashboardAgentDb, {
-      id: watch.id,
-      lastResult: {
-        result: outcome.result,
-        facts: outcome.facts,
-        observed: outcome.observed,
-        final,
-      },
-    });
+    // Only a real evaluation is recorded, final or not: `unavailable` means nothing was read,
+    // so writing it would move `lastCheckedAt` and overwrite the facts a streak lives in.
+    // Guarded on `active`, and never touches `tickCount`.
+    if (outcome.result !== "unavailable") {
+      await recordWatchCheck(dashboardAgentDb, {
+        id: watch.id,
+        lastResult: {
+          result: outcome.result,
+          facts: outcome.facts,
+          observed: outcome.observed,
+          final,
+        },
+      });
+    }
 
     return { ...base, result: outcome.result, facts: outcome.facts, observed: outcome.observed };
   };
