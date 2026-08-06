@@ -81,6 +81,9 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
 
 const SESSION_SECRET = "test-session-secret-for-watch-tokens";
 process.env.SESSION_SECRET = SESSION_SECRET;
+// The agent's subscribe endpoint refuses without an email transport configured.
+process.env.ALERT_FROM_EMAIL = "alerts@example.com";
+process.env.ALERT_EMAIL_TRANSPORT = "smtp";
 
 const {
   armDashboardAgentWatchBatch,
@@ -105,6 +108,13 @@ const {
 const { runWatchBatchCheck } = await import("~/services/dashboardAgentWatchBatch.server");
 const { signDashboardAgentWatchBatchToken, signDashboardAgentWatchToken } =
   await import("~/services/dashboardAgentWatchToken.server");
+const { loader: alertsLoader, action: alertsAction } =
+  await import("~/routes/api.v1.dashboard-agent.alerts");
+const { action: alertChannelAction } =
+  await import("~/routes/api.v1.dashboard-agent.alerts.$channelId");
+const { findProjectBySlug } = await import("~/models/project.server");
+const { DASHBOARD_AGENT_WATCH_ALERT_TYPE } =
+  await import("~/services/dashboardAgentWatchAlerts.server");
 
 /** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
 async function applyAgentSchema(prisma: PrismaClient) {
@@ -1648,6 +1658,241 @@ function storedMessages(seeded: Seeded, chatId: string) {
     organizationId: seeded.organization.id,
   }) as Promise<Array<{ id: string; role: string }> | null>;
 }
+
+/**
+ * The Alerts page authorizes with `findProjectBySlug` alone (see
+ * `_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.alerts/route.tsx`):
+ * every organization member may list, create and delete a project's alert channels, with
+ * no role check. These tests pin that policy and prove the agent's routes never write
+ * wider than it.
+ */
+describe("the agent's alert boundary", () => {
+  /** A second, plain member of the same organization. */
+  async function seedMember(prisma: PrismaClient, seeded: Seeded) {
+    const member = await prisma.user.create({
+      data: {
+        email: `member_${Math.random().toString(36).slice(2, 10)}@example.com`,
+        authenticationMethod: "MAGIC_LINK",
+      },
+    });
+    await prisma.orgMember.create({
+      data: { organizationId: seeded.organization.id, userId: member.id, role: "MEMBER" },
+    });
+    return member;
+  }
+
+  async function seedOutsider(prisma: PrismaClient) {
+    return prisma.user.create({
+      data: {
+        email: `outsider_${Math.random().toString(36).slice(2, 10)}@example.com`,
+        authenticationMethod: "MAGIC_LINK",
+      },
+    });
+  }
+
+  async function seedWatchChannel(prisma: PrismaClient, seeded: Seeded, email: string) {
+    return prisma.projectAlertChannel.create({
+      data: {
+        friendlyId: `alert_${Math.random().toString(36).slice(2, 10)}`,
+        name: `Watch alerts for ${email}`,
+        projectId: seeded.project.id,
+        alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE as never],
+        environmentTypes: ["PRODUCTION"],
+        type: "EMAIL",
+        properties: { email },
+        deduplicationKey: `dashboard-agent-watch:${email}`,
+      },
+    });
+  }
+
+  function listRequest(chatId: string) {
+    return {
+      request: new Request(
+        `https://app.trigger.dev/api/v1/dashboard-agent/alerts?chatId=${chatId}`,
+        { headers: { Authorization: "Bearer tr_uat_test" } }
+      ),
+      params: {},
+      context: {} as never,
+    } as never;
+  }
+
+  function createRequest(body: Record<string, unknown>) {
+    return {
+      request: new Request("https://app.trigger.dev/api/v1/dashboard-agent/alerts", {
+        method: "POST",
+        headers: { Authorization: "Bearer tr_uat_test", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      params: {},
+      context: {} as never,
+    } as never;
+  }
+
+  function deleteRequest(channelId: string, body: Record<string, unknown>) {
+    return {
+      request: new Request(`https://app.trigger.dev/api/v1/dashboard-agent/alerts/${channelId}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer tr_uat_test", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      params: { channelId },
+      context: {} as never,
+    } as never;
+  }
+
+  postgresTest(
+    "the dashboard lets any organization member manage a project's alerts",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-policy");
+      const member = await seedMember(prisma, seeded);
+      const outsider = await seedOutsider(prisma);
+
+      // The whole of the Alerts page's authorization, for list, create and delete alike.
+      expect(
+        await findProjectBySlug(seeded.organization.slug, seeded.project.slug, member.id)
+      ).not.toBeNull();
+      expect(
+        await findProjectBySlug(seeded.organization.slug, seeded.project.slug, outsider.id)
+      ).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "a plain member reads and writes watch alerts through the agent, an outsider reads nothing",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-member");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      await seedWatchChannel(prisma, seeded, member.email);
+
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+      const listed = (await alertsLoader(listRequest("chat_member"))) as Response;
+      expect(listed.status).toBe(200);
+      // The same channel the Alerts page would show this member.
+      expect((await listed.json()).alerts).toHaveLength(1);
+
+      // An outsider has no chat here and no membership, so nothing resolves.
+      ctx.actor = {
+        userId: (await seedOutsider(prisma)).id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+      const refused = (await alertsLoader(listRequest("chat_member"))) as Response;
+      expect(refused.status).toBe(404);
+    }
+  );
+
+  postgresTest(
+    "the agent only ever subscribes the caller's own address",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-create");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      const own = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(own.status).toBe(200);
+      expect((await own.json()).target).toBe(member.email);
+
+      // The Alerts page would let this member add anyone; the agent may not.
+      const other = (await alertsAction(
+        createRequest({
+          chatId: "chat_member",
+          channel: "email",
+          email: "someone-else@example.com",
+        })
+      )) as Response;
+      expect(other.status).toBe(400);
+      expect(await other.json()).toMatchObject({ code: "email_not_allowed" });
+
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "the agent's delete only takes the watch type off a watch channel",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-delete");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      const watchChannel = await seedWatchChannel(prisma, seeded, member.email);
+
+      // A channel the agent never created and has no business touching.
+      const runAlerts = await prisma.projectAlertChannel.create({
+        data: {
+          friendlyId: `alert_${Math.random().toString(36).slice(2, 10)}`,
+          name: "Run failures",
+          projectId: seeded.project.id,
+          alertTypes: ["TASK_RUN"],
+          environmentTypes: ["PRODUCTION"],
+          type: "EMAIL",
+          properties: { email: member.email },
+        },
+      });
+
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      const removed = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(removed.status).toBe(200);
+      expect(await removed.json()).toMatchObject({ ok: true, disabledChannel: true });
+
+      // The Alerts page would let a member delete this outright; the agent gets a 404.
+      const untouched = (await alertChannelAction(
+        deleteRequest(runAlerts.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(untouched.status).toBe(404);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: runAlerts.id } })
+      ).toMatchObject({ enabled: true, alertTypes: ["TASK_RUN"] });
+
+      // An outsider can't reach the channel at all.
+      ctx.actor = {
+        userId: (await seedOutsider(prisma)).id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+      const refused = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(refused.status).toBe(404);
+    }
+  );
+});
 
 describe("the watch card submit", () => {
   postgresTest(

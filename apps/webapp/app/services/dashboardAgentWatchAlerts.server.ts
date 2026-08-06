@@ -219,7 +219,11 @@ export async function unsubscribeChannelFromWatchAlerts(
       where: scope,
       select: { name: true, alertTypes: true },
     });
-    if (!channel) return { ok: false, reason: "not_found" };
+    // A channel this alert type was never on is out of scope: stripping nothing off it
+    // would still report success, and an empty list would disable it.
+    if (!channel || !channel.alertTypes.includes(DASHBOARD_AGENT_WATCH_ALERT_TYPE)) {
+      return { ok: false, reason: "not_found" };
+    }
 
     const remaining = channel.alertTypes.filter(
       (type) => type !== DASHBOARD_AGENT_WATCH_ALERT_TYPE
