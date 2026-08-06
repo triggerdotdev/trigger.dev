@@ -286,8 +286,8 @@ postgresTest(
     const seeded = await seedProject(prisma);
     ctx.patUserId = seeded.user.id;
 
-    // The public PAT exchange used by MCP and the CLI may issue an environment-agnostic token.
-    // Narrowing it would be a breaking change, so it reads the whole project as it always has.
+    // The public PAT exchange mints claimless tokens, so narrowing one would be a breaking
+    // change: it reads the whole project as it always has.
     const environments = await call(environmentsLoader, {
       projectRef: seeded.project.externalRef,
       token: await agentToken(seeded.user.id, undefined, "mcp"),

@@ -89,8 +89,8 @@ export type UserActorEnvironmentScope =
  * Throws a 403 Response when a claim can't be honoured: a claim outside the target project, or a
  * request filter that names anything else. A conflicting filter is refused rather than overridden,
  * so a caller never gets another environment's shape of answer under its own filter. A token with
- * no claim keeps the project-wide answer, as the public PAT exchange's MCP and CLI callers expect —
- * except a dashboard-agent token, which always carries one, so its absence is a bug.
+ * no claim keeps the project-wide answer — narrowing it would break the public PAT exchange, which
+ * mints claimless tokens. A dashboard-agent token always carries one, so its absence is a bug.
  */
 export async function resolveUserActorEnvironmentScope(
   userActor: UserActorClaims | undefined,
