@@ -105,6 +105,10 @@ export const watches = dashboardAgentSchema.table(
     index("watches_org_user_wake_idx")
       .on(t.organizationId, t.userId, sql`coalesce(${t.firedAt}, ${t.lastCheckedAt}) desc`)
       .where(sql`${t.deliveryStatus} = 'delivered' and ${t.status} in ('fired', 'expired')`),
+    // Covers the page load's "does this user have a live watch" read.
+    index("watches_org_user_active_idx")
+      .on(t.organizationId, t.userId)
+      .where(sql`${t.status} = 'active'`),
     // Covers the batch group lookups. The trailing key is what the batch orders by, so
     // the group's least-recently-checked watches are the ones the cap keeps.
     index("watches_active_env_cadence_idx")

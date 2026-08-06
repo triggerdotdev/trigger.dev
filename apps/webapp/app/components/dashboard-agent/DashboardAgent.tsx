@@ -40,11 +40,14 @@ export function DashboardAgent({
   promotedPrompt,
   /** From the page load: unread wakes waiting for this user, whatever this browser remembers. */
   initialUnreadWakes = 0,
+  /** Also from the page load: a watch is running, so a wake can still arrive in this tab. */
+  hasActiveWatches = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
   promotedPrompt?: SuggestedPrompt;
   initialUnreadWakes?: number;
+  hasActiveWatches?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -141,15 +144,17 @@ export function DashboardAgent({
     setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // Nothing to be woken about means nothing to poll for. The page load's unread count is the
-  // ungated signal; the browser's own memory of a watch starts the poll without a reload. Once
-  // either says yes this tab keeps polling, so a wake reaches a tab open before the watch existed.
+  // Nothing to be woken about means nothing to poll for. The page load's unread count and
+  // active-watch flag are the ungated signals; the browser's own memory of a watch starts the
+  // poll without a reload. Once any says yes this tab keeps polling, so a wake reaches a tab
+  // that was open before the watch existed.
   const [watching, setWatching] = useState(false);
   useEffect(() => {
     const sync = () => {
       if (
         shouldPollWakeFeed({
           serverUnreadWakes: initialUnreadWakes,
+          serverHasActiveWatches: hasActiveWatches,
           organizationId: organization.id,
         })
       )
@@ -157,7 +162,7 @@ export function DashboardAgent({
     };
     sync();
     return subscribeWatchActivity(sync);
-  }, [organization.id, initialUnreadWakes]);
+  }, [organization.id, initialUnreadWakes, hasActiveWatches]);
 
   useEffect(() => {
     if (!hasAccess || !watching) return;

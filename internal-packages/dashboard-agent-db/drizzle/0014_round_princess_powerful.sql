@@ -1,0 +1,1 @@
+CREATE INDEX "watches_org_user_active_idx" ON "trigger_dashboard_agent"."watches" USING btree ("organization_id","user_id") WHERE "trigger_dashboard_agent"."watches"."status" = 'active';

@@ -320,6 +320,49 @@ export async function countUnreadWatchWakes(
   return rows[0]?.count ?? 0;
 }
 
+/**
+ * Whether this user has a watch that can still wake them here. Covered by
+ * `watches_org_user_active_idx`; a chat deletion cancels its watches, so `active` is enough.
+ */
+export async function hasActiveWatches(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<boolean> {
+  const rows = await db
+    .select({ one: sql<number>`1` })
+    .from(watches)
+    .where(
+      and(
+        eq(watches.status, "active"),
+        eq(watches.organizationId, params.organizationId),
+        eq(watches.userId, params.userId)
+      )
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+export interface DashboardAgentWakeActivity {
+  unreadWakes: number;
+  /** A watch is still running, so a wake can arrive in a tab that has never seen one. */
+  hasActiveWatches: boolean;
+}
+
+/**
+ * The page load's whole wake signal. Both halves are needed: a fresh browser with an active
+ * watch and no wake yet must still start polling, or its first wake only lands on a reload.
+ */
+export async function readDashboardAgentWakeActivity(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<DashboardAgentWakeActivity> {
+  const [unreadWakes, active] = await Promise.all([
+    countUnreadWatchWakes(db, params),
+    hasActiveWatches(db, params),
+  ]);
+  return { unreadWakes, hasActiveWatches: active };
+}
+
 export interface UnreadWatchWake {
   watchId: string;
   chatId: string;

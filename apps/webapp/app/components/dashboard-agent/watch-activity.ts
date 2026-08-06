@@ -1,7 +1,7 @@
 /**
  * Which organizations this browser has seen agent watches in. This is an accelerator, not the
- * gate: a watch created in this tab starts the poll without a reload. The ungated signal is the
- * unread count the page load carries — see {@link shouldPollWakeFeed}.
+ * gate: a watch created in this tab starts the poll without a reload. The ungated signals are the
+ * unread count and the active-watch flag the page load carries — see {@link shouldPollWakeFeed}.
  * Shared through `localStorage`, so a watch created in one tab wakes the others.
  */
 
@@ -58,14 +58,20 @@ export function forgetWatchActivity(organizationId: string): void {
 }
 
 /**
- * Whether this browser should poll the wake feed. `serverUnreadWakes` comes from the page load,
- * so a fresh browser with an unread wake polls without ever opening the panel.
+ * Whether this browser should poll the wake feed. Both server signals come from the page load,
+ * so a fresh browser polls without ever opening the panel: `serverUnreadWakes` for a wake that
+ * already landed, `serverHasActiveWatches` for one created elsewhere that hasn't fired yet.
  */
 export function shouldPollWakeFeed(params: {
   serverUnreadWakes: number;
+  serverHasActiveWatches?: boolean;
   organizationId: string;
 }): boolean {
-  return params.serverUnreadWakes > 0 || hasWatchActivity(params.organizationId);
+  return (
+    params.serverUnreadWakes > 0 ||
+    params.serverHasActiveWatches === true ||
+    hasWatchActivity(params.organizationId)
+  );
 }
 
 /** Fires when this browser learns of a watch, in this tab or — via `storage` — in another one. */

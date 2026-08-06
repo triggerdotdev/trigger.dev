@@ -105,6 +105,27 @@ describe("watch activity", () => {
       expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_1" })).toBe(false);
     });
 
+    it("polls in a fresh browser whose only signal is an active watch", () => {
+      // Created on another machine, nothing woken yet, no local marker.
+      expect(
+        shouldPollWakeFeed({
+          serverUnreadWakes: 0,
+          serverHasActiveWatches: true,
+          organizationId: "org_1",
+        })
+      ).toBe(true);
+    });
+
+    it("stays quiet in a fresh browser with no wake and no active watch", () => {
+      expect(
+        shouldPollWakeFeed({
+          serverUnreadWakes: 0,
+          serverHasActiveWatches: false,
+          organizationId: "org_1",
+        })
+      ).toBe(false);
+    });
+
     it("polls without a reload once this browser sees a watch", () => {
       rememberWatchActivity("org_1");
 
