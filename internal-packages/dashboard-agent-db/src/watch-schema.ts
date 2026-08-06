@@ -79,6 +79,13 @@ export const watches = dashboardAgentSchema.table(
     lastResult: jsonb("last_result").$type<Record<string, unknown>>(),
     // Check idempotency keys are `watch:{id}:tick:{n}`.
     tickCount: integer("tick_count").notNull().default(0),
+    /**
+     * The batch group's second key. Generated from `spec`, so no write path can let it
+     * drift, and the batch predicate is served by an index instead of re-parsing JSON.
+     */
+    cadenceMinutes: integer("cadence_minutes").generatedAlwaysAs(
+      sql`((spec ->> 'checkEveryMinutes')::int)`
+    ),
   },
   (t) => [
     index("watches_chat_idx").on(t.chatId),
@@ -98,9 +105,15 @@ export const watches = dashboardAgentSchema.table(
     index("watches_org_user_wake_idx")
       .on(t.organizationId, t.userId, sql`coalesce(${t.firedAt}, ${t.lastCheckedAt}) desc`)
       .where(sql`${t.deliveryStatus} = 'delivered' and ${t.status} in ('fired', 'expired')`),
-    // Covers `listActiveWatchesForBatch`.
-    index("watches_active_env_idx")
-      .on(t.environmentId, t.expiresAt)
+    // Covers the batch group lookups. The trailing key is what the batch orders by, so
+    // the group's least-recently-checked watches are the ones the cap keeps.
+    index("watches_active_env_cadence_idx")
+      .on(
+        t.environmentId,
+        t.cadenceMinutes,
+        sql`coalesce(${t.lastCheckedAt}, ${t.createdAt})`,
+        t.expiresAt
+      )
       .where(sql`${t.status} = 'active'`),
   ]
 );

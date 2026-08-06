@@ -757,17 +757,30 @@ export async function listExpiredActiveWatches(
     .limit(params.limit ?? 100);
 }
 
-// Unindexed, but every query using it is already narrowed by `watches_active_env_idx`.
-const watchCadenceMinutes = sql<number>`(${watches.spec} ->> 'checkEveryMinutes')::int`;
+// Generated from `spec`, so it can't disagree with it, and indexed by
+// `watches_active_env_cadence_idx`.
+const watchCadenceMinutes = watches.cadenceMinutes;
 
-/** Soonest-deadline-first order means a group over the cap never defers an expiring watch. */
+/** A group larger than this is checked across several ticks, oldest check first. */
 const BATCH_GROUP_LIMIT = 500;
 
-/** Which of these are due is the caller's decision, from the tick's own clock. */
+/** How long ago this watch was last looked at. A never-checked watch sorts by creation. */
+const watchLastLookedAt = sql`coalesce(${watches.lastCheckedAt}, ${watches.createdAt})`;
+
+/**
+ * Which of these are due is the caller's decision, from the tick's own clock.
+ *
+ * Least-recently-checked first is the fairness invariant: a group over the cap rotates, so
+ * every watch is reached within `ceil(group / cap)` ticks instead of the same prefix winning
+ * every tick. Watches whose window closes within a cadence still sort first, so a group over
+ * the cap never defers a final evaluation.
+ */
 export async function listActiveWatchesForBatch(
   db: DashboardAgentDb,
   params: { environmentId: string; cadenceMinutes: number; limit?: number }
 ): Promise<Watch[]> {
+  const closingSoon = sql`(${watches.expiresAt} <= now() + make_interval(mins => ${params.cadenceMinutes})) desc`;
+
   return db
     .select()
     .from(watches)
@@ -775,10 +788,10 @@ export async function listActiveWatchesForBatch(
       and(
         eq(watches.status, "active"),
         eq(watches.environmentId, params.environmentId),
-        sql`${watchCadenceMinutes} = ${params.cadenceMinutes}`
+        eq(watchCadenceMinutes, params.cadenceMinutes)
       )
     )
-    .orderBy(watches.expiresAt)
+    .orderBy(closingSoon, watchLastLookedAt, watches.expiresAt)
     .limit(params.limit ?? BATCH_GROUP_LIMIT);
 }
 
@@ -802,7 +815,7 @@ export async function listWatchesAwaitingDeliveryForBatch(
     .where(
       and(
         eq(watches.environmentId, params.environmentId),
-        sql`${watchCadenceMinutes} = ${params.cadenceMinutes}`,
+        eq(watchCadenceMinutes, params.cadenceMinutes),
         inArray(watches.status, ["fired", "expired"]),
         sql`(${watches.deliveryStatus} = 'pending' or (${watches.deliveryStatus} = 'delivering' and coalesce(${watches.deliveryClaimedAt}, ${watches.createdAt}) <= ${params.claimStaleBefore.toISOString()}::timestamptz))`,
         isNull(chats.deletedAt)
@@ -919,7 +932,7 @@ export async function listWatchBatchGroupsToArm(
   return db
     .selectDistinct({
       environmentId: watches.environmentId,
-      cadenceMinutes: watchCadenceMinutes,
+      cadenceMinutes: sql<number>`${watchCadenceMinutes}`,
     })
     .from(watches)
     .leftJoin(
