@@ -3,6 +3,7 @@ import {
   cancelWatch,
   chatExists,
   countUnreadWatchWakes,
+  countChatsWithUnreadWork,
   countUserMessages,
   createChat,
   getChatMessages,
@@ -125,13 +126,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
     if (!scoped) return json({ error: "Project not found" }, { status: 404 });
 
-    return json(
-      await readWatchWakeFeed(dashboardAgentDb, {
+    const [feed, unreadWork] = await Promise.all([
+      readWatchWakeFeed(dashboardAgentDb, {
         organizationId: scoped.organizationId,
         userId,
         deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
-      })
-    );
+      }),
+      // The dot has two sources; the poll is where a closed panel learns about either.
+      countChatsWithUnreadWork(dashboardAgentDb, {
+        organizationId: scoped.organizationId,
+        userId,
+      }),
+    ]);
+
+    return json({ ...feed, unreadWork });
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);

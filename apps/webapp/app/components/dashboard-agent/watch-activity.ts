@@ -65,11 +65,17 @@ export function forgetWatchActivity(organizationId: string): void {
 export function shouldPollWakeFeed(params: {
   serverUnreadWakes: number;
   serverHasActiveWatches?: boolean;
+  /** Chats holding work their owner hasn't seen, as the page load counted them. */
+  serverUnreadWork?: number;
+  /** This tab sent a turn that may still be running behind a closed panel. */
+  turnInFlight?: boolean;
   organizationId: string;
 }): boolean {
   return (
     params.serverUnreadWakes > 0 ||
     params.serverHasActiveWatches === true ||
+    (params.serverUnreadWork ?? 0) > 0 ||
+    params.turnInFlight === true ||
     hasWatchActivity(params.organizationId)
   );
 }

@@ -65,6 +65,9 @@ export function DashboardAgent({
   // Work that finished behind a closed panel. Counted server-side on page load and refreshed
   // with the chat list; the wake poll doesn't carry it.
   const [unreadWork, setUnreadWork] = useState(initialUnreadWork);
+  // A turn this tab started may finish after the panel closes; that is exactly the case the
+  // dot exists for, so the poll has to be running when it lands.
+  const [turnStarted, setTurnStarted] = useState(false);
   const toastedWakes = useRef(new Set<string>());
   // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
   useEffect(() => {
@@ -163,6 +166,8 @@ export function DashboardAgent({
         shouldPollWakeFeed({
           serverUnreadWakes: initialUnreadWakes,
           serverHasActiveWatches: hasActiveWatches,
+          serverUnreadWork: initialUnreadWork,
+          turnInFlight: turnStarted,
           organizationId: organization.id,
         })
       )
@@ -170,7 +175,7 @@ export function DashboardAgent({
     };
     sync();
     return subscribeWatchActivity(sync);
-  }, [organization.id, initialUnreadWakes, hasActiveWatches]);
+  }, [organization.id, initialUnreadWakes, hasActiveWatches, initialUnreadWork, turnStarted]);
 
   useEffect(() => {
     if (!hasAccess || !watching) return;
@@ -183,13 +188,19 @@ export function DashboardAgent({
           signal: AbortSignal.timeout(UNREAD_REQUEST_TIMEOUT_MS),
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
+        const data = (await res.json()) as {
+          unreadWakes?: number;
+          unreadWork?: number;
+          wakes?: WatchWake[];
+        };
         if (cancelled) return;
         // The wakes list carries read ones too, so only unread ones are subtracted.
         const unreadInView = (data.wakes ?? []).filter(
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
+        // A chat open in the panel is being read right now, so it isn't unread work.
+        setUnreadWork(Math.max(0, (data.unreadWork ?? 0) - (open && visibleChat.current ? 1 : 0)));
 
         const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
         for (const wake of fresh) rememberToasted(wake.watchId);
