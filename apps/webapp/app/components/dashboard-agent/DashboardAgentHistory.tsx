@@ -16,6 +16,8 @@ export type DashboardAgentChat = {
   lastMessageAt: string | null;
   watches?: WatchChip[];
   hasUnreadWake?: boolean;
+  /** The chat answered, settled a card or woke while it was closed. */
+  hasUnreadWork?: boolean;
   hasActiveWatch?: boolean;
   hasOpenInvestigation?: boolean;
 };
@@ -49,11 +51,14 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
   );
 }
 
+/** A wake is unread work too, so one predicate answers for both. */
+export function chatIsUnread(chat: DashboardAgentChat): boolean {
+  return (chat.hasUnreadWake ?? false) || (chat.hasUnreadWork ?? false);
+}
+
 // Must stay a stable sort on one key: everything else keeps the server's order.
 function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
-  return [...chats].sort(
-    (a, b) => Number(b.hasUnreadWake ?? false) - Number(a.hasUnreadWake ?? false)
-  );
+  return [...chats].sort((a, b) => Number(chatIsUnread(b)) - Number(chatIsUnread(a)));
 }
 
 // Weeks are the coarsest unit: months render as "1.8mo" for eight weeks.
@@ -104,7 +109,7 @@ export function DashboardAgentHistoryMenu({
                 <AgentListRow
                   key={chat.id}
                   label={chat.title}
-                  unread={chat.hasUnreadWake ?? false}
+                  unread={chatIsUnread(chat)}
                   status={process ? <ProcessIcon process={process} /> : null}
                   meta={age}
                   variant={chat.id === currentChatId ? "selected" : "default"}

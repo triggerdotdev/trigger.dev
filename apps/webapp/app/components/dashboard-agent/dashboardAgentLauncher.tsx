@@ -26,6 +26,8 @@ type DashboardAgentContextValue = {
   openWithWatch: (spec: WatchSpec) => void;
   /** Polled only while the panel is closed; 0 while it is open. */
   unreadWakes: number;
+  /** Chats that answered, settled or woke while the panel was closed. */
+  unreadWork: number;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -43,12 +45,12 @@ export function DashboardAgentLauncher() {
     return null;
   }
 
-  const { open, setOpen, unreadWakes } = agent;
+  const { open, setOpen, unreadWakes, unreadWork } = agent;
   if (open) {
     return null;
   }
 
-  const hasUnread = unreadWakes > 0;
+  const hasUnread = unreadWakes > 0 || unreadWork > 0;
 
   return (
     <SimpleTooltip

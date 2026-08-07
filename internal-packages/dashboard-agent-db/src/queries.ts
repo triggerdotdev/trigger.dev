@@ -34,6 +34,8 @@ export interface ChatListItem {
   title: string;
   pinnedAt: Date | null;
   lastMessageAt: Date | null;
+  /** When the owner last had this chat open. Older than `lastMessageAt` means unread. */
+  lastReadAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown>;
@@ -50,6 +52,7 @@ export async function listChats(
       title: chats.title,
       pinnedAt: chats.pinnedAt,
       lastMessageAt: chats.lastMessageAt,
+      lastReadAt: chats.lastReadAt,
       createdAt: chats.createdAt,
       updatedAt: chats.updatedAt,
       metadata: chats.metadata,
@@ -112,6 +115,30 @@ export async function countUserMessages(
         eq(chatMessages.role, "user"),
         notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
         params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
+      )
+    );
+  return rows[0]?.count ?? 0;
+}
+
+/**
+ * Chats whose transcript moved on after their owner last looked. A watch wake is one way
+ * that happens; an answer that landed while the panel was closed is another, and the panel
+ * shows them the same way — a dot on the launcher, the chat lifted and highlighted.
+ */
+export async function countChatsWithUnreadWork(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chats)
+    .where(
+      and(
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`${chats.lastMessageAt} is not null`,
+        sql`(${chats.lastReadAt} is null or ${chats.lastMessageAt} > ${chats.lastReadAt})`
       )
     );
   return rows[0]?.count ?? 0;

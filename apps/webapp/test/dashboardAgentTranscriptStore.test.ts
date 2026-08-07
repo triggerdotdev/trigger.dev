@@ -1,5 +1,6 @@
 import {
   appendChatMessageOnceByChatId,
+  countChatsWithUnreadWork,
   countUserMessages,
   createChat,
   createDashboardAgentDb,
@@ -654,6 +655,40 @@ describe("a write can no longer lose a message another process appended", () => 
         (stored) => stored.message_id === cardId
       )!;
       expect(afterCard.message).toEqual(card.message);
+    },
+    30_000
+  );
+});
+
+describe("countChatsWithUnreadWork", () => {
+  postgresTest(
+    "counts a chat whose transcript moved on after its owner last looked",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_unread_work";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+      const scope = { organizationId: ORG_ID, userId: USER_ID };
+
+      // A chat nobody has written in is not unread.
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(0);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1")] });
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(1);
+
+      // Opening it clears the state...
+      await prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.chats set last_read_at = now() where id = $1`,
+        chatId
+      );
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(0);
+
+      // ...until the next answer lands behind a closed panel.
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a2")] });
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(1);
+
+      // Another user's chat is never counted here.
+      expect(
+        await countChatsWithUnreadWork(agentDb, { ...scope, userId: "user_someone_else" })
+      ).toBe(0);
     },
     30_000
   );
