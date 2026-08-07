@@ -89,6 +89,29 @@ export function queueMetricsAreEmpty(data: unknown): boolean {
   );
 }
 
+/**
+ * Metrics plus the queue's live row. `paused` is the part the model must lead with: a queue
+ * someone stopped explains its own emptiness, and every metric below it is a consequence
+ * rather than a finding.
+ */
+function withLiveState(
+  metrics: unknown,
+  queueType: "task" | "custom",
+  state: Record<string, unknown> | undefined
+) {
+  const row = (state as { data?: Record<string, unknown> })?.data ?? state;
+  if (!row) return { ...(metrics as object), queueType, exists: false };
+  return {
+    ...(metrics as object),
+    queueType: (row.type as string) ?? queueType,
+    exists: true,
+    paused: Boolean(row.paused),
+    queuedNow: row.queued ?? null,
+    runningNow: row.running ?? null,
+    concurrencyLimit: row.concurrencyLimit ?? null,
+  };
+}
+
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -376,6 +399,18 @@ export function buildApiTools(args: {
           return result;
         };
 
+        // Live state first: metrics are a window, and a window can't say "paused" or show a
+        // backlog that arrived after it. A queue nobody is running is not the same as a queue
+        // someone stopped, and the answer has to lead with which one it is.
+        const live = async (kind: "task" | "custom") => {
+          const result = await envApiGet(
+            `/api/v1/queues/${encodeURIComponent(queue)}?type=${kind}`
+          );
+          return !isEnvUnavailable(result) && result.ok
+            ? (result.data as Record<string, unknown>)
+            : undefined;
+        };
+
         const first = await read(type ?? "task");
         if (isEnvUnavailable(first)) return envUnavailableError(first, "read queues from");
         if (!first.ok) {
@@ -384,12 +419,19 @@ export function buildApiTools(args: {
           };
         }
         if (queueMetricsAreEmpty(first.data)) {
-          const other = await read(type === "custom" ? "task" : "custom");
+          const otherKind = type === "custom" ? "task" : "custom";
+          const other = await read(otherKind);
           if (!isEnvUnavailable(other) && other.ok && !queueMetricsAreEmpty(other.data)) {
-            return { ...(other.data as object), queueType: type === "custom" ? "task" : "custom" };
+            return withLiveState(other.data, otherKind, await live(otherKind));
           }
+          // Neither kind has metrics, so the live row is the only thing that can tell them
+          // apart: a paused or empty queue that exists, against a name that doesn't.
+          const kind = type ?? "task";
+          const state = (await live(kind)) ?? (await live(otherKind));
+          return withLiveState(first.data, kind, state);
         }
-        return { ...(first.data as object), queueType: type ?? "task" };
+        const kind = type ?? "task";
+        return withLiveState(first.data, kind, await live(kind));
       },
     }),
 
