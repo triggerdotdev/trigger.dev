@@ -25,6 +25,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
+import { removeNullBytesFromKey } from "~/utils/nullBytes";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
@@ -906,7 +907,7 @@ export class RunEngineTriggerTaskService {
       environment: args.environment,
       idempotencyKey: args.idempotencyKey,
       idempotencyKeyExpiresAt: args.idempotencyKey ? args.idempotencyKeyExpiresAt : undefined,
-      idempotencyKeyOptions: args.body.options?.idempotencyKeyOptions,
+      idempotencyKeyOptions: removeNullBytesFromKey(args.body.options?.idempotencyKeyOptions),
       taskIdentifier: args.taskId,
       payload: args.payloadPacket.data ?? "",
       payloadType: args.payloadPacket.dataType,
@@ -971,7 +972,7 @@ export class RunEngineTriggerTaskService {
       planType: args.planType,
       realtimeStreamsVersion: args.options.realtimeStreamsVersion,
       streamBasinName: args.environment.organization.streamBasinName,
-      debounce: args.body.options?.debounce,
+      debounce: removeNullBytesFromKey(args.body.options?.debounce),
       annotations: args.annotations,
     };
   }
