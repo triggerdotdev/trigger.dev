@@ -13,11 +13,14 @@ export function ViewBlocks({
   onIntent,
   resolveUri,
   pagePaths,
+  answered = false,
 }: {
   blocks: ViewBlock[];
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  /** The turn kept answering after this card, so "keep digging" has nothing to ask for. */
+  answered?: boolean;
 }) {
   if (!Array.isArray(blocks)) return null;
   return (
@@ -41,6 +44,7 @@ export function ViewBlocks({
                 block={block}
                 resolveUri={resolveUri}
                 onIntent={onIntent}
+                answered={answered}
               />
             );
           case "report":

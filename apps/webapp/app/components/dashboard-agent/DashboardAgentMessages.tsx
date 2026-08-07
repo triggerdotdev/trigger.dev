@@ -22,6 +22,7 @@ import { stripModelImages } from "./model-markdown";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
+import { answerContinuesAfter } from "./view-actions";
 import { ViewBlocks } from "./view-catalog";
 
 export type { TurnActivity };
@@ -240,6 +241,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
               onIntent={onIntent}
               resolveUri={resolveUri}
               pagePaths={pagePaths}
+              answered={answerContinuesAfter(parts as never, i)}
             />
           </ChatCardSlot>
         );
