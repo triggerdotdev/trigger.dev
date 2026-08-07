@@ -72,7 +72,7 @@ export function buildApiTools(args: {
         if (!ref) return { error: "No project ref available. Ask the user which project." };
         const result = await apiGet(
           origin,
-          `/api/v1/projects/${ref}/environments`,
+          `/api/v1/projects/${encodeURIComponent(ref)}/environments`,
           userActorToken!
         );
         if (!result.ok) return { error: `Couldn't list environments (status ${result.status}).` };
@@ -121,7 +121,7 @@ export function buildApiTools(args: {
     get_run: tool({
       ...getRunSchema,
       execute: async ({ runId }) => {
-        const result = await envApiGet(`/api/v3/runs/${runId}`);
+        const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`);
         if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
         return curateRun(result.data);
@@ -131,7 +131,7 @@ export function buildApiTools(args: {
     get_run_trace: tool({
       ...getRunTraceSchema,
       execute: async ({ runId }) => {
-        const result = await envApiGet(`/api/v1/runs/${runId}/trace`);
+        const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`);
         if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
@@ -158,7 +158,7 @@ export function buildApiTools(args: {
     get_error: tool({
       ...getErrorSchema,
       execute: async ({ errorId }) => {
-        const result = await envApiGet(`/api/v1/errors/${errorId}`);
+        const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`);
         if (!result) return { error: "No current environment is available to read errors from." };
         if (!result.ok)
           return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
