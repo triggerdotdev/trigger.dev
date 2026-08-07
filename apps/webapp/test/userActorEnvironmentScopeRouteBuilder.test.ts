@@ -78,6 +78,13 @@ function projectRoute(context: () => { projectId?: string; environmentId?: strin
   );
 }
 
+/** A route that declares no context and no authorization, like `api.v1.orgs`'s action. */
+function contextlessRoute(options: { identityOnly?: true } = {}) {
+  return createLoaderPATApiRoute(options, async ({ authentication }) =>
+    json({ environmentId: authentication.userActor?.environmentId ?? null })
+  );
+}
+
 async function callRoute(
   loader: ReturnType<typeof projectRoute>,
   token: string
@@ -197,5 +204,55 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
     expect(result.status).toBe(403);
     expect(result.body.code).toBe("forbidden_environment");
+  });
+
+  it("fails closed on a route that names nothing to check the claim against", async () => {
+    const token = await agentToken();
+    mocks.authenticateUserActor.mockImplementation(async () =>
+      controllerResult({
+        userId: USER_ID,
+        client: "dashboard-agent",
+        environmentId: CLAIMED_ENVIRONMENT_ID,
+      })
+    );
+
+    const result = await callRoute(contextlessRoute(), token);
+
+    expect(result.status).toBe(403);
+    expect(result.body.code).toBe("forbidden_environment");
+    // Nothing to compare against, so no environment lookup is attempted.
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("admits a claim-bearing token on a route that declares itself identity-only", async () => {
+    const token = await agentToken();
+    mocks.authenticateUserActor.mockImplementation(async () =>
+      controllerResult({
+        userId: USER_ID,
+        client: "dashboard-agent",
+        environmentId: CLAIMED_ENVIRONMENT_ID,
+      })
+    );
+
+    const result = await callRoute(contextlessRoute({ identityOnly: true }), token);
+
+    expect(result.status).toBe(200);
+    expect(result.body.environmentId).toBe(CLAIMED_ENVIRONMENT_ID);
+  });
+
+  it("still admits a claimless token on a contextless route, as the PAT exchange mints", async () => {
+    const token = await signUserActorToken(SESSION_SECRET, {
+      userId: USER_ID,
+      client: "personal-access-token",
+      cap: ["read:runs"],
+    });
+    mocks.authenticateUserActor.mockImplementation(async () =>
+      controllerResult({ userId: USER_ID, client: "personal-access-token" })
+    );
+
+    const result = await callRoute(contextlessRoute(), token);
+
+    expect(result.status).toBe(200);
+    expect(result.body.environmentId).toBeNull();
   });
 });

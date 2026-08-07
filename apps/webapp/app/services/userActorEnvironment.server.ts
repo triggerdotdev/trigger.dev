@@ -3,9 +3,10 @@
  * MCP and the CLI may use their existing ones. Both normalize into the same authorized
  * capability context, so every route calls in here rather than deriving the rule itself.
  *
- * The rule: a token signed for one environment may only act inside it. Anything with no claim
- * is environment-agnostic and unaffected — except a dashboard-agent token, which always carries
- * one, so its absence is a failed mint rather than a flow. Mismatches throw a 403 Response.
+ * The rule: a token signed for one environment may only act inside it. A route that names nothing
+ * to check the claim against is refused too, unless it declares itself identity-only. Anything
+ * with no claim is environment-agnostic and unaffected — except a dashboard-agent token, which
+ * always carries one, so its absence is a failed mint rather than a flow. Mismatches throw 403.
  */
 
 import { json } from "@remix-run/server-runtime";
@@ -33,7 +34,8 @@ export function assertUserActorEnvironment(
 /** The same check for a route that names an org/project rather than one environment. */
 export async function assertUserActorScope(
   userActor: UserActorClaims | undefined,
-  scope: { organizationId?: string; projectId?: string; environmentId?: string }
+  scope: { organizationId?: string; projectId?: string; environmentId?: string },
+  route?: { identityOnly?: boolean }
 ): Promise<void> {
   if (!userActor) return;
 
@@ -47,7 +49,12 @@ export async function assertUserActorScope(
     return;
   }
 
-  if (!scope.organizationId && !scope.projectId) return;
+  // A route that names nothing offers no way to honour the claim, so it isn't reachable unless it
+  // has declared itself identity-only.
+  if (!scope.organizationId && !scope.projectId) {
+    if (route?.identityOnly) return;
+    throw forbiddenEnvironment("This token is scoped to an environment this route doesn't name.");
+  }
 
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: { id: userActor.environmentId },

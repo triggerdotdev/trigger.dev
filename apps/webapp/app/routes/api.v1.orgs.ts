@@ -11,38 +11,43 @@ import {
 import { extractDomain, faviconUrl } from "~/utils/favicon";
 
 // Identity-only: lists the caller's own orgs, so no authorization gate.
-export const loader = createLoaderPATApiRoute({}, async ({ authentication }) => {
-  const orgs = await prisma.organization.findMany({
-    where: {
-      deletedAt: null,
-      members: {
-        some: {
-          userId: authentication.userId,
+export const loader = createLoaderPATApiRoute(
+  { identityOnly: true },
+  async ({ authentication }) => {
+    const orgs = await prisma.organization.findMany({
+      where: {
+        deletedAt: null,
+        members: {
+          some: {
+            userId: authentication.userId,
+          },
         },
       },
-    },
-  });
+    });
 
-  if (!orgs) {
-    return json({ error: "Orgs not found" }, { status: 404 });
+    if (!orgs) {
+      return json({ error: "Orgs not found" }, { status: 404 });
+    }
+
+    const result: GetOrgsResponseBody = orgs.map((org) => ({
+      id: org.id,
+      title: org.title,
+      slug: org.slug,
+      createdAt: org.createdAt,
+    }));
+
+    return json(result);
   }
+);
 
-  const result: GetOrgsResponseBody = orgs.map((org) => ({
-    id: org.id,
-    title: org.title,
-    slug: org.slug,
-    createdAt: org.createdAt,
-  }));
-
-  return json(result);
-});
-
-// No org exists yet, so no authorization gate; any authenticated user can
-// create an org and becomes its ADMIN.
+// No org exists yet, so there is nothing to scope the gate to; any authenticated user can create
+// an org and becomes its ADMIN. The gate is still declared so a narrowly-capped delegated token
+// (which cannot `manage`) is refused rather than inheriting its user's full reach.
 export const action = createActionPATApiRoute(
   {
     method: "POST",
     body: CreateOrgRequestBody,
+    authorization: { action: "manage", resource: () => ({ type: "organization" }) },
   },
   async ({ body, authentication }) => {
     if (env.ORG_CREATION_API_ENABLED !== "1") {

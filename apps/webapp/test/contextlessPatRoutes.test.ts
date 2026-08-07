@@ -1,0 +1,155 @@
+import { buildJwtAbility, signUserActorToken } from "@trigger.dev/rbac";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The two PAT routes that name no org or project. Creating an organization is a mutation
+// reachable with nothing but an authenticated identity, so it declares a gate even though there
+// is no org yet to scope it to. Listing projects is identity-only, and the dashboard agent's
+// environment-scoped token has to keep reaching it.
+
+const SESSION_SECRET = "test-session-secret";
+
+const mocks = vi.hoisted(() => ({
+  authenticateUserActor: vi.fn(),
+  authenticatePat: vi.fn(),
+  createOrganization: vi.fn(),
+  findManyProjects: vi.fn(),
+}));
+
+vi.mock("~/services/rbac.server", () => ({
+  rbac: {
+    authenticateUserActor: mocks.authenticateUserActor,
+    authenticatePat: mocks.authenticatePat,
+  },
+}));
+vi.mock("~/db.server", () => ({
+  prisma: { project: { findMany: mocks.findManyProjects } },
+  $replica: {},
+}));
+vi.mock("~/env.server", () => ({
+  env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" },
+}));
+vi.mock("~/models/organization.server", () => ({ createOrganization: mocks.createOrganization }));
+vi.mock("~/services/personalAccessToken.server", () => ({
+  updateLastAccessedAtIfStale: vi.fn(),
+}));
+vi.mock("~/services/authTelemetry.server", () => ({ authenticateBearerWithTelemetry: vi.fn() }));
+vi.mock("~/services/logger.server", () => ({
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
+vi.mock("~/services/tenantContext.server", () => ({
+  tenantContext: { enrich: vi.fn() },
+  tenantContextFromAuthEnvironment: vi.fn(),
+}));
+vi.mock("~/v3/services/worker/workerGroupTokenService.server", () => ({
+  WorkerGroupTokenService: class {},
+}));
+vi.mock("~/v3/services/common.server", () => ({ ServiceValidationError: class extends Error {} }));
+vi.mock("@internal/run-engine", () => ({ EngineServiceValidationError: class extends Error {} }));
+
+import { action } from "~/routes/api.v1.orgs";
+import { loader as projectsLoader } from "~/routes/api.v1.projects";
+
+const USER_ID = "usr_1";
+
+async function createOrg(cap: string[]): Promise<{ status: number; body: any }> {
+  const token = await signUserActorToken(SESSION_SECRET, {
+    userId: USER_ID,
+    client: "personal-access-token",
+    cap,
+  });
+  mocks.authenticateUserActor.mockImplementation(async () => ({
+    ok: true,
+    userId: USER_ID,
+    claims: { userId: USER_ID, client: "personal-access-token", cap },
+    subject: { type: "userActor", userId: USER_ID, organizationId: "org_1" },
+    ability: buildJwtAbility(cap),
+  }));
+
+  const response = await action({
+    request: new Request("https://api.trigger.dev/api/v1/orgs", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "New Org" }),
+    }),
+    params: {},
+    context: {},
+  } as any);
+  return { status: response.status, body: await response.json() };
+}
+
+const AGENT_ENVIRONMENT_ID = "env_dev";
+
+async function listProjects(): Promise<{ status: number; body: any }> {
+  const claims = {
+    userId: USER_ID,
+    client: "dashboard-agent",
+    environmentId: AGENT_ENVIRONMENT_ID,
+    cap: ["read:runs"],
+  };
+  const token = await signUserActorToken(SESSION_SECRET, claims);
+  mocks.authenticateUserActor.mockImplementation(async () => ({
+    ok: true,
+    userId: USER_ID,
+    claims,
+    subject: { type: "userActor", userId: USER_ID, organizationId: "org_1" },
+    ability: buildJwtAbility(claims.cap),
+  }));
+
+  const response = await projectsLoader({
+    request: new Request("https://api.trigger.dev/api/v1/projects", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    params: {},
+    context: {},
+  } as any);
+  return { status: response.status, body: await response.json() };
+}
+
+describe("listing projects over the API", () => {
+  it("stays reachable by an environment-scoped agent token", async () => {
+    mocks.findManyProjects.mockResolvedValue([
+      {
+        id: "proj_1",
+        externalRef: "proj_ref_1",
+        name: "Test",
+        slug: "test",
+        createdAt: new Date(),
+        defaultWorkerGroup: { name: "eu" },
+        organization: { id: "org_1", title: "Org", slug: "org", createdAt: new Date() },
+      },
+    ]);
+
+    const result = await listProjects();
+
+    expect(result.status).toBe(200);
+    expect(result.body[0].externalRef).toBe("proj_ref_1");
+  });
+});
+
+describe("creating an organization over the API", () => {
+  // Creation always succeeds if it is reached, so a refusal is the gate and nothing else.
+  beforeEach(() => {
+    mocks.createOrganization.mockReset();
+    mocks.createOrganization.mockResolvedValue({
+      id: "org_new",
+      title: "New Org",
+      slug: "new-org",
+      createdAt: new Date(),
+    });
+  });
+
+  it("refuses a token capped to reads", async () => {
+    const result = await createOrg(["read:all"]);
+
+    expect(result.status).toBe(403);
+    expect(result.body.code).toBe("unauthorized");
+    expect(mocks.createOrganization).not.toHaveBeenCalled();
+  });
+
+  it("still admits a token that carries the universal grant", async () => {
+    const result = await createOrg(["admin"]);
+
+    expect(result.status).toBe(201);
+    expect(result.body.slug).toBe("new-org");
+  });
+});

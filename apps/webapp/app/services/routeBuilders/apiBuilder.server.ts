@@ -500,6 +500,10 @@ type PATRouteBuilderOptions<
       : undefined,
     request: Request
   ) => PATRouteContext | Promise<PATRouteContext>;
+  // Opts a contextless route into being reachable by an environment-scoped user-actor token.
+  // Only for routes whose answer is the caller's own identity (their orgs, their projects) and
+  // which mutate nothing — otherwise such a token is refused for want of anything to check.
+  identityOnly?: true;
   authorization?: {
     action: string;
     resource: (
@@ -555,6 +559,7 @@ export function createLoaderPATApiRoute<
       headers: headersSchema,
       corsStrategy = "none",
       context: contextFn,
+      identityOnly,
       authorization,
     } = options;
 
@@ -658,7 +663,7 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        await assertUserActorScope(claims, ctx);
+        await assertUserActorScope(claims, ctx, { identityOnly });
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
@@ -798,6 +803,7 @@ export function createActionPATApiRoute<
       body: bodySchema,
       corsStrategy = "none",
       context: contextFn,
+      identityOnly,
       authorization,
       method,
     } = options;
@@ -930,7 +936,7 @@ export function createActionPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        await assertUserActorScope(claims, ctx);
+        await assertUserActorScope(claims, ctx, { identityOnly });
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
