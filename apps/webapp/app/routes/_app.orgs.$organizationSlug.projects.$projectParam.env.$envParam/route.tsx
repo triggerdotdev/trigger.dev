@@ -1,4 +1,5 @@
 import {
+  countChatsWithUnreadWork,
   readDashboardAgentWakeActivity,
   type DashboardAgentWakeActivity,
 } from "@internal/dashboard-agent-db";
@@ -107,12 +108,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     unreadWakes: 0,
     hasActiveWatches: false,
   };
+  let dashboardAgentUnreadWork = 0;
   if (hasDashboardAgentAccess) {
     try {
-      dashboardAgentActivity = await readDashboardAgentWakeActivity(dashboardAgentDb, {
-        organizationId: project.organization.id,
-        userId: user.id,
-      });
+      [dashboardAgentActivity, dashboardAgentUnreadWork] = await Promise.all([
+        readDashboardAgentWakeActivity(dashboardAgentDb, {
+          organizationId: project.organization.id,
+          userId: user.id,
+        }),
+        countChatsWithUnreadWork(dashboardAgentDb, {
+          organizationId: project.organization.id,
+          userId: user.id,
+        }),
+      ]);
     } catch (error) {
       // The dashboard must load even when the agent's store doesn't answer.
       logger.error("Failed to read dashboard agent wake activity", { error });
@@ -124,17 +132,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     hasDashboardAgentAccess,
     promotedDashboardAgentPrompt,
     dashboardAgentActivity,
+    dashboardAgentUnreadWork,
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt, dashboardAgentActivity } =
-    useLoaderData<typeof loader>();
+  const {
+    hasDashboardAgentAccess,
+    promotedDashboardAgentPrompt,
+    dashboardAgentActivity,
+    dashboardAgentUnreadWork,
+  } = useLoaderData<typeof loader>();
   return (
     <DashboardAgent
       hasAccess={hasDashboardAgentAccess}
       promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
       initialUnreadWakes={dashboardAgentActivity.unreadWakes}
+      initialUnreadWork={dashboardAgentUnreadWork}
       hasActiveWatches={dashboardAgentActivity.hasActiveWatches}
     >
       <Outlet />

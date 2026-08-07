@@ -190,6 +190,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         ...chat,
         watches,
         hasUnreadWake: unreadChatIds.has(chat.id),
+        // Work that finished while the chat was closed: the transcript moved on after the
+        // last time its owner looked. A wake is one way that happens, an answer is another.
+        hasUnreadWork:
+          chat.lastMessageAt !== null &&
+          (chat.lastReadAt === null || chat.lastMessageAt > chat.lastReadAt),
         // `watches` also carries fired and expired rows, so check for active here.
         hasActiveWatch: watches.some((watch) => watch.status === "active"),
         hasOpenInvestigation: investigatingChatIds.has(chat.id),

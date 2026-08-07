@@ -73,6 +73,7 @@ export function DashboardAgentPanel({
   promotedPrompt,
   watchRequest,
   onChatRead,
+  onUnreadWorkChange,
   isFullscreen = false,
   onToggleFullscreen,
 }: {
@@ -86,6 +87,8 @@ export function DashboardAgentPanel({
   promotedPrompt?: SuggestedPrompt;
   watchRequest?: { spec: WatchSpec; seq: number };
   onChatRead?: (chatId: string) => void;
+  /** How many chats still hold work their owner hasn't seen. */
+  onUnreadWorkChange?: (count: number) => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -153,15 +156,18 @@ export function DashboardAgentPanel({
           const pending = chats.some((chat) => chat.hasActiveWatch || chat.hasUnreadWake);
           if (pending) rememberWatchActivity(organization.id);
           else forgetWatchActivity(organization.id);
-          setChats(
-            chats.map((chat) => (read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat))
+          const settled = chats.map((chat) =>
+            read.has(chat.id) ? { ...chat, hasUnreadWake: false, hasUnreadWork: false } : chat
           );
+          setChats(settled);
+          // The launcher's dot is server-counted on page load; this keeps it honest between loads.
+          onUnreadWorkChange?.(settled.filter((chat) => chat.hasUnreadWork).length);
         } catch (error) {
           console.error("Dashboard agent: failed to load chat history", error);
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, organization.id, toast]
+    [actionPath, organization.id, toast, onUnreadWorkChange]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.

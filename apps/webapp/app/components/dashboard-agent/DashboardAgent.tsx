@@ -42,6 +42,7 @@ export function DashboardAgent({
   promotedPrompt,
   /** From the page load: unread wakes waiting for this user, whatever this browser remembers. */
   initialUnreadWakes = 0,
+  initialUnreadWork = 0,
   /** Also from the page load: a watch is running, so a wake can still arrive in this tab. */
   hasActiveWatches = false,
 }: {
@@ -49,6 +50,8 @@ export function DashboardAgent({
   hasAccess?: boolean;
   promotedPrompt?: SuggestedPrompt;
   initialUnreadWakes?: number;
+  /** Chats whose transcript moved on since their owner last looked. */
+  initialUnreadWork?: number;
   hasActiveWatches?: boolean;
 }) {
   const organization = useOrganization();
@@ -59,6 +62,9 @@ export function DashboardAgent({
   const [open, setOpen] = useState(false);
   // Seeded from the page load, so the launcher dot is right before the first poll answers.
   const [unreadWakes, setUnreadWakes] = useState(initialUnreadWakes);
+  // Work that finished behind a closed panel. Counted server-side on page load and refreshed
+  // with the chat list; the wake poll doesn't carry it.
+  const [unreadWork, setUnreadWork] = useState(initialUnreadWork);
   const toastedWakes = useRef(new Set<string>());
   // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
   useEffect(() => {
@@ -220,6 +226,8 @@ export function DashboardAgent({
     async (chatId: string) => {
       visibleChat.current = chatId;
       setUnreadWakes(0);
+      // Opening a chat is what makes its work read, so the dot goes with it.
+      setUnreadWork((count) => Math.max(0, count - 1));
       const body = new FormData();
       body.set("intent", "read");
       body.set("chatId", chatId);
@@ -266,8 +274,8 @@ export function DashboardAgent({
   });
 
   const context = useMemo(
-    () => ({ open, setOpen: setPanelOpen, openWith, openWithWatch, unreadWakes }),
-    [open, setPanelOpen, openWith, openWithWatch, unreadWakes]
+    () => ({ open, setOpen: setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork }),
+    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork]
   );
 
   if (!hasAccess) {
@@ -301,6 +309,7 @@ export function DashboardAgent({
                   newChatSeq={newChatSeq}
                   promotedPrompt={promotedPrompt}
                   onChatRead={markChatRead}
+                  onUnreadWorkChange={setUnreadWork}
                   isFullscreen={fullscreen}
                   onToggleFullscreen={toggleFullscreen}
                 />
