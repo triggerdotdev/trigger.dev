@@ -13,7 +13,7 @@ const TASK_ID = "dashboard-agent";
 // what lets it exchange the token for an env JWT (the gate on the exchange
 // route); the rest scope the actual reads. No write/admin scopes, so even a
 // leaked token can't mutate anything.
-const DASHBOARD_AGENT_UAT_CAP = [
+export const DASHBOARD_AGENT_UAT_CAP = [
   "read:apiKeys",
   "read:runs",
   "read:deployments",
