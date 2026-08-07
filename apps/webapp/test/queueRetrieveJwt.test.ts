@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -7,8 +8,9 @@ import { describe, expect, it } from "vitest";
  * retrieve route the agent got a 401, which reaches the model as absent data and had it
  * telling users a queue of thousands of runs did not exist.
  */
-const ROUTE = "apps/webapp/app/routes/api.v1.queues.$queueParam.ts";
-const METRICS = "apps/webapp/app/routes/api.v1.queues.$queueParam.metrics.ts";
+const WEBAPP_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const ROUTE = `${WEBAPP_ROOT}app/routes/api.v1.queues.$queueParam.ts`;
+const METRICS = `${WEBAPP_ROOT}app/routes/api.v1.queues.$queueParam.metrics.ts`;
 
 describe("queue retrieve accepts an environment JWT", () => {
   const source = readFileSync(ROUTE, "utf8");
