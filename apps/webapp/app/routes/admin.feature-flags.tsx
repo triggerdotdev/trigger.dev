@@ -11,11 +11,12 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import {
   FEATURE_FLAG,
   GLOBAL_LOCKED_FLAGS,
+  type FeatureFlagKey,
   type FlagControlType,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
-import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
+import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -116,39 +117,15 @@ export const action = dashboardAction(
       );
     }
 
-    const validatedFlags = validationResult.data as Record<string, unknown>;
-    const controlTypes = getAllFlagControlTypes();
-    const catalogKeys = Object.keys(controlTypes);
+    const catalogKeys = Object.keys(getAllFlagControlTypes()) as FeatureFlagKey[];
 
-    const keysToDelete: string[] = [];
-    const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
-
-    for (const key of catalogKeys) {
-      if (key in validatedFlags) {
-        upsertOps.push(
-          prisma.featureFlag.upsert({
-            where: { key },
-            create: { key, value: validatedFlags[key] as any },
-            update: { value: validatedFlags[key] as any },
-          })
-        );
-      } else {
-        // On cloud, never delete locked flags (they're not in the payload
-        // because the UI doesn't include them). Locally, delete everything
-        // the user didn't include - full control.
-        const isProtected = isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key);
-        if (!isProtected) {
-          keysToDelete.push(key);
-        }
-      }
-    }
-
-    await prisma.$transaction([
-      ...upsertOps,
-      ...(keysToDelete.length > 0
-        ? [prisma.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
-        : []),
-    ]);
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: validationResult.data,
+      catalogKeys,
+      // On cloud, never delete locked flags (the UI omits them). Locally, full control.
+      isProtected: (key) => isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key),
+      graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
+    });
 
     return json({ success: true });
   }
