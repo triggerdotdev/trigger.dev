@@ -162,12 +162,13 @@ export class TracingSDK {
       )
     );
 
-    const externalTraceId = idGenerator.generateTraceId();
+    // Shared by every wrapper below so a run's spans and logs agree on the id.
+    const fallbackTraceId = new FallbackExternalTraceId(idGenerator.generateTraceId());
 
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, fallbackTraceId), {
               maxExportBatchSize: parseInt(
                 getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
               ),
@@ -179,7 +180,7 @@ export class TracingSDK {
               ),
               maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
             })
-          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, fallbackTraceId))
       );
     }
 
@@ -231,7 +232,7 @@ export class TracingSDK {
       logProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
+              new ExternalLogRecordExporterWrapper(externalLogExporter, fallbackTraceId),
               {
                 maxExportBatchSize: parseInt(
                   getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
@@ -246,7 +247,7 @@ export class TracingSDK {
               }
             )
           : new SimpleLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId)
+              new ExternalLogRecordExporterWrapper(externalLogExporter, fallbackTraceId)
             )
       );
     }
@@ -393,10 +394,77 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
   diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
 }
 
+/**
+ * A warm process serves runs one at a time, so this is only ever asked about
+ * the current run and the tail of recently ended ones still draining.
+ */
+const MAX_TRACKED_INTERNAL_TRACES = 64;
+
+/**
+ * External trace ids for runs that carry no external trace context, one per
+ * run.
+ *
+ * There has to be one per run because with `processKeepAlive` the `TracingSDK`
+ * — and so the wrappers — outlive the run, so an id captured at construction
+ * merges every run on the process into a single trace.
+ *
+ * Which id a record gets is decided by the record's own internal trace id
+ * rather than by whatever run is current when the exporter is called. Batch
+ * processors drain asynchronously, so a run's spans and logs are routinely
+ * exported after the next run has already started; reading ambient state at
+ * that point would stamp them with the wrong run's id. Keying off the record
+ * also means spans and logs agree without having to coordinate.
+ */
+export class FallbackExternalTraceId {
+  private readonly byInternalTrace = new Map<string, string>();
+
+  constructor(
+    private seed: string,
+    private traceIdGenerator: Pick<RandomIdGenerator, "generateTraceId"> = idGenerator
+  ) {}
+
+  /** False when no external trace id was configured, i.e. external export is off. */
+  get enabled(): boolean {
+    return !!this.seed;
+  }
+
+  forInternalTrace(internalTraceId: string): string {
+    // An empty seed means external export is disabled — leave it that way
+    // rather than minting an id and switching the feature on.
+    if (!this.seed) {
+      return this.seed;
+    }
+
+    const known = this.byInternalTrace.get(internalTraceId);
+
+    if (known) {
+      return known;
+    }
+
+    // The first run reuses the id generated at construction, so the configured
+    // seed is not thrown away.
+    const traceId =
+      this.byInternalTrace.size === 0 ? this.seed : this.traceIdGenerator.generateTraceId();
+
+    this.byInternalTrace.set(internalTraceId, traceId);
+
+    if (this.byInternalTrace.size > MAX_TRACKED_INTERNAL_TRACES) {
+      // Map iterates in insertion order, so this drops the oldest run.
+      const oldest = this.byInternalTrace.keys().next().value;
+
+      if (oldest !== undefined) {
+        this.byInternalTrace.delete(oldest);
+      }
+    }
+
+    return traceId;
+  }
+}
+
 export class ExternalSpanExporterWrapper {
   constructor(
     private underlyingExporter: SpanExporter,
-    private externalTraceId: string
+    private fallback: FallbackExternalTraceId
   ) {}
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
@@ -407,7 +475,7 @@ export class ExternalSpanExporterWrapper {
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!this.externalTraceId;
+      : this.fallback.enabled;
 
     if (!isExternallySampled) {
       return;
@@ -419,7 +487,7 @@ export class ExternalSpanExporterWrapper {
 
     const externalTraceId = externalTraceContext
       ? externalTraceContext.traceId
-      : this.externalTraceId;
+      : this.fallback.forInternalTrace(span.spanContext().traceId);
 
     const isAttemptSpan = span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT];
 
@@ -477,10 +545,10 @@ export class ExternalSpanExporterWrapper {
   }
 }
 
-class ExternalLogRecordExporterWrapper {
+export class ExternalLogRecordExporterWrapper {
   constructor(
     private underlyingExporter: LogRecordExporter,
-    private externalTraceId: string
+    private fallback: FallbackExternalTraceId
   ) {}
 
   export(logs: any[], resultCallback: (result: any) => void): void {
@@ -488,7 +556,7 @@ class ExternalLogRecordExporterWrapper {
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!this.externalTraceId;
+      : this.fallback.enabled;
 
     if (!isExternallySampled) {
       this.underlyingExporter.export([], resultCallback);
@@ -519,14 +587,20 @@ class ExternalLogRecordExporterWrapper {
       | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
       | undefined
   ): ReadableLogRecord {
-    // Capture externalTraceId for use within the proxy's scope.
-    // Use externalTraceContext.traceId if available, otherwise fall back to generated externalTraceId
+    // Without a spanContext there is no internal trace id to key the fallback
+    // on, and nothing to rewrite.
+    if (!logRecord.spanContext) {
+      return logRecord;
+    }
+
+    // Capture externalTraceId for use within the proxy's scope. Use
+    // externalTraceContext.traceId if available, otherwise the id belonging to
+    // the run this record came from.
     const externalTraceId = externalTraceContext
       ? externalTraceContext.traceId
-      : this.externalTraceId;
+      : this.fallback.forInternalTrace(logRecord.spanContext.traceId);
 
-    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
-    if (!logRecord.spanContext || !externalTraceId) {
+    if (!externalTraceId) {
       return logRecord;
     }
 
