@@ -10,6 +10,7 @@ import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
 import { WatchButton } from "~/components/dashboard-agent/WatchButton";
 import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { storedQueueName } from "~/components/queues/queue-name";
 import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -123,7 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const queue = retrieve.queue;
-  const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
+  const fullName = storedQueueName(queue);
 
   const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
 
@@ -339,7 +340,7 @@ export default function Page() {
                 pre-filled with this queue's recommendation. */}
             {degraded ? (
               <InvestigateButton
-                prompt={queueBacklogPrompt(queue.name)}
+                prompt={queueBacklogPrompt(fullName)}
                 variant="secondary"
                 tooltip="Ask why this queue is backed up"
               />
@@ -347,7 +348,7 @@ export default function Page() {
             {/* A paused queue can't drain or grow, so every watch it could offer is a
                 promise nothing will keep until someone resumes it. */}
             {queue.paused ? null : (
-              <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
+              <WatchButton spec={queueWatchRecommendation(fullName, { oldestWaitMs })} />
             )}
             <QueueOverrideConcurrencyButton
               queue={queue}
