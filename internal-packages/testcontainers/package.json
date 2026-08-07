@@ -20,9 +20,16 @@
   },
   "devDependencies": {
     "@internal/run-ops-database": "workspace:*",
+    "@opentelemetry/instrumentation": "0.218.0",
+    "@opentelemetry/sdk-trace-base": "2.7.1",
+    "@opentelemetry/sdk-trace-node": "2.7.1",
+    "@prisma/adapter-pg": "6.14.0",
+    "@prisma/instrumentation": "6.14.0",
     "@testcontainers/postgresql": "^11.14.0",
+    "@types/pg": "^8.11.10",
     "@testcontainers/redis": "^11.14.0",
     "@trigger.dev/core": "workspace:*",
+    "pg": "8.15.6",
     "std-env": "^3.9.0",
     "testcontainers": "^11.14.0",
     "tinyexec": "^0.3.0"
