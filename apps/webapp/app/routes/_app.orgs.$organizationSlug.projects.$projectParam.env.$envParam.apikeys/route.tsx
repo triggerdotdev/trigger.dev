@@ -1,4 +1,3 @@
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -24,12 +23,6 @@ import {
 } from "~/components/layout/AppLayout";
 import { Feedback } from "~/components/Feedback";
 import { PermissionDenied } from "~/components/PermissionDenied";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "~/components/primitives/Accordion";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
