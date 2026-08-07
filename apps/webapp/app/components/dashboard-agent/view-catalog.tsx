@@ -5,6 +5,7 @@ import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
 import { blockKey, latestRevisionEntries } from "./view-blocks";
+import { cardAlreadyOffersWatch } from "./view-actions";
 import { WatchResultBlock } from "./WatchResultBlock";
 
 // Unknown block types are skipped, so an older or newer agent cannot render
@@ -24,9 +25,11 @@ export function ViewBlocks({
   answered?: boolean;
 }) {
   if (!Array.isArray(blocks)) return null;
+  const entries = latestRevisionEntries(blocks);
+  const watchOfferedOnCard = cardAlreadyOffersWatch(entries.map((entry) => entry.block));
   return (
     <div className="space-y-2">
-      {latestRevisionEntries(blocks).map(({ block, index }) => {
+      {entries.map(({ block, index }) => {
         // The original array's index, so collapsing a revision above an
         // envelope-less block can't shift its key.
         const key = blockKey(block, index);
@@ -36,7 +39,14 @@ export function ViewBlocks({
           case "chart":
             return <AgentChart key={key} block={block} onIntent={onIntent} />;
           case "actions":
-            return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
+            return (
+              <ActionsBlock
+                key={key}
+                block={block}
+                onIntent={onIntent}
+                dropWatch={watchOfferedOnCard}
+              />
+            );
           // Revisions share the investigationId, so latest-wins keeps one card.
           case "investigation":
             return (
