@@ -42,6 +42,10 @@ import {
   type WatchRunRow,
 } from "~/services/dashboardAgentWatchChecks";
 
+// Every test here boots a container and replays the migrations inside its own budget,
+// which does not fit vitest's 5s default on a loaded CI host.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
   agentDb: undefined as unknown as DashboardAgentDb,
