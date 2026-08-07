@@ -6,6 +6,7 @@ import {
   type AuthenticatedEnvironment,
 } from "~/services/apiAuth.server";
 import { resolveRunCommit } from "~/services/dashboardAgent.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
@@ -50,6 +51,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       env,
       triggerBranch
     );
+
+    // The answer is a deployment's git metadata, so it's gated like the deployments list.
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authentication.authenticationResult.type,
+      organizationId: runtimeEnv.organizationId,
+      projectId: runtimeEnv.project.id,
+      envType: runtimeEnv.type,
+      resource: "deployments",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const commit = await resolveRunCommit(runtimeEnv.id, runId);
     if (!commit) {
