@@ -393,21 +393,67 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
   diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
 }
 
+/**
+ * The external trace id used by runs that carry no external trace context,
+ * minted once per run.
+ *
+ * It has to change per run for the same reason the wrappers read the external
+ * context live: with `processKeepAlive` the `TracingSDK` — and so the wrappers
+ * — outlive the run, so an id captured at construction merges every run on the
+ * process into one trace. The manager's trace context object is reassigned per
+ * run, which makes its identity the run boundary.
+ */
+class FallbackExternalTraceId {
+  private traceId: string;
+  private seenTraceContext: unknown;
+
+  constructor(
+    private seed: string,
+    private traceIdGenerator: Pick<RandomIdGenerator, "generateTraceId"> = idGenerator
+  ) {
+    this.traceId = seed;
+    this.seenTraceContext = traceContext.getTraceContext();
+  }
+
+  get(): string {
+    // An empty seed means external export is disabled — leave it that way
+    // rather than minting an id and switching the feature on.
+    if (!this.seed) {
+      return this.seed;
+    }
+
+    const currentTraceContext = traceContext.getTraceContext();
+
+    if (currentTraceContext !== this.seenTraceContext) {
+      this.seenTraceContext = currentTraceContext;
+      this.traceId = this.traceIdGenerator.generateTraceId();
+    }
+
+    return this.traceId;
+  }
+}
+
 export class ExternalSpanExporterWrapper {
+  private fallback: FallbackExternalTraceId;
+
   constructor(
     private underlyingExporter: SpanExporter,
-    private externalTraceId: string
-  ) {}
+    externalTraceId: string,
+    traceIdGenerator?: Pick<RandomIdGenerator, "generateTraceId">
+  ) {
+    this.fallback = new FallbackExternalTraceId(externalTraceId, traceIdGenerator);
+  }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
     // Read external context live, so per-run reassignment of
     // standardTraceContextManager.traceContext is honoured on warm-started
     // workers that reuse a single TracingSDK across runs.
     const externalTraceContext = traceContext.getExternalTraceContext();
+    const fallbackTraceId = this.fallback.get();
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!this.externalTraceId;
+      : !!fallbackTraceId;
 
     if (!isExternallySampled) {
       return;
@@ -419,7 +465,7 @@ export class ExternalSpanExporterWrapper {
 
     const externalTraceId = externalTraceContext
       ? externalTraceContext.traceId
-      : this.externalTraceId;
+      : fallbackTraceId;
 
     const isAttemptSpan = span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT];
 
@@ -478,17 +524,23 @@ export class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
+  private fallback: FallbackExternalTraceId;
+
   constructor(
     private underlyingExporter: LogRecordExporter,
-    private externalTraceId: string
-  ) {}
+    externalTraceId: string,
+    traceIdGenerator?: Pick<RandomIdGenerator, "generateTraceId">
+  ) {
+    this.fallback = new FallbackExternalTraceId(externalTraceId, traceIdGenerator);
+  }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
     const externalTraceContext = traceContext.getExternalTraceContext();
+    const fallbackTraceId = this.fallback.get();
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!this.externalTraceId;
+      : !!fallbackTraceId;
 
     if (!isExternallySampled) {
       this.underlyingExporter.export([], resultCallback);
@@ -496,7 +548,9 @@ class ExternalLogRecordExporterWrapper {
       return;
     }
 
-    const modifiedLogs = logs.map((log) => this.transformLogRecord(log, externalTraceContext));
+    const modifiedLogs = logs.map((log) =>
+      this.transformLogRecord(log, externalTraceContext, fallbackTraceId)
+    );
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
   }
@@ -517,13 +571,13 @@ class ExternalLogRecordExporterWrapper {
     logRecord: ReadableLogRecord,
     externalTraceContext:
       | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
-      | undefined
+      | undefined,
+    fallbackTraceId: string
   ): ReadableLogRecord {
     // Capture externalTraceId for use within the proxy's scope.
-    // Use externalTraceContext.traceId if available, otherwise fall back to generated externalTraceId
-    const externalTraceId = externalTraceContext
-      ? externalTraceContext.traceId
-      : this.externalTraceId;
+    // Use externalTraceContext.traceId if available, otherwise fall back to the
+    // per-run generated id.
+    const externalTraceId = externalTraceContext ? externalTraceContext.traceId : fallbackTraceId;
 
     // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
     if (!logRecord.spanContext || !externalTraceId) {

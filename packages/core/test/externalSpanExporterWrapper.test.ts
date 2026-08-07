@@ -53,6 +53,10 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
   let manager: StandardTraceContextManager;
 
   beforeEach(() => {
+    // `setGlobalManager` delegates to `registerGlobal`, which ignores a second
+    // registration — without disabling first, every test after the first would
+    // keep mutating the first test's manager.
+    traceContext.disable();
     manager = new StandardTraceContextManager();
     traceContext.setGlobalManager(manager);
   });
@@ -76,5 +80,82 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
     expect(span.parentSpanContext?.spanId).not.toBe("1111111111111111");
     expect(span.parentSpanContext?.traceId).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     expect(span.spanContext().traceId).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  });
+
+  // Runs triggered internally — a schedule, or one task triggering another —
+  // carry no external trace context and so take the generated fallback. That id
+  // was captured at construction, which on a warm-started worker meant every run
+  // on the process shared a single trace id.
+  it("mints a new fallback trace id per run when there is no external context", () => {
+    const { exporter, captured } = makeCapturingExporter();
+
+    let generated = 0;
+    const idGenerator = {
+      generateTraceId: () => `${++generated}`.padStart(32, "0"),
+    };
+
+    manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
+
+    const wrapper = new ExternalSpanExporterWrapper(
+      exporter,
+      "ffffffffffffffffffffffffffffffff",
+      idGenerator
+    );
+
+    wrapper.export([createAttemptSpan()], () => {});
+
+    // A second run on the same warm process: the manager is reassigned, so the
+    // fallback has to be reminted.
+    manager.traceContext = { traceparent: TRACEPARENT_RUN_B };
+
+    wrapper.export([createAttemptSpan()], () => {});
+
+    const runATraceId = captured[0]![0]!.spanContext().traceId;
+    const runBTraceId = captured[1]![0]!.spanContext().traceId;
+
+    expect(runATraceId).toBe("ffffffffffffffffffffffffffffffff");
+    expect(runBTraceId).not.toBe(runATraceId);
+    expect(runBTraceId).toBe("00000000000000000000000000000001");
+  });
+
+  it("keeps one fallback trace id across every export within a run", () => {
+    const { exporter, captured } = makeCapturingExporter();
+
+    let generated = 0;
+    const idGenerator = {
+      generateTraceId: () => `${++generated}`.padStart(32, "0"),
+    };
+
+    manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
+
+    const wrapper = new ExternalSpanExporterWrapper(
+      exporter,
+      "ffffffffffffffffffffffffffffffff",
+      idGenerator
+    );
+
+    wrapper.export([createAttemptSpan()], () => {});
+    wrapper.export([createAttemptSpan()], () => {});
+
+    expect(captured[1]![0]!.spanContext().traceId).toBe(captured[0]![0]!.spanContext().traceId);
+    expect(generated).toBe(0);
+  });
+
+  it("leaves external export off when no external trace id was configured", () => {
+    const { exporter, captured } = makeCapturingExporter();
+
+    const idGenerator = {
+      generateTraceId: () => "00000000000000000000000000000001",
+    };
+
+    manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
+
+    const wrapper = new ExternalSpanExporterWrapper(exporter, "", idGenerator);
+
+    wrapper.export([createAttemptSpan()], () => {});
+
+    // Minting an id here would switch external export on for a deployment that
+    // never asked for it.
+    expect(captured[0]).toHaveLength(0);
   });
 });
