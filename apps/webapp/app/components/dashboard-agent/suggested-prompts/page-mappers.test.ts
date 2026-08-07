@@ -206,7 +206,7 @@ describe("queueAgentPageContext", () => {
     const context = queueAgentPageContext(queueLoaderData());
 
     expect(context).toEqual({
-      page: { kind: "queue", name: "black-friday", health: "ok" },
+      page: { kind: "queue", name: "black-friday", health: "ok", paused: false },
       signals: [],
     });
     expect(agentPageContextSchema.safeParse(context).success).toBe(true);

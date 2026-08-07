@@ -122,19 +122,23 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
 
     case "queue":
       return {
+        // A paused queue is backed up because someone paused it, and nothing it could be
+        // watched for will happen until they resume it — so neither chip is offered.
         investigate:
-          page.health === "warn" || page.health === "crit"
+          !page.paused && (page.health === "warn" || page.health === "crit")
             ? def(
                 "queue-backlog-cause",
                 "Why is this queue backed up?",
                 queueBacklogPrompt(page.name)
               )
             : undefined,
-        watch: def(
-          "queue-watch-drain",
-          "Tell me when the backlog drains",
-          `Watch the ${page.name} queue and tell me when the backlog drains.`
-        ),
+        watch: page.paused
+          ? undefined
+          : def(
+              "queue-watch-drain",
+              "Tell me when the backlog drains",
+              `Watch the ${page.name} queue and tell me when the backlog drains.`
+            ),
         status: def(
           "queue-backlog",
           "How big is the backlog?",
