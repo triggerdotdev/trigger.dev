@@ -114,6 +114,18 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
+/**
+ * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
+ * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
+ */
+const OptionalLimitEnv = z.preprocess((v) => {
+  if (typeof v === "string" && (v.trim() === "" || Number(v.trim()) === 0)) {
+    return undefined;
+  }
+
+  return v === 0 ? undefined : v;
+}, z.coerce.number().int().positive().optional());
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -1034,11 +1046,16 @@ const EnvironmentSchema = z
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
-    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
-      .number()
-      .int()
-      .default(60_000 * 60), // 1 hour
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the first
+     * trigger. Unset by default: a continuously triggered debounce key is pushed back for as
+     * long as the triggers keep coming, and `debounce.maxDelay` on the trigger is the only
+     * bound. Setting this applies a ceiling to every debounced run that does not carry its own
+     * `maxDelay`, and any `delay` at or above it is rejected at trigger time. It is a default
+     * rather than an enforced limit: a trigger that sets `maxDelay` uses that value even when it
+     * is longer than this. `0` and blank both mean no ceiling.
+     */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalLimitEnv,
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
