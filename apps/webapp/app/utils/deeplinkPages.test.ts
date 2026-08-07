@@ -105,7 +105,7 @@ describe("deeplink targets", () => {
   });
 
   it("every deep path lands on a real route", () => {
-    // The invariant a bare segment list could not express: /deeplink/waitpoints/{id} has to reach
+    // The invariant a bare segment list could not express: /_/waitpoints/{id} has to reach
     // waitpoints/tokens/{id}, not waitpoints/{id}. Driven off the real child routes rather than one
     // synthetic segment, so names whose children are all literal (settings/general) count too.
     const broken: string[] = [];
@@ -272,54 +272,60 @@ describe("resolveDeeplinkPage", () => {
 
 describe("deeplinkSuffix", () => {
   it("strips the route's own prefix", () => {
-    expect(deeplinkSuffix("/deeplink/tasks")).toBe("tasks");
-    expect(deeplinkSuffix("/deeplink/runs/run_123")).toBe("runs/run_123");
+    expect(deeplinkSuffix("/_/tasks")).toBe("tasks");
+    expect(deeplinkSuffix("/_/runs/run_123")).toBe("runs/run_123");
   });
 
   it("keeps an escaped slash intact, unlike the decoded splat param", () => {
-    expect(deeplinkSuffix("/deeplink/tasks/standard/group%2Fmy-task")).toBe(
+    expect(deeplinkSuffix("/_/tasks/standard/group%2Fmy-task")).toBe(
       "tasks/standard/group%2Fmy-task"
     );
   });
 
-  it("strips the prefix whatever its case, and only the prefix", () => {
-    expect(deeplinkSuffix("/Deeplink/apikeys")).toBe("apikeys");
-    expect(deeplinkSuffix("/DEEPLINK/runs/run_ABC123")).toBe("runs/run_ABC123");
-    // The remainder comes back as it was written, capitals and all.
-    expect(deeplinkSuffix("/DeepLink/tasks/standard/My-Task")).toBe("tasks/standard/My-Task");
-    expect(deeplinkSuffix("/Deeplink")).toBe("");
-    expect(deeplinkSuffix("/Deeplink/")).toBe("");
+  it("strips only the prefix, leaving the remainder's case alone", () => {
+    // The prefix has no case to fold — `_` is the same character either way — so unlike the page
+    // name there is no case-insensitive comparison here. What still matters is that the remainder
+    // comes back exactly as written, capitals and all, because ids are case-sensitive.
+    expect(deeplinkSuffix("/_/runs/run_ABC123")).toBe("runs/run_ABC123");
+    expect(deeplinkSuffix("/_/tasks/standard/My-Task")).toBe("tasks/standard/My-Task");
   });
 
-  it("folds case because the route it is mounted on does", () => {
-    // The assertion the test above rests on: React Router compiles a route path with the `i` flag
-    // unless it opts into `caseSensitive`, so a capitalised prefix really does reach this loader
-    // instead of 404ing before it. If that ever changed, the folding would be dead weight.
+  it("is mounted where the route filename says it is", () => {
+    // `[_].$` is an escaped literal, not a pathless layout: Remix's `createRoutePath` drops a
+    // segment only when the cooked and the raw spelling both start with `_`, and the raw spelling
+    // is `[_]`. A plain `_.$` would compile to `/*` and swallow the site, so this pins the prefix
+    // the loader strips to the URL the router actually serves.
     const route = `${DEEPLINK_PATH_PREFIX}/*`;
-    expect(matchPath(route, "/deeplink/apikeys")?.params["*"]).toBe("apikeys");
-    expect(matchPath(route, "/Deeplink/apikeys")?.params["*"]).toBe("apikeys");
-    // And the splat keeps the case it was given, which is why only the first segment is folded.
-    expect(matchPath(route, "/DEEPLINK/APIKeys")?.params["*"]).toBe("APIKeys");
+    expect(route).toBe("/_/*");
+    expect(matchPath(route, "/_/apikeys")?.params["*"]).toBe("apikeys");
+    expect(matchPath(route, "/_/runs/run_123")?.params["*"]).toBe("runs/run_123");
+    // The splat keeps the case it was given, which is why the loader folds only the page name.
+    expect(matchPath(route, "/_/APIKeys")?.params["*"]).toBe("APIKeys");
+    // And it is a literal segment, so it matches nothing else.
+    expect(matchPath(route, "/deeplink/apikeys")).toBeNull();
+    expect(matchPath(route, "/apikeys")).toBeNull();
   });
 
   it("treats a bare prefix, a trailing slash and anything outside it as no suffix", () => {
-    expect(deeplinkSuffix("/deeplink")).toBe("");
-    expect(deeplinkSuffix("/deeplink/")).toBe("");
+    expect(deeplinkSuffix("/_")).toBe("");
+    expect(deeplinkSuffix("/_/")).toBe("");
     // What `new URL` leaves behind once it has normalised and resolved `%2e%2e` itself.
     expect(deeplinkSuffix("/etc")).toBe("");
+    // A prefix that merely starts with the same character is not this route.
+    expect(deeplinkSuffix("/_app/orgs")).toBe("");
   });
 
   it("matches what the URL parser actually produces", () => {
     // The behaviour above is only correct if `new URL` really does keep %2F and really does
     // resolve %2e%2e, so assert that rather than assuming it.
-    const encodedSlash = new URL("http://x/deeplink/tasks/standard/group%2Fmy-task");
+    const encodedSlash = new URL("http://x/_/tasks/standard/group%2Fmy-task");
     expect(deeplinkSuffix(encodedSlash.pathname)).toBe("tasks/standard/group%2Fmy-task");
     expect(resolveDeeplinkPage(deeplinkSuffix(encodedSlash.pathname))).toBe(
       "tasks/standard/group%2Fmy-task"
     );
 
     // `%2e%2e` is normalised to `..` and resolved by the parser, leaving the prefix behind.
-    const traversal = new URL("http://x/deeplink/runs/%2e%2e/%2e%2e/etc");
+    const traversal = new URL("http://x/_/runs/%2e%2e/%2e%2e/etc");
     expect(traversal.pathname).toBe("/etc");
     expect(resolveDeeplinkPage(deeplinkSuffix(traversal.pathname))).toBeUndefined();
   });

@@ -12,10 +12,12 @@ import {
 } from "~/utils/pathBuilder";
 
 /**
- * Stable links that don't name an org, project or environment: /deeplink/apikeys redirects to
+ * Stable links that don't name an org, project or environment: /_/apikeys redirects to
  * /orgs/{org}/projects/{project}/env/{env}/apikeys for whoever is signed in. Only the pages in
  * ENV_PAGE_TARGETS are followed, so an unrecognised path can never become the redirect target —
  * it lands on the resolved environment instead.
+ *
+ * The filename escapes the underscore for a reason — see DEEPLINK_PATH_PREFIX.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
