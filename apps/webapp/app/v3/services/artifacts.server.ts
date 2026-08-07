@@ -24,16 +24,21 @@ const objectStoreClient =
 
 const artifactKeyPrefixByType = {
   deployment_context: "deployments",
+  // Distinct prefix on purpose: the artifact key is the one signal that survives
+  // any schema skew, so the build server can recognize a bundle even if the
+  // fromBundle flag gets stripped somewhere along the enqueue chain.
+  deployment_bundle: "bundles",
 } as const;
 const artifactBytesSizeLimitByType = {
   deployment_context: 100 * 1024 * 1024, // 100MB
+  deployment_bundle: 100 * 1024 * 1024, // 100MB
 } as const;
 
 export class ArtifactsService extends BaseService {
   private readonly bucket = env.ARTIFACTS_OBJECT_STORE_BUCKET;
 
   public createArtifact(
-    type: "deployment_context",
+    type: "deployment_context" | "deployment_bundle",
     authenticatedEnv: AuthenticatedEnvironment,
     contentLength?: number
   ) {

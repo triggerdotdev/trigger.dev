@@ -1058,6 +1058,7 @@ export async function enqueueBuild(
   options: {
     skipPromotion?: boolean;
     configFilePath?: string;
+    fromBundle?: boolean;
   }
 ) {
   if (!client) return undefined;
@@ -1195,6 +1196,15 @@ export function isCloud(): boolean {
   ];
 
   if (acceptableHosts.includes(env.LOGIN_ORIGIN)) {
+    return true;
+  }
+
+  // PR preview environments are cloud-style installs running against the
+  // cloud's staging services. Without this, anything gated on the billing
+  // client silently no-ops there (e.g. remote builds never get enqueued).
+  // Optional chaining: LOGIN_ORIGIN has a schema default, but test suites mock
+  // ~/env.server with partial objects and import this module transitively.
+  if (env.LOGIN_ORIGIN?.endsWith(".triggerlabs.dev")) {
     return true;
   }
 

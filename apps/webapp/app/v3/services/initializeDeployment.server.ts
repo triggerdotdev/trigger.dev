@@ -6,6 +6,7 @@ import {
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
@@ -19,6 +20,11 @@ import { createDeploymentWithNextVersion } from "./initializeDeployment/createDe
 import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
+
+// Limits for fromBundle build env vars — they expand into --build-arg values, so
+// keep them well under exec argv limits while staying generous for env vars.
+const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
+const BUILD_ENV_VARS_MAX_KEYS = 200;
 
 export class InitializeDeploymentService extends BaseService {
   public async call(
@@ -56,6 +62,7 @@ export class InitializeDeploymentService extends BaseService {
         return {
           deployment: existingDeployment,
           imageRef: existingDeployment.imageReference ?? "",
+          buildEnvVarsStored: false,
         };
       }
 
@@ -172,6 +179,36 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
+      // Encrypt fromBundle build env vars for storage on the deployment row. Only
+      // meaningful for pre-bundled deploys; cleared on every terminal transition.
+      let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
+
+      if (
+        payload.isNativeBuild &&
+        payload.fromBundle &&
+        payload.buildEnvVars &&
+        Object.keys(payload.buildEnvVars).length > 0
+      ) {
+        const buildEnvVars = payload.buildEnvVars;
+
+        const keyCount = Object.keys(buildEnvVars).length;
+        if (keyCount > BUILD_ENV_VARS_MAX_KEYS) {
+          throw new ServiceValidationError(
+            `Too many build environment variables: ${keyCount} (max ${BUILD_ENV_VARS_MAX_KEYS}).`
+          );
+        }
+
+        const serialized = JSON.stringify(buildEnvVars);
+        const serializedBytes = Buffer.byteLength(serialized, "utf8");
+        if (serializedBytes > BUILD_ENV_VARS_MAX_BYTES) {
+          throw new ServiceValidationError(
+            `Build environment variables are too large: ${serializedBytes} bytes (max ${BUILD_ENV_VARS_MAX_BYTES}). Reduce the size of the env var values used by your build.`
+          );
+        }
+
+        encryptedBuildEnvVars = await encryptSecret(env.ENCRYPTION_KEY, serialized);
+      }
+
       const buildServerMetadata: BuildServerMetadata | undefined =
         payload.isNativeBuild || payload.buildId
           ? {
@@ -183,6 +220,7 @@ export class InitializeDeploymentService extends BaseService {
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
                     skipEnqueue: payload.skipEnqueue,
+                    fromBundle: payload.fromBundle,
                   }
                 : {}),
             }
@@ -247,6 +285,7 @@ export class InitializeDeploymentService extends BaseService {
             projectId: environment.projectId,
             externalBuildData,
             buildServerMetadata,
+            buildEnvVars: encryptedBuildEnvVars,
             triggeredById: triggeredBy?.id,
             type: payload.type,
             imageReference: imageRef,
@@ -276,6 +315,7 @@ export class InitializeDeploymentService extends BaseService {
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,
             configFilePath: payload.configFilePath,
+            fromBundle: payload.fromBundle,
           })
           .orElse((error) => {
             logger.error("Failed to enqueue build", {
@@ -310,6 +350,7 @@ export class InitializeDeploymentService extends BaseService {
         deployment,
         imageRef: deployment.imageReference ?? "",
         eventStream,
+        buildEnvVarsStored: encryptedBuildEnvVars !== undefined,
       };
     });
   }
