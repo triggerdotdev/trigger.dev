@@ -11,7 +11,7 @@ import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isom
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, Prisma } from "~/db.server";
+import { $transaction, Prisma, boundedIn } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -794,7 +794,7 @@ export async function syncDeclarativeSchedules(
     await prisma.taskSchedule.deleteMany({
       where: {
         id: {
-          in: scheduleIdsToDelete,
+          in: boundedIn(scheduleIdsToDelete),
         },
       },
     });
@@ -804,7 +804,7 @@ export async function syncDeclarativeSchedules(
     await prisma.taskScheduleInstance.deleteMany({
       where: {
         taskScheduleId: {
-          in: scheduleIdsToDetachFromEnvironment,
+          in: boundedIn(scheduleIdsToDetachFromEnvironment),
         },
         environmentId: environment.id,
       },
@@ -864,7 +864,6 @@ export async function createBackgroundFiles(
 
 import { createHash } from "crypto";
 
-import { boundedIn } from "@trigger.dev/database";
 function hashContent(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
