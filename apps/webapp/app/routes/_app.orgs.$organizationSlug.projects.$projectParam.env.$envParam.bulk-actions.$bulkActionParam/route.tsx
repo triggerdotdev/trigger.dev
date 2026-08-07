@@ -42,6 +42,8 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
+import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
@@ -160,6 +162,10 @@ export const action = dashboardAction(
     );
   }
 );
+
+export const handle: Handle = {
+  agentPageContext: (data) => bulkActionsAgentPageContext(data),
+};
 
 export default function Page() {
   const { bulkAction, autoReloadPollIntervalMs, canAbort } = useTypedLoaderData<typeof loader>();

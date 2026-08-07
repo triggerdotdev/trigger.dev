@@ -30,7 +30,6 @@ import {
 } from "~/presenters/v3/reports/report-layout";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { AgentBadge } from "./agent-badges";
-import { seriesEndMs as toSeriesEndMs } from "./report-spark";
 import {
   ReportBody,
   ReportCard,
@@ -215,15 +214,7 @@ const REFERENCE_URL_FALLBACK: Record<string, string> = {
 
 // --- pieces -----------------------------------------------------------------
 
-function MetricRow({
-  row,
-  windowMinutes,
-  seriesEndMs,
-}: {
-  row: LayoutMetricRow;
-  windowMinutes: number;
-  seriesEndMs: number | null;
-}) {
+function MetricRow({ row, windowMinutes }: { row: LayoutMetricRow; windowMinutes: number }) {
   // The hero row's annotation is spelled out rather than tucked in with the baseline.
   const annotation = row.note?.kind === "annotation" ? row.note.text : undefined;
 
@@ -239,7 +230,6 @@ function MetricRow({
       series={row.series}
       windowMinutes={windowMinutes}
       anomalyMinutes={row.anomalyMinutes}
-      seriesEndMs={seriesEndMs}
       formatPoint={(value) => fmtValue(value, row.unit)}
     />
   );
@@ -252,22 +242,15 @@ function MetricRow({
 function FindingBody({
   finding,
   windowMinutes,
-  seriesEndMs,
 }: {
   finding: LayoutFinding;
   windowMinutes: number;
-  seriesEndMs: number | null;
 }) {
   return (
     <div className="space-y-2.5">
       <ReportMetricList>
         {finding.metrics.map((row) => (
-          <MetricRow
-            key={row.id}
-            row={row}
-            windowMinutes={windowMinutes}
-            seriesEndMs={seriesEndMs}
-          />
+          <MetricRow key={row.id} row={row} windowMinutes={windowMinutes} />
         ))}
       </ReportMetricList>
 
@@ -309,7 +292,6 @@ export function ReportView({
 }) {
   const layout = buildReportLayout(vm, messagesFor(vm.title));
   const severity = layout.headline.severity;
-  const seriesEndMs = toSeriesEndMs(vm.generatedAt);
   const linkByKey = (key: string | undefined) =>
     key === undefined ? undefined : vm.links.find((link) => link.key === key)?.url;
 
@@ -373,11 +355,7 @@ export function ReportView({
         {layout.trust ? <p className="text-sm text-warning">{layout.trust.note}</p> : null}
 
         {layout.hero && layout.hero.expanded ? (
-          <FindingBody
-            finding={layout.hero}
-            windowMinutes={vm.windowMinutes}
-            seriesEndMs={seriesEndMs}
-          />
+          <FindingBody finding={layout.hero} windowMinutes={vm.windowMinutes} />
         ) : null}
 
         {layout.findings.length > 0 || layout.statements.length > 0 ? (
@@ -393,11 +371,7 @@ export function ReportView({
                 />
                 {finding.expanded ? (
                   <div className="pl-[1.375rem]">
-                    <FindingBody
-                      finding={finding}
-                      windowMinutes={vm.windowMinutes}
-                      seriesEndMs={seriesEndMs}
-                    />
+                    <FindingBody finding={finding} windowMinutes={vm.windowMinutes} />
                   </div>
                 ) : null}
               </div>

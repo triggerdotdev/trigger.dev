@@ -1,5 +1,6 @@
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
+
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
@@ -90,7 +91,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3PlaygroundAgentPath,
@@ -100,6 +100,12 @@ import {
   v3TasksStreamingPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Tasks");
@@ -268,13 +274,6 @@ export default function Page() {
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/tasks/overview")}
-          >
-            Task docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -804,7 +803,7 @@ export const myChat = chat.agent({
   },
 });`;
 
-const STANDARD_TASK_CODE = `import { task } from "@trigger.dev/sdk";
+const STANDARD_TASK_CODE = `import { schedules, task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -813,7 +812,7 @@ export const helloWorld = task({
   },
 });`;
 
-const SCHEDULED_TASK_CODE = `import { schedules } from "@trigger.dev/sdk";
+const SCHEDULED_TASK_CODE = `
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",

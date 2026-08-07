@@ -139,14 +139,11 @@ export function InvestigationCard({
   defaultExpanded = false,
   resolveUri,
   onIntent,
-  answered = false,
 }: {
   block: InvestigationBlock;
   defaultExpanded?: boolean;
   resolveUri?: ResolveUri;
   onIntent?: (intent: AgentIntent) => void;
-  /** The turn kept answering after this card, so "keep digging" has nothing to ask for. */
-  answered?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const investigation = block.investigation;
@@ -242,12 +239,7 @@ export function InvestigationCard({
           ) : null}
         </div>
 
-        <InvestigationActions
-          actions={(block.capabilities?.actions ?? []).filter(
-            (action) => !answered || action.kind !== "ask_follow_up"
-          )}
-          onIntent={onIntent}
-        />
+        <InvestigationActions actions={block.capabilities?.actions ?? []} onIntent={onIntent} />
       </AgentCardBody>
     </AgentCard>
   );

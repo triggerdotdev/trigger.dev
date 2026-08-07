@@ -25,13 +25,9 @@ export function blockKey(block: unknown, index: number): string {
   return blockIdentity(block) ?? `index:${index}`;
 }
 
-/**
- * Latest-wins within one array only: highest `revision` at the winner's position, ties to the
- * last. Blocks without an envelope are all kept, in order. Each survivor keeps the index it had
- * in `blocks`, which is what an envelope-less block is keyed on — a search for it afterwards
- * would answer with the first equal block, not this one.
- */
-export function latestRevisionEntries<T>(blocks: readonly T[]): { block: T; index: number }[] {
+// Latest-wins within one array only: highest `revision` at the winner's position,
+// ties to the last. Blocks without an envelope are all kept, in order.
+export function latestRevisionBlocks<T>(blocks: readonly T[]): T[] {
   if (!Array.isArray(blocks)) return [];
 
   const winnerIndexByIdentity = new Map<string, number>();
@@ -47,17 +43,10 @@ export function latestRevisionEntries<T>(blocks: readonly T[]): { block: T; inde
     }
   });
 
-  const entries: { block: T; index: number }[] = [];
-  blocks.forEach((block, index) => {
-    const identity = blockIdentity(block);
-    if (identity === undefined || winnerIndexByIdentity.get(identity) === index) {
-      entries.push({ block, index });
-    }
-  });
-  return entries;
-}
+  if (winnerIndexByIdentity.size === 0) return [...blocks];
 
-/** {@link latestRevisionEntries} without the positions. */
-export function latestRevisionBlocks<T>(blocks: readonly T[]): T[] {
-  return latestRevisionEntries(blocks).map((entry) => entry.block);
+  return blocks.filter((block, index) => {
+    const identity = blockIdentity(block);
+    return identity === undefined || winnerIndexByIdentity.get(identity) === index;
+  });
 }
