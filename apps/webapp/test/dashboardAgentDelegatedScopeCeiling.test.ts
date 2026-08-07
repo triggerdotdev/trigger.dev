@@ -58,6 +58,18 @@ it("still hands over the reads the cap does carry", async () => {
   expect(clamped.scopes).toEqual(["read:runs"]);
 });
 
+it("refuses a write the cap forbids even when the user's role allows it", async () => {
+  // The cloud path builds the ability from the user's role, not from the token's cap —
+  // so the role alone would hand a read-only agent token a write JWT.
+  const { claims } = await abilityFor(AGENT_CAP);
+  const roleAllowsEverything = { can: () => true, canSuper: () => false } as never;
+
+  const clamped = clampUserActorScopes(["write:runs"], claims, roleAllowsEverything);
+
+  expect(clamped.scopes).toEqual([]);
+  expect(clamped.deniedScopes).toContain("write:runs");
+});
+
 it("keeps a capless delegated token read-only", async () => {
   const { ability, claims } = await abilityFor();
 

@@ -456,9 +456,15 @@ export const dashboardAgent = chat.agent({
     // and closing cards of whatever was left running. Settling a row on a separate
     // operation is what could leave a terminal row whose card never arrived — and the
     // stale sweep only selects `in_progress`, so nothing would ever repair it.
+    // Only what this turn produced may be finalised; the rest of the snapshot is history.
+    const produced = [...(newMessages ?? []), ...(responseMessage ? [responseMessage] : [])]
+      .map((message) => (message as { id?: unknown }).id)
+      .filter((id): id is string => typeof id === "string");
+
     const { settled } = await store.persistTurn({
       chatId,
       messages: mergeMessagesById(uiMessages, failure ? [failure] : []),
+      finalizeMessageIds: [...produced, ...(failure ? [failure.id] : [])],
       session: {
         publicAccessToken: chatAccessToken,
         lastEventId,

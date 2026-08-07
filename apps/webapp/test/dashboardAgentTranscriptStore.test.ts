@@ -311,6 +311,7 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       await persistTurn(agentDb, {
         chatId,
         messages: [toolMessage("a1", "output-available")],
+        finalizeMessageIds: ["a1"],
         session: { publicAccessToken: "pat_store" },
       });
 
@@ -645,6 +646,8 @@ describe("a write can no longer lose a message another process appended", () => 
       await persistTurn(agentDb, {
         chatId,
         messages: [{ ...(card.message as Record<string, unknown>), tampered: true }],
+        // Even named outright, a durable event is not this turn's to rewrite.
+        finalizeMessageIds: [cardId],
         session: { publicAccessToken: "pat_store" },
       });
       const afterCard = (await rows(prisma, chatId)).find(

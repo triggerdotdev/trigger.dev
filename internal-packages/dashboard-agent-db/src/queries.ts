@@ -571,6 +571,12 @@ export async function persistTurn(
       runId?: string | null;
     };
     settlements?: PendingInvestigationSettlement[];
+    /**
+     * The ids this turn produced. Only these may be rewritten in place — `messages` is the
+     * whole replayed transcript, so finalising all of it would let a later turn overwrite a
+     * durable event that happens to be in the agent's history.
+     */
+    finalizeMessageIds?: string[];
   }
 ): Promise<PersistTurnResult> {
   return db.transaction(async (tx) => {
@@ -608,14 +614,15 @@ export async function persistTurn(
     );
     const messages = [...params.messages, ...cards.filter((card) => !existing.has(card.id))];
 
-    // `onTurnStart` stores the turn's messages mid-flight, so the completed bodies arrive
-    // here against ids that already exist: without finalisation the transcript would keep
-    // the half-finished tool call the user never saw the end of. Settlement cards are
-    // durable events and stay insert-only.
+    // `onTurnStart` stores this turn's messages mid-flight, so their completed bodies arrive
+    // here against ids that already exist: without finalisation the transcript would keep the
+    // half-finished tool call the user never saw the end of. Everything else — earlier turns,
+    // settlement cards, host-appended wakes — stays insert-only.
+    // A settlement card is never the turn's to rewrite, however it was named.
     const finalizable = new Set(
-      params.messages
-        .map((message) => messageIdOf(params.chatId, message))
-        .filter((id) => !id.startsWith(`${INVESTIGATION_SETTLEMENT_MESSAGE_ID_PREFIX}:`))
+      (params.finalizeMessageIds ?? []).filter(
+        (id) => !id.startsWith(`${INVESTIGATION_SETTLEMENT_MESSAGE_ID_PREFIX}:`)
+      )
     );
 
     await storeChatMessages(tx, { chatId: params.chatId, messages, finalizable });
