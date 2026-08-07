@@ -8,6 +8,7 @@ import type { WaitpointSystem } from "./waitpointSystem.js";
 import { startSpan } from "@internal/tracing";
 import pMap from "p-map";
 
+import { boundedIn } from "@trigger.dev/database";
 export type TtlSystemOptions = {
   resources: SystemResources;
   waitpointSystem: WaitpointSystem;
@@ -160,7 +161,7 @@ export class TtlSystem {
       // Fetch all runs in a single query (no snapshot data needed)
       const runs = await this.$.runStore.findRuns(
         {
-          where: { id: { in: runIds } },
+          where: { id: { in: boundedIn(runIds) } },
           select: {
             id: true,
             spanId: true,

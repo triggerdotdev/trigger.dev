@@ -1,6 +1,7 @@
 import {
   Prisma,
   PrismaClient,
+  boundedIn,
   $transaction as transac,
   type PrismaClientOrTransaction,
   type PrismaReplicaClient,
@@ -122,7 +123,7 @@ async function $transactionInner<R>(
   }
 }
 
-export { Prisma };
+export { Prisma, boundedIn };
 
 type DatasourceLabel =
   | "control-plane-writer"

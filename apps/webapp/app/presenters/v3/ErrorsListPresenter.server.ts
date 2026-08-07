@@ -9,7 +9,11 @@ const errorsListGranularity = new TimeGranularity([
   { max: "3 months", granularity: "1w" },
   { max: "Infinity", granularity: "30d" },
 ]);
-import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type ErrorGroupStatus,
+  type PrismaClientOrTransaction,
+  boundedIn,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -457,7 +461,7 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (statuses.includes("UNRESOLVED")) {
       const excluded = await this.replica.errorGroupState.findMany({
-        where: { environmentId, status: { in: excludedStatuses } },
+        where: { environmentId, status: { in: boundedIn(excludedStatuses) } },
         select: { taskIdentifier: true, errorFingerprint: true },
       });
       if (excluded.length === 0) {
@@ -470,7 +474,7 @@ export class ErrorsListPresenter extends BasePresenter {
     }
 
     const included = await this.replica.errorGroupState.findMany({
-      where: { environmentId, status: { in: statuses } },
+      where: { environmentId, status: { in: boundedIn(statuses) } },
       select: { taskIdentifier: true, errorFingerprint: true },
     });
     if (included.length === 0) {

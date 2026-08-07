@@ -1,4 +1,4 @@
-import { type BatchTaskRunStatus } from "@trigger.dev/database";
+import { type BatchTaskRunStatus, boundedIn } from "@trigger.dev/database";
 import { type RunOpsPrismaClient } from "@internal/run-ops-database";
 import parse from "parse-duration";
 import { type PrismaClientOrTransaction } from "~/db.server";
@@ -263,7 +263,7 @@ export class BatchListPresenter extends BasePresenter {
             : {}),
           ...(friendlyId ? { friendlyId } : {}),
           ...(statuses && statuses.length > 0
-            ? { status: { in: statuses }, batchVersion: { not: "v1" } }
+            ? { status: { in: boundedIn(statuses) }, batchVersion: { not: "v1" } }
             : {}),
           ...(createdAtGte !== undefined || createdAtLte !== undefined
             ? {

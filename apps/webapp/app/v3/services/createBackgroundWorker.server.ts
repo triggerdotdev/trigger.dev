@@ -11,7 +11,7 @@ import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isom
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, Prisma } from "~/db.server";
+import { $transaction, Prisma, boundedIn } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -767,7 +767,7 @@ export async function syncDeclarativeSchedules(
   const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
     where: {
       id: {
-        in: Array.from(missingSchedules),
+        in: boundedIn(Array.from(missingSchedules)),
       },
     },
     include: {
@@ -794,7 +794,7 @@ export async function syncDeclarativeSchedules(
     await prisma.taskSchedule.deleteMany({
       where: {
         id: {
-          in: scheduleIdsToDelete,
+          in: boundedIn(scheduleIdsToDelete),
         },
       },
     });
@@ -804,7 +804,7 @@ export async function syncDeclarativeSchedules(
     await prisma.taskScheduleInstance.deleteMany({
       where: {
         taskScheduleId: {
-          in: scheduleIdsToDetachFromEnvironment,
+          in: boundedIn(scheduleIdsToDetachFromEnvironment),
         },
         environmentId: environment.id,
       },
