@@ -34,7 +34,6 @@ import {
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
-import { AskAgentButton } from "./dashboard-agent/AskAgentButton";
 import { CodeBlock } from "./code/CodeBlock";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
@@ -61,9 +60,6 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
-
-const ASK_AGENT_DEPLOY_PROMPT =
-  "I'm trying to deploy my tasks to this environment. Walk me through it and tell me if anything about this project or environment is going to get in the way.";
 
 function DeployDocsLinks() {
   return (
@@ -302,7 +298,7 @@ export function DeploymentsNoneDev() {
           <Header1>Deploy your tasks</Header1>
         </div>
         <div className="flex items-center">
-          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
+          <DeployDocsLinks />
         </div>
       </div>
       <StepNumber stepNumber="→" title="Switch to a deployed environment" />
@@ -668,7 +664,7 @@ function DeploymentOnboardingSteps() {
           </Header1>
         </div>
         <div className="flex items-center">
-          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
+          <DeployDocsLinks />
         </div>
       </div>
       <ClientTabs defaultValue="github">
