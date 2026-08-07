@@ -270,6 +270,19 @@ describe("the card's copy", () => {
     expect(watchSubjectLabel(healthWatchRecommendation("warn"))).toBe("health");
   });
 
+  it("says the kind once, though the fingerprint carries it too", () => {
+    // Fingerprints are stored prefixed (`error_c4b4a797397a9c43`), so shortening the
+    // raw value would read "error error_c4".
+    expect(
+      watchSubjectLabel({
+        kind: "error_recurrence",
+        fingerprint: "error_c4b4a797397a9c43",
+        checkEveryMinutes: 5,
+        maxHours: 0.5,
+      })
+    ).toBe("error c4b4a797");
+  });
+
   it("states the condition and the duration as §2.2 writes them", () => {
     const spec = queueWatchRecommendation("email-sends", { oldestWaitMs: OLDEST_WAIT_WARNING_MS });
     expect(watchConditionLabel(spec)).toBe("Until the queue drains");

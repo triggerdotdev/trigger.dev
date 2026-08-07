@@ -12,7 +12,11 @@ import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 // user-facing copy. Re-exported here for chip callers.
 export { immediateWatchMessage } from "~/presenters/v3/dashboardAgent";
 
-import { formatWatchCadence, watchIdentityValue } from "~/presenters/v3/dashboardAgent";
+import {
+  formatWatchCadence,
+  shortFingerprint,
+  watchIdentityValue,
+} from "~/presenters/v3/dashboardAgent";
 
 export const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
   active: "watching",
@@ -22,8 +26,6 @@ export const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
 };
 
 /** Fingerprints are hashes — a chip shows just enough of one to tell them apart. */
-const FINGERPRINT_CHARS = 8;
-
 /**
  * The chip label for a watch. `identity` is `{kind}:{value}`, so the value is the
  * thing being watched; a health watch has no per-instance value, so its kind is
@@ -48,7 +50,7 @@ export function watchChipLabel(watch: { kind: string; identity: string; note: st
     case "queue_oldest_age":
       return watchIdentityValue(watch.kind, watch.identity) || fallbackLabel(watch);
     case "error_recurrence":
-      return value ? value.slice(0, FINGERPRINT_CHARS) : fallbackLabel(watch);
+      return value ? shortFingerprint(value) : fallbackLabel(watch);
     case "health_recovery":
       return "health";
     default:

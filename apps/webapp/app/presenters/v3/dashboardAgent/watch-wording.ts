@@ -17,6 +17,7 @@ export {
   WATCH_IN_CHAT_DELIVERY_LINE,
   WATCH_PRESENTATION_FALLBACK,
   WATCH_UPDATE_LABEL,
+  shortFingerprint,
   watchConditionLabel,
   watchConditionWording,
   watchConfirmationBlockBody,
