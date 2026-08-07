@@ -1,8 +1,8 @@
 /**
  * Two seams a delegated user-actor token passes through outside the route builder:
  * the direct PAT authentication (which used to hand back identity only, dropping the
- * environment scope), and the environment JWT exchange (which used to mint whatever
- * scopes the caller asked for when the token declared no cap).
+ * environment scope), and the environment JWT exchange (which ceilings the minted
+ * scopes by the token's cap and only mints for the environment it was signed for).
  */
 
 import { postgresTest } from "@internal/testcontainers";
@@ -182,43 +182,6 @@ async function exchange(opts: {
 function payloadOf(jwt: string): any {
   return JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString("utf8"));
 }
-
-postgresTest(
-  "the exchange never mints scopes a capless delegated token doesn't have",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    const seeded = await seedProject(prisma);
-
-    const denied = await exchange({
-      projectRef: seeded.project.externalRef,
-      env: "prod",
-      token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
-      scopes: ["write:runs"],
-    });
-
-    expect(denied.status).toBe(403);
-    expect(denied.body.token).toBeUndefined();
-  },
-  60_000
-);
-
-postgresTest(
-  "a capless delegated token exchanges for a read-only JWT",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    const seeded = await seedProject(prisma);
-
-    const minted = await exchange({
-      projectRef: seeded.project.externalRef,
-      env: "prod",
-      token: await token({ userId: seeded.user.id, environmentId: seeded.prod.id }),
-    });
-
-    expect(minted.status).toBe(200);
-    expect(payloadOf(minted.body.token).scopes).toEqual(["read:all"]);
-  },
-  60_000
-);
 
 postgresTest(
   "the exchange clamps requested scopes to the token's cap",

@@ -292,6 +292,59 @@ describe("user-actor token environment scope", () => {
   });
 });
 
+/**
+ * The exchange's own ceiling: a delegated token names the scopes it wants, and its `cap` is
+ * what it may have. Without the intersection a read-only agent token mints a write JWT
+ * whenever its user's role allows writes — the token travels in a task payload, so that is
+ * a real widening rather than a theoretical one.
+ */
+describe("env JWT exchange — the cap is a ceiling", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+  });
+
+  async function exchange(token: string, scopes?: string[]) {
+    const response = await respond(
+      () =>
+        jwtAction({
+          request: requestFor(token, `/api/v1/projects/${PROJECT.externalRef}/prod/jwt`, {
+            method: "POST",
+            body: JSON.stringify(scopes ? { claims: { scopes } } : {}),
+          }),
+          params: { projectRef: PROJECT.externalRef, env: "prod" },
+          context: {} as any,
+        }) as Promise<Response>
+    );
+    return response;
+  }
+
+  it("drops a scope the cap doesn't carry", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await exchange(token, ["read:runs", "write:runs"]);
+
+    expect(response.status).toBe(200);
+    const { token: jwt } = (await response.json()) as { token: string };
+    const payload = JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString()) as {
+      scopes?: string[];
+    };
+    expect(payload.scopes).toEqual(["read:runs"]);
+  });
+
+  it("falls back to the whole cap when the caller asks for nothing", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await exchange(token);
+
+    const { token: jwt } = (await response.json()) as { token: string };
+    const payload = JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString()) as {
+      scopes?: string[];
+    };
+    expect(payload.scopes).toEqual(["read:apiKeys", "read:runs", "read:deployments"]);
+  });
+});
+
 describe("repo snapshot authorization", () => {
   beforeEach(() => {
     mocks.can.mockReset();

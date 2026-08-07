@@ -9,12 +9,7 @@
  */
 
 import { json } from "@remix-run/server-runtime";
-import {
-  buildJwtAbility,
-  type RbacAbility,
-  scopesWithinAbility,
-  type UserActorClaims,
-} from "@trigger.dev/rbac";
+import { type UserActorClaims } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 
 export const FORBIDDEN_ENVIRONMENT_CODE = "forbidden_environment";
@@ -111,33 +106,6 @@ export async function resolveUserActorEnvironmentScope(
     environmentId: environment.id,
     slug: environment.slug,
     organizationId: environment.organizationId,
-  };
-}
-
-/** Mirrors the RBAC fallback's own default. */
-const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
-
-/**
- * A delegated token must never mint something more capable than itself. Two ceilings apply:
- * the actor's own ability (their role) and the token's `cap`. The role alone is not enough —
- * a read-only agent token belongs to a user who may well be allowed to write.
- */
-export function clampUserActorScopes(
-  requestedScopes: string[] | undefined,
-  userActor: UserActorClaims,
-  ability: RbacAbility
-): { scopes: string[]; deniedScopes: string[] } {
-  const cap = userActor.cap ?? CAPLESS_USER_ACTOR_SCOPES;
-  const requested = requestedScopes && requestedScopes.length > 0 ? requestedScopes : cap;
-
-  const denied = new Set([
-    ...scopesWithinAbility(requested, ability).deniedScopes,
-    ...scopesWithinAbility(requested, buildJwtAbility(cap)).deniedScopes,
-  ]);
-
-  return {
-    scopes: requested.filter((scope) => !denied.has(scope)),
-    deniedScopes: [...denied],
   };
 }
 
