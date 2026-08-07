@@ -45,6 +45,9 @@ export class CheckScheduleService extends BaseService {
         slug: schedule.taskIdentifier,
         projectId: projectId,
       },
+      select: {
+        triggerSource: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
