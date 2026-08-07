@@ -48,8 +48,15 @@ describe("assertSafeWebhookUrl", () => {
     ).rejects.toBeInstanceOf(UnsafeWebhookUrlError);
   });
 
-  it("rejects CGNAT, multicast and reserved ranges", async () => {
-    for (const host of ["100.64.0.1", "224.0.0.1", "239.1.1.1", "240.0.0.1"]) {
+  it("rejects CGNAT, benchmarking, multicast and reserved ranges", async () => {
+    for (const host of [
+      "100.64.0.1",
+      "198.18.0.0",
+      "198.19.255.255",
+      "224.0.0.1",
+      "239.1.1.1",
+      "240.0.0.1",
+    ]) {
       await expect(assertSafeWebhookUrl(`http://${host}/hook`)).rejects.toBeInstanceOf(
         UnsafeWebhookUrlError
       );
@@ -92,6 +99,8 @@ describe("assertSafeWebhookUrl", () => {
 describe("assertAddressAllowed", () => {
   it("allows public IPv4 / IPv6 addresses", () => {
     expect(() => assertAddressAllowed("93.184.216.34", 4)).not.toThrow();
+    expect(() => assertAddressAllowed("198.17.255.255", 4)).not.toThrow();
+    expect(() => assertAddressAllowed("198.20.0.0", 4)).not.toThrow();
     expect(() => assertAddressAllowed("2606:2800:220:1:248:1893:25c8:1946", 6)).not.toThrow();
   });
 
@@ -104,6 +113,8 @@ describe("assertAddressAllowed", () => {
       "192.168.1.1",
       "169.254.169.254",
       "100.64.0.1",
+      "198.18.0.0",
+      "198.19.255.255",
     ]) {
       expect(() => assertAddressAllowed(addr, 4)).toThrow(UnsafeWebhookUrlError);
     }
