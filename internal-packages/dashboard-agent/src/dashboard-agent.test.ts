@@ -24,6 +24,7 @@ import {
   evalSampleRate,
   extractToolActivity,
   isCiEvalContext,
+  isFirstUserExchange,
   MAX_EVAL_TOOL_OUTPUT_CHARS,
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
@@ -101,6 +102,29 @@ describe("dashboardAgent (mock harness)", () => {
     ]);
   });
 
+  describe("which turn names the chat", () => {
+    const user = (id: string) => ({ id, role: "user" });
+    const assistant = (id: string) => ({ id, role: "assistant" });
+
+    it("names it on the first exchange", () => {
+      expect(isFirstUserExchange([user("u1")])).toBe(true);
+    });
+
+    it("still names it when the turn was head-started", () => {
+      // The warm first step arrives in `uiMessages`, so the transcript already holds
+      // two messages on the very first exchange.
+      expect(isFirstUserExchange([user("u1"), assistant("a1")])).toBe(true);
+    });
+
+    it("does not rename on a later exchange", () => {
+      expect(isFirstUserExchange([user("u1"), assistant("a1"), user("u2")])).toBe(false);
+    });
+
+    it("ignores a watch consent record, which the user never typed", () => {
+      expect(isFirstUserExchange([user("watch-request:watch_1"), user("u1")])).toBe(true);
+    });
+  });
+
   it("names the chat once, not on every turn", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
@@ -112,8 +136,9 @@ describe("dashboardAgent (mock harness)", () => {
       },
     });
 
-    await harness.sendMessage(userMessage("first question"));
-    await harness.sendMessage(userMessage("second question"));
+    await harness.sendMessage(userMessage("first question", "u1"));
+    // A distinct id: two turns are two messages, which is what the gate counts.
+    await harness.sendMessage(userMessage("second question", "u2"));
 
     expect(calls.setChatTitleIfDefault).toHaveLength(1);
   });

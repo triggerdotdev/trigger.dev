@@ -1,3 +1,4 @@
+import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
@@ -272,6 +273,20 @@ function cleanTitle(raw: string): string {
  */
 const pendingTitles = new Map<string, Promise<void>>();
 
+/**
+ * Whether this turn is the one that names the chat. Counted in user messages, not in
+ * transcript length: a head-started turn arrives with the warm first step already in
+ * `uiMessages`, so a length gate would see two messages on the very first exchange and
+ * never name the chat at all. A watch's consent record is a user message the user did
+ * not type, so it doesn't count as an exchange either.
+ */
+export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
+  const typed = uiMessages.filter(
+    (message) => message.role === "user" && !isWatchRequestMessageId(message.id)
+  );
+  return typed.length <= 1;
+}
+
 async function generateAndSaveTitle(
   store: DashboardAgentStore,
   chatId: string,
@@ -382,9 +397,8 @@ export const dashboardAgent = chat.agent({
 
     // Name the chat on the first exchange, started here so it runs while the model
     // answers. Awaited in `onBeforeTurnComplete`, not here; a failure only costs the
-    // generated name. The gate is the transcript length at the START of the turn,
-    // where one message means nothing has been answered yet.
-    if (uiMessages.length <= 1 && !pendingTitles.has(chatId)) {
+    // generated name.
+    if (isFirstUserExchange(uiMessages) && !pendingTitles.has(chatId)) {
       const store = getStore();
       pendingTitles.set(
         chatId,
