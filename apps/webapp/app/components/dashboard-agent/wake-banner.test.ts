@@ -145,11 +145,11 @@ describe("wakePresentation", () => {
       note: "",
     };
     expect(wakePresentation("fired", { ...error, resolution: "condition_met" })).toMatchObject({
-      headline: "Error a1b2c3d4 happened again",
+      headline: "Error a1b2c3d4e5f6 happened again",
       category: "attention",
     });
     expect(wakePresentation("expired", { ...error, resolution: "window_completed" })).toMatchObject(
-      { headline: "Error a1b2c3d4 stayed quiet", category: "positive" }
+      { headline: "Error a1b2c3d4e5f6 stayed quiet", category: "positive" }
     );
   });
 
