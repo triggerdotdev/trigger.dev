@@ -20,6 +20,7 @@ import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import {
+  getBillingAlerts,
   getDefaultEnvironmentConcurrencyLimit,
   isBillingConfigured,
   setBillingAlert,
@@ -150,12 +151,18 @@ async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
   }
 
   let timer: NodeJS.Timeout | undefined;
+  const abort = new AbortController();
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Timed out")), SEED_ALERTS_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      // Stop the seed from writing after we give up: by then the user may have
+      // saved their own alerts, and a late default write would clobber them.
+      abort.abort();
+      reject(new Error("Timed out"));
+    }, SEED_ALERTS_TIMEOUT_MS);
   });
 
   const [error] = await tryCatch(
-    Promise.race([setBillingAlert(organizationId, buildDefaultBillingAlerts()), timeout]).finally(
+    Promise.race([writeDefaultBillingAlertsIfUnset(organizationId, abort.signal), timeout]).finally(
       () => clearTimeout(timer)
     )
   );
@@ -165,6 +172,31 @@ async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
       error: error instanceof Error ? error.message : error,
     });
   }
+}
+
+/**
+ * Only writes defaults when the org has no alerts yet. A slow seed that finishes
+ * after org creation returned would otherwise overwrite the user's first alert edit.
+ *
+ * The read-then-write isn't atomic: the platform API has no conditional write and
+ * returns the same empty-levels shape for "no record" and "record cleared by the
+ * user". Both only matter inside the seconds-long seed window right after org
+ * creation; the abort check below keeps a timed-out seed from writing late.
+ */
+async function writeDefaultBillingAlertsIfUnset(
+  organizationId: string,
+  signal: AbortSignal
+): Promise<void> {
+  const existing = await getBillingAlerts(organizationId);
+  if (existing && existing.alertLevels.length > 0) {
+    return;
+  }
+
+  if (signal.aborted) {
+    return;
+  }
+
+  await setBillingAlert(organizationId, buildDefaultBillingAlerts());
 }
 
 export async function createEnvironment({
