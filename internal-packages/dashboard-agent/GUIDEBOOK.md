@@ -93,8 +93,15 @@ So a queue full of runs shows only `Watch…` until something is actually
 executing or waiting too long — filling a queue with nothing to run it does not
 make the page degraded.
 
-**Chips in the agent panel.** An empty chat offers up to five, chosen from the
-page's live signals — a different decision from the buttons above:
+**Chips in the agent panel.** An empty chat offers up to five. They come from
+*two* places, decided separately — closing one does not close the other:
+
+*The page registry* (`suggested-prompts/page-prompts.ts`) answers by page kind
+and its fields: the queue page's "why is this backed up?" and "tell me when the
+backlog drains" live here, gated on health and on `paused`.
+
+*The page's live signals* (`suggested-prompts/signal-prompts.ts`) answer by what
+is happening on screen right now:
 
 | Signal | Chip slot |
 | --- | --- |
@@ -105,8 +112,12 @@ page's live signals — a different decision from the buttons above:
 
 A backed-up queue therefore offers "tell me when the backlog drains", never
 "investigate" — the page's own Investigate button is the one that asks that. A
-paused queue offers neither: `concurrency_saturation` is withheld while it is
-paused, for the same reason the button is.
+paused queue offers neither, in either place.
+
+So there are three sources, not two: the route's own buttons, the page registry,
+and the live signals. They look identical on screen and are decided in three
+different files — which is exactly how a rule gets fixed in one and left in the
+other two.
 
 ---
 

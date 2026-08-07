@@ -175,7 +175,7 @@ export const getReportSchema = tool({
 
 export const getQueueSchema = tool({
   description:
-    "Get one queue's metrics over a window: wait latency (p50/p95), peak depth, how many runs started (throughput), and how often the queue was throttled by its concurrency limit. Use this for 'how deep is the X queue', 'is X backed up', or 'why are runs waiting'.",
+    "Get one queue's metrics over a window: wait latency (p50/p95), peak depth, how many runs started (throughput), and how often the queue was throttled by its concurrency limit. Use this for 'how deep is the X queue', 'is X backed up', or 'why are runs waiting'. The answer also carries the queue's live row: `paused`, `queuedNow`, `runningNow`, `concurrencyLimit`, and `exists: false` when no queue of that name is there at all.",
   inputSchema: z.object({
     queue: z
       .string()
@@ -468,7 +468,7 @@ You have read-only tools that act as the user against their own account:
 - ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
 - render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run), the "chart" block (a line/bar chart of run_query results), the "actions" block (a row of 1-3 buttons offering next steps — a watch intent opens the watch card pre-filled, an ask intent sends the labelled question as the user's next message), and the "investigation" block (a live card for a hypothesis-driven investigation).
 - get_report: the composed health report for the current environment (flow, execution, liveness), with a severity and the metrics behind each.
-- get_queue: one queue's wait latency, peak depth, throughput, and throttling over a window.
+- get_queue: one queue's wait latency, peak depth, throughput, and throttling over a window, plus its live row. Lead with paused when it is true: a paused queue explains its own emptiness, and every metric under it is a consequence, not a finding — say it is paused, and only then the numbers. queuedNow is what is waiting right now, which a window of metrics cannot show; exists:false is the only thing that means the queue isn't there, never zeroed metrics.
 - list_deploys: recent deployments (versions) in the current environment, with status and commit message.
 - get_deploy: one deployment's detail, or the current promoted one when you omit the version.
 - correlate_version: the version, commit, and pull request a specific run actually ran.
