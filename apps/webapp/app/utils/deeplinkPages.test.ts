@@ -1,3 +1,5 @@
+import { flatRoutes } from "@remix-run/dev/dist/config/flat-routes.js";
+import type { RouteManifest } from "@remix-run/dev/dist/config/routes.js";
 import { matchPath } from "@remix-run/router";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +11,8 @@ import {
   resolveDeeplinkPage,
 } from "./deeplinkPages";
 
-const ROUTES_DIR = join(__dirname, "../routes");
+const APP_DIR = join(__dirname, "..");
+const ROUTES_DIR = join(APP_DIR, "routes");
 
 // Flat-route prefix for every page that renders inside an environment. The trailing dot matters:
 // it excludes the layout route itself (`…env.$envParam`), which has no segment of its own.
@@ -25,6 +28,40 @@ const NOT_DEEPLINK_NAMES = new Set(["_index", "queues_"]);
 
 /** Stands in for a param segment, so a deep path under test looks like a real URL. */
 const PROBE = "probe_01ABC";
+
+/** The route module whose filename is what produces the deeplink URL. */
+const DEEPLINK_ROUTE_FILE = "routes/[_].$.ts";
+
+/**
+ * The app's routes as Remix itself compiles them, so the URL under test is the one the router will
+ * really serve rather than one this file asserts into existence. `flatRoutes` is the same function
+ * the vite plugin calls, and the ignore list mirrors `ignoredRouteFiles` in `vite.config.ts`.
+ */
+const compiledRoutes: RouteManifest = flatRoutes(APP_DIR, ["**/.*"]);
+
+/**
+ * A route's whole URL, walking up the manifest — a `path` is relative to its parent's, and a
+ * pathless layout contributes nothing. Top-level routes name `root`, which the manifest omits.
+ */
+function compiledUrl(id: string): string {
+  // An unknown id would otherwise walk zero routes and quietly read as the site root.
+  if (!compiledRoutes[id]) throw new Error(`no compiled route with id ${id}`);
+
+  const segments: string[] = [];
+  let route = compiledRoutes[id];
+  while (route) {
+    if (route.path) segments.unshift(route.path);
+    route = route.parentId ? compiledRoutes[route.parentId] : undefined;
+  }
+  return `/${segments.join("/")}`;
+}
+
+/** What Remix actually mounts `[_].$.ts` at, e.g. `/_`. Derived, never assumed. */
+const COMPILED_DEEPLINK_PATH = (() => {
+  const entry = Object.values(compiledRoutes).find((route) => route.file === DEEPLINK_ROUTE_FILE);
+  if (!entry) throw new Error(`${DEEPLINK_ROUTE_FILE} is not in the compiled route manifest`);
+  return compiledUrl(entry.id).replace(/\/\*$/, "");
+})();
 
 const routeEntries = readdirSync(ROUTES_DIR);
 
@@ -270,6 +307,45 @@ describe("resolveDeeplinkPage", () => {
   });
 });
 
+describe("the route Remix compiles from the filename", () => {
+  // The escape in `[_].$.ts` is the whole reason this route works, and getting it wrong fails
+  // catastrophically rather than visibly: a flat-route segment starting with `_` is a *pathless
+  // layout* contributing nothing to the URL, so an unescaped `_.$.ts` would mount this loader at
+  // `/*` — a splat over the entire site whose loader redirects unconditionally. Nothing else in
+  // the app uses `[…]` escaping, so there is no precedent to lean on and the compiled manifest is
+  // the only honest source. Everything here is read out of `flatRoutes`, never asserted into it.
+
+  it("mounts the deeplink route at /_ and nowhere else", () => {
+    expect(COMPILED_DEEPLINK_PATH).toBe("/_");
+    // The constant the loader strips has to agree with what Remix mounted, so renaming either the
+    // file or the constant without the other fails here.
+    expect(COMPILED_DEEPLINK_PATH).toBe(DEEPLINK_PATH_PREFIX);
+  });
+
+  it("does not mount anything as a site-wide splat", () => {
+    // The disaster case, asserted for every route rather than just this one: had the underscore
+    // been read as pathless, this is the assertion that would have caught it.
+    const siteWide = Object.values(compiledRoutes)
+      .filter((route) => compiledUrl(route.id) === "/*")
+      .map((route) => route.file);
+
+    expect(siteWide).toEqual([]);
+  });
+
+  it("compiled the manifest it is reading", () => {
+    // Keeps the two assertions above from passing because `flatRoutes` returned nothing useful.
+    expect(Object.keys(compiledRoutes).length).toBeGreaterThan(400);
+    // A sample of ordinary routes, so a manifest full of undefined paths would not read as a pass.
+    expect(compiledUrl("routes/login.magic")).toBe("/login/magic");
+    // `queues_.$queueParam` opts out of the parent layout; the trailing `_` is not a URL character.
+    expect(
+      compiledUrl(
+        "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues_.$queueParam"
+      )
+    ).toBe("/orgs/:organizationSlug/projects/:projectParam/env/:envParam/queues/:queueParam");
+  });
+});
+
 describe("deeplinkSuffix", () => {
   it("strips the route's own prefix", () => {
     expect(deeplinkSuffix("/_/tasks")).toBe("tasks");
@@ -290,13 +366,11 @@ describe("deeplinkSuffix", () => {
     expect(deeplinkSuffix("/_/tasks/standard/My-Task")).toBe("tasks/standard/My-Task");
   });
 
-  it("is mounted where the route filename says it is", () => {
-    // `[_].$` is an escaped literal, not a pathless layout: Remix's `createRoutePath` drops a
-    // segment only when the cooked and the raw spelling both start with `_`, and the raw spelling
-    // is `[_]`. A plain `_.$` would compile to `/*` and swallow the site, so this pins the prefix
-    // the loader strips to the URL the router actually serves.
-    const route = `${DEEPLINK_PATH_PREFIX}/*`;
-    expect(route).toBe("/_/*");
+  it("matches the URL the router serves for it", () => {
+    // Behaviour of the pattern itself. What the pattern *is* is settled against the compiled
+    // manifest above — building it from DEEPLINK_PATH_PREFIX alone would only compare the constant
+    // with itself.
+    const route = `${COMPILED_DEEPLINK_PATH}/*`;
     expect(matchPath(route, "/_/apikeys")?.params["*"]).toBe("apikeys");
     expect(matchPath(route, "/_/runs/run_123")?.params["*"]).toBe("runs/run_123");
     // The splat keeps the case it was given, which is why the loader folds only the page name.
