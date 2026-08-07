@@ -42,8 +42,6 @@ import {
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 // Valid log levels for filtering
@@ -54,10 +52,6 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   if (levelParams.length === 0) return undefined;
   return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
 }
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("logs"),
-};
 
 export const meta = pageMeta("Logs");
 

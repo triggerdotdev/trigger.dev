@@ -1,13 +1,13 @@
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams } from "@remix-run/react";
-
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Input } from "~/components/primitives/Input";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
@@ -35,14 +35,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
-import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: (data) => testAgentPageContext(data),
-};
-
+import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Test");
@@ -86,6 +79,11 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Test" />
+        <PageAccessories>
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/run-tests")}>
+            Test docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         {tasks.length === 0 ? (

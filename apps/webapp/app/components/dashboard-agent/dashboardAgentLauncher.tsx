@@ -1,38 +1,18 @@
+import { ChatBubbleLeftRightIcon, ChevronDoubleRightIcon } from "@heroicons/react/20/solid";
 import { createContext, useContext } from "react";
-import { Button } from "~/components/primitives/Buttons";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import type { Shortcut } from "~/hooks/useShortcutKeys";
-import { ASK_AGENT_LABEL } from "./agent-identity";
-
-// Registered once, by `DashboardAgent`. The launcher only displays it.
-export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
-  modifiers: ["mod"],
-  key: "j",
-  // The composer holds focus while the panel is open, so the key must fire from
-  // inside a text field.
-  enabledOnInputElements: true,
-};
-
-// Ask AI's old keystroke. Kept as an alias so the muscle memory lands somewhere; not advertised.
-export const LEGACY_ASK_AI_SHORTCUT: Shortcut = {
-  modifiers: ["mod"],
-  key: "i",
-  enabledOnInputElements: true,
-};
+import { cn } from "~/utils/cn";
 
 type DashboardAgentContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
-  /** Sent as the first message of a new chat; with a chat open it only fills the composer. */
-  openWith: (text: string) => void;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
 
 export const DashboardAgentProvider = DashboardAgentContext.Provider;
 
-// Null outside the env layout (no provider) or when the agent is gated off.
+// Null outside the env layout (no provider) or when the agent is gated off, so
+// the launcher self-hides everywhere it can't open.
 export function useDashboardAgent() {
   return useContext(DashboardAgentContext);
 }
@@ -44,32 +24,25 @@ export function DashboardAgentLauncher() {
   }
 
   const { open, setOpen } = agent;
-  if (open) {
-    return null;
-  }
 
   return (
-    <SimpleTooltip
-      asChild
-      tabbable
-      disableHoverableContent
-      content={
-        <span className="flex items-center">
-          Open chat
-          <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
-        </span>
-      }
-      button={
-        <span className="relative inline-flex shrink-0">
-          <Button
-            variant="ask-trigger/small"
-            aria-label={ASK_AGENT_LABEL}
-            onClick={() => setOpen(true)}
-          >
-            {ASK_AGENT_LABEL}
-          </Button>
-        </span>
-      }
-    />
+    <button
+      type="button"
+      aria-label={open ? "Collapse chat" : "Open chat"}
+      onClick={() => setOpen(!open)}
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
+        open
+          ? "border-border-brighter bg-background-hover"
+          : "border-border-bright bg-background-bright hover:border-border-brighter"
+      )}
+    >
+      {open ? (
+        <ChevronDoubleRightIcon className="size-3.5 text-text-dimmed" />
+      ) : (
+        <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
+      )}
+      {open ? "Collapse" : "Chat"}
+    </button>
   );
 }

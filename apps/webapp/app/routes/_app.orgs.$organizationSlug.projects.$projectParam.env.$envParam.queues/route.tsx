@@ -92,8 +92,6 @@ import {
   v3QueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import type { Handle } from "~/utils/handle";
-import { queuesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
 import {
@@ -136,10 +134,6 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // the loader's Redis-exact live values (matches LIVE_GAUGE_FRESH_MS on the queue detail page / run
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
-
-export const handle: Handle = {
-  agentPageContext: (data) => queuesAgentPageContext(data),
-};
 
 export const meta = pageMeta("Queues");
 
@@ -476,6 +470,13 @@ function QueuesWithMetricsView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/queue-concurrency")}
+          >
+            Queues docs
+          </LinkButton>
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
@@ -1682,6 +1683,13 @@ function ClassicQueuesView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/queue-concurrency")}
+          >
+            Queues docs
+          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

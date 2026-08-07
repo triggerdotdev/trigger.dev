@@ -1,10 +1,7 @@
-import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
-import { useEffect, useRef } from "react";
+import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/20/solid";
+import { useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
-import { MAX_MESSAGE_CHARS, MESSAGE_CHARS_WARN_AT } from "./message-limits";
-
-export type DashboardAgentComposerLayout = "docked" | "hero";
 
 export function DashboardAgentComposer({
   value,
@@ -12,124 +9,50 @@ export function DashboardAgentComposer({
   onSubmit,
   onStop,
   isStreaming,
-  focusKey,
-  context,
-  layout = "docked",
-  autoFocus = true,
-  placeholderSuggestion,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onStop: () => void;
   isStreaming: boolean;
-  // Bump to move focus back to the textarea.
-  focusKey?: string | number;
-  context?: React.ReactNode;
-  layout?: DashboardAgentComposerLayout;
-  autoFocus?: boolean;
-  // Shown as the placeholder while the field is empty. Tab accepts it as editable
-  // text; it is never sent on its own.
-  placeholderSuggestion?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !autoFocus) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, [focusKey, autoFocus]);
-
-  const isHero = layout === "hero";
-
-  const sendButton = isStreaming ? (
-    <Button
-      variant="minimal/small"
-      className="aspect-square h-7 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
-      aria-label="Stop generating"
-      tooltip="Stop generating"
-      onClick={onStop}
-      LeadingIcon={<StopIcon className="size-4 text-white" />}
-    />
-  ) : (
-    <Button
-      variant="primary/small"
-      className="aspect-square h-7 min-w-0 p-1"
-      aria-label="Send"
-      tooltip="Send"
-      onClick={onSubmit}
-      disabled={!value.trim()}
-      LeadingIcon={<ArrowUpIcon className="size-4 text-white" />}
-    />
-  );
-
   return (
-    <div
-      className={cn(
-        "flex shrink-0 flex-col gap-1.5",
-        isHero ? "w-full" : "bg-background-bright px-3 pb-3 pt-1"
-      )}
-    >
-      {isHero ? null : context}
-      <div
-        className={cn(
-          "border border-border-bright bg-background-bright transition focus-within:border-border-brighter",
-          isHero ? "rounded-lg p-2" : "rounded-md p-1"
-        )}
-      >
-        <div className={isHero ? "flex flex-col gap-1.5" : "flex items-end gap-1"}>
+    <div className="border-t border-grid-bright p-3">
+      <div className="rounded-2xl border border-border-bright bg-background-bright p-2 transition focus-within:border-border-brighter">
+        <div className="flex items-end gap-2">
           <textarea
             ref={ref}
-            rows={isHero ? 3 : 1}
             value={value}
-            // Clamped as well as `maxLength`, so a programmatic paste can't exceed the cap.
-            maxLength={MAX_MESSAGE_CHARS}
-            onChange={(e) => onChange(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
+            onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 onSubmit();
               }
-              // Only while empty, so with text present Tab keeps its normal focus behavior.
-              if (e.key === "Tab" && !e.shiftKey && placeholderSuggestion && value === "") {
-                e.preventDefault();
-                onChange(placeholderSuggestion);
-                requestAnimationFrame(() => {
-                  const el = ref.current;
-                  el?.setSelectionRange(el.value.length, el.value.length);
-                });
-              }
             }}
-            placeholder={placeholderSuggestion ?? "Type a message…"}
-            aria-label="Message the dashboard agent"
+            placeholder="Type a message…"
             className={cn(
-              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0",
-              isHero && "w-full"
+              "max-h-[40vh] min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0"
             )}
           />
-          {isHero ? (
-            <div className="flex min-w-0 items-center justify-between gap-2">
-              {context ?? <span />}
-              {sendButton}
-            </div>
+          {isStreaming ? (
+            <Button variant="danger/small" LeadingIcon={StopIcon} onClick={onStop}>
+              Stop
+            </Button>
           ) : (
-            sendButton
+            <Button
+              variant="primary/small"
+              LeadingIcon={PaperAirplaneIcon}
+              onClick={onSubmit}
+              disabled={!value.trim()}
+            >
+              Send
+            </Button>
           )}
         </div>
       </div>
-      {/* Only near the limit: a normal message never sees a counter. */}
-      {value.length >= MESSAGE_CHARS_WARN_AT ? (
-        <p
-          className={cn(
-            "self-end text-xxs tabular-nums",
-            value.length >= MAX_MESSAGE_CHARS ? "text-error" : "text-text-dimmed"
-          )}
-          aria-live="polite"
-        >
-          {value.length} / {MAX_MESSAGE_CHARS}
-        </p>
-      ) : null}
     </div>
   );
 }

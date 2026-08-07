@@ -64,8 +64,6 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Regions");
@@ -154,10 +152,6 @@ export const action = dashboardAction(
     return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
 );
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("regions"),
-};
 
 export default function Page() {
   const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();

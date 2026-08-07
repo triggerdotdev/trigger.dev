@@ -18,8 +18,6 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Query");
@@ -254,10 +252,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       { status: 500 }
     );
   }
-};
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("query"),
 };
 
 export default function Page() {

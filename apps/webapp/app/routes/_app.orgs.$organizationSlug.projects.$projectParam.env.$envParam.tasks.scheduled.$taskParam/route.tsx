@@ -105,12 +105,6 @@ import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
-import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: (data) => taskAgentPageContext(data),
-};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [

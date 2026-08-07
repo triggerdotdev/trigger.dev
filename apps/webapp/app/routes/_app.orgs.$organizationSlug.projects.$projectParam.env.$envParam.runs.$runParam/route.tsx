@@ -1,6 +1,7 @@
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
+  BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -105,11 +106,10 @@ import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
-import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { cn } from "~/utils/cn";
-import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
+  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -269,10 +269,6 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   const canWriteRun = auth.ok ? auth.ability.can("write", { type: "runs" }) : true;
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
-
-export const handle: Handle = {
-  agentPageContext: (data) => runAgentPageContext(data),
-};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -520,6 +516,9 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
+            Run docs
+          </LinkButton>
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button

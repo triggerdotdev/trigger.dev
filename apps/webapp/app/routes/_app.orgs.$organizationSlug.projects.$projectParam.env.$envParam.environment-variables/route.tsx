@@ -1,6 +1,7 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
+  BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
   NoSymbolIcon,
@@ -38,7 +39,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -71,6 +72,7 @@ import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
+  docsPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
@@ -85,12 +87,6 @@ import {
   shouldSyncEnvVar,
   type TriggerEnvironmentType,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("envvars"),
-};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Environment variables");
@@ -460,6 +456,15 @@ function EnvironmentVariablesListPage({
     <PageContainer>
       <NavBar>
         <PageTitle title="Environment variables" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("v3/deploy-environment-variables")}
+            variant="docs/small"
+          >
+            Environment variables docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("flex h-full min-h-0 flex-col")}>

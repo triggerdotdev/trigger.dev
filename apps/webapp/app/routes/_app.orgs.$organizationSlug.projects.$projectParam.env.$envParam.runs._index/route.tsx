@@ -1,7 +1,5 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { runFiltersSchema } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigation, useRevalidator } from "@remix-run/react";
-
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useState } from "react";
 import {
@@ -61,7 +59,6 @@ import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
-import type { Handle } from "~/utils/handle";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -82,17 +79,6 @@ import { useRunsLiveReload } from "./useRunsLiveReload";
 import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
-
-// Filters are read off the route match, not the typedjson deserializer, which mutates match data.
-export const handle: Handle = {
-  agentPageContext: (data) => {
-    const filters = runFiltersSchema.safeParse((data as { filters?: unknown } | null)?.filters);
-    return {
-      page: { kind: "runs", filters: filters.success ? filters.data : undefined },
-      signals: [],
-    };
-  },
-};
 
 export const meta = pageMeta("Runs");
 
@@ -177,6 +163,13 @@ export default function Page() {
         )}
         <PageAccessories>
           <AdminDebugTooltip />
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/runs-and-attempts")}
+          >
+            Runs docs
+          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

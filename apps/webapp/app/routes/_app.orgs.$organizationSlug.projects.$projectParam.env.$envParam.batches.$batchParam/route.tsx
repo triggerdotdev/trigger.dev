@@ -24,8 +24,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
-import { batchAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta(({ params }) => [params.batchParam ?? "Batch", "Batches"]);
@@ -71,10 +69,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-export const handle: Handle = {
-  agentPageContext: (data) => batchAgentPageContext(data),
 };
 
 export default function Page() {

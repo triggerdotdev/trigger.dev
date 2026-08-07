@@ -18,12 +18,6 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
-import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: (data) => dashboardsAgentPageContext(data),
-};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Dashboards");

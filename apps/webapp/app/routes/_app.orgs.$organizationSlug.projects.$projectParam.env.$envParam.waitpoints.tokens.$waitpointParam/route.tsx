@@ -25,8 +25,6 @@ import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { logger } from "~/services/logger.server";
-import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta(({ params }) => [
@@ -91,10 +89,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-export const handle: Handle = {
-  agentPageContext: (data) => waitpointsAgentPageContext(data),
 };
 
 export default function Page() {

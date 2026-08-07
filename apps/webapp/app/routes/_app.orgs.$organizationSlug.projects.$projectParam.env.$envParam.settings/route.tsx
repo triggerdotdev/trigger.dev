@@ -12,12 +12,6 @@ import {
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("settings"),
-};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Project settings");

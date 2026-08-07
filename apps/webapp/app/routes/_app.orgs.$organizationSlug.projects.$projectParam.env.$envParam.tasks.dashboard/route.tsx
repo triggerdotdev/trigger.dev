@@ -27,12 +27,6 @@ import {
   v3EnvironmentPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  agentPageContext: () => sectionAgentPageContext("tasks"),
-};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Tasks");
@@ -73,7 +67,7 @@ function formatDay(value: string) {
   return isoDateFormatter.format(d);
 }
 
-const STANDARD_EXAMPLE = `import { schedules, task } from "@trigger.dev/sdk";
+const STANDARD_EXAMPLE = `import { task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -83,7 +77,7 @@ export const helloWorld = task({
 });
 `;
 
-const SCHEDULED_EXAMPLE = `
+const SCHEDULED_EXAMPLE = `import { schedules } from "@trigger.dev/sdk";
 
 export const dailyReport = schedules.task({
   id: "daily-report",

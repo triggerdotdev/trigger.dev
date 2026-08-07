@@ -32,17 +32,11 @@ import {
   formatTokenCount,
 } from "~/utils/modelFormatters";
 import { EnvironmentParamSchema, v3ModelComparePath, v3ModelsPath } from "~/utils/pathBuilder";
-import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),
 });
-
-export const handle: Handle = {
-  agentPageContext: (data) => modelsAgentPageContext(data),
-};
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
   data?.model?.modelName ?? params.modelId ?? "Model",

@@ -1,8 +1,5 @@
 import { KeyboardIcon } from "~/assets/icons/KeyboardIcon";
 import { useState } from "react";
-import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
-import { NEW_CHAT_SHORTCUT } from "~/components/dashboard-agent/DashboardAgentHeader";
-import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Header3 } from "./primitives/Headers";
 import { SideMenuItemButton } from "./navigation/SideMenuItem";
@@ -65,9 +62,9 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "enter" }} variant="medium/bright" />
             </Shortcut>
-            <Shortcut name={ASK_AGENT_LABEL}>
+            <Shortcut name="Ask AI">
               <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-              <ShortcutKey shortcut={{ key: TOGGLE_PANEL_SHORTCUT.key }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
@@ -95,19 +92,6 @@ function ShortcutContent() {
             </Shortcut>
             <Shortcut name="Help & Feedback">
               <ShortcutKey shortcut={{ key: "h" }} variant="medium/bright" />
-            </Shortcut>
-          </div>
-          <div className="space-y-3">
-            <Header3>Chat</Header3>
-            <Shortcut name="New chat">
-              <ShortcutKey
-                shortcut={{ modifiers: NEW_CHAT_SHORTCUT.modifiers }}
-                variant="medium/bright"
-              />
-              <ShortcutKey shortcut={{ key: NEW_CHAT_SHORTCUT.key }} variant="medium/bright" />
-            </Shortcut>
-            <Shortcut name="Close chat">
-              <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
             </Shortcut>
           </div>
           <div className="space-y-3">

@@ -85,17 +85,11 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
-import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
-
-export const handle: Handle = {
-  agentPageContext: (data) => promptsAgentPageContext(data),
-};
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
   data?.prompt?.slug ?? params.promptSlug ?? "Prompt",

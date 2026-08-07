@@ -58,8 +58,6 @@ import {
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data }) => [
@@ -187,10 +185,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Response("Invalid action", { status: 400 });
     }
   }
-};
-
-export const handle: Handle = {
-  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {

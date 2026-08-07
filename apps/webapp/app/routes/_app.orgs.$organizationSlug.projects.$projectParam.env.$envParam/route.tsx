@@ -9,7 +9,6 @@ import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
-import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -90,26 +89,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
-  const promotedDashboardAgentPrompt = hasDashboardAgentAccess
-    ? await getPromotedDashboardAgentPrompt({
-        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-      })
-    : null;
-
   return {
     ...project,
     hasDashboardAgentAccess,
-    promotedDashboardAgentPrompt,
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt } = useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent
-      hasAccess={hasDashboardAgentAccess}
-      promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
-    >
+    <DashboardAgent hasAccess={hasDashboardAgentAccess}>
       <Outlet />
     </DashboardAgent>
   );

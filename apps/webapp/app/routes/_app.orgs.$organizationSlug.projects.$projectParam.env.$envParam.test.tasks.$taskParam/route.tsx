@@ -80,8 +80,6 @@ import { AIPayloadTabContent } from "./AIPayloadTabContent";
 import { SchemaTabContent } from "./SchemaTabContent";
 import { TestSidebarTabs } from "./TestSidebarTabs";
 import { Header2 } from "~/components/primitives/Headers";
-import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta(({ params }) => [params.taskParam ?? "Task", "Test"]);
@@ -273,10 +271,6 @@ export const action: ActionFunction = async ({ request, params }) => {
       return redirectBackWithErrorMessage(request, "Failed to process request");
     }
   }
-};
-
-export const handle: Handle = {
-  agentPageContext: (data) => testAgentPageContext(data),
 };
 
 export default function Page() {

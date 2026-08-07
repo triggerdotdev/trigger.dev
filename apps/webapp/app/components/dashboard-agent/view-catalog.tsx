@@ -1,59 +1,25 @@
-import type { AgentIntent, ViewBlock } from "@internal/dashboard-agent-contracts";
-import { ActionsBlock } from "./ActionsBlock";
+import type { ViewBlock } from "@internal/dashboard-agent";
 import { AgentChart } from "./AgentChart";
-import { InvestigationCard } from "./InvestigationCard";
-import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
-import { blockKey, latestRevisionBlocks } from "./view-blocks";
 
-// Unknown block types are skipped, so an older or newer agent cannot render
-// arbitrary content. A new block needs a `case` here and a `viewBlockSchema` member.
-export function ViewBlocks({
-  blocks,
-  onIntent,
-  resolveUri,
-  pagePaths,
-}: {
-  blocks: ViewBlock[];
-  onIntent?: (intent: AgentIntent) => void;
-  resolveUri?: (uri: string) => ResolvedUri | null;
-  pagePaths?: Record<string, string>;
-}) {
+// The render registry for the dashboard agent's view catalog — our small
+// "generative UI" layer. The agent emits a `render_view` tool call whose output
+// is `{ blocks: ViewBlock[] }` (a spec drawn from the catalog defined in
+// internal-packages/dashboard-agent). Here we map each block `type` to its
+// component. Unknown types are skipped, so an older/newer agent can never
+// render arbitrary content — same guarantee a generative-UI framework gives,
+// without the dependency. Add a block by adding a `case` here and a union
+// member in the package's `viewBlockSchema`.
+export function ViewBlocks({ blocks }: { blocks: ViewBlock[] }) {
   if (!Array.isArray(blocks)) return null;
   return (
     <div className="space-y-2">
-      {latestRevisionBlocks(blocks).map((block) => {
-        // Index into the original array, so collapsing a revision above an
-        // envelope-less block can't shift its key.
-        const key = blockKey(block, blocks.indexOf(block));
+      {blocks.map((block, i) => {
         switch (block.type) {
           case "diagnosis":
-            return <RunDiagnosisCard key={key} block={block} />;
+            return <RunDiagnosisCard key={i} block={block} />;
           case "chart":
-            return <AgentChart key={key} block={block} onIntent={onIntent} />;
-          case "actions":
-            return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
-          // Revisions share the investigationId, so latest-wins keeps one card.
-          case "investigation":
-            return (
-              <InvestigationCard
-                key={key}
-                block={block}
-                resolveUri={resolveUri}
-                onIntent={onIntent}
-              />
-            );
-          case "report":
-            return (
-              <ReportView
-                key={key}
-                vm={block.vm}
-                reportUri={block.reportUri}
-                onIntent={onIntent}
-                resolveUri={resolveUri}
-                pagePaths={pagePaths}
-              />
-            );
+            return <AgentChart key={i} block={block} />;
           default:
             return null;
         }
