@@ -23,6 +23,12 @@ export type ApiKeyPreset = {
   id: string;
   label: string;
   description: string;
+  /**
+   * The plugin-generated, all-task scope template for this preset. The host
+   * uses it only to preview the policy before creation; `prepareApiKeyPolicy`
+   * remains the authorization source of truth.
+   */
+  scopes: string[];
   usesTaskSelection: boolean;
   available: boolean;
 };

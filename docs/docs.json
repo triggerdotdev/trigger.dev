@@ -86,6 +86,7 @@
             "pages": [
               "ai-chat/overview",
               "ai-chat/quick-start",
+              "ai-chat/migrating-from-a-route-handler",
               {
                 "group": "Building agents",
                 "pages": [

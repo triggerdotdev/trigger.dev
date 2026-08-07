@@ -27,6 +27,10 @@ export const FEATURE_FLAG = {
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
+  // Per-organization rollout for creating additional environment API keys.
+  additionalApiKeysEnabled: "additionalApiKeysEnabled",
+  // System-wide kill switch for issuing additional environment API keys.
+  additionalApiKeyIssuanceEnabled: "additionalApiKeyIssuanceEnabled",
   // System-wide kill switch for additional (scoped) environment API-key lookup.
   // Defaults off; enable during rollout once the new lookup path is trusted.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
@@ -89,9 +93,10 @@ export const FeatureFlagCatalog = {
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
-  // Strict z.boolean() (not z.coerce.boolean()): coercion turns the string
-  // "false" into true, which would silently enable this kill switch the wrong
-  // way if written as a string. Cold/absent resolves to the safe `false`.
+  // Strict booleans prevent a stringified "false" from silently enabling API-key
+  // creation or lookup. Cold/absent values resolve to the safe `false`.
+  [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
+  [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
 };
 
@@ -111,7 +116,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.taskEventRepository,
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
-  // System-wide only — an org must not be able to override the rollout switch.
+  // System-wide only — orgs must not be able to override these kill switches.
+  FEATURE_FLAG.additionalApiKeyIssuanceEnabled,
   FEATURE_FLAG.additionalApiKeyLookupEnabled,
 ];
 

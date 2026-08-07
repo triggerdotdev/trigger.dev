@@ -84,7 +84,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       environmentId: environment.id,
       environmentType: environment.type,
-      environmentApiKey: environment.apiKey,
     })
   );
 
