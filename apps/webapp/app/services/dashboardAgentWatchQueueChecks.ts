@@ -262,23 +262,25 @@ export async function checkQueueOldestAge(
     thresholdMinutes: spec.thresholdMinutes,
   });
 
+  const gone = (): WatchCheckOutcome => ({
+    result: "terminal_unsatisfied",
+    facts: { queue: spec.queue, reason: "queue_not_found" },
+    observed: unobserved(true),
+  });
+
   const reading = await deps.readQueueOldestAge(spec.queue);
 
   if (reading === null) {
-    const exists = await deps.queueExists(spec.queue);
-    if (!exists) {
-      return {
-        result: "terminal_unsatisfied",
-        facts: { queue: spec.queue, reason: "queue_not_found" },
-        observed: unobserved(true),
-      };
-    }
+    if (!(await deps.queueExists(spec.queue))) return gone();
     return {
       result: "unavailable",
       facts: { queue: spec.queue, reason: "age_unavailable" },
       observed: unobserved(false),
     };
   }
+
+  // Nothing waiting reads the same as a deleted queue, and only the second is terminal.
+  if (reading.ageMs === null && !(await deps.queueExists(spec.queue))) return gone();
 
   const facts = {
     queue: spec.queue,
