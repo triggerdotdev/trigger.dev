@@ -5,11 +5,13 @@
 
 import {
   cancelWatch,
+  claimWatchAlertDispatch,
   deleteTerminalWatchesOlderThan,
   deleteWatchSubmissionsOlderThan,
   listExpiredActiveWatches,
   listWatchBatchGroupsToArm,
   listWatchesAwaitingDelivery,
+  releaseWatchAlertDispatch,
   transitionWatchCondition,
   type Watch,
   type WatchBatchGroup,
@@ -279,14 +281,25 @@ export async function finalizeOverdueWatch(
   if (!transitioned) return "already_resolved";
 
   if (resolved.resolution === "condition_met") {
-    // Keyed on the watch, so the wake's own notification can't double-alert it.
-    try {
-      await enqueueWatchFiredAlert(transitioned, "fired");
-    } catch (error) {
-      logger.error("Dashboard agent watch sweep: failed to enqueue the fired alert", {
-        watchId: watch.id,
-        error,
-      });
+    // Claimed first, exactly as the fire callback does: the wake this sweep is about to
+    // schedule reports the same fired watch, and an unclaimed row alerts a second time.
+    const claimed = await claimWatchAlertDispatch(dashboardAgentDb, {
+      id: watch.id,
+      terminalStatus: "fired",
+    });
+    if (claimed) {
+      try {
+        await enqueueWatchFiredAlert(transitioned, "fired");
+      } catch (error) {
+        await releaseWatchAlertDispatch(dashboardAgentDb, {
+          id: watch.id,
+          terminalStatus: "fired",
+        });
+        logger.error("Dashboard agent watch sweep: failed to enqueue the fired alert", {
+          watchId: watch.id,
+          error,
+        });
+      }
     }
   }
 
