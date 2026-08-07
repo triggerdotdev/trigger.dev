@@ -344,7 +344,11 @@ export default function Page() {
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}
-            <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
+            {/* A paused queue can't drain or grow, so every watch it could offer is a
+                promise nothing will keep until someone resumes it. */}
+            {queue.paused ? null : (
+              <WatchButton spec={queueWatchRecommendation(queue.name, { oldestWaitMs })} />
+            )}
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}

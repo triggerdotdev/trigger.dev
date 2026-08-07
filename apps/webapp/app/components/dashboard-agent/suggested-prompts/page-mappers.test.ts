@@ -244,6 +244,16 @@ describe("queueAgentPageContext", () => {
     expect(context?.signals).toEqual([]);
   });
 
+  it("offers no watch on a paused queue, even when it is at capacity", () => {
+    // Paused and saturated at once: nothing will drain or grow until it is resumed, so a
+    // watch would promise an answer that can't come.
+    const context = queueAgentPageContext(
+      queueLoaderData({ paused: true, running: 10, queued: 40, concurrencyLimit: 10 })
+    );
+
+    expect(context?.signals).toEqual([]);
+  });
+
   it("emits nothing for an unlimited queue, however deep the backlog", () => {
     const context = queueAgentPageContext(
       queueLoaderData({ concurrencyLimit: null, running: 99, queued: 99 })

@@ -82,7 +82,7 @@ Two separate mechanisms, decided differently — worth knowing before a demo.
 | Page | Button | Shown when |
 | --- | --- | --- |
 | Queue | Investigate | the queue is degraded: not paused, and either `running >= concurrencyLimit` with a non-empty queue, or the oldest run has waited >= 5 min |
-| Queue | Watch… | always |
+| Queue | Watch… | unless the queue is paused — a paused queue can neither drain nor grow |
 | Error group | Investigate this error | always |
 | Error group | Watch… | always |
 | Run (span panel) | Watch… | while the run is not in a final status |
@@ -104,7 +104,9 @@ page's live signals — a different decision from the buttons above:
 | `concurrency_saturation` | watch |
 
 A backed-up queue therefore offers "tell me when the backlog drains", never
-"investigate" — the page's own Investigate button is the one that asks that.
+"investigate" — the page's own Investigate button is the one that asks that. A
+paused queue offers neither: `concurrency_saturation` is withheld while it is
+paused, for the same reason the button is.
 
 ---
 
