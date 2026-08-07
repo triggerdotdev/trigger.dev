@@ -122,7 +122,7 @@ export const chartActionSchema = z.object({
     .string()
     .describe("The button text, naming the thing, e.g. 'Investigate send-order-receipt'."),
   intent: chartActionIntentSchema.describe(
-    "What the button does. `ask` is the default and always works: phrase the user's own follow-up in their voice ('Investigate the send-order-receipt failures — why are they failing?'), and the click sends it as their next message. `navigate` takes them to the matching page — ONLY when you already hold a canonical `trigger://` URI for it (e.g. one a tool returned); an invalid target is silently dropped, so when in doubt use `ask`."
+    "What the button does. `ask` is the default and always works: phrase the user's own follow-up in their voice, and the click sends it as their next message. `navigate` takes them to the matching page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped, so when in doubt use `ask`."
   ),
 });
 
@@ -205,7 +205,7 @@ const actionIntentSchema = z.union([
 export const actionsBlockActionSchema = z.object({
   label: z.string().min(1).describe("The button text, e.g. 'Set up a watch'."),
   intent: actionIntentSchema.describe(
-    "What the button does. `watch` opens the watch configuration card pre-filled with your spec — the user confirming the card is what starts it. `ask` sends the prompt as the user's next message, phrased in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped, so when in doubt use `ask`."
+    "What the button does. `watch` opens the watch configuration card pre-filled with your spec — the user confirming it is what starts the watch. `ask` sends the prompt as the user's next message, in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped."
   ),
 });
 
