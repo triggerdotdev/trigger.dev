@@ -1,7 +1,12 @@
 import type { ActionsBlockAction } from "@internal/dashboard-agent-contracts";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { answerContinuesAfter, renderableActions } from "./view-actions";
+import {
+  answerContinuesAfter,
+  cardAlreadyOffersWatch,
+  renderableActions,
+  withoutWatchActions,
+} from "./view-actions";
 
 const watchAction: ActionsBlockAction = {
   label: "Set up a watch",
@@ -65,6 +70,34 @@ describe("keep digging, only while there is digging left", () => {
   });
 });
 
+describe("one watch button per answer", () => {
+  const watchAction = { label: "Watch for a repeat", intent: { kind: "watch" as const, spec: {} } };
+  const card = (actions: unknown[]) =>
+    ({ type: "investigation", investigation: {}, capabilities: { actions } }) as never;
+
+  it("sees the card's own watch offer", () => {
+    expect(cardAlreadyOffersWatch([card([watchAction])])).toBe(true);
+  });
+
+  it("leaves an answer whose card offers no watch alone", () => {
+    expect(
+      cardAlreadyOffersWatch([
+        card([{ label: "Keep digging", intent: { kind: "ask", prompt: "" } }]),
+      ])
+    ).toBe(false);
+    expect(cardAlreadyOffersWatch([])).toBe(false);
+  });
+
+  it("drops the model's duplicate offer, keeping everything else", () => {
+    expect(
+      withoutWatchActions([
+        { label: "Set up a watch", intent: { kind: "watch", spec: {} } },
+        { label: "View similar", intent: { kind: "navigate", target: "trigger://x" } },
+      ] as never)
+    ).toEqual([{ label: "View similar", intent: { kind: "navigate", target: "trigger://x" } }]);
+  });
+});
+
 describe("ActionsBlock", () => {
   const source = readFileSync(new URL("./ActionsBlock.tsx", import.meta.url), "utf8");
 
@@ -74,7 +107,7 @@ describe("ActionsBlock", () => {
   });
 
   it("filters through the shared filter rather than rendering every action", () => {
-    expect(source).toContain("renderableActions(block.actions)");
+    expect(source).toContain("renderableActions(actions)");
   });
 
   it("is a pure component: no app hooks, no server module, no Remix", () => {

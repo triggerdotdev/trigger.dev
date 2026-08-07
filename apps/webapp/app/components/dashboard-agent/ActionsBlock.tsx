@@ -4,16 +4,20 @@ import type {
 } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
 import { ChatActionsRow } from "./chat-layout";
-import { renderableActions } from "./view-actions";
+import { renderableActions, withoutWatchActions } from "./view-actions";
 
 export function ActionsBlock({
   block,
   onIntent,
+  dropWatch = false,
 }: {
   block: ActionsBlockPayload;
   onIntent?: (intent: AgentIntent) => void;
+  /** Set when an investigation card in the same answer already offers the watch. */
+  dropWatch?: boolean;
 }) {
-  const renderable = renderableActions(block.actions);
+  const actions = dropWatch ? withoutWatchActions(block.actions) : block.actions;
+  const renderable = renderableActions(actions);
   if (!onIntent || renderable.length === 0) return null;
   return (
     <ChatActionsRow>
