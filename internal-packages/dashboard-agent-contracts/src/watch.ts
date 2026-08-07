@@ -37,31 +37,24 @@ export const WATCH_STALL_TICKS_MAX = 12;
 /** Ceiling on the `queue_oldest_age` SLA. */
 export const WATCH_MAX_QUEUE_AGE_MINUTES = 24 * 60;
 
-export const watchSpecSchema = z.union([
+/**
+ * Kinds taking the same fields share one member with a `kind` enum. They still ask
+ * different questions — `run_failed` inverts `run_finished`, `queue_depth_below` is
+ * not `backlog_drain` — that difference just isn't in the fields.
+ */
+export const watchSpecSchema = z.discriminatedUnion("kind", [
   watchCommonSchema
-    .extend({ kind: z.literal("run_start"), runId: z.string() })
-    .merge(runStateCadenceSchema),
-  watchCommonSchema
-    .extend({ kind: z.literal("run_finished"), runId: z.string() })
-    .merge(runStateCadenceSchema),
-  // The inverse of `run_finished`: a successful completion makes it impossible.
-  watchCommonSchema
-    .extend({ kind: z.literal("run_failed"), runId: z.string() })
+    .extend({
+      kind: z.enum(["run_start", "run_finished", "run_failed"]),
+      runId: z.string(),
+    })
     .merge(runStateCadenceSchema),
   watchCommonSchema
     .extend({ kind: z.literal("backlog_drain"), queue: z.string() })
     .merge(standardCadenceSchema),
   watchCommonSchema
     .extend({
-      kind: z.literal("queue_depth_above"),
-      queue: z.string(),
-      threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
-    })
-    .merge(standardCadenceSchema),
-  // Not the same question as `backlog_drain`: a busy queue may never reach zero.
-  watchCommonSchema
-    .extend({
-      kind: z.literal("queue_depth_below"),
+      kind: z.enum(["queue_depth_above", "queue_depth_below"]),
       queue: z.string(),
       threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
     })
@@ -101,7 +94,14 @@ export const watchSpecSchema = z.union([
     .merge(standardCadenceSchema),
 ]);
 
-export type WatchSpec = z.infer<typeof watchSpecSchema>;
+/** Splits a grouped member into one type per kind, so `Extract<WatchSpec, { kind }>` still names one shape. */
+type PerKind<T> = T extends { kind: infer K extends string }
+  ? K extends K
+    ? Omit<T, "kind"> & { kind: K }
+    : never
+  : never;
+
+export type WatchSpec = PerKind<z.infer<typeof watchSpecSchema>>;
 export type WatchKind = WatchSpec["kind"];
 
 export const WATCH_KINDS = [

@@ -29,11 +29,8 @@ export type EvidenceKind = Evidence["kind"];
  * canonicalizes them into the strict schema above.
  */
 const evidenceLabelShape = {
-  label: z.string().describe('Short human label, e.g. "run_abc123 failed span".'),
-  excerpt: z
-    .string()
-    .optional()
-    .describe("Optional verbatim snippet (error message, log line, source lines)."),
+  label: z.string().describe('Short label, e.g. "run_abc123 failed span".'),
+  excerpt: z.string().optional().describe("Optional verbatim snippet."),
 };
 
 /** The kinds whose canonical URI is built from exactly one bare id. */
@@ -47,22 +44,22 @@ export const SIMPLE_EVIDENCE_KINDS = [
   "investigation",
 ] as const;
 
-const simpleEvidenceRef = <K extends (typeof SIMPLE_EVIDENCE_KINDS)[number]>(kind: K) =>
-  z.object({
-    kind: z.literal(kind),
-    uri: z
-      .string()
-      .min(1)
-      .describe(
-        "The resource id exactly as a tool returned it: a run id (run_...) for run, an error fingerprint for error, a queue name for queue, a deployment version for deployment, a report key for report. A full trigger:// URI for this same kind and environment is also accepted."
-      ),
-    ...evidenceLabelShape,
-  });
+/** One member, not seven: they differ only in the value of `kind`. */
+export const simpleEvidenceRefSchema = z.object({
+  kind: z.enum(SIMPLE_EVIDENCE_KINDS),
+  uri: z
+    .string()
+    .min(1)
+    .describe(
+      "The id exactly as a tool returned it: a run id, error fingerprint, queue name, deployment version, or report key. A trigger:// URI of the same kind and environment also works."
+    ),
+  ...evidenceLabelShape,
+});
 
 export const spanEvidenceRefSchema = z.object({
   kind: z.literal("span"),
-  runId: z.string().min(1).describe("The run the span belongs to, e.g. run_abc123."),
-  spanId: z.string().min(1).describe("The span's id, as the trace returned it."),
+  runId: z.string().min(1).describe("The run it belongs to, e.g. run_abc123."),
+  spanId: z.string().min(1).describe("As the trace returned it."),
   ...evidenceLabelShape,
 });
 
@@ -72,7 +69,7 @@ export const sourceEvidenceRefSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Repo-relative path of the file you read, e.g. "src/tasks/send-order-receipt.ts". Never a line suffix — put the line in `line`.'
+      'Repo-relative path of the file you read, e.g. "src/tasks/send-order-receipt.ts". Never a line suffix — the line goes in `line`.'
     ),
   line: z
     .number()
@@ -84,20 +81,12 @@ export const sourceEvidenceRefSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe(
-      "The commit the file was read at. Omit it and the executor pins the citation to the snapshot this turn read."
-    ),
+    .describe("The commit you read it at. Omit it and the executor pins this turn's snapshot."),
   ...evidenceLabelShape,
 });
 
 export const evidenceRefSchema = z.discriminatedUnion("kind", [
-  simpleEvidenceRef("runs"),
-  simpleEvidenceRef("run"),
-  simpleEvidenceRef("error"),
-  simpleEvidenceRef("queue"),
-  simpleEvidenceRef("deployment"),
-  simpleEvidenceRef("report"),
-  simpleEvidenceRef("investigation"),
+  simpleEvidenceRefSchema,
   spanEvidenceRefSchema,
   sourceEvidenceRefSchema,
 ]);
