@@ -921,6 +921,68 @@ describe("watch investigation", () => {
     ).toEqual([]);
   });
 
+  /** A store whose atomic close refuses rather than throws, with the reason it refuses for. */
+  function refusingStore(error: "not_found" | "context_mismatch" | "chat_missing") {
+    const { store, calls } = fakeStore({
+      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
+    });
+    const wrapped: DashboardAgentStore = {
+      ...store,
+      settleInvestigationCard: async (args) => {
+        calls.settleInvestigationCard.push(args);
+        return { ok: false as const, error };
+      },
+    };
+    return { store: wrapped, calls };
+  }
+
+  async function investigateAgainst(store: DashboardAgentStore, chatId: string) {
+    const { model } = recordingModel([
+      renderStep(inProgress, "inv_seeded", "tc_open"),
+      textStep("still looking"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+    return harness.sendAction(INVESTIGATE);
+  }
+
+  function erroredWith(turn: { chunks: unknown[] }, pattern: RegExp) {
+    return turn.chunks.some(
+      (chunk) =>
+        (chunk as { type?: string }).type === "error" &&
+        pattern.test((chunk as { errorText?: string }).errorText ?? "")
+    );
+  }
+
+  /**
+   * A refused close is the same failure as a thrown one: the card never landed, so the
+   * panel spins until the action is retried, and only a thrown error gets it retried.
+   */
+  it.each(["not_found", "context_mismatch"] as const)(
+    "fails the action when the close is refused with %s",
+    async (error) => {
+      const { store, calls } = refusingStore(error);
+      const turn = await investigateAgainst(store, `chat_investigate_refused_${error}`);
+
+      expect(calls.settleInvestigationCard).toHaveLength(1);
+      expect(erroredWith(turn, new RegExp(error))).toBe(true);
+    }
+  );
+
+  it("reports success when the close is refused because the chat is gone", async () => {
+    const { store, calls } = refusingStore("chat_missing");
+    const turn = await investigateAgainst(store, "chat_investigate_refused_chat_missing");
+
+    expect(calls.settleInvestigationCard).toHaveLength(1);
+    expect(erroredWith(turn, /chat_missing|couldn't close/)).toBe(false);
+  });
+
   it("says nothing when the kick carries no tenancy to scope a card with", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {

@@ -602,8 +602,8 @@ async function resolveInvestigationId(args: {
  * Close the card this lane opened: its terminal revision and the closing card in one
  * transaction, so a terminal row whose card never landed cannot exist.
  *
- * Nothing is caught. The row settles only if the card lands, and the failure has to
- * reach the action for the task's retry to be a real retry.
+ * Only a deleted chat is swallowed. The row settles only if the card lands, and every other
+ * failure has to reach the action for the task's retry to be a real retry.
  */
 async function closeCardInTranscript(args: {
   store: DashboardAgentStore;
@@ -633,13 +633,16 @@ async function closeCardInTranscript(args: {
     messageId: args.messageId,
   });
   if (!result.ok) {
-    // A chat deleted mid-investigation is a race, not a fault: nothing settled, and
-    // there is no transcript left to close the card in.
     const message = "dashboard-agent watch investigation couldn't close its card";
     const details = { chatId, investigationId, error: result.error };
-    if (result.error === "chat_missing") logger.warn(message, details);
-    else logger.error(message, details);
-    return;
+    // A chat deleted mid-investigation is a race, not a fault: nothing settled, and there
+    // is no transcript left to close the card in.
+    if (result.error === "chat_missing") {
+      logger.warn(message, details);
+      return;
+    }
+    logger.error(message, details);
+    throw new Error(`${message}: ${result.error}`);
   }
 
   chat.history.set([...uiMessages, result.card as UIMessage]);
