@@ -8,11 +8,8 @@ import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
-import {
-  AgentIcon,
-  AGENT_ICON_ACCENT_CLASS,
-  ASK_AGENT_LABEL,
-} from "~/components/dashboard-agent/agent-identity";
+import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import {
   requestDashboardAgent,
@@ -133,8 +130,7 @@ export function HelpAndFeedback({
             {agentAvailable && (
               <div className="flex flex-col gap-1 p-1">
                 <SideMenuItemButton
-                  icon={AgentIcon}
-                  iconClassName={AGENT_ICON_ACCENT_CLASS}
+                  icon={<AgentMonoLogo size={18} decorative />}
                   name={ASK_AGENT_LABEL}
                   data-action="ask-agent"
                   trailing={<ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />}
