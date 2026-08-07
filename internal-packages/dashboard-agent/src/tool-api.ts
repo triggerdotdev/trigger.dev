@@ -63,6 +63,31 @@ export function envUnavailableError(result: EnvUnavailable, action: string): { e
  * The API read tools, in the frozen key order `dashboardAgentToolSchemas` declares:
  * a different order is a different cached prompt prefix.
  */
+/**
+ * Whether a metrics answer carries no evidence the queue exists. Zeroes across the board
+ * are what the route returns for a name it has never seen, and also what a genuinely idle
+ * queue looks like — so this only decides whether to try the other queue kind, never what
+ * to tell the user.
+ */
+export function queueMetricsAreEmpty(data: unknown): boolean {
+  const d = data as {
+    peakQueued?: number;
+    startedCount?: number;
+    throttledCount?: number;
+    depthTrend?: unknown[];
+    waitMs?: { p50?: number | null; p95?: number | null };
+  } | null;
+  if (!d) return true;
+  return (
+    (d.peakQueued ?? 0) === 0 &&
+    (d.startedCount ?? 0) === 0 &&
+    (d.throttledCount ?? 0) === 0 &&
+    (d.depthTrend ?? []).length === 0 &&
+    d.waitMs?.p50 == null &&
+    d.waitMs?.p95 == null
+  );
+}
+
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -338,19 +363,34 @@ export function buildApiTools(args: {
     get_queue: tool({
       ...getQueueSchema,
       execute: async ({ queue, type, period }) => {
-        const sp = new URLSearchParams({ type: type ?? "task" });
-        if (period) sp.append("period", period);
-        // Queue names may contain `/`; encode them as a single path segment.
-        const result = await envApiGet(
-          `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
-        );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read queues from");
-        if (!result.ok) {
+        // The metrics route answers an unknown queue with zeroes rather than a 404, so a
+        // wrong `type` reads exactly like an idle queue — and the wrong half of that pair
+        // is easy to pick, since a named queue and a task's own queue look alike. Try the
+        // other kind before believing the zeroes, and say which one answered.
+        const read = async (kind: "task" | "custom") => {
+          const sp = new URLSearchParams({ type: kind });
+          if (period) sp.append("period", period);
+          // Queue names may contain `/`; encode them as a single path segment.
+          const result = await envApiGet(
+            `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
+          );
+          return result;
+        };
+
+        const first = await read(type ?? "task");
+        if (isEnvUnavailable(first)) return envUnavailableError(first, "read queues from");
+        if (!first.ok) {
           return {
-            error: `Couldn't get metrics for the ${queue} queue (status ${result.status}).`,
+            error: `Couldn't get metrics for the ${queue} queue (status ${first.status}).`,
           };
         }
-        return result.data;
+        if (queueMetricsAreEmpty(first.data)) {
+          const other = await read(type === "custom" ? "task" : "custom");
+          if (!isEnvUnavailable(other) && other.ok && !queueMetricsAreEmpty(other.data)) {
+            return { ...(other.data as object), queueType: type === "custom" ? "task" : "custom" };
+          }
+        }
+        return { ...(first.data as object), queueType: type ?? "task" };
       },
     }),
 
