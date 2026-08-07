@@ -39,7 +39,8 @@ if (process.env.SENTRY_DSN) {
     shutdownTimeout: 10,
 
     serverName: process.env.SERVICE_NAME,
-    environment: process.env.APP_ENV,
+    // Falls back to APP_ENV; set SENTRY_ENVIRONMENT to override (e.g. preview deployments) without touching APP_ENV.
+    environment: process.env.SENTRY_ENVIRONMENT ?? process.env.APP_ENV,
 
     // ServiceValidationError is thrown deliberately for user-facing
     // validation failures (quota, parent run state, invalid input). Anchored
