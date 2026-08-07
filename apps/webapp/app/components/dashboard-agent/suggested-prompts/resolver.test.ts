@@ -235,6 +235,17 @@ describe("pageSlotPrompts", () => {
     }
   });
 
+  it("offers a paused queue neither chip, however unhealthy it looks", () => {
+    // Paused reads as `warn`, so without the guard the backlog chips would both appear —
+    // asking why a queue someone paused is backed up, and offering to watch it drain.
+    const slots = pageSlotPrompts({ kind: "queue", name: "emails", health: "warn", paused: true });
+
+    expect(slots.investigate).toBeUndefined();
+    expect(slots.watch).toBeUndefined();
+    // The page is still explainable; only the two backlog asks are withheld.
+    expect(slots.explain).toBeDefined();
+  });
+
   it("offers a deployment investigate chip only for a deploy that didn't land", () => {
     expect(pageSlotPrompts({ kind: "deployment", version: "1.0" }).investigate).toBeUndefined();
     expect(

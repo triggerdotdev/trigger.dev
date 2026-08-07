@@ -217,7 +217,7 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
   }
 
-  return { page: { kind: "queue", name, health }, signals };
+  return { page: { kind: "queue", name, health, paused: Boolean(paused) }, signals };
 }
 
 export function deploymentsAgentPageContext(): AgentPageContext {
