@@ -63,6 +63,7 @@ import {
   type WatchCheckOutcome,
 } from "~/services/dashboardAgentWatchChecks";
 import { watchCreationCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
+import { normalizeErrorFingerprint } from "~/services/dashboardAgentWatchErrorChecks";
 import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
 import {
   mintDashboardAgentWatchBatchToken,
@@ -197,6 +198,12 @@ export type CreateDashboardAgentWatchResult =
       existingId?: string | null;
     };
 
+/** The one spelling of a spec's target that the identity, the checks and the link all share. */
+function normalizeWatchSpec(spec: WatchSpec): WatchSpec {
+  if (spec.kind !== "error_recurrence") return spec;
+  return { ...spec, fingerprint: normalizeErrorFingerprint(spec.fingerprint) };
+}
+
 /**
  * Existence check for the thing a spec points at, in this environment. `error_recurrence`
  * has nothing to validate: zero occurrences so far is the normal case.
@@ -242,7 +249,10 @@ export async function createDashboardAgentWatch(params: {
     configured?: () => boolean;
   };
 }): Promise<CreateDashboardAgentWatchResult> {
-  const { environment, userId, chatId, spec } = params;
+  const { environment, userId, chatId } = params;
+  // Normalized before anything reads it: the page cites `error_<fingerprint>` and the tools
+  // cite the bare one, and only one of the two spellings may reach the identity or the link.
+  const spec = normalizeWatchSpec(params.spec);
   const now = params.now ?? new Date();
   // Creation reads the target on the primary; the polling checks stay on the replica.
   const buildCheckDeps = params.deps?.checkDeps ?? watchCreationCheckDeps;
