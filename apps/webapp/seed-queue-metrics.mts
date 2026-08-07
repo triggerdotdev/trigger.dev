@@ -1,3 +1,4 @@
+import { boundedIn } from "@trigger.dev/database";
 import { ClickHouse } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
 // App modules compile to CommonJS under tsx, so import them as default bindings.
@@ -732,7 +733,7 @@ async function ensureTaskQueues(
   const { count: pruned } = await prisma.taskQueue.deleteMany({
     where: {
       runtimeEnvironmentId,
-      name: { notIn: scenario.queues.map((q) => q.name) },
+      name: { notIn: boundedIn(scenario.queues.map((q) => q.name)) },
     },
   });
   console.log(

@@ -32,6 +32,7 @@ import type {
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 
+import { boundedIn } from "@trigger.dev/database";
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
  * by selecting between a NEW store (the dedicated run-ops DB, where new runs are born) and
@@ -401,7 +402,7 @@ export class RoutingRunStore implements RunStore {
         ? { include: args.include }
         : {};
     const rows = (await this.findRuns(
-      { where: { id: { in: ids } }, ...projected } as FindRunsArgs,
+      { where: { id: { in: boundedIn(ids) } }, ...projected } as FindRunsArgs,
       client
     )) as Record<string, unknown>[];
     const byId = new Map<string, unknown>();
@@ -886,7 +887,7 @@ export class RoutingRunStore implements RunStore {
       return; // all completed tokens co-resident → owning-store hydration is complete
     }
     const recovered = (await this.findManyWaitpoints(
-      { where: { id: { in: missing } } },
+      { where: { id: { in: boundedIn(missing) } } },
       client
     )) as Record<string, unknown>[];
     snapshot.completedWaitpoints = [...completed, ...recovered];
@@ -1412,7 +1413,7 @@ export class RoutingRunStore implements RunStore {
     return this.findManyExecutionSnapshots(
       {
         ...(findArgs as Prisma.TaskRunExecutionSnapshotFindManyArgs),
-        where: { id: { in: snapshotIds } },
+        where: { id: { in: boundedIn(snapshotIds) } },
       },
       client
     );
@@ -1552,7 +1553,7 @@ export class RoutingRunStore implements RunStore {
       return;
     }
     const waitpoints = (await this.findManyWaitpoints(
-      { where: { id: { in: ids } } },
+      { where: { id: { in: boundedIn(ids) } } },
       client
     )) as Record<string, unknown>[];
     const byId = new Map(waitpoints.map((w) => [w.id as string, w]));
@@ -2005,7 +2006,7 @@ function idListFromWhere(where: Prisma.TaskRunWhereInput): string[] | undefined 
 }
 
 function narrowToIds(args: FindRunsArgs, ids: string[]): FindRunsArgs {
-  return { ...args, where: { ...args.where, id: { in: ids } } };
+  return { ...args, where: { ...args.where, id: { in: boundedIn(ids) } } };
 }
 
 // Clone find-many args, replacing the `id` filter with `{ in: ids }` while keeping any other `where`
@@ -2013,7 +2014,7 @@ function narrowToIds(args: FindRunsArgs, ids: string[]): FindRunsArgs {
 function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<string, unknown> {
   return {
     ...args,
-    where: { ...((args.where as Record<string, unknown>) ?? {}), id: { in: ids } },
+    where: { ...((args.where as Record<string, unknown>) ?? {}), id: { in: boundedIn(ids) } },
   };
 }
 

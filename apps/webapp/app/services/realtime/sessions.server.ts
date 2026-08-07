@@ -4,6 +4,7 @@ import type { RunStore } from "@internal/run-store";
 import { $replica, prisma } from "~/db.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
+import { boundedIn } from "@trigger.dev/database";
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
  * Used to distinguish friendlyId lookups (`session_abc...`) from externalId
@@ -176,7 +177,7 @@ export async function serializeSessionsWithFriendlyRunIds(
     runIds.length > 0
       ? await runStore.findRuns({
           where: {
-            id: { in: runIds },
+            id: { in: boundedIn(runIds) },
             projectId: scope.projectId,
             runtimeEnvironmentId: scope.runtimeEnvironmentId,
           },

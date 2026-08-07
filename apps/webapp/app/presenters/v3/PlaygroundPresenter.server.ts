@@ -8,6 +8,7 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 import { runStore } from "~/v3/runStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
+import { boundedIn } from "@trigger.dev/database";
 export type PlaygroundAgent = {
   slug: string;
   filePath: string;
@@ -135,7 +136,7 @@ export class PlaygroundPresenter {
     const runsById = new Map<string, { friendlyId: string; status: TaskRunStatus }>();
     if (runIds.length > 0) {
       const runs = await runStore.findRuns({
-        where: { id: { in: runIds } },
+        where: { id: { in: boundedIn(runIds) } },
         select: { id: true, friendlyId: true, status: true },
       });
       for (const run of runs) {

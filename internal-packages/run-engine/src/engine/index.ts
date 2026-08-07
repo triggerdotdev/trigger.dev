@@ -37,6 +37,7 @@ import {
   type TaskRunExecutionSnapshot,
   type Waitpoint,
   Prisma,
+  boundedIn,
 } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
@@ -2955,7 +2956,7 @@ export class RunEngine {
   ): Promise<Array<{ id: string; orgId: string }>> {
     const runs = await this.runStore.findRuns({
       where: {
-        id: { in: runIds },
+        id: { in: boundedIn(runIds) },
         completedAt: {
           lte: new Date(Date.now() - completedAtOffsetMs), // This only finds runs that were completed more than 10 minutes ago
         },
@@ -2963,7 +2964,7 @@ export class RunEngine {
           not: null,
         },
         status: {
-          in: getFinalRunStatuses(),
+          in: boundedIn(getFinalRunStatuses()),
         },
       },
       select: {

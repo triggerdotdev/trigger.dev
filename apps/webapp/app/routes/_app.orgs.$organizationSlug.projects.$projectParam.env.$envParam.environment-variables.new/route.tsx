@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -131,7 +131,7 @@ export const action = dashboardAction(
     // that can't write a deployed tier can't create vars there via a direct
     // POST (the disabled checkboxes are not the boundary).
     const targetEnvironments = await prisma.runtimeEnvironment.findMany({
-      where: { id: { in: submission.value.environmentIds } },
+      where: { id: { in: boundedIn(submission.value.environmentIds) } },
       select: { type: true },
     });
     const hasDeniedEnvironment = targetEnvironments.some(
@@ -174,7 +174,7 @@ export const action = dashboardAction(
     const submittedEnvs = await prisma.runtimeEnvironment.findMany({
       where: {
         projectId: project.id,
-        id: { in: submission.value.environmentIds },
+        id: { in: boundedIn(submission.value.environmentIds) },
       },
       select: { id: true, type: true, orgMember: { select: { userId: true } } },
     });

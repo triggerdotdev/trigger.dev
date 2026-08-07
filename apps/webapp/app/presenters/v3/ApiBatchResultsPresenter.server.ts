@@ -12,6 +12,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
+import { boundedIn } from "@trigger.dev/database";
 /**
  * Run-ops read-through wiring. All optional; absent (or `splitEnabled` falsy) collapses `call` to
  * passthrough. `legacyReplica` is a READ REPLICA handle only — there is NO legacy-primary field.
@@ -114,7 +115,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
 
     const taskRuns = await this.runStore.findRuns(
       {
-        where: { id: { in: taskRunIds } },
+        where: { id: { in: boundedIn(taskRunIds) } },
         select: memberRunSelect,
       },
       this._prisma
@@ -181,7 +182,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     const taskRunIds = batchRun.items.map((item) => item.taskRunId);
 
     const newRows = (await newClient.taskRun.findMany({
-      where: { id: { in: taskRunIds } },
+      where: { id: { in: boundedIn(taskRunIds) } },
       select: memberRunSelect,
     })) as TaskRunWithAttempts[];
     const runsById = new Map(newRows.map((run) => [run.id, run]));
@@ -193,7 +194,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     );
     if (legacyCandidateIds.length > 0) {
       const legacyRows = (await legacyReplica.taskRun.findMany({
-        where: { id: { in: legacyCandidateIds } },
+        where: { id: { in: boundedIn(legacyCandidateIds) } },
         select: memberRunSelect,
       })) as TaskRunWithAttempts[];
       for (const run of legacyRows) {

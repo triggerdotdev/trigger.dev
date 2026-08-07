@@ -11,6 +11,7 @@ import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.se
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
 
+import { boundedIn } from "@trigger.dev/database";
 export const INVITE_NOT_FOUND = "Invite not found";
 export const INVITE_BLOCKED_DIRECTORY_MANAGED =
   "Membership for this organization is managed by Directory Sync, so invites can't be accepted.";
@@ -134,7 +135,7 @@ export async function inviteMembers({
   const existingMembers = await prisma.orgMember.findMany({
     where: {
       organizationId: org.id,
-      user: { email: { in: [...uniqueEmails] } },
+      user: { email: { in: boundedIn([...uniqueEmails]) } },
     },
     select: { user: { select: { email: true } } },
   });
@@ -233,7 +234,7 @@ export async function getProjectsMissingMemberDevelopmentEnvironments({
       organizationId,
       ...memberDevelopmentEnvironmentWhere({
         orgMemberId: memberId,
-        projectId: { in: projects.map((project) => project.id) },
+        projectId: { in: boundedIn(projects.map((project) => project.id)) },
       }),
     },
     select: { projectId: true },

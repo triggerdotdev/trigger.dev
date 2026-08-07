@@ -24,6 +24,7 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
+import { boundedIn } from "@trigger.dev/database";
 import {
   callVercelWithRecovery,
   wrapVercelCallWithRecovery,
@@ -1415,7 +1416,7 @@ export class VercelIntegrationRepository {
                     variable: {
                       projectId: params.projectId,
                       key: {
-                        in: varsToSync.map((v) => v.key),
+                        in: boundedIn(varsToSync.map((v) => v.key)),
                       },
                     },
                   },

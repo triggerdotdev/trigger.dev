@@ -1,6 +1,7 @@
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { SystemResources } from "./systems.js";
 
+import { boundedIn } from "@trigger.dev/database";
 export type PendingVersionSystemOptions = {
   resources: SystemResources;
   enqueueSystem: EnqueueSystem;
@@ -96,7 +97,7 @@ export class PendingVersionSystem {
     const pendingRuns = await this.$.runStore.findRuns(
       {
         where: {
-          id: { in: candidateIds },
+          id: { in: boundedIn(candidateIds) },
           status: "PENDING_VERSION",
         },
         orderBy: {

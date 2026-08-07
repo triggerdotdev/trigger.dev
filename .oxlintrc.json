@@ -3,7 +3,8 @@
   "plugins": ["typescript", "import", "react"],
   "jsPlugins": [
     "./oxlint-plugins/no-thrown-unawaited-redirect.mjs",
-    "./oxlint-plugins/runops-residency.mjs"
+    "./oxlint-plugins/runops-residency.mjs",
+    "./oxlint-plugins/prisma-in-filter.mjs"
   ],
   "ignorePatterns": [
     "**/dist/**",
@@ -30,13 +31,21 @@
     "no-empty-pattern": "off",
     "no-control-regex": "off",
     "typescript/no-non-null-asserted-optional-chain": "off",
-    "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
+    "no-unused-expressions": [
+      "warn",
+      {
+        "allowShortCircuit": true,
+        "allowTernary": true
+      }
+    ],
     "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/rules-of-hooks": "off",
-    "trigger/no-thrown-unawaited-redirect": "error"
+    "trigger/no-thrown-unawaited-redirect": "error",
+    "trigger-prisma/no-unbounded-list-filter": "error",
+    "trigger-prisma/no-unbounded-list-filter-in-args-helper": "error"
   },
   "overrides": [
     {
@@ -51,6 +60,13 @@
       "rules": {
         "trigger-runops/no-control-plane-run-graph-access": "off",
         "trigger-runops/no-control-plane-in-runops-slot": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/test/**", "**/tests/**", "**/e2e/**"],
+      "rules": {
+        "trigger-prisma/no-unbounded-list-filter": "off",
+        "trigger-prisma/no-unbounded-list-filter-in-args-helper": "off"
       }
     }
   ]
