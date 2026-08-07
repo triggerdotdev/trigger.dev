@@ -1,13 +1,19 @@
 import { SpanKind, SpanStatusCode, TraceFlags } from "@opentelemetry/api";
+import type { LogRecordExporter, ReadableLogRecord } from "@opentelemetry/sdk-logs";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-node";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ExternalSpanExporterWrapper, FallbackExternalTraceId } from "../src/v3/otel/tracingSDK.js";
+import {
+  ExternalLogRecordExporterWrapper,
+  ExternalSpanExporterWrapper,
+  FallbackExternalTraceId,
+} from "../src/v3/otel/tracingSDK.js";
 import { SemanticInternalAttributes } from "../src/v3/semanticInternalAttributes.js";
 import { traceContext } from "../src/v3/trace-context-api.js";
 import { StandardTraceContextManager } from "../src/v3/traceContext/manager.js";
 
 const TRACEPARENT_RUN_A = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1111111111111111-01";
 const TRACEPARENT_RUN_B = "00-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-2222222222222222-01";
+const SEED = "ffffffffffffffffffffffffffffffff";
 
 function createAttemptSpan(): ReadableSpan {
   const spanCtx = {
@@ -36,6 +42,18 @@ function createAttemptSpan(): ReadableSpan {
   } as unknown as ReadableSpan;
 }
 
+function createLogRecord(): ReadableLogRecord {
+  return {
+    body: "hello",
+    attributes: {},
+    spanContext: {
+      traceId: "cccccccccccccccccccccccccccccccc",
+      spanId: "3333333333333333",
+      traceFlags: TraceFlags.SAMPLED,
+    },
+  } as unknown as ReadableLogRecord;
+}
+
 function makeCapturingExporter(): { exporter: SpanExporter; captured: ReadableSpan[][] } {
   const captured: ReadableSpan[][] = [];
   const exporter: SpanExporter = {
@@ -47,6 +65,32 @@ function makeCapturingExporter(): { exporter: SpanExporter; captured: ReadableSp
     forceFlush: () => Promise.resolve(),
   };
   return { exporter, captured };
+}
+
+function makeCapturingLogExporter(): {
+  exporter: LogRecordExporter;
+  captured: ReadableLogRecord[][];
+} {
+  const captured: ReadableLogRecord[][] = [];
+  const exporter: LogRecordExporter = {
+    export: (records, cb) => {
+      captured.push(records);
+      cb({ code: 0 } as any);
+    },
+    shutdown: () => Promise.resolve(),
+  };
+  return { exporter, captured };
+}
+
+/** Yields 000…001, 000…002, … so a reminted id is identifiable by its ordinal. */
+function makeIdGenerator() {
+  let generated = 0;
+  return {
+    generateTraceId: () => `${++generated}`.padStart(32, "0"),
+    get count() {
+      return generated;
+    },
+  };
 }
 
 describe("ExternalSpanExporterWrapper warm-start regression", () => {
@@ -66,10 +110,7 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
 
     manager.traceContext = { external: { traceparent: TRACEPARENT_RUN_A } };
 
-    const wrapper = new ExternalSpanExporterWrapper(
-      exporter,
-      new FallbackExternalTraceId("ffffffffffffffffffffffffffffffff")
-    );
+    const wrapper = new ExternalSpanExporterWrapper(exporter, new FallbackExternalTraceId(SEED));
 
     manager.traceContext = { external: { traceparent: TRACEPARENT_RUN_B } };
 
@@ -91,23 +132,18 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
   // on the process shared a single trace id.
   it("mints a new fallback trace id per run when there is no external context", () => {
     const { exporter, captured } = makeCapturingExporter();
-
-    let generated = 0;
-    const idGenerator = {
-      generateTraceId: () => `${++generated}`.padStart(32, "0"),
-    };
+    const idGenerator = makeIdGenerator();
 
     manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
 
     const wrapper = new ExternalSpanExporterWrapper(
       exporter,
-      new FallbackExternalTraceId("ffffffffffffffffffffffffffffffff", idGenerator)
+      new FallbackExternalTraceId(SEED, idGenerator)
     );
 
     wrapper.export([createAttemptSpan()], () => {});
 
-    // A second run on the same warm process: the manager is reassigned, so the
-    // fallback has to be reminted.
+    // A second run on the same warm process.
     manager.traceContext = { traceparent: TRACEPARENT_RUN_B };
 
     wrapper.export([createAttemptSpan()], () => {});
@@ -115,39 +151,55 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
     const runATraceId = captured[0]![0]!.spanContext().traceId;
     const runBTraceId = captured[1]![0]!.spanContext().traceId;
 
-    expect(runATraceId).toBe("ffffffffffffffffffffffffffffffff");
+    expect(runATraceId).toBe(SEED);
     expect(runBTraceId).not.toBe(runATraceId);
     expect(runBTraceId).toBe("00000000000000000000000000000001");
   });
 
-  it("keeps one fallback trace id across every export within a run", () => {
+  // The run boundary is the manager being handed a new context, not that
+  // context having any particular content. A run whose trace context is empty
+  // is still a different run.
+  it("mints a new fallback trace id for a run whose trace context is empty", () => {
     const { exporter, captured } = makeCapturingExporter();
-
-    let generated = 0;
-    const idGenerator = {
-      generateTraceId: () => `${++generated}`.padStart(32, "0"),
-    };
+    const idGenerator = makeIdGenerator();
 
     manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
 
     const wrapper = new ExternalSpanExporterWrapper(
       exporter,
-      new FallbackExternalTraceId("ffffffffffffffffffffffffffffffff", idGenerator)
+      new FallbackExternalTraceId(SEED, idGenerator)
+    );
+
+    wrapper.export([createAttemptSpan()], () => {});
+
+    manager.traceContext = {};
+
+    wrapper.export([createAttemptSpan()], () => {});
+
+    expect(captured[1]![0]!.spanContext().traceId).not.toBe(captured[0]![0]!.spanContext().traceId);
+  });
+
+  it("keeps one fallback trace id across every export within a run", () => {
+    const { exporter, captured } = makeCapturingExporter();
+    const idGenerator = makeIdGenerator();
+
+    manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
+
+    const wrapper = new ExternalSpanExporterWrapper(
+      exporter,
+      new FallbackExternalTraceId(SEED, idGenerator)
     );
 
     wrapper.export([createAttemptSpan()], () => {});
     wrapper.export([createAttemptSpan()], () => {});
 
     expect(captured[1]![0]!.spanContext().traceId).toBe(captured[0]![0]!.spanContext().traceId);
-    expect(generated).toBe(0);
+    expect(idGenerator.count).toBe(0);
   });
 
   it("leaves external export off when no external trace id was configured", () => {
     const { exporter, captured } = makeCapturingExporter();
-
-    const idGenerator = {
-      generateTraceId: () => "00000000000000000000000000000001",
-    };
+    const idGenerator = makeIdGenerator();
 
     manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
 
@@ -163,58 +215,49 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
     expect(captured[0]).toHaveLength(0);
   });
 
-  // The TracingSDK shares one FallbackExternalTraceId across every span and log
-  // wrapper. Giving each wrapper its own would remint them independently, so
-  // from the second run on, a run's logs would carry a different trace id than
-  // its spans and stop correlating in the external backend.
-  it("gives every wrapper sharing one fallback the same id after a remint", () => {
-    const first = makeCapturingExporter();
-    const second = makeCapturingExporter();
-
-    let generated = 0;
-    const idGenerator = {
-      generateTraceId: () => `${++generated}`.padStart(32, "0"),
-    };
+  // The TracingSDK shares one FallbackExternalTraceId across its span and log
+  // wrappers. Giving each its own would remint them independently, so from the
+  // second run on, a run's logs would carry a different trace id than its spans
+  // and stop correlating in the external backend.
+  it("keeps a run's spans and logs on the same id after a remint", () => {
+    const spans = makeCapturingExporter();
+    const logs = makeCapturingLogExporter();
+    const idGenerator = makeIdGenerator();
 
     manager.traceContext = { traceparent: TRACEPARENT_RUN_A };
 
-    const fallback = new FallbackExternalTraceId("ffffffffffffffffffffffffffffffff", idGenerator);
-    const spanWrapper = new ExternalSpanExporterWrapper(first.exporter, fallback);
-    const otherWrapper = new ExternalSpanExporterWrapper(second.exporter, fallback);
+    const fallback = new FallbackExternalTraceId(SEED, idGenerator);
+    const spanWrapper = new ExternalSpanExporterWrapper(spans.exporter, fallback);
+    const logWrapper = new ExternalLogRecordExporterWrapper(logs.exporter, fallback);
 
     manager.traceContext = { traceparent: TRACEPARENT_RUN_B };
 
     spanWrapper.export([createAttemptSpan()], () => {});
-    otherWrapper.export([createAttemptSpan()], () => {});
+    logWrapper.export([createLogRecord()], () => {});
 
-    expect(second.captured[0]![0]!.spanContext().traceId).toBe(
-      first.captured[0]![0]!.spanContext().traceId
+    expect(logs.captured[0]![0]!.spanContext!.traceId).toBe(
+      spans.captured[0]![0]!.spanContext().traceId
     );
-    expect(generated).toBe(1);
+    expect(idGenerator.count).toBe(1);
   });
 
-  // The noop manager returns a fresh `{}` on every call, so using its identity
-  // as the run boundary would remint on every export and shatter one run's
-  // trace into many.
+  // With no manager registered the epoch is a constant, so there are no run
+  // boundaries to react to and the id must hold rather than churn per export.
   it("holds the id when no trace context manager is registered", () => {
     const { exporter, captured } = makeCapturingExporter();
-
-    let generated = 0;
-    const idGenerator = {
-      generateTraceId: () => `${++generated}`.padStart(32, "0"),
-    };
+    const idGenerator = makeIdGenerator();
 
     traceContext.disable();
 
     const wrapper = new ExternalSpanExporterWrapper(
       exporter,
-      new FallbackExternalTraceId("ffffffffffffffffffffffffffffffff", idGenerator)
+      new FallbackExternalTraceId(SEED, idGenerator)
     );
 
     wrapper.export([createAttemptSpan()], () => {});
     wrapper.export([createAttemptSpan()], () => {});
 
     expect(captured[1]![0]!.spanContext().traceId).toBe(captured[0]![0]!.spanContext().traceId);
-    expect(generated).toBe(0);
+    expect(idGenerator.count).toBe(0);
   });
 });

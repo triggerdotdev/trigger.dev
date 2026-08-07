@@ -4,10 +4,27 @@ import { parseTraceParent } from "@opentelemetry/core";
 import type { TraceContextManager } from "./types.js";
 
 export class StandardTraceContextManager implements TraceContextManager {
-  public traceContext: Record<string, unknown> = {};
+  #traceContext: Record<string, unknown> = {};
+  #epoch = 0;
+
+  // An accessor rather than a plain field so that replacing the context, which
+  // is what starting a run does, is what advances the epoch. Call sites are
+  // unchanged.
+  get traceContext(): Record<string, unknown> {
+    return this.#traceContext;
+  }
+
+  set traceContext(value: Record<string, unknown>) {
+    this.#traceContext = value;
+    this.#epoch++;
+  }
 
   getTraceContext() {
     return this.traceContext;
+  }
+
+  getTraceContextEpoch() {
+    return this.#epoch;
   }
 
   reset() {

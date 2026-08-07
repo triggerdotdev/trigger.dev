@@ -10,6 +10,11 @@ class NoopTraceContextManager implements TraceContextManager {
     return {};
   }
 
+  // Never advances: with no manager registered there are no runs to separate.
+  getTraceContextEpoch() {
+    return 0;
+  }
+
   reset() {}
 
   getExternalTraceContext() {
@@ -55,6 +60,10 @@ export class TraceContextAPI implements TraceContextManager {
 
   public getTraceContext() {
     return this.#getManager().getTraceContext();
+  }
+
+  public getTraceContextEpoch() {
+    return this.#getManager().getTraceContextEpoch();
   }
 
   public getExternalTraceContext() {

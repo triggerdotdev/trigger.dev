@@ -163,12 +163,12 @@ export class TracingSDK {
     );
 
     // Shared by every wrapper below so a run's spans and logs agree on the id.
-    const externalTraceId = new FallbackExternalTraceId(idGenerator.generateTraceId());
+    const fallbackTraceId = new FallbackExternalTraceId(idGenerator.generateTraceId());
 
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, fallbackTraceId), {
               maxExportBatchSize: parseInt(
                 getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
               ),
@@ -180,7 +180,7 @@ export class TracingSDK {
               ),
               maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
             })
-          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, fallbackTraceId))
       );
     }
 
@@ -232,7 +232,7 @@ export class TracingSDK {
       logProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
+              new ExternalLogRecordExporterWrapper(externalLogExporter, fallbackTraceId),
               {
                 maxExportBatchSize: parseInt(
                   getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
@@ -247,7 +247,7 @@ export class TracingSDK {
               }
             )
           : new SimpleLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId)
+              new ExternalLogRecordExporterWrapper(externalLogExporter, fallbackTraceId)
             )
       );
     }
@@ -395,54 +395,40 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
 }
 
 /**
- * Identity of the current run's trace context, or undefined when no run is
- * active.
- *
- * An empty context is not a run: the noop manager returns a fresh `{}` on every
- * call, so treating it as a run would mint a new id on every export.
- */
-function currentRunTraceContext(): object | undefined {
-  const current = traceContext.getTraceContext();
-
-  return current && Object.keys(current).length > 0 ? current : undefined;
-}
-
-/**
  * The external trace id used by runs that carry no external trace context,
  * minted once per run.
  *
  * It has to change per run for the same reason the wrappers read the external
  * context live: with `processKeepAlive` the `TracingSDK` — and so the wrappers
  * — outlive the run, so an id captured at construction merges every run on the
- * process into one trace. The manager's trace context object is reassigned per
- * run, which makes its identity the run boundary.
+ * process into one trace.
  *
  * One instance is shared by every wrapper, so a run's spans and logs still
  * agree on the id after a remint.
  */
 export class FallbackExternalTraceId {
   private traceId: string;
-  private seenTraceContext: object | undefined;
+  private seenEpoch: number;
 
   constructor(
     private seed: string,
     private traceIdGenerator: Pick<RandomIdGenerator, "generateTraceId"> = idGenerator
   ) {
     this.traceId = seed;
-    this.seenTraceContext = currentRunTraceContext();
+    this.seenEpoch = traceContext.getTraceContextEpoch();
   }
 
-  get(): string {
+  forCurrentRun(): string {
     // An empty seed means external export is disabled — leave it that way
     // rather than minting an id and switching the feature on.
     if (!this.seed) {
       return this.seed;
     }
 
-    const current = currentRunTraceContext();
+    const epoch = traceContext.getTraceContextEpoch();
 
-    if (current && current !== this.seenTraceContext) {
-      this.seenTraceContext = current;
+    if (epoch !== this.seenEpoch) {
+      this.seenEpoch = epoch;
       this.traceId = this.traceIdGenerator.generateTraceId();
     }
 
@@ -461,7 +447,7 @@ export class ExternalSpanExporterWrapper {
     // standardTraceContextManager.traceContext is honoured on warm-started
     // workers that reuse a single TracingSDK across runs.
     const externalTraceContext = traceContext.getExternalTraceContext();
-    const fallbackTraceId = this.fallback.get();
+    const fallbackTraceId = this.fallback.forCurrentRun();
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
@@ -533,7 +519,7 @@ export class ExternalSpanExporterWrapper {
   }
 }
 
-class ExternalLogRecordExporterWrapper {
+export class ExternalLogRecordExporterWrapper {
   constructor(
     private underlyingExporter: LogRecordExporter,
     private fallback: FallbackExternalTraceId
@@ -541,7 +527,7 @@ class ExternalLogRecordExporterWrapper {
 
   export(logs: any[], resultCallback: (result: any) => void): void {
     const externalTraceContext = traceContext.getExternalTraceContext();
-    const fallbackTraceId = this.fallback.get();
+    const fallbackTraceId = this.fallback.forCurrentRun();
 
     const isExternallySampled = externalTraceContext
       ? isTraceFlagSampled(externalTraceContext.traceFlags)
