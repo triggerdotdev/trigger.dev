@@ -211,7 +211,8 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
   const health = atCapacity ? "crit" : paused || queued > 0 || waitingTooLong ? "warn" : "ok";
 
   const signals: AgentPageSignal[] = [];
-  if (atCapacity) {
+  // Nothing to watch on a paused queue: it can neither drain nor grow until it is resumed.
+  if (atCapacity && !paused) {
     // A backlog at least as deep as the limit won't clear this cycle.
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
   }
