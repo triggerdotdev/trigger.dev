@@ -90,6 +90,22 @@ export function queueMetricsAreEmpty(data: unknown): boolean {
 }
 
 /**
+ * The deployed tasks whose `queueConfig` points at this queue, from the current worker's
+ * task list. A custom queue's name is unrelated to any task id, so who consumes it can
+ * only be read off the tasks — never guessed from the name.
+ */
+export function consumerTasksForQueue(workers: unknown, queueName: string): string[] {
+  const tasks = (workers as { worker?: { tasks?: unknown } } | null)?.worker?.tasks;
+  if (!Array.isArray(tasks)) return [];
+  const slugs = new Set<string>();
+  for (const task of tasks as Array<{ slug?: unknown; queueConfig?: { name?: unknown } | null }>) {
+    if (typeof task?.slug !== "string") continue;
+    if (task.queueConfig?.name === queueName) slugs.add(task.slug);
+  }
+  return [...slugs].sort();
+}
+
+/**
  * Metrics plus the queue's live row. `paused` is the part the model must lead with: a queue
  * someone stopped explains its own emptiness, and every metric below it is a consequence
  * rather than a finding.
@@ -411,6 +427,26 @@ export function buildApiTools(args: {
             : undefined;
         };
 
+        // Only a custom queue needs this read: a task queue's consumer is the task it is
+        // named after, while a custom queue's name says nothing about who writes to it.
+        const answer = async (
+          metrics: unknown,
+          kind: "task" | "custom",
+          state: Record<string, unknown> | undefined
+        ) => {
+          const base = withLiveState(metrics, kind, state);
+          if (base.queueType !== "custom" || !hasAuth || !projectRef || !environmentName) {
+            return base;
+          }
+          const workers = await apiGet(
+            origin,
+            `/api/v1/projects/${projectRef}/${environmentName}/workers/current`,
+            userActorToken!
+          );
+          if (!workers.ok) return base;
+          return { ...base, consumerTasks: consumerTasksForQueue(workers.data, queue) };
+        };
+
         const first = await read(type ?? "task");
         if (isEnvUnavailable(first)) return envUnavailableError(first, "read queues from");
         if (!first.ok) {
@@ -422,16 +458,16 @@ export function buildApiTools(args: {
           const otherKind = type === "custom" ? "task" : "custom";
           const other = await read(otherKind);
           if (!isEnvUnavailable(other) && other.ok && !queueMetricsAreEmpty(other.data)) {
-            return withLiveState(other.data, otherKind, await live(otherKind));
+            return await answer(other.data, otherKind, await live(otherKind));
           }
           // Neither kind has metrics, so the live row is the only thing that can tell them
           // apart: a paused or empty queue that exists, against a name that doesn't.
           const kind = type ?? "task";
           const state = (await live(kind)) ?? (await live(otherKind));
-          return withLiveState(first.data, kind, state);
+          return await answer(first.data, kind, state);
         }
         const kind = type ?? "task";
-        return withLiveState(first.data, kind, await live(kind));
+        return await answer(first.data, kind, await live(kind));
       },
     }),
 

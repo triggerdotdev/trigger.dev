@@ -126,6 +126,7 @@ export const GetWorkerTaskResponse = z.object({
   triggerSource: z.string(),
   createdAt: z.coerce.date(),
   payloadSchema: z.any().nullish(),
+  queueConfig: z.any().nullish(),
 });
 
 export const GetWorkerByTagResponse = z.object({
