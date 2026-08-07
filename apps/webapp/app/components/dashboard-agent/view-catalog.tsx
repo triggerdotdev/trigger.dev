@@ -4,7 +4,7 @@ import { AgentChart } from "./AgentChart";
 import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
-import { blockKey, latestRevisionEntries } from "./view-blocks";
+import { blockKey, latestRevisionBlocks } from "./view-blocks";
 
 // Unknown block types are skipped, so an older or newer agent cannot render
 // arbitrary content. A new block needs a `case` here and a `viewBlockSchema` member.
@@ -13,27 +13,24 @@ export function ViewBlocks({
   onIntent,
   resolveUri,
   pagePaths,
-  answered = false,
 }: {
   blocks: ViewBlock[];
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
-  /** The turn kept answering after this card, so "keep digging" has nothing to ask for. */
-  answered?: boolean;
 }) {
   if (!Array.isArray(blocks)) return null;
   return (
     <div className="space-y-2">
-      {latestRevisionEntries(blocks).map(({ block, index }) => {
-        // The original array's index, so collapsing a revision above an
+      {latestRevisionBlocks(blocks).map((block) => {
+        // Index into the original array, so collapsing a revision above an
         // envelope-less block can't shift its key.
-        const key = blockKey(block, index);
+        const key = blockKey(block, blocks.indexOf(block));
         switch (block.type) {
           case "diagnosis":
             return <RunDiagnosisCard key={key} block={block} />;
           case "chart":
-            return <AgentChart key={key} block={block} />;
+            return <AgentChart key={key} block={block} onIntent={onIntent} />;
           case "actions":
             return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
           // Revisions share the investigationId, so latest-wins keeps one card.
@@ -44,7 +41,6 @@ export function ViewBlocks({
                 block={block}
                 resolveUri={resolveUri}
                 onIntent={onIntent}
-                answered={answered}
               />
             );
           case "report":

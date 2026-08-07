@@ -1,7 +1,7 @@
 import type { ActionsBlockAction } from "@internal/dashboard-agent-contracts";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { answerContinuesAfter, renderableActions } from "./view-actions";
+import { renderableActions } from "./view-actions";
 
 const askAction: ActionsBlockAction = {
   label: "Investigate it",
@@ -29,21 +29,6 @@ describe("renderableActions", () => {
     expect(
       renderableActions([{ label: "Nowhere", intent: { kind: "navigate", target: "nope" } }])
     ).toEqual([]);
-  });
-});
-
-describe("keep digging, only while there is digging left", () => {
-  const card = { type: "data-view" };
-  const text = (t: string) => ({ type: "text", text: t });
-
-  it("sees the answer the turn went on to give", () => {
-    expect(answerContinuesAfter([card, text("so here is why")] as never, 0)).toBe(true);
-  });
-
-  it("leaves a card the turn ended on", () => {
-    expect(answerContinuesAfter([text("looking"), card] as never, 1)).toBe(false);
-    // An empty trailing text part is not an answer.
-    expect(answerContinuesAfter([card, text("  ")] as never, 0)).toBe(false);
   });
 });
 

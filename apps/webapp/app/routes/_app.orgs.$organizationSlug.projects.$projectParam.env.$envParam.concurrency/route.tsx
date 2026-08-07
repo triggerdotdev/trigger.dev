@@ -68,6 +68,12 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("concurrency"),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Manage concurrency");

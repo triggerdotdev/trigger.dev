@@ -105,6 +105,12 @@ import { parseFiniteInt } from "~/utils/searchParams";
 
 import { IconColumns3 } from "@tabler/icons-react";
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Models");
