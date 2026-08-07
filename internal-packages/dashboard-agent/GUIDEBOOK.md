@@ -73,6 +73,39 @@ filtered page), TRQL data questions with live charts, deploy correlation
 Every card in every state is also browsable at `/storybook/agent-ui` (admin
 only), with no LLM and no data.
 
+### Where the buttons are
+
+Two separate mechanisms, decided differently — worth knowing before a demo.
+
+**Buttons on the page itself.** Every one of them hides when the agent is off.
+
+| Page | Button | Shown when |
+| --- | --- | --- |
+| Queue | Investigate | the queue is degraded: not paused, and either `running >= concurrencyLimit` with a non-empty queue, or the oldest run has waited >= 5 min |
+| Queue | Watch… | always |
+| Error group | Investigate this error | always |
+| Error group | Watch… | always |
+| Run (span panel) | Watch… | while the run is not in a final status |
+| Run (span panel) | Investigate | the run failed — next to the error block |
+| Run, waiting block | Investigate | whenever that block is on screen, which is what "still waiting" means |
+
+So a queue full of runs shows only `Watch…` until something is actually
+executing or waiting too long — filling a queue with nothing to run it does not
+make the page degraded.
+
+**Chips in the agent panel.** An empty chat offers up to five, chosen from the
+page's live signals — a different decision from the buttons above:
+
+| Signal | Chip slot |
+| --- | --- |
+| `fresh_failure` | investigate |
+| `slow_run` | investigate |
+| `waiting_run` | watch |
+| `concurrency_saturation` | watch |
+
+A backed-up queue therefore offers "tell me when the backlog drains", never
+"investigate" — the page's own Investigate button is the one that asks that.
+
 ---
 
 ## Prerequisites
@@ -311,13 +344,13 @@ kit error:recur     # creates the error group the first time it runs
 **Clicks.** Errors → the group the command named → **Watch…** → **Customize** →
 **if it recurs** → **For** `6 hours` → **Watch**.
 
-**Confirmation.** "Watching error c4b4a797 in case it happens again."
+**Confirmation.** "Watching error c4b4a797397a9c43 in case it happens again."
 
 ```bash
 kit error:recur     # again, now that the watch exists
 ```
 
-**What arrives (≤5 min).** "Error c4b4a797 happened again."
+**What arrives (≤5 min).** "Error c4b4a797397a9c43 happened again."
 
 Arm the watch **between** the two commands. A recurrence watch stamps its start
 when it is persisted and only counts occurrences after that moment, so an
