@@ -20,6 +20,9 @@ const DASHBOARD_AGENT_UAT_CAP = [
   "read:environments",
   "read:errors",
   "read:query",
+  // Queue metrics ride on `read:query`, but a queue's own row — paused, depth, limit —
+  // is a `queues` read, and without it the agent can only see the metrics window.
+  "read:queues",
 ];
 
 // Minted fresh on every turn (the `in` proxy injects it), so the lifetime only
