@@ -14,7 +14,15 @@ import {
   trace,
   metrics,
   type Meter,
+  type TextMapPropagator,
+  type TextMapGetter,
+  type TextMapSetter,
 } from "@opentelemetry/api";
+import {
+  CompositePropagator,
+  W3CBaggagePropagator,
+  W3CTraceContextPropagator,
+} from "@opentelemetry/core";
 import sentryRemix from "@sentry/remix";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -122,6 +130,24 @@ class CustomWebappSampler implements Sampler {
 
   toString(): string {
     return `CustomWebappSampler`;
+  }
+}
+
+class NonInheritingTraceContextPropagator implements TextMapPropagator {
+  private readonly _delegate = new CompositePropagator({
+    propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
+  });
+
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    this._delegate.inject(context, carrier, setter);
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    return trace.deleteSpan(this._delegate.extract(context, carrier, getter));
+  }
+
+  fields(): string[] {
+    return this._delegate.fields();
   }
 }
 
@@ -281,11 +307,14 @@ function setupTelemetry() {
     }
   }
 
+  const ratioSampler = new TraceIdRatioBasedSampler(samplingRate);
+
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 15_000,
     resource: getResource(),
     sampler: new ParentBasedSampler({
-      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
+      root: new CustomWebappSampler(ratioSampler),
+      remoteParentSampled: ratioSampler,
     }),
     spanLimits: {
       attributeCountLimit: 1024,
@@ -324,7 +353,10 @@ function setupTelemetry() {
     );
   }
 
-  provider.register({ contextManager: createContextManager() });
+  provider.register({
+    contextManager: createContextManager(),
+    propagator: new NonInheritingTraceContextPropagator(),
+  });
 
   let instrumentations: Instrumentation[] = [
     new AwsSdkInstrumentation({
