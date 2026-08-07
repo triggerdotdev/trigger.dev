@@ -35,6 +35,15 @@ export const WATCH_UPDATE_LABEL = "Watch update";
 /** Fingerprints are hashes, so show just enough to tell them apart. */
 const FINGERPRINT_CHARS = 8;
 
+/**
+ * A fingerprint carries its own `error_` prefix, and every surface names the kind
+ * itself — so the prefix is dropped before shortening, or the line reads
+ * "error error_c4".
+ */
+export function shortFingerprint(fingerprint: string): string {
+  return fingerprint.replace(/^error_/, "").slice(0, FINGERPRINT_CHARS);
+}
+
 /* ------------------------------------------------------------------ *
  * Identity formatting
  * ------------------------------------------------------------------ */
@@ -80,7 +89,7 @@ function bareQueueName(identity: string, kind: string): string {
 /** How an error group is named in a sentence. */
 function errorName(identity: string, kind: string): string {
   const value = watchIdentityValue(kind, identity);
-  return value ? `Error ${value.slice(0, FINGERPRINT_CHARS)}` : "The error";
+  return value ? `Error ${shortFingerprint(value)}` : "The error";
 }
 
 /* ------------------------------------------------------------------ *
@@ -486,7 +495,7 @@ export function watchSubjectLabel(spec: WatchSpec): string {
     case "queue_oldest_age":
       return spec.queue;
     case "error_recurrence":
-      return `error ${spec.fingerprint.slice(0, FINGERPRINT_CHARS)}`;
+      return `error ${shortFingerprint(spec.fingerprint)}`;
     case "health_recovery":
       return "health";
   }
