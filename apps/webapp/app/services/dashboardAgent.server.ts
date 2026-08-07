@@ -42,12 +42,12 @@ export function dashboardAgentApiOrigin(): string {
 // so the agent can't name a different one in a request body.
 export function mintDashboardAgentUserActorToken(
   userId: string,
-  opts: { environmentId?: string } = {}
+  opts: { environmentId: string }
 ): Promise<string> {
   return signUserActorToken(env.SESSION_SECRET, {
     userId,
     client: "dashboard-agent",
-    ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+    environmentId: opts.environmentId,
     cap: DASHBOARD_AGENT_UAT_CAP,
     expirationTime: Math.floor(Date.now() / 1000) + DASHBOARD_AGENT_UAT_TTL_SECONDS,
   });
