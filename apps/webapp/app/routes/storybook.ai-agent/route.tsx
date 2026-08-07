@@ -78,19 +78,19 @@ function DotMatrixTab() {
         ))}
       </div>
       <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        The <code className="text-text-bright">ask-ai</code> Button variant. Mono logo, click to
-        think for 5s.
+        The <code className="text-text-bright">ask-trigger</code> Button variant. Mono logo, click
+        to think for 5s.
       </Paragraph>
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {(
           [
-            ["ask-ai/small", 16, "small"],
-            ["ask-ai/medium", 16, "medium"],
-            ["ask-ai/large", 20, "large"],
+            ["ask-trigger/small", 16, "small"],
+            ["ask-trigger/medium", 16, "medium"],
+            ["ask-trigger/large", 20, "large"],
           ] as [ButtonVariant, number, string][]
         ).map(([variant, matrixSize, label]) => (
           <div key={variant} className="flex flex-col items-center gap-2">
-            <AskAiButton variant={variant} matrixSize={matrixSize} />
+            <AskTriggerButton variant={variant} matrixSize={matrixSize} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}</div>
           </div>
         ))}
@@ -101,7 +101,7 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {[14, 15, 16].map((s) => (
           <div key={s} className="flex flex-col items-center gap-2">
-            <AskAiButton variant="ask-ai/small" matrixSize={s} />
+            <AskTriggerButton variant="ask-trigger/small" matrixSize={s} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{s}px icon</div>
           </div>
         ))}
@@ -180,7 +180,7 @@ function DotMatrixTab() {
   );
 }
 
-function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
+function AskTriggerButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
   const [active, setActive] = useState(false);
   const timeout = useRef<ReturnType<typeof setTimeout>>();
 
@@ -199,7 +199,7 @@ function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSi
       onClick={trigger}
       LeadingIcon={<AgentMonoLogo size={matrixSize} active={active} decorative />}
     >
-      Ask AI
+      Ask Trigger
     </Button>
   );
 }
@@ -218,7 +218,7 @@ function FaceButton({ name }: { name: DotShapeName }) {
 
   return (
     <Button
-      variant="ask-ai/small"
+      variant="ask-trigger/small"
       onClick={trigger}
       LeadingIcon={<AgentMonoLogo size={16} active={active} restShape={name} decorative />}
     >

@@ -114,7 +114,7 @@ const theme = {
     icon: "text-blue-500",
   },
   // The AI agent's "Ask Trigger" affordance.
-  "ask-ai": {
+  "ask-trigger": {
     textColor:
       "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
     button:
@@ -140,9 +140,9 @@ function createVariant(sizeName: Size, themeName: Theme) {
   };
 }
 
-// ask-ai supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
-function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
-  const base = createVariant(sizeName, "ask-ai");
+// ask-trigger supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
+function createAskTriggerVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
+  const base = createVariant(sizeName, "ask-trigger");
   return {
     ...base,
     button: cn(base.button, opticalPadding),
@@ -181,9 +181,9 @@ const variant = {
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
   "docs/extra-large": createVariant("extra-large", "docs"),
-  "ask-ai/small": createAskAiVariant("small", "px-1 pr-1.5", 16),
-  "ask-ai/medium": createAskAiVariant("medium", "px-2", 16),
-  "ask-ai/large": createAskAiVariant("large", "px-2.5", 20),
+  "ask-trigger/small": createAskTriggerVariant("small", "px-1 pr-1.5", 16),
+  "ask-trigger/medium": createAskTriggerVariant("medium", "px-2", 16),
+  "ask-trigger/large": createAskTriggerVariant("large", "px-2.5", 20),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
@@ -269,7 +269,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   }, [isLoading]);
 
   const variation = allVariants.variant[props.variant];
-  // Some variants (ask-ai) always lead with their own glyph unless overridden.
+  // Some variants (ask-trigger) always lead with their own glyph unless overridden.
   const leadingIcon = LeadingIcon ?? variation.defaultLeadingIcon;
 
   const btnClassName = cn(allVariants.$all, variation.button);

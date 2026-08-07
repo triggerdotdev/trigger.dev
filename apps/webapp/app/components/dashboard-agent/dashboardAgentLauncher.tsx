@@ -54,7 +54,11 @@ export function DashboardAgentLauncher() {
       }
       button={
         <span className="relative inline-flex shrink-0">
-          <Button variant="ask-ai/small" aria-label={ASK_AGENT_LABEL} onClick={() => setOpen(true)}>
+          <Button
+            variant="ask-trigger/small"
+            aria-label={ASK_AGENT_LABEL}
+            onClick={() => setOpen(true)}
+          >
             {ASK_AGENT_LABEL}
           </Button>
         </span>
