@@ -72,6 +72,14 @@ function textMessage(id: string, text = id) {
   return { id, role: "assistant" as const, parts: [{ type: "text", text }] };
 }
 
+function toolMessage(id: string, state: "input-available" | "output-available") {
+  return {
+    id,
+    role: "assistant" as const,
+    parts: [{ type: "tool-get_query_schema", state, toolCallId: `${id}_call`, input: {} }],
+  };
+}
+
 async function transcript(chatId: string): Promise<{ id: string }[]> {
   return (await getChatMessages(agentDb, {
     chatId,
@@ -289,21 +297,31 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
   );
 
   postgresTest(
-    "persistTurn cannot rewrite a stored message either",
+    "a completing turn finalises the body it stored mid-flight",
     async ({ prisma, postgresContainer }) => {
-      const chatId = "chat_no_implicit_update_turn";
+      // `onTurnStart` stores the turn's messages before the model has finished, so the
+      // transcript first holds a tool call with no result. The completed turn arrives
+      // under the same message id, and what the user was shown has to win.
+      const chatId = "chat_turn_finalises_own_message";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
-      await persistMessages(agentDb, { chatId, messages: [textMessage("a1", "the answer")] });
+      await persistMessages(agentDb, { chatId, messages: [toolMessage("a1", "input-available")] });
       const before = await rows(prisma, chatId);
 
       await persistTurn(agentDb, {
         chatId,
-        messages: [textMessage("a1", "a different answer")],
+        messages: [toolMessage("a1", "output-available")],
         session: { publicAccessToken: "pat_store" },
       });
 
-      expect(await rows(prisma, chatId)).toEqual(before);
+      const after = await rows(prisma, chatId);
+      expect(after).toHaveLength(1);
+      expect(after[0]!.position).toBe(before[0]!.position);
+      expect(after[0]!.message).toMatchObject({
+        parts: [{ state: "output-available" }],
+      });
+      // A finalisation is not an append: no slot is consumed.
+      expect(await nextPosition(prisma, chatId)).toBe(2);
     },
     30_000
   );
@@ -620,6 +638,19 @@ describe("a write can no longer lose a message another process appended", () => 
       // And the row it belongs to is still terminal, so nothing will re-open it.
       const row = await getInvestigation(agentDb, { id: created.id });
       expect(investigationStateSchema.parse(row?.state).outcome).toBe("inconclusive");
+
+      // A later turn carrying the card in its own snapshot still can't rewrite it:
+      // finalisation is for the turn's messages, never for a durable event.
+      const card = (await rows(prisma, chatId)).find((stored) => stored.message_id === cardId)!;
+      await persistTurn(agentDb, {
+        chatId,
+        messages: [{ ...(card.message as Record<string, unknown>), tampered: true }],
+        session: { publicAccessToken: "pat_store" },
+      });
+      const afterCard = (await rows(prisma, chatId)).find(
+        (stored) => stored.message_id === cardId
+      )!;
+      expect(afterCard.message).toEqual(card.message);
     },
     30_000
   );

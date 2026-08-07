@@ -341,6 +341,12 @@ async function reserveMessagePositions(
  * durable event, and nothing outside `messages` is touched either. Changing a message that
  * is already stored is a different operation: {@link finalizeChatMessage}.
  *
+ * `finalizable` is the exception a completing turn needs: the ids it names are rewritten in
+ * place through {@link finalizeChatMessage} instead of being skipped, so the transcript ends
+ * up with the message the user was shown rather than the mid-flight version of it. Position
+ * and id never move. Anything not named — a settlement card, another lane's append — keeps
+ * the insert-only guarantee.
+ *
  * The batch keeps its incoming order, and a message already stored keeps the position it
  * was first given, which is why a mid-turn append sits before the turn's later messages.
  *
@@ -349,7 +355,7 @@ async function reserveMessagePositions(
  */
 async function storeChatMessages(
   tx: DashboardAgentDbOrTx,
-  params: { chatId: string; messages: unknown[] }
+  params: { chatId: string; messages: unknown[]; finalizable?: ReadonlySet<string> }
 ): Promise<void> {
   const deduped = new Map<string, unknown>();
   for (const message of params.messages) {
@@ -380,7 +386,17 @@ async function storeChatMessages(
         inArray(chatMessages.messageId, [...deduped.keys()])
       )
     );
-  for (const row of stored) deduped.delete(row.messageId);
+  for (const row of stored) {
+    const message = deduped.get(row.messageId);
+    deduped.delete(row.messageId);
+    if (message === undefined || !params.finalizable?.has(row.messageId)) continue;
+    await finalizeChatMessage(tx, {
+      chatId: params.chatId,
+      messageId: row.messageId,
+      expectedRole: messageRoleOf(params.chatId, message),
+      message,
+    });
+  }
   if (deduped.size === 0) return;
 
   const start = await reserveMessagePositions(tx, { chatId: params.chatId, count: deduped.size });
@@ -592,7 +608,17 @@ export async function persistTurn(
     );
     const messages = [...params.messages, ...cards.filter((card) => !existing.has(card.id))];
 
-    await storeChatMessages(tx, { chatId: params.chatId, messages });
+    // `onTurnStart` stores the turn's messages mid-flight, so the completed bodies arrive
+    // here against ids that already exist: without finalisation the transcript would keep
+    // the half-finished tool call the user never saw the end of. Settlement cards are
+    // durable events and stay insert-only.
+    const finalizable = new Set(
+      params.messages
+        .map((message) => messageIdOf(params.chatId, message))
+        .filter((id) => !id.startsWith(`${INVESTIGATION_SETTLEMENT_MESSAGE_ID_PREFIX}:`))
+    );
+
+    await storeChatMessages(tx, { chatId: params.chatId, messages, finalizable });
 
     await tx
       .insert(chatSessions)
