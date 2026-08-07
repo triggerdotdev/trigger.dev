@@ -14,37 +14,19 @@ import {
 const APP_DIR = join(__dirname, "..");
 const ROUTES_DIR = join(APP_DIR, "routes");
 
-// Flat-route prefix for every page that renders inside an environment. The trailing dot matters:
-// it excludes the layout route itself (`…env.$envParam`), which has no segment of its own.
+// The trailing dot excludes the environment layout route itself, which has no segment of its own.
 const ENV_ROUTE_PREFIX = "_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.";
 
-/**
- * Segments that are route files but are not deeplink names:
- * - `_index` is the environment root. It is where an unrecognised deeplink already lands, and
- *   `tasks` is the name that points at it.
- * - `queues_` is Remix's "opt out of the parent layout" spelling of `queues`, not a distinct URL.
- */
+// Route files that name no deeplink: the environment root, and Remix's layout-opt-out spelling.
 const NOT_DEEPLINK_NAMES = new Set(["_index", "queues_"]);
 
-/** Stands in for a param segment, so a deep path under test looks like a real URL. */
 const PROBE = "probe_01ABC";
 
-/** The route module whose filename is what produces the deeplink URL. */
 const DEEPLINK_ROUTE_FILE = "routes/[_].$.ts";
 
-/**
- * The app's routes as Remix itself compiles them, so the URL under test is the one the router will
- * really serve rather than one this file asserts into existence. `flatRoutes` is the same function
- * the vite plugin calls, and the ignore list mirrors `ignoredRouteFiles` in `vite.config.ts`.
- */
 const compiledRoutes: RouteManifest = flatRoutes(APP_DIR, ["**/.*"]);
 
-/**
- * A route's whole URL, walking up the manifest — a `path` is relative to its parent's, and a
- * pathless layout contributes nothing. Top-level routes name `root`, which the manifest omits.
- */
 function compiledUrl(id: string): string {
-  // An unknown id would otherwise walk zero routes and quietly read as the site root.
   if (!compiledRoutes[id]) throw new Error(`no compiled route with id ${id}`);
 
   const segments: string[] = [];
@@ -56,7 +38,6 @@ function compiledUrl(id: string): string {
   return `/${segments.join("/")}`;
 }
 
-/** What Remix actually mounts `[_].$.ts` at, e.g. `/_`. Derived, never assumed. */
 const COMPILED_DEEPLINK_PATH = (() => {
   const entry = Object.values(compiledRoutes).find((route) => route.file === DEEPLINK_ROUTE_FILE);
   if (!entry) throw new Error(`${DEEPLINK_ROUTE_FILE} is not in the compiled route manifest`);
@@ -65,18 +46,13 @@ const COMPILED_DEEPLINK_PATH = (() => {
 
 const routeEntries = readdirSync(ROUTES_DIR);
 
-/** A route directory only contributes a route if it actually holds a `route` module. */
 function isRouteModule(entry: string): boolean {
   const path = join(ROUTES_DIR, entry);
   if (!statSync(path).isDirectory()) return true;
   return existsSync(join(path, "route.tsx")) || existsSync(join(path, "route.ts"));
 }
 
-/**
- * Every environment route as its URL segments. A trailing `_index` is dropped (it supplies the
- * parent's bare URL) and a trailing `_` is trimmed from each segment, because `queues_.$queueParam`
- * serves `/queues/{id}` — the underscore only opts out of the parent layout.
- */
+// A trailing `_` only opts out of the parent layout: `queues_.$queueParam` serves `/queues/{id}`.
 const envRoutes: string[][] = routeEntries
   .filter((entry) => entry.startsWith(ENV_ROUTE_PREFIX) && isRouteModule(entry))
   .map((entry) =>
@@ -88,7 +64,6 @@ const envRoutes: string[][] = routeEntries
   .map((segments) => (segments.at(-1) === "_index" ? segments.slice(0, -1) : segments))
   .map((segments) => segments.map((segment) => segment.replace(/_+$/, "")));
 
-/** Does any route match this environment-relative URL? Param segments match the deep case only. */
 function routeMatches(path: string, { allowParams }: { allowParams: boolean }): boolean {
   const wanted = path === "" ? [] : path.split("/");
   return envRoutes.some(
@@ -98,24 +73,17 @@ function routeMatches(path: string, { allowParams }: { allowParams: boolean }): 
   );
 }
 
-/** Every first segment appearing under the environment layout. */
 function envRouteSegments(): Set<string> {
   const segments = new Set<string>();
   for (const entry of routeEntries) {
     if (!entry.startsWith(ENV_ROUTE_PREFIX)) continue;
-    // `metrics.$dashboardKey.ts` -> `metrics`, `agents` -> `agents`, `errors._index` -> `errors`
     const segment = entry.slice(ENV_ROUTE_PREFIX.length).split(/[./]/)[0];
-    // Guards against a future `…env.$envParam.tsx` contributing its extension as a segment.
     if (!segment || segment === "ts" || segment === "tsx") continue;
     segments.add(segment);
   }
   return segments;
 }
 
-/**
- * Every route below this prefix, as the segments that follow it, with param segments replaced by a
- * value a real URL would carry. These are the deep links that can actually be made under a name.
- */
 function descendantsOf(prefix: string): string[][] {
   const depth = prefix === "" ? 0 : prefix.split("/").length;
   return envRoutes
@@ -126,14 +94,12 @@ function descendantsOf(prefix: string): string[][] {
 }
 
 describe("deeplink targets", () => {
-  it("found the routes directory", () => {
-    // Without this, every assertion below would pass vacuously if the glob ever broke.
+  it("read enough routes for the assertions below to mean anything", () => {
     expect(envRouteSegments().size).toBeGreaterThan(20);
     expect(envRoutes.length).toBeGreaterThan(40);
   });
 
-  it("every bare name lands on a real page", () => {
-    // A landing page is a page you arrive at with no id, so a param route does not count.
+  it("every bare name lands on a real page that needs no id", () => {
     const broken = [...ENV_PAGE_TARGETS.entries()]
       .filter(([name]) => !routeMatches(resolveDeeplinkPage(name) ?? " ", { allowParams: false }))
       .map(([name, { landing }]) => `${name} -> ${landing || "(environment root)"}`);
@@ -141,10 +107,7 @@ describe("deeplink targets", () => {
     expect(broken).toEqual([]);
   });
 
-  it("every deep path lands on a real route", () => {
-    // The invariant a bare segment list could not express: /_/waitpoints/{id} has to reach
-    // waitpoints/tokens/{id}, not waitpoints/{id}. Driven off the real child routes rather than one
-    // synthetic segment, so names whose children are all literal (settings/general) count too.
+  it("every deep path lands on a real route, prefix graft included", () => {
     const broken: string[] = [];
 
     for (const [name, { prefix }] of ENV_PAGE_TARGETS) {
@@ -161,14 +124,12 @@ describe("deeplink targets", () => {
   });
 
   it("has deep paths worth checking", () => {
-    // Keeps the assertion above from passing because it iterated nothing.
     expect(descendantsOf("waitpoints/tokens").length).toBeGreaterThan(0);
     expect(descendantsOf("tasks").length).toBeGreaterThan(2);
     expect(descendantsOf("runs").length).toBeGreaterThan(0);
   });
 
   it("every environment page has a deeplink name", () => {
-    // A segment that resolves bare is a page someone could reasonably want to link to.
     const missing = [...envRouteSegments()]
       .filter((segment) => !NOT_DEEPLINK_NAMES.has(segment))
       .filter(
@@ -179,14 +140,11 @@ describe("deeplink targets", () => {
     expect(missing).toEqual([]);
   });
 
-  it("names whose own segment 404s are redirected, not mapped to themselves", () => {
-    // These exist only as the parent of param/child routes, so a bare URL matches no route.
+  it("points a 404ing name elsewhere, and gives a redirect shim no name at all", () => {
     for (const segment of ["tasks", "waitpoints", "metrics"]) {
       expect(routeMatches(segment, { allowParams: false })).toBe(false);
     }
 
-    // `tasks` and `waitpoints` therefore point elsewhere; `metrics` is only a legacy redirect shim
-    // with no page of its own, so it is deliberately not a deeplink name at all.
     expect(ENV_PAGE_TARGETS.get("tasks")).toEqual({ landing: "", prefix: "tasks" });
     expect(ENV_PAGE_TARGETS.get("waitpoints")).toEqual({
       landing: "waitpoints/tokens",
@@ -205,9 +163,7 @@ describe("resolveDeeplinkPage", () => {
 
   it("grafts deeper segments onto the prefix", () => {
     expect(resolveDeeplinkPage("runs/run_123")).toBe("runs/run_123");
-    // The landing is the environment root, but task detail still lives under /tasks.
     expect(resolveDeeplinkPage("tasks/standard/my-task")).toBe("tasks/standard/my-task");
-    // The prefix supplies the `tokens` segment the caller did not have to know about.
     expect(resolveDeeplinkPage("waitpoints/waitpoint_123")).toBe("waitpoints/tokens/waitpoint_123");
   });
 
@@ -225,53 +181,39 @@ describe("resolveDeeplinkPage", () => {
   });
 
   it("matches the page name whatever its case, and resolves it to the map's spelling", () => {
-    // `/env/{env}/APIKeys` matches its route, so the short link has to agree rather than falling
-    // through to the environment root.
     expect(resolveDeeplinkPage("APIKeys")).toBe("apikeys");
     expect(resolveDeeplinkPage("Waitpoints")).toBe("waitpoints/tokens");
     expect(resolveDeeplinkPage("TASKS")).toBe("");
     expect(resolveDeeplinkPage("Bulk-Actions")).toBe("bulk-actions");
-    // Case doesn't turn a non-page into a page.
     expect(resolveDeeplinkPage("Nonsense")).toBeUndefined();
     expect(resolveDeeplinkPage("Metrics")).toBeUndefined();
   });
 
   it("leaves the case of everything after the name alone", () => {
-    // Only the name is folded. Ids are case-sensitive, so lowercasing one would break the link far
-    // more thoroughly than the miss the folding fixes.
     expect(resolveDeeplinkPage("runs/run_ABC123")).toBe("runs/run_ABC123");
     expect(resolveDeeplinkPage("Runs/run_ABC123")).toBe("runs/run_ABC123");
     expect(resolveDeeplinkPage("TASKS/standard/My-Task")).toBe("tasks/standard/My-Task");
-    // Grafted onto the prefix and already written out under it, both with the id untouched.
     expect(resolveDeeplinkPage("Waitpoints/waitpoint_ABC")).toBe("waitpoints/tokens/waitpoint_ABC");
     expect(resolveDeeplinkPage("Waitpoints/tokens/waitpoint_ABC")).toBe(
       "waitpoints/tokens/waitpoint_ABC"
     );
-    // An escaped slash inside a capitalised id survives as one segment, as it does in lower case.
     expect(resolveDeeplinkPage("Tasks/standard/Group%2FMy-Task")).toBe(
       "tasks/standard/Group%2FMy-Task"
     );
   });
 
   it("recognises a written-out prefix whatever its case, however many segments it spans", () => {
-    // `waitpoints`' prefix is two segments, so folding only the first left `Tokens` looking like a
-    // segment of its own: the graft fired on top of it and produced waitpoints/tokens/Tokens/{id},
-    // which matches no route. The lowercase spelling worked, so this was case-folding's own bug.
     expect(resolveDeeplinkPage("Waitpoints/Tokens/wp_123")).toBe("waitpoints/tokens/wp_123");
     expect(resolveDeeplinkPage("waitpoints/Tokens/wp_123")).toBe("waitpoints/tokens/wp_123");
     expect(resolveDeeplinkPage("WAITPOINTS/TOKENS/wp_123")).toBe("waitpoints/tokens/wp_123");
-    // The bare longhand, with nothing beyond the prefix to carry.
     expect(resolveDeeplinkPage("Waitpoints/Tokens")).toBe("waitpoints/tokens");
   });
 
   it("holds for every multi-segment prefix in the map, not just waitpoints", () => {
-    // Driven off the map so a second such entry is covered the day it is added rather than the day
-    // someone notices. Every prefix segment is upper-cased and the id is left mixed.
     const multiSegment = [...ENV_PAGE_TARGETS.values()].filter(({ prefix }) =>
       prefix.includes("/")
     );
 
-    // Guards against this passing because it iterated nothing.
     expect(multiSegment.length).toBeGreaterThan(0);
 
     for (const { prefix } of multiSegment) {
@@ -288,43 +230,28 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("runs/../../../etc/passwd")).toBe("runs/etc/passwd");
     expect(resolveDeeplinkPage("../runs")).toBe("runs");
     expect(resolveDeeplinkPage("runs//run_1")).toBe("runs/run_1");
-    // `%2e%2e` decodes to `..`, so it has to be rejected in the encoded form too.
     expect(resolveDeeplinkPage("runs/%2e%2e/%2E%2E/run_1")).toBe("runs/run_1");
     expect(resolveDeeplinkPage("runs/%2e/run_1")).toBe("runs/run_1");
-    // A malformed escape can't be part of a URL we build.
     expect(resolveDeeplinkPage("runs/%ZZ/run_1")).toBe("runs/run_1");
   });
 
   it("passes encoded segments through without re-encoding them", () => {
-    // The dashboard writes a task id containing a slash this way, so it must survive as one
-    // segment rather than being split or double-encoded into %252F.
     expect(resolveDeeplinkPage("tasks/standard/group%2Fmy-task")).toBe(
       "tasks/standard/group%2Fmy-task"
     );
     expect(resolveDeeplinkPage("runs/a%3Fb%23c")).toBe("runs/a%3Fb%23c");
-    // An escaped slash stays escaped, so this addresses one odd id rather than climbing out.
+    // The slash stays escaped, so this addresses one odd id rather than climbing out.
     expect(resolveDeeplinkPage("runs/..%2f..%2fetc")).toBe("runs/..%2f..%2fetc");
   });
 });
 
 describe("the route Remix compiles from the filename", () => {
-  // The escape in `[_].$.ts` is the whole reason this route works, and getting it wrong fails
-  // catastrophically rather than visibly: a flat-route segment starting with `_` is a *pathless
-  // layout* contributing nothing to the URL, so an unescaped `_.$.ts` would mount this loader at
-  // `/*` — a splat over the entire site whose loader redirects unconditionally. Nothing else in
-  // the app uses `[…]` escaping, so there is no precedent to lean on and the compiled manifest is
-  // the only honest source. Everything here is read out of `flatRoutes`, never asserted into it.
-
   it("mounts the deeplink route at /_ and nowhere else", () => {
     expect(COMPILED_DEEPLINK_PATH).toBe("/_");
-    // The constant the loader strips has to agree with what Remix mounted, so renaming either the
-    // file or the constant without the other fails here.
     expect(COMPILED_DEEPLINK_PATH).toBe(DEEPLINK_PATH_PREFIX);
   });
 
   it("does not mount anything as a site-wide splat", () => {
-    // The disaster case, asserted for every route rather than just this one: had the underscore
-    // been read as pathless, this is the assertion that would have caught it.
     const siteWide = Object.values(compiledRoutes)
       .filter((route) => compiledUrl(route.id) === "/*")
       .map((route) => route.file);
@@ -332,12 +259,9 @@ describe("the route Remix compiles from the filename", () => {
     expect(siteWide).toEqual([]);
   });
 
-  it("compiled the manifest it is reading", () => {
-    // Keeps the two assertions above from passing because `flatRoutes` returned nothing useful.
+  it("compiled the manifest it is reading, paths and all", () => {
     expect(Object.keys(compiledRoutes).length).toBeGreaterThan(400);
-    // A sample of ordinary routes, so a manifest full of undefined paths would not read as a pass.
     expect(compiledUrl("routes/login.magic")).toBe("/login/magic");
-    // `queues_.$queueParam` opts out of the parent layout; the trailing `_` is not a URL character.
     expect(
       compiledUrl(
         "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues_.$queueParam"
@@ -359,23 +283,15 @@ describe("deeplinkSuffix", () => {
   });
 
   it("strips only the prefix, leaving the remainder's case alone", () => {
-    // The prefix has no case to fold — `_` is the same character either way — so unlike the page
-    // name there is no case-insensitive comparison here. What still matters is that the remainder
-    // comes back exactly as written, capitals and all, because ids are case-sensitive.
     expect(deeplinkSuffix("/_/runs/run_ABC123")).toBe("runs/run_ABC123");
     expect(deeplinkSuffix("/_/tasks/standard/My-Task")).toBe("tasks/standard/My-Task");
   });
 
-  it("matches the URL the router serves for it", () => {
-    // Behaviour of the pattern itself. What the pattern *is* is settled against the compiled
-    // manifest above — building it from DEEPLINK_PATH_PREFIX alone would only compare the constant
-    // with itself.
+  it("matches the URL the router serves for it, splat case and all", () => {
     const route = `${COMPILED_DEEPLINK_PATH}/*`;
     expect(matchPath(route, "/_/apikeys")?.params["*"]).toBe("apikeys");
     expect(matchPath(route, "/_/runs/run_123")?.params["*"]).toBe("runs/run_123");
-    // The splat keeps the case it was given, which is why the loader folds only the page name.
     expect(matchPath(route, "/_/APIKeys")?.params["*"]).toBe("APIKeys");
-    // And it is a literal segment, so it matches nothing else.
     expect(matchPath(route, "/deeplink/apikeys")).toBeNull();
     expect(matchPath(route, "/apikeys")).toBeNull();
   });
@@ -383,22 +299,17 @@ describe("deeplinkSuffix", () => {
   it("treats a bare prefix, a trailing slash and anything outside it as no suffix", () => {
     expect(deeplinkSuffix("/_")).toBe("");
     expect(deeplinkSuffix("/_/")).toBe("");
-    // What `new URL` leaves behind once it has normalised and resolved `%2e%2e` itself.
     expect(deeplinkSuffix("/etc")).toBe("");
-    // A prefix that merely starts with the same character is not this route.
     expect(deeplinkSuffix("/_app/orgs")).toBe("");
   });
 
-  it("matches what the URL parser actually produces", () => {
-    // The behaviour above is only correct if `new URL` really does keep %2F and really does
-    // resolve %2e%2e, so assert that rather than assuming it.
+  it("matches what the URL parser actually produces, keeping %2F and resolving %2e%2e", () => {
     const encodedSlash = new URL("http://x/_/tasks/standard/group%2Fmy-task");
     expect(deeplinkSuffix(encodedSlash.pathname)).toBe("tasks/standard/group%2Fmy-task");
     expect(resolveDeeplinkPage(deeplinkSuffix(encodedSlash.pathname))).toBe(
       "tasks/standard/group%2Fmy-task"
     );
 
-    // `%2e%2e` is normalised to `..` and resolved by the parser, leaving the prefix behind.
     const traversal = new URL("http://x/_/runs/%2e%2e/%2e%2e/etc");
     expect(traversal.pathname).toBe("/etc");
     expect(resolveDeeplinkPage(deeplinkSuffix(traversal.pathname))).toBeUndefined();
