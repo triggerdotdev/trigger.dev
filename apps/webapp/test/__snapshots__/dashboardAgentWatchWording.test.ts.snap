@@ -172,21 +172,21 @@ exports[`the watch presenter > gives every kind and resolution one headline 1`] 
   },
   {
     "category": "attention",
-    "headline": "Error a1b2c3d4 happened again",
+    "headline": "Error a1b2c3d4e5f6 happened again",
     "kind": "error_recurrence",
     "resolution": "condition_met",
     "tone": "error",
   },
   {
     "category": "positive",
-    "headline": "Error a1b2c3d4 stayed quiet",
+    "headline": "Error a1b2c3d4e5f6 stayed quiet",
     "kind": "error_recurrence",
     "resolution": "window_completed",
     "tone": "success",
   },
   {
     "category": "neutral",
-    "headline": "Error a1b2c3d4 stayed quiet",
+    "headline": "Error a1b2c3d4e5f6 stayed quiet",
     "kind": "error_recurrence",
     "resolution": "condition_impossible",
     "tone": "neutral",
@@ -274,7 +274,7 @@ exports[`the watch presenter > says each condition the same way on every surface
     "tooltip": "Get notified if runs wait longer than 1h 30m",
   },
   {
-    "confirmation": "Watching error a1b2c3d4 in case it happens again.",
+    "confirmation": "Watching error a1b2c3d4e5f6 in case it happens again.",
     "kind": "error_recurrence",
     "label": "If it happens again",
     "note": "ping me if error a1b2c3d4e5f6 happens again",
