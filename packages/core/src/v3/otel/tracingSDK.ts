@@ -162,7 +162,8 @@ export class TracingSDK {
       )
     );
 
-    const externalTraceId = idGenerator.generateTraceId();
+    // Shared by every wrapper below so a run's spans and logs agree on the id.
+    const externalTraceId = new FallbackExternalTraceId(idGenerator.generateTraceId());
 
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
@@ -394,6 +395,19 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
 }
 
 /**
+ * Identity of the current run's trace context, or undefined when no run is
+ * active.
+ *
+ * An empty context is not a run: the noop manager returns a fresh `{}` on every
+ * call, so treating it as a run would mint a new id on every export.
+ */
+function currentRunTraceContext(): object | undefined {
+  const current = traceContext.getTraceContext();
+
+  return current && Object.keys(current).length > 0 ? current : undefined;
+}
+
+/**
  * The external trace id used by runs that carry no external trace context,
  * minted once per run.
  *
@@ -402,17 +416,20 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
  * — outlive the run, so an id captured at construction merges every run on the
  * process into one trace. The manager's trace context object is reassigned per
  * run, which makes its identity the run boundary.
+ *
+ * One instance is shared by every wrapper, so a run's spans and logs still
+ * agree on the id after a remint.
  */
-class FallbackExternalTraceId {
+export class FallbackExternalTraceId {
   private traceId: string;
-  private seenTraceContext: unknown;
+  private seenTraceContext: object | undefined;
 
   constructor(
     private seed: string,
     private traceIdGenerator: Pick<RandomIdGenerator, "generateTraceId"> = idGenerator
   ) {
     this.traceId = seed;
-    this.seenTraceContext = traceContext.getTraceContext();
+    this.seenTraceContext = currentRunTraceContext();
   }
 
   get(): string {
@@ -422,10 +439,10 @@ class FallbackExternalTraceId {
       return this.seed;
     }
 
-    const currentTraceContext = traceContext.getTraceContext();
+    const current = currentRunTraceContext();
 
-    if (currentTraceContext !== this.seenTraceContext) {
-      this.seenTraceContext = currentTraceContext;
+    if (current && current !== this.seenTraceContext) {
+      this.seenTraceContext = current;
       this.traceId = this.traceIdGenerator.generateTraceId();
     }
 
@@ -434,15 +451,10 @@ class FallbackExternalTraceId {
 }
 
 export class ExternalSpanExporterWrapper {
-  private fallback: FallbackExternalTraceId;
-
   constructor(
     private underlyingExporter: SpanExporter,
-    externalTraceId: string,
-    traceIdGenerator?: Pick<RandomIdGenerator, "generateTraceId">
-  ) {
-    this.fallback = new FallbackExternalTraceId(externalTraceId, traceIdGenerator);
-  }
+    private fallback: FallbackExternalTraceId
+  ) {}
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
     // Read external context live, so per-run reassignment of
@@ -463,9 +475,7 @@ export class ExternalSpanExporterWrapper {
       return;
     }
 
-    const externalTraceId = externalTraceContext
-      ? externalTraceContext.traceId
-      : fallbackTraceId;
+    const externalTraceId = externalTraceContext ? externalTraceContext.traceId : fallbackTraceId;
 
     const isAttemptSpan = span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT];
 
@@ -524,15 +534,10 @@ export class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
-  private fallback: FallbackExternalTraceId;
-
   constructor(
     private underlyingExporter: LogRecordExporter,
-    externalTraceId: string,
-    traceIdGenerator?: Pick<RandomIdGenerator, "generateTraceId">
-  ) {
-    this.fallback = new FallbackExternalTraceId(externalTraceId, traceIdGenerator);
-  }
+    private fallback: FallbackExternalTraceId
+  ) {}
 
   export(logs: any[], resultCallback: (result: any) => void): void {
     const externalTraceContext = traceContext.getExternalTraceContext();
