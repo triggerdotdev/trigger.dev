@@ -18,10 +18,12 @@ type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {
   variant?: keyof typeof variants;
 };
 
-export function Badge({ className, variant = "default", children, ...props }: BadgeProps) {
-  return (
-    <div className={cn(variants[variant], className)} {...props}>
+export const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
+  ({ className, variant = "default", children, ...props }, ref) => (
+    <div ref={ref} className={cn(variants[variant], className)} {...props}>
       <span>{children}</span>
     </div>
-  );
-}
+  )
+);
+
+Badge.displayName = "Badge";

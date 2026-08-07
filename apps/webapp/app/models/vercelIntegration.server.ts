@@ -21,6 +21,8 @@ import type {
 import {
   shouldSyncEnvVar,
   envTypeToVercelTarget,
+  isVercelStandardTarget,
+  SKEW_PROTECTION_ENV_VAR_KEY,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
@@ -48,8 +50,53 @@ function extractVercelEnvs(response: FilterProjectEnvsResponseBody): ResponseBod
   return [];
 }
 
+function isVercelEnvListComplete(response: FilterProjectEnvsResponseBody): boolean {
+  if (!("pagination" in response) || !response.pagination) {
+    return true;
+  }
+
+  const next = "next" in response.pagination ? response.pagination.next : null;
+  return !(typeof next === "number" && next > 0);
+}
+
+function hasVercelEnvVarForTarget(envs: ResponseBodyEnvs[], key: string, target: string): boolean {
+  return envs.some((env) => {
+    if (env.key !== key) return false;
+    if (typeof env.gitBranch === "string" && env.gitBranch.length > 0) return false;
+    if (normalizeTarget(env.target).includes(target)) return true;
+    return (env.customEnvironmentIds ?? []).includes(target);
+  });
+}
+
 function isVercelSecretType(type: string): boolean {
   return type === "secret" || type === "sensitive";
+}
+
+export type CreateEnvVarsIfAbsentResult = {
+  written: string[];
+  skipped: string[];
+  conflicted: string[];
+  failed: string[];
+  unresolved: string[];
+  errors: string[];
+};
+
+function extractCreateProjectEnvFailures(response: unknown): string[] {
+  if (!response || typeof response !== "object" || !("failed" in response)) {
+    return [];
+  }
+
+  const failed = (response as { failed?: unknown }).failed;
+  if (!Array.isArray(failed)) {
+    return [];
+  }
+
+  return failed.map((entry) => {
+    const error = (entry as { error?: { code?: unknown; message?: unknown } } | null)?.error;
+    const code = typeof error?.code === "string" ? error.code : "unknown";
+    const message = typeof error?.message === "string" ? error.message : "";
+    return message ? `${code}: ${message}` : code;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -999,6 +1046,8 @@ export class VercelIntegrationRepository {
             environmentType: string;
           }> = [];
 
+          const skewProtectionTargetSet = new Set<string>();
+
           for (const runtimeEnv of environments) {
             const vercelTarget = envTypeToVercelTarget(
               runtimeEnv.type as TriggerEnvironmentType,
@@ -1007,6 +1056,10 @@ export class VercelIntegrationRepository {
 
             if (!vercelTarget) {
               continue;
+            }
+
+            for (const target of vercelTarget) {
+              skewProtectionTargetSet.add(target);
             }
 
             envVarsToSync.push({
@@ -1022,6 +1075,8 @@ export class VercelIntegrationRepository {
             return { created: 0, updated: 0, errors: [] as string[] };
           }
 
+          const skewProtectionTargets = Array.from(skewProtectionTargetSet);
+
           await this.removeAllVercelEnvVarsByKey({
             client,
             vercelProjectId: params.vercelProjectId,
@@ -1035,6 +1090,25 @@ export class VercelIntegrationRepository {
             teamId: params.teamId,
             envVars: envVarsToSync,
           });
+
+          const skewResult = await this.createVercelEnvVarsIfAbsent({
+            client,
+            vercelProjectId: params.vercelProjectId,
+            teamId: params.teamId,
+            key: SKEW_PROTECTION_ENV_VAR_KEY,
+            value: "1",
+            type: "plain",
+            targets: skewProtectionTargets,
+          });
+
+          if (skewResult.unresolved.length > 0 || skewResult.failed.length > 0) {
+            logger.error("Skew protection env var did not reach every target at connect", {
+              projectId: params.projectId,
+              vercelProjectId: params.vercelProjectId,
+              key: SKEW_PROTECTION_ENV_VAR_KEY,
+              ...skewResult,
+            });
+          }
 
           logger.info("Synced API keys to Vercel", {
             projectId: params.projectId,
@@ -1704,6 +1778,155 @@ export class VercelIntegrationRepository {
     }
 
     return { created, updated, errors };
+  }
+
+  private static async createVercelEnvVarsIfAbsent(params: {
+    client: Vercel;
+    vercelProjectId: string;
+    teamId: string | null;
+    key: string;
+    value: string;
+    type: "sensitive" | "encrypted" | "plain";
+    targets: string[];
+  }): Promise<CreateEnvVarsIfAbsentResult> {
+    const { client, vercelProjectId, teamId, key, value, type, targets } = params;
+
+    const result: CreateEnvVarsIfAbsentResult = {
+      written: [],
+      skipped: [],
+      conflicted: [],
+      failed: [],
+      unresolved: [],
+      errors: [],
+    };
+
+    if (targets.length === 0) {
+      return result;
+    }
+
+    const logContext = { key, vercelProjectId, teamId, targets };
+
+    const existingEnvs = await callVercelWithRecovery(
+      client.projects.filterProjectEnvs({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+      }),
+      VercelSchemas.filterProjectEnvs,
+      { context: "createVercelEnvVarsIfAbsent" }
+    ).match(
+      (val) => val,
+      (error) => {
+        logger.error("Could not read Vercel env vars — skew protection was not written", {
+          ...logContext,
+          outcome: "read_failed",
+          error,
+        });
+        return null;
+      }
+    );
+
+    if (!existingEnvs) {
+      return { ...result, unresolved: targets, errors: ["Failed to read Vercel env vars"] };
+    }
+
+    if (!isVercelEnvListComplete(existingEnvs)) {
+      logger.error("Vercel env var list was truncated — skew protection was not written", {
+        ...logContext,
+        outcome: "list_truncated",
+      });
+      return { ...result, unresolved: targets, errors: ["Vercel env var list was truncated"] };
+    }
+
+    const envs = extractVercelEnvs(existingEnvs);
+    const targetsToCreate: string[] = [];
+
+    for (const target of targets) {
+      if (hasVercelEnvVarForTarget(envs, key, target)) {
+        result.skipped.push(target);
+      } else {
+        targetsToCreate.push(target);
+      }
+    }
+
+    for (const target of targetsToCreate) {
+      const requestBody = isVercelStandardTarget(target)
+        ? { key, value, type, target: [target] }
+        : { key, value, type, customEnvironmentIds: [target] };
+
+      const createResult = await ResultAsync.fromPromise(
+        client.projects.createProjectEnv({
+          idOrName: vercelProjectId,
+          ...(teamId && { teamId }),
+          requestBody,
+        }),
+        (error) => error
+      );
+
+      if (createResult.isErr()) {
+        const errorMsg = `Failed to create ${key} env var for ${target}: ${createResult.error instanceof Error ? createResult.error.message : "Unknown error"}`;
+        result.failed.push(target);
+        result.errors.push(errorMsg);
+        logger.error(errorMsg, {
+          ...logContext,
+          target,
+          outcome: "failed",
+          error: createResult.error,
+        });
+        continue;
+      }
+
+      const failures = extractCreateProjectEnvFailures(createResult.value);
+
+      if (failures.length > 0) {
+        result.conflicted.push(target);
+        result.errors.push(...failures);
+        logger.warn("Vercel rejected a skew protection env var record", {
+          ...logContext,
+          target,
+          outcome: "conflict",
+          failures,
+        });
+        continue;
+      }
+
+      result.written.push(target);
+    }
+
+    logger.info("Finished writing Vercel env var", {
+      ...logContext,
+      outcome: "attempted",
+      written: result.written,
+      skipped: result.skipped,
+      conflicted: result.conflicted,
+      failed: result.failed,
+    });
+
+    return result;
+  }
+
+  static ensureEnvVarForCustomEnvironment(params: {
+    orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
+    vercelProjectId: string;
+    teamId: string | null;
+    key: string;
+    value: string;
+    type: "sensitive" | "encrypted" | "plain";
+    customEnvironmentId: string;
+  }): ResultAsync<CreateEnvVarsIfAbsentResult, VercelApiError> {
+    return this.getVercelClient(params.orgIntegration).andThen((client) =>
+      ResultAsync.fromPromise(
+        this.createVercelEnvVarsIfAbsent({
+          client,
+          vercelProjectId: params.vercelProjectId,
+          teamId: params.teamId,
+          key: params.key,
+          value: params.value,
+          type: params.type,
+          targets: [params.customEnvironmentId],
+        }),
+        (error) => toVercelApiError(error)
+      )
+    );
   }
 
   private static async removeAllVercelEnvVarsByKey(params: {
