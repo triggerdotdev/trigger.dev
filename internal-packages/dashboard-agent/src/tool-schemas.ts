@@ -10,6 +10,21 @@ import {
 import { tool } from "ai";
 import { z } from "zod";
 
+/**
+ * What the environment JWT is minted with. Every tool that goes through `envApiGet` is
+ * authorized by this list and nothing else — the delegated token's own cap only caps it.
+ * A route whose resource is missing here answers 403, which reaches the model as absent
+ * data rather than as a permission problem, so it must match what the tools actually call.
+ */
+export const DASHBOARD_AGENT_ENV_JWT_SCOPES = [
+  "read:runs",
+  "read:deployments",
+  "read:errors",
+  "read:query",
+  // A queue's own row — paused, depth, limit — is a `queues` read; its metrics are not.
+  "read:queues",
+] as const;
+
 export const listProjectsSchema = tool({
   description:
     "List the Trigger.dev projects the user can access, with each project's ref, name, slug, and organization. Only for answering a question about which projects exist — your other tools already target the current project, so this is never a context lookup to prepare another call.",

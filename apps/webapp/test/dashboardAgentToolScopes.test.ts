@@ -1,3 +1,4 @@
+import { DASHBOARD_AGENT_ENV_JWT_SCOPES } from "@internal/dashboard-agent/tool-schemas";
 import { buildJwtAbility } from "@trigger.dev/rbac";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,23 +8,23 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 import { DASHBOARD_AGENT_UAT_CAP } from "~/services/dashboardAgent.server";
 
 /**
- * Every API the agent's tools call, against the resource that route authorizes on. A tool
- * whose route needs a resource the cap doesn't carry fails with a 403 the model cannot
- * see as a permission problem — it reads as missing data, which is how `get_queue` came to
- * report a queue of 4800 runs as non-existent.
+ * The agent reaches the API two ways, and they are authorized by different lists.
+ *
+ * Most tools spend an environment JWT minted with a fixed set of scopes; the delegated
+ * token's own cap only ceilings that exchange. A few call the API as the delegated token
+ * itself. A route whose resource is in neither list answers 403 — which reaches the model
+ * as missing data, not as a permission problem, and it then tells the user the thing does
+ * not exist. That is how a queue holding 4800 runs was reported as never created.
  */
-const TOOL_READS: { tool: string; path: string; resource: { type: string; id?: string } }[] = [
+type Read = { tool: string; path: string; resource: { type: string; id?: string } };
+
+const VIA_ENV_JWT: Read[] = [
   { tool: "list_runs", path: "/api/v1/runs", resource: { type: "runs" } },
   { tool: "get_run_trace", path: "/api/v1/runs/:id/trace", resource: { type: "runs" } },
   { tool: "list_errors", path: "/api/v1/errors", resource: { type: "errors" } },
   { tool: "get_error", path: "/api/v1/errors/:id", resource: { type: "errors" } },
   { tool: "list_deploys", path: "/api/v1/deployments", resource: { type: "deployments" } },
   { tool: "get_deploy", path: "/api/v1/deployments/current", resource: { type: "deployments" } },
-  {
-    tool: "list_environments",
-    path: "/api/v1/projects/:ref/environments",
-    resource: { type: "environments" },
-  },
   {
     tool: "get_query_schema",
     path: "/api/v1/query/schema",
@@ -41,6 +42,14 @@ const TOOL_READS: { tool: string; path: string; resource: { type: string; id?: s
     path: "/api/v1/reports/:key",
     resource: { type: "query", id: "env_metrics" },
   },
+];
+
+const VIA_DELEGATED_TOKEN: Read[] = [
+  {
+    tool: "list_environments",
+    path: "/api/v1/projects/:ref/environments",
+    resource: { type: "environments" },
+  },
   {
     tool: "repo snapshot",
     path: "/api/v1/projects/:ref/:env/repo/snapshot",
@@ -48,17 +57,34 @@ const TOOL_READS: { tool: string; path: string; resource: { type: string; id?: s
   },
 ];
 
-describe("the agent's token can do what its tools ask", () => {
+describe("what the agent's environment JWT may read", () => {
+  const ability = buildJwtAbility([...DASHBOARD_AGENT_ENV_JWT_SCOPES]);
+
+  it.each(VIA_ENV_JWT)("$tool reads $path", ({ resource }) => {
+    expect(ability.can("read", resource)).toBe(true);
+  });
+});
+
+describe("what the agent's delegated token may read", () => {
   const ability = buildJwtAbility(DASHBOARD_AGENT_UAT_CAP);
 
-  it.each(TOOL_READS)("$tool reads $path", ({ resource }) => {
+  it.each(VIA_DELEGATED_TOKEN)("$tool reads $path", ({ resource }) => {
     expect(ability.can("read", resource)).toBe(true);
   });
 
-  it("stays read-only", () => {
-    expect(DASHBOARD_AGENT_UAT_CAP.every((scope) => scope.startsWith("read:"))).toBe(true);
+  it("ceilings the exchange: every JWT scope is one the cap already allows", () => {
+    // The exchange clamps against this cap, so a scope missing here is silently dropped
+    // from the minted JWT rather than refused loudly.
+    for (const scope of DASHBOARD_AGENT_ENV_JWT_SCOPES) {
+      expect(DASHBOARD_AGENT_UAT_CAP, scope).toContain(scope);
+    }
+  });
+
+  it("stays read-only on both sides", () => {
+    for (const scope of [...DASHBOARD_AGENT_UAT_CAP, ...DASHBOARD_AGENT_ENV_JWT_SCOPES]) {
+      expect(scope.startsWith("read:"), scope).toBe(true);
+    }
     expect(ability.can("write", { type: "runs" })).toBe(false);
-    expect(ability.can("trigger", { type: "tasks" })).toBe(false);
     expect(ability.canSuper()).toBe(false);
   });
 });
