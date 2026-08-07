@@ -148,9 +148,15 @@ export async function readWatchQueueOldestAge(
   now: Date = new Date()
 ): Promise<WatchQueueOldestAge | null> {
   const [breakdown, oldestQueuedAt] = await Promise.all([
-    engine.concurrencyKeyBreakdown(environment, queueName, { limit: OLDEST_AGE_CK_LIMIT }),
-    engine.oldestMessageInQueue(environment, queueName),
+    engine
+      .concurrencyKeyBreakdown(environment, queueName, { limit: OLDEST_AGE_CK_LIMIT })
+      .catch(() => null),
+    engine.oldestMessageInQueue(environment, queueName).catch(() => null),
   ]);
+
+  // A partial read would under-report the wait and silently miss the SLA, so either read
+  // failing makes the whole reading unavailable rather than a healthy zero.
+  if (breakdown === null || oldestQueuedAt === null) return null;
 
   const waitingKeys = breakdown.keys.filter((key) => key.queued > 0);
   const ageMs =
