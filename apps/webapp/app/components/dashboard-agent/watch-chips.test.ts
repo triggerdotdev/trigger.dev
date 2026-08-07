@@ -37,7 +37,7 @@ describe("watchChipLabel", () => {
     ).toBe("task/send-email");
   });
 
-  it("shortens an error fingerprint", () => {
+  it("labels an error watch by its fingerprint, in full", () => {
     expect(
       watchChipLabel(
         chip({
@@ -48,7 +48,7 @@ describe("watchChipLabel", () => {
           checkEveryMinutes: 15,
         })
       )
-    ).toBe("01234567");
+    ).toBe("0123456789abcdef0123456789abcdef");
   });
 
   it("labels a health watch by its kind, not its report", () => {

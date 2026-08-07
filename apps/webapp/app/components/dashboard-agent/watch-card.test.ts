@@ -270,9 +270,9 @@ describe("the card's copy", () => {
     expect(watchSubjectLabel(healthWatchRecommendation("warn"))).toBe("health");
   });
 
-  it("says the kind once, though the fingerprint carries it too", () => {
-    // Fingerprints are stored prefixed (`error_c4b4a797397a9c43`), so shortening the
-    // raw value would read "error error_c4".
+  it("says the kind once, and names the error in full", () => {
+    // Fingerprints are stored prefixed (`error_c4b4a797397a9c43`), so the raw value
+    // would read "error error_c4b4a797397a9c43".
     expect(
       watchSubjectLabel({
         kind: "error_recurrence",
@@ -280,7 +280,7 @@ describe("the card's copy", () => {
         checkEveryMinutes: 5,
         maxHours: 0.5,
       })
-    ).toBe("error c4b4a797");
+    ).toBe("error c4b4a797397a9c43");
   });
 
   it("states the condition and the duration as §2.2 writes them", () => {

@@ -32,16 +32,13 @@ import {
 /** The micro-label above a wake headline. Not part of the fact. */
 export const WATCH_UPDATE_LABEL = "Watch update";
 
-/** Fingerprints are hashes, so show just enough to tell them apart. */
-const FINGERPRINT_CHARS = 8;
-
 /**
  * A fingerprint carries its own `error_` prefix, and every surface names the kind
- * itself — so the prefix is dropped before shortening, or the line reads
- * "error error_c4".
+ * itself — so the prefix is dropped, or the line reads "error error_c4b4a797397a9c43".
+ * The rest is shown whole: a truncated hash is not something anyone can look up.
  */
 export function shortFingerprint(fingerprint: string): string {
-  return fingerprint.replace(/^error_/, "").slice(0, FINGERPRINT_CHARS);
+  return fingerprint.replace(/^error_/, "");
 }
 
 /* ------------------------------------------------------------------ *
