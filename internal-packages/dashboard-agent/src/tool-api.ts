@@ -220,9 +220,11 @@ export function buildApiTools(args: {
     ask_support: tool({
       ...askSupportSchema,
       execute: async ({ question }) => {
-        const url = process.env.SUPPORT_ASK_URL ?? "http://localhost:3939/api/ask";
+        // Both or nothing: a default URL would send the question and the secret somewhere
+        // unintended whenever only the secret is set.
+        const url = process.env.SUPPORT_ASK_URL;
         const secret = process.env.SUPPORT_ASK_SECRET;
-        if (!secret)
+        if (!url || !secret)
           return { error: "The support assistant isn't configured in this environment." };
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 60_000);
