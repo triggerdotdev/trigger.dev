@@ -3,6 +3,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
+import { ASK_AGENT_LABEL } from "./agent-identity";
 
 // Registered once, by `DashboardAgent`. The launcher only displays it.
 export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
@@ -53,8 +54,8 @@ export function DashboardAgentLauncher() {
       }
       button={
         <span className="relative inline-flex shrink-0">
-          <Button variant="ask-ai/small" aria-label="Ask Trigger" onClick={() => setOpen(true)}>
-            Ask Trigger
+          <Button variant="ask-ai/small" aria-label={ASK_AGENT_LABEL} onClick={() => setOpen(true)}>
+            {ASK_AGENT_LABEL}
           </Button>
         </span>
       }
