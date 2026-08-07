@@ -52,6 +52,40 @@ describe("the eval judge's structural allow-list", () => {
     });
   });
 
+  it("withholds a redacted object's key names, not only its values", () => {
+    const redacted = redactEvalToolValue({
+      id: "run_1",
+      payload: { "billing@customer.com": { plan: "pro" }, "Acme Corp": 1 },
+    }) as Record<string, unknown>;
+
+    expect(redacted.payload).toEqual({ redacted: "payload", keyCount: 2 });
+    const serialized = JSON.stringify(redacted);
+    expect(serialized).not.toContain("billing@customer.com");
+    expect(serialized).not.toContain("Acme Corp");
+  });
+
+  it("withholds the key names of an object sitting at the depth cap", () => {
+    // Eight allowed containers puts the object exactly on MAX_REDACT_DEPTH, where the walk stops.
+    let value: unknown = { "billing@customer.com": 1, "Acme Corp": 2 };
+    for (let depth = 0; depth < 8; depth++) value = { data: value };
+
+    const serialized = JSON.stringify(redactEvalToolValue(value));
+    expect(serialized).toContain('"truncated":true');
+    expect(serialized).not.toContain("billing@customer.com");
+    expect(serialized).not.toContain("Acme Corp");
+  });
+
+  it("redacts a tool's own `keys` field like any other unknown name", () => {
+    expect(allowedEvalKeys().has("keys")).toBe(false);
+
+    const redacted = redactEvalToolValue({ keys: ["billing@customer.com"] }) as Record<
+      string,
+      unknown
+    >;
+    expect(redacted.keys).toEqual({ redacted: "keys", items: 1 });
+    expect(JSON.stringify(redacted)).not.toContain("billing@customer.com");
+  });
+
   it("allows a tool's own structural fields, and only for that tool", () => {
     expect(allowedEvalKeys("run_query").has("columns")).toBe(true);
     expect(allowedEvalKeys("get_run").has("columns")).toBe(false);

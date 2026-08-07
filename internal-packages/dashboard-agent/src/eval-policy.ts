@@ -152,9 +152,9 @@ const STRUCTURAL_KEYS = new Set([
   "cliVersion",
   "sdkVersion",
   "version",
-  // Markers this module and the truncation step add themselves.
+  // Markers this module and the truncation step add themselves. `keyCount` and the rest are
+  // numbers or booleans we wrote; a tool's own field of the same name is redacted like any other.
   "chars",
-  "keys",
   "note",
   "omitted",
   "redacted",
@@ -181,14 +181,13 @@ export function allowedEvalKeys(toolName?: string): ReadonlySet<string> {
   return new Set([...STRUCTURAL_KEYS, ...extras]);
 }
 
-/** Max keys listed in a shape descriptor, so a wide object can't grow the prompt. */
-const MAX_SHAPE_KEYS = 20;
-
 function describeShape(key: string, value: unknown): Record<string, unknown> {
   if (Array.isArray(value)) return { redacted: key, items: value.length };
   if (typeof value === "string") return { redacted: key, chars: value.length };
   if (value !== null && typeof value === "object") {
-    return { redacted: key, keys: Object.keys(value).slice(0, MAX_SHAPE_KEYS) };
+    // The count, never the names: a withheld object's own keys can be customer data
+    // (an email address, an account id) just as much as its values.
+    return { redacted: key, keyCount: Object.keys(value).length };
   }
   return { redacted: key };
 }
@@ -204,7 +203,7 @@ const MAX_REDACT_DEPTH = 8;
 function describeTruncated(value: object): Record<string, unknown> {
   return Array.isArray(value)
     ? { truncated: true, items: value.length }
-    : { truncated: true, keys: Object.keys(value).slice(0, MAX_SHAPE_KEYS) };
+    : { truncated: true, keyCount: Object.keys(value).length };
 }
 
 /**

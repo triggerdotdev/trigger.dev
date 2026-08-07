@@ -620,7 +620,7 @@ describe("the eval judge payload", () => {
     expect(redacted.runs[0].error.name).toBe("TimeoutError");
     expect(redacted.runs[0].error.message).toEqual({ redacted: "message", chars: 16 });
     // The customer's data does not.
-    expect(redacted.runs[0].payload).toEqual({ redacted: "payload", keys: ["email", "amount"] });
+    expect(redacted.runs[0].payload).toEqual({ redacted: "payload", keyCount: 2 });
     expect(redacted.runs[0].output).toEqual({ redacted: "output", chars: 16 });
     expect(redacted.rows).toEqual({ redacted: "rows", items: 2 });
     expect(JSON.stringify(redacted)).not.toContain("someone@example.com");
@@ -647,7 +647,7 @@ describe("the eval judge payload", () => {
             level: {
               level: {
                 level: {
-                  level: { level: { truncated: true, keys: ["rows", "status"] } },
+                  level: { level: { truncated: true, keyCount: 2 } },
                 },
               },
             },
