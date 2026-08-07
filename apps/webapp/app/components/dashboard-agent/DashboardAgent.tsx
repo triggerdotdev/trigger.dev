@@ -21,6 +21,7 @@ import {
   readAgentFullscreen,
   writeAgentFullscreen,
 } from "./panel-layout";
+import { nextPendingTurnChatId } from "./pending-turn";
 import { startWakePolling } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
@@ -67,7 +68,10 @@ export function DashboardAgent({
   const [unreadWork, setUnreadWork] = useState(initialUnreadWork);
   // A turn this tab started may finish after the panel closes; that is exactly the case the
   // dot exists for, so the poll has to be running when it lands.
-  const [turnStarted, setTurnStarted] = useState(false);
+  const [pendingTurnChatId, setPendingTurnChatId] = useState<string | null>(null);
+  const handleTurnActivityChange = useCallback((chatId: string, active: boolean) => {
+    setPendingTurnChatId((current) => nextPendingTurnChatId(current, { chatId, active }));
+  }, []);
   const toastedWakes = useRef(new Set<string>());
   // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
   useEffect(() => {
@@ -167,7 +171,7 @@ export function DashboardAgent({
           serverUnreadWakes: initialUnreadWakes,
           serverHasActiveWatches: hasActiveWatches,
           serverUnreadWork: initialUnreadWork,
-          turnInFlight: turnStarted,
+          turnInFlight: pendingTurnChatId !== null,
           organizationId: organization.id,
         })
       )
@@ -175,7 +179,7 @@ export function DashboardAgent({
     };
     sync();
     return subscribeWatchActivity(sync);
-  }, [organization.id, initialUnreadWakes, hasActiveWatches, initialUnreadWork, turnStarted]);
+  }, [organization.id, initialUnreadWakes, hasActiveWatches, initialUnreadWork, pendingTurnChatId]);
 
   useEffect(() => {
     if (!hasAccess || !watching) return;
@@ -321,6 +325,7 @@ export function DashboardAgent({
                   promotedPrompt={promotedPrompt}
                   onChatRead={markChatRead}
                   onUnreadWorkChange={setUnreadWork}
+                  onTurnActivityChange={handleTurnActivityChange}
                   isFullscreen={fullscreen}
                   onToggleFullscreen={toggleFullscreen}
                 />

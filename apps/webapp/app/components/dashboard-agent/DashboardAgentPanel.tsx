@@ -73,6 +73,7 @@ export function DashboardAgentPanel({
   watchRequest,
   onChatRead,
   onUnreadWorkChange,
+  onTurnActivityChange,
   isFullscreen = false,
   onToggleFullscreen,
 }: {
@@ -88,6 +89,8 @@ export function DashboardAgentPanel({
   onChatRead?: (chatId: string) => void;
   /** How many chats still hold work their owner hasn't seen. */
   onUnreadWorkChange?: (count: number) => void;
+  /** Whether a turn is running in a chat, so a closed panel still knows to expect an answer. */
+  onTurnActivityChange?: (chatId: string, active: boolean) => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -131,11 +134,15 @@ export function DashboardAgentPanel({
   );
 
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
-  const handleActivityChange = useCallback((chatId: string, activity: TurnActivity | null) => {
-    setThinkingChatId((previous) =>
-      activity !== null ? chatId : previous === chatId ? null : previous
-    );
-  }, []);
+  const handleActivityChange = useCallback(
+    (chatId: string, activity: TurnActivity | null) => {
+      setThinkingChatId((previous) =>
+        activity !== null ? chatId : previous === chatId ? null : previous
+      );
+      onTurnActivityChange?.(chatId, activity !== null);
+    },
+    [onTurnActivityChange]
+  );
 
   const historyInFlight = useRef<Promise<void> | null>(null);
 
