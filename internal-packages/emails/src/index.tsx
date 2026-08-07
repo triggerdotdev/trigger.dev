@@ -135,7 +135,8 @@ export class EmailClient {
       }
       case "alert-dashboard-agent-watch": {
         return {
-          subject: `[${data.organization}] Watch update: ${data.identity}`,
+          // The headline is the same sentence the chat and Slack use; `identity` is a key.
+          subject: `[${data.organization}] ${data.headline ?? `Watch update: ${data.identity}`}`,
           component: <AlertDashboardAgentWatchEmail {...data} />,
         };
       }
