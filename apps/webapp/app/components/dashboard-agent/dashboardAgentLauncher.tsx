@@ -14,6 +14,13 @@ export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
   enabledOnInputElements: true,
 };
 
+// Ask AI's old keystroke. Kept as an alias so the muscle memory lands somewhere; not advertised.
+export const LEGACY_ASK_AI_SHORTCUT: Shortcut = {
+  modifiers: ["mod"],
+  key: "i",
+  enabledOnInputElements: true,
+};
+
 type DashboardAgentContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;

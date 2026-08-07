@@ -75,6 +75,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
 
+  // Deprecated with `AskAI.tsx`: kept so the widget still has its config if it is ever remounted.
+  const kapa = {
+    websiteId: env.KAPA_AI_WEBSITE_ID,
+  };
+
   const user = await getUser(request);
   // Theme switching is feature-flagged; while off, everyone stays on the
   // classic theme even if a preference was saved earlier. Admins always get
@@ -116,6 +121,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appOrigin: env.APP_ORIGIN,
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
       triggerCliTag: env.TRIGGER_CLI_TAG,
+      kapa,
       timezone,
       showThemeSwitcher,
       themePreference,

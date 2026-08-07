@@ -331,6 +331,9 @@ importers:
       '@jsonhero/schema-infer':
         specifier: ^0.1.5
         version: 0.1.5
+      '@kapaai/react-sdk':
+        specifier: ^0.1.3
+        version: 0.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@lezer/highlight':
         specifier: ^1.1.6
         version: 1.1.6
@@ -565,6 +568,9 @@ importers:
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
+      dompurify:
+        specifier: ^3.4.1
+        version: 3.4.1
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -4414,6 +4420,15 @@ packages:
   '@fastify/websocket@11.2.0':
     resolution: {integrity: sha512-3HrDPbAG1CzUCqnslgJxppvzaAZffieOVbLp1DAy1huCSynUWPifSvfdEDUR8HlJLp3sp1A36uOM2tJogADS8w==}
 
+  '@fingerprintjs/fingerprintjs-pro-react@2.7.1':
+    resolution: {integrity: sha512-/vQtjd+P8C9OFU8Wvd4AScoNRP6RKDIvYQwwaY/b31PcRBNDqVV9xm7DDBg9uTdDv4KZM3ubEY4JyyVWkXs4EA==}
+
+  '@fingerprintjs/fingerprintjs-pro-spa@1.3.3':
+    resolution: {integrity: sha512-jM5k30S9RT/WW6gnmNWACc7UHeK1md9NbZg8kUsdxvPtDeW8xKnA6tb58Rqfkg6kvqHTq5aHFzw9hgsTH3DbNQ==}
+
+  '@fingerprintjs/fingerprintjs-pro@3.12.13':
+    resolution: {integrity: sha512-l9G1jn6d9wpIG8bMW7TsrHjPwm26B4T6OB42PlLNQ9QrblbuGWvVEFb+gqdCzzPcP6J+zfCoXQ3xMPlp88SgXg==}
+
   '@floating-ui/core@0.7.3':
     resolution: {integrity: sha512-buc8BXHmG9l82+OQXOFU3Kr2XQx9ys01U/Q9HMIrZ300iLc8HLMgh7dcCqgYzAzf4BkoQvDcXf5Y+CuEZ5JBYg==}
 
@@ -4467,6 +4482,15 @@ packages:
     resolution: {integrity: sha512-AiXO/bfe9bmxBjxxtYxFAXGZvMaN5s8kO+jBHAJCON8rJoB5YS/D6X7ZNc6XQkuHNmyl4CYaMI1fJ/Gn27RGGw==}
     engines: {node: '>=6'}
     hasBin: true
+
+  '@hcaptcha/loader@2.4.2':
+    resolution: {integrity: sha512-+Pf0Vin6iJlJj5u/mq6XMgbJT1mi/Sg5LWHxxqO4YHt2YvdZgecp5V2sbC6vRaNPJUqQGk2HOu1K/i12mqs5vw==}
+
+  '@hcaptcha/react-hcaptcha@1.17.4':
+    resolution: {integrity: sha512-rIvgesG1N7SS9sAYYHFoWm+nXqRrxq7RcA9z2pKkDWV+S1GdfmrTNYA1aPyVWVe3eowphTCwyDJvl97Swwy0mw==}
+    peerDependencies:
+      react: 18.3.1
+      react-dom: 18.3.1
 
   '@headlessui/react@1.7.8':
     resolution: {integrity: sha512-zcwb0kd7L05hxmoAMIioEaOn235Dg0fUO+iGbLPgLVSjzl/l39V6DTpC2Df49PE5aG5/f5q0PZ9ZHZ78ENNV+A==}
@@ -4593,6 +4617,12 @@ packages:
 
   '@jspm/core@2.0.1':
     resolution: {integrity: sha512-Lg3PnLp0QXpxwLIAuuJboLeRaIhrgJjeuh797QADg3xz8wGLugQOS5DpsE8A6i6Adgzf+bacllkKZG3J0tGfDw==}
+
+  '@kapaai/react-sdk@0.1.4':
+    resolution: {integrity: sha512-znfF95Rvelb+Yzqs1f6FxHcRLp9XTrdWTf377Zt//q2WuZX6L+ejE89m5EntVW1h8/dlJvvTbHzK8yqL9d7mhg==}
+    peerDependencies:
+      react: 18.3.1
+      react-dom: 18.3.1
 
   '@kubernetes/client-node@1.0.0':
     resolution: {integrity: sha512-a8NSvFDSHKFZ0sR1hbPSf8IDFNJwctEU5RodSCNiq/moRXWmrdmqhb1RRQzF+l+TSBaDgHw3YsYNxxE92STBzw==}
@@ -7739,6 +7769,14 @@ packages:
   '@tanstack/match-sorter-utils@8.19.4':
     resolution: {integrity: sha512-Wo1iKt2b9OT7d+YGhvEPD3DXvPv2etTusIMhMUoG7fbhmxcXCtIjJDEygy91Y2JFlwGyjqiBPRozme7UD8hoqg==}
     engines: {node: '>=12'}
+
+  '@tanstack/query-core@5.101.4':
+    resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==}
+
+  '@tanstack/react-query@5.101.4':
+    resolution: {integrity: sha512-yRg2pfOCxIs4ZJW3XYYHU/WgtD04FHSnfHlpRT7h7pR77hwkdRG4wxbKe4aq6P0RvXUTBSQpQeadS1SUYUe+KA==}
+    peerDependencies:
+      react: 18.3.1
 
   '@tanstack/react-table@8.21.3':
     resolution: {integrity: sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww==}
@@ -15028,6 +15066,13 @@ packages:
     resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
     engines: {node: '>=14.0.0'}
 
+  tldts-core@7.4.10:
+    resolution: {integrity: sha512-KnQjp53ZekKgm/r3l+u8kJGGzYgrWdP8+Mql7a4vijh2WE0IrZWspQj/TpTxDho/YxO+AnOZnIjQcCD+q6iJsw==}
+
+  tldts@7.4.10:
+    resolution: {integrity: sha512-GgouD1B+sWwvkaEq8vXC15DjQitxbvs12oIXELpconwm+Tg3zfcEv4jgzq3vtKverDXsg3VI8aRgNL2Nra0Iog==}
+    hasBin: true
+
   tmp-promise@3.0.3:
     resolution: {integrity: sha512-RwM7MoPojPxsOBYnyd2hy0bxtIlVrihNs9pj5SUvY8Zz1sQcQG2tG1hSr8PDxfgEB8RNKDhqbIlroIarSNDNsQ==}
 
@@ -18946,6 +18991,18 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@fingerprintjs/fingerprintjs-pro-react@2.7.1':
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro-spa': 1.3.3
+      fast-deep-equal: 3.1.3
+
+  '@fingerprintjs/fingerprintjs-pro-spa@1.3.3':
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro': 3.12.13
+      tslib: 2.8.1
+
+  '@fingerprintjs/fingerprintjs-pro@3.12.13': {}
+
   '@floating-ui/core@0.7.3': {}
 
   '@floating-ui/core@1.6.1':
@@ -19013,6 +19070,15 @@ snapshots:
       long: 5.2.3
       protobufjs: 7.6.1
       yargs: 17.7.2
+
+  '@hcaptcha/loader@2.4.2': {}
+
+  '@hcaptcha/react-hcaptcha@1.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.28.4
+      '@hcaptcha/loader': 2.4.2
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   '@headlessui/react@1.7.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -19158,6 +19224,16 @@ snapshots:
       ts-pattern: 3.3.5
 
   '@jspm/core@2.0.1': {}
+
+  '@kapaai/react-sdk@0.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro-react': 2.7.1
+      '@hcaptcha/react-hcaptcha': 1.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/react-query': 5.101.4(react@18.3.1)
+      js-cookie: 3.0.8
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      tldts: 7.4.10
 
   '@kubernetes/client-node@1.0.0(patch_hash=ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745)(bufferutil@4.0.9)(encoding@0.1.13)':
     dependencies:
@@ -22697,6 +22773,13 @@ snapshots:
   '@tanstack/match-sorter-utils@8.19.4':
     dependencies:
       remove-accents: 0.5.0
+
+  '@tanstack/query-core@5.101.4': {}
+
+  '@tanstack/react-query@5.101.4(react@18.3.1)':
+    dependencies:
+      '@tanstack/query-core': 5.101.4
+      react: 18.3.1
 
   '@tanstack/react-table@8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -31189,6 +31272,12 @@ snapshots:
   tinypool@2.1.0: {}
 
   tinyrainbow@3.1.0: {}
+
+  tldts-core@7.4.10: {}
+
+  tldts@7.4.10:
+    dependencies:
+      tldts-core: 7.4.10
 
   tmp-promise@3.0.3:
     dependencies:

@@ -8,7 +8,11 @@ import {
 } from "~/components/primitives/Resizable";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
-import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
+import {
+  DashboardAgentProvider,
+  LEGACY_ASK_AI_SHORTCUT,
+  TOGGLE_PANEL_SHORTCUT,
+} from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
@@ -81,6 +85,13 @@ export function DashboardAgent({
         setNewChatSeq((seq) => seq + 1);
       }
     },
+    disabled: !hasAccess,
+    enabledOnInputElements: true,
+  });
+
+  useShortcutKeys({
+    shortcut: LEGACY_ASK_AI_SHORTCUT,
+    action: () => setPanelOpen(true),
     disabled: !hasAccess,
     enabledOnInputElements: true,
   });
