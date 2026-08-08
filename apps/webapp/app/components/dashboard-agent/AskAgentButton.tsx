@@ -31,11 +31,23 @@ export function AskAgentButton({
       LeadingIcon={AgentIcon}
       leadingIconClassName={AGENT_ICON_ACCENT_CLASS}
       className={className}
+      aria-label={iconOnly ? label : undefined}
       onClick={() => requestDashboardAgent(prompt)}
     >
       {iconOnly ? undefined : label}
     </Button>
   );
 
-  return iconOnly ? <SimpleTooltip button={button} content={label} /> : button;
+  return iconOnly ? (
+    <SimpleTooltip
+      asChild
+      tabbable
+      // Span wrapper: Button drops the pointer-event props Radix injects via asChild, so the
+      // tooltip trigger has to be a plain element (same pattern as dashboardAgentLauncher).
+      button={<span className="flex">{button}</span>}
+      content={label}
+    />
+  ) : (
+    button
+  );
 }
