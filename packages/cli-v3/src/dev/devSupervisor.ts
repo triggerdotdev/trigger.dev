@@ -32,7 +32,7 @@ import type { CliApiClient } from "../apiClient.js";
 import { copySkillFolders } from "../build/bundleSkills.js";
 import type { DevCommandOptions } from "../commands/dev.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { cliLink, prettyError, prettyWarning } from "../utilities/cliOutput.js";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
@@ -382,6 +382,16 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
+    // Non-blocking nudge: a chat.event that no agent lists routes nothing. Common (and fine)
+    // mid-development while you wire up the chat.agent, so warn rather than fail.
+    const unclaimedSessionWebhooks = backgroundWorker.manifest.unclaimedSessionWebhooks ?? [];
+    if (unclaimedSessionWebhooks.length > 0) {
+      prettyWarning(
+        `Unclaimed chat.event: ${unclaimedSessionWebhooks.join(", ")}`,
+        "Not listed on any agent's `events: [...]`, so deliveries won't be routed anywhere. Add each to a chat.agent once you wire it up."
+      );
+    }
+
     const sourceFiles = resolveSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
@@ -391,6 +401,7 @@ class DevSupervisor implements WorkerRuntime {
         cliPackageVersion: manifest.cliPackageVersion,
         tasks: backgroundWorker.manifest.tasks,
         prompts: backgroundWorker.manifest.prompts,
+        webhooks: backgroundWorker.manifest.webhooks,
         queues: backgroundWorker.manifest.queues,
         contentHash: manifest.contentHash,
         sourceFiles,
