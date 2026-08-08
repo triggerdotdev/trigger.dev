@@ -18,7 +18,7 @@ import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, vi } from "vitest";
 import type { WatchCheckDeps, WatchRunRow } from "~/services/dashboardAgentWatchChecks";
 
 const ctx = vi.hoisted(() => ({
@@ -103,6 +103,11 @@ async function boot(prisma: PrismaClient, connectionUri: string) {
 
 beforeEach(() => {
   enqueue.mockClear();
+});
+
+afterEach(async () => {
+  await agentDbClient?.close();
+  agentDbClient = undefined;
 });
 
 function suffix() {
@@ -262,7 +267,8 @@ describe("the submission ledger's tenancy", () => {
       // Each chat belongs to exactly one organization, so neither is readable as the other.
       expect(await messagesIn(inSecond.chatId, first.organization.id, first.user.id)).toBeNull();
       expect(await messagesIn(inFirst.chatId, second.organization.id, second.user.id)).toBeNull();
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -297,7 +303,8 @@ describe("the submission ledger's tenancy", () => {
         clientRequestId: "wreq_1",
       });
       expect(recorded).toMatchObject({ environmentId: seeded.environment.id });
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -330,7 +337,8 @@ describe("the submission ledger's tenancy", () => {
       expect(
         await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
       ).toBe(0);
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -376,7 +384,8 @@ describe("the submission ledger's tenancy", () => {
       if (!retry.ok) return;
       expect(retry.repaired).toBe(true);
       expect(JSON.stringify(retry.messages[1])).toContain(line);
-    }
+    },
+    30_000
   );
 });
 
@@ -431,7 +440,8 @@ describe("the fire callback", () => {
         (call) => (call[0] as { job: string }).job === "v3.deliverDashboardAgentWatchAlert"
       );
       expect(alerts).toHaveLength(1);
-    }
+    },
+    30_000
   );
 });
 
@@ -511,6 +521,7 @@ describe("the alert unsubscribe", () => {
         enabled: false,
         alertTypes: [],
       });
-    }
+    },
+    30_000
   );
 });
