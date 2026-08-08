@@ -114,6 +114,7 @@ import {
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
+import { isQueueAtCapacity } from "~/components/queues/queue-thresholds";
 import { pageMeta } from "~/utils/pageTitle";
 
 const SearchParamsSchema = z.object({
@@ -1607,7 +1608,7 @@ type QueueHealthLabel = "Paused" | "At capacity" | "Backlogged" | "Active" | "Id
 // health-column sort so the sorted order always matches the labels shown.
 function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): QueueHealthLabel {
   if (paused) return "Paused";
-  if (running >= limit && queued > 0) return "At capacity";
+  if (isQueueAtCapacity({ running, queued, limit })) return "At capacity";
   if (queued > 0) return "Backlogged";
   if (running > 0) return "Active";
   return "Idle";

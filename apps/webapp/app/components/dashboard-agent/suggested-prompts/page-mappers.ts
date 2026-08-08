@@ -4,6 +4,7 @@
  */
 import type { AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
+import { isQueueAtCapacity, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 
 export const FRESH_FAILURE_WINDOW_MS = 30 * 60_000;
 
@@ -149,15 +150,15 @@ export function queuesAgentPageContext(data: unknown): AgentPageContext | undefi
   const limit = concurrencyLimit * (burstFactor && burstFactor > 0 ? burstFactor : 1);
   const signals: AgentPageSignal[] = [];
 
-  if (limit > 0 && running >= limit && queued > 0) {
+  if (isQueueAtCapacity({ running, queued, limit })) {
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit ? "crit" : "warn" });
   }
 
   return { page: { kind: "queues" }, signals };
 }
 
-/** The queue detail route imports this as its `OLDEST_WAIT_WARNING_MS`. */
-export const QUEUE_OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+/** Re-export under the mapper's name; the queue pages own the threshold. */
+export const QUEUE_OLDEST_WAIT_WARNING_MS = OLDEST_WAIT_WARNING_MS;
 
 const queueLoaderDataSchema = z.object({
   queue: z.object({
@@ -202,7 +203,7 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
   const { name, paused, running, queued, concurrencyLimit } = parsed.data.queue;
   const { environmentConcurrencyLimit, oldestQueuedAt, loadedAt, ckBreakdown } = parsed.data;
   const limit = concurrencyLimit ?? environmentConcurrencyLimit ?? null;
-  const atCapacity = limit !== null && limit > 0 && running >= limit && queued > 0;
+  const atCapacity = isQueueAtCapacity({ running, queued, limit });
 
   const oldestWait = oldestWaitMs(ckBreakdown?.keys ?? [], oldestQueuedAt, loadedAt);
   const waitingTooLong = oldestWait !== null && oldestWait >= QUEUE_OLDEST_WAIT_WARNING_MS;
