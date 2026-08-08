@@ -37,9 +37,14 @@ export function resolveQueryScope(args: {
   };
 }
 
-/** A public access token is environment-bound; every other bearer credential isn't. */
+/**
+ * A public credential is environment-bound; a secret key isn't. `PUBLIC` is the deprecated
+ * `pk_*` key — same threat model as a public access token, so it caps the same way. It cannot
+ * reach the query API today (the bearer resolver 401s `pk_*`), which is why capping it costs
+ * no caller anything and why the helper must not promise it is uncapped.
+ */
 export function queryScopeCeilingFor(
   authenticationType: ApiAuthenticationResultSuccess["type"]
 ): QueryScopeCeiling {
-  return authenticationType === "PUBLIC_JWT" ? "environment" : "unbounded";
+  return authenticationType === "PRIVATE" ? "unbounded" : "environment";
 }
