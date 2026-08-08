@@ -2071,19 +2071,21 @@ describe("buildDashboardAgentTools", () => {
   });
 
   it("render_view commits the chart when its query runs, validating it once", async () => {
+    // Collected, never asserted here: render_view swallows a throw out of the stub, as
+    // the sibling test below relies on.
+    const queryBodies: unknown[] = [];
     const fetchStub = stubFetch((url, init) => {
       if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
-      // The validation runs the same window the panel will render.
-      expect(JSON.parse(String(init?.body))).toMatchObject({
-        scope: "environment",
-        period: "24h",
-      });
+      queryBodies.push(JSON.parse(String(init?.body)));
       return { body: { results: [{ bucket: "2026-01-01T00:00:00Z", runs: 1 }] } };
     });
     try {
       // The rows aren't embedded in the block — the panel stays the runner.
       await expect(renderView(ENV_CTX, CHART_SPEC)).resolves.toEqual({ blocks: CHART_SPEC.blocks });
       expect(queryRequests(fetchStub.requests)).toHaveLength(1);
+      // The validation runs the same window the panel will render.
+      expect(queryBodies).toHaveLength(1);
+      expect(queryBodies[0]).toMatchObject({ scope: "environment", period: "24h" });
     } finally {
       fetchStub.restore();
     }
