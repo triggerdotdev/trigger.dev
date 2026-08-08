@@ -57,6 +57,27 @@ export type CheckOutcome =
 // non-2xx is a failed check and the tick keeps watching to the row's own deadline.
 export const REVOKED_CODES = new Set(["access_revoked", "cancelled", "not_found"]);
 
+/**
+ * The last result the check actually produced. A failure record is unwrapped, so a run of
+ * failures replaces one another instead of nesting — the row's `lastResult` reaches the
+ * wake facts, the alert and the webhook body.
+ */
+export function lastObservedResult(lastResult: unknown): Record<string, unknown> | undefined {
+  let current = lastResult;
+  while (isCheckFailure(current)) current = current.previous;
+  return current !== null && typeof current === "object" && !Array.isArray(current)
+    ? (current as Record<string, unknown>)
+    : undefined;
+}
+
+function isCheckFailure(value: unknown): value is { previous?: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { checkFailed?: unknown }).checkFailed === true
+  );
+}
+
 // One watch's tick, shared by the per-watch task and the batch. The order of the
 // branches below is the algorithm.
 export async function runWatchLifecycle(
@@ -121,7 +142,11 @@ export async function runWatchLifecycle(
       // The generation is spent and the result isn't trusted, so keep watching.
       await deps.store.recordWatchCheck({
         id: claimed.id,
-        lastResult: { checkFailed: true, detail: check.detail, previous: claimed.lastResult },
+        lastResult: {
+          checkFailed: true,
+          detail: check.detail,
+          previous: lastObservedResult(claimed.lastResult),
+        },
       });
       if (check.handOff) return { outcome: "handed_off", tickCount: args.tick };
       await deps.onPending(claimed, args.tick);
