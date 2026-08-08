@@ -41,6 +41,7 @@ import {
 } from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentWakeFeedCounter,
   isDashboardAgentConfigured,
   mintDashboardAgentToken,
   mintDashboardAgentUserActorToken,
@@ -117,6 +118,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // and asks the agent DB one question. The list is recent deliveries, not unread ones;
   // the client dedupes by id.
   if (searchParams.get("unread") === "1") {
+    dashboardAgentWakeFeedCounter.inc();
     const scoped = await $replica.project.findFirst({
       where: {
         slug: projectParam,
