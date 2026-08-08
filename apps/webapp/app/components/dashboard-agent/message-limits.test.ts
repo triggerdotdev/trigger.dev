@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   checkMessageParts,
@@ -6,6 +7,8 @@ import {
   MAX_MESSAGE_BODY_BYTES,
   MAX_MESSAGE_CHARS,
   MAX_MESSAGE_PARTS,
+  MESSAGE_CHARS_WARN_AT,
+  messageCountAnnouncement,
 } from "./message-limits";
 
 describe("message limits", () => {
@@ -59,5 +62,41 @@ describe("message limits", () => {
     expect(declaredBodyBytes(new Headers({ "content-length": "nope" }))).toBeNull();
     // An undeclared size can't be refused here; the body's own length is.
     expect(exceedsMessageBodyBytes(null)).toBe(false);
+  });
+});
+
+describe("messageCountAnnouncement", () => {
+  it("says nothing at all for a normal message", () => {
+    expect(messageCountAnnouncement(0)).toBe("");
+    expect(messageCountAnnouncement(MESSAGE_CHARS_WARN_AT - 1)).toBe("");
+  });
+
+  it("reads the count out from the warning point on", () => {
+    expect(messageCountAnnouncement(MESSAGE_CHARS_WARN_AT)).toBe(
+      `${MESSAGE_CHARS_WARN_AT} / ${MAX_MESSAGE_CHARS}`
+    );
+    expect(messageCountAnnouncement(MAX_MESSAGE_CHARS)).toBe(
+      `${MAX_MESSAGE_CHARS} / ${MAX_MESSAGE_CHARS}`
+    );
+  });
+});
+
+/**
+ * Structural guard, not behavioural proof: the webapp has no DOM test environment, so nothing
+ * here mounts the composer or listens to a screen reader. It asserts the live region is written
+ * unconditionally, which is the part the announcement depends on.
+ */
+describe("the composer's live region", () => {
+  const source = readFileSync(new URL("./DashboardAgentComposer.tsx", import.meta.url), "utf8");
+
+  it("is in the DOM before the count reaches the warning point", () => {
+    const region = source.slice(source.indexOf('aria-live="polite"'));
+    expect(region).toContain("messageCountAnnouncement(value.length)");
+    // The old form: the region itself only existed past the threshold.
+    expect(source).not.toMatch(/MESSAGE_CHARS_WARN_AT \? \(\s*<p[^>]*aria-live/);
+  });
+
+  it("does not read the visible counter out a second time", () => {
+    expect(source).toContain("aria-hidden");
   });
 });

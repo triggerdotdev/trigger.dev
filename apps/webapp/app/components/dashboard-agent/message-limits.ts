@@ -10,6 +10,15 @@ export const MAX_MESSAGE_CHARS = 8_000;
 /** The counter only shows near the limit, so a normal message never sees it. */
 export const MESSAGE_CHARS_WARN_AT = Math.floor(MAX_MESSAGE_CHARS * 0.9);
 
+/**
+ * What the composer's live region says at this length: empty until the counter is worth
+ * showing. The region itself stays mounted whatever this returns — several screen readers only
+ * announce changes to a region that was already in the DOM.
+ */
+export function messageCountAnnouncement(length: number): string {
+  return length >= MESSAGE_CHARS_WARN_AT ? `${length} / ${MAX_MESSAGE_CHARS}` : "";
+}
+
 /** A composed message is a handful of parts; dozens means something is wrong. */
 export const MAX_MESSAGE_PARTS = 20;
 
