@@ -80,6 +80,15 @@ describe("what the agent's delegated token may read", () => {
     }
   });
 
+  it("carries read:queues on both sides, since read:query only buys the metrics", () => {
+    // A queue's own row — paused, depth, limit — is a `queues` read; its metrics are a
+    // `query` read. Drop the scope and the live lookup 403s, which the model reads as a
+    // queue that was never created.
+    expect(DASHBOARD_AGENT_ENV_JWT_SCOPES).toContain("read:queues");
+    expect(DASHBOARD_AGENT_UAT_CAP).toContain("read:queues");
+    expect(buildJwtAbility(["read:query"]).can("read", { type: "queues" })).toBe(false);
+  });
+
   it("stays read-only on both sides", () => {
     for (const scope of [...DASHBOARD_AGENT_UAT_CAP, ...DASHBOARD_AGENT_ENV_JWT_SCOPES]) {
       expect(scope.startsWith("read:"), scope).toBe(true);
