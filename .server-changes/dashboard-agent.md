@@ -13,4 +13,6 @@ The health report reads the same everywhere — dashboard, terminal, editor. A v
 
 A sample of conversations is scored automatically so the agent keeps getting better. Only the score and a one-line summary are kept, never your messages, data or code, and we can switch it off for your organization on request.
 
-Separately: a queue's wait times, peak depth, throughput and throttling can now be read from the API, and the Docs button has been removed from page headers.
+The Docs button is gone from page headers — ask the agent instead, or open Documentation from Help & Feedback.
+
+Separately: a queue's wait times, peak depth, throughput and throttling can now be read from the API.
