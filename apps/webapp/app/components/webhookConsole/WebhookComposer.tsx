@@ -72,6 +72,7 @@ export function WebhookComposer({
   const [sourceTab, setSourceTab] = useState<SourceTab>("body");
   const [bodyDefault, setBodyDefault] = useState(defaultBody ?? DEFAULT_BODY);
   const bodyRef = useRef(bodyDefault);
+  const [payloadReloadKey, setPayloadReloadKey] = useState(0);
   const [headerRows, setHeaderRows] = useState<HeaderRow[]>([]);
   const headerIdRef = useRef(0);
 
@@ -89,6 +90,7 @@ export function WebhookComposer({
     (body: string, headers: Record<string, string>) => {
       setBodyDefault(body);
       bodyRef.current = body;
+      setPayloadReloadKey((key) => key + 1);
       const entries = Object.entries(headers);
       if (entries.length > 0) {
         setHeaderRows(entries.map(([key, value]) => newHeaderRow(key, value)));
@@ -192,6 +194,7 @@ export function WebhookComposer({
             <div className="relative flex-1 overflow-hidden">
               <div className={cn("h-full", sourceTab !== "body" && "hidden")}>
                 <JSONEditor
+                  key={payloadReloadKey}
                   defaultValue={bodyDefault}
                   readOnly={false}
                   basicSetup
