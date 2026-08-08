@@ -37,10 +37,17 @@ export function dashboardAgentApiOrigin(): string {
 // service from the dashboard session (never a PAT), so a user can only ever
 // mint a token for themselves. The `in` proxy injects this into the turn's
 // metadata so the token reaches the agent without ever touching the browser.
-export function mintDashboardAgentUserActorToken(userId: string): Promise<string> {
+//
+// Endpoints that bind something to one environment read `environmentId` off the token,
+// so the agent can't name a different one in a request body.
+export function mintDashboardAgentUserActorToken(
+  userId: string,
+  opts: { environmentId: string }
+): Promise<string> {
   return signUserActorToken(env.SESSION_SECRET, {
     userId,
     client: "dashboard-agent",
+    environmentId: opts.environmentId,
     cap: DASHBOARD_AGENT_UAT_CAP,
     expirationTime: Math.floor(Date.now() / 1000) + DASHBOARD_AGENT_UAT_TTL_SECONDS,
   });

@@ -13,7 +13,8 @@ import {
   findEnvironmentByPublicApiKey,
   toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
-import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
+import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
 import { safeEnvironmentLogFields } from "./safeEnvironmentLog";
@@ -42,6 +43,13 @@ const ClaimsSchema = z.object({
   realtime: z
     .object({
       skipColumns: z.array(z.string()).optional(),
+    })
+    .optional(),
+  // Identity only. Authorization comes from `sub` and `scopes`, never from `act`.
+  act: z
+    .object({
+      sub: z.string(),
+      client: z.string().optional(),
     })
     .optional(),
 });
@@ -74,6 +82,7 @@ export type ApiAuthenticationResultSuccess = {
   // API keys (no user) and JWTs minted without delegation.
   actor?: {
     sub: string;
+    client?: string;
   };
 };
 
@@ -187,6 +196,7 @@ export async function authenticateApiKey(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
+        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
       };
     }
   }
@@ -279,6 +289,7 @@ async function authenticateApiKeyWithFailure(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
+        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
       };
     }
   }
@@ -394,10 +405,22 @@ function getApiKeyResult(apiKey: string): {
   return { apiKey, type };
 }
 
+/**
+ * The authenticated user-actor. A user-actor token authenticates as its user, so it is the same
+ * shape a PAT authenticates to — that shape now carries the token's verified claims itself, so
+ * any layer holding the actor holds its environment scope.
+ */
+export type UserActorAuthenticatedActor = PersonalAccessTokenAuthenticationResult;
+
 export type AuthenticationResult =
   | {
       type: "personalAccessToken";
-      result: PersonalAccessTokenAuthenticationResult;
+      result: UserActorAuthenticatedActor;
+      /**
+       * Claims of the delegated user-actor token the caller presented, if any. A UAT authenticates
+       * as its user, so it rides on this variant; its environment scope is enforced on resolution.
+       */
+      userActor?: UserActorClaims;
     }
   | {
       type: "organizationAccessToken";
@@ -522,7 +545,30 @@ export async function authenticateRequest<
   return;
 }
 
+/**
+ * Resolve the environment a request targets, and enforce the caller's environment scope.
+ *
+ * Every route that turns an authentication result into an environment goes through here, so the
+ * user-actor token's `environmentId` claim is checked once, at the seam — a new endpoint can't
+ * forget it.
+ */
 export async function authenticatedEnvironmentForAuthentication(
+  auth: AuthenticationResult,
+  projectRef: string,
+  slug: string,
+  branch?: string
+): Promise<AuthenticatedEnvironment> {
+  const environment = await resolveEnvironmentForAuthentication(auth, projectRef, slug, branch);
+
+  if (auth.type === "personalAccessToken") {
+    // Either place the claims ride: on the actor (the shape every layer keeps) or beside it.
+    assertUserActorEnvironment(auth.result.userActor ?? auth.userActor, environment.id);
+  }
+
+  return environment;
+}
+
+async function resolveEnvironmentForAuthentication(
   auth: AuthenticationResult,
   projectRef: string,
   slug: string,

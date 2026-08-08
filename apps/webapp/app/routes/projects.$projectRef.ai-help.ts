@@ -45,7 +45,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     v3EnvironmentPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: "dev" }),
     env.LOGIN_ORIGIN
   );
-  newUrl.searchParams.set("aiHelp", query);
+  // The `ask` param is picked up in the environment layout (`useDashboardAgentOpenRequests`).
+  newUrl.searchParams.set("ask", query);
 
   return redirect(newUrl.toString());
 }

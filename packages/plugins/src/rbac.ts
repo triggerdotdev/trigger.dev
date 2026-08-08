@@ -93,6 +93,8 @@ export type RbacSubject =
       type: "userActor";
       userId: string;
       client?: string;
+      // The environment the token was signed for, when it carries the claim.
+      environmentId?: string;
       organizationId: string;
       projectId?: string;
     };
@@ -289,6 +291,9 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
+  // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
+  // body. Optional because other UAT flows are environment-agnostic.
+  environmentId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
   cap?: string[];
@@ -304,6 +309,7 @@ export async function signUserActorToken(
     userId: string;
     client: string;
     sessionId?: string;
+    environmentId?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
   }
@@ -313,7 +319,11 @@ export async function signUserActorToken(
     payload: {
       kind: USER_ACTOR_KIND,
       sub: opts.userId,
-      act: { client: opts.client, ...(opts.sessionId ? { sessionId: opts.sessionId } : {}) },
+      act: {
+        client: opts.client,
+        ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+        ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+      },
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
     expirationTime: opts.expirationTime ?? "1h",
@@ -334,11 +344,14 @@ export async function verifyUserActorToken(
   const payload = result.payload;
   if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
 
-  const act = payload.act as { client?: string; sessionId?: string } | undefined;
+  const act = payload.act as
+    | { client?: string; sessionId?: string; environmentId?: string }
+    | undefined;
   return {
     userId: payload.sub,
     client: act?.client,
     sessionId: act?.sessionId,
+    environmentId: act?.environmentId,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
   };
 }
@@ -391,6 +404,9 @@ export type UserActorAuthResult =
   | {
       ok: true;
       userId: string;
+      // Optional only for plugins built against an older contract: a host enforcing the
+      // environment claim must fail closed when it is absent.
+      claims?: UserActorClaims;
       subject: RbacSubject;
       ability: RbacAbility;
     };
@@ -440,8 +456,8 @@ export interface RoleBaseAccessController {
   // user: floor = the user's role in the target org (rejects non-members,
   // like authenticatePat), cap = the token's optional scope cap.
   //
-  // No plugin installed → fallback verifies the token and returns a
-  // permissive ability, mirroring the fallback's PAT behaviour.
+  // No plugin installed → the fallback builds the ability from the token's own cap
+  // (read-only when it declares none), never the blanket ability it gives a PAT.
   authenticateUserActor(
     request: Request,
     context: { organizationId?: string; projectId?: string }

@@ -1,6 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
+import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
@@ -9,6 +9,7 @@ import {
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
+import { assertUserActorEnvironment } from "~/services/userActorEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 
@@ -41,6 +42,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // minted env JWT below.
     let uatCap: string[] | undefined;
     let userActorId: string | undefined;
+    let userActor: UserActorClaims | undefined;
     let authenticationResult: AuthenticationResult | undefined;
     if (isUat) {
       const claims = await verifyUserActorToken(appEnv.SESSION_SECRET, bearer!);
@@ -49,6 +51,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
       uatCap = claims.cap;
       userActorId = claims.userId;
+      userActor = claims;
       // The env lookup keys purely on the user, identical to a PAT.
       authenticationResult = {
         type: "personalAccessToken",
@@ -81,6 +84,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       env,
       triggerBranch
     );
+
+    // A user-actor token signed for one environment mints only for that one.
+    assertUserActorEnvironment(userActor, runtimeEnv.id);
 
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
@@ -136,7 +142,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       sub: runtimeEnv.id,
       pub: true,
       ...(scopes ? { scopes } : {}),
-      ...(actorUserId ? { act: { sub: actorUserId } } : {}),
+      ...(actorUserId
+        ? { act: { sub: actorUserId, client: userActor?.client ?? "personal-access-token" } }
+        : {}),
     };
 
     const jwt = await internal_generateJWT({

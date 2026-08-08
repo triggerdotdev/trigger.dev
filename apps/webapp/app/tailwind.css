@@ -701,9 +701,10 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks) */
+  /* Theme-mapped, not raw charcoal: fenced blocks stay dark via shiki. */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    background-color: var(--muted);
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
@@ -725,10 +726,11 @@
   }
   & th,
   & td {
-    @apply border border-charcoal-600 px-2 py-1 text-left;
+    @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply bg-charcoal-700 font-semibold;
+    @apply font-semibold;
+    background-color: var(--muted);
   }
 
   & [data-code-block-header] {
@@ -740,7 +742,7 @@
     @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
-    @apply bg-transparent;
+    @apply bg-transparent text-xs;
   }
   & [data-code-block] .line {
     @apply leading-relaxed;

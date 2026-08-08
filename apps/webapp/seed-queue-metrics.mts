@@ -1,14 +1,18 @@
-import { prisma } from "./app/db.server";
 import { boundedIn } from "@trigger.dev/database";
-import { createOrganization } from "./app/models/organization.server";
-import { createProject } from "./app/models/project.server";
 import { ClickHouse } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
-import { generateFriendlyId } from "./app/v3/friendlyIdentifiers";
+// App modules compile to CommonJS under tsx, so import them as default bindings.
+import dbServer from "./app/db.server";
+import organizationServer from "./app/models/organization.server";
+import projectServer from "./app/models/project.server";
+import friendlyIdentifiers from "./app/v3/friendlyIdentifiers";
 
-// Queue metrics simulator: writes realistic raw rows into a synthetic tenant's
-// queue_metrics_raw_v1 and lets the MV build queue_metrics_v1 (the same path the real
-// consumer uses), so the dashboard can be built without the run engine. See TRI-10407.
+const { prisma } = dbServer;
+const { createOrganization } = organizationServer;
+const { createProject } = projectServer;
+const { generateFriendlyId } = friendlyIdentifiers;
+
+// Writes raw rows into queue_metrics_raw_v1 and lets the MVs build the rollups. See TRI-10407.
 
 const ORG_TITLE = "Queue Metrics Dev";
 const PROJECT_NAME = "queue-metrics-demo";
@@ -17,10 +21,9 @@ type Rng = () => number;
 type QueueProfile = {
   name: string;
   limit: (bucket: number) => number;
-  arrivals: (bucket: number, rng: Rng) => number; // expected new runs enqueued this bucket
+  arrivals: (bucket: number, rng: Rng) => number;
   waitBaseMs: number;
-  sparse?: boolean; // emit no rows when the queue is fully idle (tests carry-forward gaps)
-  // Concurrency-key queue: adds CK-health gauge fields + live ckIndex staging (--usage)
+  sparse?: boolean;
   ck?: {
     backlogged: (bucket: number, rng: Rng) => number;
     maxWaitMs: (bucket: number, rng: Rng) => number;
@@ -31,10 +34,6 @@ type Scenario = {
   envLimit: (bucket: number) => number;
   queues: QueueProfile[];
 };
-
-// ---------------------------------------------------------------------------
-// CLI args
-// ---------------------------------------------------------------------------
 
 function parseArgs(argv: string[]) {
   const flags: Record<string, string> = {};
@@ -59,10 +58,6 @@ function parseDuration(s: string): number {
   const unit = m[2] ?? "s";
   return n * { s: 1, m: 60, h: 3600, d: 86400 }[unit]!;
 }
-
-// ---------------------------------------------------------------------------
-// Deterministic RNG + distributions
-// ---------------------------------------------------------------------------
 
 function mulberry32(seed: number): Rng {
   let a = seed >>> 0;
@@ -104,17 +99,12 @@ function formatChDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
-// ---------------------------------------------------------------------------
-// Scenarios
-// ---------------------------------------------------------------------------
-
 const steady = (): QueueProfile[] => [
   { name: "emails", limit: () => 20, arrivals: (_b, r) => poisson(12, r), waitBaseMs: 40 },
   { name: "webhooks", limit: () => 15, arrivals: (_b, r) => poisson(9, r), waitBaseMs: 40 },
   { name: "reports", limit: () => 10, arrivals: (_b, r) => poisson(5, r), waitBaseMs: 60 },
 ];
 
-// periodic bursts every ~30 buckets
 const bursty = (name: string, limit: number, base: number): QueueProfile => ({
   name,
   limit: () => limit,
@@ -135,7 +125,6 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     queues: [bursty("ingest", 20, 6), bursty("transform", 20, 7)],
   }),
 
-  // Tela case: sum of per-queue limits far exceeds the env limit, so queues compete.
   "over-allocated-env": () => ({
     description: "Sum(queue limits)=120 >> env limit=40; env saturates, queues env-limited",
     envLimit: () => 40,
@@ -191,8 +180,6 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     ],
   }),
 
-  // Pagination + relevance-ranking design surface: one runaway queue, a busy-but-healthy
-  // head, a bursty middle, and a long sparse tail across 61 queues (the list pages at 25).
   "many-queues": () => ({
     description:
       "61 queues: one runaway, busy head, bursty middle, long sparse tail (pagination + ranking)",
@@ -224,9 +211,6 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     ],
   }),
 
-  // Per-tenant concurrency keys: a hog tenant periodically floods the queue and starves
-  // the others, so the CK charts (keys with backlog, most-starved wait) and the live
-  // per-key table on the queue detail page have something to show. Use with --usage.
   "tenant-hotspot": () => ({
     description:
       "CK queue where a hog tenant starves others: CK charts + live key table (use --usage)",
@@ -249,10 +233,9 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     ],
   }),
 
-  // Default: one env with a variety of queue behaviours + occasional env saturation.
   mixed: (totalBuckets) => ({
     description: "variety of queue profiles in one env, with occasional env saturation",
-    envLimit: (b) => (b % 40 < 12 ? 45 : 70), // dips low periodically to flip env saturation
+    envLimit: (b) => (b % 40 < 12 ? 45 : 70),
     queues: [
       { name: "emails", limit: () => 20, arrivals: (_b, r) => poisson(12, r), waitBaseMs: 40 },
       bursty("webhooks", 20, 6),
@@ -274,18 +257,13 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
   }),
 };
 
-// ---------------------------------------------------------------------------
-// Simulation
-// ---------------------------------------------------------------------------
-
 type Ids = { organization_id: string; project_id: string; environment_id: string };
 const WAIT_SIGMA = 0.6;
 const NACK_RATE = 0.02;
 const DLQ_RATE = 0.004;
 
 type CounterOp = "enqueue" | "started" | "ack" | "nack" | "dlq";
-// Per-(queue, op) odometers, mirroring the production emitter: cumulative readings with a
-// cum=0 baseline on the first one, so deltaSumTimestamp captures the 0->1 delta.
+// Cumulative odometers: the first reading must be cum=0 so deltaSumTimestamp sees the 0->1 delta.
 type CounterState = Record<CounterOp, number>[];
 
 function counterRows(
@@ -326,8 +304,7 @@ function newCounterState(n: number): CounterState {
   return Array.from({ length: n }, () => ({ enqueue: 0, started: 0, ack: 0, nack: 0, dlq: 0 }));
 }
 
-// Per-key simulation for CK profiles: 12 tenants (tenant-01 is the hog, matching
-// stageRedisUsage), per-tenant backlog drained round-robin, per-tenant odometers.
+// tenant-01 is the hog here and in stageRedisUsage; keep the two in step.
 const CK_TENANT_COUNT = 12;
 type CkSimState = { backlog: number[]; counters: Map<number, Record<CounterOp, number>> };
 const ckSim = new Map<number, CkSimState>();
@@ -370,9 +347,7 @@ function ckCounterRows(
   return rows;
 }
 
-// Advance one bucket of the simulation for every queue, returning the raw rows to insert.
-// `backlog` and `counters` are mutated in place so state carries across buckets (and into
-// live mode).
+// `backlog` and `counters` are mutated in place: state carries across buckets and into live mode.
 function simulateBucket(
   scenario: Scenario,
   bucket: number,
@@ -392,12 +367,11 @@ function simulateBucket(
   for (let q = 0; q < n; q++) {
     limit[q] = scenario.queues[q].limit(bucket);
     const arrivals = Math.min(500, scenario.queues[q].arrivals(bucket, rng));
-    const prior = backlog[q]; // backlog carried from earlier buckets, before this bucket's arrivals
-    backlog[q] += arrivals; // arrivals join the backlog; recorded as enqueues below
+    const prior = backlog[q];
+    backlog[q] += arrivals;
     (desired as any)[q] = { arrivals, prior, want: Math.min(limit[q], backlog[q]) };
   }
 
-  // Env cap: if the queues collectively want more concurrency than the env allows, scale down.
   const sumWant = desired.reduce((s: number, d: any) => s + d.want, 0);
   const scale = sumWant > envLimit && sumWant > 0 ? envLimit / sumWant : 1;
 
@@ -413,8 +387,7 @@ function simulateBucket(
     envQueued += queued[q];
   }
 
-  // Order keys are time-based (like the production stream ids) so appended runs and live
-  // mode stay monotonic; the per-bucket sequence keeps them unique within a bucket.
+  // Order keys must be monotonic across processes, so they are time-based plus a per-bucket seq.
   let bucketSeq = 0;
   const orderKey = () => bucketEpochSec * 1_000_000 + bucketSeq++;
 
@@ -423,14 +396,13 @@ function simulateBucket(
     const profile = scenario.queues[q];
     const started = running[q];
     const arrivals = (desired[q] as any).arrivals as number;
-    const prior = (desired[q] as any).prior as number; // depth a starting run actually queued behind
-    backlog[q] = queued[q]; // carry the unserved remainder forward
+    const prior = (desired[q] as any).prior as number;
+    backlog[q] = queued[q];
 
     if (profile.sparse && arrivals === 0 && started === 0 && prior === 0) {
-      continue; // fully idle: leave a gap so carry-forward is exercised
+      continue;
     }
 
-    // CK-health fields stay coherent with the depth: no queued runs means no backlogged keys.
     const ckBacklogged = profile.ck
       ? queued[q] > 0
         ? Math.max(1, Math.min(profile.ck.backlogged(bucket, rng), queued[q]))
@@ -461,8 +433,6 @@ function simulateBucket(
       rows.push(...counterRows(counters, q, ids, profile.name, eventTime, orderKey, "enqueue"));
     }
 
-    // Per-key rows for CK profiles: assign arrivals hog-weighted, drain round-robin
-    // (fair share), then emit per-tenant odometers + a per-key gauge per active tenant.
     if (profile.ck) {
       let ckq = ckSim.get(q);
       if (!ckq) {
@@ -544,10 +514,6 @@ function simulateBucket(
   return rows;
 }
 
-// ---------------------------------------------------------------------------
-// ClickHouse
-// ---------------------------------------------------------------------------
-
 function clickhouse(): ClickHouse {
   const clickhouseUrl = process.env.CLICKHOUSE_URL ?? process.env.EVENTS_CLICKHOUSE_URL;
   if (!clickhouseUrl) {
@@ -555,7 +521,7 @@ function clickhouse(): ClickHouse {
     process.exit(1);
   }
   const url = new URL(clickhouseUrl);
-  // Allowlist local hosts only (this script TRUNCATEs), and never echo the URL (it carries creds).
+  // Local hosts only (this script deletes rows); never echo the URL, it carries credentials.
   const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
   if (!localHosts.has(url.hostname)) {
     console.error(`Refusing to run against a non-local ClickHouse host: ${url.hostname}`);
@@ -597,7 +563,6 @@ async function resetEnv(ch: ClickHouse, environmentId: string) {
   console.log(`Reset queue metrics for environment ${environmentId}`);
 }
 
-// Fake running counts in the run-queue Redis (Running column + allocation usage bars).
 // Reconciled every run: staged with --usage, cleared otherwise.
 async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear: boolean) {
   const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
@@ -617,16 +582,11 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
     const logicalBase = `{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:queue:`;
     const base = `${prefix}${logicalBase}`;
 
-    // Env-level structures the Queues list "Queued"/"Running" blocks read:
-    //   lengthOfEnvQueue      -> ZCARD(envQueueKey)            (ZSET, no proj section)
-    //   concurrencyOfEnvQueue -> SCARD(envCurrentDequeuedKey)  (SET)
-    // We accumulate the per-queue staged counts below and stage these so the blocks
-    // equal the table's per-queue sums instead of showing 0/0.
+    // envQueue is a ZSET with no proj section; envCurrentDequeued is a SET with one.
     const envQueueKey = `${prefix}{org:${ids.organization_id}}:env:${ids.environment_id}`;
     const envCurrentDequeuedKey = `${prefix}{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:currentDequeued`;
     await redis.del(envQueueKey, envCurrentDequeuedKey);
-    // Table Queued = ZCARD(base) + lengthCounter (base zset unstaged -> only CK queues
-    // contribute their lengthCounter). Table Running = SCARD(currentDequeued) per queue.
+    // Per-queue Queued = ZCARD(base) + lengthCounter; Running = SCARD(currentDequeued).
     let envQueuedTotal = 0;
     let envRunningTotal = 0;
 
@@ -634,8 +594,7 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
       const key = `${base}${profile.name}:currentDequeued`;
       await redis.del(key);
 
-      // CK staging (ckIndex + per-key subqueues) feeds the live per-key table on the queue
-      // detail page. Members are stored unprefixed, exactly like the run-queue Lua does.
+      // ckIndex members are stored unprefixed, exactly like the run-queue Lua does.
       const ckIndexKey = `${base}${profile.name}:ckIndex`;
       const lengthCounterKey = `${base}${profile.name}:lengthCounter`;
       const staleMembers = await redis.zrange(ckIndexKey, 0, -1);
@@ -646,7 +605,6 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
 
       if (clear) continue;
       const limit = profile.limit(0);
-      // First queue rides at/over its limit, the rest at 30-90%, sparse mostly idle.
       const count = profile.sparse
         ? rng() < 0.3
           ? 1
@@ -684,15 +642,12 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
           await redis.zadd(ckIndexKey, now - oldestAgeMs, member);
           totalCkQueued += queuedCount;
         }
-        // The aggregate "Queued now" reads ZCARD(base) + this counter; keep them coherent.
         await redis.set(lengthCounterKey, totalCkQueued, "EX", 24 * 3600);
         envQueuedTotal += totalCkQueued;
       }
     }
 
-    // Stage the env-level structures so the list-page blocks match the table sums.
-    // Members are unique across queues (each per-queue set uses its own key, but the
-    // env set/zset needs distinct members to reach the summed cardinality).
+    // The env set/zset needs members distinct across queues to reach the summed cardinality.
     if (!clear) {
       if (envRunningTotal > 0) {
         await redis.sadd(
@@ -719,13 +674,8 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-// Make the synthetic project a V2 engine project with a current dev worker + a Postgres
-// TaskQueue per simulated queue, so the /queues list renders the V2 table (it pages from
-// Postgres and gates on engine version; ClickHouse only holds the metrics).
+// The /queues list pages from Postgres and gates on engine version, so the project needs
+// engine V2, a worker, and a TaskQueue row per simulated queue.
 async function ensureTaskQueues(
   scenario: Scenario,
   projectId: string,
@@ -769,9 +719,7 @@ async function ensureTaskQueues(
         projectId,
         type: "NAMED",
       },
-      // Reset any dashboard override left from manual testing: re-seeding overwrites the
-      // materialized concurrencyLimit, so a surviving override percent/base would contradict it
-      // (e.g. "10 (77%)" with an env limit of 25).
+      // Re-seeding overwrites concurrencyLimit, so a surviving override would contradict it.
       update: {
         concurrencyLimit,
         concurrencyLimitBase: null,
@@ -782,8 +730,6 @@ async function ensureTaskQueues(
     });
   }
 
-  // Drop queues left over from a previously seeded scenario so switching scenarios
-  // does not leave metric-less rows in the list.
   const { count: pruned } = await prisma.taskQueue.deleteMany({
     where: {
       runtimeEnvironmentId,
@@ -917,7 +863,6 @@ async function main() {
     `Backfilling ${totalBuckets} x ${bucketSec}s buckets (${flags.window ?? "2h"}) for ${scenario.queues.length} queues...`
   );
 
-  // Backfill: buckets from (now - window) up to now, aligned to the bucket grid.
   const nowBucket = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
   const startBucket = nowBucket - totalBuckets * bucketSec;
   const counters = newCounterState(scenario.queues.length);
@@ -942,8 +887,7 @@ async function main() {
   await insertBatched(ch, rows, nonce);
   console.log(`Inserted ${rows.length} raw rows.`);
 
-  // Merge the AggregatingMergeTree partials so argMax "current value" widgets read cleanly.
-  // The real pipeline relies on background merges; the simulator forces it for a tidy demo.
+  // The rollups are AggregatingMergeTrees; a read straight after the insert can't wait for merges.
   const raw = (
     ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } }
   ).client;

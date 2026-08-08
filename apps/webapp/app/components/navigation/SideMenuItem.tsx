@@ -242,8 +242,16 @@ export function SideMenuItem({
 /** Button styled to match {@link SideMenuItem}, for entries that open a dialog rather than navigate. */
 export const SideMenuItemButton = forwardRef<
   HTMLButtonElement,
-  { icon: RenderIcon; name: string; trailing?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>
->(function SideMenuItemButton({ icon, name, trailing, className, type, ...props }, ref) {
+  {
+    icon: RenderIcon;
+    name: string;
+    trailing?: ReactNode;
+    iconClassName?: string;
+  } & ButtonHTMLAttributes<HTMLButtonElement>
+>(function SideMenuItemButton(
+  { icon, name, trailing, className, iconClassName, type, ...props },
+  ref
+) {
   return (
     <button
       ref={ref}
@@ -256,7 +264,10 @@ export const SideMenuItemButton = forwardRef<
     >
       <Icon
         icon={icon}
-        className="size-5 shrink-0 text-text-dimmed group-hover/menuitem:text-text-bright"
+        className={cn(
+          "size-5 shrink-0",
+          iconClassName ?? "text-text-dimmed group-hover/menuitem:text-text-bright"
+        )}
       />
       <SideMenuLabel className="min-w-0 flex-1 select-none text-left text-[0.90625rem] font-medium tracking-[-0.01em]">
         {name}

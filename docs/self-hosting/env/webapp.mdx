@@ -44,6 +44,7 @@ mode: "wide"
 | `LOGIN_RATE_LIMITS_ENABLED`                      | No       | true                  | Enable rate limiting on magic-link login.                                                                          |
 | `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                                  |
 | `AUTH_GITHUB_CLIENT_SECRET`                      | No       | —                     | GitHub client secret.                                                                                              |
+| `CSP_IMG_SRC_ALLOWLIST`                          | No       | —                     | Extra hosts the dashboard may load images from, e.g. an SSO or avatar host serving profile images. A comma-separated list of exact origins (`https://sso.example.com`); a wildcard host such as `https://*.example.com` is refused. |
 | **Email**                                        |          |                       |                                                                                                                    |
 | `EMAIL_TRANSPORT`                                | No       | —                     | Email transport type. One of `resend`, `smtp`, `aws-ses`.                                                          |
 | `FROM_EMAIL`                                     | No       | —                     | From email address.                                                                                                |
