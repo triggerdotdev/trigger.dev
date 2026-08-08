@@ -219,7 +219,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
 
     await syncDeclarativeSchedules(parsed.data.tasks, worker, environment, this._prisma);
     await syncDeclarativeWebhooks(
-      parsed.data.webhooks ?? [],
+      parsed.data.webhooks,
       worker,
       environment,
       this._prisma,

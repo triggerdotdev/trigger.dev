@@ -210,7 +210,7 @@ export class CreateBackgroundWorkerService extends BaseService {
 
       const [webhooksError] = await tryCatch(
         syncDeclarativeWebhooks(
-          body.metadata.webhooks ?? [],
+          body.metadata.webhooks,
           backgroundWorker,
           environment,
           this._prisma,
@@ -674,13 +674,15 @@ function generateOpaqueId(): string {
 }
 
 export async function syncDeclarativeWebhooks(
-  webhooks: WebhookResource[],
+  webhooks: WebhookResource[] | undefined,
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   // Endpoint rows live on the webhook DB; the task-existence check below stays on the main client.
   webhookPrisma: WebhookDatabase
 ) {
+  if (webhooks === undefined) return;
+
   const existing = await webhookPrisma.webhookEndpoint.findMany({
     where: {
       runtimeEnvironmentId: environment.id,
@@ -752,7 +754,6 @@ export async function syncDeclarativeWebhooks(
           verifierArtifact: wh.verifierArtifact as unknown as Prisma.InputJsonValue,
           secretProvisioning: wh.secretProvisioning ?? "either",
           metadata: (wh.metadata ?? {}) as unknown as Prisma.InputJsonValue,
-          status: "ACTIVE",
           ...filterData,
         },
       });

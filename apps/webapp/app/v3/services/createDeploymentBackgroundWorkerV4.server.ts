@@ -232,7 +232,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
 
       const [webhooksError] = await tryCatch(
         syncDeclarativeWebhooks(
-          body.metadata.webhooks ?? [],
+          body.metadata.webhooks,
           backgroundWorker,
           environment,
           this._prisma,
