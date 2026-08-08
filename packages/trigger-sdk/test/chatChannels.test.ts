@@ -6,9 +6,10 @@ import {
   __makeChannelStreamEditorForTests,
   __makeChannelStreamTapForTests,
 } from "../src/v3/ai.js";
-import { simulateReadableStream, streamText } from "ai";
+import { simulateReadableStream, streamText, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { z } from "zod";
 
 function textStream(text: string) {
   const chunks: LanguageModelV3StreamPart[] = [
@@ -172,6 +173,109 @@ describe("chat.agent channels", () => {
       expect(finalSend.ctx.final).toBe(true);
       expect(finalSend.ctx.previousRef).toBe(channel.acks[0]!.ref);
       expect(finalSend.message.text).toBe("turn exploded");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+describe("chat.agent channel interactions", () => {
+  function toolCallStream(toolCallId: string, toolName: string, input: unknown) {
+    return simulateReadableStream({
+      chunks: [
+        { type: "tool-input-start", id: toolCallId, toolName },
+        { type: "tool-input-delta", id: toolCallId, delta: JSON.stringify(input) },
+        { type: "tool-input-end", id: toolCallId },
+        { type: "tool-call", toolCallId, toolName, input: JSON.stringify(input) },
+        {
+          type: "finish",
+          finishReason: { unified: "tool-calls", raw: "tool_calls" },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 10, text: 0, reasoning: undefined },
+          },
+        },
+      ] as LanguageModelV3StreamPart[],
+    });
+  }
+
+  it("resumes a pending tool from an interaction callback and finalizes the controls", async () => {
+    const TC = "tc_approve_1";
+    const requestApproval = tool({
+      description: "Request human approval before acting.",
+      inputSchema: z.object({ action: z.string() }),
+    });
+
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream:
+          call++ === 0
+            ? toolCallStream(TC, "requestApproval", { action: "refund" })
+            : textStream("refund issued"),
+      }),
+    });
+
+    const channel = recordingChannelConnector<{ text?: string; callback?: boolean }>({
+      renderInteraction: (pending) => ({
+        text: `Approve ${(pending[0]!.input as { action: string }).action}?`,
+      }),
+      onInteraction: (event) =>
+        event?.callback ? { toolCallId: TC, output: { approved: true } } : null,
+    });
+
+    const agent = chat.agent({
+      id: "chatChannels.hitl-resolve",
+      channels: [channel],
+      run: async ({ messages, signal }) =>
+        streamText({ model, messages, tools: { requestApproval }, abortSignal: signal }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "chan-hitl-1" });
+    try {
+      await harness.sendChannelEvent({ event: { text: "please refund", threadId: "chan-hitl-1" } });
+      expect(channel.finalText()).toBe("Approve refund?");
+      expect(channel.finalized).toHaveLength(0);
+
+      await harness.sendChannelEvent({ event: { callback: true } });
+      expect(channel.finalized).toHaveLength(1);
+      expect(channel.finalText()).toBe("refund issued");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("drops a stale interaction callback and runs no turn", async () => {
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls += 1;
+        return { stream: textStream("should not run") };
+      },
+    });
+
+    const interactionEvents: unknown[] = [];
+    const channel = recordingChannelConnector<{ text?: string; callback?: boolean }>({
+      onInteraction: (event) => {
+        interactionEvents.push(event);
+        return event?.callback ? { toolCallId: "does-not-exist", output: {} } : null;
+      },
+    });
+
+    const agent = chat.agent({
+      id: "chatChannels.hitl-stale",
+      channels: [channel],
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "chan-hitl-2" });
+    try {
+      await harness.deliverChannelEvent({ event: { callback: true } });
+
+      expect(interactionEvents).toHaveLength(1);
+      expect(modelCalls).toBe(0);
+      expect(channel.sent).toHaveLength(0);
+      expect(channel.finalized).toHaveLength(0);
     } finally {
       await harness.close();
     }

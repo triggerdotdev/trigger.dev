@@ -219,6 +219,20 @@ export type MockChatAgentHarness = {
     deliveryId?: string;
   }): Promise<MockChatAgentTurn>;
 
+  /**
+   * Deliver a channel event without waiting for a turn. Mirrors an event that
+   * the run may not turn into a turn: a filtered or deduped delivery, or a
+   * stale interaction callback that is dropped (matches no pending tool call).
+   * Resolves once the run has had a chance to process and possibly drop it.
+   */
+  deliverChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+  }): Promise<void>;
+
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
 
@@ -689,6 +703,27 @@ export function mockChatAgent(
       });
       await settlePostTurnChannelEgress();
       return turn;
+    },
+
+    async deliverChannelEvent(args) {
+      await harnessReady;
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          chatId,
+          trigger: "submit-message",
+          channelEvent: {
+            connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+            event: args.event,
+            source: args.source ?? "custom",
+            headers: args.headers ?? {},
+            deliveryId,
+          },
+          metadata: clientData,
+        },
+      });
+      await settlePostTurnChannelEgress();
     },
 
     async sendStop(message) {
