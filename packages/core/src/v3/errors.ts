@@ -606,6 +606,37 @@ export class DuplicateTaskIdsError extends Error {
   }
 }
 
+function formatDuplicateWebhookIds(collisions: TaskIdCollision[]): string {
+  const lines = collisions.map(({ id, filePaths }) => {
+    const distinct = Array.from(new Set(filePaths));
+
+    if (distinct.length === 1) {
+      return `  - "${id}" found more than once in ${distinct[0]}`;
+    }
+
+    const last = distinct[distinct.length - 1];
+    const head = distinct.slice(0, -1).join(", ");
+
+    return `  - "${id}" found in ${head} and ${last}`;
+  });
+
+  return [
+    "Duplicate webhook ids detected:",
+    "",
+    ...lines,
+    "",
+    "Webhook ids must be unique across your project. Please rename one of them.",
+  ].join("\n");
+}
+
+export class DuplicateWebhookIdsError extends Error {
+  constructor(public readonly collisions: TaskIdCollision[]) {
+    super(formatDuplicateWebhookIds(collisions));
+
+    this.name = "DuplicateWebhookIdsError";
+  }
+}
+
 export class UnexpectedExitError extends Error {
   constructor(
     public code: number,

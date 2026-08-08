@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { reportTaskIdCollisions } from "../indexing/reportTaskIdCollisions.js";
+import { reportWebhookIdCollisions } from "../indexing/reportWebhookIdCollisions.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
@@ -123,6 +124,11 @@ const { buildManifest, importErrors, config, timings } = await bootstrap();
 // would silently overwrite the first.
 if (await reportTaskIdCollisions(safeSend)) {
   // Give the message time to flush before the parent kills the worker.
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  process.exit(0);
+}
+
+if (await reportWebhookIdCollisions(safeSend)) {
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   process.exit(0);
 }
