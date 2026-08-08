@@ -295,14 +295,18 @@ export interface FlowSource {
 }
 
 /**
- * The only failures the measured source may treat as a benign fallback. Matched on error text
- * because the client collapses the error into a message. Codes: 60, 47, 81.
+ * The only failures the measured source may treat as a benign fallback: the object itself does not
+ * exist yet, so waiting is correct. Codes 60 (table) and 81 (database). Matched on error text
+ * because the client collapses the error into a message.
+ *
+ * 47 (UNKNOWN_IDENTIFIER) is deliberately absent: the table exists and a column in our own query
+ * does not, which is a broken query, not a rollout gap. It must surface as a failed source.
  */
 const ROLLOUT_ERROR_PATTERNS = [
-  /\bUNKNOWN_(?:TABLE|IDENTIFIER|DATABASE)\b/,
-  /\bCode:\s*(?:60|47|81)\b/,
+  /\bUNKNOWN_(?:TABLE|DATABASE)\b/,
+  /\bCode:\s*(?:60|81)\b/,
   /\bTable\b[^.]*\bdoes\s?n?o?t?'?t?\s*exist/i,
-  /\bUnknown (?:table|identifier|column|database)\b/i,
+  /\bUnknown (?:table|database)\b/i,
 ];
 
 function isRolloutError(error: unknown): boolean {
@@ -311,8 +315,8 @@ function isRolloutError(error: unknown): boolean {
     const record = error as Record<string, unknown>;
     const code = String(record.code ?? "");
     const type = String(record.type ?? "");
-    if (code === "60" || code === "47" || code === "81") return true;
-    if (/^UNKNOWN_(TABLE|IDENTIFIER|DATABASE)$/.test(type)) return true;
+    if (code === "60" || code === "81") return true;
+    if (/^UNKNOWN_(TABLE|DATABASE)$/.test(type)) return true;
   }
   const message =
     error instanceof Error

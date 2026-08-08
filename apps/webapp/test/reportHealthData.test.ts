@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   type HealthDeps,
@@ -7,6 +7,8 @@ import {
 } from "~/presenters/v3/reports/health/health-data";
 import { interpret } from "~/presenters/v3/reports/health/health";
 import { renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
+import { reportTrust } from "~/presenters/v3/reports/report-layout";
+import { logger } from "~/services/logger.server";
 
 const NOW = new Date("2026-07-22T12:00:00.000Z");
 
@@ -157,6 +159,62 @@ describe("loadHealthInput — orchestration (query seam)", () => {
     expect(input.pending.estimated).toBe(true);
     expect(input.pending.now).toBe(12);
     expect(input.pending.availability).toBe("measured");
+  });
+
+  it("Code 81 (UNKNOWN_DATABASE) is still a rollout error", async () => {
+    const input = await loadHealthInput(
+      fakeEnv,
+      "1h",
+      NOW,
+      makeDeps({
+        runs: RUNS_SCALAR,
+        runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
+        throwOnEnv: new Error(
+          "Unable to query clickhouse: Code: 81. DB::Exception: Database trigger_dev does not exist. (UNKNOWN_DATABASE)"
+        ),
+        pendingNow: 12,
+      })
+    );
+
+    expect(input.pending.availability).toBe("measured");
+  });
+
+  it("Code 47 (UNKNOWN_IDENTIFIER) is a broken query, not a rollout gap", async () => {
+    // The table exists and a column in our own query does not. Falling through silently to the
+    // snapshot presented a broken query as a healthy measurement.
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const input = await loadHealthInput(
+      fakeEnv,
+      "1h",
+      NOW,
+      makeDeps({
+        runs: RUNS_SCALAR,
+        runsSeries: [{ t: "a", triggered: 10, completed: 8, start_latency_p95: 3000, failures: 0 }],
+        throwOnEnv: new Error(
+          "Unable to query clickhouse: Code: 47. DB::Exception: Unknown identifier 'pending_now' in table trigger_dev.env_metrics_v1. (UNKNOWN_IDENTIFIER)"
+        ),
+        // Redis is healthy, so only the failed source can be what marks the depth unknown.
+        pendingNow: 12,
+      })
+    );
+
+    // The report still renders off the fallback source, but never claims the depth was measured.
+    expect(input.flowSource).toBe("snapshot+runs");
+    expect(input.pending.availability).toBe("unknown");
+
+    // Broken query -> logged, not swallowed.
+    expect(errorLog).toHaveBeenCalledWith(
+      "report health: measured flow source failed",
+      expect.objectContaining({ error: expect.stringContaining("Code: 47") })
+    );
+    errorLog.mockRestore();
+
+    const vm = interpret(input);
+    const flow = vm.findings.find((f) => f.type === "flow")!;
+    expect(flow.reason).toBe("flow_unmeasured");
+    expect(vm.facts).toMatchObject({ trustworthy: false });
+    // The reader is told the numbers aren't trustworthy, not shown a confident verdict.
+    expect(renderReportMarkdown(vm)).toContain(reportTrust(vm)!.note);
   });
 
   it("an UNEXPECTED env_metrics failure + Redis down never becomes 'backlog 0'", async () => {
