@@ -10,14 +10,20 @@ import type {
 } from "@internal/dashboard-agent-contracts";
 import { ctx, type PromptSlot } from "./prompt-chips";
 
-/** A kind with no entry produces no chip. */
-export const SIGNAL_SLOT: Partial<Record<AgentPageSignalKind, PromptSlot>> = {
+export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
   fresh_failure: "investigate",
   slow_run: "investigate",
+  waiting_run: "watch",
+  concurrency_saturation: "watch",
 };
 
-/** Signal precedence within a slot. */
-export const SIGNAL_PRIORITY: AgentPageSignalKind[] = ["fresh_failure", "slow_run"];
+/** Signal precedence within a slot. Mirrors `demoSignalsByPriority` in the fixtures. */
+export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
+  "fresh_failure",
+  "waiting_run",
+  "slow_run",
+  "concurrency_saturation",
+];
 
 /** "3m", "2h", "4d". */
 export function formatAgo(ms: number): string {
@@ -47,6 +53,15 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
       );
     }
 
+    case "waiting_run":
+      return ctx(
+        "waiting-run",
+        "Tell me when this run starts",
+        signal.queue
+          ? `Watch ${signal.runId} and tell me when it leaves the ${signal.queue} queue.`
+          : `Watch ${signal.runId} and tell me when it starts running.`
+      );
+
     case "slow_run": {
       if (signal.baselineP95Ms <= 0) return undefined;
       const factor = formatMultiplier(signal.durationMs / signal.baselineP95Ms);
@@ -56,6 +71,13 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
         `${signal.runId} is running ~${factor} slower than this task's usual p95. Investigate why.`
       );
     }
+
+    case "concurrency_saturation":
+      return ctx(
+        "concurrency-saturation",
+        "Tell me when the backlog drains",
+        "Concurrency is saturated right now. Watch it and tell me when the backlog drains."
+      );
   }
 }
 
@@ -79,18 +101,17 @@ export function contextualPromptsBySlot(
 ): Record<PromptSlot, SuggestedPrompt[]> {
   const bySlot: Record<PromptSlot, SuggestedPrompt[]> = {
     investigate: [],
+    watch: [],
     status: [],
     explain: [],
     docs: [],
   };
 
   for (const kind of SIGNAL_PRIORITY) {
-    const slot = SIGNAL_SLOT[kind];
-    if (!slot) continue;
     for (const signal of context.signals) {
       if (signal.kind !== kind) continue;
       const prompt = promptForSignal(signal, now);
-      if (prompt) bySlot[slot].push(prompt);
+      if (prompt) bySlot[SIGNAL_SLOT[kind]].push(prompt);
     }
   }
 

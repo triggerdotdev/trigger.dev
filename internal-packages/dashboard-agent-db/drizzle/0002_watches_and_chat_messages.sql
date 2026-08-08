@@ -88,6 +88,9 @@ CREATE TABLE "trigger_dashboard_agent"."watches" (
 --> statement-breakpoint
 ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN IF NOT EXISTS "last_read_at" timestamp with time zone;
 --> statement-breakpoint
+-- Chats that predate the column start read, so only activity after this migration lights the dot.
+UPDATE "trigger_dashboard_agent"."chats" SET "last_read_at" = coalesce("last_message_at", "created_at") WHERE "last_read_at" IS NULL;
+--> statement-breakpoint
 ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN IF NOT EXISTS "next_message_position" integer DEFAULT 1 NOT NULL;
 --> statement-breakpoint
 CREATE INDEX "chat_messages_chat_user_role_idx" ON "trigger_dashboard_agent"."chat_messages" USING btree ("chat_id","message_id") WHERE "trigger_dashboard_agent"."chat_messages"."role" = 'user';

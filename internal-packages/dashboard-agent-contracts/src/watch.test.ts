@@ -135,6 +135,48 @@ describe("watchSpecSchema", () => {
       false
     );
   });
+
+  /**
+   * Kinds that take the same fields share one member, so each of these asks the
+   * grouped member to still hold every kind to its own subject and thresholds.
+   */
+  it("keeps each kind's own required fields", () => {
+    for (const [kind, spec] of Object.entries(specs)) {
+      for (const field of ["runId", "queue", "fingerprint", "threshold", "thresholdMinutes"]) {
+        if (!(field in spec)) continue;
+        const { [field]: _dropped, ...without } = spec as Record<string, unknown>;
+        expect(watchSpecSchema.safeParse(without).success, `${kind} without ${field}`).toBe(false);
+      }
+    }
+  });
+
+  it("does not let one kind borrow another's subject", () => {
+    expect(
+      watchSpecSchema.safeParse({ ...common, ...specs.run_start, runId: undefined, queue: "q" })
+        .success
+    ).toBe(false);
+    expect(
+      watchSpecSchema.safeParse({
+        ...specs.backlog_drain,
+        queue: undefined,
+        runId: "run_123",
+      }).success
+    ).toBe(false);
+    // A depth kind needs its threshold; `backlog_drain` is not a threshold in disguise.
+    expect(
+      watchSpecSchema.safeParse({ ...specs.backlog_drain, kind: "queue_depth_above" }).success
+    ).toBe(false);
+  });
+
+  it("still separates the run cadence floor from the aggregate one, kind by kind", () => {
+    for (const [kind, spec] of Object.entries(specs)) {
+      const runState = kind.startsWith("run_");
+      expect(
+        watchSpecSchema.safeParse({ ...spec, checkEveryMinutes: 1 }).success,
+        `${kind} at 1 minute`
+      ).toBe(runState);
+    }
+  });
 });
 
 describe("watchIdentity", () => {

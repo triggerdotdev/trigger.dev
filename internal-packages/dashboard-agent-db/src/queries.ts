@@ -34,6 +34,8 @@ export interface ChatListItem {
   title: string;
   pinnedAt: Date | null;
   lastMessageAt: Date | null;
+  /** When the owner last had this chat open. Older than `lastMessageAt` means unread. */
+  lastReadAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown>;
@@ -50,6 +52,7 @@ export async function listChats(
       title: chats.title,
       pinnedAt: chats.pinnedAt,
       lastMessageAt: chats.lastMessageAt,
+      lastReadAt: chats.lastReadAt,
       createdAt: chats.createdAt,
       updatedAt: chats.updatedAt,
       metadata: chats.metadata,
@@ -112,6 +115,30 @@ export async function countUserMessages(
         eq(chatMessages.role, "user"),
         notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
         params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
+      )
+    );
+  return rows[0]?.count ?? 0;
+}
+
+/**
+ * Chats whose transcript moved on after their owner last looked. A watch wake is one way
+ * that happens; an answer that landed while the panel was closed is another, and the panel
+ * shows them the same way — a dot on the launcher, the chat lifted and highlighted.
+ */
+export async function countChatsWithUnreadWork(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chats)
+    .where(
+      and(
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`${chats.lastMessageAt} is not null`,
+        sql`(${chats.lastReadAt} is null or ${chats.lastMessageAt} > ${chats.lastReadAt})`
       )
     );
   return rows[0]?.count ?? 0;
@@ -518,7 +545,7 @@ export async function appendChatMessageOnce(
     chatId: string;
     userId: string;
     organizationId?: string;
-    message: { id: string };
+    message: { id: string; role: string };
   }
 ): Promise<boolean> {
   return appendOneMessage(db, {
@@ -537,7 +564,7 @@ export async function appendChatMessageOnce(
  */
 export async function appendChatMessageOnceByChatId(
   db: DashboardAgentDbOrTx,
-  params: { chatId: string; message: { id: string } }
+  params: { chatId: string; message: { id: string; role: string } }
 ): Promise<boolean> {
   return appendOneMessage(db, { chatId: params.chatId, message: params.message, scope: [] });
 }
@@ -741,6 +768,65 @@ export async function upsertInvestigationRevision(
   return { ok: false, error: existing.length > 0 ? "context_mismatch" : "not_found" };
 }
 
+export type SeedInvestigationResult =
+  | { ok: true; id: string; created: boolean }
+  | { ok: false; error: "context_mismatch" };
+
+/**
+ * Open an investigation under an id the caller chose, or report that it is already open.
+ *
+ * The wake and the investigating lane both call this with the same derived id, so
+ * whichever runs first opens the row and the other one finds it. A row under that id in
+ * another chat or environment is refused rather than revised.
+ */
+export async function seedInvestigation(
+  db: DashboardAgentDbOrTx,
+  params: {
+    id: string;
+    chatId: string;
+    projectRef: string;
+    environmentRef: string;
+    state: unknown;
+  }
+): Promise<SeedInvestigationResult> {
+  const inserted = await db
+    .insert(investigations)
+    .values({
+      id: params.id,
+      chatId: params.chatId,
+      projectRef: params.projectRef,
+      environmentRef: params.environmentRef,
+      revision: 0,
+      state: params.state,
+    })
+    .onConflictDoNothing({ target: investigations.id })
+    .returning({ id: investigations.id });
+
+  if (inserted[0]) return { ok: true, id: inserted[0].id, created: true };
+
+  const rows = await db
+    .select({
+      id: investigations.id,
+      chatId: investigations.chatId,
+      projectRef: investigations.projectRef,
+      environmentRef: investigations.environmentRef,
+    })
+    .from(investigations)
+    .where(eq(investigations.id, params.id))
+    .limit(1);
+
+  const existing = rows[0];
+  if (
+    !existing ||
+    existing.chatId !== params.chatId ||
+    existing.projectRef !== params.projectRef ||
+    existing.environmentRef !== params.environmentRef
+  ) {
+    return { ok: false, error: "context_mismatch" };
+  }
+  return { ok: true, id: existing.id, created: false };
+}
+
 /** Structural: this package stores the transcript, the UI types it. */
 export type InvestigationCardMessage = {
   id: string;
@@ -806,30 +892,6 @@ export async function getInvestigation(
     .select()
     .from(investigations)
     .where(eq(investigations.id, params.id))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
- * The wake-to-turn hand-off: the turn revises this row instead of opening a second
- * card. The window keeps an abandoned card from being picked up as this watch's.
- */
-export async function findOpenInvestigationForChat(
-  db: DashboardAgentDb,
-  params: { chatId: string; createdAfter: Date }
-): Promise<Investigation | null> {
-  const rows = await db
-    .select()
-    .from(investigations)
-    .where(
-      and(
-        eq(investigations.chatId, params.chatId),
-        sql`${investigations.state}->>'outcome' = 'in_progress'`,
-        // A string bind: postgres-js won't serialize a Date into a raw fragment.
-        sql`${investigations.createdAt} >= ${params.createdAfter.toISOString()}::timestamptz`
-      )
-    )
-    .orderBy(desc(investigations.createdAt))
     .limit(1);
   return rows[0] ?? null;
 }

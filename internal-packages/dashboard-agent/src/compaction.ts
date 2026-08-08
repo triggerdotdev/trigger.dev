@@ -19,8 +19,8 @@ import {
  * If the model loses an `investigationId` it opens a SECOND card for the same
  * question, which is the failure this module exists to prevent.
  *
- * Nothing else is pinned. Finished work is the summary's job: a pin has to be exact,
- * and only a live card is both exact and needed verbatim.
+ * Nothing else is pinned. Finished work and watches are the summary's job: a pin has
+ * to be exact, and only a live card is both exact and needed verbatim.
  */
 
 /**
@@ -61,15 +61,16 @@ const SUMMARY_MODEL = "anthropic:claude-haiku-4-5" as const;
  */
 const SUMMARY_MAX_OUTPUT_TOKENS = 1_000;
 
-const SUMMARY_INSTRUCTION = `You are compacting a support conversation between a user and an agent that reads a Trigger.dev dashboard, so the agent can keep going with a shorter history.
+export const SUMMARY_INSTRUCTION = `You are compacting a support conversation between a user and an agent that reads a Trigger.dev dashboard, so the agent can keep going with a shorter history.
 
 Write a summary in under 400 words, as notes rather than prose. Keep, in this order:
 1. What the user is trying to do, in their own terms, and anything they asked to be remembered.
 2. Facts already established, with the run ids, queue names, task identifiers, error fingerprints and numbers they rest on. Never restate a number you cannot see.
 3. Any investigation that is open: its investigationId, its title and its current outcome.
-4. What was asked most recently and what is still unanswered.
+4. Any watch the transcript records — what it was set up to watch, and what it said if it reported. Write it as what the transcript recorded, never as what is true now: a watch can expire or be cancelled without saying so here, so never present one as current.
+5. What was asked most recently and what is still unanswered.
 
-Drop tool mechanics, retries, and anything already superseded. Do not add advice, and do not invent anything that is not in the transcript.`;
+Drop tool mechanics, retries, and anything already superseded. Do not add advice, and do not invent anything that is not in the transcript. Everything you write is a record of what the transcript said, not a claim about the present.`;
 
 /** A summary that reads as a summary, and never as the user's next question. */
 export function summaryMessage(summary: string, durableState?: string): ModelMessage {
@@ -134,6 +135,12 @@ export type DurableState = {
  * Only an `in_progress` card is state: a concluded or inconclusive one is finished
  * work the summary already covers, and pinning it would grow the note forever and
  * invite the model to keep revising a card that closed long ago.
+ *
+ * Watches are deliberately not read from here. A watch's lifecycle is server-side —
+ * it can fire, expire, or be cancelled with nothing written back into the transcript
+ * — so an old confirmation block cannot tell us whether it is still running. There is
+ * no watch state on the store either, and nothing about a watch depends on the model
+ * remembering it, so the summary is where a watch belongs.
  */
 export function collectDurableState(uiMessages: UIMessage[]): DurableState {
   const investigations: PinnedInvestigation[] = [];

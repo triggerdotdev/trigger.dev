@@ -194,7 +194,9 @@ describe("an errored tool result", () => {
   });
 
   it("reads the derived category once the message is gone", () => {
-    expect(toolResultErrored({ errorCategory: "timeout", error: { redacted: "error" } })).toBe(true);
+    expect(toolResultErrored({ errorCategory: "timeout", error: { redacted: "error" } })).toBe(
+      true
+    );
     expect(toolResultErrored({ error: { name: "TimeoutError" } })).toBe(false);
     expect(toolResultErrored({ id: "run_1" })).toBe(false);
     expect(toolResultErrored("boom")).toBe(false);

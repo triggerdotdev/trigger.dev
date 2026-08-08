@@ -1,10 +1,12 @@
 import type { ToolSet } from "ai";
 import { buildRepoTools } from "./repo-tools";
+import { buildAlertTools } from "./tool-alerts";
 import { buildApiTools } from "./tool-api";
 import { createApiClient } from "./tool-api-client";
 import { createInvestigationRenderer } from "./tool-investigations";
 import { buildNavigationTools } from "./tool-navigation";
 import { createSourceReadLedger } from "./tool-source-ledger";
+import { buildWatchTools } from "./watch-tools";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 export type { DashboardAgentToolContext } from "./tool-context";
@@ -41,6 +43,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   const apiTools: ToolSet = {
     ...buildApiTools({ ctx, client, renderInvestigations }),
     ...buildNavigationTools(ctx),
+    ...buildWatchTools(),
+    ...buildAlertTools({ ctx, client }),
   };
 
   // Code mode: when the project has a connected repo, add the source tools.

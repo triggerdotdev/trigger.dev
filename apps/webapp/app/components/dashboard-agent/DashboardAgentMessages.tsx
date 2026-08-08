@@ -16,14 +16,17 @@ import {
   ChatText,
   ChatTranscript,
   ChatTurn,
+  ChatWakeSlot,
 } from "./chat-layout";
 import { reuseWinners } from "./investigation-winners";
 import { stripModelImages } from "./model-markdown";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
-import { answerContinuesAfter } from "./view-actions";
+import { answerContinuesAfter, turnAlreadyOffersWatch } from "./view-actions";
+import { latestRevisionBlocks } from "./view-blocks";
 import { ViewBlocks } from "./view-catalog";
+import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 export type { TurnActivity };
 
@@ -36,6 +39,8 @@ export type DashboardAgentMessagesProps = {
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  /** Optional: without it a wake banner falls back to kind-agnostic wording. */
+  watches?: WakeWatch[];
 };
 
 // Returns the same reference when there are no `step-start` parts, so memoization holds.
@@ -211,12 +216,14 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
   investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
 }) {
@@ -231,17 +238,28 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   const parts = message.parts ?? [];
   if (parts.length === 0) return null;
 
+  // Null for a part that renders no view at all; an empty array for one whose blocks were
+  // all superseded. Both skip the part, only the first falls through to the other renderers.
+  const blocksByPart = parts.map((part, i) => {
+    const raw = blocksFor(part);
+    return raw
+      ? withoutSupersededInvestigations(raw, `${message.id}:${i}`, investigationWinners)
+      : null;
+  });
+  // One answer for the whole turn: two `render_view` parts each deciding for themselves
+  // would show the watch button twice. `ViewBlocks` collapses revisions the same way.
+  const watchOfferedInTurn = turnAlreadyOffersWatch(
+    blocksByPart
+      .filter((blocks): blocks is unknown[] => blocks !== null)
+      .map((blocks) => latestRevisionBlocks(blocks as never))
+  );
+
   const body: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
 
-    const rawBlocks = blocksFor(part);
-    if (rawBlocks) {
-      const blocks = withoutSupersededInvestigations(
-        rawBlocks,
-        `${message.id}:${i}`,
-        investigationWinners
-      );
+    const blocks = blocksByPart[i];
+    if (blocks) {
       if (blocks.length > 0) {
         body.push(
           <ChatCardSlot key={i}>
@@ -251,6 +269,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
               resolveUri={resolveUri}
               pagePaths={pagePaths}
               answered={answerContinuesAfter(parts as never, i)}
+              watchOfferedInTurn={watchOfferedInTurn}
             />
           </ChatCardSlot>
         );
@@ -275,6 +294,21 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, resolveUri));
   }
 
+  const wake = wakeRefFromMessageId(message.id);
+  if (wake) {
+    return (
+      <ChatTurn>
+        <ChatWakeSlot
+          banner={
+            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
+          }
+        >
+          {body}
+        </ChatWakeSlot>
+      </ChatTurn>
+    );
+  }
+
   return <ChatTurn>{body}</ChatTurn>;
 });
 
@@ -287,6 +321,7 @@ export function DashboardAgentTurns({
   onIntent,
   resolveUri,
   pagePaths,
+  watches,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
@@ -307,6 +342,7 @@ export function DashboardAgentTurns({
           onIntent={onIntent}
           resolveUri={resolveUri}
           pagePaths={pagePaths}
+          watches={watches}
           investigationWinners={investigationWinners}
         />
       ))}

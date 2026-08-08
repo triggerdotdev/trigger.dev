@@ -3,6 +3,7 @@ import {
   investigationBlockSchema,
   safeParseTriggerUri,
   VIEW_BLOCK_VERSION,
+  WATCH_MAX_HOURS,
   type InvestigationAction,
   type InvestigationBlockBodyInput,
   type InvestigationCapabilities,
@@ -38,6 +39,9 @@ export function showCodeAskPrompt(args: { path: string; line: number; sha: strin
     `Don't restate the investigation.`
   );
 }
+
+/** Defaults the "Watch for a repeat" card shows, which the user can change. */
+const RECURRENCE_WATCH = { checkEveryMinutes: 15, maxHours: WATCH_MAX_HOURS } as const;
 
 /**
  * The card's typed next actions, decided here and never by the model. "Show code"
@@ -82,6 +86,27 @@ export function investigationCapabilities(
 
   const errorUri = cited.find((evidence) => evidence.kind === "error")?.uri;
 
+  // "Watch for a repeat" needs a cited error fingerprint to pre-fill from, so without
+  // one it is left off.
+  const parsedError = errorUri ? safeParseTriggerUri(errorUri) : undefined;
+  if (state.outcome === "concluded" && parsedError?.success && parsedError.data.kind === "error") {
+    actions.push({
+      kind: "watch_recurrence",
+      label: "Watch for a repeat",
+      intent: {
+        kind: "watch",
+        // A pre-fill only: emitting the spec creates nothing.
+        spec: {
+          kind: "error_recurrence",
+          fingerprint: parsedError.data.fingerprint,
+          checkEveryMinutes: RECURRENCE_WATCH.checkEveryMinutes,
+          maxHours: RECURRENCE_WATCH.maxHours,
+          note: `A repeat of: ${state.title}`,
+        },
+      },
+    });
+  }
+
   if (errorUri) {
     actions.push({
       kind: "view_similar",
@@ -124,7 +149,17 @@ export function createInvestigationRenderer(
    * back. `continueId` is only a pointer; the turn's own closure wins when set.
    */
   return async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
-    if (!blocks.some((block) => block.type === "investigation")) return { blocks };
+    const investigationBlocks = blocks.filter((block) => block.type === "investigation").length;
+    if (investigationBlocks === 0) return { blocks };
+
+    // One id is assigned per call, so a second block in the same view would be written
+    // as the next revision of the first: one card carrying two subjects.
+    if (investigationBlocks > 1) {
+      return {
+        error:
+          "A view holds at most one investigation block, and this one has more than one. Render one investigation per call, passing its own investigationId back each time.",
+      };
+    }
 
     if (!ctx.investigations) {
       return { error: "Investigations aren't available on this turn, so I can't render one." };

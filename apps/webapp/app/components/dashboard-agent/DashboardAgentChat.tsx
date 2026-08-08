@@ -1,8 +1,13 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import type { AgentIntent, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
-import { useNavigate } from "@remix-run/react";
+import {
+  isWatchRequestMessageId,
+  type AgentIntent,
+  type SuggestedPrompt,
+  type WatchSpec,
+} from "@internal/dashboard-agent-contracts";
+import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "~/components/primitives/Toast";
@@ -14,7 +19,7 @@ import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessa
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters } from "./navigate-target";
-import { pendingNavigateIntents } from "./pending-intents";
+import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
 import { retryAction } from "./retry-action";
 import {
@@ -22,8 +27,11 @@ import {
   hasOpenInvestigation,
   pollSettledTranscript,
 } from "./settled-transcript";
+import { takeNavigateIntent } from "./turn-navigation";
+import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
+import { WatchChips, type WatchChip } from "./WatchChips";
 
 // Resuming with `lastEventId` stops the `.out` stream replaying the previous turn.
 export type DashboardAgentSession = {
@@ -54,9 +62,14 @@ export function DashboardAgentChat({
   currentPage,
   pendingFirstMessage,
   streaming,
-  prefill,
+  sendRequest,
   promotedPrompt,
+  watches,
   pagePaths,
+  watchCard,
+  appendedMessages,
+  onWatchIntent,
+  onCancelWatch,
   onTurnSettled,
   onActivityChange,
 }: {
@@ -73,23 +86,29 @@ export function DashboardAgentChat({
   // Undefined for head-started and resumed chats.
   pendingFirstMessage?: string;
   streaming?: boolean;
-  // `seq` makes each request distinct so the same text can be sent twice.
-  prefill?: { text: string; seq: number };
+  // A prompt the user asked for by clicking. `seq` makes each request distinct so the same
+  // text can be sent twice.
+  sendRequest?: { text: string; seq: number };
   promotedPrompt?: SuggestedPrompt;
+  watches: WatchChip[];
   pagePaths?: Record<string, string>;
+  watchCard?: React.ReactNode;
+  appendedMessages?: { messages: UIMessage[]; seq: number };
+  /** Nothing is persisted until the user submits the card. */
+  onWatchIntent?: (spec: WatchSpec) => void;
+  onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
 
-  const prefilledSeq = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!prefill || prefilledSeq.current === prefill.seq) return;
-    prefilledSeq.current = prefill.seq;
-    setInput(prefill.text);
-  }, [prefill]);
+  // The path this chat last rendered on. React never unmounts on a page teardown, so an
+  // unmount whose live URL has moved is the router having navigated out from under it.
+  const renderedPathRef = useRef(location.pathname);
+  renderedPathRef.current = location.pathname;
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
@@ -174,6 +193,20 @@ export function DashboardAgentChat({
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
 
+  // Once per `seq`: the append is already persisted, so a replay would duplicate it.
+  // Ids are stable, so anything already in the transcript is skipped.
+  const appendedSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!appendedMessages || appendedSeq.current === appendedMessages.seq) return;
+    appendedSeq.current = appendedMessages.seq;
+    setMessages((current) => {
+      const missing = appendedMessages.messages.filter(
+        (message) => !current.some((existing) => existing.id === message.id)
+      );
+      return missing.length === 0 ? current : [...current, ...missing];
+    });
+  }, [appendedMessages, setMessages]);
+
   const sentFirst = useRef(false);
   useEffect(() => {
     if (pendingFirstMessage && !sentFirst.current) {
@@ -193,8 +226,19 @@ export function DashboardAgentChat({
     [isStreaming, atMessageCap, sendMessage]
   );
 
+  // The panel only sends when the chat can take it, so this never lands mid-turn.
+  const sentRequestSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!sendRequest || sentRequestSeq.current === sendRequest.seq) return;
+    sentRequestSeq.current = sendRequest.seq;
+    submit(sendRequest.text);
+  }, [sendRequest, submit]);
+
   const retry = useCallback(() => {
-    const action = retryAction(messages);
+    // A watch's consent record is a user message nobody typed, so retry never treats it as one.
+    const action = retryAction(
+      messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
+    );
     if (!action) return;
     clearError();
     if (action.kind === "regenerate") {
@@ -232,6 +276,9 @@ export function DashboardAgentChat({
         case "ask":
           submit(intent.prompt);
           return;
+        case "watch":
+          onWatchIntent?.(intent.spec);
+          return;
         case "navigate":
           void goTo(intent);
           return;
@@ -239,7 +286,7 @@ export function DashboardAgentChat({
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, goTo]
+    [submit, goTo, onWatchIntent]
   );
 
   // Seeded from the loaded transcript before first render, so history never re-navigates.
@@ -248,16 +295,53 @@ export function DashboardAgentChat({
     navigatedRef.current = new Set();
     pendingNavigateIntents(initialMessages, navigatedRef.current);
   }
+  // Where the running turn was asked for. Never cleared on settle: the navigate intent can be
+  // committed alongside the status going ready, and it is the started-at path it belongs to.
+  const turnStartedPathRef = useRef<string | null>(null);
+  const turnWasInFlight = useRef(false);
   useEffect(() => {
-    const pending = pendingNavigateIntents(messages, navigatedRef.current!);
-    const target = pending.at(-1);
+    const inFlight = status === "submitted" || status === "streaming";
+    if (inFlight && !turnWasInFlight.current) turnStartedPathRef.current = renderedPathRef.current;
+    turnWasInFlight.current = inFlight;
+  }, [status]);
+
+  useEffect(() => {
+    const target = takeNavigateIntent({
+      messages,
+      handled: navigatedRef.current!,
+      startedPath: turnStartedPathRef.current,
+      currentPath: renderedPathRef.current,
+    });
     if (target) void goTo(target);
   }, [messages, goTo]);
+
+  const watchProposedRef = useRef<Set<string> | null>(null);
+  if (watchProposedRef.current === null) {
+    watchProposedRef.current = new Set();
+    pendingWatchIntents(initialMessages, watchProposedRef.current);
+  }
+  useEffect(() => {
+    const pending = pendingWatchIntents(messages, watchProposedRef.current!);
+    const proposed = pending.at(-1);
+    if (proposed) onWatchIntent?.(proposed.spec);
+  }, [messages, onWatchIntent]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
+
+  const teardownRef = useRef<() => void>(() => {});
+  teardownRef.current = () => {
+    if (status !== "streaming" && status !== "submitted") return;
+    const reason = unmountTeardown({
+      renderedPath: renderedPathRef.current,
+      livePath: window.location.pathname,
+    });
+    if (!teardownCancelsTurn(reason)) return;
+    stop();
+  };
+  useEffect(() => () => teardownRef.current(), []);
 
   // Read by the settle effect, which must not re-run when the transcript changes.
   const messagesRef = useRef(messages);
@@ -288,6 +372,10 @@ export function DashboardAgentChat({
 
   return (
     <>
+      <WatchChips
+        watches={watches.filter((watch) => watch.status === "active")}
+        onCancel={onCancelWatch}
+      />
       {messages.length === 0 && !pendingFirstMessage ? (
         <DashboardAgentHero
           onSelect={submit}
@@ -303,9 +391,11 @@ export function DashboardAgentChat({
           onDismissError={clearError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
+          watches={watches}
           resolveUri={resolveUri}
         />
       )}
+      {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
       {quota.kind === "reached" ? (
         <AgentUpgradeBlock
           limit={quota.limit}
@@ -325,7 +415,7 @@ export function DashboardAgentChat({
             onSubmit={() => submit(input)}
             onStop={stop}
             isStreaming={isStreaming}
-            focusKey={prefill?.seq}
+            focusKey={sendRequest?.seq}
             context={
               <DashboardAgentContextBanner
                 projectSlug={projectSlug}

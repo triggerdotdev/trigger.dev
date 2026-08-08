@@ -1,5 +1,6 @@
 import {
   appendChatMessageOnceByChatId,
+  countChatsWithUnreadWork,
   countUserMessages,
   createChat,
   createDashboardAgentDb,
@@ -8,9 +9,11 @@ import {
   getInvestigation,
   investigationSettlementMessageId,
   persistMessages,
+  seedInvestigation,
   persistTurn,
   settleInvestigationAndCloseCard,
   upsertInvestigationRevision,
+  watchInvestigationId,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
@@ -71,6 +74,12 @@ afterEach(async () => {
 function textMessage(id: string, text = id) {
   return { id, role: "assistant" as const, parts: [{ type: "text", text }] };
 }
+
+// Compile-time: the insert reads `role` off the body and throws without one, so a
+// message that satisfies the signature must never be able to lack it.
+const _roleIsRequired = (message: { id: string }) =>
+  // @ts-expect-error a message with no role is not appendable
+  appendChatMessageOnceByChatId(agentDb, { chatId: "chat_x", message });
 
 function toolMessage(id: string, state: "input-available" | "output-available") {
   return {
@@ -152,14 +161,14 @@ describe("invariant 1: a repeated message id creates no row and keeps its positi
 
       await persistMessages(agentDb, { chatId, messages: [textMessage("u1")] });
       expect(
-        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("ev:1") })
+        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("wake:w1") })
       ).toBe(true);
 
       const before = await rows(prisma, chatId);
 
       // The same durable event, redelivered.
       expect(
-        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("ev:1") })
+        await appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage("wake:w1") })
       ).toBe(false);
 
       expect(await rows(prisma, chatId)).toEqual(before);
@@ -196,7 +205,7 @@ describe("invariant 2: concurrent different messages get distinct positions", ()
       const chatId = "chat_concurrent";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
-      const ids = Array.from({ length: 8 }, (_, i) => `ev:${i}`);
+      const ids = Array.from({ length: 8 }, (_, i) => `wake:w${i}`);
       const results = await Promise.all(
         ids.map((id) =>
           appendChatMessageOnceByChatId(agentDb, { chatId, message: textMessage(id) })
@@ -277,10 +286,10 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
       await persistMessages(agentDb, { chatId, messages: [textMessage("u1")] });
-      // A durable event, appended outside a turn.
+      // A durable event: the wake that actually fired.
       await appendChatMessageOnceByChatId(agentDb, {
         chatId,
-        message: textMessage("ev:fired", "send-order-receipt resolved."),
+        message: textMessage("wake:watch_1:fired", "The watch on send-order-receipt resolved."),
       });
       const before = await rows(prisma, chatId);
 
@@ -288,7 +297,7 @@ describe("invariant 3: an ordinary transcript write can never change a stored me
       // not a finalisation, so it must not be able to rewrite it.
       await persistMessages(agentDb, {
         chatId,
-        messages: [textMessage("u1"), textMessage("ev:fired", "something else entirely")],
+        messages: [textMessage("u1"), textMessage("wake:watch_1:fired", "something else entirely")],
       });
 
       expect(await rows(prisma, chatId)).toEqual(before);
@@ -573,10 +582,10 @@ describe("a write can no longer lose a message another process appended", () => 
       const snapshot = [textMessage("u1"), textMessage("a1")];
       await persistMessages(agentDb, { chatId, messages: snapshot });
 
-      // Another process appends while the turn is running.
+      // Another process — a wake delivery — appends while the turn is running.
       await appendChatMessageOnceByChatId(agentDb, {
         chatId,
-        message: textMessage("ev:fired"),
+        message: textMessage("wake:watch_1:fired"),
       });
 
       // The turn ends and writes its own snapshot plus what it produced.
@@ -586,12 +595,12 @@ describe("a write can no longer lose a message another process appended", () => 
         session: { publicAccessToken: "pat_store", lastEventId: "1", runId: "run_store" },
       });
 
-      // It is still there, and sits where it happened: after the turn's snapshot,
+      // The wake is still there, and sits where it happened: after the turn's snapshot,
       // before the reply the turn went on to produce.
       expect((await transcript(chatId)).map((message) => message.id)).toEqual([
         "u1",
         "a1",
-        "ev:fired",
+        "wake:watch_1:fired",
         "a2",
       ]);
     },
@@ -659,6 +668,40 @@ describe("a write can no longer lose a message another process appended", () => 
   );
 });
 
+describe("countChatsWithUnreadWork", () => {
+  postgresTest(
+    "counts a chat whose transcript moved on after its owner last looked",
+    async ({ prisma, postgresContainer }) => {
+      const chatId = "chat_unread_work";
+      await boot(prisma, postgresContainer.getConnectionUri(), chatId);
+      const scope = { organizationId: ORG_ID, userId: USER_ID };
+
+      // A chat nobody has written in is not unread.
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(0);
+
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a1")] });
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(1);
+
+      // Opening it clears the state...
+      await prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.chats set last_read_at = now() where id = $1`,
+        chatId
+      );
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(0);
+
+      // ...until the next answer lands behind a closed panel.
+      await persistMessages(agentDb, { chatId, messages: [textMessage("a2")] });
+      expect(await countChatsWithUnreadWork(agentDb, scope)).toBe(1);
+
+      // Another user's chat is never counted here.
+      expect(
+        await countChatsWithUnreadWork(agentDb, { ...scope, userId: "user_someone_else" })
+      ).toBe(0);
+    },
+    30_000
+  );
+});
+
 describe("countUserMessages", () => {
   postgresTest(
     "counts a user's own messages, and only those",
@@ -677,9 +720,8 @@ describe("countUserMessages", () => {
 
       await persistMessages(agentDb, {
         chatId: "chat_a",
-        // A consent record is a user message but not a turn the user spent, so the
-        // quota's prefix filter must skip it.
-        messages: [userMessage("u1"), textMessage("a1"), userMessage("watch-request:req_1")],
+        // A watch's consent record is a user message but not a turn the user spent.
+        messages: [userMessage("u1"), textMessage("a1"), userMessage("watch-request:watch_1")],
       });
       await persistMessages(agentDb, { chatId: "chat_b", messages: [userMessage("u2")] });
       await persistMessages(agentDb, { chatId: "chat_gone", messages: [userMessage("u3")] });
@@ -694,6 +736,46 @@ describe("countUserMessages", () => {
       expect(
         await countUserMessages(agentDb, { organizationId: "org_elsewhere", userId: USER_ID })
       ).toBe(0);
+    },
+    30_000
+  );
+});
+
+/**
+ * A consented watch seeds its card in one run and revises it in another, with no
+ * hand-off between them: both name the row off the watch. So seeding twice has to
+ * converge on one card, and a row under that id in another chat must be refused
+ * rather than revised.
+ */
+describe("seedInvestigation", () => {
+  postgresTest(
+    "opens the watch's card once and hands the same row back after that",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri(), "chat_seed");
+      await createChat(agentDb, {
+        id: "chat_seed_other",
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      const id = watchInvestigationId("watch_seed");
+      const seed = (chatId: string) =>
+        seedInvestigation(agentDb, {
+          id,
+          chatId,
+          projectRef: PROJECT_REF,
+          environmentRef: ENV_REF,
+          state: openState(),
+        });
+
+      expect(await seed("chat_seed")).toMatchObject({ ok: true, id, created: true });
+      // The investigating lane, arriving after the wake already opened it.
+      expect(await seed("chat_seed")).toMatchObject({ ok: true, id, created: false });
+      expect(await seed("chat_seed_other")).toEqual({ ok: false, error: "context_mismatch" });
+
+      const row = await getInvestigation(agentDb, { id });
+      expect(row?.chatId).toBe("chat_seed");
+      expect(row?.revision).toBe(0);
     },
     30_000
   );
