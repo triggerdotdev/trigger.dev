@@ -25,6 +25,7 @@ import {
   REPORT_GLYPH,
   REPORT_LABELS,
   REPORT_SECTION_ORDER,
+  reportTrust,
 } from "~/presenters/v3/reports/report-layout";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
@@ -61,7 +62,7 @@ const untrustworthyReport: ReportViewModel = {
       ? { ...metric, value: 21 * 60_000, severity: "crit" }
       : { ...metric, annotation: undefined }
   ),
-  facts: { trustworthy: false, staleReason: "telemetry_stale" },
+  facts: { trustworthy: false, untrustworthyReason: "telemetry_stale" },
   links: [{ key: "status", label: "status.trigger.dev", url: "https://status.trigger.dev" }],
   footer: [{ code: "check_control_plane", link: "status" }],
 };
@@ -204,10 +205,13 @@ describe("markdown carries meaning without colour", () => {
     expect(degraded).toContain("🟢");
     expect(degraded).toContain(REPORT_GLYPH.up);
 
+    const trust = reportTrust(untrustworthyReport);
+    // The caveat names the reason: a report the pipeline could name must not fall back to "unverified".
+    expect(trust).toEqual({ badge: "stale data", note: expect.stringContaining("is stale") });
     const stale = renderReportMarkdown(untrustworthyReport);
     expect(stale).toContain("🚩");
-    expect(stale).toContain(REPORT_LABELS.staleBadge);
-    expect(stale).toContain(REPORT_LABELS.staleNote);
+    expect(stale).toContain(trust!.badge);
+    expect(stale).toContain(trust!.note);
   });
 
   it("shows a genuinely-unknown state as neutral, not as a tick", () => {
