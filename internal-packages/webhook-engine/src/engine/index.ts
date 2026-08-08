@@ -234,14 +234,14 @@ export class WebhookEngine {
 
     const claimed = await this.frontGate.set(
       gateKey,
-      id,
+      friendlyId,
       "EX",
       this.#frontGateClaimTtlSeconds(),
       "NX"
     );
     if (claimed !== "OK") {
       const existing = await this.frontGate.get(gateKey);
-      return { outcome: "duplicate", deliveryId: existing ?? id };
+      return { outcome: "duplicate", deliveryId: existing ?? friendlyId };
     }
 
     const { filtered, reason } = this.#evaluateFilter(
@@ -256,6 +256,7 @@ export class WebhookEngine {
       ([key, value]) => key.toLowerCase() === "x-trigger-test" && Boolean(value)
     );
 
+    let rowCreated = false;
     try {
       await this.prisma.webhookDelivery.create({
         data: {
@@ -278,6 +279,7 @@ export class WebhookEngine {
           filterReason: reason,
         },
       });
+      rowCreated = true;
 
       if (filtered) {
         this.deliveryFilteredCounter.add(1);
@@ -291,11 +293,19 @@ export class WebhookEngine {
       }
     } catch (error) {
       await this.frontGate.del(gateKey).catch(() => {});
+      if (rowCreated) {
+        await this.prisma.webhookDelivery
+          .update({
+            where: { id_createdAt: { id, createdAt } },
+            data: { status: "FAILED", errorMessage: String(error), processedAt: new Date() },
+          })
+          .catch(() => {});
+      }
       return { outcome: "enqueue_failed", error: String(error) };
     }
 
     await this.frontGate
-      .set(gateKey, id, "EX", this.#frontGateTtlSeconds(artifact))
+      .set(gateKey, friendlyId, "EX", this.#frontGateTtlSeconds(artifact))
       .catch(() => {});
 
     return { outcome: "accepted", deliveryId: id, deliveryFriendlyId: friendlyId };
