@@ -12,11 +12,11 @@ import {
 import {
   canUseDashboardAgentEmailAlerts,
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
+  subscribeChannelToWatchAlerts,
   watchAlertDeduplicationKey,
 } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
-import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
 
 /**
  * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only
@@ -174,14 +174,14 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const service = new CreateAlertChannelService();
-    const channel = await service.call(environment.project.externalRef, userId, {
-      name: `Watch alerts for ${email}`,
-      alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
-      environmentTypes: [environment.type],
-      // Stable per (email, project), so asking twice re-enables one channel.
+    const channel = await subscribeChannelToWatchAlerts({
+      userId,
+      email,
+      // Stable per (email, project), so asking twice re-enables one channel and asking from
+      // a second environment adds that environment to it.
       deduplicationKey: watchAlertDeduplicationKey(email),
-      channel: { type: "EMAIL", email },
+      environmentType: environment.type,
+      project: environment.project,
     });
 
     return json({ id: channel.id, type: channel.type, target: email, enabled: channel.enabled });
