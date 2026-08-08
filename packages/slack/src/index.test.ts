@@ -45,7 +45,8 @@ describe("slack channel", () => {
         deliveryId: "d1",
       }
     );
-    const values = (msg?.blocks as any[]).flatMap((b) => b.elements ?? []).map((e: any) => e.value);
+    expect(msg).not.toBeNull();
+    const values = (msg!.blocks as any[]).flatMap((b) => b.elements ?? []).map((e: any) => e.value);
     expect(values).toContain("call-1::approve");
     expect(values).toContain("call-1::deny");
   });
@@ -129,7 +130,7 @@ describe("slack channel", () => {
     );
     expect(calls[0]?.url).toBe("https://hooks.slack.test/r/1");
     expect(calls[0]?.body.replace_original).toBe(true);
-    const types = (calls[0]?.body.blocks as Array<{ type: string }>).map((b) => b.type);
+    const types = (calls[0]!.body.blocks as Array<{ type: string }>).map((b) => b.type);
     expect(types).not.toContain("actions");
     expect(JSON.stringify(calls[0]?.body.blocks)).toContain("Approved");
     vi.unstubAllGlobals();

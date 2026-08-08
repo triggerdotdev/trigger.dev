@@ -326,7 +326,7 @@ function defaultSlackInbound(event: SlackMessageEvent): string {
  */
 export function toSlackMrkdwn(md: string): string {
   return md
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "<$2|$1>")
+    .replace(/\[([^\]\n]{1,300})\]\((https?:\/\/[^)\s]{1,2000})\)/g, "<$2|$1>")
     .replace(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm, "*$1*")
     .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
     .replace(/__([^_\n]+)__/g, "*$1*")
