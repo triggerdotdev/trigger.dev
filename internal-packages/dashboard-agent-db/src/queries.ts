@@ -545,7 +545,7 @@ export async function appendChatMessageOnce(
     chatId: string;
     userId: string;
     organizationId?: string;
-    message: { id: string };
+    message: { id: string; role: string };
   }
 ): Promise<boolean> {
   return appendOneMessage(db, {
@@ -564,7 +564,7 @@ export async function appendChatMessageOnce(
  */
 export async function appendChatMessageOnceByChatId(
   db: DashboardAgentDbOrTx,
-  params: { chatId: string; message: { id: string } }
+  params: { chatId: string; message: { id: string; role: string } }
 ): Promise<boolean> {
   return appendOneMessage(db, { chatId: params.chatId, message: params.message, scope: [] });
 }

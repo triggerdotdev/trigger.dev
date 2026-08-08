@@ -75,6 +75,13 @@ function textMessage(id: string, text = id) {
   return { id, role: "assistant" as const, parts: [{ type: "text", text }] };
 }
 
+// Compile-time: the insert reads `role` off the body and throws without one, so a
+// message that satisfies the signature must never be able to lack it.
+() => {
+  // @ts-expect-error a message with no role is not appendable
+  void appendChatMessageOnceByChatId(agentDb, { chatId: "chat_x", message: { id: "m1" } });
+};
+
 function toolMessage(id: string, state: "input-available" | "output-available") {
   return {
     id,
