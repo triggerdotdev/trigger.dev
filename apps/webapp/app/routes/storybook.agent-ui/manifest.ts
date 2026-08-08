@@ -255,7 +255,16 @@ export const MANIFEST: GallerySection[] = [
     title: "Customize — stopped moving (no parameter)",
     group: "watch-card",
   },
-  { sectionId: "watch-card-confirmation", title: "Confirmation block", group: "watch-card" },
+  {
+    sectionId: "watch-card-confirmation",
+    title: "Confirmation block — both opt-ins took effect",
+    group: "watch-card",
+  },
+  {
+    sectionId: "watch-card-confirmation-degraded",
+    title: "Confirmation block — first check and email both unavailable",
+    group: "watch-card",
+  },
   {
     sectionId: "watch-card-one-shot-satisfied",
     title: "One-shot result — already true",
