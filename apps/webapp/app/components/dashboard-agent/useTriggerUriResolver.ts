@@ -1,7 +1,12 @@
 import { isTriggerUri } from "@internal/dashboard-agent-contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResolvedUri } from "./ReportView";
-import { MAX_RESOLVE_ATTEMPTS, planUriBatches, RESOLVE_RETRY_DELAY_MS } from "./resolve-uris";
+import {
+  MAX_RESOLVE_ATTEMPTS,
+  planUriBatches,
+  RESOLVE_RETRY_DELAY_MS,
+  shouldScheduleRetry,
+} from "./resolve-uris";
 
 /**
  * Synchronous facade over the panel's async `resolve-many` action: the first render of a URI
@@ -16,6 +21,7 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
   const inFlight = useRef(new Set<string>());
   const attempts = useRef(new Map<string, number>());
   const retryTimer = useRef<number | undefined>(undefined);
+  const mounted = useRef(true);
 
   const resolveUri = useCallback(
     (uri: string): ResolvedUri | null => {
@@ -27,6 +33,7 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
   );
 
   const record = useCallback((entries: Record<string, ResolvedUri | null>) => {
+    if (!mounted.current) return;
     answered.current = { ...answered.current, ...entries };
     setResolved((previous) => ({ ...previous, ...entries }));
   }, []);
@@ -72,7 +79,12 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
           }
           if (Object.keys(exhausted).length > 0) record(exhausted);
           // One timer for all batches; a render may never follow, so it can't be the trigger.
-          if (retryTimer.current === undefined) {
+          if (
+            shouldScheduleRetry({
+              mounted: mounted.current,
+              timerPending: retryTimer.current !== undefined,
+            })
+          ) {
             retryTimer.current = window.setTimeout(() => {
               retryTimer.current = undefined;
               flushRef.current();
@@ -92,12 +104,14 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
     flush();
   });
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       if (retryTimer.current !== undefined) window.clearTimeout(retryTimer.current);
-    },
-    []
-  );
+      retryTimer.current = undefined;
+    };
+  }, []);
 
   return resolveUri;
 }
