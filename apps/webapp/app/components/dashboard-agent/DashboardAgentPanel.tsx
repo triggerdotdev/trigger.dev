@@ -27,6 +27,8 @@ import type { SuggestedPrompt, WatchDraft, WatchSpec } from "@internal/dashboard
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
+import { escapeClosesPanel } from "./panel-escape";
+import { markChatListRead, unreadWorkCount } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
@@ -87,7 +89,7 @@ export function DashboardAgentPanel({
   newChatSeq?: number;
   promotedPrompt?: SuggestedPrompt;
   watchRequest?: { spec: WatchSpec; seq: number };
-  onChatRead?: (chatId: string) => void;
+  onChatRead?: (chatId: string, options: { leaving: boolean }) => void;
   /** How many chats still hold work their owner hasn't seen. */
   onUnreadWorkChange?: (count: number) => void;
   /** Whether a turn is running in a chat, so a closed panel still knows to expect an answer. */
@@ -106,6 +108,8 @@ export function DashboardAgentPanel({
   const storageKey = lastChatStorageKey(organization.id);
 
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
+  // Until the list has arrived, the page load's server count is the better answer.
+  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
@@ -167,14 +171,13 @@ export function DashboardAgentPanel({
             read.has(chat.id) ? { ...chat, hasUnreadWake: false, hasUnreadWork: false } : chat
           );
           setChats(settled);
-          // The launcher's dot is server-counted on page load; this keeps it honest between loads.
-          onUnreadWorkChange?.(settled.filter((chat) => chat.hasUnreadWork).length);
+          setChatsLoaded(true);
         } catch (error) {
           console.error("Dashboard agent: failed to load chat history", error);
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, organization.id, toast, onUnreadWorkChange]
+    [actionPath, organization.id, toast]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
@@ -276,6 +279,7 @@ export function DashboardAgentPanel({
     setLoading(false);
     setWatchDraft(null);
     setChats([]);
+    setChatsLoaded(false);
     void loadHistory();
   }, [organization.id, loadHistory]);
 
@@ -305,17 +309,22 @@ export function DashboardAgentPanel({
   useEffect(() => {
     if (!active?.chatId) return;
     const chatId = active.chatId;
-    onChatRead?.(chatId);
+    onChatRead?.(chatId, { leaving: false });
     justRead.current.add(chatId);
-    setChats((previous) =>
-      previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
-    );
+    setChats((previous) => markChatListRead(previous, chatId));
     // Read again on the way out: a wake can land while the chat is open.
     return () => {
-      onChatRead?.(chatId);
+      onChatRead?.(chatId, { leaving: true });
       justRead.current.add(chatId);
+      setChats((previous) => markChatListRead(previous, chatId));
     };
   }, [active?.chatId, onChatRead]);
+
+  // The one source for the dot's work count: nudging it per open double-subtracts.
+  useEffect(() => {
+    if (!chatsLoaded) return;
+    onUnreadWorkChange?.(unreadWorkCount(chats));
+  }, [chats, chatsLoaded, onUnreadWorkChange]);
 
   // Bound to its chat, which remounts with a fresh guard ref on every switch.
   const [prefill, setPrefill] = useState<{ text: string; seq: number; chatId: string } | undefined>(
