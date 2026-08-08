@@ -7,7 +7,7 @@ import {
   truncateEvalToolValue,
   unfoldEvalToolOutput,
 } from "./dashboard-agent";
-import { allowedEvalKeys, redactEvalToolValue } from "./eval-policy";
+import { allowedEvalKeys, evalOutputErrored, redactEvalToolValue } from "./eval-policy";
 import { toolResultErrored } from "./eval-turn";
 
 type Messages = Parameters<typeof extractToolActivity>[0];
@@ -185,8 +185,17 @@ describe("an errored tool result", () => {
     expect(toolResultErrored(activity[0]!.output)).toBe(true);
   });
 
-  it("reads a plain error field as an error too", () => {
-    expect(toolResultErrored({ error: { name: "TimeoutError" } })).toBe(true);
+  it("reads a tool's own error message as an error too", () => {
+    expect(evalOutputErrored({ error: "Couldn't get run run_1 (status 500)." })).toBe(true);
+    // The subject's failure, not the call's: a run that failed was still retrieved.
+    expect(evalOutputErrored({ error: { name: "TimeoutError" } })).toBe(false);
+    expect(evalOutputErrored({ id: "run_1" })).toBe(false);
+    expect(evalOutputErrored("boom")).toBe(false);
+  });
+
+  it("reads the derived category once the message is gone", () => {
+    expect(toolResultErrored({ errorCategory: "timeout", error: { redacted: "error" } })).toBe(true);
+    expect(toolResultErrored({ error: { name: "TimeoutError" } })).toBe(false);
     expect(toolResultErrored({ id: "run_1" })).toBe(false);
     expect(toolResultErrored("boom")).toBe(false);
   });

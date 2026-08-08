@@ -249,10 +249,34 @@ export const EVAL_ERROR_CATEGORIES = [
 
 export type EvalErrorCategory = (typeof EVAL_ERROR_CATEGORIES)[number];
 
-/** True when an output is a tool failure: unfolded (`isError`) or a plain `error` field. */
+/**
+ * True when an output is the tool's own failure: unfolded (`isError`), or the `error`
+ * message string every tool returns when it gives up.
+ *
+ * The key alone is not the signal. `curateRun` and `curateDeployment` always emit
+ * `error`, holding the subject's own failure or nothing at all, and a run that failed is
+ * still a tool call that worked.
+ */
 export function evalOutputErrored(output: unknown): boolean {
   if (output === null || typeof output !== "object" || Array.isArray(output)) return false;
-  return (output as { isError?: unknown }).isError === true || "error" in output;
+  const fields = output as { isError?: unknown; error?: unknown };
+  return fields.isError === true || typeof fields.error === "string";
+}
+
+/**
+ * The same question asked of an output that has already been through redaction, where the
+ * message is gone and {@link annotateEvalErrorCategory} has left the derived label behind.
+ * A tool's own `errorCategory` cannot be mistaken for it: redaction turns any field we
+ * don't write ourselves into a shape descriptor.
+ */
+export function redactedEvalOutputErrored(output: unknown): boolean {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return false;
+  const fields = output as { isError?: unknown; errorCategory?: unknown };
+  if (fields.isError === true) return true;
+  return (
+    typeof fields.errorCategory === "string" &&
+    (EVAL_ERROR_CATEGORIES as readonly string[]).includes(fields.errorCategory)
+  );
 }
 
 /**

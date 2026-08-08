@@ -5,7 +5,7 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { logger, task } from "@trigger.dev/sdk";
-import { EVAL_ERROR_CATEGORIES, evalOutputErrored } from "./eval-policy";
+import { EVAL_ERROR_CATEGORIES, redactedEvalOutputErrored } from "./eval-policy";
 import { generateObject } from "ai";
 import { z } from "zod";
 
@@ -131,9 +131,9 @@ const TurnEval = z.object({
   summary: z.string().describe("One line: what the user asked and how it went."),
 });
 
-/** An errored result reaches here unfolded (`isError`) or as a plain `error` field. */
+/** A payload's outputs are redacted, so the derived category is what marks a failure. */
 export function toolResultErrored(output: unknown): boolean {
-  return evalOutputErrored(output);
+  return redactedEvalOutputErrored(output);
 }
 
 const JUDGE_SYSTEM = [

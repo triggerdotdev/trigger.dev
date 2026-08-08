@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractToolActivity, unfoldEvalToolOutput } from "./dashboard-agent";
 import { classifyEvalError, redactEvalToolValue } from "./eval-policy";
 import { toolResultErrored } from "./eval-turn";
+import { curateRun } from "./tool-curation";
 
 type Messages = Parameters<typeof extractToolActivity>[0];
 
@@ -133,6 +134,32 @@ describe("the derived error category", () => {
       unknown
     >;
     expect(redacted).not.toHaveProperty("errorCategory");
+  });
+
+  it("does not label a run that simply carries an error field", () => {
+    // `curateRun` always emits the key, undefined when the run succeeded, and a run that
+    // failed is still a tool call that worked.
+    const succeeded = redactEvalToolValue(curateRun({ id: "run_1", status: "COMPLETED" })) as Record<
+      string,
+      unknown
+    >;
+    expect(succeeded).not.toHaveProperty("errorCategory");
+    expect(toolResultErrored(succeeded)).toBe(false);
+
+    const failed = redactEvalToolValue(
+      curateRun({
+        id: "run_2",
+        status: "FAILED",
+        error: { name: "TimeoutError", message: "the task timed out" },
+      })
+    ) as Record<string, unknown>;
+    expect(failed).not.toHaveProperty("errorCategory");
+    expect(toolResultErrored(failed)).toBe(false);
+  });
+
+  it("still reports a returned tool failure after redaction", () => {
+    const redacted = redactEvalToolValue({ error: "Couldn't get run run_1 (status 500)." });
+    expect(toolResultErrored(redacted)).toBe(true);
   });
 
   it("ignores a tool's own errorCategory field", () => {
