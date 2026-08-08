@@ -1,4 +1,3 @@
-import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
 import {
   watchDraftFor,
   withFollowUp,
@@ -6,7 +5,6 @@ import {
   withVariant,
 } from "~/components/dashboard-agent/watch-card";
 import { WatchCard } from "~/components/dashboard-agent/WatchCard";
-import { watchConfirmationBlockBody, watchOneShotBlockBody } from "~/presenters/v3/dashboardAgent";
 import {
   errorWatchRecommendation,
   queueWatchRecommendation,
@@ -15,6 +13,11 @@ import {
 import { WatchResultBlock } from "~/components/dashboard-agent/WatchResultBlock";
 import { watchWakeToastTitle, type WatchWake } from "~/components/dashboard-agent/WatchWakeToast";
 import { cn } from "~/utils/cn";
+import {
+  watchConfirmationBlock,
+  watchDegradedConfirmationBlock,
+  watchSatisfiedBlock,
+} from "../storybook.agent-ui/fixtures";
 import { GalleryPage, noop, PANEL_FRAME } from "../storybook.agent-ui/gallery";
 
 const queueWatchDraft = watchDraftFor(queueWatchRecommendation("email-sends"));
@@ -30,29 +33,6 @@ const invalidThresholdDraft = withThreshold(
 
 const queueBelowDraft = withThreshold(withVariant(queueWatchDraft, "queue_depth_below"), 100);
 const queueStalledDraft = withVariant(queueWatchDraft, "queue_stalled");
-
-const WATCH_BLOCK_ENVELOPE = {
-  id: "watch:watch_demo",
-  revision: 0,
-  version: VIEW_BLOCK_VERSION,
-} as const;
-
-const watchConfirmationBlock = {
-  ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation("email-sends"),
-    watchId: "watch_demo",
-    followUp: { investigateOnAttention: true, notifyExternally: true },
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-const watchSatisfiedBlock = {
-  ...watchOneShotBlockBody({
-    spec: runWatchRecommendation("run_a1b2c3d4e5"),
-    result: "satisfied",
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
 
 const toastWakes: WatchWake[] = [
   {
@@ -134,6 +114,7 @@ const STATES: Record<string, React.ReactNode> = {
     <WatchCard draft={queueStalledDraft} onChange={noop} onSubmit={noop} defaultExpanded />
   ),
   "watch-card-confirmation": <WatchResultBlock block={watchConfirmationBlock} />,
+  "watch-card-confirmation-degraded": <WatchResultBlock block={watchDegradedConfirmationBlock} />,
   "watch-card-one-shot-satisfied": <WatchResultBlock block={watchSatisfiedBlock} />,
   "watch-card-toast-headline": <WakeToastHeadlines wakes={toastWakes} />,
 };
