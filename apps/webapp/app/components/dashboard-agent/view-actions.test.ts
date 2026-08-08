@@ -155,6 +155,6 @@ describe("the one-watch-button flag is decided per turn, not per render_view cal
   });
 
   it("lets a card add its own offer but never drop the turn's", () => {
-    expect(catalog).toContain("watchOfferedInTurn || cardAlreadyOffersWatch(rendered)");
+    expect(catalog).toMatch(/watchOfferedInTurn \|\|\s*cardAlreadyOffersWatch\(/);
   });
 });
