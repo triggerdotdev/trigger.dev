@@ -2,7 +2,11 @@ import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
-import { MAX_MESSAGE_CHARS, MESSAGE_CHARS_WARN_AT } from "./message-limits";
+import {
+  MAX_MESSAGE_CHARS,
+  MESSAGE_CHARS_WARN_AT,
+  messageCountAnnouncement,
+} from "./message-limits";
 
 export type DashboardAgentComposerLayout = "docked" | "hero";
 
@@ -118,14 +122,19 @@ export function DashboardAgentComposer({
           )}
         </div>
       </div>
+      {/* Mounted from the start, empty until there is something to say: a region that appears
+          with its first message goes unannounced in several screen readers. */}
+      <p className="sr-only" aria-live="polite">
+        {messageCountAnnouncement(value.length)}
+      </p>
       {/* Only near the limit: a normal message never sees a counter. */}
       {value.length >= MESSAGE_CHARS_WARN_AT ? (
         <p
+          aria-hidden
           className={cn(
             "self-end text-xxs tabular-nums",
             value.length >= MAX_MESSAGE_CHARS ? "text-error" : "text-text-dimmed"
           )}
-          aria-live="polite"
         >
           {value.length} / {MAX_MESSAGE_CHARS}
         </p>

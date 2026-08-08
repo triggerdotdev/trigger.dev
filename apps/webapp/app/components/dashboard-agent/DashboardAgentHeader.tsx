@@ -7,6 +7,7 @@ import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primi
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { DashboardAgentHistoryMenu, type DashboardAgentChat } from "./DashboardAgentHistory";
+import { chatHistoryTriggerLabel } from "./header-labels";
 
 // Display only. The key is registered once, in `DashboardAgent`; registering it
 // anywhere else makes the keystroke fire twice.
@@ -59,7 +60,7 @@ export function DashboardAgentHeader({
           isOpen={isHistoryOpen}
           overflowHidden
           className="min-w-0"
-          aria-label="Chat history"
+          aria-label={chatHistoryTriggerLabel(title)}
           title={title}
         >
           <span className="truncate text-sm font-medium text-text-bright">{title}</span>
