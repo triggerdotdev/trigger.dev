@@ -1253,13 +1253,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
-    // Complete in visibility manager
-    await this.visibilityManager.complete(messageId, queueId);
-
     // Release concurrency
-    if (this.concurrencyManager && storedMessage) {
+    if (this.concurrencyManager) {
       await this.concurrencyManager.release(descriptor, messageId);
     }
+
+    // Complete in visibility manager
+    await this.visibilityManager.complete(messageId, queueId);
 
     // Update both old and new indexes, clean up caches if queue is empty
     const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(queueId, descriptor.tenantId);
@@ -1308,6 +1308,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
+    // Release concurrency
+    if (this.concurrencyManager) {
+      await this.concurrencyManager.release(descriptor, messageId);
+    }
+
     // Release back to queue (visibility manager updates dispatch indexes atomically)
     // Dispatch shard is tenant-based, not queue-based
     const dispatchShardId = this.tenantDispatch.getShardForTenant(descriptor.tenantId);
@@ -1323,11 +1328,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       descriptor.tenantId,
       Date.now() // Put at back of queue
     );
-
-    // Release concurrency
-    if (this.concurrencyManager && storedMessage) {
-      await this.concurrencyManager.release(descriptor, messageId);
-    }
 
     this.logger.debug("Message released", {
       messageId,

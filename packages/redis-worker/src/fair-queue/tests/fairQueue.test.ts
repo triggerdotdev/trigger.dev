@@ -10,7 +10,7 @@ import {
   WorkerQueueManager,
 } from "../index.js";
 import type { FairQueueKeyProducer, FairQueueOptions } from "../types.js";
-import type { RedisOptions } from "@internal/redis";
+import { createRedisClient, type RedisOptions } from "@internal/redis";
 
 // Define a common payload schema for tests
 const TestPayloadSchema = z.object({ value: z.string() });
@@ -1366,6 +1366,75 @@ describe("FairQueue", () => {
         expect(finalDepth).toBe(0);
 
         await workerQueueManager.close();
+        await queue.close();
+      }
+    );
+  });
+
+  describe("concurrency slot release", () => {
+    redisTest(
+      "should release the concurrency slot when the in-flight record is already gone",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        queue.onMessage(async (ctx) => {
+          if (ctx.message.payload.value === "msg-0") {
+            await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+          }
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        for (let i = 0; i < 2; i++) {
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        queue.start();
+
+        await vi.waitFor(
+          () => {
+            expect(processed).toHaveLength(2);
+          },
+          { timeout: 10000 }
+        );
+
+        const held = await redis.scard(keys.concurrencyKey("tenant", "t1"));
+        expect(held).toBe(0);
+
+        await redis.quit();
         await queue.close();
       }
     );
