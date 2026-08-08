@@ -16,6 +16,7 @@ import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters } from "./navigate-target";
 import { pendingNavigateIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
+import { retryAction } from "./retry-action";
 import {
   fetchChatTranscript,
   hasOpenInvestigation,
@@ -149,6 +150,7 @@ export function DashboardAgentChat({
     messages: rawMessages,
     setMessages,
     sendMessage,
+    regenerate,
     status,
     stop: aiStop,
     error,
@@ -192,15 +194,15 @@ export function DashboardAgentChat({
   );
 
   const retry = useCallback(() => {
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-    const text = lastUserMessage?.parts
-      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join("\n")
-      .trim();
+    const action = retryAction(messages);
+    if (!action) return;
     clearError();
-    if (text) void sendMessage({ text });
-  }, [messages, sendMessage, clearError]);
+    if (action.kind === "regenerate") {
+      void regenerate();
+      return;
+    }
+    void sendMessage({ text: action.text, messageId: action.messageId });
+  }, [messages, sendMessage, regenerate, clearError]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
