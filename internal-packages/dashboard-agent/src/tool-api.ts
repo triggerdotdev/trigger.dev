@@ -320,8 +320,7 @@ export function buildApiTools(args: {
       execute: async ({ queue, type, period }) => {
         const sp = new URLSearchParams({ type: type ?? "task" });
         if (period) sp.append("period", period);
-        // Double-encoded: a task queue's ClickHouse name carries a `task/` prefix, and
-        // the route un-escapes `%2F` back to `/` itself.
+        // Queue names may contain `/`; encode them as a single path segment.
         const result = await envApiGet(
           `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
         );
