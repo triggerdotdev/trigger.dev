@@ -220,30 +220,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // Only the whitelisted page context survives; the rest is injected below.
     const clientContext = pickAgentClientMetadata(clientData);
 
+    // Membership-scoped: dev rows are per-developer, so a token must never be minted for
+    // someone else's environment — or, when nothing resolves, for no environment at all.
+    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+    const environmentName = ENV_NAME_BY_TYPE[runtimeEnv.type];
+
     const chatId = generateFriendlyId("chat");
     try {
-      await createChat(dashboardAgentDb, {
-        id: chatId,
-        organizationId: project.organizationId,
-        userId,
-        ...(clientData ? { metadata: { context: clientContext } } : {}),
-      });
-
-      // Membership-scoped: dev rows are per-developer, so a token must never be minted for
-      // someone else's environment — or, when nothing resolves, for no environment at all.
-      const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
-      if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
-      const environmentName = ENV_NAME_BY_TYPE[runtimeEnv.type];
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
-
       const headStarted = Boolean(env.ANTHROPIC_API_KEY);
-      if (headStarted) {
-        // Injects the delegated token and context into the run's payload server-side.
-        await startDashboardAgentHeadStart({
-          chatId,
-          messages: [firstMessage],
-          mode: repoSnapshot ? "code" : "assistant",
-          metadata: {
+
+      // The lookups and the mint all run before the chat row exists, so a failure here can't
+      // leave an empty chat behind in the user's history.
+      const headStartMetadata = headStarted
+        ? {
             // The agent validates run metadata against its clientDataSchema, so the
             // per-turn client context must accompany the injected auth and context fields.
             ...clientContext,
@@ -261,7 +252,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             environmentId: runtimeEnv.id,
             environmentName,
             ...(repoSnapshot ? { repoSnapshot } : {}),
-          },
+          }
+        : undefined;
+
+      await createChat(dashboardAgentDb, {
+        id: chatId,
+        organizationId: project.organizationId,
+        userId,
+        ...(clientData ? { metadata: { context: clientContext } } : {}),
+      });
+
+      if (headStartMetadata) {
+        // Injects the delegated token and context into the run's payload server-side.
+        await startDashboardAgentHeadStart({
+          chatId,
+          messages: [firstMessage],
+          mode: repoSnapshot ? "code" : "assistant",
+          metadata: headStartMetadata,
         });
       } else {
         // Cold start: the client sends the first message through the `in` proxy, which
