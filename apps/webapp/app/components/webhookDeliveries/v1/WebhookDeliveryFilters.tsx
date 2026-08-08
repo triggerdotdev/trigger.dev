@@ -35,6 +35,7 @@ const deliveryStatuses: { value: WebhookDeliveryStatus; title: string; color: st
   { value: "PROCESSING", title: "Processing", color: "#3B82F6" },
   { value: "SUCCEEDED", title: "Succeeded", color: "#28BF5C" },
   { value: "FAILED", title: "Failed", color: "#E11D48" },
+  { value: "FILTERED", title: "Filtered", color: "#64748B" },
 ];
 
 const statusTitleByValue = new Map(deliveryStatuses.map((s) => [s.value, s.title]));
