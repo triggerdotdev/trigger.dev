@@ -19,6 +19,7 @@ import {
   safeTail,
   shouldCompactConversation,
   STATIC_PREFIX_TOKENS,
+  SUMMARY_INSTRUCTION,
   withDurableState,
 } from "./compaction";
 
@@ -386,6 +387,31 @@ describe("the summariser's input", () => {
     const rendered = renderTranscriptForSummary([text("user", "y".repeat(50_000))]);
     expect(rendered.length).toBeLessThan(2_100);
     expect(rendered.startsWith("user: ")).toBe(true);
+  });
+});
+
+/**
+ * A watch's lifecycle is server-side: it can expire or be cancelled with nothing written back
+ * into the transcript. So the summary can only ever say what the transcript RECORDED — asking
+ * for what is running turns an old confirmation into a claim that it still is, and the next
+ * answer tells the user a watch is on that ended hours ago. The property, not the sentence:
+ * the watch line asks for a record and never for present state.
+ */
+describe("the summary instruction never asks for present state", () => {
+  const watchLine = SUMMARY_INSTRUCTION.split("\n").find((line) => /watch/i.test(line));
+
+  it("has a line about watches at all", () => {
+    expect(watchLine).toBeDefined();
+  });
+
+  it("asks what the transcript recorded, not what is true now", () => {
+    expect(watchLine).toMatch(/record/i);
+    // The transcript cannot know, so the instruction has to say why.
+    expect(watchLine).toMatch(/expire|cancel/i);
+  });
+
+  it("never asks for a watch that is running, scheduled or active", () => {
+    expect(watchLine).not.toMatch(/(?:that is|still|currently)\s+(?:running|active|scheduled)/i);
   });
 });
 
