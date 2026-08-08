@@ -6,7 +6,11 @@ import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
-import { DashboardAgentHistoryMenu, type DashboardAgentChat } from "./DashboardAgentHistory";
+import {
+  DashboardAgentDeleteChatDialog,
+  DashboardAgentHistoryMenu,
+  type DashboardAgentChat,
+} from "./DashboardAgentHistory";
 import { chatHistoryTriggerLabel } from "./header-labels";
 
 // Display only. The key is registered once, in `DashboardAgent`; registering it
@@ -45,6 +49,7 @@ export function DashboardAgentHeader({
   onClose: () => void;
 }) {
   const [isHistoryOpen, setHistoryOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
 
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
@@ -77,10 +82,19 @@ export function DashboardAgentHeader({
               setHistoryOpen(false);
               onSelectChat(chatId);
             }}
-            onDelete={onDeleteChat}
+            onRequestDelete={(chat) => {
+              setHistoryOpen(false);
+              setPendingDelete(chat);
+            }}
           />
         </PopoverContent>
       </Popover>
+
+      <DashboardAgentDeleteChatDialog
+        chat={pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={onDeleteChat}
+      />
 
       <div className="flex shrink-0 items-center gap-0.5">
         {showNewChat && (
