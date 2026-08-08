@@ -98,15 +98,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const raw = read.text;
   let body = raw;
-  try {
-    const parsed = JSON.parse(raw) as {
-      kind?: string;
-      payload?: {
-        trigger?: string;
-        metadata?: Record<string, unknown>;
-        message?: { parts?: unknown };
-      };
+  type AgentTurn = {
+    kind?: string;
+    payload?: {
+      trigger?: string;
+      metadata?: Record<string, unknown>;
+      message?: { parts?: unknown };
     };
+  };
+  let parsed: AgentTurn | undefined;
+  // Only the parse is tolerated: non-JSON is forwarded unchanged rather than break the turn.
+  // Everything after it must fail loudly — a swallowed mint would forward with no credential.
+  try {
+    parsed = JSON.parse(raw) as AgentTurn;
+  } catch {
+    parsed = undefined;
+  }
+
+  if (parsed) {
     // Actions are placed by the server only, and this proxy is the one path a browser
     // can reach `.in` through.
     if (parsed.payload?.trigger === "action") {
@@ -117,11 +126,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (checkMessageParts(parsed.payload.message?.parts) !== null) {
         return tooLarge();
       }
+
+      let userActorToken: string;
+      try {
+        userActorToken = await mintDashboardAgentUserActorToken(user.id, {
+          environmentId: runtimeEnv.id,
+        });
+      } catch (error) {
+        logger.error("Dashboard agent in-proxy could not mint a token", { error, upstreamPath });
+        return json({ error: "The dashboard agent couldn't send that message." }, { status: 500 });
+      }
+
       parsed.payload.metadata = {
         ...pickAgentClientMetadata(parsed.payload.metadata),
-        userActorToken: await mintDashboardAgentUserActorToken(user.id, {
-          environmentId: runtimeEnv.id,
-        }),
+        userActorToken,
         apiOrigin,
         projectRef: project.externalRef,
         // Server-owned: the eval opt-out and every tenancy check key on these.
@@ -136,8 +154,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       };
       body = JSON.stringify(parsed);
     }
-  } catch {
-    // Non-JSON or unexpected shape — forward unchanged rather than break the turn.
   }
 
   const headers = new Headers();
