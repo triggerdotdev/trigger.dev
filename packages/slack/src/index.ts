@@ -189,6 +189,13 @@ export function slack<TEvent = SlackMessageEvent>(
 }
 
 /**
+ * Cap for the serialized tool input in an approval block. A Slack section `text` field accepts about
+ * 3000 characters; staying well under keeps a large input from failing chat.postMessage with
+ * `invalid_blocks` and dropping the approval controls.
+ */
+const MAX_INTERACTION_INPUT_CHARS = 2500;
+
+/**
  * Default HITL controls: render each pending human-decision tool as a Block Kit approve/deny pair. The
  * button `value` carries `${toolCallId}::${decision}` so `onInteraction` can resolve the exact tool.
  */
@@ -198,7 +205,15 @@ function defaultSlackRenderInteraction(
 ): ChannelMessage | null {
   const call = pending[0];
   if (!call) return null;
-  const detail = call.input !== undefined ? "\n```" + safeStringify(call.input) + "```" : "";
+  let detail = "";
+  if (call.input !== undefined) {
+    const serialized = safeStringify(call.input);
+    const shown =
+      serialized.length > MAX_INTERACTION_INPUT_CHARS
+        ? serialized.slice(0, MAX_INTERACTION_INPUT_CHARS) + "\n... (truncated)"
+        : serialized;
+    detail = "\n```" + shown + "```";
+  }
   return {
     text: `Approval needed: ${call.toolName}`,
     blocks: [

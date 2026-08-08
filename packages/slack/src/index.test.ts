@@ -50,6 +50,25 @@ describe("slack channel", () => {
     expect(values).toContain("call-1::deny");
   });
 
+  it("renderInteraction truncates an oversized tool input to stay under the Slack block limit", () => {
+    const c = slack({ id: "s-hitl-big", token: "t" });
+    const msg = c.renderInteraction?.(
+      [
+        {
+          toolCallId: "call-big",
+          toolName: "requestApproval",
+          input: { blob: "x".repeat(10_000) },
+        },
+      ],
+      { event: messageEvent(), deliveryId: "d1" }
+    );
+    expect(msg).not.toBeNull();
+    const section = (msg!.blocks as any[]).find((b) => b.type === "section");
+    const text = section.text.text as string;
+    expect(text).toContain("... (truncated)");
+    expect(text.length).toBeLessThan(3000);
+  });
+
   it("onInteraction resolves a block_actions click to a tool output; ignores messages", () => {
     const c = slack({ id: "s-hitl2", token: "t" });
     const approve = c.onInteraction?.({
