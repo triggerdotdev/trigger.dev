@@ -139,10 +139,9 @@ describe("the derived error category", () => {
   it("does not label a run that simply carries an error field", () => {
     // `curateRun` always emits the key, undefined when the run succeeded, and a run that
     // failed is still a tool call that worked.
-    const succeeded = redactEvalToolValue(curateRun({ id: "run_1", status: "COMPLETED" })) as Record<
-      string,
-      unknown
-    >;
+    const succeeded = redactEvalToolValue(
+      curateRun({ id: "run_1", status: "COMPLETED" })
+    ) as Record<string, unknown>;
     expect(succeeded).not.toHaveProperty("errorCategory");
     expect(toolResultErrored(succeeded)).toBe(false);
 
