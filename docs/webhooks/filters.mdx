@@ -1,0 +1,99 @@
+---
+title: "Filtering deliveries"
+description: "Gate which verified webhook deliveries run, with a type-safe filter checked against the event."
+sidebarTitle: "Filters"
+---
+
+By default every verified delivery runs your `onEvent` (or routes to a [session](/webhooks/session-routing)). A **filter** is a server-side predicate that decides whether a delivery is routed at all. A delivery that does not match is still received and recorded, it just does not run anything.
+
+Filtering happens at the endpoint, before any run is triggered, so a filtered-out event costs you nothing.
+
+## Adding a filter
+
+Pass a `filter` string to `webhook()`. It is a small expression checked, at build time, against the event shape from your [source](/webhooks/sources#typing-the-event):
+
+```ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const onOrder = webhook({
+  id: "orders",
+  source: webhooks.stripe(),
+  // only route succeeded payment intents over $100
+  filter: "event.type == 'payment_intent.succeeded' && event.data.object.amount >= 10000",
+  onEvent: async ({ event }) => {
+    // only runs for deliveries that matched
+  },
+});
+```
+
+The filter is type-safe: referencing a field that does not exist, or comparing it to the wrong kind of literal, is a compile error, not a runtime surprise.
+
+## What a non-match does
+
+A delivery that does not match is **not dropped**. It still returns `200` to the provider and is recorded as a [delivery](/webhooks/deliveries) with the status `FILTERED` and a reason naming the clause that failed (and the value it saw). It just never triggers a run. This keeps a filtered delivery auditable: you can see in the dashboard that it arrived and why it was not routed.
+
+<Note>
+  If a filter throws while evaluating (for example, a malformed event), the delivery is routed rather
+  than dropped. Filters fail open so a filter bug never silently swallows real events.
+</Note>
+
+## The expression language
+
+A filter is one or more `path operator value` clauses combined with `&&` and `||` (use parentheses to group).
+
+### Paths
+
+A path reads from one of three namespaces:
+
+- `event.*`: the verified, parsed request body, for example `event.data.object.amount`.
+- `header.*`: an inbound request header, matched case-insensitively, for example `header.x-github-event`.
+- `webhook.*`: endpoint metadata (`webhook.source`, `webhook.id`, `webhook.deliveryId`, and for per-tenant endpoints `webhook.externalRef` / `webhook.tenantId`).
+
+The [session routing](/webhooks/session-routing) key template addresses this same parsed body, but spells it `{body.*}` rather than `event.*`.
+
+### Operators
+
+| Operator | Meaning |
+| --- | --- |
+| `==` `!=` | equality |
+| `>` `<` `>=` `<=` | numeric comparison |
+| `in` `not in` | membership in a list, for example `event.type in ['a','b']` |
+| `startsWith` `endsWith` `contains` | string matching |
+
+Values are strings in single quotes (`'created'`), numbers (`10000`), booleans (`true`), or a list for `in` / `not in`.
+
+### Comparing two fields
+
+The right-hand side can be another path instead of a literal, so you can compare two fields of the same event:
+
+```ts
+filter: "event.billing.country == event.shipping.country";
+```
+
+### Matching inside a list
+
+`any` and `all` quantify over an array, testing a sub-path on each element:
+
+```ts
+// route only if at least one line item has a positive quantity
+filter: "event.items any ( quantity > 0 )";
+```
+
+### Spacing
+
+The type checker reads the filter as a token stream, so a couple of spots are strict about spacing: keep `in` / `not in` lists unspaced (`['a','b']`, not `[ 'a', 'b' ]`) and put spaces around the quantifier parentheses (`any ( ... )`).
+
+To match only certain event types, write a clause against the field that carries the type: `event.type` for Stripe / Svix / Square / Discord, or the `x-github-event` header for GitHub (the filter DSL can read a `header.` namespace too):
+
+```ts
+export const onGithub = webhook({
+  id: "github",
+  source: webhooks.github(),
+  filter: "header.x-github-event in ['issues','pull_request']",
+  onEvent: async ({ event }) => {},
+});
+```
+
+## Filtering a session route
+
+A `filter` works the same way on [`chat.event`](/webhooks/session-routing): a non-matching delivery is recorded `FILTERED` and never reaches the session.

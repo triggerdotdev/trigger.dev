@@ -149,6 +149,19 @@
             ]
           },
           {
+            "group": "Webhooks",
+            "pages": [
+              "webhooks/overview",
+              "webhooks/sources",
+              "webhooks/connect",
+              "webhooks/deliveries",
+              "webhooks/filters",
+              "webhooks/session-routing",
+              "webhooks/channels",
+              "webhooks/human-in-the-loop"
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",
