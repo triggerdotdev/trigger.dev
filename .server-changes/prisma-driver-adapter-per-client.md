@@ -3,4 +3,4 @@ area: webapp
 type: improvement
 ---
 
-Each database client can now optionally connect through the node-postgres driver, configurable independently per client and off by default, so default behavior is unchanged.
+Groundwork for an alternative database connection driver, gated behind configuration and disabled by default, so there is no change to default behavior.

@@ -440,11 +440,12 @@ function getClient() {
 function buildDriverAdapterPool(
   connectionString: string,
   clientType: string,
-  poolTimeoutSeconds: number
+  poolTimeoutSeconds: number,
+  connectionLimit: number
 ): PrismaPg {
   const pool = new Pool({
     connectionString,
-    max: env.DATABASE_CONNECTION_LIMIT,
+    max: connectionLimit,
     connectionTimeoutMillis: poolTimeoutSeconds * 1000,
     application_name: env.SERVICE_NAME,
   });
@@ -542,9 +543,10 @@ export function buildWriterClient({
   const client = useDriverAdapter
     ? new PrismaClient({
         adapter: buildDriverAdapterPool(
-          databaseUrl.href,
+          url,
           clientType,
-          poolTimeout ?? env.DATABASE_POOL_TIMEOUT
+          poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+          env.DATABASE_CONNECTION_LIMIT
         ),
         log: logConfig,
       })
@@ -712,9 +714,10 @@ export function buildReplicaClient({
   const replicaClient = useDriverAdapter
     ? new PrismaClient({
         adapter: buildDriverAdapterPool(
-          replicaUrl.href,
+          url,
           clientType,
-          poolTimeout ?? env.DATABASE_POOL_TIMEOUT
+          poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+          env.DATABASE_CONNECTION_LIMIT
         ),
         log: logConfig,
       })
@@ -805,9 +808,10 @@ function buildRunOpsWriterClient({
   const client = useDriverAdapter
     ? new RunOpsPrismaClient({
         adapter: buildDriverAdapterPool(
-          databaseUrl.href,
+          url,
           clientType,
-          env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
+          env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+          env.DATABASE_CONNECTION_LIMIT
         ),
         log: [
           { emit: "event", level: "error" },
@@ -885,9 +889,10 @@ function buildRunOpsReplicaClient({
   const client = useDriverAdapter
     ? new RunOpsPrismaClient({
         adapter: buildDriverAdapterPool(
-          replicaUrl.href,
+          url,
           clientType,
-          env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
+          env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+          env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
         ),
         log: [
           { emit: "event", level: "error" },

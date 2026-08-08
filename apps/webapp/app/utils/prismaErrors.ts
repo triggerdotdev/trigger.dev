@@ -36,7 +36,7 @@ const CONNECTIVITY_ERRNO = new Set([
   "EPIPE",
 ]);
 const CONNECTIVITY_MESSAGE =
-  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|not reachable|can't reach database|connection terminated|server has closed|closed the connection|timed out fetching a new connection/i;
+  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|server has closed the connection|timed out fetching a new connection/i;
 
 function looksLikeConnectivityError(error: unknown): boolean {
   const e = error as { code?: unknown; message?: unknown };
