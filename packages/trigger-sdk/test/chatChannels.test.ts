@@ -1,7 +1,11 @@
 import { mockChatAgent, recordingChannelConnector } from "../src/v3/test/index.js";
 
-import { describe, expect, it } from "vitest";
-import { chat } from "../src/v3/ai.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  chat,
+  __makeChannelStreamEditorForTests,
+  __makeChannelStreamTapForTests,
+} from "../src/v3/ai.js";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
@@ -146,5 +150,128 @@ describe("chat.agent channels", () => {
     } finally {
       await harness.close();
     }
+  });
+
+  it("edits the placeholder to the error when a channel turn throws", async () => {
+    const channel = recordingChannelConnector();
+
+    const agent = chat.agent({
+      id: "chatChannels.error-egress",
+      channels: [channel],
+      run: async () => {
+        throw new Error("turn exploded");
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "chan-5" });
+    try {
+      await harness.sendChannelEvent({ event: { text: "cause an error", threadId: "chan-5" } });
+
+      expect(channel.acks).toHaveLength(1);
+      const finalSend = channel.sent[channel.sent.length - 1]!;
+      expect(finalSend.ctx.final).toBe(true);
+      expect(finalSend.ctx.previousRef).toBe(channel.acks[0]!.ref);
+      expect(finalSend.message.text).toBe("turn exploded");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+describe("makeChannelStreamEditor", () => {
+  function streamConnector(send: (message: { text: string }) => Promise<{ ref?: string }>) {
+    return { delivery: "stream" as const, send } as never;
+  }
+
+  it("re-arms the debounce timer so text buffered during an in-flight edit still lands", async () => {
+    vi.useFakeTimers();
+    try {
+      const sends: string[] = [];
+      let releaseFirst!: () => void;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      let call = 0;
+      const editor = __makeChannelStreamEditorForTests(
+        streamConnector(async (message) => {
+          sends.push(message.text);
+          call += 1;
+          if (call === 1) await firstGate;
+          return { ref: "r1" };
+        }),
+        { event: {}, deliveryId: "d1" },
+        "r1"
+      );
+
+      editor.observe({ type: "text-delta", delta: "a" });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sends).toEqual(["a"]);
+
+      editor.observe({ type: "text-delta", delta: "b" });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sends).toEqual(["a"]);
+
+      releaseFirst();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sends).toEqual(["a", "ab"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fire a pending edit after stop()", async () => {
+    vi.useFakeTimers();
+    try {
+      const sends: string[] = [];
+      const editor = __makeChannelStreamEditorForTests(
+        streamConnector(async (message) => {
+          sends.push(message.text);
+          return { ref: "r1" };
+        }),
+        { event: {}, deliveryId: "d1" },
+        "r1"
+      );
+
+      editor.observe({ type: "text-delta", delta: "a" });
+      editor.stop();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sends).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("makeChannelStreamTap", () => {
+  it("stops the editor when the stream completes (flush)", async () => {
+    let stops = 0;
+    const tap = __makeChannelStreamTapForTests({ observe: () => {}, stop: () => (stops += 1) });
+    const source = new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "text-delta", delta: "x" });
+        controller.close();
+      },
+    });
+    const reader = source.pipeThrough(tap).getReader();
+    let done = false;
+    while (!done) {
+      done = (await reader.read()).done;
+    }
+    expect(stops).toBeGreaterThan(0);
+  });
+
+  it("stops the editor when the stream is cancelled mid-flight (abort)", async () => {
+    let stops = 0;
+    const tap = __makeChannelStreamTapForTests({ observe: () => {}, stop: () => (stops += 1) });
+    const source = new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "text-delta", delta: "x" });
+      },
+    });
+    const reader = source.pipeThrough(tap).getReader();
+    await reader.read();
+    await reader.cancel("aborted");
+    expect(stops).toBeGreaterThan(0);
   });
 });

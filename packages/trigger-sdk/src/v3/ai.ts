@@ -5057,13 +5057,23 @@ function makeChannelStreamEditor<TEvent>(
 ) {
   const outbound = connector.outbound ?? defaultChannelOutbound;
   let latest = "";
+  let lastSent = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let stopped = false;
 
+  const arm = () => {
+    if (stopped || timer) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void edit();
+    }, CHANNEL_STREAM_EDIT_INTERVAL_MS);
+  };
+
   const edit = async () => {
     if (stopped || inFlight) return;
     const text = latest;
+    if (text === lastSent) return;
     const message = outbound({
       text,
       message: { id: ackRef, role: "assistant", parts: [{ type: "text", text }] } as UIMessage,
@@ -5080,10 +5090,12 @@ function makeChannelStreamEditor<TEvent>(
         mode: "stream",
         final: false,
       });
+      lastSent = text;
     } catch (error) {
       logger.warn("chat.agent: channel stream edit failed", { error });
     } finally {
       inFlight = false;
+      if (!stopped && latest !== lastSent) arm();
     }
   };
 
@@ -5093,11 +5105,7 @@ function makeChannelStreamEditor<TEvent>(
       const c = chunk as { type?: string; delta?: unknown };
       if (c?.type === "text-delta" && typeof c.delta === "string") {
         latest += c.delta;
-        if (!timer)
-          timer = setTimeout(() => {
-            timer = undefined;
-            void edit();
-          }, CHANNEL_STREAM_EDIT_INTERVAL_MS);
+        arm();
       }
     },
     stop() {
@@ -5109,6 +5117,39 @@ function makeChannelStreamEditor<TEvent>(
     },
   };
 }
+
+type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void };
+
+/**
+ * Wrap the reply stream so it debounce-edits the channel message as it streams.
+ * Both `flush` (the stream completed) and `cancel` (the stream was aborted or
+ * cancelled downstream) stop the editor, so a pending debounce timer can never
+ * fire an edit after the turn ended, onto a message the next turn already owns.
+ */
+function makeChannelStreamTap(editor: ChannelStreamEditor): TransformStream<unknown, unknown> {
+  const transformer: {
+    transform(chunk: unknown, controller: TransformStreamDefaultController<unknown>): void;
+    flush(): void;
+    cancel?: (reason?: unknown) => void;
+  } = {
+    transform(chunk, controller) {
+      editor.observe(chunk);
+      controller.enqueue(chunk);
+    },
+    flush() {
+      editor.stop();
+    },
+    cancel() {
+      editor.stop();
+    },
+  };
+  return new TransformStream<unknown, unknown>(transformer);
+}
+
+export {
+  makeChannelStreamEditor as __makeChannelStreamEditorForTests,
+  makeChannelStreamTap as __makeChannelStreamTapForTests,
+};
 
 // The `action` type onAction receives: the actionSchema output (when set) unioned with the action
 // envelopes of any listed chat.event descriptors. ChatEventActions<[]> is `never`, so it collapses
@@ -6925,6 +6966,8 @@ function chatAgent<
           let channelConn: AnyChannelConnector | undefined;
           let channelWorkingReaction: string | undefined;
           let channelWireEvent: { event: unknown; deliveryId: string } | undefined;
+          let channelAckRef: string | undefined;
+          let channelStreamEditor: ChannelStreamEditor | undefined;
           let droppedStaleInteraction = false;
           try {
             // Extract turn-level context before entering the span. Slim
@@ -6941,7 +6984,6 @@ function chatAgent<
             void _hsm;
             channelWireEvent = wireChannelEvent;
             let effectiveIncomingMessage = incomingMessage;
-            let channelAckRef: string | undefined;
             if (wireChannelEvent) {
               channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
               if (channelConn) {
@@ -7799,21 +7841,13 @@ function chatAgent<
                         channelAckRef &&
                         uiStream instanceof ReadableStream
                       ) {
-                        const editor = makeChannelStreamEditor(
+                        channelStreamEditor = makeChannelStreamEditor(
                           channelConn,
                           wireChannelEvent,
                           channelAckRef
                         );
                         streamForPipe = uiStream.pipeThrough(
-                          new TransformStream({
-                            transform(chunk, controller) {
-                              editor.observe(chunk);
-                              controller.enqueue(chunk);
-                            },
-                            flush() {
-                              editor.stop();
-                            },
-                          })
+                          makeChannelStreamTap(channelStreamEditor)
                         );
                       }
                       await pipeChat(tapUIMessageChunks(streamForPipe, turnBufferedChunks), {
@@ -7833,6 +7867,7 @@ function chatAgent<
                     }
                   } finally {
                     msgSub.off();
+                    channelStreamEditor?.stop();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -8590,6 +8625,37 @@ function chatAgent<
               );
               if (errorReaction) {
                 await applyChannelReaction(channelConn, channelWireEvent, { name: errorReaction });
+              }
+            }
+
+            if (channelWireEvent && channelConn?.send && channelAckRef) {
+              const channelErrorText =
+                turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+              const errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
+                text: channelErrorText,
+                message: {
+                  id: channelAckRef,
+                  role: "assistant",
+                  parts: [{ type: "text", text: channelErrorText }],
+                } as UIMessage,
+                final: true,
+                stopped: false,
+                error: turnError,
+              });
+              if (errorMessage) {
+                try {
+                  await channelConn.send(errorMessage, {
+                    event: channelWireEvent.event,
+                    deliveryId: channelWireEvent.deliveryId,
+                    previousRef: channelAckRef,
+                    mode: channelConn.delivery,
+                    final: true,
+                  });
+                } catch (egressError) {
+                  logger.warn("chat.agent: channel error egress send failed", {
+                    error: egressError,
+                  });
+                }
               }
             }
 
