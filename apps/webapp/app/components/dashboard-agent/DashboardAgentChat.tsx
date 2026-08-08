@@ -1,37 +1,47 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
+import type { AgentIntent, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "~/components/primitives/Toast";
+import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
-import { DashboardAgentMessages } from "./DashboardAgentMessages";
-import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
+import { DashboardAgentHero } from "./DashboardAgentHero";
+import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
+import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
+import { createTranscriptOrder, orderTranscript } from "./message-order";
+import { appendRunFilters } from "./navigate-target";
+import { pendingNavigateIntents } from "./pending-intents";
+import type { AgentPageContext } from "./page-context-types";
+import { retryAction } from "./retry-action";
+import {
+  fetchChatTranscript,
+  hasOpenInvestigation,
+  pollSettledTranscript,
+} from "./settled-transcript";
+import { useAgentMessageQuota } from "./useAgentMessageQuota";
+import { useTriggerUriResolver } from "./useTriggerUriResolver";
 
-// The persisted session for a chat: the session-scoped token plus the stream
-// cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
-// from replaying the previous turn.
+// Resuming with `lastEventId` stops the `.out` stream replaying the previous turn.
 export type DashboardAgentSession = {
   publicAccessToken: string;
   lastEventId?: string;
 };
 
-// Per-turn context for the agent. Matches the agent's clientDataSchema input.
+// Matches the agent's clientDataSchema input.
 export type DashboardAgentClientData = {
   userId: string;
   organizationId: string;
   projectId?: string;
   environmentId?: string;
   currentPage?: string;
+  pageContext?: AgentPageContext;
 };
 
-/**
- * A single conversation. The panel mounts this with `key={chatId}`, so each
- * chat gets its own transport constructed with its persisted session — the
- * resume cursor flows in declaratively via the `sessions` option rather than
- * an imperative setSession after the fact. A fresh chat passes no session and
- * starts a new run on first send.
- */
+/** Mounted with `key={chatId}`: the resume cursor arrives via `sessions`, not setSession. */
 export function DashboardAgentChat({
   chatId,
   initialMessages,
@@ -44,7 +54,11 @@ export function DashboardAgentChat({
   currentPage,
   pendingFirstMessage,
   streaming,
+  prefill,
+  promotedPrompt,
+  pagePaths,
   onTurnSettled,
+  onActivityChange,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -54,31 +68,47 @@ export function DashboardAgentChat({
   actionPath: string;
   projectSlug: string;
   environmentSlug: string;
+  // Display label only; the path the agent sees is `clientData.currentPage`.
   currentPage: string;
-  // Cold start: send this first message through the transport once on mount to
-  // trigger the turn. Undefined for head-started and resumed chats.
+  // Undefined for head-started and resumed chats.
   pendingFirstMessage?: string;
-  // Head start: the turn is already in flight, so hydrate the session as
-  // streaming so the transport resumes `session.out` instead of treating it as
-  // a settled session with nothing to reconnect to.
   streaming?: boolean;
+  // `seq` makes each request distinct so the same text can be sent twice.
+  prefill?: { text: string; seq: number };
+  promotedPrompt?: SuggestedPrompt;
+  pagePaths?: Record<string, string>;
   onTurnSettled: () => void;
+  onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  const prefilledSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!prefill || prefilledSeq.current === prefill.seq) return;
+    prefilledSeq.current = prefill.seq;
+    setInput(prefill.text);
+  }, [prefill]);
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
-    // New chats are created server-side (the `create` action owns the id and
-    // runs head start), so there's no client-driven head-start route here.
-    // Redirect only the `in`/append to the same-origin proxy, which mints +
-    // injects the delegated user token server-side. `baseURL` stays a string so
-    // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we
-    // never override it. The proxy forwards the same path on to the API.
-    fetch: (url, init, ctx) => {
+    // Only `in` goes through the same-origin proxy, which injects the delegated user
+    // token server-side. `baseURL` stays a string so `out` keeps the SDK's realtime routing.
+    fetch: async (url, init, ctx) => {
       if (ctx.endpoint !== "in") return globalThis.fetch(url, init);
       const { pathname, search } = new URL(url);
-      return globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      const res = await globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      // A refused message never succeeds on a retry, so it surfaces as the turn's error.
+      if (res.status === 413) {
+        const data = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? MESSAGE_TOO_LARGE_ERROR);
+      }
+      return res;
     },
     clientData,
     sessions: session
@@ -86,9 +116,7 @@ export function DashboardAgentChat({
           [chatId]: {
             publicAccessToken: session.publicAccessToken,
             lastEventId: session.lastEventId,
-            // Head-started chats are mid-turn, so mark the session streaming to
-            // make the transport resume `session.out`. A settled session
-            // (history) stays false — its transcript loads from the store.
+            // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
             isStreaming: streaming ?? false,
           },
         }
@@ -119,24 +147,33 @@ export function DashboardAgentChat({
   });
 
   const {
-    messages,
+    messages: rawMessages,
+    setMessages,
     sendMessage,
+    regenerate,
     status,
     stop: aiStop,
     error,
+    clearError,
   } = useChat({
     id: chatId,
     messages: initialMessages,
     transport,
-    // Resume an existing/head-started session's stream. A cold-start chat has a
-    // session but nothing to resume yet — it sends its first message instead.
     resume: !!session && !pendingFirstMessage,
   });
 
-  const isStreaming = status === "streaming";
-  const isThinking = status === "submitted";
+  const orderRef = useRef(createTranscriptOrder(initialMessages));
+  const messages = orderTranscript(rawMessages, orderRef.current);
 
-  // Cold start: trigger the first turn by sending the pending message once.
+  // Counted here, not in the panel, so it includes the turn just sent.
+  const quota = useAgentMessageQuota({ actionPath, chatId, messages });
+  const atMessageCap = quota.kind === "reached";
+
+  const isStreaming = status === "streaming";
+  // From status, not the last part: the indicator must stay up through silent tool calls.
+  const activity: TurnActivity | null =
+    status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
+
   const sentFirst = useRef(false);
   useEffect(() => {
     if (pendingFirstMessage && !sentFirst.current) {
@@ -148,47 +185,160 @@ export function DashboardAgentChat({
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      // Suggested prompts and card actions bypass the composer, so the cap is enforced here too.
+      if (!trimmed || isStreaming || atMessageCap) return;
       setInput("");
       void sendMessage({ text: trimmed });
     },
-    [isStreaming, sendMessage]
+    [isStreaming, atMessageCap, sendMessage]
   );
+
+  const retry = useCallback(() => {
+    const action = retryAction(messages);
+    if (!action) return;
+    clearError();
+    if (action.kind === "regenerate") {
+      void regenerate();
+      return;
+    }
+    void sendMessage({ text: action.text, messageId: action.messageId });
+  }, [messages, sendMessage, regenerate, clearError]);
+
+  const resolveUri = useTriggerUriResolver(actionPath);
+
+  // `trigger://` targets resolve server-side: the server owns the environment scope.
+  const goTo = useCallback(
+    async (intent: Extract<AgentIntent, { kind: "navigate" }>) => {
+      const body = new FormData();
+      body.set("intent", "resolve");
+      body.set("uri", intent.target);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        const data = (await res.json()) as { path?: string };
+        if (!res.ok || !data.path) throw new Error(`Resolve failed (${res.status})`);
+        navigate(appendRunFilters(data.path, intent.filters));
+      } catch (error) {
+        console.error("Dashboard agent: failed to resolve a navigate target", error);
+        toast.error("Couldn't open that page.");
+      }
+    },
+    [actionPath, navigate, toast]
+  );
+
+  // `propose_fix` is reserved and must never be executed.
+  const handleIntent = useCallback(
+    (intent: AgentIntent) => {
+      switch (intent.kind) {
+        case "ask":
+          submit(intent.prompt);
+          return;
+        case "navigate":
+          void goTo(intent);
+          return;
+        default:
+          console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
+      }
+    },
+    [submit, goTo]
+  );
+
+  // Seeded from the loaded transcript before first render, so history never re-navigates.
+  const navigatedRef = useRef<Set<string> | null>(null);
+  if (navigatedRef.current === null) {
+    navigatedRef.current = new Set();
+    pendingNavigateIntents(initialMessages, navigatedRef.current);
+  }
+  useEffect(() => {
+    const pending = pendingNavigateIntents(messages, navigatedRef.current!);
+    const target = pending.at(-1);
+    if (target) void goTo(target);
+  }, [messages, goTo]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
 
-  // Tell the panel to refresh its history list once a turn settles, so the new
-  // chat appears and titles/timestamps stay current.
+  // Read by the settle effect, which must not re-run when the transcript changes.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const prevStatus = useRef(status);
   useEffect(() => {
     const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
     const nowSettled = status === "ready" || status === "error";
-    if (wasInFlight && nowSettled) onTurnSettled();
     prevStatus.current = status;
-  }, [status, onTurnSettled]);
+    if (!wasInFlight || !nowSettled) return;
+
+    onTurnSettled();
+    // The terminal card is written to the chat row after the stream closes, so this
+    // mounted panel would otherwise keep showing the last `in_progress` revision.
+    if (!hasOpenInvestigation(messagesRef.current)) return;
+    void pollSettledTranscript<UIMessage>({
+      fetchTranscript: () => fetchChatTranscript(actionPath, chatId),
+      apply: (merge) => setMessages((current) => merge(current)),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+  }, [status, onTurnSettled, actionPath, chatId, setMessages]);
+
+  // Not cleared on unmount: the turn carries on server-side and reports again on remount.
+  useEffect(() => {
+    onActivityChange?.(chatId, activity);
+  }, [chatId, activity, onActivityChange]);
 
   return (
     <>
-      <DashboardAgentContextBanner
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        currentPage={currentPage}
-      />
-      {messages.length === 0 ? (
-        <DashboardAgentSuggestedPrompts onSelect={submit} />
+      {messages.length === 0 && !pendingFirstMessage ? (
+        <DashboardAgentHero
+          onSelect={submit}
+          pageContext={clientData.pageContext}
+          promoted={promotedPrompt}
+        />
       ) : (
-        <DashboardAgentMessages messages={messages} isThinking={isThinking} error={error} />
+        <DashboardAgentMessages
+          messages={messages}
+          activity={activity}
+          error={error}
+          onRetry={retry}
+          onDismissError={clearError}
+          onIntent={handleIntent}
+          pagePaths={pagePaths}
+          resolveUri={resolveUri}
+        />
       )}
-      <DashboardAgentComposer
-        value={input}
-        onChange={setInput}
-        onSubmit={() => submit(input)}
-        onStop={stop}
-        isStreaming={isStreaming}
-      />
+      {quota.kind === "reached" ? (
+        <AgentUpgradeBlock
+          limit={quota.limit}
+          context={
+            <DashboardAgentContextBanner
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+              currentPage={currentPage}
+            />
+          }
+        />
+      ) : (
+        <>
+          <DashboardAgentComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submit(input)}
+            onStop={stop}
+            isStreaming={isStreaming}
+            focusKey={prefill?.seq}
+            context={
+              <DashboardAgentContextBanner
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                currentPage={currentPage}
+              />
+            }
+          />
+          {quota.kind === "within" && (
+            <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
+          )}
+        </>
+      )}
     </>
   );
 }

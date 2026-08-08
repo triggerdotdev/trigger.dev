@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { aiHelpRedirectUrl } from "~/components/dashboard-agent/ask-ai-channels";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { requireUserId } from "~/services/session.server";
@@ -41,12 +42,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("No query", { status: 404 });
   }
 
-  const newUrl = new URL(
-    v3EnvironmentPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: "dev" }),
-    env.LOGIN_ORIGIN
+  return redirect(
+    aiHelpRedirectUrl({
+      environmentPath: v3EnvironmentPath(
+        { slug: project.organization.slug },
+        { slug: project.slug },
+        { slug: "dev" }
+      ),
+      origin: env.LOGIN_ORIGIN,
+      query,
+    })
   );
-  // The `ask` param is picked up in the environment layout (`useDashboardAgentOpenRequests`).
-  newUrl.searchParams.set("ask", query);
-
-  return redirect(newUrl.toString());
 }

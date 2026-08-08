@@ -42,6 +42,8 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
+import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data }) => [
@@ -143,6 +145,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleOperations,
     possibleProviders,
   });
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {

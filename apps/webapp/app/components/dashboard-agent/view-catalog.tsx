@@ -33,7 +33,7 @@ export function ViewBlocks({
           case "diagnosis":
             return <RunDiagnosisCard key={key} block={block} />;
           case "chart":
-            return <AgentChart key={key} block={block} />;
+            return <AgentChart key={key} block={block} onIntent={onIntent} />;
           case "actions":
             return <ActionsBlock key={key} block={block} onIntent={onIntent} />;
           // Revisions share the investigationId, so latest-wins keeps one card.

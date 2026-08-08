@@ -8,6 +8,7 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
+import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -72,6 +73,10 @@ import {
 } from "~/components/queues/queueMetricsPeriod";
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import { queueAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -79,6 +84,10 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { pageMeta } from "~/utils/pageTitle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => queueAgentPageContext(data),
+};
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
   data?.queue?.name ?? params.queueParam ?? "Queue",
@@ -267,6 +276,15 @@ export default function Page() {
   const view = value("view") === "keys" ? "keys" : "overview";
   const selectedKey = value("key");
 
+  const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
+  const degraded = isQueueDegraded({
+    paused: queue.paused,
+    running: queue.running,
+    queued: queue.queued,
+    limit: queue.concurrencyLimit ?? environmentConcurrencyLimit,
+    oldestWaitMs,
+  });
+
   return (
     <PageContainer>
       <NavBar>
@@ -315,6 +333,14 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
+            {/* Self-hides when the agent isn't available. */}
+            {degraded ? (
+              <InvestigateButton
+                prompt={queueBacklogPrompt(queue.name)}
+                variant="secondary"
+                tooltip="Ask why this queue is backed up"
+              />
+            ) : null}
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -334,7 +360,7 @@ export default function Page() {
           queue={queue}
           environmentConcurrencyLimit={environmentConcurrencyLimit}
           queuedRunsPath={queuedRunsPath}
-          oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
+          oldestWaitMs={oldestWaitMs}
           ids={ids}
           timeRange={timeRange}
           queueName={fullName}
@@ -1045,9 +1071,7 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// Oldest-wait threshold for the warning tint: the head of the queue sitting unstarted this long
-// signals the queue is stuck, not just busy.
-const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+// The oldest-wait warning threshold lives in ~/components/queues/queue-thresholds.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.

@@ -64,6 +64,12 @@ import { parseFiniteInt } from "~/utils/searchParams";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [

@@ -34,7 +34,6 @@ import {
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "./AskAI";
 import { CodeBlock } from "./code/CodeBlock";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
@@ -61,6 +60,47 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
+
+function DeployDocsLinks() {
+  return (
+    <>
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={
+          // Span wrapper: LinkButton drops the pointer-event props Radix injects via asChild, so
+          // the tooltip trigger has to be a plain element (same pattern as FavoritePageButton).
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={BookOpenIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("deployment/overview")}
+              aria-label="Deploy docs"
+            />
+          </span>
+        }
+        content="Deploy docs"
+      />
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={QuestionMarkCircleIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("troubleshooting#deployment")}
+              aria-label="Troubleshooting docs"
+            />
+          </span>
+        }
+        content="Troubleshooting docs"
+      />
+    </>
+  );
+}
 
 export function HasNoTasksDev() {
   return (
@@ -270,29 +310,7 @@ export function DeploymentsNoneDev() {
           <Header1>Deploy your tasks</Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          <DeployDocsLinks />
         </div>
       </div>
       <StepNumber stepNumber="→" title="Switch to a deployed environment" />
@@ -658,29 +676,7 @@ function DeploymentOnboardingSteps() {
           </Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          <DeployDocsLinks />
         </div>
       </div>
       <ClientTabs defaultValue="github">

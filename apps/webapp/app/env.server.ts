@@ -1714,7 +1714,8 @@ const EnvironmentSchema = z
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
 
-    // kapa.ai — deprecated, see `AskAI.tsx`. Nothing reads it while no surface mounts the widget.
+    // kapa.ai — read by the root loader; unset turns Ask AI off, and ⌘I then opens the agent
+    // for users who have agent access, or does nothing for everyone else.
     KAPA_AI_WEBSITE_ID: z.string().optional(),
 
     // BetterStack

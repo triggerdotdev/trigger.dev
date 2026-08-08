@@ -438,7 +438,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 type LinkPropsType = Pick<
   LinkProps,
-  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
+  | "to"
+  | "target"
+  | "onClick"
+  | "onMouseDown"
+  | "onMouseEnter"
+  | "onMouseLeave"
+  | "download"
+  | "aria-label"
 > & { disabled?: boolean; replace?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
@@ -449,6 +456,7 @@ export const LinkButton = ({
   download,
   disabled = false,
   replace,
+  "aria-label": ariaLabel,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -487,6 +495,7 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -503,6 +512,7 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </Link>
