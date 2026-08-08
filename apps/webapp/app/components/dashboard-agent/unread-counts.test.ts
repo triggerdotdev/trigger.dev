@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { markChatListRead, nextVisibleChat, unreadWorkCount } from "./unread-counts";
+import {
+  markChatListRead,
+  nextVisibleChat,
+  unreadWorkCount,
+  unreadWorkForDot,
+} from "./unread-counts";
 
 const list = () => [
   { id: "chat_a", hasUnreadWake: true, hasUnreadWork: true },
@@ -52,6 +57,28 @@ describe("nextVisibleChat", () => {
   });
 });
 
+/**
+ * The chat on screen is being read, so it isn't work waiting for anyone — but only while the
+ * panel is actually open.
+ */
+describe("unreadWorkForDot", () => {
+  it("subtracts the chat the panel is showing", () => {
+    expect(unreadWorkForDot({ reported: 3, panelOpen: true, visibleChatId: "chat_a" })).toBe(2);
+  });
+
+  it("counts every chat when the panel is closed", () => {
+    expect(unreadWorkForDot({ reported: 3, panelOpen: false, visibleChatId: "chat_a" })).toBe(3);
+    expect(unreadWorkForDot({ reported: 3, panelOpen: true, visibleChatId: null })).toBe(3);
+  });
+
+  it("never reports a negative count, or one the poll didn't give", () => {
+    expect(unreadWorkForDot({ reported: 0, panelOpen: true, visibleChatId: "chat_a" })).toBe(0);
+    expect(unreadWorkForDot({ reported: undefined, panelOpen: false, visibleChatId: null })).toBe(
+      0
+    );
+  });
+});
+
 describe("what the panel and the layout actually do with it", () => {
   const panel = readFileSync(new URL("./DashboardAgentPanel.tsx", import.meta.url), "utf8");
   const layout = readFileSync(new URL("./DashboardAgent.tsx", import.meta.url), "utf8");
@@ -66,6 +93,16 @@ describe("what the panel and the layout actually do with it", () => {
     expect(panel).toContain("onChatRead?.(chatId, { leaving: false });");
     expect(panel).toContain("onChatRead?.(chatId, { leaving: true });");
     expect(layout).toContain("visibleChat.current = nextVisibleChat(chatId, options);");
+  });
+
+  /**
+   * The poll runs for as long as this tab is watching, so anything it reads about the panel has
+   * to come from a ref. `open` is state: the callback would keep the value it had when polling
+   * started, which is `false`, and the dot would go on counting the chat on screen.
+   */
+  it("reads the panel's state at poll time, not from the closure", () => {
+    expect(layout).toContain("panelOpen: panelOpen.current,");
+    expect(layout).not.toContain("open && visibleChat.current");
   });
 
   it("re-seeds both counts when the environment changes under the layout", () => {

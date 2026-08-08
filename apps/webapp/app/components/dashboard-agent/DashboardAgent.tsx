@@ -22,7 +22,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
-import { nextVisibleChat } from "./unread-counts";
+import { nextVisibleChat, unreadWorkForDot } from "./unread-counts";
 import { startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
@@ -97,6 +97,12 @@ export function DashboardAgent({
   }, []);
   // A wake in the on-screen chat toasts but must not light the dot.
   const visibleChat = useRef<string | null>(null);
+  // Read by the poll callback, which outlives the render that started it: `open` in its closure
+  // is whatever it was when polling began, and opening the panel does not restart the poll.
+  const panelOpen = useRef(open);
+  useEffect(() => {
+    panelOpen.current = open;
+  }, [open]);
 
   // Switching environment re-runs the layout loader but does not remount it, so the seeds
   // above would keep the old environment's counts.
@@ -214,8 +220,13 @@ export function DashboardAgent({
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
-        // A chat open in the panel is being read right now, so it isn't unread work.
-        setUnreadWork(Math.max(0, (data.unreadWork ?? 0) - (open && visibleChat.current ? 1 : 0)));
+        setUnreadWork(
+          unreadWorkForDot({
+            reported: data.unreadWork,
+            panelOpen: panelOpen.current,
+            visibleChatId: visibleChat.current,
+          })
+        );
 
         const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
