@@ -1,6 +1,6 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import type { DiagnosisBlock } from "@internal/dashboard-agent";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { TextLink } from "~/components/primitives/TextLink";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
@@ -10,6 +10,7 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
+import { planDiagnosisActions } from "./diagnosis-actions";
 import { isRunFriendlyId } from "./run-id";
 
 // No markup comes from the model, so only outbound URLs need checking.
@@ -82,12 +83,18 @@ const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string
 };
 
 // Null when the route context is absent, so the card degrades to plain text.
-function useRunPath(runId: string): string | null {
+function useRunPathResolver(): (runId: string) => string | null {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const environment = useOptionalEnvironment();
-  if (!organization || !project || !environment) return null;
-  return v3RunPath(organization, project, environment, { friendlyId: runId });
+  return (runId) =>
+    organization && project && environment
+      ? v3RunPath(organization, project, environment, { friendlyId: runId })
+      : null;
+}
+
+function useRunPath(runId: string): string | null {
+  return useRunPathResolver()(runId);
 }
 
 function RunLink({ runId, className }: { runId: string; className?: string }) {
@@ -122,40 +129,27 @@ function EvidenceReference({ reference }: { reference: string }) {
 }
 
 function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["actions"]> }) {
+  const runPath = useRunPathResolver();
+  const planned = planDiagnosisActions(actions, {
+    runPath,
+    docsUrl: (target) => toSafeUrl(target),
+  });
+  if (planned.length === 0) return null;
+
   return (
     <div className="flex flex-wrap gap-2 pt-2">
-      {actions.map((action, i) => {
-        if (action.kind === "view_run" && isRunFriendlyId(action.target)) {
-          return <RunActionButton key={i} runId={action.target} label={action.label} />;
-        }
-        if (action.kind === "docs") {
-          const safeUrl = toSafeUrl(action.target);
-          if (!safeUrl) return null;
-          return (
-            <LinkButton key={i} to={safeUrl} variant="docs/small" LeadingIcon={BookOpenIcon}>
-              {action.label}
-            </LinkButton>
-          );
-        }
-        return null;
-      })}
+      {planned.map((action, i) =>
+        action.kind === "docs" ? (
+          <LinkButton key={i} to={action.to} variant="docs/small" LeadingIcon={BookOpenIcon}>
+            {action.label}
+          </LinkButton>
+        ) : (
+          <LinkButton key={i} to={action.to} variant="primary/small">
+            {action.label}
+          </LinkButton>
+        )
+      )}
     </div>
-  );
-}
-
-function RunActionButton({ runId, label }: { runId: string; label: string }) {
-  const to = useRunPath(runId);
-  if (!to) {
-    return (
-      <Button variant="primary/small" onClick={() => {}}>
-        {label}
-      </Button>
-    );
-  }
-  return (
-    <LinkButton to={to} variant="primary/small">
-      {label}
-    </LinkButton>
   );
 }
 
