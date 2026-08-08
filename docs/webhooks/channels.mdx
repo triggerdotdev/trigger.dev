@@ -27,7 +27,7 @@ The `run()` loop is unchanged: the agent does not know or care that it is talkin
 
 <Steps>
   <Step title="Create a Slack app">
-    Create an app at [api.slack.com/apps](https://api.slack.com/apps). Add the `chat:write` bot scope and install it to your workspace to get a bot token (`xoxb-...`).
+    Create an app at [api.slack.com/apps](https://api.slack.com/apps). Add the `chat:write` and `channels:history` bot scopes (`chat:write` posts replies; `channels:history` receives the `message.channels` events), then install it to your workspace to get a bot token (`xoxb-...`). If you add scopes after installing, reinstall the app to apply them.
   </Step>
   <Step title="Deploy the agent + connect the endpoint">
     Deploying registers a hosted [endpoint](/webhooks/connect) for the channel. Set its signing secret to your Slack app's **Signing Secret**, and pass the bot token as `token`.
