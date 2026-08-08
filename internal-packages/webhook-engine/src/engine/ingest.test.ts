@@ -209,6 +209,49 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
+containerTestWithIsolatedRedisNoClickhouse(
+  "ingest -> deliver routes the full event when it exceeds the dashboard snapshot cap",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask);
+
+    try {
+      const eventId = "evt_large_1";
+      const blob = "x".repeat(64 * 1024);
+      const body = JSON.stringify({ id: eventId, type: "payment_intent.succeeded", blob });
+      const t = Math.floor(Date.now() / 1000);
+      const sig = createHmac("sha256", SECRET).update(`${t}.${body}`).digest("hex");
+
+      const result = await engine.ingest({
+        opaqueId: endpoint.opaqueId,
+        rawBytes: new TextEncoder().encode(body),
+        headers: { "stripe-signature": `t=${t},v1=${sig}` },
+        url: `https://api.example.com/webhooks/v1/ingest/${endpoint.opaqueId}`,
+      });
+
+      expect(result.outcome).toBe("accepted");
+      if (result.outcome !== "accepted") return;
+      const deliveryId = result.deliveryId;
+
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: deliveryId } });
+        return d?.status === "SUCCEEDED";
+      });
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].payload).toEqual({ id: eventId, type: "payment_intent.succeeded", blob });
+
+      const delivery = await prisma.webhookDelivery.findFirst({ where: { id: deliveryId } });
+      const stored = delivery?.parsedEvent as { blob?: string; truncated?: boolean } | null;
+      expect(stored?.blob).toBe(blob);
+      expect(stored?.truncated).toBeUndefined();
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
 // Two-database mode: point the engine at a SEPARATE Postgres (the future data-plane DB) with the
 // fixture's `prisma` as the main DB, and prove webhook writes land only on the injected client (a
 // leaked query onto the main client would show up as a row there). Runtime backstop to the types.

@@ -10,6 +10,7 @@ import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -39,6 +40,7 @@ import {
 } from "~/presenters/v3/WebhookDeliveryDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
+import { formatBytes } from "~/utils/columnFormat";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -53,6 +55,8 @@ import { flag } from "~/v3/featureFlags.server";
 const DeliveryParamSchema = EnvironmentParamSchema.extend({
   deliveryParam: z.string(),
 });
+
+const EVENT_DISPLAY_CAP = 128 * 1024;
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const friendlyId = (data as { delivery?: WebhookDeliveryDetail } | undefined)?.delivery
@@ -101,9 +105,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     deliveryFriendlyId: deliveryParam,
   });
 
+  const rawEventJson =
+    delivery?.parsedEvent != null ? JSON.stringify(delivery.parsedEvent, null, 2) : null;
+  const eventBytes = rawEventJson != null ? Buffer.byteLength(rawEventJson, "utf8") : 0;
+  const eventTruncatedForDisplay = rawEventJson != null && rawEventJson.length > EVENT_DISPLAY_CAP;
+  const eventJson = eventTruncatedForDisplay
+    ? rawEventJson!.slice(0, EVENT_DISPLAY_CAP)
+    : rawEventJson;
+
   // A missing delivery is most often one that aged out of retention (a bookmarked or shared link),
   // so render a friendly retention-aware state rather than a hard 404.
-  return typedjson({ delivery, retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS });
+  return typedjson({
+    delivery: delivery ? { ...delivery, parsedEvent: null } : delivery,
+    eventJson,
+    eventBytes,
+    eventTruncatedForDisplay,
+    retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS,
+  });
 };
 
 /** Centred placeholder for a tab whose content was never captured. */
@@ -126,7 +144,8 @@ function formatDuration(createdAt: Date, processedAt: Date | null): string | nul
 }
 
 export default function Page() {
-  const { delivery, retentionDays } = useTypedLoaderData<typeof loader>();
+  const { delivery, eventJson, eventBytes, eventTruncatedForDisplay, retentionDays } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -175,8 +194,6 @@ export default function Page() {
     ? v3WebhookTaskPath(organization, project, environment, delivery.webhook.slug)
     : undefined;
 
-  const eventJson =
-    delivery.parsedEvent != null ? JSON.stringify(delivery.parsedEvent, null, 2) : null;
   const headersJson =
     delivery.headers != null && Object.keys(delivery.headers as object).length > 0
       ? JSON.stringify(delivery.headers, null, 2)
@@ -232,7 +249,16 @@ export default function Page() {
               <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                 {tab === "event" ? (
                   eventJson ? (
-                    <CodeBlock code={eventJson} language="json" showLineNumbers maxLines={1000} />
+                    <div className="flex flex-col gap-2">
+                      {eventTruncatedForDisplay ? (
+                        <Callout variant="info">
+                          This event is {formatBytes(eventBytes)}. Showing the first{" "}
+                          {formatBytes(EVENT_DISPLAY_CAP)} for display. The full payload was
+                          delivered to your task.
+                        </Callout>
+                      ) : null}
+                      <CodeBlock code={eventJson} language="json" showLineNumbers maxLines={1000} />
+                    </div>
                   ) : (
                     <EmptyTabMessage>
                       No event payload was captured for this delivery.
