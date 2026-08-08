@@ -268,11 +268,14 @@ export function buildRepoTools(
           const from = Math.max(1, startLine ?? 1);
           const to = Math.min(lines.length, endLine ?? lines.length);
           const range = capRead(lines.slice(from - 1, to).join("\n"));
+          // The cap can cut the range short, and a line number that outruns the
+          // content is a citation anchored to a line the model never saw.
+          const served = Math.min(to, from + range.content.split("\n").length - 1);
           return {
             path,
             content: range.content,
             startLine: from,
-            endLine: to,
+            endLine: served,
             ...(range.truncated ? { truncated: true, notice: READ_TRUNCATION_NOTICE } : {}),
           };
         }

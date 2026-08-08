@@ -139,6 +139,19 @@ describe("repo-tools", () => {
     expect(res.startLine).toBe(3000);
   });
 
+  it("read_file reports the last line it actually served when the cap cuts a range short", async () => {
+    const res: any = await call(tools.read_file, {
+      path: "src/trigger/narrow.ts",
+      startLine: 1,
+      endLine: 4000,
+    });
+    expect(res.truncated).toBe(true);
+    const served = res.content.split("\n");
+    expect(served).toHaveLength(MAX_READ_LINES);
+    expect(res.startLine).toBe(1);
+    expect(res.endLine).toBe(MAX_READ_LINES);
+  });
+
   it("read_file leaves a small file untruncated", async () => {
     const res: any = await call(tools.read_file, { path: "src/trigger/order.ts" });
     expect(res.truncated).toBe(false);
