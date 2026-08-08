@@ -248,16 +248,16 @@ export function selectRunOpsTopology(
   if (config.legacySharesControlPlane) {
     legacyRunOps = controlPlane;
   } else {
-    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "legacy-run-ops-writer");
     const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
-      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "legacy-run-ops-replica")
       : legacyWriter;
     legacyRunOps = { writer: legacyWriter, replica: legacyReplica };
   }
 
-  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
+  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
-    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-new-reader")
+    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-replica")
     : newWriter;
 
   return {
@@ -431,7 +431,7 @@ function getClient() {
 
   return buildWriterClient({
     url,
-    clientType: "writer",
+    clientType: "control-plane-writer",
     poolTimeout: env.DATABASE_WRITER_POOL_TIMEOUT,
     connectTimeout: env.DATABASE_WRITER_CONNECTION_TIMEOUT,
     useDriverAdapter: env.CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER === "1",
@@ -664,7 +664,7 @@ function getReplicaClient() {
 
   return buildReplicaClient({
     url,
-    clientType: "reader",
+    clientType: "control-plane-replica",
     poolTimeout: env.DATABASE_READ_REPLICA_POOL_TIMEOUT,
     connectTimeout: env.DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
     useDriverAdapter: env.CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
