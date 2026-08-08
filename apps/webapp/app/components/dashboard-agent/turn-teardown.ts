@@ -10,9 +10,8 @@ export function teardownCancelsTurn(reason: TurnTeardown): boolean {
 }
 
 /**
- * The three unmounts look identical from inside React. A navigation has already moved the URL
- * by the time the cleanup runs; closing the panel and switching chat leave it alone, and since
- * both keep the turn they share one branch.
+ * The three unmounts look identical from inside React. Only a navigation has already moved the
+ * URL by the time the cleanup runs; the other two keep the turn, so they share one branch.
  */
 export function unmountTeardown(paths: { renderedPath: string; livePath: string }): TurnTeardown {
   return paths.renderedPath === paths.livePath ? "panel-closed" : "navigated-away";

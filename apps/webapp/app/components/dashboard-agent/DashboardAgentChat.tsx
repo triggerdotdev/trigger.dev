@@ -62,7 +62,7 @@ export function DashboardAgentChat({
   currentPage,
   pendingFirstMessage,
   streaming,
-  prefill,
+  sendRequest,
   promotedPrompt,
   watches,
   pagePaths,
@@ -86,8 +86,9 @@ export function DashboardAgentChat({
   // Undefined for head-started and resumed chats.
   pendingFirstMessage?: string;
   streaming?: boolean;
-  // `seq` makes each request distinct so the same text can be sent twice.
-  prefill?: { text: string; seq: number };
+  // A prompt the user asked for by clicking. `seq` makes each request distinct so the same
+  // text can be sent twice.
+  sendRequest?: { text: string; seq: number };
   promotedPrompt?: SuggestedPrompt;
   watches: WatchChip[];
   pagePaths?: Record<string, string>;
@@ -108,13 +109,6 @@ export function DashboardAgentChat({
   // unmount whose live URL has moved is the router having navigated out from under it.
   const renderedPathRef = useRef(location.pathname);
   renderedPathRef.current = location.pathname;
-
-  const prefilledSeq = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!prefill || prefilledSeq.current === prefill.seq) return;
-    prefilledSeq.current = prefill.seq;
-    setInput(prefill.text);
-  }, [prefill]);
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
@@ -231,6 +225,14 @@ export function DashboardAgentChat({
     },
     [isStreaming, atMessageCap, sendMessage]
   );
+
+  // The panel only sends when the chat can take it, so this never lands mid-turn.
+  const sentRequestSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!sendRequest || sentRequestSeq.current === sendRequest.seq) return;
+    sentRequestSeq.current = sendRequest.seq;
+    submit(sendRequest.text);
+  }, [sendRequest, submit]);
 
   const retry = useCallback(() => {
     // A watch's consent record is a user message nobody typed, so retry never treats it as one.
@@ -416,7 +418,7 @@ export function DashboardAgentChat({
             onSubmit={() => submit(input)}
             onStop={stop}
             isStreaming={isStreaming}
-            focusKey={prefill?.seq}
+            focusKey={sendRequest?.seq}
             context={
               <DashboardAgentContextBanner
                 projectSlug={projectSlug}
