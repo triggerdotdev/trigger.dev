@@ -29,8 +29,9 @@ your actual source at the deployed commit and cites file:line.
 back", the *Watch recovery* button on a degraded health report. A durable
 condition the platform checks on a schedule (no LLM in the checks), which
 wakes the chat with the outcome. Fires once, expires within 24h, max 3 per
-chat. Five kinds: run start / run finished / backlog drain / error recurrence
-/ health recovery.
+chat. Ten kinds: run start / run finished / run failed / backlog drain / queue
+depth above / queue depth below / queue stalled / queue oldest age / error
+recurrence / health recovery.
 
 **Alerts** — when a watch is created (or fires) without a subscription, the
 agent offers an email alert — one line, created only if you say yes. Standing
