@@ -20,6 +20,7 @@ import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 import { AgentPanelColumn } from "./panel-layout";
@@ -158,27 +159,10 @@ export function DashboardAgentPanel({
           console.error(`Dashboard agent: failed to open chat ${id} (${res.status})`);
           toast.error("We couldn't open that chat. Try again in a moment.");
         }
-        const data = res.ok
-          ? ((await res.json()) as {
-              messages?: UIMessage[];
-              session?: { publicAccessToken: string; lastEventId: string | null } | null;
-            })
-          : { messages: [], session: null };
+        const data = res.ok ? ((await res.json()) as OpenedChatResponse) : undefined;
         if (seq !== openChatRequestSeq.current) return;
-        if (data.messages && data.messages.length > 0) {
-          setActive({
-            chatId: id,
-            messages: data.messages,
-            session: data.session?.publicAccessToken
-              ? {
-                  publicAccessToken: data.session.publicAccessToken,
-                  lastEventId: data.session.lastEventId ?? undefined,
-                }
-              : null,
-          });
-        } else {
-          setActive(null);
-        }
+        const opened = resolveOpenedChat(id, data);
+        setActive(opened.kind === "gone" ? null : opened);
       } catch (error) {
         console.error(`Dashboard agent: failed to open chat ${id}`, error);
         toast.error("We couldn't open that chat. Try again in a moment.");
