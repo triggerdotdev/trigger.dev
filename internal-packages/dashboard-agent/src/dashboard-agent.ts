@@ -1,4 +1,3 @@
-import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
@@ -277,13 +276,10 @@ const pendingTitles = new Map<string, Promise<void>>();
  * Whether this turn is the one that names the chat. Counted in user messages, not in
  * transcript length: a head-started turn arrives with the warm first step already in
  * `uiMessages`, so a length gate would see two messages on the very first exchange and
- * never name the chat at all. A watch's consent record is a user message the user did
- * not type, so it doesn't count as an exchange either.
+ * never name the chat at all.
  */
 export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
-  const typed = uiMessages.filter(
-    (message) => message.role === "user" && !isWatchRequestMessageId(message.id)
-  );
+  const typed = uiMessages.filter((message) => message.role === "user");
   return typed.length <= 1;
 }
 

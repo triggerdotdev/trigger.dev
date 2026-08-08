@@ -15,5 +15,3 @@ export function generateId(prefix: string, size: number = SIZE): string {
 
 export const generateInvestigationId = () => generateId("inv");
 export const generateWatchId = () => generateId("watch");
-/** Fencing token for one wake-delivery claim. */
-export const generateWatchDeliveryClaimId = () => generateId("wdc");
