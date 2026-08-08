@@ -1701,6 +1701,35 @@ describe("buildDashboardAgentTools", () => {
     expect(upserts[1]).toMatchObject({ id: first.investigationId });
   });
 
+  it("render_view refuses two investigations in one view and writes neither", async () => {
+    const { capability, rows, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+    const renderView = tools.render_view as {
+      inputSchema: { parse: (input: unknown) => unknown };
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+
+    const output = await renderView.execute(
+      renderView.inputSchema.parse({
+        blocks: [
+          { type: "investigation", investigation: investigationState },
+          {
+            type: "investigation",
+            investigation: { ...concludedState, title: "A different question entirely" },
+          },
+        ],
+      }),
+      {}
+    );
+
+    // One id is assigned per call, so committing both would file the second subject as
+    // the first's next revision.
+    expect(typeof output.error).toBe("string");
+    expect(output.blocks).toBeUndefined();
+    expect(upserts).toEqual([]);
+    expect(rows.size).toBe(0);
+  });
+
   it("render_view errors on an unknown investigationId and writes nothing", async () => {
     const { capability, rows } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
