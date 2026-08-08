@@ -3,6 +3,7 @@ import { z } from "zod";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { queueDepthSeries } from "~/v3/queueDepthSeries";
 
 /**
  * Per-queue metrics over a window. `queueParam` is the queue name; `?type=task` (the default)
@@ -62,8 +63,12 @@ export const loader = createLoaderApiRoute(
     const windowMinutes = windowMs / 60_000;
     const bucketSeconds = Math.max(60, Math.round(windowMs / 1000 / TREND_POINTS));
     // Snap both bounds to the bucket grid so repeated calls share ClickHouse cache entries.
-    const endMs = Math.ceil(Date.now() / (bucketSeconds * 1000)) * bucketSeconds * 1000;
+    const bucketIntervalMs = bucketSeconds * 1000;
+    const endMs = Math.ceil(Date.now() / bucketIntervalMs) * bucketIntervalMs;
     const startMs = endMs - windowMs;
+    // The trend grid covers whole buckets, so a period that isn't a bucket multiple still lines up.
+    const gridStartMs = Math.floor(startMs / bucketIntervalMs) * bucketIntervalMs;
+    const numBuckets = Math.round((endMs - gridStartMs) / bucketIntervalMs);
 
     try {
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
@@ -115,12 +120,13 @@ export const loader = createLoaderApiRoute(
         startedCount,
         startedPerMin: Number((startedCount / windowMinutes).toFixed(2)),
         throttledCount: summary?.throttled_count ?? 0,
-        bucketIntervalMs: bucketSeconds * 1000,
-        // Oldest first; buckets with no sample are omitted, so gaps carry the previous depth.
-        depthTrend: (trendRows ?? [])
-          .slice()
-          .sort((a, b) => a.bucket.localeCompare(b.bucket))
-          .map((row) => row.depth),
+        bucketIntervalMs,
+        // Oldest first, one point per bucket: a bucket with no sample carries the previous depth.
+        depthTrend: queueDepthSeries(trendRows ?? [], {
+          startMs: gridStartMs,
+          bucketIntervalMs,
+          numBuckets,
+        }).depth,
       });
     } catch (error) {
       // Rethrow Responses: swallowing one would turn it into a 500.
