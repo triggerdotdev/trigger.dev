@@ -262,33 +262,59 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         ...(clientData ? { metadata: { context: clientContext } } : {}),
       });
 
-      if (headStartMetadata) {
-        // Injects the delegated token and context into the run's payload server-side.
-        await startDashboardAgentHeadStart({
-          chatId,
-          messages: [firstMessage],
-          mode: repoSnapshot ? "code" : "assistant",
-          metadata: headStartMetadata,
+      try {
+        if (headStartMetadata) {
+          // Injects the delegated token and context into the run's payload server-side.
+          await startDashboardAgentHeadStart({
+            chatId,
+            messages: [firstMessage],
+            mode: repoSnapshot ? "code" : "assistant",
+            metadata: headStartMetadata,
+          });
+        } else {
+          // Cold start: the client sends the first message through the `in` proxy, which
+          // injects the token.
+          // Same server-owned identity the head-start path injects; the `in` proxy adds the
+          // delegated token on the first turn.
+          await startDashboardAgentSession({
+            chatId,
+            clientData: {
+              ...clientContext,
+              organizationId: project.organizationId,
+              userId,
+              projectId: project.id,
+              environmentId: runtimeEnv.id,
+              environmentName,
+            },
+          });
+        }
+      } catch (error) {
+        // Both starts are one create-session-and-trigger round trip, so a rejection means no
+        // handover was dispatched and no message was sent: a session the call did create in
+        // spite of the error idles out having done nothing. The empty row is all there is to undo.
+        // Swallowed so the start's own error is what surfaces and gets logged.
+        await softDeleteChat(dashboardAgentDb, { chatId, userId }).catch((cleanupError) => {
+          logger.error("Failed to remove a dashboard agent chat whose start failed", {
+            chatId,
+            error: cleanupError,
+          });
         });
-      } else {
-        // Cold start: the client sends the first message through the `in` proxy, which
-        // injects the token.
-        // Same server-owned identity the head-start path injects; the `in` proxy adds the
-        // delegated token on the first turn.
-        await startDashboardAgentSession({
-          chatId,
-          clientData: {
-            ...clientContext,
-            organizationId: project.organizationId,
-            userId,
-            projectId: project.id,
-            environmentId: runtimeEnv.id,
-            environmentName,
-          },
-        });
+        throw error;
       }
 
-      const publicAccessToken = await mintDashboardAgentToken(chatId);
+      let publicAccessToken: string;
+      try {
+        publicAccessToken = await mintDashboardAgentToken(chatId);
+      } catch (error) {
+        // The start resolved, so the session is live and a head start is already streaming into
+        // it. Deleting the chat here would hide a running agent; the client can ask for a token
+        // again through the `token` intent.
+        logger.error("Dashboard agent chat started but its token mint failed", { chatId, error });
+        return json(
+          { error: "The dashboard agent started but couldn't be opened. Try opening it again." },
+          { status: 500 }
+        );
+      }
       return json({ chatId, publicAccessToken, headStarted });
     } catch (error) {
       logger.error("Failed to create dashboard agent chat", { chatId, error });
