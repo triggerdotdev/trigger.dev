@@ -6,6 +6,7 @@ import { makeFlag } from "~/v3/featureFlags.server";
 /**
  * Whether the in-dashboard AI agent is available to this user in this org, per the
  * `hasDashboardAgentAccess` flag with a per-org override winning. Must stay server-side.
+ * Both env defaults are off, so an unflagged install has no agent and can start no session.
  */
 export async function canAccessDashboardAgent(options: {
   userId: string;
