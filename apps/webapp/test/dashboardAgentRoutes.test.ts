@@ -179,6 +179,10 @@ describe("GET /api/v1/projects/:projectRef/:env/runs/:runId/commit", () => {
 
 describe("GET /api/v1/queues/:queueParam/metrics", () => {
   it("prefixes a task queue, derives throughput, and returns the depth trend", async () => {
+    // A 1h period is 12 five-minute buckets; pinning now to the grid's end makes bucket 0 = 00:00.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T01:00:00.000Z"));
+
     ctx.summaryRows = [
       {
         queue_name: "task/send-receipt",
@@ -192,13 +196,19 @@ describe("GET /api/v1/queues/:queueParam/metrics", () => {
     ctx.trendRows = [
       { queue_name: "task/send-receipt", bucket: "2026-01-01 00:05:00", depth: 120, throttled: 0 },
       { queue_name: "task/send-receipt", bucket: "2026-01-01 00:00:00", depth: 10, throttled: 0 },
+      { queue_name: "task/send-receipt", bucket: "2026-01-01 00:30:00", depth: 3, throttled: 0 },
     ];
 
-    const res = (await queueMetricsLoader(
-      loaderArgs("https://app.trigger.dev/api/v1/queues/send-receipt/metrics?period=1h", {
-        queueParam: "send-receipt",
-      })
-    )) as Response;
+    let res: Response;
+    try {
+      res = (await queueMetricsLoader(
+        loaderArgs("https://app.trigger.dev/api/v1/queues/send-receipt/metrics?period=1h", {
+          queueParam: "send-receipt",
+        })
+      )) as Response;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -211,7 +221,17 @@ describe("GET /api/v1/queues/:queueParam/metrics", () => {
     // 600 starts over a 60 minute window.
     expect(body.startedPerMin).toBe(10);
     expect(body.throttledCount).toBe(37);
-    expect(body.depthTrend).toEqual([10, 120]);
+
+    // Fixed width: one point per bucket, whether or not that bucket reported.
+    expect(body.bucketIntervalMs).toBe(5 * 60_000);
+    expect(body.depthTrend).toHaveLength(12);
+    expect(new Date(body.from).toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    // Each sample lands at its own bucket index, unshifted by the gaps around it.
+    expect(body.depthTrend[0]).toBe(10); // 00:00
+    expect(body.depthTrend[1]).toBe(120); // 00:05
+    expect(body.depthTrend[6]).toBe(3); // 00:30
+    // Gaps carry the previous depth forward rather than reading as zero.
+    expect(body.depthTrend).toEqual([10, 120, 120, 120, 120, 120, 3, 3, 3, 3, 3, 3]);
   });
 
   it("uses a custom queue's name verbatim and zeroes an unseen queue", async () => {
@@ -231,7 +251,8 @@ describe("GET /api/v1/queues/:queueParam/metrics", () => {
     expect(body.waitMs).toEqual({ p50: null, p95: null });
     expect(body.peakQueued).toBe(0);
     expect(body.startedPerMin).toBe(0);
-    expect(body.depthTrend).toEqual([]);
+    // A queue nothing reported still fills the whole grid, so the chart keeps its x axis.
+    expect(body.depthTrend).toEqual(new Array(12).fill(0));
   });
 
   it("keeps an already-prefixed task queue name from being double-prefixed", async () => {
