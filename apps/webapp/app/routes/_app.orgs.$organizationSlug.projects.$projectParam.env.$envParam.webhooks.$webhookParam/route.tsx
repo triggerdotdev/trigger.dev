@@ -491,7 +491,6 @@ function LiveDeliveriesTable({
   const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
     useDeliveriesLiveReload({
       deliveries: list.deliveries,
-      hasAnyDeliveries: list.deliveries.length > 0,
       isLoading: navigation.state !== "idle",
       webhookEndpointId,
       organizationSlug: organization.slug,
@@ -592,7 +591,6 @@ function ConsoleFeedList({
   const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
     useDeliveriesLiveReload({
       deliveries: list.deliveries,
-      hasAnyDeliveries: list.deliveries.length > 0,
       isLoading: navigation.state !== "idle",
       webhookEndpointId,
       organizationSlug: organization.slug,

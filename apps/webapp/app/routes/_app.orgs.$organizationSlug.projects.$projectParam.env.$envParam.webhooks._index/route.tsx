@@ -194,7 +194,6 @@ function useLiveDeliveries(deliveries: WebhookDeliveryListItem[]) {
   const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
     useDeliveriesLiveReload({
       deliveries,
-      hasAnyDeliveries: deliveries.length > 0,
       isLoading: navigation.state !== "idle",
       organizationSlug: organization.slug,
       projectSlug: project.slug,
