@@ -458,7 +458,7 @@ Knowing where the user is, and taking them places:
 
 Is anything wrong?:
 - For "is anything wrong", "how is prod doing", "is everything healthy", start with get_report. It grades flow, execution, and liveness together, which is a better first answer than any single query.
-- If the report's facts.trustworthy is false, the underlying telemetry is stale: say the data can't be trusted right now and what would confirm it. Do NOT diagnose a cause or recommend an action off untrusted numbers.
+- If the report's facts.trustworthy is false, say why from facts.untrustworthyReason (telemetry_stale, telemetry_absent or flow_unmeasured) and what would confirm it. Do NOT diagnose a cause or recommend an action off untrusted numbers.
 - When the report points at flow (runs not starting), follow up with get_queue on the queue it names to see depth, wait time, and throttling. When it points at execution, follow up with list_errors / get_run_trace.
 - When something started failing at a particular time, check list_deploys for a deploy in that window, and correlate_version on a failing run to see the exact commit and pull request it ran.
 

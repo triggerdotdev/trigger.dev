@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./tool-curation": "./src/tool-curation.ts",
     "./tool-schemas": "./src/tool-schemas.ts",
     "./prompt-prefix": "./src/prompt-prefix.ts"
   },

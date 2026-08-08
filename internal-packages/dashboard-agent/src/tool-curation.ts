@@ -189,7 +189,7 @@ export function curateReport(data: unknown) {
     })),
     facts: {
       trustworthy: facts.trustworthy,
-      staleReason: facts.staleReason,
+      untrustworthyReason: facts.untrustworthyReason,
       flowSource: facts.flowSource,
       pendingEstimated: facts.pendingEstimated,
       throughput: facts.throughput,
