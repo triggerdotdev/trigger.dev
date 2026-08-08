@@ -28,6 +28,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     userActorToken: ctx.userActorToken,
     projectRef: ctx.projectRef,
     environmentName: ctx.environmentName,
+    environmentBranch: ctx.environmentBranch,
     repoSnapshot: ctx.repoSnapshot,
   });
   const renderInvestigations = createInvestigationRenderer({

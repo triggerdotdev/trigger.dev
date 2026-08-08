@@ -20,7 +20,13 @@ import {
   runQuerySchema,
   searchDocsSchema,
 } from "./tool-schemas";
-import { apiGet, NO_AUTH, type DashboardAgentApiClient } from "./tool-api-client";
+import {
+  apiGet,
+  isEnvUnavailable,
+  NO_AUTH,
+  type DashboardAgentApiClient,
+  type EnvUnavailable,
+} from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
 import {
   clampPeriod,
@@ -41,6 +47,19 @@ import { searchTriggerDocs } from "./tool-docs";
 import type { InvestigationRenderer } from "./tool-investigations";
 
 /**
+ * What to tell the model when a read never reached an environment. Only a missing
+ * environment is stated as one; a failed exchange says the read didn't land, and carries
+ * its status, so an authorization failure is never reported as an absent environment.
+ */
+export function envUnavailableError(result: EnvUnavailable, action: string): { error: string } {
+  if (result.envUnavailable === "missing") {
+    return { error: `No current environment is available to ${action}.` };
+  }
+  const status = result.status ? ` (status ${result.status})` : "";
+  return { error: `Couldn't reach the current environment to ${action}${status}.` };
+}
+
+/**
  * The API read tools, in the frozen key order `dashboardAgentToolSchemas` declares:
  * a different order is a different cached prompt prefix.
  */
@@ -50,7 +69,7 @@ export function buildApiTools(args: {
   renderInvestigations: InvestigationRenderer;
 }): ToolSet {
   const { ctx, client, renderInvestigations } = args;
-  const { userActorToken, projectRef, environmentName } = ctx;
+  const { userActorToken, projectRef, environmentName, environmentBranch } = ctx;
   const { origin, hasAuth, envApiGet, postQuery, validateChartQuery } = client;
 
   return {
@@ -91,7 +110,8 @@ export function buildApiTools(args: {
         const result = await apiGet(
           origin,
           `/api/v1/projects/${projectRef}/${environmentName}/workers/current`,
-          userActorToken!
+          userActorToken!,
+          environmentBranch
         );
         if (!result.ok) return { error: `Couldn't list tasks (status ${result.status}).` };
         return curateTasks(result.data);
@@ -109,7 +129,7 @@ export function buildApiTools(args: {
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
         const result = await envApiGet(`/api/v1/runs?${sp.toString()}`);
-        if (!result) return { error: "No current environment is available to read runs from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) return { error: `Couldn't list runs (status ${result.status}).` };
         return { ...curateRuns(result.data), period: effectivePeriod };
       },
@@ -122,7 +142,7 @@ export function buildApiTools(args: {
       ...getRunSchema,
       execute: async ({ runId }) => {
         const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`);
-        if (!result) return { error: "No current environment is available to read runs from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
         return curateRun(result.data);
       },
@@ -132,7 +152,7 @@ export function buildApiTools(args: {
       ...getRunTraceSchema,
       execute: async ({ runId }) => {
         const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`);
-        if (!result) return { error: "No current environment is available to read runs from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
         return curateTrace(result.data);
@@ -149,7 +169,7 @@ export function buildApiTools(args: {
         if (period) sp.append("filter[period]", period);
         sp.append("page[size]", String(Math.min(limit ?? 20, 100)));
         const result = await envApiGet(`/api/v1/errors?${sp.toString()}`);
-        if (!result) return { error: "No current environment is available to read errors from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
         if (!result.ok) return { error: `Couldn't list errors (status ${result.status}).` };
         return curateErrors(result.data);
       },
@@ -159,7 +179,7 @@ export function buildApiTools(args: {
       ...getErrorSchema,
       execute: async ({ errorId }) => {
         const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`);
-        if (!result) return { error: "No current environment is available to read errors from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
         if (!result.ok)
           return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
         return curateError(result.data);
@@ -170,7 +190,7 @@ export function buildApiTools(args: {
       ...getQuerySchemaSchema,
       execute: async ({ table }) => {
         const result = await envApiGet("/api/v1/query/schema");
-        if (!result) return { error: "No current environment is available to query." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
         if (!result.ok)
           return { error: `Couldn't load the query schema (status ${result.status}).` };
         const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
@@ -208,7 +228,7 @@ export function buildApiTools(args: {
       ...runQuerySchema,
       execute: async ({ query, period }) => {
         const result = await postQuery(query, period);
-        if (!result) return { error: "No current environment is available to query." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
         if (!result.ok) return { error: result.error };
         const cap = 200;
         const rows = result.rows;
@@ -294,7 +314,7 @@ export function buildApiTools(args: {
         const result = await envApiGet(
           `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`
         );
-        if (!result) return { error: "No current environment is available to report on." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "report on");
         if (!result.ok) {
           return { error: `Couldn't get the ${reportKey} report (status ${result.status}).` };
         }
@@ -324,7 +344,7 @@ export function buildApiTools(args: {
         const result = await envApiGet(
           `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
         );
-        if (!result) return { error: "No current environment is available to read queues from." };
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read queues from");
         if (!result.ok) {
           return {
             error: `Couldn't get metrics for the ${queue} queue (status ${result.status}).`,
@@ -343,9 +363,7 @@ export function buildApiTools(args: {
         if (effectivePeriod) sp.append("period", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
         const result = await envApiGet(`/api/v1/deployments?${sp.toString()}`);
-        if (!result) {
-          return { error: "No current environment is available to read deployments from." };
-        }
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read deployments from");
         if (!result.ok) return { error: `Couldn't list deployments (status ${result.status}).` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         return {
@@ -359,11 +377,11 @@ export function buildApiTools(args: {
     get_deploy: tool({
       ...getDeploySchema,
       execute: async ({ version }) => {
-        const noEnv = { error: "No current environment is available to read deployments from." };
+        const noEnv = (r: EnvUnavailable) => envUnavailableError(r, "read deployments from");
         // No version: the promoted deployment, which is what new runs use.
         if (!version) {
           const result = await envApiGet("/api/v1/deployments/current");
-          if (!result) return noEnv;
+          if (isEnvUnavailable(result)) return noEnv(result);
           if (!result.ok) {
             return { error: `Couldn't get the current deployment (status ${result.status}).` };
           }
@@ -372,7 +390,7 @@ export function buildApiTools(args: {
         // The public retrieve route is API-key-only, so find the version in the
         // JWT-reachable list instead.
         const result = await envApiGet("/api/v1/deployments?page[size]=100");
-        if (!result) return noEnv;
+        if (isEnvUnavailable(result)) return noEnv(result);
         if (!result.ok) return { error: `Couldn't look up deployments (status ${result.status}).` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         const match = (Array.isArray(rows) ? rows : []).find(
@@ -398,7 +416,8 @@ export function buildApiTools(args: {
         const result = await apiGet(
           origin,
           `/api/v1/projects/${projectRef}/${environmentName}/runs/${encodeURIComponent(runId)}/commit`,
-          userActorToken!
+          userActorToken!,
+          environmentBranch
         );
         if (!result.ok) {
           if (result.status === 404) {

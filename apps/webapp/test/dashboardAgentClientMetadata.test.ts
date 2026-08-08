@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  findEnvironmentBySlug: vi.fn<(...args: any[]) => Promise<any>>(),
 }));
 
 vi.mock("~/db.server", () => ({ $replica: {} }));
@@ -20,11 +21,10 @@ vi.mock("~/models/project.server", () => ({
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
-  findEnvironmentBySlug: async () => ({ id: "env_real", type: "DEVELOPMENT" }),
+  findEnvironmentBySlug: mocks.findEnvironmentBySlug,
 }));
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.trigger.dev",
-  dashboardAgentEnvironmentName: () => "dev",
   mintDashboardAgentUserActorToken: async () => "tr_uat_real",
   resolveDashboardAgentRepoSnapshot: async () => null,
 }));
@@ -66,6 +66,12 @@ async function appendTurn(metadata: Record<string, unknown>): Promise<Record<str
 
 describe("dashboard agent `in` proxy — client metadata", () => {
   beforeEach(() => {
+    mocks.findEnvironmentBySlug.mockReset();
+    mocks.findEnvironmentBySlug.mockResolvedValue({
+      id: "env_real",
+      type: "DEVELOPMENT",
+      branchName: null,
+    });
     mocks.fetch.mockReset();
     mocks.fetch.mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -95,6 +101,7 @@ describe("dashboard agent `in` proxy — client metadata", () => {
       projectRef: "proj_ref_evil",
       environmentId: "env_evil",
       environmentName: "prod",
+      environmentBranch: "evil-branch",
       apiOrigin: "https://evil.example.com",
       userActorToken: "tr_uat_evil",
       repoSnapshot: { tarballUrl: "https://evil.example.com/x.tar.gz" },
@@ -106,9 +113,38 @@ describe("dashboard agent `in` proxy — client metadata", () => {
     expect(metadata.projectRef).toBe("proj_ref_real");
     expect(metadata.environmentId).toBe("env_real");
     expect(metadata.environmentName).toBe("dev");
+    expect(metadata.environmentBranch).toBeUndefined();
     expect(metadata.apiOrigin).toBe("https://api.trigger.dev");
     expect(metadata.userActorToken).toBe("tr_uat_real");
     expect(metadata.repoSnapshot).toBeUndefined();
+  });
+
+  // The whole address the proxy hands the agent, for each of the four environment shapes. The
+  // name is shared by a parent and all its branches, so a branch is only addressable when its
+  // branch travels with the name.
+  it.each([
+    ["production", { id: "env_prod", type: "PRODUCTION", branchName: null }, "prod", undefined],
+    ["staging", { id: "env_stg", type: "STAGING", branchName: null }, "staging", undefined],
+    [
+      "a preview branch",
+      { id: "env_preview_branch", type: "PREVIEW", branchName: "feat/checkout" },
+      "preview",
+      "feat/checkout",
+    ],
+    [
+      "a development branch",
+      { id: "env_dev_branch", type: "DEVELOPMENT", branchName: "katia/spike" },
+      "dev",
+      "katia/spike",
+    ],
+  ])("addresses %s by the environment it resolved", async (_name, env, expectedName, branch) => {
+    mocks.findEnvironmentBySlug.mockResolvedValue(env);
+
+    const metadata = await appendTurn({ currentPage: "/runs" });
+
+    expect(metadata.environmentId).toBe(env.id);
+    expect(metadata.environmentName).toBe(expectedName);
+    expect(metadata.environmentBranch).toBe(branch);
   });
 
   it("drops any field the server doesn't own", async () => {

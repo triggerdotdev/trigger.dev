@@ -69,9 +69,20 @@ vi.mock("~/db.server", () => ({
         MEMBER_USER_IDS.includes(where.id) ? { id: where.id } : null,
     },
     runtimeEnvironment: {
+      // Enough of the where-clause to tell the rows apart the way Prisma would: the branchless
+      // lookup keys on slug, the branch lookup on type + branchName, and dev of either kind is
+      // additionally scoped to the calling member.
       findFirst: async ({ where }: any) =>
-        ENVIRONMENTS.find((env) => env.projectId === where.projectId && env.slug === where.slug) ??
-        null,
+        ENVIRONMENTS.find((env) => {
+          if (env.projectId !== where.projectId) return false;
+          if (where.slug !== undefined && env.slug !== where.slug) return false;
+          if (where.type !== undefined && env.type !== where.type) return false;
+          if (where.branchName !== undefined && env.branchName !== where.branchName) return false;
+          if (where.archivedAt !== undefined && env.archivedAt !== where.archivedAt) return false;
+          if (where.orgMember?.userId && env.orgMemberUserId !== where.orgMember.userId)
+            return false;
+          return true;
+        }) ?? null,
     },
     workerDeployment: { findFirst: async () => null },
     backgroundWorkerTask: { findMany: async () => [] },
@@ -98,11 +109,20 @@ const PROJECT = { id: "proj_1234", externalRef: "proj_ref_1234", slug: "test-pro
 const USER_ID = "usr_member";
 const MEMBER_USER_IDS = [USER_ID];
 
-function environment(id: string, slug: string, type: "PRODUCTION" | "STAGING") {
+function environment(
+  id: string,
+  slug: string,
+  type: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
+  branchName: string | null = null
+) {
   return {
     id,
     slug,
     type,
+    branchName,
+    archivedAt: null,
+    // Dev rows are per-member; the others aren't scoped to one.
+    orgMemberUserId: type === "DEVELOPMENT" ? USER_ID : null,
     apiKey: `tr_${slug}_abcdefghijklmnop`,
     organizationId: ORGANIZATION.id,
     organization: ORGANIZATION,
@@ -114,7 +134,23 @@ function environment(id: string, slug: string, type: "PRODUCTION" | "STAGING") {
 // Two environments of the same project, both reachable by the same member.
 const ENV_A = environment("env_aaaa", "prod", "PRODUCTION");
 const ENV_B = environment("env_bbbb", "stg", "STAGING");
-const ENVIRONMENTS = [ENV_A, ENV_B];
+
+// The two branchable families: a parent and one of its branch children each. `upsertBranch` gives
+// the child its own slug, but both rows answer to the same API env name — "preview", "dev".
+const PREVIEW_BRANCH_NAME = "feat/checkout";
+const DEV_BRANCH_NAME = "katia/spike";
+const PREVIEW_PARENT = environment("env_preview", "preview", "PREVIEW");
+const PREVIEW_BRANCH = {
+  ...environment("env_preview_branch", "preview-feat-checkout", "PREVIEW", PREVIEW_BRANCH_NAME),
+  // The resolver reads the parent to override the branch's api key.
+  parentEnvironment: PREVIEW_PARENT,
+};
+const DEV_PARENT = environment("env_dev", "dev", "DEVELOPMENT");
+const DEV_BRANCH = {
+  ...environment("env_dev_branch", "dev-katia-spike", "DEVELOPMENT", DEV_BRANCH_NAME),
+  parentEnvironment: DEV_PARENT,
+};
+const ENVIRONMENTS = [ENV_A, ENV_B, PREVIEW_PARENT, PREVIEW_BRANCH, DEV_PARENT, DEV_BRANCH];
 
 function mintToken(opts: { environmentId?: string; client?: string } = {}) {
   return signUserActorToken(SESSION_SECRET, {
@@ -135,11 +171,28 @@ async function respond(call: () => Promise<Response>): Promise<Response> {
   }
 }
 
+// `branch` rides the same header the SDK and the agent's client send.
+let branchHeader: string | undefined;
+
 function requestFor(token: string, url: string, init?: RequestInit) {
   return new Request(`https://example.com${url}`, {
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(branchHeader ? { "x-trigger-branch": branchHeader } : {}),
+    },
     ...init,
   });
+}
+
+/** Runs a route case with the branch header set for the duration of the call. */
+async function withBranch<T>(branch: string | undefined, call: () => Promise<T>): Promise<T> {
+  branchHeader = branch;
+  try {
+    return await call();
+  } finally {
+    branchHeader = undefined;
+  }
 }
 
 type RouteCase = {
@@ -291,6 +344,100 @@ describe("user-actor token environment scope", () => {
     ).toThrow();
   });
 });
+
+/**
+ * Every environment shape the agent can be opened on, against the real routes. `preview` and `dev`
+ * name a family rather than a row, so a branch is only addressable when `x-trigger-branch` travels
+ * with the name — and a token minted for the branch is refused against the parent it otherwise
+ * resolves to. Production and staging have no branch and must be unchanged by any of it.
+ */
+type EnvironmentCase = {
+  name: string;
+  env: string;
+  branch?: string;
+  expected: { id: string };
+  /** The row a request without the branch lands on instead, for the branchable families. */
+  fallsBackTo?: { id: string };
+};
+
+const ENVIRONMENT_CASES: EnvironmentCase[] = [
+  { name: "production", env: "prod", expected: ENV_A },
+  { name: "staging", env: "staging", expected: ENV_B },
+  {
+    name: "a preview branch",
+    env: "preview",
+    branch: PREVIEW_BRANCH_NAME,
+    expected: PREVIEW_BRANCH,
+    fallsBackTo: PREVIEW_PARENT,
+  },
+  {
+    name: "a development branch",
+    env: "dev",
+    branch: DEV_BRANCH_NAME,
+    expected: DEV_BRANCH,
+    fallsBackTo: DEV_PARENT,
+  },
+];
+
+describe.each(ENVIRONMENT_CASES)(
+  "user-actor token on $name",
+  ({ env, branch, expected, fallsBackTo }) => {
+    beforeEach(() => {
+      mocks.can.mockReset();
+      mocks.can.mockReturnValue(true);
+      mocks.findCurrentWorkerFromEnvironment.mockReset();
+      mocks.findCurrentWorkerFromEnvironment.mockResolvedValue({
+        id: "worker_1",
+        friendlyId: "worker_1234",
+        version: "20240101.1",
+        engine: "V2",
+        sdkVersion: "4.0.0",
+        cliVersion: "4.0.0",
+      });
+    });
+
+    it("mints for that exact environment", async () => {
+      const token = await mintToken({ environmentId: expected.id });
+
+      const response = await withBranch(branch, () => ROUTE_CASES[0].call(token, env));
+
+      expect(response.status).toBe(200);
+      const { token: jwt } = (await response.json()) as { token: string };
+      const payload = JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString());
+      expect(payload.sub).toBe(expected.id);
+    });
+
+    it("resolves that exact environment on the delegated-token reads too", async () => {
+      const token = await mintToken({ environmentId: expected.id });
+
+      const response = await withBranch(branch, () => ROUTE_CASES[2].call(token, env));
+
+      expect(response.status).toBe(200);
+      expect(mocks.findCurrentWorkerFromEnvironment.mock.calls[0][0]).toMatchObject({
+        id: expected.id,
+      });
+    });
+
+    if (fallsBackTo) {
+      it("403s the branch's token when the branch didn't travel with it", async () => {
+        const token = await mintToken({ environmentId: expected.id });
+
+        const response = await ROUTE_CASES[0].call(token, env);
+
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ code: "forbidden_environment" });
+      });
+
+      it("403s the parent's token when a branch did", async () => {
+        const token = await mintToken({ environmentId: fallsBackTo.id });
+
+        const response = await withBranch(branch, () => ROUTE_CASES[0].call(token, env));
+
+        expect(response.status).toBe(403);
+      });
+    }
+  }
+);
 
 /**
  * The exchange's own ceiling: a delegated token names the scopes it wants, and its `cap` is

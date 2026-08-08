@@ -300,6 +300,7 @@ export const clientDataSchema = z.object({
   apiOrigin: z.string().optional(),
   projectRef: z.string().optional(),
   environmentName: z.string().optional(),
+  environmentBranch: z.string().optional(),
   // Injected only when the current project has a connected GitHub repo: a signed,
   // short-lived archive pointer the code-mode source tools read from.
   repoSnapshot: z

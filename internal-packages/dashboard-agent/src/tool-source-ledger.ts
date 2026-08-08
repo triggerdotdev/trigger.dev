@@ -26,11 +26,12 @@ export type SourceLedgerContext = {
   userActorToken?: string;
   projectRef?: string;
   environmentName?: string;
+  environmentBranch?: string;
   repoSnapshot?: RepoSnapshot;
 };
 
 export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedger {
-  const { origin, hasAuth, userActorToken, projectRef, environmentName } = ctx;
+  const { origin, hasAuth, userActorToken, projectRef, environmentName, environmentBranch } = ctx;
 
   // Null means the file tools fall back to the default tracked-branch snapshot.
   const fetchRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
@@ -38,7 +39,8 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     const result = await apiGet(
       origin,
       `/api/v1/projects/${projectRef}/${environmentName}/repo/snapshot?runId=${encodeURIComponent(runId)}`,
-      userActorToken!
+      userActorToken!,
+      environmentBranch
     );
     if (!result.ok) return null;
     const d = result.data as Partial<RepoSnapshot> | undefined;

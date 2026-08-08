@@ -7,6 +7,22 @@ import { logger } from "@trigger.dev/sdk";
 
 export type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
 
+/**
+ * Why an environment-scoped call was never made. Only `"missing"` says there is no current
+ * environment; `"unknown"` is an exchange that failed, which is not evidence of absence.
+ */
+export type EnvUnavailable =
+  | { ok: false; envUnavailable: "missing" }
+  | { ok: false; envUnavailable: "unknown"; status?: number };
+
+export type EnvFetchResult = FetchResult | EnvUnavailable;
+
+export function isEnvUnavailable(result: object): result is EnvUnavailable {
+  return "envUnavailable" in result;
+}
+
+const MISSING_ENV: EnvUnavailable = { ok: false, envUnavailable: "missing" };
+
 // "query" is the server rejecting the TRQL, "transport" is the request breaking. Chart
 // validation only fails a render on "query".
 export type QueryPostResult =
@@ -15,32 +31,54 @@ export type QueryPostResult =
 
 export const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
-export async function apiGet(origin: string, path: string, token: string): Promise<FetchResult> {
-  const res = await fetch(`${origin}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-  });
+// `branch` is needed on the name-addressed routes: `preview`/`dev` resolve to the parent
+// environment unless the branch travels with them, and a branch-scoped token then 403s.
+export async function apiGet(
+  origin: string,
+  path: string,
+  token: string,
+  branch?: string
+): Promise<FetchResult> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+  };
+  if (branch) headers["x-trigger-branch"] = branch;
+  const res = await fetch(`${origin}${path}`, { headers });
   if (!res.ok) return { ok: false, status: res.status };
   return { ok: true, data: await res.json() };
 }
 
 // The exchange ceilings these scopes to the delegated token's read-only cap, so the
-// JWT can never widen the grant. Null when there is no current env, or on a denial.
+// JWT can never widen the grant.
 async function exchangeEnvJwt(
   origin: string,
   userActorToken: string,
   projectRef: string,
-  environmentName: string
-): Promise<string | null> {
-  const res = await fetch(`${origin}/api/v1/projects/${projectRef}/${environmentName}/jwt`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${userActorToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      claims: { scopes: ["read:runs", "read:deployments", "read:errors", "read:query"] },
-    }),
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { token?: string };
-  return data.token ?? null;
+  environmentName: string,
+  branch?: string
+): Promise<{ ok: true; token: string } | EnvUnavailable> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${userActorToken}`,
+    "Content-Type": "application/json",
+  };
+  if (branch) headers["x-trigger-branch"] = branch;
+  let res: Response;
+  try {
+    res = await fetch(`${origin}/api/v1/projects/${projectRef}/${environmentName}/jwt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        claims: { scopes: ["read:runs", "read:deployments", "read:errors", "read:query"] },
+      }),
+    });
+  } catch {
+    return { ok: false, envUnavailable: "unknown" };
+  }
+  if (!res.ok) return { ok: false, envUnavailable: "unknown", status: res.status };
+  const data = (await res.json().catch(() => ({}))) as { token?: string };
+  if (!data.token) return { ok: false, envUnavailable: "unknown" };
+  return { ok: true, token: data.token };
 }
 
 export type DashboardAgentApiClient = {
@@ -48,9 +86,9 @@ export type DashboardAgentApiClient = {
   origin: string;
   /** Whether this turn has both a delegated token and an origin to spend it on. */
   hasAuth: boolean;
-  /** A GET as the environment JWT. `null` means there is no current environment. */
-  envApiGet(path: string): Promise<FetchResult | null>;
-  postQuery(query: string, period: string | undefined): Promise<QueryPostResult | null>;
+  /** A GET as the environment JWT, or why no environment JWT could be made. */
+  envApiGet(path: string): Promise<EnvFetchResult>;
+  postQuery(query: string, period: string | undefined): Promise<QueryPostResult | EnvUnavailable>;
   validateChartQuery(query: string, period: string | undefined): Promise<string | null>;
 };
 
@@ -59,48 +97,60 @@ export type ApiClientContext = {
   apiOrigin?: string;
   projectRef?: string;
   environmentName?: string;
+  environmentBranch?: string;
 };
 
 export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient {
-  const { userActorToken, apiOrigin, projectRef, environmentName } = ctx;
+  const { userActorToken, apiOrigin, projectRef, environmentName, environmentBranch } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
   const hasAuth = Boolean(userActorToken && origin);
 
   // Turn-scoped, since the tool set is rebuilt per turn, and keyed by project +
   // environment. Caching the promise makes concurrent calls share one exchange.
-  const envJwts = new Map<string, Promise<string | null>>();
-  function getEnvJwt(refresh = false): Promise<string | null> {
-    if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(null);
-    const key = `${projectRef}/${environmentName}`;
+  type EnvJwt = { ok: true; token: string } | EnvUnavailable;
+  const envJwts = new Map<string, Promise<EnvJwt>>();
+  function getEnvJwt(refresh = false): Promise<EnvJwt> {
+    if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(MISSING_ENV);
+    const key = `${projectRef}/${environmentName}/${environmentBranch ?? ""}`;
     if (refresh) envJwts.delete(key);
     let pending = envJwts.get(key);
     if (!pending) {
-      pending = exchangeEnvJwt(origin, userActorToken!, projectRef, environmentName);
+      // A failed exchange is not cached: a 403 or a 5xx would otherwise pin the whole turn.
+      pending = exchangeEnvJwt(
+        origin,
+        userActorToken!,
+        projectRef,
+        environmentName,
+        environmentBranch
+      ).then((result) => {
+        if (!result.ok) envJwts.delete(key);
+        return result;
+      });
       envJwts.set(key, pending);
     }
     return pending;
   }
 
   /**
-   * `null` means there is no current environment. On an unauthorized result the cache
-   * entry is dropped and the call is retried once, since a token can be minted stale.
+   * On an unauthorized result the cache entry is dropped and the call is retried once,
+   * since a token can be minted stale.
    */
-  async function withEnvJwt<T>(
+  async function withEnvJwt<T extends object>(
     call: (jwt: string) => Promise<T>,
     isUnauthorized: (result: T) => boolean
-  ): Promise<T | null> {
+  ): Promise<T | EnvUnavailable> {
     const jwt = await getEnvJwt();
-    if (!jwt) return null;
-    const first = await call(jwt);
+    if (!jwt.ok) return jwt;
+    const first = await call(jwt.token);
     if (!isUnauthorized(first)) return first;
     const fresh = await getEnvJwt(true);
-    if (!fresh) return first;
-    return call(fresh);
+    if (!fresh.ok) return first;
+    return call(fresh.token);
   }
 
   const unauthorizedGet = (result: FetchResult) => !result.ok && result.status === 401;
 
-  function envApiGet(path: string): Promise<FetchResult | null> {
+  function envApiGet(path: string): Promise<EnvFetchResult> {
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
   }
 
@@ -109,7 +159,7 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   async function postQuery(
     query: string,
     period: string | undefined
-  ): Promise<QueryPostResult | null> {
+  ): Promise<QueryPostResult | EnvUnavailable> {
     const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
       async (jwt) => {
         try {
@@ -130,7 +180,7 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
       },
       (result) => "res" in result && result.res.status === 401
     );
-    if (!attempt) return null;
+    if (isEnvUnavailable(attempt)) return attempt;
     if ("error" in attempt) return { ok: false, kind: "transport", error: attempt.error };
     const res = attempt.res;
     // The route returns 400 with { error } for invalid TRQL.
@@ -154,7 +204,7 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     period: string | undefined
   ): Promise<string | null> {
     const result = await postQuery(query, period);
-    if (!result || result.ok) return null;
+    if (isEnvUnavailable(result) || result.ok) return null;
     if (result.kind === "transport") {
       logger.warn("Skipped chart query validation", { error: result.error });
       return null;

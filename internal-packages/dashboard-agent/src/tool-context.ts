@@ -15,6 +15,9 @@ export type DashboardAgentToolContext = {
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;
+  // Set when the current environment is a branch. The name-addressed routes resolve to the
+  // parent without it, so a branch-scoped token would be refused there.
+  environmentBranch?: string;
   // RuntimeEnvironment id: the `{env}` component of every trigger:// URI this turn
   // emits. Names and slugs must never appear in a URI.
   environmentId?: string;

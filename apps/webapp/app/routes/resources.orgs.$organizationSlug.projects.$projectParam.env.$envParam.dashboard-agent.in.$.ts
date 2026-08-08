@@ -11,10 +11,10 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
-  dashboardAgentEnvironmentName,
   mintDashboardAgentUserActorToken,
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
+import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
@@ -88,7 +88,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // dev row, and a token must never be minted for someone else's environment — or for none.
   const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
-  const environmentName = dashboardAgentEnvironmentName(runtimeEnv.type);
+  const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
 
   // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
@@ -147,9 +147,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         userId: user.id,
         projectId: project.id,
         // `(projectId, slug)` isn't unique (dev is per-member), so anything addressing
-        // one environment row uses this id. `environmentName` is for name-addressed tools.
+        // one environment row uses this id. The address is for name-addressed tools.
         environmentId: runtimeEnv.id,
-        environmentName,
+        ...environmentAddress,
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };
       body = JSON.stringify(parsed);

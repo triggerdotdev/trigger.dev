@@ -34,6 +34,7 @@ import {
   resolveDashboardAgentRepoSnapshot,
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
+import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
@@ -44,14 +45,6 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 // The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
 // drift apart.
 import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
-
-// The agent's tools address the canonical env name, not the dashboard URL slug.
-const ENV_NAME_BY_TYPE: Record<string, string> = {
-  DEVELOPMENT: "dev",
-  STAGING: "staging",
-  PRODUCTION: "prod",
-  PREVIEW: "preview",
-};
 
 const ActionBody = z.object({
   intent: z.enum([
@@ -224,7 +217,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // someone else's environment — or, when nothing resolves, for no environment at all.
     const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
-    const environmentName = ENV_NAME_BY_TYPE[runtimeEnv.type];
+    const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
 
     const chatId = generateFriendlyId("chat");
     try {
@@ -250,7 +243,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             projectId: project.id,
             // Same environment identity the `in` proxy injects.
             environmentId: runtimeEnv.id,
-            environmentName,
+            ...environmentAddress,
             ...(repoSnapshot ? { repoSnapshot } : {}),
           }
         : undefined;
@@ -284,7 +277,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               userId,
               projectId: project.id,
               environmentId: runtimeEnv.id,
-              environmentName,
+              ...environmentAddress,
             },
           });
         }
