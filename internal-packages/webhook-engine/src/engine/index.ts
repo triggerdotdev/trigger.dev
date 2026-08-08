@@ -271,7 +271,7 @@ export class WebhookEngine {
           idempotencyKey,
           status: filtered ? "FILTERED" : "PENDING",
           isTest,
-          parsedEvent: capParsedEvent(parsedEvent),
+          parsedEvent: toStorableEvent(parsedEvent),
           headers: capHeaders(headers, secretHeader),
           rawBodyHash: sha256Hex(rawBytes),
           errorMessage,
@@ -814,15 +814,18 @@ function deriveSimulateIdempotencyKey(
   });
 }
 
-// Size-cap the verified event snapshot stored on the row (the full event lives in
-// ClickHouse). Past the cap, store a marker instead of the payload.
-function capParsedEvent(event: unknown): Prisma.InputJsonValue | undefined {
+/**
+ * The verified event stored on the delivery row. This is the only durable copy of the event: it is
+ * routed as the run payload (task + session) and re-used on replay, so it is stored in full and the
+ * ingress body-size limit bounds it. The dashboard caps it for display, not here. Returns undefined
+ * only when the event cannot be serialized (never for a JSON-parsed body), which keeps a
+ * non-serializable value from failing the whole delivery.
+ */
+function toStorableEvent(event: unknown): Prisma.InputJsonValue | undefined {
   if (event === undefined || event === null) return undefined;
   try {
-    const serialized = JSON.stringify(event);
-    const CAP_BYTES = 8 * 1024;
-    if (serialized.length <= CAP_BYTES) return event as Prisma.InputJsonValue;
-    return { truncated: true, bytes: serialized.length } as Prisma.InputJsonValue;
+    JSON.stringify(event);
+    return event as Prisma.InputJsonValue;
   } catch {
     return undefined;
   }
