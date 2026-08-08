@@ -519,11 +519,28 @@ function metricValue(metric: LayoutMetricInput, messages: ReportMessages): strin
 }
 
 /**
+ * How far a metric fell below its baseline: `undefined` when the fall doesn't round past 1×, and
+ * `null` when it collapsed to nothing and no multiplier can say it.
+ */
+function fallMultiplier(metric: LayoutMetricInput): number | null | undefined {
+  if (metric.normal === undefined || metric.normal <= 0) return undefined;
+  if (metric.value <= 0) return null;
+  const fall = Math.round(metric.normal / metric.value);
+  return fall > 1 ? fall : undefined;
+}
+
+/**
  * A metric's movement against its baseline. A multiplier only reads as movement once it rounds past
  * 1×; below that a metric with a baseline is flat, and one without has nothing to compare against.
  */
 function metricDelta(metric: LayoutMetricInput): LayoutDelta | undefined {
   const delta = metric.delta;
+  // A fall's own multiplier rounds to 0 or 1, so measure how far it fell instead.
+  if (delta?.dir === "down") {
+    const fall = fallMultiplier(metric);
+    if (fall === null) return { text: REPORT_GLYPH.down, dir: "down" };
+    if (fall !== undefined) return { text: `${REPORT_GLYPH.down} ${fall}×`, dir: "down" };
+  }
   if (delta && delta.mult !== undefined && delta.mult > 1 && delta.dir !== "flat") {
     return {
       text: `${delta.dir === "up" ? REPORT_GLYPH.up : REPORT_GLYPH.down} ${delta.mult}×`,
