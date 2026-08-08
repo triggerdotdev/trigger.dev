@@ -105,9 +105,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const period = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
-  const cursor = url.searchParams.get("cursor") ?? undefined;
-  const directionRaw = url.searchParams.get("direction") ?? undefined;
-  const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
+  const deliveriesCursor = url.searchParams.get("deliveriesCursor") ?? undefined;
+  const deliveriesDirectionRaw = url.searchParams.get("deliveriesDirection") ?? undefined;
+  const deliveriesDirection = deliveriesDirectionRaw
+    ? DirectionSchema.parse(deliveriesDirectionRaw)
+    : undefined;
+  const runsCursor = url.searchParams.get("runsCursor") ?? undefined;
+  const runsDirectionRaw = url.searchParams.get("runsDirection") ?? undefined;
+  const runsDirection = runsDirectionRaw ? DirectionSchema.parse(runsDirectionRaw) : undefined;
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
@@ -157,8 +162,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
-      cursor,
-      direction,
+      cursor: runsCursor,
+      direction: runsDirection,
     })
     .catch(() => null);
 
@@ -171,8 +176,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
-      cursor,
-      direction,
+      cursor: deliveriesCursor,
+      direction: deliveriesDirection,
     })
     .catch(() => null);
 
@@ -299,13 +304,29 @@ export default function Page() {
                     {tab === "deliveries" ? (
                       <Suspense fallback={null}>
                         <TypedAwait resolve={deliveriesList} errorElement={null}>
-                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                          {(list) =>
+                            list ? (
+                              <ListPagination
+                                list={list}
+                                cursorParam="deliveriesCursor"
+                                directionParam="deliveriesDirection"
+                              />
+                            ) : null
+                          }
                         </TypedAwait>
                       </Suspense>
                     ) : (
                       <Suspense fallback={null}>
                         <TypedAwait resolve={runList} errorElement={null}>
-                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                          {(list) =>
+                            list ? (
+                              <ListPagination
+                                list={list}
+                                cursorParam="runsCursor"
+                                directionParam="runsDirection"
+                              />
+                            ) : null
+                          }
                         </TypedAwait>
                       </Suspense>
                     )}
