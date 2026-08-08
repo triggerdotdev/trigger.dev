@@ -185,8 +185,11 @@ verb rather than hand-run Redis and ClickHouse surgery:
 pnpm --filter webapp run scenarios:watch -- --help
 ```
 
-It targets any local project and environment, is idempotent, wipes nothing, and
-prints the next dashboard step itself. Node 20 is the version it is run on.
+It targets any local project and environment, is idempotent, and prints the next
+dashboard step itself. Node 20 is the version it is run on. Everything but the
+`health:` verbs is additive; those two rewrite the environment's recent queue
+metrics in ClickHouse, so point them at an environment whose history you don't
+need.
 
 Every command takes `--project <ref-or-slug>` and `--env <dev|staging|prod|slug>`
 (default `dev`). The walkthroughs below assume a shell alias so the flags aren't
