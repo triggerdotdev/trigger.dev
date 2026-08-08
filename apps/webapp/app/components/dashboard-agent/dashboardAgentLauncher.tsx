@@ -12,6 +12,8 @@ export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
   // The composer holds focus while the panel is open, so the key must fire from
   // inside a text field.
   enabledOnInputElements: true,
+  // Chrome binds Cmd/Ctrl-J to Show Downloads.
+  preventDefault: true,
 };
 
 type DashboardAgentContextValue = {
