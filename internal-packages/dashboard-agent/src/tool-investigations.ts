@@ -149,7 +149,17 @@ export function createInvestigationRenderer(
    * back. `continueId` is only a pointer; the turn's own closure wins when set.
    */
   return async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
-    if (!blocks.some((block) => block.type === "investigation")) return { blocks };
+    const investigationBlocks = blocks.filter((block) => block.type === "investigation").length;
+    if (investigationBlocks === 0) return { blocks };
+
+    // One id is assigned per call, so a second block in the same view would be written
+    // as the next revision of the first: one card carrying two subjects.
+    if (investigationBlocks > 1) {
+      return {
+        error:
+          "A view holds at most one investigation block, and this one has more than one. Render one investigation per call, passing its own investigationId back each time.",
+      };
+    }
 
     if (!ctx.investigations) {
       return { error: "Investigations aren't available on this turn, so I can't render one." };
