@@ -28,6 +28,7 @@ import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contr
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
+import { explicitPromptTarget } from "./explicit-prompt";
 import { escapeClosesPanel } from "./panel-escape";
 import { markChatListRead, unreadWorkCount } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
@@ -337,20 +338,25 @@ export function DashboardAgentPanel({
   }, [chats, chatsLoaded, onUnreadWorkChange]);
 
   // Bound to its chat, which remounts with a fresh guard ref on every switch.
-  const [prefill, setPrefill] = useState<{ text: string; seq: number; chatId: string } | undefined>(
-    undefined
-  );
+  const [sendRequest, setSendRequest] = useState<
+    { text: string; seq: number; chatId: string } | undefined
+  >(undefined);
   const handledRequestSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!requestedMessage || loading) return;
-    if (handledRequestSeq.current === requestedMessage.seq) return;
+    if (!requestedMessage || handledRequestSeq.current === requestedMessage.seq) return;
+    const target = explicitPromptTarget({
+      chat: loading ? "opening" : active ? "open" : "none",
+      turnInFlight: thinkingChatId !== null && thinkingChatId === active?.chatId,
+    });
+    // Held requests are re-asked by this same effect once the panel settles.
+    if (target === "hold") return;
     handledRequestSeq.current = requestedMessage.seq;
-    if (active) {
-      setPrefill({ ...requestedMessage, chatId: active.chatId });
-    } else {
+    if (target === "new-chat") {
       void createChat(requestedMessage.text);
+      return;
     }
-  }, [requestedMessage, loading, active, createChat]);
+    setSendRequest({ ...requestedMessage, chatId: active!.chatId });
+  }, [requestedMessage, loading, active, thinkingChatId, createChat]);
 
   // Carries its chat id so a later-mounted chat cannot adopt another chat's block.
   const [appendedMessages, setAppendedMessages] = useState<
@@ -570,7 +576,9 @@ export function DashboardAgentPanel({
             session={active.session}
             pendingFirstMessage={active.pendingFirstMessage}
             streaming={active.streaming}
-            prefill={prefill && prefill.chatId === active.chatId ? prefill : undefined}
+            sendRequest={
+              sendRequest && sendRequest.chatId === active.chatId ? sendRequest : undefined
+            }
             clientData={clientData}
             apiOrigin={apiOrigin}
             actionPath={actionPath}
