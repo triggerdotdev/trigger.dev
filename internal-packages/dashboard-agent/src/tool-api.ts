@@ -26,6 +26,7 @@ import {
   isEnvUnavailable,
   NO_AUTH,
   type DashboardAgentApiClient,
+  type EnvFetchResult,
   type EnvUnavailable,
 } from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
@@ -106,17 +107,65 @@ export function consumerTasksForQueue(workers: unknown, queueName: string): stri
 }
 
 /**
+ * What the queue's live row read came back with. "The route said 404" and "the read never
+ * landed" are different answers: only the first is evidence about the queue, and collapsing
+ * them turns an expired token or a 5xx into "that queue doesn't exist".
+ */
+export type QueueLiveRead =
+  | { kind: "row"; row: Record<string, unknown> }
+  | { kind: "missing" }
+  | { kind: "unknown"; status?: number };
+
+/** Reads the live-row response into those three states. */
+export function readQueueLiveState(result: EnvFetchResult | null): QueueLiveRead {
+  // No current environment, or a read that never landed: nothing is known either way.
+  if (!result) return { kind: "unknown" };
+  if (isEnvUnavailable(result)) {
+    return {
+      kind: "unknown",
+      status: result.envUnavailable === "unknown" ? result.status : undefined,
+    };
+  }
+  if (!result.ok) {
+    // A request that never landed carries no status, and says nothing about the queue.
+    if (!("status" in result)) return { kind: "unknown" };
+    return result.status === 404 ? { kind: "missing" } : { kind: "unknown", status: result.status };
+  }
+  const row = (result.data as { data?: Record<string, unknown> })?.data ?? result.data;
+  if (!row || typeof row !== "object") return { kind: "unknown" };
+  return { kind: "row", row: row as Record<string, unknown> };
+}
+
+/**
+ * The better of two live reads of the same queue name under either kind. A row wins; failing
+ * that a failed read wins over a 404, since one 404 with the other read broken is not proof.
+ */
+export function pickQueueLiveState(first: QueueLiveRead, second: QueueLiveRead): QueueLiveRead {
+  if (first.kind === "row") return first;
+  if (second.kind === "row") return second;
+  if (first.kind === "unknown") return first;
+  return second;
+}
+
+/**
  * Metrics plus the queue's live row. `paused` is the part the model must lead with: a queue
  * someone stopped explains its own emptiness, and every metric below it is a consequence
- * rather than a finding.
+ * rather than a finding. When the read failed, `exists` is `"unknown"` rather than `false`,
+ * because an unreachable queue is not an absent one.
  */
-function withLiveState(
-  metrics: unknown,
-  queueType: "task" | "custom",
-  state: Record<string, unknown> | undefined
-) {
-  const row = (state as { data?: Record<string, unknown> })?.data ?? state;
-  if (!row) return { ...(metrics as object), queueType, exists: false };
+export function withLiveState(metrics: unknown, queueType: "task" | "custom", live: QueueLiveRead) {
+  if (live.kind === "missing") return { ...(metrics as object), queueType, exists: false };
+  if (live.kind === "unknown") {
+    return {
+      ...(metrics as object),
+      queueType,
+      exists: "unknown" as const,
+      liveStateError: live.status
+        ? `Couldn't read the queue's live row (status ${live.status}).`
+        : "Couldn't read the queue's live row.",
+    };
+  }
+  const { row } = live;
   return {
     ...(metrics as object),
     queueType: (row.type as string) ?? queueType,
@@ -422,18 +471,12 @@ export function buildApiTools(args: {
           const result = await envApiGet(
             `/api/v1/queues/${encodeURIComponent(queue)}?type=${kind}`
           );
-          return !isEnvUnavailable(result) && result.ok
-            ? (result.data as Record<string, unknown>)
-            : undefined;
+          return readQueueLiveState(result);
         };
 
         // Only a custom queue needs this read: a task queue's consumer is the task it is
         // named after, while a custom queue's name says nothing about who writes to it.
-        const answer = async (
-          metrics: unknown,
-          kind: "task" | "custom",
-          state: Record<string, unknown> | undefined
-        ) => {
+        const answer = async (metrics: unknown, kind: "task" | "custom", state: QueueLiveRead) => {
           const base = withLiveState(metrics, kind, state);
           if (base.queueType !== "custom" || !hasAuth || !projectRef || !environmentName) {
             return base;
@@ -463,7 +506,9 @@ export function buildApiTools(args: {
           // Neither kind has metrics, so the live row is the only thing that can tell them
           // apart: a paused or empty queue that exists, against a name that doesn't.
           const kind = type ?? "task";
-          const state = (await live(kind)) ?? (await live(otherKind));
+          const primary = await live(kind);
+          const state =
+            primary.kind === "row" ? primary : pickQueueLiveState(primary, await live(otherKind));
           return await answer(first.data, kind, state);
         }
         const kind = type ?? "task";
