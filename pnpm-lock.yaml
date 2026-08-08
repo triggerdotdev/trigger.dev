@@ -391,6 +391,9 @@ importers:
       '@popperjs/core':
         specifier: ^2.11.8
         version: 2.11.8
+      '@prisma/adapter-pg':
+        specifier: 6.14.0
+        version: 6.14.0
       '@prisma/instrumentation':
         specifier: ^6.14.0
         version: 6.14.0(@opentelemetry/api@1.9.1)
@@ -854,6 +857,9 @@ importers:
       '@types/node-fetch':
         specifier: ^2.6.2
         version: 2.6.2
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.11.14
       '@types/prismjs':
         specifier: ^1.26.0
         version: 1.26.0
@@ -5679,6 +5685,9 @@ packages:
   '@posthog/types@1.376.4':
     resolution: {integrity: sha512-EoDEvA925lf6yxPpbP4wozlXgu4b9WEqxZlFBUDd4k2akP5R/RWyHpvQT8aYyfY6BtSLn8TnVwxPQOM4b90isA==}
 
+  '@prisma/adapter-pg@6.14.0':
+    resolution: {integrity: sha512-heUCNPZ3f2Iv/JId280HCoN7NECWkYckC3K1cOKpTRRjiJv0mN0w99V91vBq7aHHTtlOVpfDPQbUMNAjMegIWg==}
+
   '@prisma/client@6.14.0':
     resolution: {integrity: sha512-8E/Nk3eL5g7RQIg/LUj1ICyDmhD053STjxrPxUtCRybs2s/2sOEcx9NpITuAOPn07HEpWBfhAVe1T/HYWXUPOw==}
     engines: {node: '>=18.18'}
@@ -5699,6 +5708,9 @@ packages:
 
   '@prisma/debug@6.14.0':
     resolution: {integrity: sha512-j4Lf+y+5QIJgQD4sJWSbkOD7geKx9CakaLp/TyTy/UDu9Wo0awvWCBH/BAxTHUaCpIl9USA5VS/KJhDqKJSwug==}
+
+  '@prisma/driver-adapter-utils@6.14.0':
+    resolution: {integrity: sha512-On9vTNiJ7J/O1kVqedLtfdhhrfRYprkUOhxjlmmWEv12WNdG6v5x4PsrfZXdBtZqRZaqK1i1TigO6IdtYh8z+A==}
 
   '@prisma/engines-version@6.14.0-25.717184b7b35ea05dfa71a3236b7af656013e1e49':
     resolution: {integrity: sha512-EgN9ODJpiX45yvwcngoStp3uQPJ3l+AEVoQ6dMMO2QvmwIlnxfApzKmJQExzdo7/hqQANrz5txHJdGYHzOnGHA==}
@@ -13324,9 +13336,6 @@ packages:
   pg-protocol@1.10.3:
     resolution: {integrity: sha512-6DIBgBQaTKDJyxnXaLiLR8wBpQQcGWuAESkRBX/t6OwA8YsqP+iVSiond2EDy6Y/dsGk8rh/jtax3js5NeV7JQ==}
 
-  pg-protocol@1.9.5:
-    resolution: {integrity: sha512-DYTWtWpfd5FOro3UnAfwvhD8jh59r2ig8bPtc9H8Ds7MscE/9NYruUQWFAOuraRl29jwcT2kyMFQ3MxeaVjUhg==}
-
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
     engines: {node: '>=4'}
@@ -20315,6 +20324,14 @@ snapshots:
 
   '@posthog/types@1.376.4': {}
 
+  '@prisma/adapter-pg@6.14.0':
+    dependencies:
+      '@prisma/driver-adapter-utils': 6.14.0
+      pg: 8.15.6
+      postgres-array: 3.0.4
+    transitivePeerDependencies:
+      - pg-native
+
   '@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@7.0.2))(typescript@7.0.2)':
     optionalDependencies:
       prisma: 6.14.0(magicast@0.3.5)(typescript@7.0.2)
@@ -20339,6 +20356,10 @@ snapshots:
       - magicast
 
   '@prisma/debug@6.14.0': {}
+
+  '@prisma/driver-adapter-utils@6.14.0':
+    dependencies:
+      '@prisma/debug': 6.14.0
 
   '@prisma/engines-version@6.14.0-25.717184b7b35ea05dfa71a3236b7af656013e1e49': {}
 
@@ -23169,7 +23190,7 @@ snapshots:
   '@types/pg@8.11.14':
     dependencies:
       '@types/node': 24.13.3
-      pg-protocol: 1.9.5
+      pg-protocol: 1.10.3
       pg-types: 4.0.2
 
   '@types/pg@8.6.1':
@@ -29208,8 +29229,6 @@ snapshots:
       pg: 8.15.6
 
   pg-protocol@1.10.3: {}
-
-  pg-protocol@1.9.5: {}
 
   pg-types@2.2.0:
     dependencies:
