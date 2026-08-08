@@ -27,6 +27,7 @@ import {
   hasOpenInvestigation,
   pollSettledTranscript,
 } from "./settled-transcript";
+import { navigateIntentApplies } from "./turn-navigation";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
@@ -102,6 +103,11 @@ export function DashboardAgentChat({
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
+
+  // The path this chat last rendered on. React never unmounts on a page teardown, so an
+  // unmount whose live URL has moved is the router having navigated out from under it.
+  const renderedPathRef = useRef(location.pathname);
+  renderedPathRef.current = location.pathname;
 
   const prefilledSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -287,10 +293,27 @@ export function DashboardAgentChat({
     navigatedRef.current = new Set();
     pendingNavigateIntents(initialMessages, navigatedRef.current);
   }
+  // Where the running turn was asked for. Never cleared on settle: the navigate intent can be
+  // committed alongside the status going ready, and it is the started-at path it belongs to.
+  const turnStartedPathRef = useRef<string | null>(null);
+  const turnWasInFlight = useRef(false);
+  useEffect(() => {
+    const inFlight = status === "submitted" || status === "streaming";
+    if (inFlight && !turnWasInFlight.current) turnStartedPathRef.current = renderedPathRef.current;
+    turnWasInFlight.current = inFlight;
+  }, [status]);
+
   useEffect(() => {
     const pending = pendingNavigateIntents(messages, navigatedRef.current!);
     const target = pending.at(-1);
-    if (target) void goTo(target);
+    if (!target) return;
+    // Marked handled above either way, so a dropped navigation stays dropped and the answer's
+    // own button remains the way to take it.
+    const applies = navigateIntentApplies({
+      startedPath: turnStartedPathRef.current,
+      currentPath: renderedPathRef.current,
+    });
+    if (applies) void goTo(target);
   }, [messages, goTo]);
 
   const watchProposedRef = useRef<Set<string> | null>(null);
@@ -308,11 +331,6 @@ export function DashboardAgentChat({
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
-
-  // The path this chat last rendered on. React never unmounts on a page teardown, so an
-  // unmount whose live URL has moved is the router having navigated out from under it.
-  const renderedPathRef = useRef(location.pathname);
-  renderedPathRef.current = location.pathname;
 
   const teardownRef = useRef<() => void>(() => {});
   teardownRef.current = () => {
