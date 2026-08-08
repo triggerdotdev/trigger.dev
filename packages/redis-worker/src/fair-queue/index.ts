@@ -1245,13 +1245,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    const descriptor: QueueDescriptor = storedMessage
-      ? (this.queueDescriptorCache.get(queueId) ?? {
-          id: queueId,
-          tenantId: storedMessage.tenantId,
-          metadata: storedMessage.metadata ?? {},
-        })
-      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: storedMessage?.tenantId ?? this.keys.extractTenantId(queueId),
+      metadata: storedMessage?.metadata ?? {},
+    };
 
     // Release concurrency
     if (this.concurrencyManager) {
@@ -1300,13 +1298,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    const descriptor: QueueDescriptor = storedMessage
-      ? (this.queueDescriptorCache.get(queueId) ?? {
-          id: queueId,
-          tenantId: storedMessage.tenantId,
-          metadata: storedMessage.metadata ?? {},
-        })
-      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: storedMessage?.tenantId ?? this.keys.extractTenantId(queueId),
+      metadata: storedMessage?.metadata ?? {},
+    };
 
     // Release concurrency
     if (this.concurrencyManager) {
@@ -1411,6 +1407,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
+        // Release concurrency
+        if (this.concurrencyManager) {
+          await this.concurrencyManager.release(descriptor, storedMessage.id);
+        }
+
         // Release with delay, passing the updated message data so the Lua script
         // atomically writes the incremented attempt count when re-queuing.
         const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
@@ -1426,11 +1427,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           Date.now() + nextDelay,
           JSON.stringify(updatedMessage)
         );
-
-        // Release concurrency
-        if (this.concurrencyManager) {
-          await this.concurrencyManager.release(descriptor, storedMessage.id);
-        }
 
         this.telemetry.recordRetry();
 

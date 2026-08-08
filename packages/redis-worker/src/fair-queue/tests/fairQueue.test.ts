@@ -1406,36 +1406,114 @@ describe("FairQueue", () => {
 
         const redis = createRedisClient(redisOptions);
 
-        queue.onMessage(async (ctx) => {
-          if (ctx.message.payload.value === "msg-0") {
-            await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+        try {
+          queue.onMessage(async (ctx) => {
+            if (ctx.message.payload.value === "msg-0") {
+              await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            }
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          for (let i = 0; i < 2; i++) {
+            await queue.enqueue({
+              queueId: "tenant:t1:queue:q1",
+              tenantId: "t1",
+              payload: { value: `msg-${i}` },
+            });
           }
-          processed.push(ctx.message.payload.value);
-          await ctx.complete();
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toHaveLength(2);
+            },
+            { timeout: 10000 }
+          );
+
+          const held = await redis.scard(keys.concurrencyKey("tenant", "t1"));
+          expect(held).toBe(0);
+        } finally {
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should release metadata-derived concurrency groups when the in-flight record is gone",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
         });
 
-        for (let i = 0; i < 2; i++) {
-          await queue.enqueue({
-            queueId: "tenant:t1:queue:q1",
-            tenantId: "t1",
-            payload: { value: `msg-${i}` },
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        try {
+          queue.onMessage(async (ctx) => {
+            if (ctx.message.payload.value === "msg-0") {
+              await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            }
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
           });
+
+          for (let i = 0; i < 2; i++) {
+            await queue.enqueue({
+              queueId: "tenant:t1:queue:q1",
+              tenantId: "t1",
+              metadata: { orgId: "org-1" },
+              payload: { value: `msg-${i}` },
+            });
+          }
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toHaveLength(2);
+            },
+            { timeout: 10000 }
+          );
+
+          expect(await redis.scard(keys.concurrencyKey("organization", "org-1"))).toBe(0);
+          expect(await redis.scard(keys.concurrencyKey("organization", "default"))).toBe(0);
+        } finally {
+          await redis.quit();
+          await queue.close();
         }
-
-        queue.start();
-
-        await vi.waitFor(
-          () => {
-            expect(processed).toHaveLength(2);
-          },
-          { timeout: 10000 }
-        );
-
-        const held = await redis.scard(keys.concurrencyKey("tenant", "t1"));
-        expect(held).toBe(0);
-
-        await redis.quit();
-        await queue.close();
       }
     );
   });
