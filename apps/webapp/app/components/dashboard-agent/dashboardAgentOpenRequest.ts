@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useSearchParams } from "@remix-run/react";
 
 // Module-level bridge: `DashboardAgentProvider` is mounted by the environment layout, so
@@ -49,6 +49,24 @@ export function useDashboardAgentAvailable(): boolean {
   );
 }
 
+/**
+ * The deep-link question still in the URL, or null when there is none left to ask. `sent` is the
+ * question already handed to the agent: `setSearchParams` only starts the navigation that drops
+ * the param, so every render until it commits sees the question again. Clearing `sent` once the
+ * param is gone lets the same question arrive a second time on a later visit.
+ */
+export function consumeDeepLinkQuestion(
+  params: URLSearchParams,
+  names: readonly string[],
+  sent: string | null
+): { question: string | null; sent: string | null } {
+  const name = names.find((candidate) => params.get(candidate));
+  if (!name) return { question: null, sent: null };
+  const question = params.get(name)!;
+  if (question === sent) return { question: null, sent };
+  return { question, sent: question };
+}
+
 /** While `enabled` is false nothing is registered, so every entry point stays hidden. */
 export function useDashboardAgentOpenRequests({
   enabled,
@@ -68,12 +86,16 @@ export function useDashboardAgentOpenRequests({
   }, [enabled, openWith, setOpen]);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const sent = useRef<string | null>(null);
   useEffect(() => {
     if (!enabled) return;
-    const param = deepLinkParams.find((name) => searchParams.get(name));
-    if (!param) return;
-    const question = searchParams.get(param)!;
-    // Consume it before opening, or a re-render asks the same question twice.
+    const { question, sent: nextSent } = consumeDeepLinkQuestion(
+      searchParams,
+      deepLinkParams,
+      sent.current
+    );
+    sent.current = nextSent;
+    if (question === null) return;
     const next = new URLSearchParams(searchParams);
     for (const name of deepLinkParams) next.delete(name);
     setSearchParams(next, { replace: true, preventScrollReset: true });
