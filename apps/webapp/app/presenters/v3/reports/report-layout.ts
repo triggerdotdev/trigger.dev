@@ -50,11 +50,34 @@ export const REPORT_LABELS = {
   read: "read:",
   /** The footer heading. */
   nextSteps: "Next steps",
-  /** Shown beside the report's name when the data can't be trusted. */
-  staleBadge: "stale data",
-  staleNote:
-    "The telemetry behind this report is stale, so the numbers below are informational only.",
 } as const;
+
+/** The flag beside the report's name, and the caveat under its headline. */
+export type LayoutTrust = { badge: string; note: string };
+
+/**
+ * Why a report's numbers can't be trusted, in its own words. Stale, absent and unmeasured are three
+ * different states, and a snapshot with no telemetry feed must not be called stale.
+ */
+const TRUST_CAVEATS: Record<string, LayoutTrust> = {
+  telemetry_stale: {
+    badge: "stale data",
+    note: "The telemetry behind this report is stale, so the numbers below are informational only.",
+  },
+  telemetry_absent: {
+    badge: "no telemetry",
+    note: "No telemetry reached this report, so the numbers below are a point-in-time snapshot rather than a measured window.",
+  },
+  flow_unmeasured: {
+    badge: "unmeasured",
+    note: "Throughput could not be measured over this window, so the numbers below are informational only.",
+  },
+};
+
+const TRUST_CAVEAT_FALLBACK: LayoutTrust = {
+  badge: "unverified data",
+  note: "The data behind this report could not be verified, so the numbers below are informational only.",
+};
 
 /**
  * The report's sections, top to bottom. A renderer walks this order; a new section has to be added
@@ -87,11 +110,18 @@ const UNASSESSABLE_REASONS = new Set(["unknown", "flow_unmeasured"]);
 const NEUTRAL_REASONS = new Set(["freshness_unknown", "flow_unmeasured"]);
 
 /**
- * `facts.trustworthy === false` means the telemetry behind the verdict is stale, so the numbers are
- * informational only. Absent = trustworthy (the common case, and what pre-`facts` snapshots imply).
+ * `facts.trustworthy === false` means the numbers behind the verdict are informational only. Absent
+ * = trustworthy (the common case, and what pre-`facts` snapshots imply).
  */
 export function reportIsTrustworthy(vm: { facts?: Record<string, unknown> }): boolean {
   return vm.facts?.trustworthy !== false;
+}
+
+/** The caveat for an untrustworthy report, chosen by `facts.untrustworthyReason`. */
+export function reportTrust(vm: { facts?: Record<string, unknown> }): LayoutTrust | undefined {
+  if (reportIsTrustworthy(vm)) return undefined;
+  const reason = vm.facts?.untrustworthyReason;
+  return (typeof reason === "string" ? TRUST_CAVEATS[reason] : undefined) ?? TRUST_CAVEAT_FALLBACK;
 }
 
 export function reportTone(severity: Severity, reason?: string): ReportTone {
@@ -283,7 +313,7 @@ export type LayoutFooterEntry = {
 export type ReportLayout = {
   header: { name: string; meta: string };
   /** Present only when the data can't be trusted. */
-  trust?: { badge: string; note: string };
+  trust?: LayoutTrust;
   headline: { tone: ReportTone; glyph: string; severity: Severity; phrase: string; text?: string };
   /** The finding the headline speaks for, always expanded. */
   hero?: LayoutFinding;
@@ -343,14 +373,14 @@ export function buildReportLayout(vm: LayoutViewModel, messages: ReportMessages)
     .filter((finding) => finding.read !== undefined && !UNASSESSABLE_REASONS.has(finding.reason))
     .map((finding) => fillTokens(messages.readMessage(finding.read!), tokens));
 
+  const trust = reportTrust(vm);
+
   return {
     header: {
       name: vm.title,
       meta: [vm.scope, vm.period, vm.baselineLabel].filter(Boolean).join(" · "),
     },
-    ...(reportIsTrustworthy(vm)
-      ? {}
-      : { trust: { badge: REPORT_LABELS.staleBadge, note: REPORT_LABELS.staleNote } }),
+    ...(trust === undefined ? {} : { trust }),
     headline: {
       severity: vm.summary.severity,
       tone: reportTone(vm.summary.severity, heroStatement?.reason),
