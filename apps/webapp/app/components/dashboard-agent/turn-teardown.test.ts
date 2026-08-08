@@ -32,11 +32,6 @@ describe("unmountTeardown", () => {
       "navigated-away"
     );
   });
-
-  it("ignores the query string, so filtering a page is not leaving it", () => {
-    // Both sides are pathnames; a filter change never reaches this comparison.
-    expect(unmountTeardown({ renderedPath: path, livePath: path })).toBe("panel-closed");
-  });
 });
 
 /**
@@ -54,6 +49,15 @@ describe("the chat cancels its turn only on the teardowns that say so", () => {
   it("compares the last rendered path against the live one", () => {
     expect(chat).toContain("renderedPath: renderedPathRef.current");
     expect(chat).toContain("livePath: window.location.pathname");
+  });
+
+  // Where "filtering a page is not leaving it" actually lives: both sides are pathnames, so a
+  // query string never reaches the comparison. Widen either side and a filter change reads as a
+  // navigation, cancelling the turn.
+  it("tracks the rendered path without its query string", () => {
+    expect(chat).toContain("useRef(location.pathname)");
+    expect(chat).toContain("renderedPathRef.current = location.pathname;");
+    expect(chat).not.toContain("location.search");
   });
 
   it("runs the cleanup once, not on every path change", () => {
