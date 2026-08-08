@@ -3,5 +3,5 @@
  * `task/` prefix there, and the presenters strip it for display only.
  */
 export function storedQueueName(queue: { type: string; name: string }): string {
-  return queue.type === "task" ? `task/${queue.name.replace(/^task\//, "")}` : queue.name;
+  return queue.type === "task" ? `task/${queue.name.replace(/^(?:task\/)+/, "")}` : queue.name;
 }
