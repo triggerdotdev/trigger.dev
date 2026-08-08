@@ -26,6 +26,18 @@ describe("pageLabelFromPath", () => {
     expect(pageLabelFromPath(`${envRoot}/some-new-thing`)).toBe("Some new thing");
   });
 
+  it("reads the section past a preview branch named like a path marker", () => {
+    const branchRoot = "/orgs/acme-1234/projects/hello-world-ab12/env";
+
+    expect(pageLabelFromPath(`${branchRoot}/env/runs`)).toBe("Runs");
+    expect(pageLabelFromPath(`${branchRoot}/env/runs/run_abc123`)).toBe("Runs");
+    expect(pageLabelFromPath(`${branchRoot}/env/environment-variables`)).toBe(
+      "Environment variables"
+    );
+    expect(pageLabelFromPath(`${branchRoot}/env`)).toBe("Overview");
+    expect(pageLabelFromPath(`${branchRoot}/projects/queues`)).toBe("Queues");
+  });
+
   it("falls back to the last segment outside an env path", () => {
     expect(pageLabelFromPath("/orgs/acme-1234/settings/members")).toBe("Members");
     expect(pageLabelFromPath("/account/security")).toBe("Security");
