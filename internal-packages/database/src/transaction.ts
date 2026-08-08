@@ -37,12 +37,15 @@ export function isPrismaKnownError(error: unknown): error is PrismaClientKnownRe
 */
 const retryCodes = ["P2024", "P2028", "P2034"];
 
+const ADAPTER_ACQUIRE_TIMEOUT = /timeout exceeded when trying to connect/i;
+
 export function isPrismaRetriableError(error: unknown): boolean {
-  if (!isPrismaKnownError(error)) {
-    return false;
+  if (isPrismaKnownError(error)) {
+    return retryCodes.includes(error.code);
   }
 
-  return retryCodes.includes(error.code);
+  const message = (error as { message?: unknown })?.message;
+  return typeof message === "string" && ADAPTER_ACQUIRE_TIMEOUT.test(message);
 }
 
 /*
