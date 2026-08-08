@@ -13,11 +13,11 @@ import { LiveTimer } from "../runs/v3/LiveTimer";
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
 
-type TimelineLineVariant = "light" | "normal";
+export type TimelineLineVariant = "light" | "normal";
 
 type TimelineStyle = "normal" | "diminished";
 
-type TimelineEventVariant =
+export type TimelineEventVariant =
   | "start-cap"
   | "dot-hollow"
   | "dot-solid"
@@ -323,7 +323,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
 export type RunTimelineEventProps = {
   title: ReactNode;
   subtitle?: ReactNode;
-  state?: "complete" | "error" | "inprogress";
+  state?: TimelineEventState;
   variant?: TimelineEventVariant;
   helpText?: string;
   style?: TimelineStyle;
@@ -483,6 +483,12 @@ export type RunTimelineLineProps = {
   state?: TimelineEventState;
   variant?: TimelineLineVariant;
   style?: TimelineStyle;
+  /**
+   * Round the top of a thick ("normal") line. Needed when the line itself starts the thick bar,
+   * as in the delivery timeline, where nothing above it supplies a `start-cap-thick`. The run
+   * timeline always precedes its thick line with that cap, so it leaves this off.
+   */
+  roundedTop?: boolean;
 };
 
 export function RunTimelineLine({
@@ -490,11 +496,12 @@ export function RunTimelineLine({
   state,
   variant = "normal",
   style = "normal",
+  roundedTop = false,
 }: RunTimelineLineProps) {
   return (
     <div className="grid h-6 grid-cols-[1.125rem_1fr] gap-1 text-xs">
       <div className="flex items-stretch justify-center">
-        <LineMarker state={state} variant={variant} style={style} />
+        <LineMarker state={state} variant={variant} style={style} roundedTop={roundedTop} />
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className="text-text-dimmed">{title}</span>
@@ -507,10 +514,12 @@ function LineMarker({
   state,
   variant,
   style,
+  roundedTop = false,
 }: {
   state?: TimelineEventState;
   variant: TimelineLineVariant;
   style?: TimelineStyle;
+  roundedTop?: boolean;
 }) {
   let containerClass = "bg-text-dimmed";
   switch (state) {
@@ -532,7 +541,7 @@ function LineMarker({
   switch (variant) {
     case "normal":
       return (
-        <div className={cn("relative w-1.75", containerClass)}>
+        <div className={cn("relative w-1.75", roundedTop && "rounded-t-xs", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"

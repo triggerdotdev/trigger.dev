@@ -109,6 +109,10 @@ export type TestTaskResult =
       taskRunTemplates: TaskRunTemplate[];
     }
   | {
+      foundTask: true;
+      triggerSource: "WEBHOOK";
+    }
+  | {
       foundTask: false;
     };
 
@@ -120,7 +124,6 @@ export type ScheduledTaskResult = Extract<
   TestTaskResult,
   { foundTask: true; triggerSource: "SCHEDULED" }
 >;
-
 type RawRun = {
   id: string;
   queue: string;
@@ -385,6 +388,9 @@ export class TestTaskPresenter {
       case "AGENT": {
         // AGENT tasks are filtered out by TestPresenter and shouldn't reach here
         return { foundTask: false };
+      }
+      case "WEBHOOK": {
+        return { foundTask: true, triggerSource: "WEBHOOK" };
       }
       default: {
         return task.triggerSource satisfies never;

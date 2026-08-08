@@ -1,0 +1,912 @@
+{
+  "release": "webhooks-v1",
+  "scope": "ai-agent-first",
+  "updatedAt": null,
+  "definitionOfDone": {
+    "first-class": ["registryEntry", "samples", "roundTrip", "producer"],
+    "sample-only": ["registryEntry", "samples"]
+  },
+  "statusValues": ["not-started", "in-progress", "complete", "blocked"],
+  "providers": [
+    {
+      "id": "anthropic",
+      "label": "Anthropic (Claude)",
+      "category": "ai-platform",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "standard-webhooks",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://platform.claude.com/docs/en/managed-agents/webhooks",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": "downgraded: single X-Webhook-Signature header, not 3-header svix scheme"
+    },
+    {
+      "id": "clerk",
+      "label": "Clerk",
+      "category": "auth-identity",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "svix",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://clerk.com/docs/guides/development/webhooks/overview",
+      "status": "complete",
+      "owner": null,
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "discord",
+      "label": "Discord",
+      "category": "communication",
+      "tier": "first-class",
+      "preset": "discord",
+      "signatureScheme": "ed25519",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.discord.com/developers/events/webhook-events",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": "ed25519 asymmetric: preset exact-match verified structurally, not sign/verify round-tripped"
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "category": "source-control",
+      "tier": "first-class",
+      "preset": "github",
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "hookdeck",
+      "docsUrl": "https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries",
+      "status": "complete",
+      "owner": null,
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "gitlab",
+      "label": "GitLab",
+      "category": "source-control",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "standard-webhooks",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "hookdeck",
+      "docsUrl": "https://docs.gitlab.com/user/project/integrations/webhooks/",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "jira",
+      "label": "Jira",
+      "category": "pm",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.atlassian.com/cloud/jira/platform/webhooks/",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": "downgraded: x-hub-signature (no -256) != github preset"
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "category": "ai-platform",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "standard-webhooks",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://platform.openai.com/docs/guides/webhooks",
+      "status": "complete",
+      "owner": null,
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "resend",
+      "label": "Resend",
+      "category": "email",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "svix",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://resend.com/docs/dashboard/webhooks/introduction",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "stripe",
+      "label": "Stripe",
+      "category": "payments",
+      "tier": "first-class",
+      "preset": "stripe",
+      "signatureScheme": "stripe",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "hookdeck",
+      "docsUrl": "https://docs.stripe.com/webhooks",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "whatsapp",
+      "label": "WhatsApp (Meta)",
+      "category": "communication",
+      "tier": "first-class",
+      "preset": "github",
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks/",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "brex",
+      "label": "Brex",
+      "category": "fintech",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "svix",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.brex.com/docs/webhooks/",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "recall-ai",
+      "label": "Recall.ai",
+      "category": "ai-platform",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "standard-webhooks",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.recall.ai/docs/authenticating-requests-from-recallai",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "replicate",
+      "label": "Replicate",
+      "category": "ai-platform",
+      "tier": "first-class",
+      "preset": "svix",
+      "signatureScheme": "standard-webhooks",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://replicate.com/docs/topics/webhooks/verify-webhook",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "square",
+      "label": "Square",
+      "category": "payments",
+      "tier": "first-class",
+      "preset": "square",
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.squareup.com/docs/webhooks/step3validate",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "auth0",
+      "label": "Auth0",
+      "category": "auth-identity",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "bearer",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://auth0.com/docs/customize/log-streams/custom-log-streams",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "calendly",
+      "label": "Calendly",
+      "category": "calendar-scheduling",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.calendly.com/api-docs/4c305798a61d3-webhook-signatures",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "docusign",
+      "label": "DocuSign",
+      "category": "e-signature",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.docusign.com/platform/webhooks/connect/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "elevenlabs",
+      "label": "ElevenLabs",
+      "category": "voice",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "hubspot",
+      "label": "HubSpot",
+      "category": "crm",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "hookdeck",
+      "docsUrl": "https://developers.hubspot.com/docs/guides/api/app-management/webhooks",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": "hookdeck samples are CRM-object shape, not App-Subscription array; revisit eventTypeSource/handauthor later"
+    },
+    {
+      "id": "intercom",
+      "label": "Intercom",
+      "category": "support",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha1",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.intercom.com/docs/references/webhooks/webhook-models",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "notion",
+      "label": "Notion",
+      "category": "productivity",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.notion.com/reference/webhooks",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "pagerduty",
+      "label": "PagerDuty",
+      "category": "observability",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.pagerduty.com/docs/webhooks/webhook-signatures/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "plaid",
+      "label": "Plaid",
+      "category": "fintech",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "jwt",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://plaid.com/docs/api/webhooks/webhook-verification/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "sendgrid",
+      "label": "SendGrid",
+      "category": "email",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "ecdsa",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/getting-started-event-webhook-security-features",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "sentry",
+      "label": "Sentry",
+      "category": "observability",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.sentry.io/product/integrations/integration-platform/webhooks/",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "shopify",
+      "label": "Shopify",
+      "category": "commerce",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "hookdeck",
+      "docsUrl": "https://shopify.dev/docs/apps/build/webhooks/verify-deliveries",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "slack",
+      "label": "Slack",
+      "category": "communication",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.slack.dev/authentication/verifying-requests-from-slack/",
+      "status": "complete",
+      "owner": null,
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "supabase",
+      "label": "Supabase",
+      "category": "hosting-infra",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "shared-secret",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://supabase.com/docs/guides/database/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "twilio",
+      "label": "Twilio",
+      "category": "communication",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "hmac-sha1",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://www.twilio.com/docs/usage/webhooks/webhooks-security",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": "two samples share eventType call.status-callback; split in cleanup"
+    },
+    {
+      "id": "typeform",
+      "label": "Typeform",
+      "category": "forms",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://www.typeform.com/developers/webhooks/secure-your-webhooks/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "vercel",
+      "label": "Vercel",
+      "category": "hosting-infra",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha1",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://vercel.com/docs/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "zendesk",
+      "label": "Zendesk",
+      "category": "support",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.zendesk.com/documentation/webhooks/verifying/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "zoom",
+      "label": "Zoom",
+      "category": "communication",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "high",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.zoom.us/docs/api/webhooks/",
+      "status": "complete",
+      "owner": "batch1",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "assemblyai",
+      "label": "AssemblyAI",
+      "category": "ai-platform",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "shared-secret",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://www.assemblyai.com/docs/concepts/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "attio",
+      "label": "Attio",
+      "category": "crm",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.attio.com/rest-api/guides/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "cal-com",
+      "label": "Cal.com",
+      "category": "calendar-scheduling",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://cal.com/docs/developing/guides/automation/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "close-crm",
+      "label": "Close",
+      "category": "crm",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developer.close.com/topics/webhooks/",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "deepgram",
+      "label": "Deepgram",
+      "category": "ai-platform",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "none-or-ip-allowlist",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://developers.deepgram.com/docs/callback",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "linear",
+      "label": "Linear",
+      "category": "pm",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://linear.app/developers/webhooks",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "postmark",
+      "label": "Postmark",
+      "category": "email",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "basic",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://postmarkapp.com/developer/webhooks/inbound-webhook",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "retell",
+      "label": "Retell AI",
+      "category": "voice",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.retellai.com/features/secure-webhook",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "category": "communication",
+      "tier": "sample-only",
+      "preset": null,
+      "signatureScheme": "shared-secret",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://core.telegram.org/bots/api#setwebhook",
+      "status": "complete",
+      "owner": "batch2",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "vapi",
+      "label": "Vapi",
+      "category": "voice",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://docs.vapi.ai/server-url/server-authentication",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    },
+    {
+      "id": "workos",
+      "label": "WorkOS",
+      "category": "auth-identity",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "high",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://workos.com/docs/events/data-syncing/webhooks",
+      "status": "complete",
+      "owner": "batch3",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": ""
+    }
+  ]
+}

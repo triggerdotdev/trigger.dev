@@ -402,6 +402,52 @@ export function v3AgentTaskPath(
   )}`;
 }
 
+export function v3WebhooksPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  // Top-level Webhooks section landing = the cross-endpoint deliveries list.
+  return `${v3EnvironmentPath(organization, project, environment)}/webhooks`;
+}
+
+export function v3WebhookTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  webhookSlug: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/webhooks/${encodeURIComponent(
+    webhookSlug
+  )}`;
+}
+
+export function v3WebhookDeliveryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  deliveryFriendlyId: string
+) {
+  return `${v3EnvironmentPath(
+    organization,
+    project,
+    environment
+  )}/webhooks/deliveries/${encodeURIComponent(deliveryFriendlyId)}`;
+}
+
+export function v3WebhookEndpointPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  endpointFriendlyId: string
+) {
+  return `${v3EnvironmentPath(
+    organization,
+    project,
+    environment
+  )}/webhooks/endpoints/${encodeURIComponent(endpointFriendlyId)}`;
+}
+
 export function v3StandardTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,

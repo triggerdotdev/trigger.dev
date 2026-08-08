@@ -49,6 +49,12 @@ import {
   insertSessionsCompactArrays,
 } from "./sessions.js";
 import {
+  getWebhookDeliveriesQueryBuilder,
+  getWebhookDeliveriesCountQueryBuilder,
+  getWebhookDeliveriesGroupedCountQueryBuilder,
+  insertWebhookDeliveriesCompactArrays,
+} from "./webhookDeliveries.js";
+import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
   getPopularModels,
@@ -79,6 +85,7 @@ export type * from "./queueMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./sessions.js";
+export type * from "./webhookDeliveries.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -93,6 +100,11 @@ export {
 } from "./taskRuns.js";
 
 export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
+export {
+  WEBHOOK_DELIVERY_COLUMNS,
+  WEBHOOK_DELIVERY_INDEX,
+  getWebhookDeliveryField,
+} from "./webhookDeliveries.js";
 
 // TSQL query execution
 export {
@@ -298,6 +310,15 @@ export class ClickHouse {
       queryBuilder: getSessionsQueryBuilder(this.reader),
       countQueryBuilder: getSessionsCountQueryBuilder(this.reader),
       tagQueryBuilder: getSessionTagsQueryBuilder(this.reader),
+    };
+  }
+
+  get webhookDeliveries() {
+    return {
+      insertCompactArrays: insertWebhookDeliveriesCompactArrays(this.writer),
+      queryBuilder: getWebhookDeliveriesQueryBuilder(this.reader),
+      countQueryBuilder: getWebhookDeliveriesCountQueryBuilder(this.reader),
+      groupedCountQueryBuilder: getWebhookDeliveriesGroupedCountQueryBuilder(this.reader),
     };
   }
 

@@ -1,0 +1,22 @@
+{
+  "name": "@internal/webhook-sources",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@internal/webhook-engine": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "ingest": "tsx src/ingest.ts",
+    "catalog:status": "tsx catalog/status.ts",
+    "catalog:aggregate": "tsx catalog/build-aggregates.ts"
+  }
+}

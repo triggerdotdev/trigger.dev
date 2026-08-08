@@ -12,6 +12,7 @@ import {
   useRevalidator,
   useSubmit,
 } from "@remix-run/react";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -131,6 +132,7 @@ import {
   v3SessionsPath,
   v3UsagePath,
   v3WaitpointTokensPath,
+  v3WebhooksPath,
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
@@ -1201,6 +1203,19 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
               />
+              {(user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) && (
+                <SideMenuItem
+                  name="Webhooks"
+                  icon={WebhookIcon}
+                  activeIconColor="text-webhooks"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3WebhooksPath(organization, project, environment)}
+                  data-action="webhooks"
+                  badge={<NewBadge />}
+                  isCollapsed={isCollapsed}
+                  yieldActiveToFavorite
+                />
+              )}
             </div>
 
             {orderedSectionIds.map((sectionId) => {
