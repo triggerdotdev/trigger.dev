@@ -8,6 +8,19 @@ export const UNREAD_POLL_INTERVAL_MS = 60_000;
 // Added to each delay so open tabs never settle into polling on the same second.
 export const UNREAD_POLL_JITTER_MS = 15_000;
 
+/**
+ * Which of the feed's wakes this tab should toast. The feed is recent deliveries, not
+ * unread ones, and the local memory of what was toasted is per browser — so `unread` is the
+ * only signal shared across machines that a wake has already been seen. A wake landing in
+ * an open chat stays unread until that chat's next read, so it still toasts.
+ */
+export function wakesToToast<T extends { watchId: string; unread?: boolean }>(
+  wakes: T[] | undefined,
+  toasted: ReadonlySet<string>
+): T[] {
+  return (wakes ?? []).filter((wake) => wake.unread === true && !toasted.has(wake.watchId));
+}
+
 export type WakePollOptions = {
   load: () => Promise<void>;
   isHidden: () => boolean;

@@ -23,7 +23,7 @@ import {
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
-import { startWakePolling } from "./wake-poll";
+import { startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
   showWatchWakesSummaryToast,
@@ -217,7 +217,7 @@ export function DashboardAgent({
         // A chat open in the panel is being read right now, so it isn't unread work.
         setUnreadWork(Math.max(0, (data.unreadWork ?? 0) - (open && visibleChat.current ? 1 : 0)));
 
-        const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
+        const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
 
         if (fresh.length > WAKE_TOAST_MAX_INDIVIDUAL) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { startWakePolling, UNREAD_POLL_INTERVAL_MS } from "./wake-poll";
+import { startWakePolling, UNREAD_POLL_INTERVAL_MS, wakesToToast } from "./wake-poll";
 
 function harness() {
   let hidden = false;
@@ -96,5 +96,31 @@ describe("startWakePolling", () => {
     expect(poll.loads).toHaveLength(settled);
     expect(poll.listenerCount()).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("wakesToToast", () => {
+  const wake = (watchId: string, unread: boolean) => ({ watchId, unread });
+
+  it("skips a wake another machine already read, and keeps the unread one", () => {
+    const wakes = [wake("watch_read", false), wake("watch_new", true)];
+
+    expect(wakesToToast(wakes, new Set())).toEqual([wake("watch_new", true)]);
+  });
+
+  it("still skips what this browser toasted, read or not", () => {
+    const wakes = [wake("watch_seen", true), wake("watch_new", true)];
+
+    expect(wakesToToast(wakes, new Set(["watch_seen"]))).toEqual([wake("watch_new", true)]);
+  });
+
+  // The read POST is what clears it, and that only runs once the chat is looked at.
+  it("toasts a wake that landed in an open chat, because it is still unread", () => {
+    expect(wakesToToast([wake("watch_in_view", true)], new Set())).toHaveLength(1);
+  });
+
+  it("treats a wake with no unread flag as already seen rather than guessing", () => {
+    expect(wakesToToast([{ watchId: "watch_old" }], new Set())).toEqual([]);
+    expect(wakesToToast(undefined, new Set())).toEqual([]);
   });
 });
