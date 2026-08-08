@@ -1,7 +1,8 @@
 import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { liveProgress } from "./progress-line";
 import {
+  fetchChatTranscript,
   hasOpenInvestigation,
   mergeSettledMessages,
   pollSettledTranscript,
@@ -70,6 +71,51 @@ describe("merging a re-read transcript", () => {
   it("returns the same array when the re-read adds nothing, so no render is forced", () => {
     const current = [OPEN, SETTLED];
     expect(mergeSettledMessages(current, [OPEN, SETTLED])).toBe(current);
+  });
+});
+
+describe("reading the transcript endpoint", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function respondWith(body: unknown, ok = true) {
+    vi.stubGlobal("fetch", async () => ({ ok, json: async () => body }) as unknown as Response);
+  }
+
+  it("returns the transcript when the response carries one", async () => {
+    respondWith({ messages: [OPEN, SETTLED] });
+    const fetched = await fetchChatTranscript<typeof OPEN>("/agent/transcript", "chat_1");
+    expect(fetched?.map((message) => message.id)).toEqual([OPEN.id, SETTLED.id]);
+  });
+
+  it("reads a response with no messages at all as a failed re-read", async () => {
+    respondWith({});
+    expect(await fetchChatTranscript("/agent/transcript", "chat_1")).toBeNull();
+  });
+
+  it("reads a non-array under messages as a failed re-read, not as a transcript", async () => {
+    respondWith({ messages: { msg_open: OPEN } });
+    expect(await fetchChatTranscript("/agent/transcript", "chat_1")).toBeNull();
+  });
+
+  it("keeps only entries the merge can key on", async () => {
+    respondWith({ messages: [OPEN, null, "msg_open", { revision: 1 }, SETTLED] });
+    const fetched = await fetchChatTranscript<typeof OPEN>("/agent/transcript", "chat_1");
+    expect(fetched?.map((message) => message.id)).toEqual([OPEN.id, SETTLED.id]);
+  });
+
+  it("leaves the panel's transcript alone when the endpoint answers with a shape it cannot merge", async () => {
+    respondWith({ messages: { msg_open: OPEN } });
+    let rendered: (typeof OPEN)[] = [OPEN];
+
+    await pollSettledTranscript<typeof OPEN>({
+      fetchTranscript: () => fetchChatTranscript("/agent/transcript", "chat_1"),
+      apply: (merge) => void (rendered = merge(rendered)),
+      wait: async () => {},
+    });
+
+    expect(rendered).toEqual([OPEN]);
   });
 });
 

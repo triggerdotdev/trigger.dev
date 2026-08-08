@@ -59,8 +59,15 @@ export async function fetchChatTranscript<T extends Identified>(
   try {
     const res = await fetch(`${actionPath}?chatId=${encodeURIComponent(chatId)}`);
     if (!res.ok) return null;
-    const data = (await res.json()) as { messages?: T[] };
-    return data.messages ?? null;
+    const data = (await res.json()) as { messages?: unknown };
+    if (!Array.isArray(data.messages)) return null;
+    // Anything else under `messages` is not a transcript; keep only what merging can key on.
+    return data.messages.filter(
+      (message): message is T =>
+        typeof message === "object" &&
+        message !== null &&
+        typeof (message as Identified).id === "string"
+    );
   } catch (error) {
     console.error("Dashboard agent: failed to re-read the settled transcript", error);
     return null;
