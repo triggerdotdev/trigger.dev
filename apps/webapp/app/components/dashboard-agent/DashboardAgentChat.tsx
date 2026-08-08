@@ -27,7 +27,7 @@ import {
   hasOpenInvestigation,
   pollSettledTranscript,
 } from "./settled-transcript";
-import { navigateIntentApplies } from "./turn-navigation";
+import { takeNavigateIntent } from "./turn-navigation";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
@@ -315,16 +315,13 @@ export function DashboardAgentChat({
   }, [status]);
 
   useEffect(() => {
-    const pending = pendingNavigateIntents(messages, navigatedRef.current!);
-    const target = pending.at(-1);
-    if (!target) return;
-    // Marked handled above either way, so a dropped navigation stays dropped and the answer's
-    // own button remains the way to take it.
-    const applies = navigateIntentApplies({
+    const target = takeNavigateIntent({
+      messages,
+      handled: navigatedRef.current!,
       startedPath: turnStartedPathRef.current,
       currentPath: renderedPathRef.current,
     });
-    if (applies) void goTo(target);
+    if (target) void goTo(target);
   }, [messages, goTo]);
 
   const watchProposedRef = useRef<Set<string> | null>(null);
