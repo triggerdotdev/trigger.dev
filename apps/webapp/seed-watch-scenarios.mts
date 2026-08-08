@@ -10,13 +10,28 @@ import { randomUUID } from "node:crypto";
 // module's exports only through `default`.
 import dbServer from "./app/db.server";
 import errorFingerprinting from "./app/utils/errorFingerprinting";
+import localHostGuard from "./app/utils/localHostGuard";
 import eventCommon from "./app/v3/eventRepository/common.server";
 
 const { prisma } = dbServer;
 const { calculateErrorFingerprint } = errorFingerprinting;
+const { isLocalHost, checkLocalOrigin } = localHostGuard;
 const { generateTraceId, generateSpanId } = eventCommon;
 
 const APP_ORIGIN = process.env.APP_ORIGIN ?? "http://localhost:3030";
+
+/** Every request to it carries the target's API key, so it is checked like the rest. */
+function appOrigin(): string {
+  const checked = checkLocalOrigin(APP_ORIGIN);
+  if (!checked.ok) {
+    fail(
+      checked.reason === "non_local"
+        ? `Refusing to send an API key to a non-local host: ${checked.hostname}`
+        : "APP_ORIGIN isn't a URL."
+    );
+  }
+  return checked.origin;
+}
 
 const DEFAULT_RUN_SECONDS = 60;
 const DEFAULT_FAIL_TASK = "slow-fail";
@@ -174,8 +189,6 @@ type RedisLike = {
 
 const ZADD_BATCH = 1_000;
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
-
 function envQueueKey(organizationId: string, environmentId: string): string {
   return `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
 }
@@ -195,7 +208,7 @@ async function openRedis(): Promise<RedisLike> {
   const port = Number(
     process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
   );
-  if (!LOCAL_HOSTS.has(host)) {
+  if (!isLocalHost(host)) {
     fail(`Refusing to stage Redis on a non-local host: ${host}`);
   }
   const { createRedisClient } = await import("@internal/redis");
@@ -267,7 +280,7 @@ function clickhouse(): ClickHouse {
   }
   const parsed = new URL(url);
   // Never echo the URL: it carries credentials.
-  if (!LOCAL_HOSTS.has(parsed.hostname)) {
+  if (!isLocalHost(parsed.hostname)) {
     fail(`Refusing to run against a non-local ClickHouse host: ${parsed.hostname}`);
   }
   parsed.searchParams.delete("secure");
@@ -448,7 +461,8 @@ async function runScenario(
   taskFlag: string | undefined
 ) {
   const taskId = taskFlag ?? (kind === "fail" ? DEFAULT_FAIL_TASK : DEFAULT_SUCCEED_TASK);
-  const response = await fetch(`${APP_ORIGIN}/api/v1/tasks/${taskId}/trigger`, {
+  const origin = appOrigin();
+  const response = await fetch(`${origin}/api/v1/tasks/${taskId}/trigger`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -457,7 +471,7 @@ async function runScenario(
     body: JSON.stringify({ payload: { seconds } }),
   }).catch((error: unknown) => {
     fail(
-      `Could not reach ${APP_ORIGIN} (${error instanceof Error ? error.message : error}). ` +
+      `Could not reach ${origin} (${error instanceof Error ? error.message : error}). ` +
         `Is the webapp running?`
     );
   });
