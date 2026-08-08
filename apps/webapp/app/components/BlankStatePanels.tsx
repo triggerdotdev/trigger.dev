@@ -65,24 +65,36 @@ function DeployDocsLinks() {
   return (
     <>
       <SimpleTooltip
+        asChild
+        tabbable
         button={
-          <LinkButton
-            variant="small-menu-item"
-            LeadingIcon={BookOpenIcon}
-            leadingIconClassName="text-blue-500"
-            to={docsPath("deployment/overview")}
-          />
+          // Span wrapper: LinkButton drops the pointer-event props Radix injects via asChild, so
+          // the tooltip trigger has to be a plain element (same pattern as FavoritePageButton).
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={BookOpenIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("deployment/overview")}
+              aria-label="Deploy docs"
+            />
+          </span>
         }
         content="Deploy docs"
       />
       <SimpleTooltip
+        asChild
+        tabbable
         button={
-          <LinkButton
-            variant="small-menu-item"
-            LeadingIcon={QuestionMarkCircleIcon}
-            leadingIconClassName="text-blue-500"
-            to={docsPath("troubleshooting#deployment")}
-          />
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={QuestionMarkCircleIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("troubleshooting#deployment")}
+              aria-label="Troubleshooting docs"
+            />
+          </span>
         }
         content="Troubleshooting docs"
       />
