@@ -16,7 +16,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import type * as SdkModule from "@trigger.dev/sdk";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, vi } from "vitest";
+import { afterEach, describe, expect, vi } from "vitest";
 import type { WatchCheckDeps, WatchRunRow } from "~/services/dashboardAgentWatchChecks";
 import type * as WatchChecksModule from "~/services/dashboardAgentWatchChecks.server";
 
@@ -107,6 +107,11 @@ async function boot(prisma: PrismaClient, connectionUri: string) {
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 4 });
   ctx.agentDb = agentDbClient.db;
 }
+
+afterEach(async () => {
+  await agentDbClient?.close();
+  agentDbClient = undefined;
+});
 
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
@@ -270,6 +275,7 @@ describe("the create-watch response's email alert state", () => {
       expect(
         channels.map((channel) => (channel.properties as { email: string }).email).sort()
       ).toEqual([alice.email, bob.email].sort());
-    }
+    },
+    30_000
   );
 });
