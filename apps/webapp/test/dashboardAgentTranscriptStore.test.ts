@@ -677,7 +677,9 @@ describe("countUserMessages", () => {
 
       await persistMessages(agentDb, {
         chatId: "chat_a",
-        messages: [userMessage("u1"), textMessage("a1")],
+        // A consent record is a user message but not a turn the user spent, so the
+        // quota's prefix filter must skip it.
+        messages: [userMessage("u1"), textMessage("a1"), userMessage("watch-request:req_1")],
       });
       await persistMessages(agentDb, { chatId: "chat_b", messages: [userMessage("u2")] });
       await persistMessages(agentDb, { chatId: "chat_gone", messages: [userMessage("u3")] });

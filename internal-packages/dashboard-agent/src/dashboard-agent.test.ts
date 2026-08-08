@@ -119,6 +119,10 @@ describe("dashboardAgent (mock harness)", () => {
     it("does not rename on a later exchange", () => {
       expect(isFirstUserExchange([user("u1"), assistant("a1"), user("u2")])).toBe(false);
     });
+
+    it("ignores a watch consent record, which the user never typed", () => {
+      expect(isFirstUserExchange([user("watch-request:watch_1"), user("u1")])).toBe(true);
+    });
   });
 
   it("names the chat once, not on every turn", async () => {

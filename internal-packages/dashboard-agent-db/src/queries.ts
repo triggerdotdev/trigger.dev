@@ -1,8 +1,12 @@
-import { investigationBlockSchema, VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, inArray, ne, sql, isNull, type SQL } from "drizzle-orm";
+import {
+  investigationBlockSchema,
+  VIEW_BLOCK_VERSION,
+  WATCH_REQUEST_MESSAGE_ID_PREFIX,
+} from "@internal/dashboard-agent-contracts";
+import { and, desc, eq, inArray, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
-import { type DashboardAgentDbOrTx } from "./internal.js";
+import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
   chatMessages,
   chats,
@@ -12,7 +16,13 @@ import {
   type ChatSession,
   type Investigation,
   type NewChatTurnEval,
+  type Watch,
 } from "./schema.js";
+import { cancelActiveWatchesForChat } from "./watch-queries.js";
+
+// The watch, wake and batch-chain queries live in `watch-queries.js`, re-exported
+// here so every existing import path still resolves.
+export * from "./watch-queries.js";
 
 // Every query that touches user data must be scoped by `organizationId` and/or
 // `userId`. This file is where tenant isolation lives.
@@ -83,6 +93,8 @@ export async function getChatMessages(
 /**
  * Counted from the stored messages, not a counter column, so a deleted chat stops
  * counting. `excludeChatId` is for a caller that counts that chat's live messages itself.
+ * A watch's consent record is a user message but not a turn the user spent, so it is
+ * excluded here and by the client-side count.
  */
 export async function countUserMessages(
   db: DashboardAgentDb,
@@ -98,6 +110,7 @@ export async function countUserMessages(
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
         eq(chatMessages.role, "user"),
+        notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
         params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
       )
     );
@@ -220,18 +233,51 @@ export async function setChatPinned(
     );
 }
 
-/** Owner-scoped: a client chatId can only delete the caller's own chat. */
+/** Owner-scoped: a client chatId can only clear the caller's own unread state. */
+export async function markChatRead(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string; organizationId: string; at?: Date }
+): Promise<void> {
+  await db
+    .update(chats)
+    .set({ lastReadAt: params.at ?? sql`now()` })
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    );
+}
+
+/**
+ * One transaction on purpose: a crash between the two halves would leave live
+ * watches ticking against a chat the user can no longer see. Owner-scoped.
+ */
 export async function softDeleteChat(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string }
-): Promise<{ deleted: boolean }> {
-  const deleted = await db
-    .update(chats)
-    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)))
-    .returning({ id: chats.id });
+): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
+  return db.transaction(async (tx) => {
+    // The same lock `createWatch` takes, or a concurrent create lands an active
+    // watch on a chat this transaction already deleted.
+    await lockChatForWatches(tx, params.chatId);
 
-  return { deleted: deleted.length > 0 };
+    const deleted = await tx
+      .update(chats)
+      .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)))
+      .returning({ id: chats.id });
+
+    if (deleted.length === 0) return { deleted: false, cancelledWatches: [] };
+
+    const cancelledWatches = await cancelActiveWatchesForChat(tx, {
+      chatId: params.chatId,
+      reason: "chat_deleted",
+    });
+
+    return { deleted: true, cancelledWatches };
+  });
 }
 
 /** Enough of the payload to recognise it in an error, without logging a whole transcript. */

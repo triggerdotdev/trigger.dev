@@ -93,7 +93,7 @@ describe("dashboard agent chat creation — nothing fallible after the row exist
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
     mocks.startSession.mockReset().mockResolvedValue(undefined);
-    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true });
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
   });
 
@@ -144,7 +144,7 @@ describe("dashboard agent chat creation — a start that fails part way", () => 
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
     mocks.startSession.mockReset().mockResolvedValue(undefined);
-    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true });
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
     mocks.logger.error.mockReset();
   });
