@@ -42,8 +42,6 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
 
-process.env.SESSION_SECRET = "test-session-secret-for-watch-fingerprints";
-
 const { createDashboardAgentWatch } = await import("~/services/dashboardAgentWatches.server");
 
 /** Replays every migration in order, so a new migration can't leave this file on a stale schema. */
