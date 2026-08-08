@@ -551,7 +551,13 @@ function configurePrismaMetrics({ meter }: { meter: Meter }) {
 
   meter.addBatchObservableCallback(
     async (res) => {
-      const { counters, gauges, histograms } = await readPrismaMetrics();
+      let prismaMetrics: Awaited<ReturnType<typeof readPrismaMetrics>>;
+      try {
+        prismaMetrics = await readPrismaMetrics();
+      } catch {
+        return;
+      }
+      const { counters, gauges, histograms } = prismaMetrics;
 
       // Observe counters
       res.observe(queriesTotal, counters.queriesTotal);

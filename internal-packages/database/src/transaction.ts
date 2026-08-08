@@ -40,8 +40,8 @@ const retryCodes = ["P2024", "P2028", "P2034"];
 const ADAPTER_ACQUIRE_TIMEOUT = /timeout exceeded when trying to connect/i;
 
 export function isPrismaRetriableError(error: unknown): boolean {
-  if (isPrismaKnownError(error)) {
-    return retryCodes.includes(error.code);
+  if (isPrismaKnownError(error) && retryCodes.includes(error.code)) {
+    return true;
   }
 
   const message = (error as { message?: unknown })?.message;

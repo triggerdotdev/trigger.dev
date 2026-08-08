@@ -456,7 +456,15 @@ function buildDriverAdapterPool(
       ignoreError: true,
     });
   });
-  return new PrismaPg(pool);
+
+  let schema: string | undefined;
+  try {
+    schema = new URL(connectionString).searchParams.get("schema") ?? undefined;
+  } catch {
+    schema = undefined;
+  }
+
+  return new PrismaPg(pool, { schema, disposeExternalPool: true });
 }
 
 // Generalized writer builder shared by the control-plane client and the run-ops
