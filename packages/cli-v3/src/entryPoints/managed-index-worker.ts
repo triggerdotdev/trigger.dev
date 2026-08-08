@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { reportTaskIdCollisions } from "../indexing/reportTaskIdCollisions.js";
+import { reportWebhookIdCollisions } from "../indexing/reportWebhookIdCollisions.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
@@ -121,6 +122,11 @@ if (await reportTaskIdCollisions(safeSend)) {
   process.exit(0);
 }
 
+if (await reportWebhookIdCollisions(safeSend)) {
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  process.exit(0);
+}
+
 let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
@@ -191,6 +197,8 @@ await sendMessageInCatalog(
       tasks,
       prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       skills: resourceCatalog.listSkillManifests(),
+      webhooks: resourceCatalog.listWebhookManifests(),
+      unclaimedSessionWebhooks: resourceCatalog.listUnclaimedSessionWebhooks(),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,

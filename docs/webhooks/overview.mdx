@@ -1,0 +1,96 @@
+---
+title: "Webhooks overview"
+description: "Receive and verify webhooks from external providers as a task, with a hosted webhook URL."
+sidebarTitle: "Overview"
+---
+
+A webhook is a task that runs when an external provider (Stripe, GitHub, Svix, your own service, …) sends an HTTP request. Trigger.dev gives each webhook a hosted webhook URL, verifies the incoming request's signature, and routes the verified event to your task's `onEvent` handler.
+
+You don't host an endpoint yourself, and you don't write verification code: you declare which provider the webhook is from, point the provider at the webhook URL, and set the signing secret.
+
+## Defining a webhook task
+
+A webhook is created with `webhook()`. It takes an `id`, a `source` (which provider, and how to verify it), and an `onEvent` handler:
+
+```ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const onStripeEvent = webhook({
+  id: "stripe-events",
+  source: webhooks.stripe(),
+  onEvent: async ({ event, headers, ctx }) => {
+    // `event` is the verified, parsed body
+    console.log("Received", event.type, event.id);
+
+    // `headers` is a standard Web Headers object
+    console.log(headers.get("stripe-signature"));
+
+    // `ctx` is the usual run context
+    console.log(ctx.run.id);
+  },
+});
+```
+
+`onEvent` receives:
+
+- **`event`**: the verified request body, parsed from JSON and typed by the source (see [Typing the event](/webhooks/sources#typing-the-event)).
+- **`headers`**: the inbound request headers as a Web [`Headers`](https://developer.mozilla.org/en-US/docs/Web/API/Headers) object (case-insensitive `.get()` / `.has()`).
+- **`ctx`**: the run context, the same one regular tasks receive.
+
+<Note>
+  A webhook is a first-class task kind. It runs on a real run (with retries, logs, and everything else
+  tasks get), and shows up in the dashboard alongside your other tasks.
+</Note>
+
+## How it works
+
+<Steps>
+  <Step title="Declare the webhook">
+    Define a `webhook()` with a `source`. The source is a provider preset (like `webhooks.stripe()`)
+    or a `webhooks.custom()` config. See [Sources and verification](/webhooks/sources).
+  </Step>
+  <Step title="Connect a provider">
+    Deploying the webhook creates an endpoint with a hosted webhook URL. Set its signing secret and
+    point your provider at the URL. See [Connecting a provider](/webhooks/connect).
+  </Step>
+  <Step title="Receive verified events">
+    Each inbound request is verified, recorded as a delivery, and routed to a run that calls your
+    `onEvent`. See [Deliveries and endpoints](/webhooks/deliveries).
+  </Step>
+</Steps>
+
+## Beyond fan-out
+
+A few things build on the basic model:
+
+- **[Filters](/webhooks/filters)** gate which deliveries run. A non-matching delivery is recorded but never triggers a run.
+- **[Session routing](/webhooks/session-routing)** sends deliveries that share a key to one durable session (per customer, installation, or issue) instead of a fresh run each time.
+- **[Channels](/webhooks/channels)** turn a webhook into a chat frontend: inbound messages become agent turns, and the agent's reply posts back to the surface.
+- **[Human-in-the-loop](/webhooks/human-in-the-loop)** adds approvals and interactive controls over a channel, like Slack approve and deny buttons.
+
+<CardGroup cols={2}>
+  <Card title="Sources and verification" icon="shield-check" href="/webhooks/sources">
+    Provider presets, custom verification, and typing the event.
+  </Card>
+  <Card title="Connecting a provider" icon="plug" href="/webhooks/connect">
+    The webhook URL and signing secret.
+  </Card>
+  <Card title="Deliveries and endpoints" icon="inbox" href="/webhooks/deliveries">
+    Observe inbound requests in the dashboard.
+  </Card>
+  <Card title="Filters" icon="filter" href="/webhooks/filters">
+    Route only the deliveries you care about.
+  </Card>
+  <Card title="Session routing" icon="arrows-to-dot" href="/webhooks/session-routing">
+    Route deliveries to a durable per-key session.
+  </Card>
+  <Card title="Channels" icon="comments" href="/webhooks/channels">
+    Turn a webhook into a chat frontend for an agent.
+  </Card>
+  <Card title="Human-in-the-loop" icon="user-check" href="/webhooks/human-in-the-loop">
+    Approvals and interactive controls over a channel.
+  </Card>
+  <Card title="Scheduled tasks" icon="clock" href="/tasks/scheduled">
+    The other declarative task trigger.
+  </Card>
+</CardGroup>
