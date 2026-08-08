@@ -29,6 +29,14 @@ export function cardAlreadyOffersWatch(blocks: ViewBlock[]): boolean {
   );
 }
 
+/**
+ * The same question across every card a turn renders. One `render_view` call can carry the
+ * investigation card and another the actions block, so a per-call answer misses the pair.
+ */
+export function turnAlreadyOffersWatch(blockGroups: ViewBlock[][]): boolean {
+  return blockGroups.some(cardAlreadyOffersWatch);
+}
+
 export function withoutWatchActions<T extends CardAction>(actions: T[]): T[] {
   return actions.filter((action) => action.intent.kind !== "watch");
 }

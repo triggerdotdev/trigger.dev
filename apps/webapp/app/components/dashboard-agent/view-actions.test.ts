@@ -5,6 +5,7 @@ import {
   answerContinuesAfter,
   cardAlreadyOffersWatch,
   renderableActions,
+  turnAlreadyOffersWatch,
   withoutWatchActions,
 } from "./view-actions";
 
@@ -88,6 +89,24 @@ describe("one watch button per answer", () => {
     expect(cardAlreadyOffersWatch([])).toBe(false);
   });
 
+  // The bug this closes: one `render_view` call carries the investigation card and a second
+  // carries the actions block, so each call asked only about its own blocks and said no.
+  it("sees a watch offered by another of the same turn's render_view calls", () => {
+    const investigationCall = [card([watchAction])];
+    const actionsCall = [{ type: "actions", actions: [watchAction] }] as never[];
+
+    expect(cardAlreadyOffersWatch(actionsCall)).toBe(false);
+    // Either order: the card can be rendered before or after the block that repeats it.
+    expect(turnAlreadyOffersWatch([investigationCall, actionsCall])).toBe(true);
+    expect(turnAlreadyOffersWatch([actionsCall, investigationCall])).toBe(true);
+  });
+
+  it("says no when no call in the turn has a card offering one", () => {
+    const plain = [card([{ label: "Keep digging", intent: { kind: "ask", prompt: "" } }])];
+    expect(turnAlreadyOffersWatch([plain, []])).toBe(false);
+    expect(turnAlreadyOffersWatch([])).toBe(false);
+  });
+
   it("drops the model's duplicate offer, keeping everything else", () => {
     expect(
       withoutWatchActions([
@@ -114,5 +133,28 @@ describe("ActionsBlock", () => {
     expect(source).not.toMatch(/from\s+"~\/hooks\//);
     expect(source).not.toMatch(/from\s+"@remix-run\//);
     expect(source).not.toMatch(/\.server"/);
+  });
+});
+
+/**
+ * There is no rendering harness here, so this pins the wiring rather than the pixels: the
+ * turn-wide answer is computed where every part is in scope and reaches every card, and
+ * `ViewBlocks` can only add to it. What it does not prove is that the button disappears.
+ */
+describe("the one-watch-button flag is decided per turn, not per render_view call", () => {
+  const turn = readFileSync(new URL("./DashboardAgentMessages.tsx", import.meta.url), "utf8");
+  const catalog = readFileSync(new URL("./view-catalog.tsx", import.meta.url), "utf8");
+
+  it("computes it over every part's blocks, above the per-part loop", () => {
+    expect(turn).toContain("turnAlreadyOffersWatch(");
+    // Above the loop: computed from the whole `parts` map, not from one part.
+    expect(turn.indexOf("const watchOfferedInTurn")).toBeLessThan(
+      turn.indexOf("for (let i = 0; i < parts.length; i++)")
+    );
+    expect(turn).toContain("watchOfferedInTurn={watchOfferedInTurn}");
+  });
+
+  it("lets a card add its own offer but never drop the turn's", () => {
+    expect(catalog).toContain("watchOfferedInTurn || cardAlreadyOffersWatch(rendered)");
   });
 });
