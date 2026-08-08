@@ -41,22 +41,22 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   mintDashboardAgentUserActorToken: mocks.mintUserActorToken,
   resolveDashboardAgentRepoSnapshot: async () => null,
   startDashboardAgentSession: mocks.startSession,
+  dashboardAgentWakeFeedCounter: { inc: vi.fn() },
 }));
 vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
   startDashboardAgentHeadStart: mocks.headStart,
 }));
+// The chat route reaches the ClickHouse factory through the watch services, and the factory
+// builds its client at import time from an env var no test sets.
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
+}));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
 vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
-vi.mock("@internal/dashboard-agent-db", () => ({
-  chatExists: vi.fn(),
-  countUserMessages: vi.fn(),
+// Spread the real module so this doesn't have to track every query the route imports.
+vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
   createChat: mocks.createChat,
-  getChatMessages: vi.fn(),
-  getSession: vi.fn(),
-  listChatIdsWithOpenInvestigations: vi.fn(),
-  listChats: vi.fn(),
-  renameChat: vi.fn(),
-  setChatPinned: vi.fn(),
   softDeleteChat: mocks.softDeleteChat,
 }));
 vi.mock("~/services/logger.server", () => ({ logger: mocks.logger }));
