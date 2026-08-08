@@ -1,7 +1,7 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
@@ -18,11 +18,12 @@ import {
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
+import { NO_WATCH_CARD, watchCardReducer } from "./watch-card-state";
 import { forgetWatchActivity, rememberWatchActivity } from "./watch-activity";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
-import type { SuggestedPrompt, WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
@@ -106,6 +107,9 @@ export function DashboardAgentPanel({
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
 
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // Declared before the chat plumbing: changing chat dispatches into it.
+  const [watchCard, dispatchWatchCard] = useReducer(watchCardReducer, NO_WATCH_CARD);
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
@@ -187,9 +191,16 @@ export function DashboardAgentPanel({
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
   const openChatRequestSeq = useRef(0);
 
+  // The one way the panel changes chat: it invalidates any in-flight open and abandons a
+  // half-configured watch card, which would otherwise be submitted against the new chat.
+  const claimChatSlot = useCallback(() => {
+    dispatchWatchCard({ type: "chat-changed" });
+    return ++openChatRequestSeq.current;
+  }, []);
+
   const openChat = useCallback(
     async (id: string) => {
-      const seq = ++openChatRequestSeq.current;
+      const seq = claimChatSlot();
       setLoading(true);
       try {
         const res = await fetch(`${actionPath}?chatId=${encodeURIComponent(id)}`);
@@ -209,12 +220,12 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, toast]
+    [actionPath, claimChatSlot, toast]
   );
 
   const createChat = useCallback(
     async (text: string) => {
-      const seq = ++openChatRequestSeq.current;
+      const seq = claimChatSlot();
       setLoading(true);
       try {
         const userMessage: UIMessage = {
@@ -255,7 +266,7 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, clientData, toast]
+    [actionPath, claimChatSlot, clientData, toast]
   );
 
   const restored = useRef(false);
@@ -278,14 +289,13 @@ export function DashboardAgentPanel({
   useEffect(() => {
     if (panelOrg.current === organization.id) return;
     panelOrg.current = organization.id;
-    openChatRequestSeq.current += 1;
+    claimChatSlot();
     setActive(null);
     setLoading(false);
-    setWatchDraft(null);
     setChats([]);
     setChatsLoaded(false);
     void loadHistory();
-  }, [organization.id, loadHistory]);
+  }, [organization.id, claimChatSlot, loadHistory]);
 
   const handledOpenChatSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -346,53 +356,44 @@ export function DashboardAgentPanel({
     }
   }, [requestedMessage, loading, active, createChat]);
 
-  const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
-  const [watchPending, setWatchPending] = useState(false);
-  const [watchError, setWatchError] = useState<string | null>(null);
   // Carries its chat id so a later-mounted chat cannot adopt another chat's block.
   const [appendedMessages, setAppendedMessages] = useState<
     { chatId: string; messages: UIMessage[]; seq: number } | undefined
   >(undefined);
-  // One id per configured card, kept across retries: the server writes the request
-  // and confirmation records under it, so retrying repairs instead of duplicating.
-  const watchRequestId = useRef<string | undefined>(undefined);
 
   const handledWatchSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
     handledWatchSeq.current = watchRequest.seq;
-    setWatchError(null);
-    setWatchPending(false);
-    watchRequestId.current = generateFriendlyId("wreq");
-    setWatchDraft(watchDraftFor(watchRequest.spec));
+    dispatchWatchCard({
+      type: "open",
+      draft: watchDraftFor(watchRequest.spec),
+      requestId: generateFriendlyId("wreq"),
+    });
   }, [watchRequest]);
 
   // Nothing is posted or persisted until the card is submitted.
   const openWatchCard = useCallback((spec: WatchSpec) => {
-    setWatchError(null);
-    setWatchPending(false);
-    watchRequestId.current = generateFriendlyId("wreq");
-    setWatchDraft(watchDraftFor(spec));
+    dispatchWatchCard({
+      type: "open",
+      draft: watchDraftFor(spec),
+      requestId: generateFriendlyId("wreq"),
+    });
   }, []);
 
-  const dismissWatchCard = useCallback(() => {
-    watchRequestId.current = undefined;
-    setWatchDraft(null);
-    setWatchError(null);
-    setWatchPending(false);
-  }, []);
+  const dismissWatchCard = useCallback(() => dispatchWatchCard({ type: "dismissed" }), []);
 
   const submitWatch = useCallback(async () => {
-    if (!watchDraft) return;
-    setWatchPending(true);
-    setWatchError(null);
+    const draft = watchCard.draft;
+    if (!draft) return;
+    // Held across retries, so a resubmit repairs the same pair of records.
+    const clientRequestId = watchCard.requestId ?? generateFriendlyId("wreq");
+    dispatchWatchCard({ type: "submitting", requestId: clientRequestId });
     try {
       const body = new FormData();
       body.set("intent", "watch-create");
-      body.set("draft", JSON.stringify(watchDraft));
-      // Held across retries, so a resubmit repairs the same pair of records.
-      watchRequestId.current ??= generateFriendlyId("wreq");
-      body.set("clientRequestId", watchRequestId.current);
+      body.set("draft", JSON.stringify(draft));
+      body.set("clientRequestId", clientRequestId);
       // A watch is chat-bound: with no chat open the server creates one.
       if (active?.chatId) body.set("chatId", active.chatId);
 
@@ -403,7 +404,10 @@ export function DashboardAgentPanel({
         error?: string;
       };
       if (!res.ok || !data.chatId || !data.messages) {
-        setWatchError(data.error ?? "We couldn't start that watch. Try again in a moment.");
+        dispatchWatchCard({
+          type: "failed",
+          error: data.error ?? "We couldn't start that watch. Try again in a moment.",
+        });
         return;
       }
 
@@ -414,38 +418,45 @@ export function DashboardAgentPanel({
           messages,
           seq: (current?.seq ?? 0) + 1,
         }));
+        dispatchWatchCard({ type: "submitted" });
       } else {
+        claimChatSlot();
         // No session: nothing is streaming and the records are the whole chat.
         setActive({ chatId: data.chatId, messages, session: null });
       }
-      watchRequestId.current = undefined;
-      setWatchDraft(null);
       void loadHistory();
     } catch (error) {
       console.error("Dashboard agent: failed to create watch", error);
-      setWatchError("We couldn't start that watch. Try again in a moment.");
-    } finally {
-      setWatchPending(false);
+      dispatchWatchCard({
+        type: "failed",
+        error: "We couldn't start that watch. Try again in a moment.",
+      });
     }
-  }, [watchDraft, active?.chatId, actionPath, loadHistory]);
+  }, [
+    watchCard.draft,
+    watchCard.requestId,
+    active?.chatId,
+    actionPath,
+    claimChatSlot,
+    loadHistory,
+  ]);
 
-  const watchCard = watchDraft ? (
+  const watchCardElement = watchCard.draft ? (
     <WatchCard
-      draft={watchDraft}
-      onChange={setWatchDraft}
+      draft={watchCard.draft}
+      onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
       onSubmit={() => void submitWatch()}
       onCancel={dismissWatchCard}
-      pending={watchPending}
-      error={watchError}
+      pending={watchCard.pending}
+      error={watchCard.error}
     />
   ) : null;
 
   const newChat = useCallback(() => {
-    // Invalidate any in-flight open or create so its result can't replace the draft.
-    openChatRequestSeq.current += 1;
+    claimChatSlot();
     setLoading(false);
     setActive(null);
-  }, []);
+  }, [claimChatSlot]);
 
   const switchChat = useCallback(
     (id: string) => {
@@ -565,7 +576,7 @@ export function DashboardAgentPanel({
             promotedPrompt={promotedPrompt}
             watches={chatWatches}
             pagePaths={pagePaths}
-            watchCard={watchCard}
+            watchCard={watchCardElement}
             appendedMessages={
               appendedMessages?.chatId === active.chatId ? appendedMessages : undefined
             }
@@ -583,7 +594,7 @@ export function DashboardAgentPanel({
             currentPage={currentPage}
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
-            watchCard={watchCard}
+            watchCard={watchCardElement}
           />
         )}
       </AgentPanelColumn>
