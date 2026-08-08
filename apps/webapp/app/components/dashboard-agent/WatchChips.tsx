@@ -83,6 +83,8 @@ export function WatchChips({
           >
             <StatusIcon watch={watch} />
             <SimpleTooltip
+              // Status, cadence and expiry live only here, so it needs a tab stop.
+              tabbable
               side="bottom"
               content={watchChipTooltip(watch)}
               button={<span className="max-w-[12rem] truncate">{label}</span>}
