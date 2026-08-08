@@ -1,0 +1,3 @@
+# Generated, not hand-written: collapsed in diffs and excluded from language stats.
+internal-packages/dashboard-agent-db/drizzle/meta/*.json linguist-generated=true
+**/__snapshots__/*.snap linguist-generated=true
