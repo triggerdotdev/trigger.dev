@@ -96,6 +96,25 @@ describe("watch activity", () => {
     expect(hasWatchActivity("org_11")).toBe(true);
   });
 
+  describe("a corrupt key", () => {
+    it("reads as nothing known when the value is not an array", () => {
+      store.set("tdev:dashboard-agent:watching", JSON.stringify({ org_1: true }));
+
+      expect(hasWatchActivity("org_1")).toBe(false);
+      expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_1" })).toBe(false);
+    });
+
+    it("keeps the ids out of an array holding other things", () => {
+      store.set("tdev:dashboard-agent:watching", JSON.stringify([{ id: "org_1" }, "org_2", 7]));
+
+      expect(hasWatchActivity("org_1")).toBe(false);
+      expect(hasWatchActivity("org_2")).toBe(true);
+
+      rememberWatchActivity("org_3");
+      expect(store.get("tdev:dashboard-agent:watching")).toBe(JSON.stringify(["org_2", "org_3"]));
+    });
+  });
+
   describe("shouldPollWakeFeed", () => {
     it("polls in a fresh browser the page load says has an unread wake", () => {
       expect(shouldPollWakeFeed({ serverUnreadWakes: 1, organizationId: "org_1" })).toBe(true);
