@@ -17,6 +17,22 @@ export function nextVisibleChat(chatId: string, options: { leaving: boolean }): 
   return options.leaving ? null : chatId;
 }
 
+/**
+ * The work count the launcher's dot shows, given what the poll just reported. A chat open in
+ * the panel is being read right now, so it is not work anyone is waiting on.
+ *
+ * Both inputs have to be read at poll time rather than captured when the poll started: the
+ * panel opens and closes without restarting it.
+ */
+export function unreadWorkForDot(params: {
+  reported: number | undefined;
+  panelOpen: boolean;
+  visibleChatId: string | null;
+}): number {
+  const onScreen = params.panelOpen && params.visibleChatId !== null ? 1 : 0;
+  return Math.max(0, (params.reported ?? 0) - onScreen);
+}
+
 /** Opening a chat settles everything unseen in it, not just the wake. */
 export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: string): T[] {
   return chats.map((chat) =>
