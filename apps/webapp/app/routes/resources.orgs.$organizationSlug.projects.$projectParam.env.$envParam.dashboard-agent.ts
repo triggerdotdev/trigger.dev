@@ -16,6 +16,7 @@ import {
   readWatchWakeFeed,
   renameChat,
   setChatPinned,
+  softDeleteChat,
 } from "@internal/dashboard-agent-db";
 import { watchDraftSchema, type WatchDraft } from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
