@@ -44,10 +44,10 @@ export const loader = createLoaderPATApiRoute(
     const environments = await $replica.runtimeEnvironment.findMany({
       where: {
         projectId: project.id,
-        ...(scope.scoped ? { id: scope.environmentId } : {}),
-        // Only base/parent environments. Branch children (preview branches)
-        // are excluded — syncs target the parent and branches override elsewhere.
-        parentEnvironmentId: null,
+        // A scoped token lists exactly the environment it was signed for, branch child or not —
+        // otherwise a token minted on a preview branch would list nothing at all. Unscoped
+        // callers get base/parent environments only: syncs target the parent.
+        ...(scope.scoped ? { id: scope.environmentId } : { parentEnvironmentId: null }),
         archivedAt: null,
         OR: [
           { type: { in: ["STAGING", "PRODUCTION", "PREVIEW"] } },
