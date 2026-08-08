@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import type { UIMessage } from "@ai-sdk/react";
 import { describe, expect, it } from "vitest";
+import { blocksFor, winningInvestigationOccurrences } from "./DashboardAgentMessages";
 import { reuseWinners, sameOccurrences } from "./investigation-winners";
 
 const source = readFileSync(new URL("./DashboardAgentMessages.tsx", import.meta.url), "utf8");
@@ -45,5 +47,89 @@ describe("investigation winners identity", () => {
     expect(source).toContain("reuseWinners(previous.current, next)");
     expect(source).toContain("useInvestigationWinners(stripped)");
     expect(source).not.toMatch(/=\s*winningInvestigationOccurrences\(stripped\)/);
+  });
+});
+
+/**
+ * The winner pass runs once per streamed token over the whole transcript, so it must
+ * not touch report payloads. `output` is a counting getter because a report parse is
+ * otherwise silent: it returns `null` on a bad payload rather than throwing.
+ */
+function countingReportPart(vm: unknown) {
+  let reads = 0;
+  const part = {
+    type: "tool-get_report",
+    state: "output-available",
+    toolCallId: "toolcall_1",
+    get output() {
+      reads++;
+      return { vm };
+    },
+  };
+  return { part: part as unknown as UIMessage["parts"][number], reads: () => reads };
+}
+
+const VALID_VM = {
+  title: "health",
+  scope: "prod",
+  period: "last 1h",
+  generatedAt: "2026-07-27T10:15:00.000Z",
+  windowMinutes: 60,
+  summary: { severity: "ok", statements: [] },
+};
+
+describe("the winner pass does not parse report blocks", () => {
+  it("leaves a report part's payload untouched", () => {
+    const valid = countingReportPart(VALID_VM);
+    // Would fail `reportBlockSchema`: no `generatedAt`, no `windowMinutes`.
+    const invalid = countingReportPart({ title: "health" });
+
+    const messages = [
+      { id: "m1", role: "assistant", parts: [valid.part, invalid.part] },
+    ] as unknown as UIMessage[];
+
+    let winners: Map<string, string> | undefined;
+    expect(() => (winners = winningInvestigationOccurrences(messages))).not.toThrow();
+
+    expect(winners!.size).toBe(0);
+    expect(valid.reads()).toBe(0);
+    expect(invalid.reads()).toBe(0);
+  });
+
+  it("still parses the same part when the turn renders it", () => {
+    const valid = countingReportPart(VALID_VM);
+    const blocks = blocksFor(valid.part);
+
+    expect(valid.reads()).toBeGreaterThan(0);
+    expect(blocks).toHaveLength(1);
+    expect((blocks![0] as { type: string }).type).toBe("report");
+  });
+
+  it("still finds investigation winners emitted by the view tools", () => {
+    const messages = [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          countingReportPart(VALID_VM).part,
+          {
+            type: "tool-render_view",
+            output: { blocks: [{ type: "investigation", id: "inv_1", revision: 0 }] },
+          },
+        ],
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [
+          {
+            type: "data-view",
+            data: { blocks: [{ type: "investigation", id: "inv_1", revision: 1 }] },
+          },
+        ],
+      },
+    ] as unknown as UIMessage[];
+
+    expect(winningInvestigationOccurrences(messages)).toEqual(new Map([["inv_1", "m2:0"]]));
   });
 });
