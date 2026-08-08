@@ -372,7 +372,7 @@ containerTestWithIsolatedRedisNoClickhouse(
         typeof a,
         { outcome: "duplicate" }
       >;
-      expect(duplicate.deliveryId).toBe(accepted.deliveryId);
+      expect(duplicate.deliveryId).toBe(accepted.deliveryFriendlyId);
 
       const rows = await prisma.webhookDelivery.findMany({
         where: { webhookEndpointId: endpoint.id },
