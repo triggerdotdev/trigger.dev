@@ -61,11 +61,9 @@ function isNewDeliveriesCheckTick(tick: number) {
 
 function useNewDeliveriesDetection({
   deliveries,
-  hasAnyDeliveries,
   isLoading,
 }: {
   deliveries: ListedDelivery[];
-  hasAnyDeliveries: boolean;
   isLoading: boolean;
 }) {
   const pollTickRef = useRef(0);
@@ -74,7 +72,7 @@ function useNewDeliveriesDetection({
   );
   const [newDeliveriesCount, setNewDeliveriesCount] = useState(0);
 
-  const shouldPollForNewDeliveries = hasAnyDeliveries && !isLoading && newDeliveriesCount < 100;
+  const shouldPollForNewDeliveries = !isLoading && newDeliveriesCount < 100;
 
   const resetNewDeliveriesTracking = useCallback(() => {
     setKnownNewestDeliveryMs(maxCreatedAtMs(deliveries) ?? Date.now());
@@ -109,7 +107,6 @@ function useNewDeliveriesDetection({
 
 export function useDeliveriesLiveReload({
   deliveries,
-  hasAnyDeliveries,
   isLoading,
   webhookEndpointId,
   organizationSlug,
@@ -117,7 +114,6 @@ export function useDeliveriesLiveReload({
   environmentSlug,
 }: {
   deliveries: ListedDelivery[];
-  hasAnyDeliveries: boolean;
   isLoading: boolean;
   /** Omit to poll across every endpoint in the environment (the cross-endpoint deliveries list). */
   webhookEndpointId?: string;
@@ -141,7 +137,7 @@ export function useDeliveriesLiveReload({
     dismissNewDeliveries,
     checkNewDeliveriesOnTick,
     resetNewDeliveriesTracking,
-  } = useNewDeliveriesDetection({ deliveries, hasAnyDeliveries, isLoading });
+  } = useNewDeliveriesDetection({ deliveries, isLoading });
 
   useEffect(() => {
     setVisibleDeliveries(deliveries);
