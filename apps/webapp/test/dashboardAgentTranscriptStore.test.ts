@@ -9,9 +9,11 @@ import {
   getInvestigation,
   investigationSettlementMessageId,
   persistMessages,
+  seedInvestigation,
   persistTurn,
   settleInvestigationAndCloseCard,
   upsertInvestigationRevision,
+  watchInvestigationId,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
@@ -728,6 +730,46 @@ describe("countUserMessages", () => {
       expect(
         await countUserMessages(agentDb, { organizationId: "org_elsewhere", userId: USER_ID })
       ).toBe(0);
+    },
+    30_000
+  );
+});
+
+/**
+ * A consented watch seeds its card in one run and revises it in another, with no
+ * hand-off between them: both name the row off the watch. So seeding twice has to
+ * converge on one card, and a row under that id in another chat must be refused
+ * rather than revised.
+ */
+describe("seedInvestigation", () => {
+  postgresTest(
+    "opens the watch's card once and hands the same row back after that",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri(), "chat_seed");
+      await createChat(agentDb, {
+        id: "chat_seed_other",
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      const id = watchInvestigationId("watch_seed");
+      const seed = (chatId: string) =>
+        seedInvestigation(agentDb, {
+          id,
+          chatId,
+          projectRef: PROJECT_REF,
+          environmentRef: ENV_REF,
+          state: openState(),
+        });
+
+      expect(await seed("chat_seed")).toMatchObject({ ok: true, id, created: true });
+      // The investigating lane, arriving after the wake already opened it.
+      expect(await seed("chat_seed")).toMatchObject({ ok: true, id, created: false });
+      expect(await seed("chat_seed_other")).toEqual({ ok: false, error: "context_mismatch" });
+
+      const row = await getInvestigation(agentDb, { id });
+      expect(row?.chatId).toBe("chat_seed");
+      expect(row?.revision).toBe(0);
     },
     30_000
   );

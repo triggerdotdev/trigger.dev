@@ -1024,7 +1024,7 @@ describe("a turn that ends in an error", () => {
         card: { id: args.messageId, role: "assistant", parts: [] },
         closed: true,
       }),
-      findOpenInvestigation: async () => null,
+      seedInvestigation: async (args) => ({ ok: true, id: args.id, created: true }),
     };
     return { store, history: () => [...rows.values()] };
   }

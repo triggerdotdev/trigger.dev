@@ -3,17 +3,18 @@ import {
   appendChatMessageOnce,
   createDashboardAgentDb,
   ensureChat,
-  findOpenInvestigationForChat,
   investigationSettlementMessage,
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
+  seedInvestigation,
   settleInvestigationStateAndCloseCard,
   upsertInvestigationRevision,
   type ClosedInvestigationCard,
   type DashboardAgentDbClient,
   type PendingInvestigationSettlement,
   type PersistTurnResult,
+  type SeedInvestigationResult,
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { locals, logger } from "@trigger.dev/sdk";
@@ -96,12 +97,13 @@ export interface DashboardAgentStore {
     args: Parameters<typeof settleInvestigationStateAndCloseCard>[1]
   ): Promise<ClosedInvestigationCard>;
   /**
-   * The freshest card this chat still has open. A consented wake's investigating
-   * turn must revise the row the wake seeded, not open a second one.
+   * Open an investigation under a caller-chosen id, or report it already open. A
+   * consented watch's two lanes both name the row this way, so the second one revises
+   * what the first opened instead of looking for the freshest open card.
    */
-  findOpenInvestigation(
-    args: Parameters<typeof findOpenInvestigationForChat>[1]
-  ): Promise<{ id: string; projectRef: string; environmentRef: string } | null>;
+  seedInvestigation(
+    args: Parameters<typeof seedInvestigation>[1]
+  ): Promise<SeedInvestigationResult>;
 }
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
@@ -259,7 +261,7 @@ export function getStore(): DashboardAgentStore {
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
     settleInvestigationCard: (args) => settleInvestigationStateAndCloseCard(db, args),
-    findOpenInvestigation: (args) => findOpenInvestigationForChat(db, args),
+    seedInvestigation: (args) => seedInvestigation(db, args),
   });
 }
 
