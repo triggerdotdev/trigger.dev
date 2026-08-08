@@ -2237,11 +2237,20 @@ describe("watch alert tools", () => {
     expect(result).toEqual({ alerts });
   });
 
+  // The body below is exactly what `api.v1.dashboard-agent.alerts.ts` returns on success:
+  // the channel flat, with no envelope around it.
+  const CREATED_CHANNEL = {
+    id: "alert_2",
+    type: "EMAIL",
+    target: "so…@example.com",
+    enabled: true,
+  };
+
   it("create_alert posts the email channel and reports the created alert", async () => {
     const { result, requests } = await callAlertTool(
       "create_alert",
       { email: "someone@example.com" },
-      { body: { ok: true, alert: { id: "alert_2", type: "EMAIL" } } }
+      { body: CREATED_CHANNEL }
     );
 
     expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
@@ -2251,22 +2260,23 @@ describe("watch alert tools", () => {
       channel: "email",
       email: "someone@example.com",
     });
-    expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
+    expect(result).toEqual({ created: true, alert: CREATED_CHANNEL });
 
     // With no email the host defaults to the user's account email, so the body carries
     // only the chat scope and the channel.
-    const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
+    const noEmail = await callAlertTool("create_alert", {}, { body: CREATED_CHANNEL });
     expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
       chatId: "chat_alerts",
       channel: "email",
     });
   });
 
+  // `code` is the key both alert routes send a 403 refusal under.
   it("create_alert relays a 403 with the reason the host gave", async () => {
     const noEmailSetup = await callAlertTool(
       "create_alert",
       {},
-      { status: 403, body: { error: "denied", reason: "email_alerts_not_configured" } }
+      { status: 403, body: { error: "denied", code: "email_alerts_not_configured" } }
     );
     expect(noEmailSetup.result.error).toContain("isn't set up on this instance");
     expect(noEmailSetup.result.error).toContain("dashboard");
@@ -2274,7 +2284,7 @@ describe("watch alert tools", () => {
     const flag = await callAlertTool(
       "create_alert",
       {},
-      { status: 403, body: { error: "denied", reason: "dashboard_agent_disabled" } }
+      { status: 403, body: { error: "denied", code: "dashboard_agent_disabled" } }
     );
     expect(flag.result.error).toContain("aren't enabled here");
   });

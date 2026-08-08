@@ -36,14 +36,14 @@ export function buildAlertTools(args: {
     }
 
     const data = (await res.json().catch(() => undefined)) as
-      | { error?: string; reason?: string; code?: string }
+      | { error?: string; code?: string }
       | undefined;
 
-    // 403 is a capability refusal and `reason` says which one.
+    // 403 is a capability refusal and `code` says which one.
     if (res.status === 403) {
       return {
         error:
-          data?.reason === "email_alerts_not_configured"
+          data?.code === "email_alerts_not_configured"
             ? "Email delivery isn't set up on this instance, so an email alert can't be created. Tell the user that, and that watch results still show in the dashboard."
             : "Email alerts aren't enabled here. Tell the user that, and that watch results still show in the dashboard.",
       };
@@ -86,7 +86,8 @@ export function buildAlertTools(args: {
           ...(email ? { email } : {}),
         });
         if ("error" in result) return result;
-        return { created: true, alert: (result.data as { alert?: unknown } | undefined)?.alert };
+        // The route's body is the channel itself, not an envelope around one.
+        return { created: true, alert: result.data };
       },
     }),
 
