@@ -4,12 +4,13 @@
  * no wildcard host, no bare scheme, nothing with a path.
  */
 
-/** Always allowed: own origin, inline data, object URLs, and the GitHub avatar host. */
+/** Always allowed: own origin, inline data, object URLs, and the SSO avatar hosts. */
 export const BASE_IMG_SRC_SOURCES = [
   "'self'",
   "data:",
   "blob:",
   "https://avatars.githubusercontent.com",
+  "https://lh3.googleusercontent.com",
 ] as const;
 
 export type RejectedOrigin = { value: string; reason: string };

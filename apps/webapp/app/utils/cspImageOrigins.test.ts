@@ -75,16 +75,17 @@ describe("parseCspImageOrigins", () => {
 });
 
 describe("buildImgSrcDirective", () => {
-  it("is self, data, blob and the GitHub avatar host by default", () => {
+  it("is self, data, blob and the SSO avatar hosts by default", () => {
     expect(buildImgSrcDirective()).toBe(
-      "img-src 'self' data: blob: https://avatars.githubusercontent.com"
+      "img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com"
     );
   });
 
   it("has no wildcard host and no bare scheme host", () => {
     const directive = buildImgSrcDirective(parseCspImageOrigins("https://sso.example.com").origins);
     expect(directive).not.toContain("*");
-    expect(directive).not.toContain("googleusercontent.com");
+    // The avatar hosts are exact origins; a wildcard over them would not be.
+    expect(directive).not.toContain("*.googleusercontent.com");
     expect(directive).not.toMatch(/(^|\s)https?:(\s|$)/);
   });
 

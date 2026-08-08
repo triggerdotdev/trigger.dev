@@ -36,7 +36,7 @@ describe("document image CSP", () => {
 
   it("builds the directive from the configured allowlist, not a wildcard literal", () => {
     expect(source).toContain("parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST");
-    expect(source).not.toContain("googleusercontent.com");
+    expect(source).not.toContain("*.googleusercontent.com");
   });
 
   it("keeps a route's own img-src", () => {

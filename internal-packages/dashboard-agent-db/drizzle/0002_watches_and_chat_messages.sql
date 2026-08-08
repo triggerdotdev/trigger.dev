@@ -86,8 +86,6 @@ CREATE TABLE "trigger_dashboard_agent"."watches" (
 	"cadence_minutes" integer GENERATED ALWAYS AS (((spec ->> 'checkEveryMinutes')::int)) STORED
 );
 --> statement-breakpoint
-ALTER TABLE "trigger_dashboard_agent"."chats" DROP COLUMN IF EXISTS "messages";
---> statement-breakpoint
 ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN IF NOT EXISTS "last_read_at" timestamp with time zone;
 --> statement-breakpoint
 ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN IF NOT EXISTS "next_message_position" integer DEFAULT 1 NOT NULL;

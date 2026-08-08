@@ -3,12 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * `chats.messages` is gone: the transcript lives in `chat_messages`, one row per message.
+ * `chats.messages` is retired, not dropped: the transcript lives in `chat_messages`, one
+ * row per message, and the column stays declared so whatever a deployed environment
+ * already wrote remains readable.
  *
- * TypeScript already catches a reference through the Drizzle schema — the column isn't
- * there, so it doesn't compile. A raw-SQL reference compiles fine and fails at runtime,
- * which is the hole this scan covers. Zero hits today is the point; the test exists so a
- * reintroduction is caught rather than deployed.
+ * Retired means nothing reads or writes it. The column being declared is exactly why this
+ * scan matters — the compiler no longer refuses a reference to it, in Drizzle or in raw
+ * SQL. Zero hits today is the point; the test exists so a reintroduction is caught rather
+ * than deployed.
  */
 
 const ROOT = path.resolve(__dirname, "../../..");
@@ -25,7 +27,7 @@ const SCANNED = [
  * aliased table (`from chats c … c.messages`). Migrations are skipped on purpose.
  */
 
-/** A qualified reference to the dropped column, in any of the spellings Postgres accepts. */
+/** A qualified reference to the retired column, in any of the spellings Postgres accepts. */
 const QUALIFIED = /"?\bchats"?\s*\.\s*"?messages"?/i;
 
 /** An unqualified one, inside a literal that is plainly SQL against `chats`. */
@@ -74,7 +76,7 @@ function offences(file: string): string[] {
   return offencesForText(readFileSync(file, "utf8"), path.relative(ROOT, file));
 }
 
-describe("the dropped chats.messages column", () => {
+describe("the retired chats.messages column", () => {
   it("is not referenced by any production source, including in raw SQL", () => {
     const files = SCANNED.flatMap((dir) => sourceFiles(path.join(ROOT, dir)));
     // A scan that found nothing to read would pass vacuously.

@@ -30,6 +30,12 @@ export const chats = dashboardAgentSchema.table(
     userId: text("user_id").notNull(),
     title: text("title").notNull().default("New chat"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    /**
+     * @deprecated The transcript lives in `chat_messages`. Declared so drizzle doesn't
+     * offer to drop it: whatever a deployed environment already wrote stays readable
+     * until someone decides it isn't needed. Nothing reads or writes it.
+     */
+    messages: jsonb("messages").$type<unknown[]>().notNull().default([]),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     // NULL means never read, so everything in the chat counts as unread.
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
