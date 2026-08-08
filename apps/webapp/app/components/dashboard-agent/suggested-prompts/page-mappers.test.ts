@@ -253,6 +253,15 @@ describe("queueAgentPageContext", () => {
     expect(context?.signals).toEqual([]);
   });
 
+  it("emits nothing for a zero-limit queue, which has no capacity to be at", () => {
+    const context = queueAgentPageContext(
+      queueLoaderData({ concurrencyLimit: 0, running: 0, queued: 12 })
+    );
+
+    expect(context?.page).toMatchObject({ health: "warn" });
+    expect(context?.signals).toEqual([]);
+  });
+
   it("returns undefined for data it doesn't recognise", () => {
     expect(queueAgentPageContext(undefined)).toBeUndefined();
     expect(queueAgentPageContext({ queue: { name: "x" } })).toBeUndefined();

@@ -8,7 +8,7 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
-import { OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
+import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -277,11 +277,13 @@ export default function Page() {
   const selectedKey = value("key");
 
   const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
-  const concurrencyLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
-  const degraded =
-    !queue.paused &&
-    ((queue.running >= concurrencyLimit && queue.queued > 0) ||
-      (oldestWaitMs !== null && oldestWaitMs >= OLDEST_WAIT_WARNING_MS));
+  const degraded = isQueueDegraded({
+    paused: queue.paused,
+    running: queue.running,
+    queued: queue.queued,
+    limit: queue.concurrencyLimit ?? environmentConcurrencyLimit,
+    oldestWaitMs,
+  });
 
   return (
     <PageContainer>
