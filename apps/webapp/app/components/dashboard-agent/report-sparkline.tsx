@@ -31,6 +31,7 @@ import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { cn } from "~/utils/cn";
 import { AgentStatusIcon, type AgentTone } from "./agent-badges";
 import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
+import { barTimesMs, condense, hotBarCount } from "./report-spark";
 
 /** Both cards' severity type (`Severity` / `ReportSeverity`) resolves to this. */
 export type ReportSeverityKey = "ok" | "warn" | "crit";
@@ -461,20 +462,7 @@ const SPARK_WIDTH_CLASS = "w-[6.5rem]";
 /** The chart's own width; the trailing peak label uses the column's remainder. */
 const SPARK_WIDTH = 72;
 
-/** How many bars a series is condensed to, so each bar stays hoverable. */
-const MAX_BARS = 18;
-
-/** Average adjacent points down so each bar is wide enough to read and hover. */
-function condense(points: number[], maxBars: number): number[] {
-  if (points.length <= maxBars) return points;
-  const perBar = points.length / maxBars;
-  return Array.from({ length: maxBars }, (_, i) => {
-    const slice = points.slice(Math.floor(i * perBar), Math.max(Math.floor((i + 1) * perBar), 1));
-    return slice.reduce((sum, v) => sum + v, 0) / Math.max(slice.length, 1);
-  });
-}
-
-type ReportSparkDatum = { count: number; date: Date; hot: boolean };
+type ReportSparkDatum = { count: number; date: Date | null; hot: boolean };
 
 function ReportSparkTooltip({
   active,
@@ -486,9 +474,11 @@ function ReportSparkTooltip({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-border-bright pb-2">
-          {formatDateTime(entry.date, "UTC", [], false, true)}
-        </Header3>
+        {entry.date ? (
+          <Header3 className="border-b border-b-border-bright pb-2">
+            {formatDateTime(entry.date, "UTC", [], false, true)}
+          </Header3>
+        ) : null}
         <div className="mt-2 text-xs tabular-nums text-text-bright">{formatPoint(entry.count)}</div>
         {entry.hot ? <div className="mt-1 text-xs text-warning">in the anomaly window</div> : null}
       </div>
@@ -511,6 +501,8 @@ export function ReportSparkline({
    * matching trailing bars paint at full strength.
    */
   anomalyMinutes,
+  /** When the series ends, from the report's `generatedAt`. Turns a bar into a time. */
+  seriesEndMs,
   /** The metric's own formatter, used by the tooltip and the peak label. */
   formatPoint,
   label,
@@ -520,26 +512,20 @@ export function ReportSparkline({
   severity: ReportSeverityKey;
   windowMinutes: number;
   anomalyMinutes?: number;
+  seriesEndMs: number | null;
   formatPoint: (value: number) => string;
   label: string;
   className?: string;
 }) {
-  const bars = condense(points, MAX_BARS);
-  const windowMs = windowMinutes * 60_000;
-  // The view model carries buckets, not timestamps, so synthesise them from now
-  // backwards.
-  const barIntervalMs = bars.length > 0 ? windowMs / bars.length : windowMs;
-  const startMs = Date.now() - windowMs;
-
-  const minutesPerBar = bars.length > 0 ? windowMinutes / bars.length : 0;
-  const hotBars =
-    anomalyMinutes && minutesPerBar > 0
-      ? Math.min(bars.length, Math.max(1, Math.round(anomalyMinutes / minutesPerBar)))
-      : 0;
+  const bars = condense(points);
+  // The view model carries buckets, not timestamps, so spread them back from the
+  // series' end. Never from the renderer's clock: see `report-spark.ts`.
+  const times = barTimesMs(bars.length, windowMinutes, seriesEndMs);
+  const hotBars = hotBarCount(bars.length, windowMinutes, anomalyMinutes);
 
   const data: ReportSparkDatum[] = bars.map((count, i) => ({
     count,
-    date: new Date(startMs + i * barIntervalMs),
+    date: times[i] === null ? null : new Date(times[i]!),
     hot: i >= bars.length - hotBars,
   }));
 
@@ -627,6 +613,7 @@ export function ReportMetricRow({
   series,
   windowMinutes,
   anomalyMinutes,
+  seriesEndMs,
   formatPoint,
 }: {
   label: string;
@@ -639,6 +626,7 @@ export function ReportMetricRow({
   series?: number[];
   windowMinutes: number;
   anomalyMinutes?: number;
+  seriesEndMs: number | null;
   formatPoint: (value: number) => string;
 }) {
   const deltaClass =
@@ -671,6 +659,7 @@ export function ReportMetricRow({
             severity={severity}
             windowMinutes={windowMinutes}
             anomalyMinutes={anomalyMinutes}
+            seriesEndMs={seriesEndMs}
             formatPoint={formatPoint}
             label={label}
             className={SPARK_CELL_CLASS}
