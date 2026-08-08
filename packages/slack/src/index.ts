@@ -203,20 +203,19 @@ function defaultSlackRenderInteraction(
   pending: ChannelPendingToolCall[],
   _ctx: ChannelInteractionCtx<unknown>
 ): ChannelMessage | null {
-  const call = pending[0];
-  if (!call) return null;
-  let detail = "";
-  if (call.input !== undefined) {
-    const serialized = safeStringify(call.input);
-    const shown =
-      serialized.length > MAX_INTERACTION_INPUT_CHARS
-        ? serialized.slice(0, MAX_INTERACTION_INPUT_CHARS) + "\n... (truncated)"
-        : serialized;
-    detail = "\n```" + shown + "```";
-  }
-  return {
-    text: `Approval needed: ${call.toolName}`,
-    blocks: [
+  if (pending.length === 0) return null;
+
+  const blocks = pending.flatMap((call) => {
+    let detail = "";
+    if (call.input !== undefined) {
+      const serialized = safeStringify(call.input);
+      const shown =
+        serialized.length > MAX_INTERACTION_INPUT_CHARS
+          ? serialized.slice(0, MAX_INTERACTION_INPUT_CHARS) + "\n... (truncated)"
+          : serialized;
+      detail = "\n```" + shown + "```";
+    }
+    return [
       {
         type: "section",
         text: { type: "mrkdwn", text: `*Approval needed* for \`${call.toolName}\`${detail}` },
@@ -240,7 +239,15 @@ function defaultSlackRenderInteraction(
           },
         ],
       },
-    ],
+    ];
+  });
+
+  return {
+    text:
+      pending.length === 1
+        ? `Approval needed: ${pending[0]!.toolName}`
+        : `Approval needed: ${pending.length} tool calls`,
+    blocks,
   };
 }
 

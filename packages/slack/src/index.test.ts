@@ -69,6 +69,22 @@ describe("slack channel", () => {
     expect(text.length).toBeLessThan(3000);
   });
 
+  it("renderInteraction posts controls for every pending tool call, not just the first", () => {
+    const c = slack({ id: "s-hitl-multi", token: "t" });
+    const msg = c.renderInteraction?.(
+      [
+        { toolCallId: "call-a", toolName: "refund", input: { amount: 1 } },
+        { toolCallId: "call-b", toolName: "sendEmail", input: { to: "x" } },
+      ],
+      { event: messageEvent(), deliveryId: "d1" }
+    );
+    expect(msg).not.toBeNull();
+    const values = (msg!.blocks as any[]).flatMap((b) => b.elements ?? []).map((e: any) => e.value);
+    expect(values).toEqual(
+      expect.arrayContaining(["call-a::approve", "call-a::deny", "call-b::approve", "call-b::deny"])
+    );
+  });
+
   it("onInteraction resolves a block_actions click to a tool output; ignores messages", () => {
     const c = slack({ id: "s-hitl2", token: "t" });
     const approve = c.onInteraction?.({
