@@ -47,7 +47,11 @@ export function agentDeepLinkParams(availability: AskAiAvailability): readonly D
   return askAiChannelTarget(availability) === "ask-ai" ? NO_PARAMS : ASK_AI_PARAMS;
 }
 
-/** Where `trigger dev`'s "Get a fix for this error using AI" link lands. */
+/**
+ * Where `trigger dev`'s "Get a fix for this error using AI" link lands. Always on `origin`: an
+ * absolute or protocol-relative `environmentPath` would otherwise decide the host itself, and
+ * the caller feeds this straight to `redirect()`.
+ */
 export function aiHelpRedirectUrl({
   environmentPath,
   origin,
@@ -57,7 +61,12 @@ export function aiHelpRedirectUrl({
   origin: string;
   query: string;
 }): string {
-  const url = new URL(environmentPath, origin);
+  const base = new URL(origin);
+  const requested = new URL(environmentPath, base);
+  // Exactly one leading slash: a `javascript:` path has none and would run into the host, and
+  // two would read as the start of another authority.
+  const path = `/${requested.pathname.replace(/^\/+/, "")}`;
+  const url = new URL(base.origin + path + requested.search + requested.hash);
   url.searchParams.set(ASK_AI_DEEP_LINK_PARAM, query);
   return url.toString();
 }
