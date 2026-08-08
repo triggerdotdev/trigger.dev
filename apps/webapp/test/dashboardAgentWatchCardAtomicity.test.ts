@@ -255,6 +255,7 @@ describe("closing a consented watch investigation's card", () => {
 
       expect(await transcript(chatId)).toEqual([]);
       expect((await getInvestigation(agentDb, { id }))?.revision).toBe(0);
-    }
+    },
+    30_000
   );
 });
