@@ -79,13 +79,10 @@ export function SampleSourcePicker({
       return !query || item.eventType.toLowerCase().includes(query);
     });
 
-  const loadingEventType =
-    bodyFetcher.state !== "idle"
-      ? (new URLSearchParams(bodyFetcher.formAction?.split("?")[1] ?? "").get("eventType") ??
-        undefined)
-      : undefined;
+  const [loadingEventType, setLoadingEventType] = useState<string | undefined>(undefined);
 
   function selectEvent(item: WebhookSampleMeta) {
+    setLoadingEventType(item.eventType);
     const query = new URLSearchParams({ provider: item.provider, eventType: item.eventType });
     bodyFetcher.load(`${samplesPath}?${query.toString()}`);
   }
@@ -161,7 +158,7 @@ export function SampleSourcePicker({
                   <span className="truncate font-mono text-sm text-text-bright">
                     {item.eventType}
                   </span>
-                  {loadingEventType === item.eventType ? (
+                  {bodyFetcher.state !== "idle" && loadingEventType === item.eventType ? (
                     <Spinner className="size-3.5 shrink-0" />
                   ) : null}
                 </button>

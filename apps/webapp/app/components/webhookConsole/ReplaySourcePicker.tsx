@@ -1,5 +1,5 @@
 import { type WebhookDeliveryStatus } from "@trigger.dev/database";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -33,13 +33,10 @@ export function ReplaySourcePicker({
     listFetcher.state === "loading" ||
     (listFetcher.data === undefined && listFetcher.state !== "idle");
   const list = listFetcher.data?.kind === "list" ? listFetcher.data.deliveries : [];
-  const loadingDeliveryId =
-    payloadFetcher.state !== "idle"
-      ? (new URLSearchParams(payloadFetcher.formAction?.split("?")[1] ?? "").get("deliveryId") ??
-        undefined)
-      : undefined;
+  const [loadingDeliveryId, setLoadingDeliveryId] = useState<string | undefined>(undefined);
 
   function selectDelivery(friendlyId: string) {
+    setLoadingDeliveryId(friendlyId);
     payloadFetcher.load(`${replaySourcePath}?deliveryId=${encodeURIComponent(friendlyId)}`);
   }
 
@@ -79,7 +76,7 @@ export function ReplaySourcePicker({
                 <span className="text-xxs text-text-dimmed">
                   <DateTime date={new Date(delivery.createdAt)} />
                 </span>
-                {loadingDeliveryId === delivery.friendlyId ? (
+                {payloadFetcher.state !== "idle" && loadingDeliveryId === delivery.friendlyId ? (
                   <Spinner className="size-3.5" />
                 ) : (
                   <DeliveryStatusBadge status={delivery.status as WebhookDeliveryStatus} />
