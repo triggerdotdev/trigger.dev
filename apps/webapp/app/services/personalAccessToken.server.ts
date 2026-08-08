@@ -6,7 +6,7 @@ import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
-import { isUserActorToken, type UserActorClaims, verifyUserActorToken } from "@trigger.dev/rbac";
+import { isUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -172,18 +172,12 @@ export async function authenticateApiRequestWithPersonalAccessToken(
     return;
   }
 
-  // A user-actor token authenticates as the user wherever a PAT does.
-  // The plugin verifies it (identity path → no org context to floor against).
+  // PAT-only: this helper checks no scopes and no capability context, and its callers include
+  // actions and the admin gate. A delegated token is refused at the entrance and reaches the
+  // API through the actor-aware routes instead, which do enforce its claims.
   if (isUserActorToken(token)) {
-    const result = await rbac.authenticateUserActor(request, {});
-    if (!result.ok) return undefined;
-
-    // The claims travel with the identity: a caller that only saw `{ userId }` would act with no
-    // environment scope to enforce. A plugin on an older contract omits them, so verify here.
-    const userActor = result.claims ?? (await verifyUserActorToken(env.SESSION_SECRET, token));
-    if (!userActor) return undefined;
-
-    return { userId: result.userId, userActor };
+    logger.warn("Rejected a user-actor token at the PAT-only authentication helper");
+    return;
   }
 
   return authenticatePersonalAccessToken(token);

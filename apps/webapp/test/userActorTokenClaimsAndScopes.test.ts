@@ -1,8 +1,8 @@
 /**
- * Two seams a delegated user-actor token passes through outside the route builder:
- * the direct PAT authentication (which used to hand back identity only, dropping the
- * environment scope), and the environment JWT exchange (which ceilings the minted
- * scopes by the token's cap and only mints for the environment it was signed for).
+ * Two seams a delegated user-actor token meets outside the route builder: the PAT-only
+ * authentication (which enforces nothing, so it refuses the token outright), and the
+ * environment JWT exchange (which ceilings the minted scopes by the token's cap and only
+ * mints for the environment it was signed for).
  */
 
 import { postgresTest } from "@internal/testcontainers";
@@ -14,8 +14,6 @@ const SESSION_SECRET = "test-session-secret-for-user-actor-claims";
 
 const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
-  /** Set when the RBAC controller should behave like a plugin on an older contract. */
-  omitClaims: false,
 }));
 
 vi.mock("~/db.server", () => {
@@ -52,7 +50,7 @@ vi.mock("~/services/rbac.server", async () => {
         return {
           ok: true,
           userId: claims.userId,
-          ...(ctx.omitClaims ? {} : { claims }),
+          claims,
           subject: {
             type: "userActor",
             userId: claims.userId,
@@ -71,10 +69,12 @@ const { action: jwtAction } = await import("~/routes/api.v1.projects.$projectRef
 
 const USER_ID = "usr_claims_1";
 
-function token(opts: { userId?: string; environmentId?: string; cap?: string[] } = {}) {
+function token(
+  opts: { userId?: string; environmentId?: string; cap?: string[]; client?: string } = {}
+) {
   return signUserActorToken(SESSION_SECRET, {
     userId: opts.userId ?? USER_ID,
-    client: "dashboard-agent",
+    client: opts.client ?? "dashboard-agent",
     ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
     ...(opts.cap ? { cap: opts.cap } : {}),
   });
@@ -86,26 +86,22 @@ function bearer(value: string) {
   });
 }
 
-it("keeps a user-actor token's environment claim on the authenticated identity", async () => {
-  ctx.omitClaims = false;
-
+it("refuses a user-actor token scoped to an environment", async () => {
   const result = await authenticateApiRequestWithPersonalAccessToken(
     bearer(await token({ environmentId: "env_claimed" }))
   );
 
-  expect(result?.userId).toBe(USER_ID);
-  expect(result?.userActor?.environmentId).toBe("env_claimed");
+  expect(result).toBeUndefined();
 });
 
-it("recovers the claim when the RBAC controller doesn't return it", async () => {
-  ctx.omitClaims = true;
-
+// The refusal is by token type, not by what the token happens to claim: a PAT-minted token
+// carries neither an environment nor, necessarily, a cap, and is refused just the same.
+it("refuses a user-actor token that claims nothing", async () => {
   const result = await authenticateApiRequestWithPersonalAccessToken(
-    bearer(await token({ environmentId: "env_claimed" }))
+    bearer(await token({ client: "cli" }))
   );
 
-  ctx.omitClaims = false;
-  expect(result?.userActor?.environmentId).toBe("env_claimed");
+  expect(result).toBeUndefined();
 });
 
 function suffix() {
