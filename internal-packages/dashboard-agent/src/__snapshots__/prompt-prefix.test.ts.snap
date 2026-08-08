@@ -4,34 +4,34 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
 {
   "assistant": {
     "prompt": {
-      "chars": 25966,
-      "estimatedTokens": 6492,
+      "chars": 25965,
+      "estimatedTokens": 6491,
     },
     "tools": {
-      "chars": 38786,
+      "chars": 38922,
       "count": 24,
-      "estimatedTokens": 9697,
+      "estimatedTokens": 9731,
     },
     "total": {
-      "chars": 64753,
-      "estimatedTokens": 16188,
-      "fingerprint": "51675c9d",
+      "chars": 64888,
+      "estimatedTokens": 16222,
+      "fingerprint": "9a65830e",
     },
   },
   "code": {
     "prompt": {
-      "chars": 28721,
+      "chars": 28720,
       "estimatedTokens": 7180,
     },
     "tools": {
-      "chars": 41795,
+      "chars": 41931,
       "count": 28,
-      "estimatedTokens": 10449,
+      "estimatedTokens": 10483,
     },
     "total": {
-      "chars": 70517,
-      "estimatedTokens": 17629,
-      "fingerprint": "54a54792",
+      "chars": 70652,
+      "estimatedTokens": 17663,
+      "fingerprint": "76fb3bc9",
     },
   },
 }
