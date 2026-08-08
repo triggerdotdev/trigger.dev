@@ -27,6 +27,8 @@ export const stripeWebhook = webhook({
 ```
 
 ```ts GitHub
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
 export const githubWebhook = webhook({
   id: "github",
   source: webhooks.github(),
@@ -38,6 +40,8 @@ export const githubWebhook = webhook({
 ```
 
 ```ts Svix
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
 // Also covers Clerk, Resend, and other Svix-powered providers
 export const svixWebhook = webhook({
   id: "svix",
@@ -57,6 +61,8 @@ The available presets are `stripe()`, `github()`, `svix()`, `square()`, and `dis
 For a provider without a preset, `webhooks.custom()` describes the scheme as data. For example, an HMAC-SHA256 signature over the raw body, in a custom header:
 
 ```ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
 export const customWebhook = webhook({
   id: "custom",
   source: webhooks.custom<{ id: string; message: string }>({

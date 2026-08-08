@@ -11,6 +11,8 @@ List channels on a [`chat.agent`](/ai-chat/overview) alongside (or instead of) `
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { slack } from "@trigger.dev/slack";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const supportAgent = chat.agent({
   id: "support-agent",

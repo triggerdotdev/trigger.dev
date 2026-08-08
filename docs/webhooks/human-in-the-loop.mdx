@@ -99,6 +99,9 @@ For [`chat.channels.custom`](/webhooks/channels), or to override the Slack defau
 Slack encodes the decision in each button's `value` as `${toolCallId}::approve|deny` so `onInteraction` can resolve the exact call, and `finalizeInteraction` posts to the interaction's `response_url` with `replace_original` to swap the buttons for the outcome. On a custom surface you choose the encoding and how you edit the controls away.
 
 ```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { webhooks } from "@trigger.dev/sdk";
+
 chat.channels.custom({
   id: "my-surface",
   source: webhooks.custom<MyEvent>({ /* verifier config */ }),

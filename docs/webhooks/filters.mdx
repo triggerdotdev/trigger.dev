@@ -86,6 +86,8 @@ The type checker reads the filter as a token stream, so a couple of spots are st
 To match only certain event types, write a clause against the field that carries the type: `event.type` for Stripe / Svix / Square / Discord, or the `x-github-event` header for GitHub (the filter DSL can read a `header.` namespace too):
 
 ```ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
 export const onGithub = webhook({
   id: "github",
   source: webhooks.github(),
