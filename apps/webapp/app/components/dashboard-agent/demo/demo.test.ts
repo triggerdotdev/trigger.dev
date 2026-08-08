@@ -31,9 +31,11 @@ const sourceFiles = walk(DEMO_DIR).filter(
 );
 
 function importSpecifiers(source: string): string[] {
-  return [...source.matchAll(/(?:import|export)[\s\S]*?from\s+["']([^"']+)["']/g)].map(
-    (match) => match[1]!
-  );
+  return [
+    ...source.matchAll(/(?:import|export)[\s\S]*?from\s+["']([^"']+)["']/g),
+    // A side-effect or dynamic import binds nothing, so it never reaches a `from`.
+    ...source.matchAll(/\bimport\s*\(?\s*["']([^"']+)["']/g),
+  ].map((match) => match[1]!);
 }
 
 describe("demo ids", () => {
@@ -289,6 +291,26 @@ describe("chart fixtures", () => {
 });
 
 describe("isolation", () => {
+  it("reads every form an import can take, including the ones that bind nothing", () => {
+    const source = [
+      `import { a } from "./a";`,
+      `import "~/db.server";`,
+      `import type { B } from "./b";`,
+      `export * from "./c";`,
+      `const d = await import("~/routes/thing");`,
+      `import("./lazy").then((m) => m.go());`,
+    ].join("\n");
+
+    expect(importSpecifiers(source).sort()).toEqual([
+      "./a",
+      "./b",
+      "./c",
+      "./lazy",
+      "~/db.server",
+      "~/routes/thing",
+    ]);
+  });
+
   it("imports no server module and no route", () => {
     for (const path of sourceFiles) {
       const specifiers = importSpecifiers(readFileSync(path, "utf8"));
