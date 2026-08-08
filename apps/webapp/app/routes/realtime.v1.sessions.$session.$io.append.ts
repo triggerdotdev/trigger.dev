@@ -10,6 +10,7 @@ import {
   resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
+import { stripClientWebhookActionSource } from "~/services/realtime/sanitizeSessionInput.server";
 import {
   claimSessionStreamPart,
   drainSessionStreamWaitpoints,
@@ -137,7 +138,11 @@ const { action, loader } = createActionApiRoute(
 
     const addressingKey = canonicalSessionAddressingKey(session, params.session);
 
-    const part = await request.text();
+    let part = await request.text();
+    if (params.io === "in") {
+      part = stripClientWebhookActionSource(part);
+    }
+
     const clientPartId = request.headers.get("X-Part-Id");
     const partId = clientPartId ?? nanoid(7);
 
