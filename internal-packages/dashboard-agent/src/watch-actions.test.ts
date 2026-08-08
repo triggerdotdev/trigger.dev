@@ -8,6 +8,8 @@ import { simulateReadableStream, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { investigationSettlementMessage, watchInvestigationId } from "@internal/dashboard-agent-db";
+
 import {
   dashboardAgent,
   dashboardAgentModelKey,
@@ -20,6 +22,7 @@ import {
   executedTool,
   fakeStore,
   finish,
+  type FakeInvestigation,
   mockModel,
   textStep,
   toolCallStep,
@@ -297,13 +300,16 @@ describe("watch wake narration", () => {
 
     // Opened, not concluded: the wake has no token to read with, so the findings come
     // later in their own message.
-    expect(calls.upsertInvestigationRevision).toHaveLength(1);
-    const opened = calls.upsertInvestigationRevision[0] as {
+    expect(calls.seedInvestigation).toHaveLength(1);
+    const opened = calls.seedInvestigation[0] as {
+      id: string;
       chatId: string;
       projectRef: string;
       environmentRef: string;
       state: { outcome: string; runId?: string };
     };
+    // The watch's own id, so the investigating lane can name the same row later.
+    expect(opened.id).toBe(watchInvestigationId("watch_1"));
     expect(opened.chatId).toBe("chat_wake_investigate");
     expect(opened.projectRef).toBe("proj_abc");
     expect(opened.environmentRef).toBe("env_abc");
@@ -332,7 +338,7 @@ describe("watch wake narration", () => {
     });
 
     expect(calls.appendMessage).toHaveLength(1);
-    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    expect(calls.seedInvestigation).toHaveLength(0);
   });
 
   it("starts nothing on an attention outcome without consent", async () => {
@@ -350,7 +356,7 @@ describe("watch wake narration", () => {
     await harness.sendAction(FAILED_RUN_WAKE);
 
     expect(calls.appendMessage).toHaveLength(1);
-    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    expect(calls.seedInvestigation).toHaveLength(0);
     expect(wakeText(prompts)).not.toContain("ALREADY been started");
   });
 
@@ -361,7 +367,7 @@ describe("watch wake narration", () => {
     const { store, calls } = fakeStore();
     const failing: DashboardAgentStore = {
       ...store,
-      upsertInvestigationRevision: async () => {
+      seedInvestigation: async () => {
         throw new Error("investigations are down");
       },
     };
@@ -403,7 +409,7 @@ describe("watch wake narration", () => {
     expect(collectText(turn.chunks)).toBe("");
     expect(calls.appendMessage).toHaveLength(0);
     expect(calls.persistMessages).toHaveLength(0);
-    expect(calls.upsertInvestigationRevision).toHaveLength(0);
+    expect(calls.seedInvestigation).toHaveLength(0);
   });
 
   it("a different outcome on the same watch is a different wake", async () => {
@@ -553,6 +559,9 @@ describe("watch investigation", () => {
     },
   };
 
+  // The card the wake seeded, named the way both lanes name it: off the watch.
+  const SEEDED = watchInvestigationId("watch_1");
+
   const CLIENT_DATA_WITH_TOKEN = {
     ...CLIENT_DATA,
     projectRef: "proj_abc",
@@ -624,11 +633,9 @@ describe("watch investigation", () => {
     );
 
   it("revises the card the wake seeded, answers in its own message, and dedupes a replay", async () => {
-    const { store, calls } = fakeStore({
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store, calls } = fakeStore();
     const { model, prompts } = recordingModel([
-      renderStep(concluded, "inv_seeded", "tc_verdict"),
+      renderStep(concluded, SEEDED, "tc_verdict"),
       textStep("The payload lost order.total — every attempt threw on the same line."),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -648,20 +655,20 @@ describe("watch investigation", () => {
 
     // The card the wake opened is the one this revises: no second investigation for
     // the same news, and no id the model got to choose.
-    expect(calls.findOpenInvestigation).toHaveLength(1);
+    expect(calls.seedInvestigation).toHaveLength(1);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
     const revision = calls.upsertInvestigationRevision[0] as {
       id?: string;
       chatId: string;
       state: { outcome: string };
     };
-    expect(revision.id).toBe("inv_seeded");
+    expect(revision.id).toBe(SEEDED);
     expect(revision.chatId).toBe("chat_investigate");
     expect(revision.state.outcome).toBe("concluded");
 
     // The prompt names that card and frames the findings as their own message.
     const prompt = JSON.stringify(prompts);
-    expect(prompt).toContain("inv_seeded");
+    expect(prompt).toContain(SEEDED);
     expect(prompt).toContain("pre-approved");
     expect(prompt).toContain("its own message");
 
@@ -693,11 +700,9 @@ describe("watch investigation", () => {
       // Past the provider's minimum cacheable prefix, so a breakpoint is worth setting.
       headline: `${concluded.headline} ${"the same TypeError on order.total. ".repeat(200)}`,
     };
-    const { store } = fakeStore({
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store } = fakeStore();
     const { model, prompts } = recordingModel([
-      renderStep(bulky, "inv_seeded", "tc_verdict"),
+      renderStep(bulky, SEEDED, "tc_verdict"),
       textStep("The payload lost order.total."),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -726,7 +731,7 @@ describe("watch investigation", () => {
     expect((prompts[0] as unknown[]).filter((m) => ttlOf(m) === "5m")).toHaveLength(0);
   });
 
-  it("opens a card of its own when the wake's seed never landed", async () => {
+  it("opens the watch's card itself when the wake's seed never landed", async () => {
     const { store, calls } = fakeStore();
     const { model, prompts } = recordingModel([textStep("Couldn't get far — the trace is gone.")]);
     harness = mockChatAgent(dashboardAgent, {
@@ -740,13 +745,13 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    expect(calls.findOpenInvestigation).toHaveLength(1);
-    expect(calls.upsertInvestigationRevision).toHaveLength(1);
-    expect((calls.upsertInvestigationRevision[0] as { id?: string }).id).toBeUndefined();
+    // The same id the wake would have used, so a late seed can never make a second card.
+    expect(calls.seedInvestigation).toMatchObject([{ id: SEEDED }]);
+    expect(calls.upsertInvestigationRevision).toHaveLength(0);
     expect(calls.settleInvestigationCard).toMatchObject([
-      { id: "inv_fake", state: { outcome: "inconclusive" } },
+      { id: SEEDED, state: { outcome: "inconclusive" } },
     ]);
-    expect(JSON.stringify(prompts)).toContain("inv_fake");
+    expect(JSON.stringify(prompts)).toContain(SEEDED);
     expect(calls.appendMessage).toHaveLength(1);
   });
 
@@ -755,11 +760,9 @@ describe("watch investigation", () => {
    * with the card, which bumped the revision twice for one outcome.
    */
   it("settles a card the investigating turn left in progress, exactly once", async () => {
-    const { store, calls } = fakeStore({
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store, calls } = fakeStore();
     const { model } = recordingModel([
-      renderStep(inProgress, "inv_seeded", "tc_open"),
+      renderStep(inProgress, SEEDED, "tc_open"),
       textStep("still looking"),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -781,15 +784,13 @@ describe("watch investigation", () => {
       messageId: string;
       state: { outcome: string };
     };
-    expect(settle.id).toBe("inv_seeded");
+    expect(settle.id).toBe(SEEDED);
     expect(settle.state.outcome).toBe("inconclusive");
     expect(settle.messageId).toBe("investigate:watch:watch_1:fired:investigate:settled");
   });
 
   function revisioningStore(options: { failClosingCard?: boolean } = {}) {
-    const { store, calls } = fakeStore({
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store, calls } = fakeStore();
     const closedCards: UIMessage[] = [];
     let revision = 0;
     const wrapped: DashboardAgentStore = {
@@ -842,7 +843,7 @@ describe("watch investigation", () => {
   it("puts the settled card in the transcript, once, without opening a second investigation", async () => {
     const { store, calls, closedCards } = revisioningStore();
     const { model } = recordingModel([
-      renderStep({ ...inProgress, progress: "Reading the trace" }, "inv_seeded", "tc_open"),
+      renderStep({ ...inProgress, progress: "Reading the trace" }, SEEDED, "tc_open"),
       textStep("still looking"),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -864,7 +865,7 @@ describe("watch investigation", () => {
     expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
 
     const [card] = cardsIn(closing);
-    expect(card?.id).toBe("inv_seeded");
+    expect(card?.id).toBe(SEEDED);
     expect(card?.investigation?.outcome).toBe("inconclusive");
     const [opened] = cardsIn((calls.appendMessage[0] as { message: UIMessage }).message);
     expect(card!.revision!).toBeGreaterThan(opened!.revision!);
@@ -889,7 +890,7 @@ describe("watch investigation", () => {
   it("fails the action when the closing card can't be written, instead of reporting success", async () => {
     const { store, calls } = revisioningStore({ failClosingCard: true });
     const { model } = recordingModel([
-      renderStep(inProgress, "inv_seeded", "tc_open"),
+      renderStep(inProgress, SEEDED, "tc_open"),
       textStep("still looking"),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -923,9 +924,7 @@ describe("watch investigation", () => {
 
   /** A store whose atomic close refuses rather than throws, with the reason it refuses for. */
   function refusingStore(error: "not_found" | "context_mismatch" | "chat_missing") {
-    const { store, calls } = fakeStore({
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store, calls } = fakeStore();
     const wrapped: DashboardAgentStore = {
       ...store,
       settleInvestigationCard: async (args) => {
@@ -938,7 +937,7 @@ describe("watch investigation", () => {
 
   async function investigateAgainst(store: DashboardAgentStore, chatId: string) {
     const { model } = recordingModel([
-      renderStep(inProgress, "inv_seeded", "tc_open"),
+      renderStep(inProgress, SEEDED, "tc_open"),
       textStep("still looking"),
     ]);
     harness = mockChatAgent(dashboardAgent, {
@@ -996,7 +995,7 @@ describe("watch investigation", () => {
 
     await harness.sendAction(INVESTIGATE);
 
-    expect(calls.findOpenInvestigation).toHaveLength(0);
+    expect(calls.seedInvestigation).toHaveLength(0);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
     expect(calls.appendMessage).toHaveLength(0);
   });
@@ -1010,15 +1009,12 @@ describe("watch investigation", () => {
     const table = transcriptTable(CLIENT_DATA);
     const chatId = "chat_investigate_retry";
     const findingsId = "investigate:watch:watch_1:fired:investigate";
-    const seeded = { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" };
     const steps = [
-      renderStep(concluded, "inv_seeded", "tc_verdict"),
+      renderStep(concluded, SEEDED, "tc_verdict"),
       textStep("The payload lost order.total."),
     ];
 
-    const failing = appendingStore(table, (message) => message.id === findingsId, {
-      openInvestigation: seeded,
-    });
+    const failing = appendingStore(table, (message) => message.id === findingsId);
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: CLIENT_DATA_WITH_TOKEN,
@@ -1038,7 +1034,7 @@ describe("watch investigation", () => {
 
     // The retry is a new run picking up the session, booting its history from the chunks
     // the failed one left on `session.out`.
-    const repairing = appendingStore(table, () => false, { openInvestigation: seeded });
+    const repairing = appendingStore(table, () => false);
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: CLIENT_DATA_WITH_TOKEN,
@@ -1070,14 +1066,133 @@ describe("watch investigation", () => {
     ]);
   });
 
+  /**
+   * The card a watch may settle is its own, and only its own. Anything else still
+   * running in this chat belongs to the user or to another watch, and settling it
+   * answers a question nobody asked here while overwriting the one they did.
+   */
+  const MANUAL = "inv_manual";
+
+  function tenanted(chatId: string, state: Record<string, unknown>): FakeInvestigation {
+    return {
+      chatId,
+      projectRef: "proj_abc",
+      environmentRef: "env_abc",
+      state: state as FakeInvestigation["state"],
+    };
+  }
+
+  it("settles its own card and leaves the user's open investigation alone", async () => {
+    const chatId = "chat_investigate_beside_manual";
+    // The user's card is opened after the watch's, so "the freshest card still open"
+    // is theirs.
+    const investigations = new Map<string, FakeInvestigation>([
+      [SEEDED, tenanted(chatId, inProgress)],
+      [MANUAL, tenanted(chatId, { ...inProgress, title: "Why is checkout slow?" })],
+    ]);
+    const { store, calls } = fakeStore({ investigations });
+    const { model } = recordingModel([
+      renderStep(inProgress, SEEDED, "tc_open"),
+      textStep("still looking"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    expect(calls.settleInvestigationCard).toMatchObject([{ id: SEEDED }]);
+    expect(investigations.get(SEEDED)?.state.outcome).toBe("inconclusive");
+    expect(investigations.get(MANUAL)?.state.outcome).toBe("in_progress");
+  });
+
+  /** The redelivery path had the same reach: it closed whatever card was still open. */
+  it("closes only its own card when a redelivered kick finds the user's still open", async () => {
+    const chatId = "chat_investigate_redelivered_beside_manual";
+    const investigations = new Map<string, FakeInvestigation>([
+      [SEEDED, tenanted(chatId, inProgress)],
+      [MANUAL, tenanted(chatId, { ...inProgress, title: "Why is checkout slow?" })],
+    ]);
+    const { store, calls } = fakeStore({ investigations });
+    const card = (id: string, title: string) =>
+      investigationSettlementMessage({
+        investigationId: id,
+        revision: 0,
+        state: { ...inProgress, title },
+        messageId: `msg_${id}`,
+      }) as UIMessage;
+
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      continuation: true,
+      // The findings already landed, so this kick is a repair; the user's card is the
+      // first one still open in the transcript.
+      snapshot: {
+        version: 1,
+        savedAt: Date.now(),
+        messages: [
+          card(MANUAL, "Why is checkout slow?"),
+          card(SEEDED, "Investigating run_abc123"),
+          {
+            id: "investigate:watch:watch_1:fired:investigate",
+            role: "assistant",
+            parts: [{ type: "text", text: "The payload lost order.total." }],
+          },
+        ],
+      },
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+
+    expect(calls.settleInvestigationCard).toMatchObject([{ id: SEEDED }]);
+    expect(investigations.get(MANUAL)?.state.outcome).toBe("in_progress");
+  });
+
+  it("gives two watches resolving in one chat a card each", async () => {
+    const chatId = "chat_investigate_two_watches";
+    const second = watchInvestigationId("watch_2");
+    const { store, calls, investigations } = fakeStore();
+    const { model } = recordingModel([textStep("still looking")]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(INVESTIGATE);
+    await harness.sendAction({
+      ...INVESTIGATE,
+      id: "watch:watch_2:fired:investigate",
+      watchId: "watch_2",
+    });
+
+    expect(calls.settleInvestigationCard.map((call) => (call as { id: string }).id)).toEqual([
+      SEEDED,
+      second,
+    ]);
+    expect(investigations.get(SEEDED)?.state.outcome).toBe("inconclusive");
+    expect(investigations.get(second)?.state.outcome).toBe("inconclusive");
+  });
+
   // Same tenancy crossing as the wake's: the kick names the chat, the session names the
   // organization, and a disagreement must not write into another organization's chat.
   it("writes nothing when the kick's tenancy doesn't own the chat", async () => {
     const table = transcriptTable(CLIENT_DATA);
     const chatId = "chat_investigate_other_org";
-    const { store, calls } = appendingStore(table, () => false, {
-      openInvestigation: { id: "inv_seeded", projectRef: "proj_abc", environmentRef: "env_abc" },
-    });
+    const { store, calls } = appendingStore(table, () => false);
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: { ...CLIENT_DATA_WITH_TOKEN, organizationId: "org_other" },
@@ -1086,7 +1201,7 @@ describe("watch investigation", () => {
         set(
           dashboardAgentModelKey,
           recordingModel([
-            renderStep(concluded, "inv_seeded", "tc_verdict"),
+            renderStep(concluded, SEEDED, "tc_verdict"),
             textStep("The payload lost order.total."),
           ]).model
         );

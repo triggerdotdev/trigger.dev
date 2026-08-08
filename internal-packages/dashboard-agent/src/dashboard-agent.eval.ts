@@ -53,7 +53,7 @@ const NOOP_STORE: DashboardAgentStore = {
     card: { id: args.messageId, role: "assistant", parts: [] },
     closed: true,
   }),
-  findOpenInvestigation: async () => null,
+  seedInvestigation: async (args) => ({ ok: true, id: args.id, created: true }),
 };
 
 const FIXTURES: Record<string, unknown> = {

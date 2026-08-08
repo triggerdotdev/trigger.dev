@@ -19,6 +19,7 @@ import {
   type WatchResolution,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
+import { watchInvestigationId } from "@internal/dashboard-agent-db";
 import {
   buildTurnTools,
   type clientDataSchema,
@@ -331,7 +332,8 @@ async function openConsentedInvestigation(args: {
   const subject = wakeSubject(action);
   const spec = action.spec as { runId?: unknown };
   try {
-    const result = await getStore().upsertInvestigationRevision({
+    const result = await getStore().seedInvestigation({
+      id: watchInvestigationId(action.watchId),
       chatId,
       projectRef,
       environmentRef,
@@ -353,6 +355,7 @@ async function openConsentedInvestigation(args: {
       chatId,
       watchId: action.watchId,
       investigationId: result.ok ? result.id : undefined,
+      error: result.ok ? undefined : result.error,
     });
   } catch (error) {
     // The wake is the delivery that matters; an investigation that couldn't be
@@ -553,16 +556,10 @@ async function narrateWatchWake(args: {
   }
 }
 
-// How far back the investigate action looks for the card the wake seeded. Wide
-// enough to cover a slow wake turn, tight enough that an older abandoned card is
-// never mistaken for this watch's.
-const CONSENTED_INVESTIGATION_LOOKBACK_MS = 30 * 60 * 1000;
-
 /**
- * The card this turn must revise: the sender's id when it has one, else the
- * freshest card this chat still has open — which is the one the wake seeded, since
- * `.in` records are handled in order — else a fresh seed for the wake whose seed
- * failed. All three exist to keep it to one card per consented outcome.
+ * The card this turn must revise: the sender's id when it has one, else the watch's
+ * own card, which the wake seeded under the same derived id. Seeding again is how a
+ * wake whose seed failed still gets a card, and it can only ever open this watch's.
  */
 async function resolveInvestigationId(args: {
   action: WatchInvestigateAction;
@@ -573,14 +570,8 @@ async function resolveInvestigationId(args: {
   const { action, chatId, projectRef, environmentRef } = args;
   if (action.investigationId) return action.investigationId;
 
-  const store = getStore();
-  const open = await store.findOpenInvestigation({
-    chatId,
-    createdAfter: new Date(Date.now() - CONSENTED_INVESTIGATION_LOOKBACK_MS),
-  });
-  if (open) return open.id;
-
-  const seeded = await store.upsertInvestigationRevision({
+  const seeded = await getStore().seedInvestigation({
+    id: watchInvestigationId(action.watchId),
     chatId,
     projectRef,
     environmentRef,
@@ -749,10 +740,13 @@ async function conductWatchInvestigation(args: {
         message: alreadyAnswered,
       });
     }
-    const open = [...latestCards(uiMessages).values()].find(
-      (card) => card.state === null || card.state.outcome === "in_progress"
-    );
-    if (open) await closeCard(open.id, uiMessages);
+    // This watch's card only: any other card still running belongs to the user or to
+    // another watch, and closing it would answer a question nobody asked here.
+    const cardId = action.investigationId ?? watchInvestigationId(action.watchId);
+    const open = latestCards(uiMessages).get(cardId);
+    if (open && (open.state === null || open.state.outcome === "in_progress")) {
+      await closeCard(cardId, uiMessages);
+    }
     return;
   }
 
