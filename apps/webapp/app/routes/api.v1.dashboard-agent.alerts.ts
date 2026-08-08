@@ -12,6 +12,7 @@ import {
 import {
   canUseDashboardAgentEmailAlerts,
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
+  watchAlertDeduplicationKey,
 } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
@@ -179,7 +180,7 @@ export async function action({ request }: ActionFunctionArgs) {
       alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
       environmentTypes: [environment.type],
       // Stable per (email, project), so asking twice re-enables one channel.
-      deduplicationKey: `dashboard-agent-watch:${email}`,
+      deduplicationKey: watchAlertDeduplicationKey(email),
       channel: { type: "EMAIL", email },
     });
 
