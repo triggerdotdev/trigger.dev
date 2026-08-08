@@ -80,16 +80,23 @@ function prettifySegment(segment: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// An env path is always `/orgs/{org}/projects/{project}/env/{slug}/{section}`, so both
+// markers sit at fixed indexes. A branch slug is index 5 and can never be read as the marker.
+const ENV_MARKER_INDEX = 4;
+const ENV_SECTION_INDEX = 6;
+
 // Env-scoped paths label off the section after `env/{slug}`; anything else falls
 // back to its last segment.
 export function pageLabelFromPath(pathname: string): string {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return FALLBACK_LABEL;
 
-  const envIndex = segments.lastIndexOf("env");
-  if (envIndex !== -1) {
-    // `env` is followed by the env slug, then the section (if any).
-    const section = segments[envIndex + 2];
+  if (
+    segments[0] === "orgs" &&
+    segments[2] === "projects" &&
+    segments[ENV_MARKER_INDEX] === "env"
+  ) {
+    const section = segments[ENV_SECTION_INDEX];
     if (!section) return "Overview";
     return SECTION_LABELS[section] ?? prettifySegment(section);
   }
