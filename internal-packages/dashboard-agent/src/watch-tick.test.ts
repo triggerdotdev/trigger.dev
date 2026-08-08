@@ -566,6 +566,53 @@ describe("runWatchTick", () => {
     expect(row.lastResult).toMatchObject({ checkFailed: true, previous: { pending: 12 } });
   });
 
+  it("a run of failed checks does not nest: `previous` stays the last real observation", async () => {
+    const { store, row } = fakeStore(
+      watchRow({
+        tickCount: 2,
+        lastCheckedAt: new Date("2026-01-01T12:50:00.000Z"),
+        lastResult: { pending: 12 },
+      })
+    );
+    const { fetch } = fakeFetch(() => ({ status: 503, body: { error: "clickhouse is down" } }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const d = deps({ store, fetch, deliver, reschedule });
+
+    for (const tick of [3, 4, 5, 6]) await runWatchTick(payloadFor(tick), d);
+
+    // One level, not four: the row is serialised into the wake, the alert and the webhook.
+    expect((row.lastResult as { previous?: unknown }).previous).toEqual({ pending: 12 });
+  });
+
+  it("the facts an unverified expiry carries are bounded by the same unwrap", async () => {
+    const { store, row } = fakeStore(
+      watchRow({
+        tickCount: 28,
+        lastCheckedAt: new Date("2026-01-01T12:50:00.000Z"),
+        lastResult: { pending: 41 },
+      })
+    );
+    const { fetch } = fakeFetch(() => ({ status: 500, body: { error: "metrics unavailable" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+
+    for (const tick of [29, 30, 31]) {
+      await runWatchTick(payloadFor(tick), deps({ store, fetch, deliver, reschedule }));
+    }
+    await runWatchTick(
+      payloadFor(32),
+      deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:00:01.000Z") })
+    );
+
+    expect(row.status).toBe("expired");
+    const facts = (appends[0]!.action as { facts: Record<string, unknown> }).facts;
+    expect(facts.reason).toBe("unverified_at_expiry");
+    const observation = facts.lastObservation as { checkFailed?: boolean; previous?: unknown };
+    expect(observation.checkFailed).toBe(true);
+    expect(observation.previous).toEqual({ pending: 41 });
+  });
+
   it("access_revoked: exits without resolving, delivering, or rescheduling", async () => {
     const { store, calls, row } = fakeStore(watchRow());
     const { fetch } = fakeFetch(() => ({
