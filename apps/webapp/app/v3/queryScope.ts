@@ -1,3 +1,4 @@
+import type { ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
 import type { QueryScope } from "~/v3/querySchemas";
 
 /**
@@ -37,6 +38,8 @@ export function resolveQueryScope(args: {
 }
 
 /** A public access token is environment-bound; every other bearer credential isn't. */
-export function queryScopeCeilingFor(authenticationType: string): QueryScopeCeiling {
+export function queryScopeCeilingFor(
+  authenticationType: ApiAuthenticationResultSuccess["type"]
+): QueryScopeCeiling {
   return authenticationType === "PUBLIC_JWT" ? "environment" : "unbounded";
 }

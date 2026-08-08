@@ -11,6 +11,14 @@ describe("the query scope ceiling", () => {
 
   it("leaves every other bearer credential uncapped", () => {
     expect(queryScopeCeilingFor("PRIVATE")).toBe("unbounded");
+    expect(queryScopeCeilingFor("PUBLIC")).toBe("unbounded");
+  });
+
+  // Compile-time: the fallback is "uncapped", so a misspelled credential kind must not
+  // be able to reach it.
+  it("takes only the credential kinds that exist", () => {
+    // @ts-expect-error not an authentication type
+    expect(() => queryScopeCeilingFor("public_jwt")).not.toThrow();
   });
 });
 
