@@ -6925,6 +6925,7 @@ function chatAgent<
           let channelConn: AnyChannelConnector | undefined;
           let channelWorkingReaction: string | undefined;
           let channelWireEvent: { event: unknown; deliveryId: string } | undefined;
+          let droppedStaleInteraction = false;
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -6962,6 +6963,14 @@ function chatAgent<
                       });
                     }
                   }
+                } else if (interaction) {
+                  droppedStaleInteraction = true;
+                  logger.debug(
+                    "chat.agent: dropping stale channel interaction that matched no pending tool call",
+                    {
+                      deliveryId: wireChannelEvent.deliveryId,
+                    }
+                  );
                 } else {
                   effectiveIncomingMessage = toUserUIMessage(
                     channelConn.inbound(wireChannelEvent.event),
@@ -7244,7 +7253,7 @@ function chatAgent<
                 // snapshot + `session.out` replay (or `hydrateMessages`,
                 // which also fires per-turn below). Per-turn handling is
                 // therefore a delta merge, not a full-history reset.
-                if (currentWirePayload.trigger !== "action") {
+                if (currentWirePayload.trigger !== "action" && !droppedStaleInteraction) {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -7543,7 +7552,7 @@ function chatAgent<
                   turn--;
                 }
 
-                if (!isAction) {
+                if (!isAction && !droppedStaleInteraction) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
