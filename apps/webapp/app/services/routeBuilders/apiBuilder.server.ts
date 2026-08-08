@@ -500,10 +500,6 @@ type PATRouteBuilderOptions<
       : undefined,
     request: Request
   ) => PATRouteContext | Promise<PATRouteContext>;
-  // Opts a contextless route into being reachable by an environment-scoped user-actor token.
-  // Only for routes whose answer is the caller's own identity (their orgs, their projects) and
-  // which mutate nothing — otherwise such a token is refused for want of anything to check.
-  identityOnly?: true;
   authorization?: {
     action: string;
     resource: (
@@ -520,6 +516,18 @@ type PATRouteBuilderOptions<
         : undefined
     ) => AuthResource;
   };
+};
+
+type PATLoaderRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+> = PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
+  // Opts a contextless route into being reachable by an environment-scoped user-actor token.
+  // Only for routes whose answer is the caller's own identity (their orgs, their projects) and
+  // which mutate nothing — otherwise such a token is refused for want of anything to check.
+  // Loaders only: an action mutates by definition, so the action options forbid it.
+  identityOnly?: true;
 };
 
 type PATHandlerFunction<
@@ -549,7 +557,7 @@ export function createLoaderPATApiRoute<
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
 >(
-  options: PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
+  options: PATLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: PATHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
 ) {
   return async function loader({ request, params }: LoaderFunctionArgs) {
@@ -753,6 +761,9 @@ type PATActionRouteBuilderOptions<
   // A single verb, or a list for multi-method routes (e.g. ["PATCH", "DELETE"]).
   method?: PATActionMethod | PATActionMethod[];
   body?: TBodySchema;
+  // `identityOnly` waives the contextless refusal for reads that mutate nothing. An action
+  // never qualifies, so it cannot be declared here.
+  identityOnly?: never;
 };
 
 type PATActionHandlerFunction<
@@ -803,7 +814,6 @@ export function createActionPATApiRoute<
       body: bodySchema,
       corsStrategy = "none",
       context: contextFn,
-      identityOnly,
       authorization,
       method,
     } = options;
@@ -936,7 +946,7 @@ export function createActionPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        await assertUserActorScope(claims, ctx, { identityOnly });
+        await assertUserActorScope(claims, ctx);
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
