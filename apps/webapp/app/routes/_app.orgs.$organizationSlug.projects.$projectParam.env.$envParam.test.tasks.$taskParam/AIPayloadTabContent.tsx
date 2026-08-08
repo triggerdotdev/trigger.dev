@@ -28,6 +28,8 @@ export function AIPayloadTabContent({
   placeholder,
   examplePromptsOverride,
   isAgent = false,
+  payloadKind,
+  providerSource,
   showExamplePromptsHeader = true,
 }: {
   onPayloadGenerated: (payload: string) => void;
@@ -38,6 +40,8 @@ export function AIPayloadTabContent({
   placeholder?: string;
   examplePromptsOverride?: string[];
   isAgent?: boolean;
+  payloadKind?: "standard" | "agent" | "webhook";
+  providerSource?: string;
   showExamplePromptsHeader?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -79,6 +83,12 @@ export function AIPayloadTabContent({
         formData.append("prompt", queryPrompt);
         formData.append("taskIdentifier", taskIdentifier);
         formData.append("isAgent", isAgent ? "true" : "false");
+        if (payloadKind) {
+          formData.append("payloadKind", payloadKind);
+        }
+        if (providerSource) {
+          formData.append("providerSource", providerSource);
+        }
         if (payloadSchema) {
           formData.append("payloadSchema", JSON.stringify(payloadSchema));
         }
@@ -150,7 +160,15 @@ export function AIPayloadTabContent({
         setIsLoading(false);
       }
     },
-    [resourcePath, taskIdentifier, payloadSchema, getCurrentPayload, isAgent]
+    [
+      resourcePath,
+      taskIdentifier,
+      payloadSchema,
+      getCurrentPayload,
+      isAgent,
+      payloadKind,
+      providerSource,
+    ]
   );
 
   const processStreamEvent = useCallback(
@@ -200,17 +218,23 @@ export function AIPayloadTabContent({
 
   const examplePrompts =
     examplePromptsOverride ??
-    (payloadSchema
+    (payloadKind === "webhook"
       ? [
-          "Generate a valid payload",
-          "Generate a payload with edge cases",
-          "Generate a minimal payload with only required fields",
+          "Generate a realistic event body",
+          "Generate a failure/refund style event",
+          "Generate an event with nested data",
         ]
-      : [
-          "Generate a simple JSON payload",
-          "Generate a payload with nested objects",
-          "Generate a payload with an array of items",
-        ]);
+      : payloadSchema
+        ? [
+            "Generate a valid payload",
+            "Generate a payload with edge cases",
+            "Generate a minimal payload with only required fields",
+          ]
+        : [
+            "Generate a simple JSON payload",
+            "Generate a payload with nested objects",
+            "Generate a payload with an array of items",
+          ]);
 
   return (
     <div className="space-y-0">

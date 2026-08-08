@@ -1,7 +1,10 @@
-import type { PrismaClient, Session } from "@trigger.dev/database";
-import type { SessionItem } from "@trigger.dev/core/v3";
+import type { Prisma, PrismaClient, Session } from "@trigger.dev/database";
+import type { SessionItem, SessionTriggerConfig } from "@trigger.dev/core/v3";
+import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import type { RunStore } from "@internal/run-store";
 import { $replica, prisma } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 import { boundedIn } from "@trigger.dev/database";
@@ -61,6 +64,71 @@ export async function resolveSessionWithWriterFallback(
 /** True for `session_*` friendlyId form, false for everything else. */
 export function isSessionFriendlyIdForm(value: string): boolean {
   return value.startsWith(SESSION_FRIENDLY_ID_PREFIX);
+}
+
+/**
+ * Find-or-create a Session row. Idempotent on `(environment, externalId)`: two concurrent callers
+ * converge to the same row (and `triggerConfig` is refreshed on the cached path so a redeployed
+ * config propagates to the next run). Shared by `POST /api/v1/sessions` and the webhook session
+ * delivery port so the create-field set (org/env scoping, streamBasin, snapshot path) stays in one place.
+ */
+export async function findOrCreateSession(params: {
+  environment: AuthenticatedEnvironment;
+  externalId?: string;
+  type: string;
+  taskIdentifier: string;
+  triggerConfig: SessionTriggerConfig;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  expiresAt?: Date | null;
+}): Promise<{ session: Session; isCached: boolean }> {
+  const { id, friendlyId } = SessionId.generate();
+  const env = params.environment;
+  const triggerConfigJson = params.triggerConfig as unknown as Prisma.InputJsonValue;
+
+  const common = {
+    type: params.type,
+    taskIdentifier: params.taskIdentifier,
+    triggerConfig: triggerConfigJson,
+    tags: params.tags ?? [],
+    metadata: params.metadata as Prisma.InputJsonValue | undefined,
+    expiresAt: params.expiresAt ?? null,
+    projectId: env.projectId,
+    runtimeEnvironmentId: env.id,
+    environmentType: env.type,
+    organizationId: env.organizationId,
+    streamBasinName: env.organization.streamBasinName,
+    chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
+  };
+
+  if (params.externalId) {
+    const session = await prisma.session.upsert({
+      where: {
+        runtimeEnvironmentId_externalId: {
+          runtimeEnvironmentId: env.id,
+          externalId: params.externalId,
+        },
+      },
+      create: { id, friendlyId, externalId: params.externalId, ...common },
+      update: { triggerConfig: triggerConfigJson },
+    });
+    return { session, isCached: session.id !== id };
+  }
+
+  const session = await prisma.session.create({ data: { id, friendlyId, ...common } });
+  return { session, isCached: false };
+}
+
+/** Find a session by externalId without creating one (resume-only channel delivery, e.g. startOn). */
+export async function findSessionByExternalId(
+  environment: AuthenticatedEnvironment,
+  externalId: string
+): Promise<Session | null> {
+  return prisma.session.findUnique({
+    where: {
+      runtimeEnvironmentId_externalId: { runtimeEnvironmentId: environment.id, externalId },
+    },
+  });
 }
 
 /**

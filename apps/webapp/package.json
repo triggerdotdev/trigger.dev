@@ -5,7 +5,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "run-s build:** && pnpm run upload:sourcemaps",
-    "build:remix": "remix vite:build",
+    "build:remix": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" remix vite:build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build --sourcemap",
     "build:otlpworker": "esbuild --platform=node --format=cjs --bundle ./app/v3/otlpTransformWorker.ts --outfile=build/otlpTransformWorker.cjs --sourcemap",
     "build:sentry": "esbuild --platform=node --format=cjs --outbase=. ./sentry.server.ts ./app/utils/sentryTraceContext.server.ts --outdir=build --sourcemap",
@@ -20,6 +20,7 @@
     "db:seed": "tsx seed.ts",
     "db:seed:ai-spans": "tsx seed-ai-spans.mts",
     "db:seed:queue-metrics": "tsx seed-queue-metrics.mts",
+    "db:seed:webhooks": "tsx seed-webhook-deliveries.ts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "eval:dev": "evalite watch"
@@ -64,6 +65,8 @@
     "@internal/schedule-engine": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@internal/tsql": "workspace:*",
+    "@internal/webhook-engine": "workspace:*",
+    "@internal/webhook-sources": "workspace:*",
     "@internationalized/date": "^3.5.1",
     "@jsonhero/schema-infer": "^0.1.5",
     "@kapaai/react-sdk": "^0.1.3",

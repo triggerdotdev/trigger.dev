@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
+import {
+  WebhookVerifierArtifact,
+  WebhookRoutingTarget,
+  WebhookSecretProvisioning,
+} from "./webhookConfig.js";
 
 export const AgentConfig = z.object({
   type: z.string(), // "ai-sdk-chat" initially, extensible for future agent types
@@ -53,12 +58,27 @@ export const PromptResource = z.object({
 
 export type PromptResource = z.infer<typeof PromptResource>;
 
+export const WebhookResource = z.object({
+  id: z.string(),
+  description: z.string().optional(),
+  filePath: z.string(),
+  exportName: z.string().optional(),
+  source: z.string(),
+  verifierArtifact: WebhookVerifierArtifact,
+  routingTarget: WebhookRoutingTarget,
+  secretProvisioning: WebhookSecretProvisioning.optional(),
+  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  metadata: z.record(z.unknown()).optional(),
+});
+export type WebhookResource = z.infer<typeof WebhookResource>;
+
 export const BackgroundWorkerMetadata = z.object({
   packageVersion: z.string(),
   contentHash: z.string(),
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
   prompts: z.array(PromptResource).optional(),
+  webhooks: z.array(WebhookResource).optional(), // NEW
   queues: z.array(QueueManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),

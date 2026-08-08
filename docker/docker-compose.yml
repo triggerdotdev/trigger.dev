@@ -25,9 +25,7 @@ networks:
 services:
   database:
     container_name: ${CONTAINER_PREFIX:-}database
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    image: postgres:14
     restart: always
     volumes:
       - ${DB_VOLUME:-database-data}:/var/lib/postgresql/data/
@@ -44,8 +42,6 @@ services:
       - listen_addresses=*
       - -c
       - wal_level=logical
-      - -c
-      - shared_preload_libraries=pg_partman_bgw
       # The webapp opens ~50 pooled connections per instance and Electric another
       # ~40, so the default 100 is exhausted by one webapp + Electric alone. Raise
       # it so multiple instances / load tests have headroom.
@@ -94,9 +90,7 @@ services:
   database-replica:
     container_name: ${CONTAINER_PREFIX:-}database-replica
     profiles: ["replica"]
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    image: postgres:14
     restart: always
     depends_on:
       - database
