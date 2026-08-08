@@ -202,12 +202,24 @@ export function settlementCardMessages(
 
 export type TranscriptCard = { id: string; revision: number; state: InvestigationState | null };
 
+/** Both shapes the panel reads: a tool's output blocks, and a host-written view. */
+function blocksInPart(part: unknown): unknown[] {
+  const typed = part as {
+    type?: string;
+    output?: { blocks?: unknown[] };
+    data?: { blocks?: unknown[] };
+  };
+  if (typed.type === "tool-render_view" && Array.isArray(typed.output?.blocks)) {
+    return typed.output.blocks;
+  }
+  if (typed.type === "data-view" && Array.isArray(typed.data?.blocks)) return typed.data.blocks;
+  return [];
+}
+
 function cardsInMessage(message: UIMessage): TranscriptCard[] {
   const found: TranscriptCard[] = [];
   for (const part of message.parts ?? []) {
-    const typed = part as { type?: string; output?: { blocks?: unknown[] } };
-    if (typed.type !== "tool-render_view" || !Array.isArray(typed.output?.blocks)) continue;
-    for (const block of typed.output.blocks) {
+    for (const block of blocksInPart(part)) {
       const candidate = block as { type?: string; id?: string; revision?: number };
       if (candidate?.type !== "investigation" || typeof candidate.id !== "string") continue;
       const parsed = investigationStateSchema.safeParse(

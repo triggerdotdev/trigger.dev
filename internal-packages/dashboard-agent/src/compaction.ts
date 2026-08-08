@@ -1,7 +1,12 @@
 import { locals, logger } from "@trigger.dev/sdk";
 import type { ChatAgentCompactionOptions, SummarizeEvent } from "@trigger.dev/sdk/ai";
 import { generateText, type ModelMessage, type UIMessage } from "ai";
-import { dashboardAgentModelKey, registry, sanitizeReplayedToolInputs } from "./agent-runtime";
+import {
+  dashboardAgentModelKey,
+  latestCards,
+  registry,
+  sanitizeReplayedToolInputs,
+} from "./agent-runtime";
 
 /**
  * Bounded context: how a long conversation is summarised, and what may never be
@@ -109,15 +114,6 @@ export function shouldCompactConversation(event: {
  * The state a summary may not swallow
  * ------------------------------------------------------------------ */
 
-type DataViewPart = { type: string; data?: { blocks?: unknown[] } };
-
-function viewBlocks(message: UIMessage): unknown[] {
-  const parts = (message.parts ?? []) as DataViewPart[];
-  return parts.flatMap((part) =>
-    part.type === "data-view" && Array.isArray(part.data?.blocks) ? part.data!.blocks! : []
-  );
-}
-
 export type PinnedInvestigation = {
   id: string;
   title: string;
@@ -130,42 +126,29 @@ export type DurableState = {
 };
 
 /**
- * The state read off the UI transcript, which compaction never touches. Keyed by id,
- * so the freshest revision of a card wins and one card stays one card.
+ * The state read off the UI transcript, which compaction never touches. `latestCards`
+ * resolves it the way the panel does — highest revision per id wins, whatever order the
+ * renders arrived in — so one card stays one card and a stale render can't reopen a
+ * settled one.
  *
  * Only an `in_progress` card is state: a concluded or inconclusive one is finished
  * work the summary already covers, and pinning it would grow the note forever and
  * invite the model to keep revising a card that closed long ago.
  */
 export function collectDurableState(uiMessages: UIMessage[]): DurableState {
-  const investigations = new Map<string, PinnedInvestigation>();
+  const investigations: PinnedInvestigation[] = [];
 
-  for (const message of uiMessages) {
-    for (const block of viewBlocks(message)) {
-      const typed = block as {
-        type?: string;
-        id?: string;
-        revision?: number;
-        investigation?: { title?: string; outcome?: string };
-      };
-      if (typed.type !== "investigation" || typeof typed.id !== "string") continue;
-
-      const outcome = typed.investigation?.outcome ?? "in_progress";
-      // A later revision that settles the card removes the pin the earlier one added.
-      if (outcome !== "in_progress") {
-        investigations.delete(typed.id);
-        continue;
-      }
-      investigations.set(typed.id, {
-        id: typed.id,
-        title: typed.investigation?.title ?? "",
-        outcome,
-        revision: typed.revision,
-      });
-    }
+  for (const card of latestCards(uiMessages).values()) {
+    if (card.state?.outcome !== "in_progress") continue;
+    investigations.push({
+      id: card.id,
+      title: card.state.title,
+      outcome: card.state.outcome,
+      revision: card.revision,
+    });
   }
 
-  return { investigations: [...investigations.values()] };
+  return { investigations };
 }
 
 /**

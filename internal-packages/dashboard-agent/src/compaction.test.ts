@@ -32,7 +32,33 @@ function bulk(count: number, chars: number): ModelMessage[] {
   );
 }
 
-/** The card, as `render_view` persisted it into the transcript. */
+function investigationBlock(args: {
+  id: string;
+  title: string;
+  outcome: string;
+  revision?: number;
+}) {
+  return {
+    type: "investigation",
+    id: args.id,
+    revision: args.revision ?? 0,
+    version: 1,
+    investigation: {
+      outcome: args.outcome,
+      severity: "warn",
+      confidence: "medium",
+      title: args.title,
+      headline: `${args.title} — what we have so far.`,
+      hypotheses: [],
+      evidence: [],
+    },
+  };
+}
+
+/**
+ * The card as `render_view` persists it: a tool part, which is the only shape
+ * production writes an investigation in.
+ */
 function investigationMessage(args: {
   id: string;
   title: string;
@@ -40,24 +66,30 @@ function investigationMessage(args: {
   revision?: number;
 }): UIMessage {
   return {
-    id: `msg-${args.id}`,
+    id: `msg-${args.id}-${args.revision ?? 0}`,
     role: "assistant",
     parts: [
       {
-        type: "data-view",
-        data: {
-          blocks: [
-            {
-              type: "investigation",
-              id: args.id,
-              revision: args.revision ?? 0,
-              version: 1,
-              investigation: { title: args.title, outcome: args.outcome },
-            },
-          ],
-        },
+        type: "tool-render_view",
+        toolCallId: `call-${args.id}-${args.revision ?? 0}`,
+        state: "output-available",
+        output: { blocks: [investigationBlock(args)] },
       } as never,
     ],
+  };
+}
+
+/** The other shape the panel accepts: a host-written view. */
+function hostInvestigationMessage(args: {
+  id: string;
+  title: string;
+  outcome: string;
+  revision?: number;
+}): UIMessage {
+  return {
+    id: `host-${args.id}-${args.revision ?? 0}`,
+    role: "assistant",
+    parts: [{ type: "data-view", data: { blocks: [investigationBlock(args)] } } as never],
   };
 }
 
@@ -118,6 +150,56 @@ describe("the state a summary may not swallow", () => {
     expect(first).toContain("send-order-receipt fails on retry");
     // The instruction matters as much as the id: this is what stops a second card.
     expect(first).toContain("never open a second card");
+  });
+
+  it("pins a card written the way render_view writes one", () => {
+    const state = collectDurableState([
+      investigationMessage({
+        id: "inv_tool",
+        title: "orders queue is backing up",
+        outcome: "in_progress",
+        revision: 1,
+      }),
+    ]);
+    expect(state.investigations.map((i) => i.id)).toEqual(["inv_tool"]);
+    expect(
+      describeDurableState([
+        investigationMessage({
+          id: "inv_tool",
+          title: "orders queue is backing up",
+          outcome: "in_progress",
+          revision: 1,
+        }),
+      ])
+    ).toContain("inv_tool");
+  });
+
+  it("pins a card a host view wrote, too", () => {
+    const state = collectDurableState([
+      hostInvestigationMessage({ id: "inv_host", title: "host card", outcome: "in_progress" }),
+    ]);
+    expect(state.investigations.map((i) => i.id)).toEqual(["inv_host"]);
+  });
+
+  it("keeps a settled card closed when a stale render arrives after it", () => {
+    const settledThenStale = [
+      investigationMessage({
+        id: "inv_1",
+        title: "first pass",
+        outcome: "in_progress",
+        revision: 0,
+      }),
+      investigationMessage({ id: "inv_1", title: "first pass", outcome: "concluded", revision: 3 }),
+      // A late replay of an earlier revision: lower, so it loses whatever order it lands in.
+      investigationMessage({
+        id: "inv_1",
+        title: "first pass",
+        outcome: "in_progress",
+        revision: 1,
+      }),
+    ];
+    expect(collectDurableState(settledThenStale).investigations).toEqual([]);
+    expect(describeDurableState(settledThenStale)).toBeUndefined();
   });
 
   it("pins the freshest revision of one card, not one entry per render", () => {
