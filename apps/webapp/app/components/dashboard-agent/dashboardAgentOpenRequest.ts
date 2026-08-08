@@ -49,18 +49,18 @@ export function useDashboardAgentAvailable(): boolean {
   );
 }
 
-/** `aiHelp` is legacy: the CLI's old links are still in people's terminal scrollback. */
-const DEEP_LINK_PARAMS = ["ask", "aiHelp"] as const;
-
 /** While `enabled` is false nothing is registered, so every entry point stays hidden. */
 export function useDashboardAgentOpenRequests({
   enabled,
   openWith,
   setOpen,
+  /** `agentDeepLinkParams` decides these; `aiHelp` is Ask AI's unless it cannot open. */
+  deepLinkParams,
 }: {
   enabled: boolean;
   openWith: (text: string) => void;
   setOpen: (open: boolean) => void;
+  deepLinkParams: readonly string[];
 }) {
   useEffect(() => {
     if (!enabled) return;
@@ -70,13 +70,13 @@ export function useDashboardAgentOpenRequests({
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     if (!enabled) return;
-    const param = DEEP_LINK_PARAMS.find((name) => searchParams.get(name));
+    const param = deepLinkParams.find((name) => searchParams.get(name));
     if (!param) return;
     const question = searchParams.get(param)!;
     // Consume it before opening, or a re-render asks the same question twice.
     const next = new URLSearchParams(searchParams);
-    for (const name of DEEP_LINK_PARAMS) next.delete(name);
+    for (const name of deepLinkParams) next.delete(name);
     setSearchParams(next, { replace: true, preventScrollReset: true });
     openWith(question);
-  }, [enabled, searchParams, setSearchParams, openWith]);
+  }, [enabled, searchParams, setSearchParams, openWith, deepLinkParams]);
 }

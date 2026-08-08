@@ -7,12 +7,10 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
+import { agentDeepLinkParams, ASK_AI_SHORTCUT, askAiChannelTarget } from "./ask-ai-channels";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
-import {
-  DashboardAgentProvider,
-  LEGACY_ASK_AI_SHORTCUT,
-  TOGGLE_PANEL_SHORTCUT,
-} from "./dashboardAgentLauncher";
+import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
@@ -89,14 +87,24 @@ export function DashboardAgent({
     enabledOnInputElements: true,
   });
 
+  // ⌘I and the CLI's `?aiHelp=` link are Ask AI's; the agent only answers them where Ask AI
+  // cannot open.
+  const askAi = useAskAiAvailability();
+  const ownsAskAiChannels = askAiChannelTarget(askAi) === "dashboard-agent";
+
   useShortcutKeys({
-    shortcut: LEGACY_ASK_AI_SHORTCUT,
+    shortcut: ASK_AI_SHORTCUT,
     action: () => setPanelOpen(true),
-    disabled: !hasAccess,
+    disabled: !hasAccess || !ownsAskAiChannels,
     enabledOnInputElements: true,
   });
 
-  useDashboardAgentOpenRequests({ enabled: hasAccess, openWith, setOpen: setPanelOpen });
+  useDashboardAgentOpenRequests({
+    enabled: hasAccess,
+    openWith,
+    setOpen: setPanelOpen,
+    deepLinkParams: agentDeepLinkParams(askAi),
+  });
 
   const context = useMemo(
     () => ({ open, setOpen: setPanelOpen, openWith }),
