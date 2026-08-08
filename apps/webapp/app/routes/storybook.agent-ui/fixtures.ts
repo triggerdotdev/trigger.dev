@@ -8,7 +8,7 @@ import {
   type ViewBlock,
   type WatchResultBlock as WatchResultBlockPayload,
 } from "@internal/dashboard-agent-contracts";
-import { DEMO_WORLD, demoFixtures } from "~/components/dashboard-agent/demo";
+import { DEMO_WORLD, demoFixtures, demoId, demoRunsUri } from "~/components/dashboard-agent/demo";
 import type { TurnActivity } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { watchConfirmationBlockBody, watchOneShotBlockBody } from "~/presenters/v3/dashboardAgent";
 import {
@@ -46,6 +46,11 @@ const {
   toolPart,
   userMessage,
 } = demoFixtures;
+
+const DEMO_WATCH_ID = demoId("watch_gallery");
+
+// A stored error_recurrence spec holds the internal id, so the demo one drops its prefix.
+const DEMO_FINGERPRINT = DEMO_WORLD.errorFingerprint.replace(/^error_/, "");
 
 /** One transcript the message gallery renders, with the turn state it belongs to. */
 export type DemoTranscript = {
@@ -182,7 +187,7 @@ export const demoTranscripts = {
 
 export const fullDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
-  runId: "run_a1b2c3d4e5",
+  runId: DEMO_WORLD.failedRunId,
   summary:
     "The run failed because processOrder threw on an order with no line items. The payload had an empty items array.",
   category: "user_code_error",
@@ -193,7 +198,7 @@ export const fullDiagnosis: DiagnosisBlock = {
     {
       type: "error",
       detail: "TypeError: Cannot read properties of undefined (reading 'sku')",
-      reference: "run_a1b2c3d4e5",
+      reference: DEMO_WORLD.failedRunId,
     },
     { type: "failed_span", detail: "processOrder attempt 1 failed after 42ms" },
     {
@@ -204,7 +209,7 @@ export const fullDiagnosis: DiagnosisBlock = {
     {
       type: "historical_match",
       detail: "14 runs of this task hit the same error in the last 24h.",
-      reference: "error_emptyorder",
+      reference: DEMO_WORLD.errorFingerprint,
     },
   ],
   impact:
@@ -214,14 +219,14 @@ export const fullDiagnosis: DiagnosisBlock = {
     "Validate the payload before triggering so empty orders never reach the task.",
   ],
   actions: [
-    { label: "View run", kind: "view_run", target: "run_a1b2c3d4e5" },
+    { label: "View run", kind: "view_run", target: DEMO_WORLD.failedRunId },
     { label: "Retries docs", kind: "docs", target: "https://trigger.dev/docs/errors-retrying" },
   ],
 };
 
 export const externalServiceDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
-  runId: "run_f6g7h8i9j0",
+  runId: DEMO_WORLD.slowRunId,
   summary: "chargePayment timed out waiting on the Stripe API after 30 seconds.",
   category: "external_service",
   likelyCause:
@@ -231,7 +236,7 @@ export const externalServiceDiagnosis: DiagnosisBlock = {
     {
       type: "error",
       detail: "TimeoutError: Stripe API timed out after 30s",
-      reference: "run_f6g7h8i9j0",
+      reference: DEMO_WORLD.slowRunId,
     },
     { type: "deploy", detail: "First seen on version 20260620.2", reference: "20260620.2" },
   ],
@@ -240,12 +245,12 @@ export const externalServiceDiagnosis: DiagnosisBlock = {
     "Wrap the Stripe call in a retry with backoff.",
     "Set an explicit request timeout shorter than the task's max duration.",
   ],
-  actions: [{ label: "View run", kind: "view_run", target: "run_f6g7h8i9j0" }],
+  actions: [{ label: "View run", kind: "view_run", target: DEMO_WORLD.slowRunId }],
 };
 
 export const lowConfidenceDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
-  runId: "run_k1l2m3n4o5",
+  runId: DEMO_WORLD.priorRunId,
   summary:
     "The run crashed without a captured error, so the cause isn't conclusive from the available signals.",
   category: "unknown",
@@ -265,21 +270,21 @@ export const lowConfidenceDiagnosis: DiagnosisBlock = {
 export const revisedDiagnosisBlocks: ViewBlock[] = [
   {
     ...lowConfidenceDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
+    id: `diagnosis-${DEMO_WORLD.failedRunId}`,
     revision: 1,
     version: VIEW_BLOCK_VERSION,
     summary: "Revision 1 — first guess, before the logs came back. Should not render.",
   },
   {
     ...externalServiceDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
+    id: `diagnosis-${DEMO_WORLD.failedRunId}`,
     revision: 2,
     version: VIEW_BLOCK_VERSION,
     summary: "Revision 2 — narrowed to the payload, still unconfirmed. Should not render.",
   },
   {
     ...fullDiagnosis,
-    id: "diagnosis-run_a1b2c3d4e5",
+    id: `diagnosis-${DEMO_WORLD.failedRunId}`,
     revision: 3,
     version: VIEW_BLOCK_VERSION,
     summary:
@@ -299,7 +304,7 @@ export const offerActionsBlock: ViewBlock = {
         kind: "watch",
         spec: {
           kind: "error_recurrence",
-          fingerprint: "a1b2c3",
+          fingerprint: DEMO_FINGERPRINT,
           checkEveryMinutes: 15,
           maxHours: 6,
           note: "the TypeError in send-order-receipt",
@@ -308,7 +313,7 @@ export const offerActionsBlock: ViewBlock = {
     },
     {
       label: "See its failed runs",
-      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/runs" },
+      intent: { kind: "navigate", target: demoRunsUri() },
     },
   ],
 };
@@ -318,7 +323,7 @@ export const offerActionsBlock: ViewBlock = {
  * ------------------------------------------------------------------ */
 
 const WATCH_BLOCK_ENVELOPE = {
-  id: "watch:watch_demo",
+  id: `watch:${DEMO_WATCH_ID}`,
   revision: 0,
   version: VIEW_BLOCK_VERSION,
 } as const;
@@ -326,8 +331,8 @@ const WATCH_BLOCK_ENVELOPE = {
 /** Both opt-ins took effect: the happy path a submit with `notifyExternally` produces. */
 export const watchConfirmationBlock: WatchResultBlockPayload = {
   ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation("email-sends"),
-    watchId: "watch_demo",
+    spec: queueWatchRecommendation(DEMO_WORLD.queue),
+    watchId: DEMO_WATCH_ID,
     followUp: { investigateOnAttention: true, external: { status: "enabled" } },
   }),
   ...WATCH_BLOCK_ENVELOPE,
@@ -339,8 +344,8 @@ export const watchConfirmationBlock: WatchResultBlockPayload = {
  */
 export const watchDegradedConfirmationBlock: WatchResultBlockPayload = {
   ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation("email-sends"),
-    watchId: "watch_demo",
+    spec: queueWatchRecommendation(DEMO_WORLD.queue),
+    watchId: DEMO_WATCH_ID,
     unavailable: true,
     followUp: {
       investigateOnAttention: true,
@@ -352,7 +357,7 @@ export const watchDegradedConfirmationBlock: WatchResultBlockPayload = {
 
 export const watchSatisfiedBlock: WatchResultBlockPayload = {
   ...watchOneShotBlockBody({
-    spec: runWatchRecommendation("run_a1b2c3d4e5"),
+    spec: runWatchRecommendation(DEMO_WORLD.failedRunId),
     result: "satisfied",
   }),
   ...WATCH_BLOCK_ENVELOPE,

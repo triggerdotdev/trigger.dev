@@ -5,6 +5,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, it } from "vitest";
+import { DEMO_MARKER } from "~/components/dashboard-agent/demo";
 import { planDiagnosisActions } from "~/components/dashboard-agent/diagnosis-actions";
 import { renderableActions } from "~/components/dashboard-agent/view-actions";
 import { reportTrust } from "~/presenters/v3/reports/report-layout";
@@ -74,6 +75,55 @@ describe("gallery view blocks", () => {
       docsUrl: (target) => target,
     });
     expect(planned.map((action) => action.kind)).toEqual(["view_run", "docs"]);
+  });
+});
+
+/**
+ * `demo.test.ts` marks the demo layer's ids. These fixtures are hand-written next to the
+ * route, so the same rule is asserted here: a `view_run` or `navigate` the presenter can
+ * resolve must land on demo data, never on somebody's environment.
+ */
+describe("gallery identifiers", () => {
+  // The digit keeps discriminants like `error_recurrence` out; ids always carry one.
+  const IDENTIFIER = /^(run|error|watch|queue|proj|env|deployment)_[a-z0-9]*\d|^trigger:\/\//i;
+
+  function strings(value: unknown, path = "fixture"): Array<[string, string]> {
+    if (typeof value === "string") return [[value, path]];
+    if (Array.isArray(value)) return value.flatMap((item, i) => strings(item, `${path}[${i}]`));
+    if (value && typeof value === "object") {
+      return Object.entries(value).flatMap(([key, item]) => strings(item, `${path}.${key}`));
+    }
+    return [];
+  }
+
+  const fixtures = {
+    fullDiagnosis,
+    externalServiceDiagnosis,
+    lowConfidenceDiagnosis,
+    revisedDiagnosisBlocks,
+    offerActionsBlock,
+    watchConfirmationBlock,
+    watchDegradedConfirmationBlock,
+    watchSatisfiedBlock,
+    untrustworthyReport,
+  };
+
+  it("names no resource that isn't demo data", () => {
+    for (const [value, path] of strings(fixtures)) {
+      if (!IDENTIFIER.test(value)) continue;
+      expect(value, path).toContain(DEMO_MARKER);
+    }
+  });
+
+  it("watches only demo subjects, whatever shape their id takes", () => {
+    for (const action of offerActionsBlock.actions) {
+      if (action.intent.kind !== "watch") continue;
+      const subject = Object.entries(action.intent.spec).filter(([key]) =>
+        ["queue", "runId", "fingerprint"].includes(key)
+      );
+      expect(subject.length).toBeGreaterThan(0);
+      for (const [key, value] of subject) expect(String(value), key).toContain(DEMO_MARKER);
+    }
   });
 });
 
