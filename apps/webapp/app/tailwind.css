@@ -209,6 +209,7 @@
   --color-aiMetrics: var(--color-green-500);
   --color-errors: var(--color-amber-500);
   --color-agents: var(--color-purple-500);
+  --color-webhooks: var(--color-teal-500);
   --color-sessions: var(--color-pink-500);
   --color-playgrounds: var(--color-fuchsia-500);
   --color-models: var(--color-violet-500);

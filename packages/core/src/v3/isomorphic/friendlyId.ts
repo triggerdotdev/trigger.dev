@@ -267,6 +267,8 @@ export const BulkActionId = new IdUtil("bulk");
 export const AttemptId = new IdUtil("attempt");
 export const ErrorId = new IdUtil("error");
 export const SessionId = new IdUtil("session");
+export const WebhookEndpointId = new IdUtil("wh"); // wh_...
+export const WebhookDeliveryId = new IdUtil("whd"); // whd_...
 
 export class IdGenerator {
   private alphabet: string;

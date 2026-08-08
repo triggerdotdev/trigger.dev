@@ -25,6 +25,7 @@
       "./logger": "./src/logger.ts",
       "./utils": "./src/utils.ts",
       "./schemas": "./src/schemas/index.ts",
+      "./webhooks": "./src/v3/webhooks/index.ts",
       "./types": "./src/types.ts",
       "./v3": "./src/v3/index.ts",
       "./v3/tracer": "./src/v3/tracer.ts",
@@ -73,6 +74,9 @@
       ],
       "schemas": [
         "dist/commonjs/schemas/index.d.ts"
+      ],
+      "webhooks": [
+        "dist/commonjs/v3/webhooks/index.d.ts"
       ],
       "types": [
         "dist/commonjs/types.d.ts"
@@ -295,6 +299,17 @@
       "require": {
         "types": "./dist/commonjs/schemas/index.d.ts",
         "default": "./dist/commonjs/schemas/index.js"
+      }
+    },
+    "./webhooks": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/webhooks/index.ts",
+        "types": "./dist/esm/v3/webhooks/index.d.ts",
+        "default": "./dist/esm/v3/webhooks/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/webhooks/index.d.ts",
+        "default": "./dist/commonjs/v3/webhooks/index.js"
       }
     },
     "./types": {

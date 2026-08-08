@@ -4,6 +4,8 @@ import type {
   SkillManifest,
   SkillMetadata,
   TaskManifest,
+  WebhookManifest,
+  WebhookMetadata,
   WorkerManifest,
 } from "../schemas/index.js";
 import {
@@ -96,5 +98,27 @@ export class NoopResourceCatalog implements ResourceCatalog {
 
   getSkillManifest(id: string): SkillManifest | undefined {
     return undefined;
+  }
+
+  registerWebhookMetadata(webhook: WebhookMetadata): void {
+    // noop
+  }
+  listWebhookManifests(): Array<WebhookManifest> {
+    return [];
+  }
+  getWebhookManifest(id: string): WebhookManifest | undefined {
+    return undefined;
+  }
+  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return [];
+  }
+  registerDeclaredSessionWebhook(id: string): void {
+    // noop
+  }
+  markSessionWebhookClaimed(id: string): void {
+    // noop
+  }
+  listUnclaimedSessionWebhooks(): Array<string> {
+    return [];
   }
 }

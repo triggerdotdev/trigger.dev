@@ -52,7 +52,7 @@ export class TestPresenter extends BasePresenter {
         SELECT bwt.id, version, slug, "filePath", bwt."friendlyId", bwt."triggerSource"
         FROM latest_workers
         JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
-        WHERE bwt."triggerSource" != 'AGENT'
+        WHERE bwt."triggerSource" NOT IN ('AGENT')
         ORDER BY slug ASC;`;
     } else {
       const currentDeployment = await findCurrentWorkerDeployment({ environmentId: envId });

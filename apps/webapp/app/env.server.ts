@@ -290,6 +290,11 @@ const EnvironmentSchema = z
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
+    // Webhook feature data-plane DB (WebhookEndpoint + WebhookDelivery). Unset -> the webhook
+    // clients reuse the main prisma / $replica, so this is connection-neutral until you split.
+    WEBHOOK_DATABASE_URL: z.string().optional(),
+    WEBHOOK_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    WEBHOOK_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
@@ -1766,6 +1771,65 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     SCHEDULE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    WEBHOOK_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    WEBHOOK_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    WEBHOOK_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+    WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+    WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENABLED: z.string().default("0"),
+
+    WEBHOOK_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    WEBHOOK_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    WEBHOOK_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    WEBHOOK_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+    WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
+    WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
+    WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
+    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
+
+    // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
+    WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENDPOINT_CACHE_MAX_SIZE: z.coerce.number().int().default(10_000),
+
+    WEBHOOK_INGRESS_ENABLED: z.string().default("1"),
+
+    // Public origin for the webhook ingress URL shown to users / returned by the API. Defaults to the
+    // API origin; set to a dedicated host (e.g. https://webhook.trigger.dev) when one is fronted.
+    WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
+    WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
+    WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_TOKENS: z.coerce.number().int().default(300),
+    WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+    WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
@@ -1922,6 +1986,47 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Shares Redis with the runs replicator for leader locking but has its own
+    // slot and publication so the two consume independently. The source table is
+    // a partitioned parent, so the publication is created with
+    // publish_via_partition_root.
+    WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1"),
+    WEBHOOK_DELIVERIES_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1_publication"),
+    WEBHOOK_DELIVERIES_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(500),
+    WEBHOOK_DELIVERIES_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    WEBHOOK_DELIVERIES_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    WEBHOOK_DELIVERIES_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_STRATEGY: z
+      .enum(["insert", "insert_async"])
+      .default("insert"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),

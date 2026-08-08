@@ -7,6 +7,8 @@ import {
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
+  type WebhookDatabase,
+  type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
@@ -48,6 +50,8 @@ export type {
   PrismaClientOrTransaction,
   PrismaTransactionOptions,
   PrismaReplicaClient,
+  WebhookDatabase,
+  WebhookReplicaDatabase,
 };
 
 // Boundary logger for transac(): skips an error the client extension already
@@ -159,7 +163,9 @@ type DatasourceLabel =
   | "legacy-run-ops-writer"
   | "legacy-run-ops-replica"
   | "run-ops-writer"
-  | "run-ops-replica";
+  | "run-ops-replica"
+  | "webhook-writer"
+  | "webhook-replica";
 
 function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
   return client.$extends({
@@ -220,6 +226,52 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
         captureInfrastructureErrors(tagDatasource("control-plane-replica", replica))
       )
     : prisma;
+});
+
+/**
+ * Webhook feature data-plane seam. The whole webhook feature (WebhookEndpoint + WebhookDelivery)
+ * can run on a dedicated Postgres via WEBHOOK_DATABASE_URL; unset reuses the main prisma instance,
+ * so single-DB installs open no extra pool.
+ */
+export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
+  if (!env.WEBHOOK_DATABASE_URL) {
+    return prisma;
+  }
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "webhook-writer",
+      buildWriterClient({
+        url: env.WEBHOOK_DATABASE_URL,
+        clientType: "webhook-writer",
+        connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+      })
+    )
+  );
+});
+
+/**
+ * Webhook reader chain: an explicit webhook replica, else the webhook writer once split (no
+ * separate replica yet), else the main $replica when the feature is not split.
+ */
+export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica", () => {
+  if (env.WEBHOOK_DATABASE_READ_REPLICA_URL) {
+    return markReadReplicaClient(
+      captureInfrastructureErrors(
+        tagDatasource(
+          "webhook-replica",
+          buildReplicaClient({
+            url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
+            clientType: "webhook-reader",
+            connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+          })
+        )
+      )
+    );
+  }
+  if (env.WEBHOOK_DATABASE_URL) {
+    return webhookPrisma;
+  }
+  return $replica;
 });
 
 export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
@@ -527,18 +579,20 @@ function buildDriverAdapterPool(
 export function buildWriterClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
 }): PrismaClient {
   const databaseUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connectionLimit: connectionLimit.toString(),
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,
@@ -711,18 +765,20 @@ function getReplicaClient() {
 export function buildReplicaClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
 }): PrismaClient {
   const replicaUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connectionLimit: connectionLimit.toString(),
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,

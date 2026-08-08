@@ -168,6 +168,20 @@ export async function createPostgresContainer(
   return { url: container.getConnectionUri(), container, network };
 }
 
+/**
+ * A second schema-loaded Postgres on its own container (no shared network alias), for tests that
+ * exercise a split across two databases. The caller owns stopping the returned container.
+ */
+export async function createStandalonePostgresContainer() {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
+  return { url: container.getConnectionUri(), container };
+}
+
 export async function createClickHouseContainer(network: StartedNetwork) {
   const container = await withCiResourceLimits(new ClickHouseContainer())
     .withNetwork(network)

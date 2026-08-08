@@ -191,6 +191,33 @@ function initializeSessionsReplicationClickhouseClient(): ClickHouse {
   });
 }
 
+const defaultWebhookDeliveriesReplicationClickhouseClient = singleton(
+  "webhookDeliveriesReplicationClickhouseClient",
+  initializeWebhookDeliveriesReplicationClickhouseClient
+);
+
+function initializeWebhookDeliveriesReplicationClickhouseClient(): ClickHouse {
+  if (!env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL) {
+    // Webhook deliveries replication worker gates on this URL; factory may still resolve "webhook_deliveries_replication" for tests.
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "webhook-deliveries-replication",
+    keepAlive: {
+      enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Run-engine PendingVersionSystem lookup (`RUN_ENGINE_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRunEngineClickhouseClient = singleton(
@@ -398,6 +425,7 @@ export type ClientType =
   | "events"
   | "replication"
   | "sessions_replication"
+  | "webhook_deliveries_replication"
   | "logs"
   | "query"
   | "admin"
@@ -439,6 +467,9 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
       });
     case "sessions_replication":
+    // Webhook deliveries replication shares the sessions replication ClickHouse
+    // client config (same infra, both replication writers).
+    case "webhook_deliveries_replication":
       return new ClickHouse({
         url: parsed.toString(),
         name,
@@ -566,6 +597,8 @@ export class ClickhouseFactory {
           return defaultRunsReplicationClickhouseClient;
         case "sessions_replication":
           return defaultSessionsReplicationClickhouseClient;
+        case "webhook_deliveries_replication":
+          return defaultWebhookDeliveriesReplicationClickhouseClient;
         case "logs":
           return defaultLogsClickhouseClient;
         case "query":

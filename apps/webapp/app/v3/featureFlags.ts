@@ -5,6 +5,7 @@ export const FEATURE_FLAG = {
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
+  hasWebhooksAccess: "hasWebhooksAccess",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -41,6 +42,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.

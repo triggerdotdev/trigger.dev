@@ -6,6 +6,8 @@ import type {
   TaskFileMetadata,
   TaskMetadata,
   TaskManifest,
+  WebhookManifest,
+  WebhookMetadata,
   WorkerManifest,
   QueueManifest,
 } from "../schemas/index.js";
@@ -41,6 +43,11 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _queueMetadata: Map<string, QueueManifest> = new Map();
   private _skillMetadata: Map<string, SkillMetadata> = new Map();
   private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _webhookMetadata: Map<string, WebhookMetadata> = new Map();
+  private _webhookFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _webhookIdCollisions: Array<{ id: string; filePaths: string[] }> = [];
+  private _declaredSessionWebhooks: Set<string> = new Set();
+  private _claimedSessionWebhooks: Set<string> = new Set();
   private _sentinelContextWarned: Set<string> = new Set();
   // Task ids registered more than once (across files and task types). Tasks are
   // keyed by id below, so a second registration silently overwrites the first;
@@ -353,6 +360,70 @@ export class StandardResourceCatalog implements ResourceCatalog {
       ...metadata,
       ...fileMetadata,
     };
+  }
+
+  registerWebhookMetadata(webhook: WebhookMetadata): void {
+    if (!this._currentFileContext) {
+      return;
+    }
+    if (!webhook.id) {
+      return;
+    }
+
+    if (
+      this._webhookMetadata.has(webhook.id) &&
+      this._currentFileContext.filePath !== NO_FILE_CONTEXT
+    ) {
+      const existingFilePath = this._webhookFileMetadata.get(webhook.id)?.filePath;
+      const currentFilePath = this._currentFileContext.filePath;
+      const collision = this._webhookIdCollisions.find((c) => c.id === webhook.id);
+      if (collision) {
+        collision.filePaths.push(currentFilePath);
+      } else {
+        this._webhookIdCollisions.push({
+          id: webhook.id,
+          filePaths: [existingFilePath ?? currentFilePath, currentFilePath],
+        });
+      }
+    }
+
+    this._webhookFileMetadata.set(webhook.id, { ...this._currentFileContext });
+    this._webhookMetadata.set(webhook.id, webhook);
+  }
+
+  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this._webhookIdCollisions;
+  }
+
+  registerDeclaredSessionWebhook(id: string): void {
+    if (!id) return;
+    this._declaredSessionWebhooks.add(id);
+  }
+
+  markSessionWebhookClaimed(id: string): void {
+    if (!id) return;
+    this._claimedSessionWebhooks.add(id);
+  }
+
+  listUnclaimedSessionWebhooks(): Array<string> {
+    return [...this._declaredSessionWebhooks].filter((id) => !this._claimedSessionWebhooks.has(id));
+  }
+
+  listWebhookManifests(): Array<WebhookManifest> {
+    const result: Array<WebhookManifest> = [];
+    for (const [id, metadata] of this._webhookMetadata) {
+      const fileMetadata = this._webhookFileMetadata.get(id);
+      if (!fileMetadata) continue;
+      result.push({ ...metadata, ...fileMetadata });
+    }
+    return result;
+  }
+
+  getWebhookManifest(id: string): WebhookManifest | undefined {
+    const metadata = this._webhookMetadata.get(id);
+    const fileMetadata = this._webhookFileMetadata.get(id);
+    if (!metadata || !fileMetadata) return undefined;
+    return { ...metadata, ...fileMetadata };
   }
 
   disable() {
