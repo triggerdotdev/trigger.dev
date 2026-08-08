@@ -4,7 +4,7 @@ import { AgentChart } from "./AgentChart";
 import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
-import { blockKey, latestRevisionBlocks } from "./view-blocks";
+import { blockKey, latestRevisionEntries } from "./view-blocks";
 
 // Unknown block types are skipped, so an older or newer agent cannot render
 // arbitrary content. A new block needs a `case` here and a `viewBlockSchema` member.
@@ -25,10 +25,10 @@ export function ViewBlocks({
   if (!Array.isArray(blocks)) return null;
   return (
     <div className="space-y-2">
-      {latestRevisionBlocks(blocks).map((block) => {
-        // Index into the original array, so collapsing a revision above an
+      {latestRevisionEntries(blocks).map(({ block, index }) => {
+        // The original array's index, so collapsing a revision above an
         // envelope-less block can't shift its key.
-        const key = blockKey(block, blocks.indexOf(block));
+        const key = blockKey(block, index);
         switch (block.type) {
           case "diagnosis":
             return <RunDiagnosisCard key={key} block={block} />;

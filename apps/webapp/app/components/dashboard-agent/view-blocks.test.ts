@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { blockIdentity, blockKey, latestRevisionBlocks } from "./view-blocks";
+import {
+  blockIdentity,
+  blockKey,
+  latestRevisionBlocks,
+  latestRevisionEntries,
+} from "./view-blocks";
 
 const enveloped = (id: string, revision: number, type = "diagnosis") => ({ type, id, revision });
 
@@ -59,6 +64,39 @@ describe("latestRevisionBlocks", () => {
 
   it("tolerates a non-array", () => {
     expect(latestRevisionBlocks(undefined as unknown as unknown[])).toEqual([]);
+  });
+});
+
+/**
+ * The positions are what `ViewBlocks` keys envelope-less blocks on. Looking one up afterwards
+ * with `indexOf` answers with the first equal block, so two of them collide on one React key.
+ */
+describe("latestRevisionEntries", () => {
+  it("reports each survivor's position in the original array", () => {
+    const legacy = { type: "chart" };
+    const blocks = [enveloped("d1", 1), legacy, enveloped("d1", 2)];
+    expect(latestRevisionEntries(blocks)).toEqual([
+      { block: legacy, index: 1 },
+      { block: enveloped("d1", 2), index: 2 },
+    ]);
+  });
+
+  it("gives two occurrences of the same block object distinct positions", () => {
+    const repeated = { type: "chart" };
+    const entries = latestRevisionEntries([repeated, repeated]);
+    expect(entries.map((entry) => entry.index)).toEqual([0, 1]);
+    expect(new Set(entries.map((entry) => blockKey(entry.block, entry.index))).size).toBe(2);
+  });
+
+  it("agrees with `latestRevisionBlocks` on which blocks survive", () => {
+    const blocks = [enveloped("d1", 1), { type: "chart" }, enveloped("d1", 2)];
+    expect(latestRevisionEntries(blocks).map((entry) => entry.block)).toEqual(
+      latestRevisionBlocks(blocks)
+    );
+  });
+
+  it("tolerates a non-array", () => {
+    expect(latestRevisionEntries(undefined as unknown as unknown[])).toEqual([]);
   });
 });
 
