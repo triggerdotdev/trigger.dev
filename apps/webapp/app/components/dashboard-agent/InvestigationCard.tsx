@@ -122,7 +122,7 @@ function InvestigationActions({
       <ChatActionsRow>
         {actions.map((action, i) => (
           <Button
-            key={action.kind}
+            key={i}
             variant={i === 0 ? "primary/small" : "secondary/small"}
             onClick={() => onIntent(action.intent)}
           >

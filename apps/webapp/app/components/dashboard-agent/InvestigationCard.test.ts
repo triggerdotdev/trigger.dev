@@ -1,3 +1,4 @@
+import { investigationCapabilitiesSchema } from "@internal/dashboard-agent-contracts";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -37,5 +38,31 @@ describe("InvestigationCard purity", () => {
 
   it("renders nothing action-shaped without a host to hand intents to", () => {
     expect(source).toMatch(/if \(!onIntent \|\| actions\.length === 0\) return null;/);
+  });
+});
+
+describe("InvestigationCard action rows", () => {
+  const twoOfAKind = {
+    version: 1,
+    actions: [
+      { kind: "ask_follow_up", label: "Why the retries?", intent: { kind: "ask", prompt: "Why?" } },
+      {
+        kind: "ask_follow_up",
+        label: "Why the timeouts?",
+        intent: { kind: "ask", prompt: "How?" },
+      },
+    ],
+  };
+
+  it("can be handed two actions of the same kind", () => {
+    const parsed = investigationCapabilitiesSchema.safeParse(twoOfAKind);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.actions).toHaveLength(2);
+  });
+
+  // Structural: there is no DOM in this suite, so the key is read off the source.
+  it("keys the rows by position, which two of a kind cannot collide on", () => {
+    const row = source.match(/actions\.map\(\(action, i\) => \([\s\S]*?key=\{(.+?)\}/);
+    expect(row?.[1]).toBe("i");
   });
 });
