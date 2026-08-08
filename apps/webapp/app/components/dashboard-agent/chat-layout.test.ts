@@ -101,4 +101,27 @@ describe("chat-layout enforcement", () => {
       expect(source).not.toMatch(/bg-indigo-\d/);
     });
   });
+
+  /**
+   * Structural guard, not behavioural proof: the webapp has no DOM test environment, so nothing
+   * here lays the panel out or scrolls it. It asserts the class combination that loses the top
+   * of an overflowing column is absent — `justify-center` on a scroll container centres by
+   * distributing free space, and negative free space overflows past the scroll origin, where a
+   * child's `m-auto` collapses to zero instead.
+   */
+  describe("scrolling panes", () => {
+    const SCROLLERS = ["DashboardAgentHero.tsx"];
+
+    it.each(SCROLLERS)("%s centres an overflowing column with auto margins", (file) => {
+      const source = read(file);
+      const scrollLines = source
+        .split("\n")
+        .filter((line) => line.includes("overflow-y-auto") || line.includes("overflow-auto"));
+      expect(scrollLines.length).toBeGreaterThan(0);
+      for (const line of scrollLines) {
+        expect(line, line.trim()).not.toMatch(/\bjustify-center\b/);
+      }
+      expect(source).toMatch(/\bm-auto\b/);
+    });
+  });
 });

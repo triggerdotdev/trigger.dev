@@ -19,9 +19,11 @@ export function DashboardAgentHero({
   dismissedIds?: string[];
   composer?: React.ReactNode;
 }) {
+  // Centred by the child's `m-auto`, not by `justify-center`: auto margins give up their space
+  // once the content outgrows the panel, so the heading stays scrollable to.
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-      <div className="flex w-full max-w-2xl flex-col items-center gap-5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="m-auto flex w-full max-w-2xl flex-col items-center gap-5">
         <div className="flex flex-col items-center gap-1.5 text-center">
           <Header1 className="flex items-center gap-2">
             <AgentMonoLogo size={22} decorative />
