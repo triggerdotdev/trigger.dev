@@ -525,10 +525,18 @@ export function DashboardAgentPanel({
 
   return (
     <div
+      ref={panelRef}
       className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
       // A React handler, not a global hotkey, so Esc stays scoped to the panel.
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented) return;
+        if (
+          !escapeClosesPanel({
+            key: event.key,
+            defaultPrevented: event.defaultPrevented,
+            targetInsidePanel: panelRef.current?.contains(event.target as Node) ?? false,
+          })
+        )
+          return;
         event.preventDefault();
         onClose();
       }}
