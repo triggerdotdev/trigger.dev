@@ -213,9 +213,9 @@ const popoverArrowTriggerVariants = {
   },
   primary: {
     trigger:
-      "bg-indigo-600 border border-indigo-500 text-text-bright hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
-    text: "text-text-bright hover:text-white",
-    icon: "text-text-bright",
+      "bg-indigo-600 border border-indigo-500 text-white hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
+    text: "text-white",
+    icon: "text-white",
   },
   secondary: {
     trigger:

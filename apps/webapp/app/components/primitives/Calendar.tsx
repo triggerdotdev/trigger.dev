@@ -104,7 +104,7 @@ export function Calendar({
         range_start: "day-range-start rounded-l-md",
         range_end: "day-range-end rounded-r-md",
         selected:
-          "bg-indigo-600 text-text-bright hover:bg-indigo-600 hover:text-text-bright focus:bg-indigo-600 focus:text-text-bright rounded-md",
+          "bg-indigo-600 text-white hover:bg-indigo-600 hover:text-white focus:bg-indigo-600 focus:text-white rounded-md",
         today: "bg-background-raised text-text-bright rounded-md",
         outside:
           "day-outside text-text-dimmed opacity-50 aria-selected:bg-background-raised/50 aria-selected:text-text-dimmed aria-selected:opacity-30",
