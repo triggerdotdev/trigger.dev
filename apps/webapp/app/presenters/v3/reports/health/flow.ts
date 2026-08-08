@@ -41,9 +41,12 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
   const flowMetrics = FLOW_METRIC_IDS.map((id) => metricById(metrics, id));
   const severity = maxSeverity(...flowMetrics.map((m) => m.severity));
 
-  // `pending.now` is a placeholder here, so no cause, attribution or recommendation may hang off it.
+  // `pending.now` is a placeholder here, so no cause tree may hang off it. What `runs` measured still
+  // stands: only a flow with nothing measurably wrong is unassessable, the rest reports its symptom.
   if (isPendingUnknown(input)) {
-    return { type: "flow", severity, reason: FLOW_UNMEASURED, metricIds: FLOW_METRIC_IDS };
+    return isOk(severity)
+      ? { type: "flow", severity, reason: FLOW_UNMEASURED, metricIds: FLOW_METRIC_IDS }
+      : fallbackFlow(flowMetrics, severity);
   }
 
   if (isOk(severity)) {

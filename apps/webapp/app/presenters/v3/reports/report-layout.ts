@@ -99,8 +99,8 @@ export const REPORT_SECTION_ORDER = [
 export type ReportSectionId = (typeof REPORT_SECTION_ORDER)[number];
 
 /**
- * Reasons that mean "we can't say" rather than a verdict. Their finding renders headline-only:
- * every number behind it is untrustworthy or a placeholder, and printing one invites acting on it.
+ * Reasons that mean "we can't say" rather than a verdict, so their finding renders headline-only.
+ * A measured finding never carries one: an unmeasured input costs its own metric, not the verdict.
  */
 const UNASSESSABLE_REASONS = new Set(["unknown", "flow_unmeasured"]);
 

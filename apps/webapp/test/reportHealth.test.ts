@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
+import { buildReportLayout, REPORT_GLYPH } from "~/presenters/v3/reports/report-layout";
+import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import {
   interpret,
   isPendingIncreasing,
@@ -577,6 +579,71 @@ describe("an unmeasurable backlog is not a healthy backlog", () => {
     expect(md).toContain("Flow unknown — queue depth unavailable");
     expect(md).not.toContain("pending 0");
     expect(md).not.toContain("🟢 Flow healthy");
+  });
+});
+
+describe("an unmeasured input does not silence a measured finding", () => {
+  // The depth is a placeholder, but start latency is measured off `runs` and is 43x its normal.
+  const unmeasuredDepthCritLatency: HealthInput = {
+    ...INPUT_B,
+    pending: { now: 0, series: [], estimated: true, availability: "unknown" },
+    startLatency: {
+      p95Ms: 300_000,
+      normalP95Ms: 7000,
+      series: [7000, 40_000, 120_000, 240_000, 300_000],
+    },
+  };
+
+  /** The two surfaces of one report: what `format=json` claims, and what the layout both text and card render says. */
+  function surfaces(input: HealthInput) {
+    const vm = interpret(input);
+    return { vm, layout: buildReportLayout(vm, healthMessages), md: renderReportMarkdown(vm) };
+  }
+
+  it("the rendered verdict and the JSON severity say the same thing", () => {
+    const { vm, layout } = surfaces(unmeasuredDepthCritLatency);
+
+    expect(vm.summary.severity).toBe("crit");
+    // The property: neither surface may be calmer than the other.
+    expect(layout.headline.severity).toBe(vm.summary.severity);
+    expect(layout.headline.tone).toBe(vm.summary.severity);
+    expect(layout.headline.glyph).toBe(REPORT_GLYPH.crit);
+  });
+
+  it("keeps the measured evidence that earned the severity in the text", () => {
+    const { layout, md } = surfaces(unmeasuredDepthCritLatency);
+
+    expect(layout.hero?.expanded).toBe(true);
+    expect(layout.hero?.metrics.map((m) => m.id)).toContain("start_latency_p95");
+    expect(md).toContain("start latency");
+    expect(md).toContain("p95 5m");
+    expect(layout.reads.length).toBeGreaterThan(0);
+    expect(md).not.toContain("→ nothing to do");
+  });
+
+  it("still refuses to conclude anything about the depth it could not measure", () => {
+    const { vm, md } = surfaces(unmeasuredDepthCritLatency);
+    const flow = vm.findings.find((f) => f.type === "flow")!;
+
+    expect(vm.metrics.find((m) => m.id === "pending")!.availability).toBe("unknown");
+    expect(vm.metrics.find((m) => m.id === "pending")!.severity).toBe("ok");
+    // No cause, attribution or drain ETA may be built on the placeholder.
+    expect(flow.attribution).toBeUndefined();
+    expect(flow.anomalyWindow).toBeUndefined();
+    expect(vm.footer.map((f) => f.code)).not.toContain("do_nothing_drains");
+    expect(md).not.toContain("pending 0");
+    expect(vm.facts).toMatchObject({ trustworthy: false, untrustworthyReason: "flow_unmeasured" });
+  });
+
+  it("still says 'we can't say' when the measured inputs are the ones with nothing to report", () => {
+    const { vm, layout } = surfaces({
+      ...INPUT_B,
+      pending: { now: 0, series: [], estimated: true, availability: "unknown" },
+    });
+
+    expect(vm.summary.severity).toBe("ok");
+    expect(layout.headline.tone).toBe("neutral");
+    expect(layout.headline.phrase).toBe("Flow unknown — queue depth unavailable");
   });
 });
 
