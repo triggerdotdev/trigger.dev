@@ -15,7 +15,10 @@ const listeners = new Set<() => void>();
 function read(): string[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    // Anything else under this key is another writer's; keep only what we can compare.
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
   } catch {
     // Storage unavailable; treated as "nothing known yet".
     return [];
