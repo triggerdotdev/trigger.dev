@@ -16,6 +16,7 @@ export function ViewBlocks({
   resolveUri,
   pagePaths,
   answered = false,
+  watchOfferedInTurn = false,
 }: {
   blocks: ViewBlock[];
   onIntent?: (intent: AgentIntent) => void;
@@ -23,10 +24,13 @@ export function ViewBlocks({
   pagePaths?: Record<string, string>;
   /** The turn kept answering after this card, so "keep digging" has nothing to ask for. */
   answered?: boolean;
+  /** A card in another of this turn's parts already offers the watch; see `view-actions`. */
+  watchOfferedInTurn?: boolean;
 }) {
   if (!Array.isArray(blocks)) return null;
   const entries = latestRevisionEntries(blocks);
-  const watchOfferedOnCard = cardAlreadyOffersWatch(entries.map((entry) => entry.block));
+  const watchOfferedOnCard =
+    watchOfferedInTurn || cardAlreadyOffersWatch(entries.map((entry) => entry.block));
   return (
     <div className="space-y-2">
       {entries.map(({ block, index }) => {
