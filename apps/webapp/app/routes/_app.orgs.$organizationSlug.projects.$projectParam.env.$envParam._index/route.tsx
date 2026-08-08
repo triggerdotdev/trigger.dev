@@ -803,7 +803,7 @@ export const myChat = chat.agent({
   },
 });`;
 
-const STANDARD_TASK_CODE = `import { schedules, task } from "@trigger.dev/sdk";
+const STANDARD_TASK_CODE = `import { task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -812,7 +812,7 @@ export const helloWorld = task({
   },
 });`;
 
-const SCHEDULED_TASK_CODE = `
+const SCHEDULED_TASK_CODE = `import { schedules } from "@trigger.dev/sdk";
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
