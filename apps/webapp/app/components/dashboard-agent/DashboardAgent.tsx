@@ -22,6 +22,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
+import { nextVisibleChat } from "./unread-counts";
 import { startWakePolling } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
@@ -96,6 +97,16 @@ export function DashboardAgent({
   }, []);
   // A wake in the on-screen chat toasts but must not light the dot.
   const visibleChat = useRef<string | null>(null);
+
+  // Switching environment re-runs the layout loader but does not remount it, so the seeds
+  // above would keep the old environment's counts.
+  const seededEnvironment = useRef(environment.id);
+  useEffect(() => {
+    if (seededEnvironment.current === environment.id) return;
+    seededEnvironment.current = environment.id;
+    setUnreadWakes(initialUnreadWakes);
+    setUnreadWork(initialUnreadWork);
+  }, [environment.id, initialUnreadWakes, initialUnreadWork]);
   // Read lazily so SSR always renders the side panel.
   const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
 
@@ -236,13 +247,12 @@ export function DashboardAgent({
     };
   }, [hasAccess, watching, actionPath, setPanelOpen, openChat]);
 
-  // Zeroes the dot right away; the poll restores the truth if another chat has one.
+  // Zeroes the wake dot right away; the poll restores the truth if another chat has one. The
+  // work count is not touched here: the panel derives it from the chat list.
   const markChatRead = useCallback(
-    async (chatId: string) => {
-      visibleChat.current = chatId;
+    async (chatId: string, options: { leaving: boolean }) => {
+      visibleChat.current = nextVisibleChat(chatId, options);
       setUnreadWakes(0);
-      // Opening a chat is what makes its work read, so the dot goes with it.
-      setUnreadWork((count) => Math.max(0, count - 1));
       const body = new FormData();
       body.set("intent", "read");
       body.set("chatId", chatId);
