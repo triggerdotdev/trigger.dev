@@ -4,7 +4,11 @@
  */
 
 import { type Watch } from "@internal/dashboard-agent-db";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type PrismaClientOrTransaction,
+  type ProjectAlertChannel,
+  type RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -177,6 +181,90 @@ async function resolveWatchAlertOwnership(
   return { email: user.email, deduplicationKey: watchAlertDeduplicationKey(user.email) };
 }
 
+/** How many times a lost race is retried before the subscribe is reported as failed. */
+const SUBSCRIBE_ATTEMPTS = 3;
+
+function withoutDuplicates<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list : [...list, value];
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002"
+  );
+}
+
+/**
+ * Put this environment type on the user's watch-alert channel, creating the channel if there
+ * is none. One channel per (email, project), so subscribing in a second environment must add
+ * to the list rather than replace it — replacing silently stops the first one's mail.
+ *
+ * The update is conditional on the lists the read saw, so two environments subscribing at
+ * once cannot drop each other's addition: the loser sees no updated row and reads again.
+ */
+export async function subscribeChannelToWatchAlerts(params: {
+  userId: string;
+  email: string;
+  deduplicationKey: string;
+  environmentType: RuntimeEnvironmentType;
+  project: { id: string; externalRef: string };
+}): Promise<Pick<ProjectAlertChannel, "id" | "type" | "enabled" | "environmentTypes">> {
+  const { userId, email, deduplicationKey, environmentType, project } = params;
+  const name = `Watch alerts for ${email}`;
+
+  for (let attempt = 0; attempt < SUBSCRIBE_ATTEMPTS; attempt++) {
+    const existing = await prisma.projectAlertChannel.findFirst({
+      where: { projectId: project.id, deduplicationKey },
+      select: { id: true, alertTypes: true, environmentTypes: true },
+    });
+
+    if (!existing) {
+      try {
+        // The service also checks this user's membership of the project.
+        return await new CreateAlertChannelService().call(project.externalRef, userId, {
+          name,
+          alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
+          environmentTypes: [environmentType],
+          deduplicationKey,
+          channel: { type: "EMAIL", email },
+        });
+      } catch (error) {
+        // Another environment created the channel first; the next attempt adds onto it.
+        if (!isUniqueConstraintError(error)) throw error;
+        continue;
+      }
+    }
+
+    const environmentTypes = withoutDuplicates(existing.environmentTypes, environmentType);
+    const alertTypes = withoutDuplicates(existing.alertTypes, DASHBOARD_AGENT_WATCH_ALERT_TYPE);
+
+    const { count } = await prisma.projectAlertChannel.updateMany({
+      // Compare-and-swap on the lists the read returned.
+      where: {
+        id: existing.id,
+        projectId: project.id,
+        deduplicationKey,
+        environmentTypes: { equals: existing.environmentTypes },
+        alertTypes: { equals: existing.alertTypes },
+      },
+      data: {
+        name,
+        alertTypes,
+        environmentTypes,
+        type: "EMAIL",
+        properties: { email },
+        enabled: true,
+      },
+    });
+
+    if (count > 0) {
+      return { id: existing.id, type: "EMAIL", enabled: true, environmentTypes };
+    }
+  }
+
+  throw new Error("Could not subscribe to watch alerts: the channel kept changing underneath");
+}
+
 export type SubscribeToWatchAlertsResult =
   | { ok: true; email: string }
   | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" };
@@ -207,13 +295,12 @@ export async function subscribeUserToWatchAlerts(params: {
   const owner = await resolveWatchAlertOwnership(userId);
   if (!owner) return { ok: false, reason: "user_not_found" };
 
-  const service = new CreateAlertChannelService();
-  await service.call(environment.project.externalRef, userId, {
-    name: `Watch alerts for ${owner.email}`,
-    alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
-    environmentTypes: [environment.type as never],
+  await subscribeChannelToWatchAlerts({
+    userId,
+    email: owner.email,
     deduplicationKey: owner.deduplicationKey,
-    channel: { type: "EMAIL", email: owner.email },
+    environmentType: environment.type as RuntimeEnvironmentType,
+    project: environment.project,
   });
 
   return { ok: true, email: owner.email };
