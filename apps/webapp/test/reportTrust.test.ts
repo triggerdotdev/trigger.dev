@@ -49,6 +49,35 @@ describe("report layout — why the numbers can't be trusted", () => {
     expect(trust?.note).not.toContain("stale");
   });
 
+  // A caveat may only discount the input it names. These pin the claim, not the wording.
+  it("does not call measured run aggregates a snapshot when only the telemetry feed is missing", () => {
+    const note = trustFor("telemetry_absent")!.note;
+
+    // What is actually missing: a feed to date the report by.
+    expect(note).toMatch(/current|fresh/i);
+    // What is not: the aggregates below, which are measured over the window either way.
+    expect(note).not.toMatch(/snapshot|point-in-time|informational only|rather than a measured/i);
+  });
+
+  it("names the queue depth as the unmeasured input, not a metric the report measured", () => {
+    const note = trustFor("flow_unmeasured")!.note;
+
+    expect(note).toMatch(/queue depth|backlog/i);
+    expect(note).not.toMatch(/throughput|start latency|failures|duration/i);
+    expect(note).not.toMatch(/informational only/i);
+  });
+
+  it("caveat and headline blame the same unmeasured input", () => {
+    const note = trustFor("flow_unmeasured")!.note;
+    const headline = messages.statementMessage("flow", "crit", "flow_unmeasured");
+
+    const names = (text: string) => ({
+      depth: /queue depth/i.test(text),
+      throughput: /throughput/i.test(text),
+    });
+    expect(names(note)).toEqual(names(headline));
+  });
+
   it("gives the three untrustworthy states three different badges", () => {
     const badges = ["telemetry_stale", "telemetry_absent", "flow_unmeasured"].map(
       (reason) => trustFor(reason)?.badge

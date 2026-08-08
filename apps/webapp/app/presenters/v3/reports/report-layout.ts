@@ -57,7 +57,8 @@ export type LayoutTrust = { badge: string; note: string };
 
 /**
  * Why a report's numbers can't be trusted, in its own words. Stale, absent and unmeasured are three
- * different states, and a snapshot with no telemetry feed must not be called stale.
+ * different states: a snapshot with no telemetry feed is not stale, and a caveat may only discount
+ * the input it names — the aggregates the report did measure stay measured.
  */
 const TRUST_CAVEATS: Record<string, LayoutTrust> = {
   telemetry_stale: {
@@ -66,11 +67,11 @@ const TRUST_CAVEATS: Record<string, LayoutTrust> = {
   },
   telemetry_absent: {
     badge: "no telemetry",
-    note: "No telemetry reached this report, so the numbers below are a point-in-time snapshot rather than a measured window.",
+    note: "No telemetry feed reached this report, so how current it is can't be confirmed; the numbers below are still measured over the window.",
   },
   flow_unmeasured: {
     badge: "unmeasured",
-    note: "Throughput could not be measured over this window, so the numbers below are informational only.",
+    note: "The queue depth could not be measured, so the backlog can't be assessed; the other numbers below are measured.",
   },
 };
 
