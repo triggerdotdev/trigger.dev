@@ -43,6 +43,10 @@ export const indexerToWorkerMessages = {
     version: z.literal("v1").default("v1"),
     collisions: z.array(z.object({ id: z.string(), filePaths: z.array(z.string()) })),
   }),
+  WEBHOOKS_FAILED_TO_INDEX: z.object({
+    version: z.literal("v1").default("v1"),
+    collisions: z.array(z.object({ id: z.string(), filePaths: z.array(z.string()) })),
+  }),
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 
