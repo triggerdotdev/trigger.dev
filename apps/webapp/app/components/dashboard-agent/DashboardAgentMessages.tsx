@@ -50,7 +50,7 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
   return Array.isArray(p.output?.blocks) ? { blocks: p.output!.blocks! } : null;
 }
 
-function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
+export function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   const spec = viewSpecFor(part);
   if (spec) return spec.blocks;
   const hostBlocks = hostViewBlocks(part);
@@ -63,6 +63,15 @@ function hostViewBlocks(part: UIMessage["parts"][number]): unknown[] | null {
   const p = part as { type: string; data?: { blocks?: unknown[] } };
   if (p.type !== "data-view") return null;
   return Array.isArray(p.data?.blocks) ? p.data!.blocks! : null;
+}
+
+// `blocksFor` minus the report branch, which the winner pass would only throw away:
+// a report block is always `type: "report"`, so it can never be an investigation.
+// Reports are parsed by the turn that renders them, not once per streamed token.
+function investigationBlocksFor(part: UIMessage["parts"][number]): unknown[] | null {
+  const spec = viewSpecFor(part);
+  if (spec) return spec.blocks;
+  return hostViewBlocks(part);
 }
 
 type InvestigationRef = { id: string; revision: number };
@@ -78,7 +87,7 @@ export function winningInvestigationOccurrences(messages: UIMessage[]): Map<stri
   const best = new Map<string, { revision: number; occurrence: string }>();
   for (const message of messages) {
     (message.parts ?? []).forEach((part, partIndex) => {
-      for (const block of blocksFor(part) ?? []) {
+      for (const block of investigationBlocksFor(part) ?? []) {
         const ref = investigationRef(block);
         if (!ref) continue;
         const current = best.get(ref.id);
