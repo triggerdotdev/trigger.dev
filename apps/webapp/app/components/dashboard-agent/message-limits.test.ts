@@ -7,7 +7,9 @@ import {
   MAX_MESSAGE_BODY_BYTES,
   MAX_MESSAGE_CHARS,
   MAX_MESSAGE_PARTS,
+  MESSAGE_ANNOUNCE_STEP,
   MESSAGE_CHARS_WARN_AT,
+  MESSAGE_LIMIT_REACHED_ANNOUNCEMENT,
   messageCountAnnouncement,
 } from "./message-limits";
 
@@ -71,13 +73,47 @@ describe("messageCountAnnouncement", () => {
     expect(messageCountAnnouncement(MESSAGE_CHARS_WARN_AT - 1)).toBe("");
   });
 
-  it("reads the count out from the warning point on", () => {
+  it("speaks up on reaching the warning point, and again on the limit", () => {
     expect(messageCountAnnouncement(MESSAGE_CHARS_WARN_AT)).toBe(
-      `${MESSAGE_CHARS_WARN_AT} / ${MAX_MESSAGE_CHARS}`
+      `${MAX_MESSAGE_CHARS - MESSAGE_CHARS_WARN_AT} characters left`
     );
-    expect(messageCountAnnouncement(MAX_MESSAGE_CHARS)).toBe(
-      `${MAX_MESSAGE_CHARS} / ${MAX_MESSAGE_CHARS}`
-    );
+    expect(messageCountAnnouncement(MAX_MESSAGE_CHARS)).toBe(MESSAGE_LIMIT_REACHED_ANNOUNCEMENT);
+  });
+
+  it("changes rarely enough to be worth listening to", () => {
+    const spoken = new Set<string>();
+    let changes = 0;
+    let previous = messageCountAnnouncement(MESSAGE_CHARS_WARN_AT - 1);
+
+    for (let length = MESSAGE_CHARS_WARN_AT - 1; length <= MAX_MESSAGE_CHARS; length++) {
+      const announcement = messageCountAnnouncement(length);
+      if (announcement !== previous) changes++;
+      previous = announcement;
+      if (announcement) spoken.add(announcement);
+    }
+
+    // One per step across the warning band, plus the limit itself.
+    const expected = (MAX_MESSAGE_CHARS - MESSAGE_CHARS_WARN_AT) / MESSAGE_ANNOUNCE_STEP + 1;
+    expect(spoken.size).toBe(expected);
+    expect(changes).toBe(expected);
+    expect(spoken).toContain(MESSAGE_LIMIT_REACHED_ANNOUNCEMENT);
+  });
+
+  it("steps down through the band in order", () => {
+    // Typing one character can only ever move the announcement forward.
+    const seen: string[] = [];
+    for (let length = MESSAGE_CHARS_WARN_AT; length <= MAX_MESSAGE_CHARS; length++) {
+      const announcement = messageCountAnnouncement(length);
+      if (seen.at(-1) !== announcement) seen.push(announcement);
+    }
+
+    expect(seen).toEqual([
+      "800 characters left",
+      "600 characters left",
+      "400 characters left",
+      "200 characters left",
+      MESSAGE_LIMIT_REACHED_ANNOUNCEMENT,
+    ]);
   });
 });
 
