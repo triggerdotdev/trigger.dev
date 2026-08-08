@@ -93,15 +93,15 @@ export async function $transaction<R>(
   try {
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
-    if (isPrismaKnownError(error)) {
-      if (
-        retryCodes.includes(error.code) &&
-        typeof options?.maxRetries === "number" &&
-        attempt < options.maxRetries
-      ) {
-        return $transaction(prisma, fn, prismaError, options, attempt + 1);
-      }
+    if (
+      isPrismaRetriableError(error) &&
+      typeof options?.maxRetries === "number" &&
+      attempt < options.maxRetries
+    ) {
+      return $transaction(prisma, fn, prismaError, options, attempt + 1);
+    }
 
+    if (isPrismaKnownError(error)) {
       prismaError(error);
 
       if (options?.swallowPrismaErrors) {
