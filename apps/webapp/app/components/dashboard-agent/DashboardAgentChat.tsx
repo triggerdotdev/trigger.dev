@@ -7,7 +7,7 @@ import {
   type SuggestedPrompt,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
-import { useNavigate } from "@remix-run/react";
+import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "~/components/primitives/Toast";
@@ -27,6 +27,7 @@ import {
   hasOpenInvestigation,
   pollSettledTranscript,
 } from "./settled-transcript";
+import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
@@ -99,6 +100,7 @@ export function DashboardAgentChat({
 }) {
   const [input, setInput] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
 
   const prefilledSeq = useRef<number | undefined>(undefined);
@@ -315,6 +317,23 @@ export function DashboardAgentChat({
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
+
+  // The path this chat last rendered on. React never unmounts on a page teardown, so an
+  // unmount whose live URL has moved is the router having navigated out from under it.
+  const renderedPathRef = useRef(location.pathname);
+  renderedPathRef.current = location.pathname;
+
+  const teardownRef = useRef<() => void>(() => {});
+  teardownRef.current = () => {
+    if (status !== "streaming" && status !== "submitted") return;
+    const reason = unmountTeardown({
+      renderedPath: renderedPathRef.current,
+      livePath: window.location.pathname,
+    });
+    if (!teardownCancelsTurn(reason)) return;
+    stop();
+  };
+  useEffect(() => () => teardownRef.current(), []);
 
   // Read by the settle effect, which must not re-run when the transcript changes.
   const messagesRef = useRef(messages);
