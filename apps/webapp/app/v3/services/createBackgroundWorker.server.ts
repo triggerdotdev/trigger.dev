@@ -755,6 +755,7 @@ export async function syncDeclarativeWebhooks(
           verifierArtifact: wh.verifierArtifact as unknown as Prisma.InputJsonValue,
           secretProvisioning: wh.secretProvisioning ?? "either",
           metadata: (wh.metadata ?? {}) as unknown as Prisma.InputJsonValue,
+          ...(found.manuallyDeactivatedAt === null ? { status: "ACTIVE" as const } : {}),
           ...filterData,
         },
       });

@@ -64,7 +64,8 @@ async function seedEndpoint(
   prisma: PrismaClient,
   base: { organizationId: string; projectId: string; runtimeEnvironmentId: string },
   handlerWebhookId: string,
-  status: "ACTIVE" | "INACTIVE"
+  status: "ACTIVE" | "INACTIVE",
+  manuallyDeactivatedAt: Date | null = null
 ) {
   const suffix = Math.random().toString(36).slice(2, 10);
   return prisma.webhookEndpoint.create({
@@ -80,6 +81,7 @@ async function seedEndpoint(
       routingTarget: { type: "task", taskId: "handle-stripe" },
       verifierArtifact: { kind: "bundle", bundleUrl: "https://example.test/v.js", hash: "h" },
       status,
+      manuallyDeactivatedAt,
     },
   });
 }
@@ -154,7 +156,8 @@ describe("syncDeclarativeWebhooks status reconciliation", () => {
           runtimeEnvironmentId: environment.id,
         },
         "declared-webhook",
-        "INACTIVE"
+        "INACTIVE",
+        new Date()
       );
 
       await syncDeclarativeWebhooks(
@@ -167,6 +170,37 @@ describe("syncDeclarativeWebhooks status reconciliation", () => {
 
       const after = await prisma.webhookEndpoint.findUniqueOrThrow({ where: { id: endpoint.id } });
       expect(after.status).toBe("INACTIVE");
+      expect(after.manuallyDeactivatedAt).not.toBeNull();
+    }
+  );
+
+  containerTest(
+    "a redeploy re-activates an endpoint auto-deactivated when it was removed then re-declared",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedProjectWithEnv(prisma);
+      const worker = await seedWorkerWithTask(prisma, project, environment, "handle-stripe");
+      const endpoint = await seedEndpoint(
+        prisma,
+        {
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        },
+        "declared-webhook",
+        "INACTIVE",
+        null
+      );
+
+      await syncDeclarativeWebhooks(
+        [makeWebhookResource("declared-webhook", "handle-stripe")],
+        worker,
+        asEnv(environment),
+        prisma,
+        prisma
+      );
+
+      const after = await prisma.webhookEndpoint.findUniqueOrThrow({ where: { id: endpoint.id } });
+      expect(after.status).toBe("ACTIVE");
     }
   );
 

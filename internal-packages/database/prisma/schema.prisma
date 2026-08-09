@@ -804,6 +804,10 @@ model WebhookEndpoint {
   signingSecretKey String?
 
   status    WebhookEndpointStatus @default(ACTIVE)
+  /// When an operator disabled the endpoint via the dashboard/API. Null means the declarative sync
+  /// owns the status: a redeploy that re-declares a previously-removed (auto-deactivated) webhook
+  /// reactivates it. Non-null means the operator disabled it, so the sync leaves the status alone.
+  manuallyDeactivatedAt DateTime?
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 

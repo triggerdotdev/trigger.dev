@@ -25,7 +25,7 @@ const { action, loader } = createActionApiRoute(
 
     await webhookPrisma.webhookEndpoint.update({
       where: { id: endpoint.id },
-      data: { status: "INACTIVE" },
+      data: { status: "INACTIVE", manuallyDeactivatedAt: new Date() },
     });
     webhookEngine.invalidateEndpoint(endpoint.opaqueId);
 
