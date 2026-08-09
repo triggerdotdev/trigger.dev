@@ -18,7 +18,7 @@ import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
-import { appendRunFilters, navigateDestination } from "./navigate-target";
+import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
 import { retryAction } from "./retry-action";
