@@ -563,15 +563,15 @@ export function ReportSparkline({
  * chart start on the same vertical whatever the value's width.
  */
 /**
- * Below a 19rem container the fixed tracks no longer fit beside the value, so the
+ * Below a 22rem container the fixed tracks no longer fit beside the value, so the
  * sparkline drops to its own line. The columns never change, so the value, delta
  * and note stay on the same verticals at every panel width.
  */
 const METRIC_ROW_CLASS =
-  "grid grid-cols-[7rem_minmax(0,1fr)_2.75rem_6.5rem] items-center gap-x-2 @max-[19rem]:grid-cols-[7rem_minmax(0,1fr)_2.75rem] @max-[19rem]:gap-y-1.5";
+  "grid grid-cols-[7rem_minmax(0,1fr)_2.75rem_6.5rem] items-center gap-x-2 @max-[22rem]:grid-cols-[7rem_minmax(0,1fr)_2.75rem] @max-[22rem]:gap-y-1.5";
 
 /** The sparkline cell: its own full-width line once the row goes narrow. */
-const SPARK_CELL_CLASS = "@max-[19rem]:col-span-3 @max-[19rem]:justify-self-end";
+const SPARK_CELL_CLASS = "@max-[22rem]:col-span-3 @max-[22rem]:justify-self-end";
 
 // Labels are never truncated: the column is sized for the longest one and
 // anything longer wraps.
@@ -667,7 +667,7 @@ export function ReportMetricRow({
         ) : (
           // Keeps the column occupied so a series-less metric doesn't pull the
           // rows out of alignment.
-          <span aria-hidden className="@max-[19rem]:hidden" />
+          <span aria-hidden className="@max-[22rem]:hidden" />
         )}
       </li>
 

@@ -2180,6 +2180,7 @@ describe("the view-model tools don't echo the view back to the model", () => {
           aggregation: "max",
           normal: 40,
           severity: "crit",
+          series: { points: Array.from({ length: 60 }, (_, i) => i * 3), kind: "measured" },
           breakdown: Object.fromEntries(
             Array.from({ length: 60 }, (_, i) => [`task/queue-${i}`, i * 7])
           ),
@@ -2187,8 +2188,8 @@ describe("the view-model tools don't echo the view back to the model", () => {
         },
       ],
       facts: { trustworthy: true, throughput: 12 },
+      links: [{ key: "queues", label: "Queues", url: "/queues" }],
       footer: { code: "report.footer" },
-      seriesOmitted: true,
       uri: "trigger://proj_abc/env_abc/report/health",
     };
 
@@ -2207,6 +2208,8 @@ describe("the view-model tools don't echo the view back to the model", () => {
     expect(serialized).not.toContain("breakdown");
     expect(serialized).not.toContain("observations");
     expect(serialized).not.toContain("footer");
+    expect(serialized).not.toContain("series");
+    expect(serialized).not.toContain("links");
     expect(serialized.length).toBeLessThan(JSON.stringify(output).length / 2);
   });
 
