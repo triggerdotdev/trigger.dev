@@ -50,6 +50,10 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
   const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam, endpointParam } = ParamsSchema.parse(params);
 
+  if (env.WEBHOOK_ENABLED !== "1") {
+    return { success: false, error: "Webhooks are not enabled on this instance." };
+  }
+
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) return { success: false, error: "Project not found" };
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
@@ -189,7 +193,7 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
     case "handshake":
       return { success: true, httpStatus: 200, handshake: true, responseBody: result.body };
     case "duplicate": {
-      const friendlyId = `whd_${result.deliveryId}`;
+      const friendlyId = result.deliveryId;
       if (shouldRedirect) throw redirect(deliveryPathFor(friendlyId));
       return {
         success: true,

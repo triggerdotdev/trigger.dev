@@ -521,10 +521,10 @@ function LiveDeliveriesTable({
 
   const onClickShowNewDeliveries = () => {
     dismissNewDeliveries();
-    if (searchParams.has("cursor") || searchParams.has("direction")) {
+    if (searchParams.has("deliveriesCursor") || searchParams.has("deliveriesDirection")) {
       setSearchParams((prev) => {
-        prev.delete("cursor");
-        prev.delete("direction");
+        prev.delete("deliveriesCursor");
+        prev.delete("deliveriesDirection");
         return prev;
       });
       return;
