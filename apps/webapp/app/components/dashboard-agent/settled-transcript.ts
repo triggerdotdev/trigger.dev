@@ -1,4 +1,4 @@
-import { liveInvestigation } from "./progress-line";
+import { inFlightToolName, liveInvestigation } from "./progress-line";
 
 /**
  * Re-reading the stored transcript once a turn settles.
@@ -27,6 +27,15 @@ export function mergeSettledMessages<T extends Identified>(current: T[], fetched
 /** Whether the transcript still resolves to a card mid-investigation. */
 export function hasOpenInvestigation(messages: ReadonlyArray<unknown>): boolean {
   return liveInvestigation(messages as never) !== null;
+}
+
+/**
+ * Whether the transcript still reads as mid-turn. A stream that dies without
+ * `turn-complete` leaves the tool part it was on dangling forever, so an open card is
+ * not the only shape a re-read has to recover from.
+ */
+export function transcriptLooksUnfinished(messages: ReadonlyArray<unknown>): boolean {
+  return hasOpenInvestigation(messages) || inFlightToolName(messages as never) !== null;
 }
 
 /**
