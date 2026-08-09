@@ -1,4 +1,5 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
 import { decodeRunsCursor, encodeRunsCursor } from "../runsRepository/runsCursor.server";
 import {
@@ -281,14 +282,23 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * A point lookup: pure Postgres, never ClickHouse. `friendlyId` is `whd_` + the row id, so we
    * strip the prefix and hit the composite-PK index (scoped by environment). ClickHouse is for
    * aggregations and for filtering/ordering a list into ids, never for selecting a row's columns.
+   *
+   * `WebhookDelivery` is RANGE-partitioned on `createdAt`, so a bare `id` predicate can't prune and
+   * probes every partition. The delivery id is time-encoded (see `WebhookDeliveryId`) with the same
+   * timestamp the engine stores as `createdAt`, so we recover it from the id and add it as an exact
+   * predicate to prune to the row's partition. A legacy id that doesn't decode falls back to the
+   * unpruned lookup.
    */
   async getDelivery(options: GetWebhookDeliveryOptions): Promise<DetailedWebhookDelivery | null> {
-    const id = options.friendlyId.startsWith(WEBHOOK_DELIVERY_ID_PREFIX)
-      ? options.friendlyId.slice(WEBHOOK_DELIVERY_ID_PREFIX.length)
-      : options.friendlyId;
+    const id = WebhookDeliveryId.toId(options.friendlyId);
+    const createdAt = WebhookDeliveryId.parseTimestamp(options.friendlyId);
 
     return this.options.prisma.webhookDelivery.findFirst({
-      where: { id, runtimeEnvironmentId: options.environmentId },
+      where: {
+        id,
+        runtimeEnvironmentId: options.environmentId,
+        ...(createdAt ? { createdAt } : {}),
+      },
       select: DELIVERY_DETAIL_SELECT,
     });
   }

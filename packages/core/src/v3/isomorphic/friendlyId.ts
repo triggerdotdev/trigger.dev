@@ -268,7 +268,76 @@ export const AttemptId = new IdUtil("attempt");
 export const ErrorId = new IdUtil("error");
 export const SessionId = new IdUtil("session");
 export const WebhookEndpointId = new IdUtil("wh"); // wh_...
-export const WebhookDeliveryId = new IdUtil("whd"); // whd_...
+
+/**
+ * Webhook delivery id: time-encoded so the partition key (`createdAt`) is recoverable from the id.
+ * The body is `base32hex(6-byte big-endian unix ms timestamp + 9 CSPRNG bytes)` (24 chars) plus a
+ * version char "1", prefixed `whd_`. `WebhookDelivery` is RANGE-partitioned on `createdAt`, and the
+ * engine sets the row's `createdAt` to the mint timestamp, so a point lookup by id can recover the
+ * partition from the id alone instead of threading `createdAt` through every caller.
+ */
+const WEBHOOK_DELIVERY_ID_PREFIX = "whd";
+const WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES = 6;
+const WEBHOOK_DELIVERY_ID_CORE_BYTES = 15;
+const WEBHOOK_DELIVERY_ID_CORE_LENGTH = 24;
+const WEBHOOK_DELIVERY_ID_VERSION = "1";
+const WEBHOOK_DELIVERY_ID_BODY_LENGTH = 25;
+
+function webhookDeliveryIdBody(idOrFriendlyId: string): string {
+  return idOrFriendlyId.startsWith(`${WEBHOOK_DELIVERY_ID_PREFIX}_`)
+    ? idOrFriendlyId.slice(WEBHOOK_DELIVERY_ID_PREFIX.length + 1)
+    : idOrFriendlyId;
+}
+
+export const WebhookDeliveryId = {
+  /**
+   * Mint a delivery id. The row's `createdAt` MUST be set to the returned `timestamp` so the id's
+   * embedded timestamp equals the partition key that {@link WebhookDeliveryId.parseTimestamp} recovers.
+   */
+  generate(): { id: string; friendlyId: string; timestamp: Date } {
+    const timestamp = new Date();
+    const core = new Uint8Array(WEBHOOK_DELIVERY_ID_CORE_BYTES);
+    let ms = timestamp.getTime();
+    for (let i = WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES - 1; i >= 0; i--) {
+      core[i] = ms % 256;
+      ms = Math.floor(ms / 256);
+    }
+    getRandomValues(core.subarray(WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES));
+    const id = `${base32hexEncode(core)}${WEBHOOK_DELIVERY_ID_VERSION}`;
+    return { id, friendlyId: `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`, timestamp };
+  },
+
+  toFriendlyId(id: string): string {
+    return id.startsWith(`${WEBHOOK_DELIVERY_ID_PREFIX}_`)
+      ? id
+      : `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`;
+  },
+
+  toId(idOrFriendlyId: string): string {
+    return webhookDeliveryIdBody(idOrFriendlyId);
+  },
+
+  /**
+   * Decode the mint timestamp (== the row's `createdAt` partition key) from an id or friendlyId.
+   * Returns `undefined` if the value is not a well-formed time-encoded id.
+   */
+  parseTimestamp(idOrFriendlyId: string): Date | undefined {
+    const body = webhookDeliveryIdBody(idOrFriendlyId);
+    if (body.length !== WEBHOOK_DELIVERY_ID_BODY_LENGTH) return undefined;
+    if (body[WEBHOOK_DELIVERY_ID_CORE_LENGTH] !== WEBHOOK_DELIVERY_ID_VERSION) return undefined;
+    let core: Uint8Array;
+    try {
+      core = base32hexDecode(body.slice(0, WEBHOOK_DELIVERY_ID_CORE_LENGTH));
+    } catch {
+      return undefined;
+    }
+    let ms = 0;
+    for (let i = 0; i < WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES; i++) {
+      ms = ms * 256 + (core[i] ?? 0);
+    }
+    return new Date(ms);
+  },
+};
 
 export class IdGenerator {
   private alphabet: string;

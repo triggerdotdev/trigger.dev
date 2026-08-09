@@ -229,8 +229,7 @@ export class WebhookEngine {
         : undefined;
 
     const gateKey = `webhookdedupe:${endpoint.id}:${idempotencyKey}`;
-    const { id, friendlyId } = WebhookDeliveryId.generate();
-    const createdAt = new Date();
+    const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
 
     const claimed = await this.frontGate.set(
       gateKey,
@@ -377,8 +376,7 @@ export class WebhookEngine {
         return { outcome: "unsupported_target" };
       }
 
-      const { id, friendlyId } = WebhookDeliveryId.generate();
-      const createdAt = new Date();
+      const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
 
       await this.prisma.webhookDelivery.create({
         data: {
