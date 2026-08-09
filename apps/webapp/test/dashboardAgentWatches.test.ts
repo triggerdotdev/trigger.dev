@@ -2301,6 +2301,49 @@ describe("the watch card submit", () => {
   );
 
   postgresTest(
+    "converging on a watch that already fired confirms the outcome, not 'watching'",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-converge-fired");
+      await seedChat(seeded);
+
+      let reservedWatchId = "";
+      await expect(
+        submit({
+          seeded,
+          chatId: "chat_1",
+          create: async (createParams) => {
+            reservedWatchId = createParams.watchId!;
+            await createDashboardAgentWatch(createParams);
+            throw new Error("died after the watch was created");
+          },
+        })
+      ).rejects.toThrow("died after the watch was created");
+
+      // The watch ran and woke the chat before anyone retried the submit.
+      await transitionWatchCondition(ctx.agentDb, {
+        id: reservedWatchId,
+        resolution: "condition_met",
+        observedOutcome: { kind: "run_start", verified: true, status: "EXECUTING", started: true },
+      });
+
+      const retry = await submit({ seeded, chatId: "chat_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      // Still one row, still the same watch: adoption is not refused.
+      expect(retry.watchId).toBe(reservedWatchId);
+      expect(await countWatchRows(prisma, "chat_1")).toBe(1);
+
+      const parts = retry.messages.at(-1)?.parts ?? [];
+      const block = (parts[0] as any).data.blocks[0];
+      expect(block.outcome).toBe("already_true");
+      expect(block.headline).not.toContain("Watching");
+      expect(block.lifetime).toBeNull();
+    }
+  );
+
+  postgresTest(
     "a refusal that wins the race leaves no live watch behind",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());

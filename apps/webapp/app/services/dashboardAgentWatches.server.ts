@@ -37,6 +37,7 @@ import {
   watchIdentity,
   watchOneShotBlockBody,
   watchRequestSentence,
+  watchResolvedBlockBody,
   watchSubjectLabel,
   type WatchDraft,
   type WatchExternalNotification,
@@ -609,8 +610,27 @@ export async function submitDashboardAgentWatch(params: {
     unavailable: boolean;
     external: WatchExternalNotification;
     confirmed?: WatchDraft;
+    /** The row this settles against, when the caller already read it. */
+    watch?: Watch | null;
   }) => {
     const confirmed = args.confirmed ?? draft;
+    // A retry can settle against a watch that already ran: say what it found, not "watching".
+    const resolution = args.watch?.status !== "active" ? args.watch?.resolution : null;
+    if (args.watch && resolution) {
+      return confirmationMessage({
+        id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${args.watchId}`,
+        blockId: args.watchId,
+        body: watchResolvedBlockBody({
+          watchId: args.watchId,
+          resolved: {
+            kind: confirmed.spec.kind,
+            identity: args.watch.identity,
+            resolution,
+            observed: args.watch.observedOutcome,
+          },
+        }),
+      });
+    }
     return confirmationMessage({
       id: `${WATCH_CONFIRMATION_MESSAGE_ID_PREFIX}${args.watchId}`,
       blockId: args.watchId,
@@ -649,6 +669,7 @@ export async function submitDashboardAgentWatch(params: {
       return settle({
         confirmation: watchingConfirmation({
           watchId: recorded.watchId,
+          watch: await getWatch(dashboardAgentDb, { id: recorded.watchId }),
           unavailable: recorded.unavailable,
           // Recorded, never re-decided: the confirmation already in the transcript is
           // append-once, so a second decision here would contradict it forever.
@@ -796,6 +817,8 @@ export async function submitDashboardAgentWatch(params: {
     unavailable: boolean;
     /** The watch was already there: this call adopted it rather than creating it. */
     adopted: boolean;
+    /** The adopted row. Absent when this call created the watch, so it is active. */
+    watch?: Watch | null;
   }): Promise<SubmitWatchCardResult> => {
     // Attached after the watch exists, and a failure here never fails the creation — it is
     // said out loud in the confirmation instead, and recorded so a replay repeats it.
@@ -830,6 +853,7 @@ export async function submitDashboardAgentWatch(params: {
     return settle({
       confirmation: watchingConfirmation({
         watchId: args.watchId,
+        watch: args.watch,
         unavailable: args.unavailable,
         external,
       }),
@@ -851,7 +875,12 @@ export async function submitDashboardAgentWatch(params: {
       });
     }
     // `unavailable` isn't recoverable here: it belonged to the attempt that died.
-    return settleCreated({ watchId: reserved.id, unavailable: false, adopted: true });
+    return settleCreated({
+      watchId: reserved.id,
+      unavailable: false,
+      adopted: true,
+      watch: reserved,
+    });
   }
 
   const result = await create({

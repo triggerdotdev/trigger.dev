@@ -383,7 +383,7 @@ export function DashboardAgentPanel({
     });
   }, []);
 
-  const dismissWatchCard = useCallback(() => dispatchWatchCard({ type: "dismissed" }), []);
+  const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
 
   const submitWatch = useCallback(async () => {
     const draft = watchCard.draft;

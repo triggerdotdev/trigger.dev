@@ -212,6 +212,12 @@ describe("queueAgentPageContext", () => {
     expect(agentPageContextSchema.safeParse(context).success).toBe(true);
   });
 
+  // A watch the agent proposes off this context is validated against the stored name.
+  it("names a task queue by its stored name, prefix and all", () => {
+    const context = queueAgentPageContext(queueLoaderData({ type: "task", name: "send-receipt" }));
+    expect(context?.page).toMatchObject({ kind: "queue", name: "task/send-receipt" });
+  });
+
   it("emits no saturation signal when the queue is idle under its limit", () => {
     const context = queueAgentPageContext(queueLoaderData({ running: 10, queued: 0 }));
     expect(context?.signals).toEqual([]);

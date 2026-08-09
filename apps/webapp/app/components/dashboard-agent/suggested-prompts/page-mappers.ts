@@ -4,6 +4,7 @@
  */
 import type { AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
+import { storedQueueName } from "~/components/queues/queue-name";
 import { isQueueAtCapacity, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 
 export const FRESH_FAILURE_WINDOW_MS = 30 * 60_000;
@@ -163,6 +164,7 @@ export const QUEUE_OLDEST_WAIT_WARNING_MS = OLDEST_WAIT_WARNING_MS;
 const queueLoaderDataSchema = z.object({
   queue: z.object({
     name: z.string(),
+    type: z.string(),
     paused: z.boolean().nullish(),
     running: z.number(),
     queued: z.number(),
@@ -200,7 +202,7 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
   const parsed = queueLoaderDataSchema.safeParse(data);
   if (!parsed.success) return undefined;
 
-  const { name, paused, running, queued, concurrencyLimit } = parsed.data.queue;
+  const { name, type, paused, running, queued, concurrencyLimit } = parsed.data.queue;
   const { environmentConcurrencyLimit, oldestQueuedAt, loadedAt, ckBreakdown } = parsed.data;
   const limit = concurrencyLimit ?? environmentConcurrencyLimit ?? null;
   const atCapacity = isQueueAtCapacity({ running, queued, limit });
@@ -217,7 +219,11 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
     signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
   }
 
-  return { page: { kind: "queue", name, health, paused: Boolean(paused) }, signals };
+  // The stored name, not the display one: a watch the agent proposes has to validate against it.
+  return {
+    page: { kind: "queue", name: storedQueueName({ type, name }), health, paused: Boolean(paused) },
+    signals,
+  };
 }
 
 export function deploymentsAgentPageContext(): AgentPageContext {
