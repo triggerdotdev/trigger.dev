@@ -4,9 +4,9 @@
 // call counted by a delegating wrapper around the real client.
 import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { FEATURE_FLAG, hasUnreadableTurnEvalsOverride } from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -91,5 +91,29 @@ describe("flag() override resolution", () => {
 
     expect(result).toBe(true);
     expect(calls.findFirst).toBe(1);
+  });
+});
+
+// The fall-through above is right for an entitlement and wrong for consent: judging sends the
+// turn to a third-party model, so the eval flag refuses on an override it cannot read.
+describe("hasUnreadableTurnEvalsOverride", () => {
+  it("is false when the org has no opinion", () => {
+    expect(hasUnreadableTurnEvalsOverride({})).toBe(false);
+    expect(hasUnreadableTurnEvalsOverride(null)).toBe(false);
+    expect(hasUnreadableTurnEvalsOverride([])).toBe(false);
+    expect(hasUnreadableTurnEvalsOverride({ somethingElse: "nonsense" })).toBe(false);
+  });
+
+  it("is false for a real boolean, either way", () => {
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: false })).toBe(false);
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: true })).toBe(false);
+  });
+
+  // The dangerous one: `flag()` would drop "false" and hand back the global default, which is on.
+  it("is true for a stringified boolean or any other garbage", () => {
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: "false" })).toBe(true);
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: "true" })).toBe(true);
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: 0 })).toBe(true);
+    expect(hasUnreadableTurnEvalsOverride({ [KEY]: null })).toBe(true);
   });
 });

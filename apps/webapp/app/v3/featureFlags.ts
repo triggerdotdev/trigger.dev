@@ -173,6 +173,26 @@ export function resolveInternalApiOriginEnabled({
   return globalDefault;
 }
 
+/**
+ * Whether the org set `dashboardAgentTurnEvalsEnabled` to something the schema rejects.
+ * That flag is a consent switch, not an entitlement, so an unreadable override must not fall
+ * through to the global default the way `resolveInternalApiOriginEnabled` does: the org that
+ * wrote it was trying to say something, and the only safe reading of an unknown answer is no.
+ */
+export function hasUnreadableTurnEvalsOverride(orgFeatureFlags: unknown): boolean {
+  if (!orgFeatureFlags || typeof orgFeatureFlags !== "object" || Array.isArray(orgFeatureFlags)) {
+    return false;
+  }
+
+  const override = (orgFeatureFlags as Record<string, unknown>)[
+    FEATURE_FLAG.dashboardAgentTurnEvalsEnabled
+  ];
+  if (override === undefined) return false;
+
+  return !FeatureFlagCatalog[FEATURE_FLAG.dashboardAgentTurnEvalsEnabled].safeParse(override)
+    .success;
+}
+
 export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }

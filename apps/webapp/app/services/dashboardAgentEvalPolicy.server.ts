@@ -5,7 +5,7 @@
 
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { FEATURE_FLAG, hasUnreadableTurnEvalsOverride } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 
 /** Judging is on unless an org turns it off. */
@@ -31,12 +31,17 @@ export async function orgAllowsDashboardAgentTurnEvals(params: {
     });
     if (!org) return false;
 
+    const overrides = (org.featureFlags as Record<string, unknown>) ?? {};
+    // `flag()` ignores an override the schema rejects and falls through to the global default,
+    // which is on — so an org that tried to turn judging off would keep being judged.
+    if (hasUnreadableTurnEvalsOverride(overrides)) return false;
+
     const flag = makeFlag();
     return Boolean(
       await flag({
         key: FEATURE_FLAG.dashboardAgentTurnEvalsEnabled,
         defaultValue: DEFAULT_TURN_EVALS_ENABLED,
-        overrides: (org.featureFlags as Record<string, unknown>) ?? {},
+        overrides,
       })
     );
   } catch (error) {
