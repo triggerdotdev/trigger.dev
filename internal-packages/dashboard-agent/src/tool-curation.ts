@@ -146,8 +146,9 @@ export function curateError(group: any) {
   };
 }
 
-// Drops the per-metric `series` arrays and `links`; `seriesOmitted` records that the
-// shape is lossy. Grades and `facts.trustworthy` survive verbatim.
+// The card's copy: everything it draws, including the per-metric `series` and the
+// `links` recommendations key into. The model's copy is trimmed separately by
+// `getReportModelOutput`, so this costs no context.
 export function curateReport(data: unknown) {
   const vm = (data ?? {}) as any;
   const facts = (vm.facts ?? {}) as any;
@@ -180,6 +181,7 @@ export function curateReport(data: unknown) {
       aggregation: m.aggregation,
       normal: m.normal,
       delta: m.delta,
+      series: m.series,
       breakdown: m.breakdown,
       annotation: m.annotation,
       // "unknown" means `value` is a placeholder, not a measurement. "measured" is the
@@ -200,8 +202,8 @@ export function curateReport(data: unknown) {
         dlqDelta: flowEvidence.dlqDelta,
       },
     },
+    links: vm.links,
     footer: vm.footer,
-    seriesOmitted: true,
   };
 }
 
