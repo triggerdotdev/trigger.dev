@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   authenticatePat: vi.fn(),
   createOrganization: vi.fn(),
   findManyProjects: vi.fn(),
+  env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" } as {
+    SESSION_SECRET: string;
+    ORG_CREATION_API_ENABLED?: string;
+  },
 }));
 
 vi.mock("~/services/rbac.server", () => ({
@@ -25,9 +29,7 @@ vi.mock("~/db.server", () => ({
   prisma: { project: { findMany: mocks.findManyProjects } },
   $replica: {},
 }));
-vi.mock("~/env.server", () => ({
-  env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" },
-}));
+vi.mock("~/env.server", () => ({ env: mocks.env }));
 vi.mock("~/models/organization.server", () => ({ createOrganization: mocks.createOrganization }));
 vi.mock("~/services/personalAccessToken.server", () => ({
   updateLastAccessedAtIfStale: vi.fn(),
@@ -69,6 +71,30 @@ async function createOrg(cap: string[]): Promise<{ status: number; body: any }> 
     request: new Request("https://api.trigger.dev/api/v1/orgs", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "New Org" }),
+    }),
+    params: {},
+    context: {},
+  } as any);
+  return { status: response.status, body: await response.json() };
+}
+
+// An ordinary PAT, paired with an ability that denies everything. Nothing on this route may
+// consult it — the route has no org to scope a gate to, and on cloud the plugin returns a
+// deny-shaped ability when there is no org context.
+async function createOrgWithPat(): Promise<{ status: number; body: any }> {
+  mocks.authenticatePat.mockImplementation(async () => ({
+    ok: true,
+    userId: USER_ID,
+    tokenId: "pat_1",
+    lastAccessedAt: new Date(),
+    ability: { can: () => false, canSuper: () => false },
+  }));
+
+  const response = await action({
+    request: new Request("https://api.trigger.dev/api/v1/orgs", {
+      method: "POST",
+      headers: { Authorization: "Bearer tr_pat_1234", "Content-Type": "application/json" },
       body: JSON.stringify({ title: "New Org" }),
     }),
     params: {},
@@ -144,6 +170,29 @@ describe("creating an organization over the API", () => {
     expect(result.status).toBe(403);
     expect(result.body.code).toBe("unauthorized");
     expect(mocks.createOrganization).not.toHaveBeenCalled();
+  });
+
+  it("admits an ordinary PAT without consulting its ability", async () => {
+    const result = await createOrgWithPat();
+
+    expect(result.status).toBe(201);
+    expect(result.body.slug).toBe("new-org");
+  });
+
+  // The env gate runs before the capability gate, so an install with the API disabled tells
+  // every caller the same thing: the route does not exist. A capped token must not learn from a
+  // 403 that it would have been the only thing standing in its way.
+  it("hides the route from a capped token when the API is disabled", async () => {
+    mocks.env.ORG_CREATION_API_ENABLED = undefined;
+
+    try {
+      const result = await createOrg(["read:all"]);
+
+      expect(result.status).toBe(404);
+      expect(mocks.createOrganization).not.toHaveBeenCalled();
+    } finally {
+      mocks.env.ORG_CREATION_API_ENABLED = "1";
+    }
   });
 
   it("still admits a token that carries the universal grant", async () => {
