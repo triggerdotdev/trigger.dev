@@ -1,17 +1,23 @@
 import type { UIMessage } from "@ai-sdk/react";
-import { memo } from "react";
+import { memo, useMemo, useRef } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { MessageBubble, renderPart } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import { reuseWinners } from "./investigation-winners";
 import { ViewBlocks } from "./view-catalog";
 
-// The shared MessageBubble renders `step-start` parts as a dashed "step"
-// separator — useful in the run inspector / playground, just noise in this
-// simple chat. Drop them before rendering (reference preserved when there are
-// none, so memoization still holds for those messages).
+// The shared MessageBubble renders `step-start` parts as a dashed "step" separator —
+// useful in the run inspector / playground, just noise in this simple chat.
+// Cached so a stripped message keeps its identity across renders and memoization holds.
+const strippedMessages = new WeakMap<UIMessage, UIMessage>();
+
 function stripStepParts(message: UIMessage): UIMessage {
   if (!message.parts?.some((p) => p.type === "step-start")) return message;
-  return { ...message, parts: message.parts.filter((p) => p.type !== "step-start") };
+  const cached = strippedMessages.get(message);
+  if (cached) return cached;
+  const stripped = { ...message, parts: message.parts.filter((p) => p.type !== "step-start") };
+  strippedMessages.set(message, stripped);
+  return stripped;
 }
 
 // A completed render_view tool part carries a `{ blocks }` view spec the agent
@@ -63,6 +69,14 @@ export function winningInvestigationOccurrences(messages: UIMessage[]): Map<stri
     });
   }
   return new Map([...best.entries()].map(([id, w]) => [id, w.occurrence]));
+}
+
+// The stable identity is the point: a fresh `Map` re-renders the whole transcript per token.
+function useInvestigationWinners(messages: UIMessage[]): Map<string, string> {
+  const previous = useRef<Map<string, string>>();
+  const next = useMemo(() => winningInvestigationOccurrences(messages), [messages]);
+  previous.current = reuseWinners(previous.current, next);
+  return previous.current;
 }
 
 function withoutSupersededInvestigations(
@@ -127,15 +141,17 @@ export function DashboardAgentMessages({
   error?: Error;
 }) {
   const rootRef = useAutoScrollToBottom([messages, isThinking]);
-  const investigationWinners = winningInvestigationOccurrences(messages);
+  // Must be the exact parts the bubbles render: the winners map keys by part index.
+  const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
+  const investigationWinners = useInvestigationWinners(stripped);
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div ref={rootRef} className="space-y-4 p-4">
-        {messages.map((message) => (
+        {stripped.map((message) => (
           <MemoizedMessageBubble
             key={message.id}
-            message={stripStepParts(message)}
+            message={message}
             investigationWinners={investigationWinners}
           />
         ))}
