@@ -90,15 +90,34 @@ describe("the chat scopes a turn's navigation to the page it started on", () => 
     expect(chat).not.toContain("pendingNavigateIntents(messages");
   });
 
-  it("records the path only as a turn goes in flight", () => {
-    expect(chat).toContain(
-      "if (inFlight && !turnWasInFlight.current) turnStartedPathRef.current = renderedPathRef.current;"
+  // Structural: the webapp has no DOM test environment, so the wiring is read off the source.
+  // Going in flight cannot mean "started here" — a resumed turn goes in flight too, and stamping
+  // on status handed it the current path and let it navigate.
+  it("does not infer the path from the turn going in flight", () => {
+    expect(chat).not.toContain("turnWasInFlight");
+    expect(chat).not.toMatch(
+      /status === "submitted"[\s\S]{0,160}turnStartedPathRef\.current = renderedPathRef/
     );
   });
 
+  it("stamps the path at every send, so a turn this tab only resumed leaves it null", () => {
+    const lines = chat.split("\n");
+    const sends = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => /void (sendMessage|regenerate)\(/.test(line));
+
+    expect(sends.length).toBeGreaterThan(0);
+    for (const { line, index } of sends) {
+      const preceding = lines.slice(Math.max(0, index - 5), index).join("\n");
+      expect(
+        preceding.includes("turnStartedPathRef.current = renderedPathRef.current"),
+        `no path stamped before: ${line.trim()}`
+      ).toBe(true);
+    }
+  });
+
   it("never clears the path on settle, which can share a commit with the intent", () => {
-    const assignments = [...chat.matchAll(/turnStartedPathRef\.current = /g)];
-    expect(assignments).toHaveLength(1);
+    expect(chat).not.toMatch(/turnStartedPathRef\.current = null/);
   });
 
   it("records the path before the intent effect reads it", () => {

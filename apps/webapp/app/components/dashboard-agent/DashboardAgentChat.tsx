@@ -208,10 +208,17 @@ export function DashboardAgentChat({
     });
   }, [appendedMessages, setMessages]);
 
+  // Where this tab asked for the running turn, stamped only where a turn is actually started
+  // here. A turn this tab resumed leaves it null, which is what tells `takeNavigateIntent` the
+  // tab cannot claim the user is still on the page that asked. Never cleared on settle: the
+  // navigate intent can be committed alongside the status going ready.
+  const turnStartedPathRef = useRef<string | null>(null);
+
   const sentFirst = useRef(false);
   useEffect(() => {
     if (pendingFirstMessage && !sentFirst.current) {
       sentFirst.current = true;
+      turnStartedPathRef.current = renderedPathRef.current;
       void sendMessage({ text: pendingFirstMessage });
     }
   }, [pendingFirstMessage, sendMessage]);
@@ -222,6 +229,7 @@ export function DashboardAgentChat({
       // Suggested prompts and card actions bypass the composer, so the cap is enforced here too.
       if (!trimmed || isStreaming || atMessageCap) return;
       setInput("");
+      turnStartedPathRef.current = renderedPathRef.current;
       void sendMessage({ text: trimmed });
     },
     [isStreaming, atMessageCap, sendMessage]
@@ -250,6 +258,7 @@ export function DashboardAgentChat({
     );
     if (!action) return;
     clearError();
+    turnStartedPathRef.current = renderedPathRef.current;
     if (action.kind === "regenerate") {
       void regenerate();
       return;
@@ -313,16 +322,6 @@ export function DashboardAgentChat({
     navigatedRef.current = new Set();
     pendingNavigateIntents(initialMessages, navigatedRef.current);
   }
-  // Where the running turn was asked for. Never cleared on settle: the navigate intent can be
-  // committed alongside the status going ready, and it is the started-at path it belongs to.
-  const turnStartedPathRef = useRef<string | null>(null);
-  const turnWasInFlight = useRef(false);
-  useEffect(() => {
-    const inFlight = status === "submitted" || status === "streaming";
-    if (inFlight && !turnWasInFlight.current) turnStartedPathRef.current = renderedPathRef.current;
-    turnWasInFlight.current = inFlight;
-  }, [status]);
-
   useEffect(() => {
     const target = takeNavigateIntent({
       messages,
