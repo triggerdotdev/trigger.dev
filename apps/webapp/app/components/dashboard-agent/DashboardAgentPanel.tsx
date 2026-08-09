@@ -16,6 +16,13 @@ import {
   type DashboardAgentSession,
 } from "./DashboardAgentChat";
 import { createCoalescedReload } from "./coalesced-reload";
+import {
+  forgetLastChat,
+  lastChatStorageKey,
+  readLastChat,
+  shouldPersistLastChat,
+  writeLastChat,
+} from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
@@ -34,23 +41,6 @@ import { markChatListRead, unreadWorkCount } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
-const lastChatStorageKey = (organizationId: string) =>
-  `tdev:dashboard-agent:last-chat:${organizationId}`;
-
-function readLastChat(storageKey: string): { chatId: string; path: string } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return null;
-    // Pre-path entries were the bare chat id: no page to match, so start fresh.
-    if (!raw.startsWith("{")) return null;
-    const parsed = JSON.parse(raw) as { chatId?: string; path?: string };
-    return parsed.chatId && parsed.path ? { chatId: parsed.chatId, path: parsed.path } : null;
-  } catch {
-    return null;
-  }
-}
-
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
     return JSON.stringify(pageContext);
@@ -61,6 +51,8 @@ function serializePageContext(pageContext: AgentPageContext): string | undefined
 
 type ActiveChat = {
   chatId: string;
+  // The org the chat belongs to, so a switch can't file it under the new org's key.
+  organizationId: string;
   messages: UIMessage[];
   session: DashboardAgentSession | null;
   pendingFirstMessage?: string;
@@ -208,7 +200,13 @@ export function DashboardAgentPanel({
         const data = res.ok ? ((await res.json()) as OpenedChatResponse) : undefined;
         if (seq !== openChatRequestSeq.current) return;
         const opened = resolveOpenedChat(id, data);
-        setActive(opened.kind === "gone" ? null : opened);
+        if (opened.kind === "gone") {
+          // Deleted, or another org's: drop the pointer so it can't be restored again.
+          setActive(null);
+          forgetLastChat(storageKey);
+          return;
+        }
+        setActive({ ...opened, organizationId: organization.id });
       } catch (error) {
         console.error(`Dashboard agent: failed to open chat ${id}`, error);
         toast.error("We couldn't open that chat. Try again in a moment.");
@@ -217,7 +215,7 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, claimChatSlot, toast]
+    [actionPath, claimChatSlot, organization.id, storageKey, toast]
   );
 
   const createChat = useCallback(
@@ -250,6 +248,7 @@ export function DashboardAgentPanel({
         }
         setActive({
           chatId: data.chatId,
+          organizationId: organization.id,
           messages: data.headStarted ? [userMessage] : [],
           session: { publicAccessToken: data.publicAccessToken },
           pendingFirstMessage: data.headStarted ? undefined : text,
@@ -263,7 +262,7 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, claimChatSlot, clientData, toast]
+    [actionPath, claimChatSlot, clientData, organization.id, toast]
   );
 
   const restored = useRef(false);
@@ -306,16 +305,9 @@ export function DashboardAgentPanel({
   }, [openChatRequest, openChat]);
 
   useEffect(() => {
-    if (!active?.chatId) return;
-    try {
-      window.localStorage.setItem(
-        storageKey,
-        JSON.stringify({ chatId: active.chatId, path: location.pathname })
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [active?.chatId, storageKey, location.pathname]);
+    if (!shouldPersistLastChat(active, organization.id)) return;
+    writeLastChat(storageKey, { chatId: active.chatId, path: location.pathname });
+  }, [active, organization.id, storageKey, location.pathname]);
 
   useEffect(() => {
     if (!active?.chatId) return;
