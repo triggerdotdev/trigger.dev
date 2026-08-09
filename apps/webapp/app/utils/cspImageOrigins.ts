@@ -1,16 +1,22 @@
 /**
  * The document `img-src` allowlist. Remote images are a beacon channel: rendering
- * one is the outbound request, no click needed. So the list is exact origins only —
- * no wildcard host, no bare scheme, nothing with a path.
+ * one is the outbound request, no click needed. So no wildcard host and no bare
+ * scheme. Operator-supplied entries are exact origins; a base source may pin a path
+ * to narrow the host further.
  */
 
-/** Always allowed: own origin, inline data, object URLs, and the SSO avatar hosts. */
+/**
+ * Always allowed: own origin, inline data, object URLs, the SSO avatar hosts, and the
+ * favicon endpoint org avatars are stored as (see `utils/favicon.ts`). The path pins
+ * that one endpoint — CSP matches the path and ignores the query string.
+ */
 export const BASE_IMG_SRC_SOURCES = [
   "'self'",
   "data:",
   "blob:",
   "https://avatars.githubusercontent.com",
   "https://lh3.googleusercontent.com",
+  "https://www.google.com/s2/favicons",
 ] as const;
 
 export type RejectedOrigin = { value: string; reason: string };

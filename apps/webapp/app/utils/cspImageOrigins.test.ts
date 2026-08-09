@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { faviconUrl } from "./favicon";
 import {
   BASE_IMG_SRC_SOURCES,
   buildImgSrcDirective,
   parseCspImageOrigins,
   withImgSrc,
 } from "./cspImageOrigins";
+
+/** True if a source expression in the directive would match the given image URL. */
+function directivePermits(directive: string, imageUrl: string): boolean {
+  const url = new URL(imageUrl);
+  return directive
+    .split(" ")
+    .slice(1)
+    .some((source) => {
+      if (!source.startsWith("http")) return false;
+      const parsed = new URL(source);
+      if (parsed.protocol !== url.protocol || parsed.host !== url.host) return false;
+      return parsed.pathname === "/" || parsed.pathname === url.pathname;
+    });
+}
 
 describe("parseCspImageOrigins", () => {
   it("accepts exact https origins, with or without a port", () => {
@@ -75,10 +90,26 @@ describe("parseCspImageOrigins", () => {
 });
 
 describe("buildImgSrcDirective", () => {
-  it("is self, data, blob and the SSO avatar hosts by default", () => {
+  it("is self, data, blob, the SSO avatar hosts and the favicon endpoint by default", () => {
     expect(buildImgSrcDirective()).toBe(
-      "img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com"
+      "img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://www.google.com/s2/favicons"
     );
+  });
+
+  it("permits the org avatar URL the app actually stores", () => {
+    expect(directivePermits(buildImgSrcDirective(), faviconUrl("example.com"))).toBe(true);
+  });
+
+  it("permits nothing else on the favicon host", () => {
+    expect(directivePermits(buildImgSrcDirective(), "https://www.google.com/beacon.png")).toBe(
+      false
+    );
+  });
+
+  it("permits both OAuth avatar hosts", () => {
+    const directive = buildImgSrcDirective();
+    expect(directivePermits(directive, "https://avatars.githubusercontent.com/u/1?v=4")).toBe(true);
+    expect(directivePermits(directive, "https://lh3.googleusercontent.com/a/abc=s96-c")).toBe(true);
   });
 
   it("has no wildcard host and no bare scheme host", () => {
