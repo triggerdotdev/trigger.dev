@@ -10,10 +10,6 @@ export function demoId(rest: string): string {
   return `${DEMO_ID_PREFIX}${rest}`;
 }
 
-export function isDemoChatId(id: string | null | undefined): boolean {
-  return typeof id === "string" && id.startsWith(DEMO_ID_PREFIX);
-}
-
 export const DEMO_PROJECT_REF = "proj_demo00000000000000";
 export const DEMO_ENVIRONMENT_ID = "env_demo00000000000000";
 
