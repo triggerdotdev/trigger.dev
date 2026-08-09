@@ -38,10 +38,17 @@ export type DashboardAgentMessagesProps = {
   pagePaths?: Record<string, string>;
 };
 
-// Returns the same reference when there are no `step-start` parts, so memoization holds.
-function stripStepParts(message: UIMessage): UIMessage {
+// Cached so a stripped message keeps its identity across renders and memoization holds:
+// rebuilding it re-renders every tool-calling turn on each streamed token.
+const strippedMessages = new WeakMap<UIMessage, UIMessage>();
+
+export function stripStepParts(message: UIMessage): UIMessage {
   if (!message.parts?.some((p) => p.type === "step-start")) return message;
-  return { ...message, parts: message.parts.filter((p) => p.type !== "step-start") };
+  const cached = strippedMessages.get(message);
+  if (cached) return cached;
+  const stripped = { ...message, parts: message.parts.filter((p) => p.type !== "step-start") };
+  strippedMessages.set(message, stripped);
+  return stripped;
 }
 
 function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | null {

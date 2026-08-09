@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import type { UIMessage } from "@ai-sdk/react";
 import { describe, expect, it } from "vitest";
-import { blocksFor, winningInvestigationOccurrences } from "./DashboardAgentMessages";
+import {
+  blocksFor,
+  stripStepParts,
+  winningInvestigationOccurrences,
+} from "./DashboardAgentMessages";
 import { reuseWinners, sameOccurrences } from "./investigation-winners";
 
 const source = readFileSync(new URL("./DashboardAgentMessages.tsx", import.meta.url), "utf8");
@@ -47,6 +51,46 @@ describe("investigation winners identity", () => {
     expect(source).toContain("reuseWinners(previous.current, next)");
     expect(source).toContain("useInvestigationWinners(stripped)");
     expect(source).not.toMatch(/=\s*winningInvestigationOccurrences\(stripped\)/);
+  });
+});
+
+/**
+ * The turns are memoized on the message object, so a stripped message rebuilt on every
+ * render defeats the memo for every tool-calling turn at once.
+ */
+describe("stripped message identity", () => {
+  function withStepStart(): UIMessage {
+    return {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "step-start" }, { type: "text", text: "hello" }],
+    } as unknown as UIMessage;
+  }
+
+  it("returns the very same reference when there is nothing to strip", () => {
+    const plain = { id: "m1", role: "assistant", parts: [{ type: "text", text: "hi" }] };
+    const message = plain as unknown as UIMessage;
+
+    expect(stripStepParts(message)).toBe(message);
+  });
+
+  it("returns the same stripped reference on every later call", () => {
+    const message = withStepStart();
+    const first = stripStepParts(message);
+
+    expect(first).not.toBe(message);
+    expect(first.parts).toHaveLength(1);
+    for (let token = 0; token < 20; token++) {
+      expect(stripStepParts(message)).toBe(first);
+    }
+  });
+
+  it("strips a different message to its own reference", () => {
+    const a = withStepStart();
+    const b = withStepStart();
+
+    expect(stripStepParts(a)).not.toBe(stripStepParts(b));
+    expect(stripStepParts(a)).toBe(stripStepParts(a));
   });
 });
 
