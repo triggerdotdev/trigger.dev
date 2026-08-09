@@ -506,6 +506,14 @@ export function watchConditionLabel(spec: WatchSpec): string {
   return watchConditionWording(spec).label;
 }
 
+/**
+ * The line a user's own cancel leaves in the transcript. States that the watch
+ * stopped and nothing about what it saw — it is not a wake.
+ */
+export function watchCancelledSentence(spec: WatchSpec): string {
+  return `Stopped watching ${watchSubjectLabel(spec)}.`;
+}
+
 /** The Watch button's tooltip. */
 export function watchTooltipLabel(spec: WatchSpec): string {
   return watchConditionWording(spec).tooltip;

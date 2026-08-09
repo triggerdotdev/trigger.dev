@@ -30,8 +30,10 @@ import {
 } from "@internal/dashboard-agent-db";
 import {
   VIEW_BLOCK_VERSION,
+  WATCH_CANCELLED_MESSAGE_ID_PREFIX,
   WATCH_CONFIRMATION_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
+  watchCancelledSentence,
   watchConfirmationBlockBody,
   watchDraftSchema,
   watchIdentity,
@@ -1121,6 +1123,37 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
     }
   );
+}
+
+/**
+ * Stop a watch the user asked to stop, and say so in the chat that owns it.
+ *
+ * Only this reason leaves a line: the other cancellations either take the chat with them or
+ * already state themselves. `cancelWatch` is guarded on `active`, so a second cancel — or a
+ * watch that resolved first — writes nothing, and the id keyed off the watch keeps a retry
+ * from adding a second line. Deterministic: no wake, no delivery, no model.
+ */
+export async function cancelDashboardAgentWatch(params: {
+  watchId: string;
+  userId: string;
+  organizationId: string;
+}): Promise<{ cancelled: boolean; messages: WatchTranscriptMessage[] }> {
+  const cancelled = await cancelWatch(dashboardAgentDb, { id: params.watchId, reason: "user" });
+  if (!cancelled) return { cancelled: false, messages: [] };
+
+  const message: WatchTranscriptMessage = {
+    id: `${WATCH_CANCELLED_MESSAGE_ID_PREFIX}${cancelled.id}`,
+    role: "assistant",
+    parts: [{ type: "text", text: watchCancelledSentence(cancelled.spec) }],
+  };
+  await appendChatMessageOnce(dashboardAgentDb, {
+    chatId: cancelled.chatId,
+    userId: params.userId,
+    organizationId: params.organizationId,
+    message,
+  });
+
+  return { cancelled: true, messages: [message] };
 }
 
 /**

@@ -389,12 +389,13 @@ deliver — otherwise they would stay active forever — and leaves the wake owe
 ## What ends a watch without an answer
 
 A watch reaches `fired` or `expired` by resolving, and both deliver a wake.
-**Cancellation is the silent ending: no resolution, no wake, nothing to read.**
+**Cancellation is the ending without an answer: no resolution and never a wake.**
 The five reasons (`watch-schema.ts`):
 
 | Reason | When |
 | --- | --- |
 | `user` | the chip's cancel, scoped through the chat: the watch must belong to that chat and the chat to this user in this org. A no-op if it already resolved |
+| | Alone among the reasons, it leaves one neutral line in the transcript ("Stopped watching …"), keyed off the watch id so a retry can't repeat it. Still no wake, no delivery |
 | `chat_deleted` | deleting a chat cancels its watches in the same transaction, so live watches can't outlive a chat the user can no longer see |
 | `access_revoked` | the creator's access no longer holds — checked before any read |
 | `scheduling_failed` | the first tick couldn't be scheduled |

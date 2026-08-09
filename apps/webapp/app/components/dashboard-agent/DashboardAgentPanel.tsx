@@ -513,6 +513,16 @@ export function DashboardAgentPanel({
       try {
         const res = await fetch(actionPath, { method: "POST", body });
         if (!res.ok) throw new Error(`Watch cancel failed (${res.status})`);
+        // Empty when the watch had already resolved: then nothing was written.
+        const data = (await res.json()) as { messages?: UIMessage[] };
+        if (data.messages?.length) {
+          const messages = data.messages;
+          setAppendedMessages((current) => ({
+            chatId,
+            messages,
+            seq: (current?.seq ?? 0) + 1,
+          }));
+        }
       } catch (error) {
         console.error("Dashboard agent: failed to cancel watch", error);
         toast.error("We couldn't stop that watch. Try again in a moment.");
