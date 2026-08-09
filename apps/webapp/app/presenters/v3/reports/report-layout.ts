@@ -445,7 +445,12 @@ function findingLayout(
 ): LayoutFinding {
   // A finding whose reason says "we can't say" shows no evidence: the numbers behind it are
   // placeholders. Otherwise the hero is always expanded, and the rest only when degraded.
-  const expanded = !UNASSESSABLE_REASONS.has(finding.reason) && (hero || finding.severity !== "ok");
+  // A self-evident finding's one metric only repeats its own line ("stale — no telemetry in 21m"
+  // over "liveness 21m"); as the hero that line is the headline, so the row is its only evidence.
+  const selfEvident = finding.metricIds.length === 1 && finding.metricIds[0] === finding.type;
+  const expanded =
+    !UNASSESSABLE_REASONS.has(finding.reason) &&
+    (hero || (finding.severity !== "ok" && !selfEvident));
 
   const metrics = expanded
     ? finding.metricIds

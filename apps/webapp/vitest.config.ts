@@ -20,6 +20,7 @@ export default defineConfig({
       "app/utils/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
+      "app/presenters/v3/reports/**/*.test.ts",
     ],
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts
