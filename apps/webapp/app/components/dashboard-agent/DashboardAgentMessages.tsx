@@ -23,7 +23,7 @@ import { stripModelImages } from "./model-markdown";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
-import { answerContinuesAfter, turnAlreadyOffersWatch } from "./view-actions";
+import { answerContinuesAfter, turnAlreadyOffersWatch, turnProposesWatch } from "./view-actions";
 import { latestRevisionBlocks } from "./view-blocks";
 import { ViewBlocks } from "./view-catalog";
 import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
@@ -258,11 +258,13 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   });
   // One answer for the whole turn: two `render_view` parts each deciding for themselves
   // would show the watch button twice. `ViewBlocks` collapses revisions the same way.
-  const watchOfferedInTurn = turnAlreadyOffersWatch(
-    blocksByPart
-      .filter((blocks): blocks is unknown[] => blocks !== null)
-      .map((blocks) => latestRevisionBlocks(blocks as never))
-  );
+  const watchOfferedInTurn =
+    turnProposesWatch(parts as never) ||
+    turnAlreadyOffersWatch(
+      blocksByPart
+        .filter((blocks): blocks is unknown[] => blocks !== null)
+        .map((blocks) => latestRevisionBlocks(blocks as never))
+    );
 
   const body: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {

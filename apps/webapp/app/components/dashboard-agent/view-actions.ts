@@ -1,6 +1,7 @@
 // A navigate target is a plain string at the contract boundary, so only targets
 // that parse become buttons: a hallucinated URI costs a button, never a dead click.
 import {
+  agentIntentSchema,
   isTriggerUri,
   type ActionsBlockAction,
   type ChartAction,
@@ -35,6 +36,21 @@ export function cardAlreadyOffersWatch(blocks: ViewBlock[]): boolean {
  */
 export function turnAlreadyOffersWatch(blockGroups: ViewBlock[][]): boolean {
   return blockGroups.some(cardAlreadyOffersWatch);
+}
+
+/**
+ * `schedule_watch` opens the pre-filled card itself, so a button repeating it is dead.
+ * A rejected spec returns an error instead of an intent: no card opens, so the button stays.
+ */
+export function turnProposesWatch(
+  parts: ReadonlyArray<{ type?: string; state?: string; output?: unknown }>
+): boolean {
+  return parts.some(
+    (part) =>
+      part.type === "tool-schedule_watch" &&
+      part.state === "output-available" &&
+      agentIntentSchema.safeParse((part.output as { intent?: unknown } | undefined)?.intent).success
+  );
 }
 
 export function withoutWatchActions<T extends CardAction>(actions: T[]): T[] {
