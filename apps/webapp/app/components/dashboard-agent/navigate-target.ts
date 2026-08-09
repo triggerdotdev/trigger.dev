@@ -48,7 +48,8 @@ export function navigateDestination(
   const target = resolved?.path;
   if (!target) return { kind: "none" };
 
-  const routable = !resolved?.external && target.startsWith("/") && !target.startsWith("//");
+  // `/\` too: a URL parser maps the backslash to a slash, so it leaves the origin.
+  const routable = !resolved?.external && target.startsWith("/") && !/^\/[/\\]/.test(target);
   if (routable) return { kind: "route", path: appendRunFilters(target, filters) };
 
   // Run filters belong to the runs page, so they are dropped rather than pushed onto a foreign URL.
