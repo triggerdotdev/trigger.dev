@@ -53,18 +53,40 @@ import { loader as projectsLoader } from "~/routes/api.v1.projects";
 
 const USER_ID = "usr_1";
 
-async function createOrg(cap: string[]): Promise<{ status: number; body: any }> {
+// Counts `can()` invocations without changing what the ability answers.
+function countingAbility(ability: any): { ability: any; canCalls: () => number } {
+  let canCalls = 0;
+  const wrapped = new Proxy(ability, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") {
+        return value;
+      }
+      if (prop === "can") {
+        return (...args: any[]) => {
+          canCalls++;
+          return value.apply(target, args);
+        };
+      }
+      return value.bind(target);
+    },
+  });
+  return { ability: wrapped, canCalls: () => canCalls };
+}
+
+async function createOrg(cap: string[]): Promise<{ status: number; body: any; canCalls: number }> {
   const token = await signUserActorToken(SESSION_SECRET, {
     userId: USER_ID,
     client: "personal-access-token",
     cap,
   });
+  const counted = countingAbility(buildJwtAbility(cap));
   mocks.authenticateUserActor.mockImplementation(async () => ({
     ok: true,
     userId: USER_ID,
     claims: { userId: USER_ID, client: "personal-access-token", cap },
     subject: { type: "userActor", userId: USER_ID, organizationId: "org_1" },
-    ability: buildJwtAbility(cap),
+    ability: counted.ability,
   }));
 
   const response = await action({
@@ -76,7 +98,7 @@ async function createOrg(cap: string[]): Promise<{ status: number; body: any }> 
     params: {},
     context: {},
   } as any);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await response.json(), canCalls: counted.canCalls() };
 }
 
 // An ordinary PAT, paired with an ability that denies everything. Nothing on this route may
@@ -197,6 +219,7 @@ describe("creating an organization over the API", () => {
       const result = await createOrg(["read:all"]);
 
       expect(result.status).toBe(404);
+      expect(result.canCalls).toBe(0);
       expect(mocks.createOrganization).not.toHaveBeenCalled();
     } finally {
       mocks.env.ORG_CREATION_API_ENABLED = "1";
