@@ -82,13 +82,20 @@ async function createOrg(cap: string[]): Promise<{ status: number; body: any }> 
 // An ordinary PAT, paired with an ability that denies everything. Nothing on this route may
 // consult it — the route has no org to scope a gate to, and on cloud the plugin returns a
 // deny-shaped ability when there is no org context.
-async function createOrgWithPat(): Promise<{ status: number; body: any }> {
+async function createOrgWithPat(): Promise<{ status: number; body: any; canCalls: number }> {
+  let canCalls = 0;
   mocks.authenticatePat.mockImplementation(async () => ({
     ok: true,
     userId: USER_ID,
     tokenId: "pat_1",
     lastAccessedAt: new Date(),
-    ability: { can: () => false, canSuper: () => false },
+    ability: {
+      can: () => {
+        canCalls++;
+        return false;
+      },
+      canSuper: () => false,
+    },
   }));
 
   const response = await action({
@@ -100,7 +107,7 @@ async function createOrgWithPat(): Promise<{ status: number; body: any }> {
     params: {},
     context: {},
   } as any);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await response.json(), canCalls };
 }
 
 const AGENT_ENVIRONMENT_ID = "env_dev";
@@ -177,6 +184,7 @@ describe("creating an organization over the API", () => {
 
     expect(result.status).toBe(201);
     expect(result.body.slug).toBe("new-org");
+    expect(result.canCalls).toBe(0);
   });
 
   // The env gate runs before the capability gate, so an install with the API disabled tells
