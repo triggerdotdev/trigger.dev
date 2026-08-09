@@ -4,6 +4,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { MessageBubble, renderPart } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { reuseWinners } from "./investigation-winners";
+import { answerContinuesAfter } from "./view-actions";
 import { ViewBlocks } from "./view-catalog";
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step" separator —
@@ -119,7 +120,13 @@ export function DashboardAgentMessageBubble({
         if (blocks.length === 0) return null;
         // No `onIntent`: nothing here can act on one yet, so the cards drop their
         // action rows rather than offer buttons that would do nothing.
-        return <ViewBlocks key={i} blocks={blocks as never} />;
+        return (
+          <ViewBlocks
+            key={i}
+            blocks={blocks as never}
+            answered={answerContinuesAfter(message.parts as never, i)}
+          />
+        );
       })}
     </div>
   );
