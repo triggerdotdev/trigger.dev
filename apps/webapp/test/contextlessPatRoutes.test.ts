@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   authenticatePat: vi.fn(),
   createOrganization: vi.fn(),
   findManyProjects: vi.fn(),
+  env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" } as {
+    SESSION_SECRET: string;
+    ORG_CREATION_API_ENABLED?: string;
+  },
 }));
 
 vi.mock("~/services/rbac.server", () => ({
@@ -25,9 +29,7 @@ vi.mock("~/db.server", () => ({
   prisma: { project: { findMany: mocks.findManyProjects } },
   $replica: {},
 }));
-vi.mock("~/env.server", () => ({
-  env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" },
-}));
+vi.mock("~/env.server", () => ({ env: mocks.env }));
 vi.mock("~/models/organization.server", () => ({ createOrganization: mocks.createOrganization }));
 vi.mock("~/services/personalAccessToken.server", () => ({
   updateLastAccessedAtIfStale: vi.fn(),
@@ -175,6 +177,22 @@ describe("creating an organization over the API", () => {
 
     expect(result.status).toBe(201);
     expect(result.body.slug).toBe("new-org");
+  });
+
+  // The env gate runs before the capability gate, so an install with the API disabled tells
+  // every caller the same thing: the route does not exist. A capped token must not learn from a
+  // 403 that it would have been the only thing standing in its way.
+  it("hides the route from a capped token when the API is disabled", async () => {
+    mocks.env.ORG_CREATION_API_ENABLED = undefined;
+
+    try {
+      const result = await createOrg(["read:all"]);
+
+      expect(result.status).toBe(404);
+      expect(mocks.createOrganization).not.toHaveBeenCalled();
+    } finally {
+      mocks.env.ORG_CREATION_API_ENABLED = "1";
+    }
   });
 
   it("still admits a token that carries the universal grant", async () => {
