@@ -56,7 +56,7 @@ function createWebhookEngine() {
       tasksPerWorker: env.WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER,
       pollIntervalMs: env.WEBHOOK_WORKER_POLL_INTERVAL,
       shutdownTimeoutMs: env.WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS,
-      disabled: env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_WORKER_ENABLED === "0",
+      disabled: env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_WORKER_ENABLED !== "true",
     },
     partitions: {
       ensureSchedule: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE,
