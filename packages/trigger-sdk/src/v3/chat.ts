@@ -1787,9 +1787,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             eofResubscribes < MAX_EOF_RESUBSCRIBES
           ) {
             eofResubscribes++;
-            await new Promise((resolve) =>
-              setTimeout(resolve, Math.min(100 * 2 ** (eofResubscribes - 1), 5_000))
-            );
+            // Sleep, but wake immediately on abort — otherwise a stop lands
+            // mid-backoff and the stream stays open for the rest of it.
+            await new Promise<void>((resolve) => {
+              let timer: ReturnType<typeof setTimeout>;
+              const done = () => {
+                clearTimeout(timer);
+                combinedSignal.removeEventListener("abort", done);
+                resolve();
+              };
+              timer = setTimeout(done, Math.min(100 * 2 ** (eofResubscribes - 1), 5_000));
+              combinedSignal.addEventListener("abort", done);
+            });
+            if (combinedSignal.aborted) break;
             const opened = await openWithAuthRetry();
             if (opened) return opened;
           }
@@ -1851,9 +1861,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 continue;
               }
               value = next.value;
-              // A productive connection re-earns the resubscribe budget, so a
-              // long turn spanning many long-poll windows keeps streaming.
-              eofResubscribes = 0;
             }
 
             if (combinedSignal.aborted) {
@@ -1864,6 +1871,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (value.id) state.lastEventId = value.id;
+            // Any record — including the first of a resumed connection, which
+            // arrives via `primed` — re-earns the resubscribe budget, so a long
+            // turn spanning many long-poll windows keeps streaming.
+            eofResubscribes = 0;
 
             // Trigger control record (turn-complete, upgrade-required) —
             // routed by header, body is empty. Detect via the

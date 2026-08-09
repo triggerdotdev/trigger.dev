@@ -1136,6 +1136,86 @@ describe("TriggerChatTransport", () => {
         onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === false)
       ).toBe(true);
     });
+
+    it("keeps streaming when every window delivers a single record", async () => {
+      // One record per window arrives via `primed` on the resumed connection —
+      // it must still re-earn the budget, otherwise a slow turn is truncated.
+      const WINDOWS = 8;
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          return subscribeCount > WINDOWS
+            ? defaultSseResponse([{ type: "trigger:turn-complete" }])
+            : defaultSseResponse([
+                { type: "text-delta", id: "part-1", delta: `d${subscribeCount}` },
+              ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-slow": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-slow",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      expect(subscribeCount).toBe(WINDOWS + 1);
+      expect(chunks).toHaveLength(WINDOWS);
+      expect(transport.getSession("chat-slow")?.isStreaming).toBe(false);
+    });
+
+    it("gives up after a bounded number of resubscribes", async () => {
+      // Fake timers so the 100ms..1.6s backoffs don't cost real seconds.
+      vi.useFakeTimers();
+      try {
+        let subscribeCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            subscribeCount++;
+            // Never any records, never settled — the pathological case.
+            return defaultSseResponse([]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          sessions: { "chat-empty": { publicAccessToken: "p" } },
+        });
+
+        const stream = await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-empty",
+          messageId: undefined,
+          messages: [createUserMessage("hi")],
+          abortSignal: undefined,
+        });
+        const drained = drainChunks(stream);
+        await vi.advanceTimersByTimeAsync(10_000);
+        await drained;
+
+        // One initial connect plus the five-attempt resubscribe budget.
+        expect(subscribeCount).toBe(6);
+        expect(transport.getSession("chat-empty")?.isStreaming).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("multi-tab coordination", () => {
