@@ -52,10 +52,7 @@ export type NormalizedDatabaseMetrics = {
   };
 };
 
-const sources = singleton(
-  "databaseMetricsSources",
-  () => new Map<string, DatabaseMetricsSource>()
-);
+const sources = singleton("databaseMetricsSources", () => new Map<string, DatabaseMetricsSource>());
 
 export function registerDatabaseMetricsSource(source: DatabaseMetricsSource): void {
   sources.set(source.clientType, source);
