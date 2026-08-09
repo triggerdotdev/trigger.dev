@@ -24,8 +24,8 @@ import type { AgentPageContext } from "./page-context-types";
 import { retryAction } from "./retry-action";
 import {
   fetchChatTranscript,
-  hasOpenInvestigation,
   pollSettledTranscript,
+  transcriptLooksUnfinished,
 } from "./settled-transcript";
 import { takeNavigateIntent } from "./turn-navigation";
 import { sendRequestOutcome } from "./send-request";
@@ -373,8 +373,9 @@ export function DashboardAgentChat({
 
     onTurnSettled();
     // The terminal card is written to the chat row after the stream closes, so this
-    // mounted panel would otherwise keep showing the last `in_progress` revision.
-    if (!hasOpenInvestigation(messagesRef.current)) return;
+    // mounted panel would otherwise keep showing the last `in_progress` revision — or,
+    // if the stream died mid-tool, the tool call it never got an output for.
+    if (!transcriptLooksUnfinished(messagesRef.current)) return;
     void pollSettledTranscript<UIMessage>({
       fetchTranscript: () => fetchChatTranscript(actionPath, chatId),
       apply: (merge) => setMessages((current) => merge(current)),

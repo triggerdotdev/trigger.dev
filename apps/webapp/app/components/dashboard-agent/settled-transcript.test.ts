@@ -6,6 +6,7 @@ import {
   hasOpenInvestigation,
   mergeSettledMessages,
   pollSettledTranscript,
+  transcriptLooksUnfinished,
 } from "./settled-transcript";
 
 /**
@@ -116,6 +117,27 @@ describe("reading the transcript endpoint", () => {
     });
 
     expect(rendered).toEqual([OPEN]);
+  });
+});
+
+describe("deciding whether a settled turn is worth re-reading", () => {
+  // The stream EOF'd while `get_report` was running: the part never gets an output.
+  const DANGLING_TOOL = {
+    id: "msg_dangling",
+    role: "assistant",
+    parts: [{ type: "tool-get_report", toolCallId: "call_1", state: "input-available" }],
+  };
+
+  it("re-reads when the stream died mid-tool, not only when a card is open", () => {
+    expect(transcriptLooksUnfinished([DANGLING_TOOL])).toBe(true);
+  });
+
+  it("re-reads while a card is still open", () => {
+    expect(transcriptLooksUnfinished([OPEN])).toBe(true);
+  });
+
+  it("leaves a fully settled transcript alone", () => {
+    expect(transcriptLooksUnfinished([OPEN, SETTLED])).toBe(false);
   });
 });
 
