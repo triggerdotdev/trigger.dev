@@ -140,7 +140,7 @@ export function ReportHeadline({
 }) {
   return (
     <p className="flex items-start gap-2 text-sm">
-      <ReportSeverityIcon severity={severity} tone={tone} className="mt-0.5 shrink-0" />
+      <ReportSeverityIcon severity={severity} tone={tone} className="mt-1.5 shrink-0" />
       <span>
         <span className={cn("font-medium", SEVERITY_TEXT[tone ?? severity])}>{phrase}</span>
         {continuation ? <span className="text-text-bright"> — {continuation}</span> : null}
@@ -169,8 +169,8 @@ export function ReportFindingLine({
   return (
     <p className="grid grid-cols-[1rem_4.5rem_minmax(0,1fr)] items-start gap-x-2">
       <ReportSeverityIcon severity={severity} tone={tone} className="mt-0.5" />
-      <span className="-mt-px text-xs uppercase tracking-wide text-text-dimmed">{type}</span>
-      <span className={cn("-mt-0.5 text-sm", bright ? "text-text-bright" : "text-text-dimmed")}>
+      <span className="mt-px text-xs uppercase tracking-wide text-text-dimmed">{type}</span>
+      <span className={cn("-mt-1 text-sm", bright ? "text-text-bright" : "text-text-dimmed")}>
         {text}
       </span>
     </p>
