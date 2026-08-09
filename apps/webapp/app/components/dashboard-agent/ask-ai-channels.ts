@@ -48,6 +48,16 @@ export function agentDeepLinkParams(availability: AskAiAvailability): readonly D
 }
 
 /**
+ * Where the same link lands when neither surface can open it: nothing in the dashboard would
+ * read the deep link, so the question goes to the docs rather than to a page that ignores it.
+ */
+export function aiHelpDocsUrl(query: string): string {
+  const docs = new URL("https://trigger.dev/docs");
+  docs.searchParams.set("q", query);
+  return docs.toString();
+}
+
+/**
  * Where `trigger dev`'s "Get a fix for this error using AI" link lands. Always on `origin`: an
  * absolute or protocol-relative `environmentPath` would otherwise decide the host itself, and
  * the caller feeds this straight to `redirect()`.

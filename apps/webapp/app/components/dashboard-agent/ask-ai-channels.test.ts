@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   agentDeepLinkParams,
+  aiHelpDocsUrl,
   aiHelpRedirectUrl,
   askAiCanOpen,
   askAiChannelTarget,
@@ -152,5 +153,22 @@ describe("wiring", () => {
 
   it("builds the CLI redirect through the shared helper", () => {
     expect(cliRoute).toContain("aiHelpRedirectUrl(");
+  });
+
+  // Structural: the loader needs a session and a database, so the branch is asserted on source.
+  it("sends the CLI link to the docs when neither surface can open it", () => {
+    expect(cliRoute).toContain("if (!canOpenSomething)");
+    expect(cliRoute).toContain("redirect(aiHelpDocsUrl(query))");
+    expect(cliRoute).toContain("askAiCanOpen(");
+    expect(cliRoute).toContain("canAccessDashboardAgent(");
+  });
+});
+
+describe("aiHelpDocsUrl", () => {
+  it("carries the question to the docs", () => {
+    const url = new URL(aiHelpDocsUrl("Error: task timed out & failed"));
+
+    expect(url.origin + url.pathname).toBe("https://trigger.dev/docs");
+    expect(url.searchParams.get("q")).toBe("Error: task timed out & failed");
   });
 });
