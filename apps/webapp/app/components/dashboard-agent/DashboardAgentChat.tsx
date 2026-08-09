@@ -13,7 +13,7 @@ import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
-import { appendRunFilters } from "./navigate-target";
+import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
 import { retryAction } from "./retry-action";
@@ -214,9 +214,18 @@ export function DashboardAgentChat({
       body.set("uri", intent.target);
       try {
         const res = await fetch(actionPath, { method: "POST", body });
-        const data = (await res.json()) as { path?: string };
-        if (!res.ok || !data.path) throw new Error(`Resolve failed (${res.status})`);
-        navigate(appendRunFilters(data.path, intent.filters));
+        const data = (await res.json()) as { path?: string; external?: boolean };
+        if (!res.ok) throw new Error(`Resolve failed (${res.status})`);
+        const destination = navigateDestination(data, intent.filters);
+        if (destination.kind === "none") throw new Error("Resolved to nothing routable");
+        if (destination.kind === "route") {
+          navigate(destination.path);
+          return;
+        }
+        // A source file lives on GitHub. The fetch above has already broken the gesture chain,
+        // so a blocked popup falls back to leaving the dashboard rather than doing nothing.
+        const opened = window.open(destination.url, "_blank", "noopener,noreferrer");
+        if (!opened) window.location.assign(destination.url);
       } catch (error) {
         console.error("Dashboard agent: failed to resolve a navigate target", error);
         toast.error("Couldn't open that page.");

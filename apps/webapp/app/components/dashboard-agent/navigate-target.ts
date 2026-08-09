@@ -31,6 +31,30 @@ export function appendRunFilters(path: string, filters?: RunFilters): string {
   return `${url.pathname}${url.search}`;
 }
 
+export type NavigateDestination =
+  | { kind: "route"; path: string }
+  | { kind: "external"; url: string }
+  | { kind: "none" };
+
+/**
+ * What the host should do with a resolved navigate target. A `trigger://source/…` resolves to a
+ * file on GitHub, which the router cannot route: handed to `navigate` it lands on a dead
+ * dashboard path. Only a root-relative path is ever routed, whatever the server said.
+ */
+export function navigateDestination(
+  resolved: { path?: string | null; external?: boolean } | null | undefined,
+  filters?: RunFilters
+): NavigateDestination {
+  const target = resolved?.path;
+  if (!target) return { kind: "none" };
+
+  const routable = !resolved?.external && target.startsWith("/") && !target.startsWith("//");
+  if (routable) return { kind: "route", path: appendRunFilters(target, filters) };
+
+  // Run filters belong to the runs page, so they are dropped rather than pushed onto a foreign URL.
+  return /^https?:\/\//i.test(target) ? { kind: "external", url: target } : { kind: "none" };
+}
+
 // Null when the link leaves the dashboard.
 export function sameOriginPath(href: string, origin: string): string | null {
   let url: URL;

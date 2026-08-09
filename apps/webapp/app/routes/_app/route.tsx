@@ -27,16 +27,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function App() {
-  // Above every signed-in page, and outside the `Outlet`: ⌘I fires from org-level pages too,
-  // where the agent's provider is not mounted, and the Kapa dialog has to outlive navigation.
+  // A sibling of the app, never a wrapper: ⌘I fires from org-level pages too, where the agent's
+  // provider is not mounted, and the Kapa dialog has to outlive navigation — but the app subtree
+  // must not remount when Kapa mounts after hydration.
   return (
-    <AskAIRoot>
-      {() => (
-        <AppContainer>
-          <Outlet />
-        </AppContainer>
-      )}
-    </AskAIRoot>
+    <>
+      <AppContainer>
+        <Outlet />
+      </AppContainer>
+      <AskAIRoot />
+    </>
   );
 }
 

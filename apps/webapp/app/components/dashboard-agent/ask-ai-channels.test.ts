@@ -129,9 +129,13 @@ describe("wiring", () => {
     "utf8"
   );
 
-  it("mounts `AskAIRoot` in the `_app` layout, wrapping the outlet", () => {
-    expect(appLayout).toContain("<AskAIRoot>");
-    expect(appLayout.indexOf("<AskAIRoot>")).toBeLessThan(appLayout.indexOf("<Outlet />"));
+  it("mounts `AskAIRoot` in the `_app` layout as a sibling of the app, not a wrapper", () => {
+    expect(appLayout).toContain("<AskAIRoot />");
+    expect(appLayout).not.toContain("<AskAIRoot>");
+  });
+
+  it("gives `AskAIRoot` no children to render", () => {
+    expect(askAI).toContain("export function AskAIRoot() {");
   });
 
   it("gates the agent's ⌘I on owning the channel", () => {

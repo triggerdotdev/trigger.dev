@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendRunFilters, sameOriginPath } from "./navigate-target";
+import { appendRunFilters, navigateDestination, sameOriginPath } from "./navigate-target";
 
 const RUNS_PATH = "/orgs/acme/projects/api/env/prod/runs";
 
@@ -29,6 +29,40 @@ describe("appendRunFilters", () => {
   it("drops empty values and false booleans", () => {
     expect(appendRunFilters(RUNS_PATH, { search: "", rootOnly: false, tags: [] })).toBe(RUNS_PATH);
     expect(appendRunFilters(RUNS_PATH, { rootOnly: true })).toBe(`${RUNS_PATH}?rootOnly=true`);
+  });
+});
+
+describe("navigateDestination", () => {
+  const SOURCE_URL = "https://github.com/acme/api/blob/abc123/src/tasks/send-email.ts#L42";
+
+  it("routes a dashboard path and applies the intent's filters", () => {
+    expect(
+      navigateDestination({ path: RUNS_PATH, external: false }, { statuses: ["FAILED"] })
+    ).toEqual({ kind: "route", path: `${RUNS_PATH}?statuses=FAILED` });
+  });
+
+  it("never routes a source file, it leaves the dashboard", () => {
+    expect(navigateDestination({ path: SOURCE_URL, external: true })).toEqual({
+      kind: "external",
+      url: SOURCE_URL,
+    });
+  });
+
+  it("refuses to route an absolute URL even when the server forgot to flag it", () => {
+    expect(navigateDestination({ path: SOURCE_URL })).toEqual({
+      kind: "external",
+      url: SOURCE_URL,
+    });
+  });
+
+  it("refuses a protocol-relative path, which would change host", () => {
+    expect(navigateDestination({ path: "//evil.example/runs" })).toEqual({ kind: "none" });
+  });
+
+  it("resolves to nothing when there is no target", () => {
+    expect(navigateDestination(null)).toEqual({ kind: "none" });
+    expect(navigateDestination({ path: "" })).toEqual({ kind: "none" });
+    expect(navigateDestination({ path: "javascript:alert(1)" })).toEqual({ kind: "none" });
   });
 });
 

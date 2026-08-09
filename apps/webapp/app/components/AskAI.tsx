@@ -17,7 +17,7 @@ import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
@@ -27,6 +27,7 @@ import {
   ASK_AI_SHORTCUT,
   askAiCanOpen,
 } from "./dashboard-agent/ask-ai-channels";
+import { useAskAiHost } from "./dashboard-agent/askAiOpenRequest";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
@@ -81,44 +82,30 @@ function useAskAIState() {
 }
 
 /**
- * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog) around a subtree that renders its own
- * triggers. Wrap it around them, never inside, so the dialog and the shortcut survive whatever
- * opened them closing. `children` receives the open function, or undefined when Ask AI is
- * unavailable (self-hosted, no Kapa website id, or SSR).
+ * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog). It renders no page content and wraps
+ * nothing: entry points reach it through `requestAskAi`, so the Kapa provider mounting after
+ * hydration can never remount the app around it.
  */
-export function AskAIRoot({
-  children,
-}: {
-  children: (openAskAI: (() => void) | undefined) => ReactNode;
-}) {
+export function AskAIRoot() {
   const availability = useAskAiAvailability();
 
   if (!askAiCanOpen(availability)) {
-    return <>{children(undefined)}</>;
+    return null;
   }
 
   const websiteId = availability.kapaWebsiteId!;
 
-  return (
-    <ClientOnly fallback={<>{children(undefined)}</>}>
-      {() => <AskAIRootProvider websiteId={websiteId}>{children}</AskAIRootProvider>}
-    </ClientOnly>
-  );
+  return <ClientOnly>{() => <AskAIRootProvider websiteId={websiteId} />}</ClientOnly>;
 }
 
-function AskAIRootProvider({
-  websiteId,
-  children,
-}: {
-  websiteId: string;
-  children: (openAskAI: () => void) => ReactNode;
-}) {
+function AskAIRootProvider({ websiteId }: { websiteId: string }) {
   const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
 
   useShortcutKeys({
     shortcut: ASK_AI_SHORTCUT,
     action: () => openAskAI(),
   });
+  useAskAiHost(openAskAI);
 
   return (
     <KapaProvider
@@ -131,7 +118,6 @@ function AskAIRootProvider({
       }}
       botProtectionMechanism="hcaptcha"
     >
-      {children(() => openAskAI())}
       <AskAIDialog
         initialQuery={initialQuery}
         isOpen={isOpen}
