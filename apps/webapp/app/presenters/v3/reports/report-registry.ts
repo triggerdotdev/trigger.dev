@@ -35,22 +35,12 @@ export function isReportKey(key: string): boolean {
 type ReportTablesRegistry = Record<string, Pick<ReportLoader<unknown>, "tables">>;
 
 /**
- * Input to the route's JWT scope check. An unknown key returns the union across every report, never
- * an empty list, which would make the check vacuous.
+ * Input to the route's JWT scope check. An unknown key declares no tables: `checkAuth` denies an
+ * empty `everyResource`, so a bad key authorizes nothing rather than everything.
  */
 export function reportQueryTables(
   key: string,
   registry: ReportTablesRegistry = REPORT_REGISTRY
 ): readonly ReportQueryTable[] {
-  if (Object.hasOwn(registry, key)) {
-    return registry[key].tables;
-  }
-
-  const union = new Set<ReportQueryTable>();
-  for (const report of Object.values(registry)) {
-    for (const table of report.tables) {
-      union.add(table);
-    }
-  }
-  return [...union];
+  return Object.hasOwn(registry, key) ? registry[key].tables : [];
 }

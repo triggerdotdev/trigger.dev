@@ -109,9 +109,10 @@ describe("api.v1.reports.$key — authorization", () => {
     ]);
   });
 
-  it("requires every report's tables for an unknown key, so it can't grant on a bad key", () => {
-    expect(requiredResources("nonsense")).toEqual(requiredResources("health"));
-    expect(authorizes(["read:query:runs"], "nonsense")).toBe(false);
+  it("denies an unknown key outright, however broadly the token is scoped", () => {
+    expect(requiredResources("nonsense")).toEqual([]);
+    expect(authorizes(["read:query"], "nonsense")).toBe(false);
+    expect(authorizes(["admin"], "nonsense")).toBe(false);
   });
 });
 
@@ -129,12 +130,8 @@ describe("reportQueryTables — scope derivation from the registry", () => {
     expect(reportQueryTables("health", registry)).toEqual(["runs", "env_metrics", "queue_metrics"]);
   });
 
-  it("returns the de-duplicated union across reports for an unknown key", () => {
-    expect(reportQueryTables("unknown", registry)).toEqual([
-      "runs",
-      "env_metrics",
-      "queue_metrics",
-    ]);
+  it("returns no tables for an unknown key", () => {
+    expect(reportQueryTables("unknown", registry)).toEqual([]);
   });
 });
 
