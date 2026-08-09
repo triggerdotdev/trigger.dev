@@ -2450,6 +2450,37 @@ describe("the watch card submit", () => {
       expect(await storedMessages(seeded, "chat_1")).toEqual(transcript);
     }
   );
+
+  postgresTest(
+    "a replay repeats the recorded 'Watching' confirmation after the watch has fired",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-replay-fired");
+      await seedChat(seeded);
+
+      const first = await submit({ seeded, chatId: "chat_1" });
+      expect(first.ok).toBe(true);
+      if (!first.ok || !first.watchId) return;
+
+      await transitionWatchCondition(ctx.agentDb, {
+        id: first.watchId,
+        resolution: "condition_met",
+      });
+
+      const retry = await submit({ seeded, chatId: "chat_1" });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) return;
+      expect(retry.repaired).toBe(true);
+
+      // The recorded outcome is replayed, never decided again: the append-once
+      // confirmation in the transcript says "Watching", so the answer has to as well.
+      const parts = retry.messages.at(-1)?.parts ?? [];
+      const block = (parts[0] as any).data.blocks[0];
+      expect(block.outcome).toBe("watching");
+      expect(block.headline).toContain("Watching");
+    }
+  );
 });
 
 describe("appendChatMessageOnce", () => {

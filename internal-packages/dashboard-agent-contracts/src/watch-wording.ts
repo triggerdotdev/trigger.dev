@@ -628,10 +628,11 @@ export function watchResolvedBlockBody(args: { watchId: string; resolved: WatchR
   followUp: never[];
   watchId: string;
 } {
+  const presented = presentResolvedWatch(args.resolved);
   return {
     type: "watch_result",
-    outcome: args.resolved.resolution === "condition_met" ? "already_true" : "impossible",
-    headline: presentResolvedWatch(args.resolved).headline,
+    outcome: presented.category === "positive" ? "already_true" : "impossible",
+    headline: presented.headline,
     lifetime: null,
     detail: null,
     followUp: [],

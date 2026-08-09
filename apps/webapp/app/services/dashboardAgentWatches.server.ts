@@ -669,7 +669,6 @@ export async function submitDashboardAgentWatch(params: {
       return settle({
         confirmation: watchingConfirmation({
           watchId: recorded.watchId,
-          watch: await getWatch(dashboardAgentDb, { id: recorded.watchId }),
           unavailable: recorded.unavailable,
           // Recorded, never re-decided: the confirmation already in the transcript is
           // append-once, so a second decision here would contradict it forever.
