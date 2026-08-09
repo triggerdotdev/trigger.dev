@@ -2,10 +2,8 @@
 import { json } from "@remix-run/server-runtime";
 import { ReportFormatSchema, ReportPeriodSchema } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
-import { reportQueryTables } from "~/presenters/v3/reports/report-registry";
 import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
 import { type ReportViewModel } from "~/presenters/v3/reports/report-view-model";
-import { everyResource } from "~/services/routeBuilders/apiBuilder.server";
 
 export const ReportParamsSchema = z.object({
   key: z.string(),
@@ -35,12 +33,4 @@ export function reportResponse(vm: ReportViewModel, format: ReportFormatParam): 
         headers: { "Content-Type": "text/markdown; charset=utf-8" },
       });
   }
-}
-
-/**
- * Per-table, not the permissive `{ type: "query", id: "all" }`: a JWT must be scoped to every table
- * the report reads, so a partially scoped token can't reach the others.
- */
-export function reportAuthResource(key: string) {
-  return everyResource(reportQueryTables(key).map((id) => ({ type: "query", id })));
 }

@@ -1,4 +1,5 @@
 import { curateReport } from "@internal/dashboard-agent/tool-curation";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { interpret, type HealthInput } from "~/presenters/v3/reports/health/health";
 import { reportResponse } from "~/presenters/v3/reports/reportsApi.server";
@@ -66,6 +67,17 @@ describe("the agent's curated report keeps the reason its numbers can't be trust
     const facts = await curatedFacts(HEALTHY);
     expect(facts.trustworthy).toBe(true);
     expect(facts.untrustworthyReason).toBeUndefined();
+  });
+
+  // Structural: it reads the import list, so it proves nothing about what the module does at
+  // runtime — only that serializing a report doesn't reach the route builder, and `env.server`
+  // behind it. The auth resource lives in `reportsApiAuth.server.ts` for that reason.
+  it("serializes a report without dragging the route builder in", () => {
+    const source = readFileSync(
+      new URL("../app/presenters/v3/reports/reportsApi.server.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).not.toMatch(/routeBuilders|env\.server/);
   });
 
   it("carries every fact key the presenter emits, so the next rename fails here", async () => {

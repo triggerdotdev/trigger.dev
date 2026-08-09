@@ -7,10 +7,10 @@ import {
 } from "~/presenters/v3/reports/report-registry";
 import { type ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import {
-  reportAuthResource,
   reportResponse,
   ReportSearchParamsSchema,
 } from "~/presenters/v3/reports/reportsApi.server";
+import { reportAuthResource } from "~/presenters/v3/reports/reportsApiAuth.server";
 
 // `everyResource(...)` tags its payload with this Symbol.for marker (see apiBuilder.server.ts).
 const EVERY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.everyResource");

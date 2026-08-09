@@ -29,7 +29,10 @@ function hostViewBlocks(part: UIMessage["parts"][number]): unknown[] | null {
   return Array.isArray(p.data?.blocks) ? p.data!.blocks! : null;
 }
 
-function investigationBlocksFor(part: UIMessage["parts"][number]): unknown[] | null {
+// Both carriers render as cards, so whichever one wins a revision is one the panel
+// can actually draw — a host-written card can never suppress a tool-rendered one
+// into nothing.
+function viewBlocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   return viewSpecFor(part)?.blocks ?? hostViewBlocks(part);
 }
 
@@ -41,12 +44,15 @@ function investigationRef(block: unknown): InvestigationRef | null {
   return { id: b.id, revision: typeof b.revision === "number" ? b.revision : 0 };
 }
 
-/** Per investigation id, the one `messageId:partIndex` allowed to render: highest revision. */
+/**
+ * Per investigation id, the one `messageId:partIndex` allowed to render: highest revision.
+ * Indexed over the same stripped parts the renderer walks, so the two agree on what part 0 is.
+ */
 export function winningInvestigationOccurrences(messages: UIMessage[]): Map<string, string> {
   const best = new Map<string, { revision: number; occurrence: string }>();
-  for (const message of messages) {
+  for (const message of messages.map(stripStepParts)) {
     (message.parts ?? []).forEach((part, partIndex) => {
-      for (const block of investigationBlocksFor(part) ?? []) {
+      for (const block of viewBlocksFor(part) ?? []) {
         const ref = investigationRef(block);
         if (!ref) continue;
         const current = best.get(ref.id);
@@ -71,11 +77,11 @@ function withoutSupersededInvestigations(
   });
 }
 
-// Renders one message. Assistant messages that include a completed render_view
-// part get the catalog cards (plus the gather tool rows / lead-in text for
-// transparency); everything else uses the shared MessageBubble unchanged, so
-// its streaming memoization is preserved for the common case.
-const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
+// Renders one message. Assistant messages carrying a view spec get the catalog
+// cards (plus the gather tool rows / lead-in text for transparency); everything
+// else uses the shared MessageBubble unchanged, so its streaming memoization is
+// preserved for the common case.
+export function DashboardAgentMessageBubble({
   message,
   investigationWinners,
 }: {
@@ -83,25 +89,29 @@ const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
 }) {
-  if (message.role !== "assistant" || !message.parts?.some((p) => viewSpecFor(p))) {
+  if (message.role !== "assistant" || !message.parts?.some((p) => viewBlocksFor(p))) {
     return <MessageBubble message={message} />;
   }
   return (
     <div className="space-y-2">
       {message.parts.map((part, i) => {
-        const spec = viewSpecFor(part);
+        const spec = viewBlocksFor(part);
         if (!spec) return renderPart(part, i);
         const blocks = withoutSupersededInvestigations(
-          spec.blocks,
+          spec,
           `${message.id}:${i}`,
           investigationWinners
         );
         if (blocks.length === 0) return null;
+        // No `onIntent`: nothing here can act on one yet, so the cards drop their
+        // action rows rather than offer buttons that would do nothing.
         return <ViewBlocks key={i} blocks={blocks as never} />;
       })}
     </div>
   );
-});
+}
+
+const MemoizedMessageBubble = memo(DashboardAgentMessageBubble);
 
 // Renders the conversation with the shared agent message renderer — the same
 // MessageBubble the run inspector and playground use, so agent output looks
@@ -123,7 +133,7 @@ export function DashboardAgentMessages({
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div ref={rootRef} className="space-y-4 p-4">
         {messages.map((message) => (
-          <DashboardAgentMessageBubble
+          <MemoizedMessageBubble
             key={message.id}
             message={stripStepParts(message)}
             investigationWinners={investigationWinners}

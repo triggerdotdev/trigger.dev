@@ -22,6 +22,7 @@ import {
 } from "./tool-schemas";
 import {
   apiGet,
+  fetchReason,
   isEnvUnavailable,
   NO_AUTH,
   type DashboardAgentApiClient,
@@ -78,7 +79,7 @@ export function buildApiTools(args: {
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
         const result = await apiGet(origin, "/api/v1/projects", userActorToken!);
-        if (!result.ok) return { error: `Couldn't list projects (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list projects${fetchReason(result)}.` };
         return curateProjects(result.data);
       },
     }),
@@ -94,7 +95,7 @@ export function buildApiTools(args: {
           `/api/v1/projects/${encodeURIComponent(ref)}/environments`,
           userActorToken!
         );
-        if (!result.ok) return { error: `Couldn't list environments (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list environments${fetchReason(result)}.` };
         return curateEnvironments(result.data);
       },
     }),
@@ -113,7 +114,7 @@ export function buildApiTools(args: {
           userActorToken!,
           environmentBranch
         );
-        if (!result.ok) return { error: `Couldn't list tasks (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list tasks${fetchReason(result)}.` };
         return curateTasks(result.data);
       },
     }),
@@ -130,7 +131,7 @@ export function buildApiTools(args: {
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
         const result = await envApiGet(`/api/v1/runs?${sp.toString()}`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
-        if (!result.ok) return { error: `Couldn't list runs (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list runs${fetchReason(result)}.` };
         return { ...curateRuns(result.data), period: effectivePeriod };
       },
     }),
@@ -143,7 +144,7 @@ export function buildApiTools(args: {
       execute: async ({ runId }) => {
         const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
-        if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't get run ${runId}${fetchReason(result)}.` };
         return curateRun(result.data);
       },
     }),
@@ -154,7 +155,7 @@ export function buildApiTools(args: {
         const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok)
-          return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
+          return { error: `Couldn't get the trace for ${runId}${fetchReason(result)}.` };
         return curateTrace(result.data);
       },
     }),
@@ -170,7 +171,7 @@ export function buildApiTools(args: {
         sp.append("page[size]", String(Math.min(limit ?? 20, 100)));
         const result = await envApiGet(`/api/v1/errors?${sp.toString()}`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
-        if (!result.ok) return { error: `Couldn't list errors (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list errors${fetchReason(result)}.` };
         return curateErrors(result.data);
       },
     }),
@@ -180,8 +181,7 @@ export function buildApiTools(args: {
       execute: async ({ errorId }) => {
         const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
-        if (!result.ok)
-          return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't get error ${errorId}${fetchReason(result)}.` };
         return curateError(result.data);
       },
     }),
@@ -191,8 +191,7 @@ export function buildApiTools(args: {
       execute: async ({ table }) => {
         const result = await envApiGet("/api/v1/query/schema");
         if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
-        if (!result.ok)
-          return { error: `Couldn't load the query schema (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't load the query schema${fetchReason(result)}.` };
         const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
         if (!table) {
           return {
@@ -316,7 +315,7 @@ export function buildApiTools(args: {
         );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "report on");
         if (!result.ok) {
-          return { error: `Couldn't get the ${reportKey} report (status ${result.status}).` };
+          return { error: `Couldn't get the ${reportKey} report${fetchReason(result)}.` };
         }
         // Built from the RuntimeEnvironment id the proxy injects, never the env name.
         const uri =
@@ -347,7 +346,7 @@ export function buildApiTools(args: {
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read queues from");
         if (!result.ok) {
           return {
-            error: `Couldn't get metrics for the ${queue} queue (status ${result.status}).`,
+            error: `Couldn't get metrics for the ${queue} queue${fetchReason(result)}.`,
           };
         }
         return result.data;
@@ -364,7 +363,7 @@ export function buildApiTools(args: {
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
         const result = await envApiGet(`/api/v1/deployments?${sp.toString()}`);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read deployments from");
-        if (!result.ok) return { error: `Couldn't list deployments (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't list deployments${fetchReason(result)}.` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         return {
           deploys: (Array.isArray(rows) ? rows : []).map(curateDeploy),
@@ -383,7 +382,7 @@ export function buildApiTools(args: {
           const result = await envApiGet("/api/v1/deployments/current");
           if (isEnvUnavailable(result)) return noEnv(result);
           if (!result.ok) {
-            return { error: `Couldn't get the current deployment (status ${result.status}).` };
+            return { error: `Couldn't get the current deployment${fetchReason(result)}.` };
           }
           return { deploy: curateDeploy(result.data), isCurrent: true };
         }
@@ -391,7 +390,7 @@ export function buildApiTools(args: {
         // JWT-reachable list instead.
         const result = await envApiGet("/api/v1/deployments?page[size]=100");
         if (isEnvUnavailable(result)) return noEnv(result);
-        if (!result.ok) return { error: `Couldn't look up deployments (status ${result.status}).` };
+        if (!result.ok) return { error: `Couldn't look up deployments${fetchReason(result)}.` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         const match = (Array.isArray(rows) ? rows : []).find(
           (d: any) => d?.version === version || d?.shortCode === version
@@ -420,12 +419,13 @@ export function buildApiTools(args: {
           environmentBranch
         );
         if (!result.ok) {
-          if (result.status === 404) {
+          // Only a real 404 says "no commit"; a transport failure says nothing.
+          if ("status" in result && result.status === 404) {
             return {
               error: `Run ${runId} isn't locked to a deployed version, so there's no commit to correlate (dev runs behave this way).`,
             };
           }
-          return { error: `Couldn't resolve the commit for ${runId} (status ${result.status}).` };
+          return { error: `Couldn't resolve the commit for ${runId}${fetchReason(result)}.` };
         }
         return result.data;
       },

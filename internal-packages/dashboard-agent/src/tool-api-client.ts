@@ -5,7 +5,19 @@ import { logger } from "@trigger.dev/sdk";
  * turn-scoped cache, and the query POST both `run_query` and chart validation use.
  */
 
-export type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
+// A status is the server's answer; a transport failure is the absence of one, and must never
+// be read as a definite 404.
+export type FetchResult =
+  | { ok: true; data: unknown }
+  | { ok: false; status: number }
+  | { ok: false; transport: string };
+
+/** How a failed GET is phrased, so "couldn't read" never reads as "isn't there". */
+export function fetchReason(result: { status: number } | { transport: string }): string {
+  return "transport" in result
+    ? ` (the request failed: ${result.transport})`
+    : ` (status ${result.status})`;
+}
 
 /**
  * Why an environment-scoped call was never made. Only `"missing"` says there is no current
@@ -44,9 +56,18 @@ export async function apiGet(
     Accept: "application/json",
   };
   if (branch) headers["x-trigger-branch"] = branch;
-  const res = await fetch(`${origin}${path}`, { headers });
+  let res: Response;
+  try {
+    res = await fetch(`${origin}${path}`, { headers });
+  } catch (error) {
+    return { ok: false, transport: (error as Error).message };
+  }
   if (!res.ok) return { ok: false, status: res.status };
-  return { ok: true, data: await res.json() };
+  try {
+    return { ok: true, data: await res.json() };
+  } catch (error) {
+    return { ok: false, transport: (error as Error).message };
+  }
 }
 
 // The exchange ceilings these scopes to the delegated token's read-only cap, so the
@@ -148,7 +169,8 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     return call(fresh.token);
   }
 
-  const unauthorizedGet = (result: FetchResult) => !result.ok && result.status === 401;
+  const unauthorizedGet = (result: FetchResult) =>
+    !result.ok && "status" in result && result.status === 401;
 
   function envApiGet(path: string): Promise<EnvFetchResult> {
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);

@@ -12,6 +12,9 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 
 const QuerySchema = z.object({ organizationId: z.string().min(1) });
 
+// obs-map-disable request-context -- the only call here that can throw catches its own failure
+// and logs it with organizationId, in dashboardAgentEvalPolicy.server.ts; the rest are early
+// returns, and the one failure that does reach the boundary is auth, where no tenant is known yet.
 export async function loader({ request }: LoaderFunctionArgs) {
   const authentication = await authenticateUatOrApiRequest(request);
   if (!authentication?.userActor) {

@@ -215,17 +215,19 @@ export function InvestigationCard({
 
           {expanded ? (
             <div className="space-y-5 pt-1">
-              <Section title="Hypotheses">
-                <ul className="space-y-5">
-                  {investigation.hypotheses.map((hypothesis) => (
-                    <HypothesisRow
-                      key={hypothesis.id}
-                      hypothesis={hypothesis}
-                      resolveUri={resolveUri}
-                    />
-                  ))}
-                </ul>
-              </Section>
+              {investigation.hypotheses.length > 0 ? (
+                <Section title="Hypotheses">
+                  <ul className="space-y-5">
+                    {investigation.hypotheses.map((hypothesis) => (
+                      <HypothesisRow
+                        key={hypothesis.id}
+                        hypothesis={hypothesis}
+                        resolveUri={resolveUri}
+                      />
+                    ))}
+                  </ul>
+                </Section>
+              ) : null}
 
               {investigation.evidence.length > 0 ? (
                 <Section title="Evidence">

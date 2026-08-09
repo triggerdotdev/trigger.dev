@@ -4,9 +4,9 @@ import { isReportKey, REPORT_KEYS } from "~/presenters/v3/reports/report-registr
 import {
   ReportParamsSchema,
   ReportSearchParamsSchema,
-  reportAuthResource,
   reportResponse,
 } from "~/presenters/v3/reports/reportsApi.server";
+import { reportAuthResource } from "~/presenters/v3/reports/reportsApiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
