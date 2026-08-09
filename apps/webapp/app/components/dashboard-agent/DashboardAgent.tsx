@@ -22,7 +22,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
-import { nextVisibleChat, unreadWorkForDot } from "./unread-counts";
+import { nextVisibleChat, unreadWorkForDot, unreadWorkOnPanelClose } from "./unread-counts";
 import { startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
@@ -146,10 +146,22 @@ export function DashboardAgent({
     undefined
   );
 
+  // The panel's own count, off the chat list it has already marked read. Kept so the closing
+  // edge can settle the dot instead of waiting a poll for the open-chat subtraction to lift.
+  const panelWorkCount = useRef<number | null>(null);
+  const handleUnreadWorkChange = useCallback((count: number) => {
+    panelWorkCount.current = count;
+    setUnreadWork(count);
+  }, []);
+
   const setPanelOpen = useCallback((next: boolean) => {
     setOpen(next);
     // Pending requests must be dropped or a stale one re-applies on the next open.
     if (!next) {
+      setUnreadWork((shown) =>
+        unreadWorkOnPanelClose({ shown, panelCount: panelWorkCount.current })
+      );
+      panelWorkCount.current = null;
       visibleChat.current = null;
       setFullscreen(false);
       writeAgentFullscreen(false);
@@ -345,7 +357,7 @@ export function DashboardAgent({
                   newChatSeq={newChatSeq}
                   promotedPrompt={promotedPrompt}
                   onChatRead={markChatRead}
-                  onUnreadWorkChange={setUnreadWork}
+                  onUnreadWorkChange={handleUnreadWorkChange}
                   onTurnActivityChange={handleTurnActivityChange}
                   isFullscreen={fullscreen}
                   onToggleFullscreen={toggleFullscreen}

@@ -1,5 +1,10 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
-import { cancelWatch, getWatch, recordWatchCheck } from "@internal/dashboard-agent-db";
+import {
+  cancelWatch,
+  getWatch,
+  recordWatchAttempt,
+  recordWatchCheck,
+} from "@internal/dashboard-agent-db";
 import { z } from "zod";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
@@ -21,6 +26,8 @@ import {
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
+
+// obs-map-disable error-classification -- arming the chain is best-effort: every error means the same thing, retry next check
 
 /** Best-effort: a chain that couldn't be armed returns `false` and is retried next check. */
 async function ensureBatchChain(watch: {
@@ -156,17 +163,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
         })
     );
 
-    // Recorded even on the final evaluation. Guarded on `active`, so a concurrent
-    // fire/expire wins and this no-ops.
-    await recordWatchCheck(dashboardAgentDb, {
-      id: watchId,
-      lastResult: {
-        result: outcome.result,
-        facts: outcome.facts,
-        observed: outcome.observed,
-        final: body.final === true,
-      },
-    });
+    // Only a real evaluation is recorded, final or not: `unavailable` means nothing was read,
+    // so writing it would move `lastCheckedAt` and overwrite the facts a streak lives in.
+    // Guarded on `active`, so a concurrent fire/expire wins and this no-ops.
+    if (outcome.result !== "unavailable") {
+      await recordWatchCheck(dashboardAgentDb, {
+        id: watchId,
+        lastResult: {
+          result: outcome.result,
+          facts: outcome.facts,
+          observed: outcome.observed,
+          final: body.final === true,
+        },
+      });
+    } else {
+      // Looked at, not checked: the fairness key moves and nothing else does.
+      await recordWatchAttempt(dashboardAgentDb, { id: watchId });
+    }
 
     const batched = await ensureBatchChain(watch);
 

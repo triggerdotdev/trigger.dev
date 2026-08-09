@@ -12,8 +12,11 @@ import { afterEach, describe, expect } from "vitest";
 
 /**
  * `chats.last_read_at` is nullable and every reader treats NULL as unread, so without a
- * backfill the first load after rollout reports every pre-existing chat unread. Migration
- * 0002 backfills it; this replays the migrations against a real Postgres to prove it does.
+ * backfill the first load after rollout reports every pre-existing chat unread. Migrations
+ * 0002 and 0003 backfill it; this replays them against a real Postgres to prove they do.
+ *
+ * 0003 is the one that reaches a database where 0002 already ran, which is every database
+ * the column landed on before the backfill statement was appended to 0002.
  */
 
 const DRIZZLE = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
@@ -22,6 +25,7 @@ const MIGRATIONS = [
   "0000_magenta_lilandra.sql",
   "0001_slimy_living_tribunal.sql",
   "0002_watches_and_chat_messages.sql",
+  "0003_backfill_chat_last_read_at.sql",
 ];
 
 /** The statement under test, located by shape so removing it fails rather than silently passing. */
@@ -130,6 +134,49 @@ describe("the last_read_at backfill in migration 0002", () => {
       // And a positive control, so a backfill that marked everything read forever would fail.
       await prisma.$executeRawUnsafe(
         `update "trigger_dashboard_agent"."chats" set "last_message_at" = now() where "id" = 'chat_never_messaged'`
+      );
+      expect(await countChatsWithUnreadWork(agentDb, SCOPE)).toBe(1);
+    }
+  );
+});
+
+describe("the last_read_at catch-up in migration 0003", () => {
+  postgresTest(
+    "starts pre-existing chats read on a database that already ran 0002",
+    async ({ prisma, postgresContainer }) => {
+      await run(prisma, statementsOf(MIGRATIONS[0]!));
+      await run(prisma, statementsOf(MIGRATIONS[1]!));
+
+      // 0002 as it was already applied everywhere: the column, without the backfill that
+      // was appended to it later. Re-running 0002 there is impossible — its hash is spent.
+      const applied = statementsOf(MIGRATIONS[2]!).filter((statement) => !BACKFILL.test(statement));
+      await run(prisma, applied);
+      await seedPreExistingChats(prisma);
+      await prisma.$executeRawUnsafe(
+        `update "trigger_dashboard_agent"."chats" set "last_read_at" = $1 where "id" = 'chat_already_read'`,
+        ALREADY_READ_AT
+      );
+
+      agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
+      const agentDb: DashboardAgentDb = agentDbClient.db;
+
+      // The bug 0003 exists for: every chat that predates the column reads as unread.
+      expect(await countChatsWithUnreadWork(agentDb, SCOPE)).toBe(1);
+
+      const catchUp = statementsOf(MIGRATIONS[3]!);
+      expect(catchUp.some((statement) => BACKFILL.test(statement))).toBe(true);
+      await run(prisma, catchUp);
+
+      expect(await readLastReadAt(prisma)).toEqual({
+        chat_with_messages: LAST_MESSAGE_AT,
+        chat_never_messaged: CREATED_AT,
+        chat_already_read: ALREADY_READ_AT,
+      });
+      expect(await countChatsWithUnreadWork(agentDb, SCOPE)).toBe(0);
+
+      // Still a dot for work that lands after the catch-up.
+      await prisma.$executeRawUnsafe(
+        `update "trigger_dashboard_agent"."chats" set "last_message_at" = now() where "id" = 'chat_with_messages'`
       );
       expect(await countChatsWithUnreadWork(agentDb, SCOPE)).toBe(1);
     }

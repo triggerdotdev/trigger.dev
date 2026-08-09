@@ -169,7 +169,11 @@ export async function readWatchQueueOldestAge(
   return { ageMs, source: "live_queue", current: true, asOf: now };
 }
 
-/** Same cap the queue detail page reads keys with. */
+/**
+ * Same cap the queue detail page reads keys with. It cannot under-report the wait: the ckIndex
+ * is scored by each key's oldest enqueue time and read ascending, so the oldest key is the first
+ * of the page whatever the cardinality.
+ */
 const OLDEST_AGE_CK_LIMIT = 50;
 
 const MINUTE_MS = 60_000;

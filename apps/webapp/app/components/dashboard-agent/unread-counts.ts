@@ -33,6 +33,20 @@ export function unreadWorkForDot(params: {
   return Math.max(0, (params.reported ?? 0) - onScreen);
 }
 
+/**
+ * The count the dot settles on the moment the panel closes. While the panel is open the poll
+ * subtracts the chat on screen, and it only corrects itself a tick later — up to a minute of a
+ * dark dot over work nobody has seen. The panel's own count is taken off the chat list it has
+ * already marked read, so it settles the closing edge without waiting. `null` is a panel that
+ * closed before its list loaded, which leaves the shown count alone.
+ */
+export function unreadWorkOnPanelClose(params: {
+  shown: number;
+  panelCount: number | null;
+}): number {
+  return params.panelCount ?? params.shown;
+}
+
 /** Opening a chat settles everything unseen in it, not just the wake. */
 export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: string): T[] {
   return chats.map((chat) =>

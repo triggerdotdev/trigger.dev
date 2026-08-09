@@ -1474,8 +1474,8 @@ describe("the check endpoint", () => {
     });
   }
 
-  async function activeWatch(seeded: Seeded) {
-    const result = await create({ seeded });
+  async function activeWatch(seeded: Seeded, spec?: WatchSpec) {
+    const result = await create({ seeded, spec });
     if (!result.ok) throw new Error(`watch not created: ${result.code}`);
     return result;
   }
@@ -1598,6 +1598,68 @@ describe("the check endpoint", () => {
       expect(row?.tickCount).toBe(0);
       expect(row?.lastResult).toBeNull();
     }
+  );
+
+  postgresTest(
+    "a check that couldn't read anything leaves the row's last look and facts alone",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "check");
+      await seedChat(seeded);
+
+      // The queue exists, so the check gets past the target read and fails on the depth
+      // read: there is no live queue or analytics store behind this environment.
+      const queue = "task/stalling";
+      await prisma.taskQueue.create({
+        data: {
+          runtimeEnvironmentId: seeded.environment.id,
+          projectId: seeded.project.id,
+          name: queue,
+          friendlyId: `queue_${Math.random().toString(36).slice(2, 10)}`,
+          orderableName: queue,
+        },
+      });
+
+      const watch = await activeWatch(seeded, {
+        kind: "queue_stalled",
+        queue,
+        ticks: 3,
+        checkEveryMinutes: 5,
+        maxHours: 6,
+        note: "tell me if the queue stops moving",
+      });
+
+      // Two no-progress checks already behind it, last looked at an hour ago.
+      const checkedAt = new Date(Date.now() - 60 * 60 * 1000);
+      await recordWatchCheck(ctx.agentDb, {
+        id: watch.watchId,
+        lastCheckedAt: checkedAt,
+        lastResult: {
+          result: "pending",
+          facts: { queue, depth: 412, notDecreasingStreak: 2, ticks: 3 },
+        },
+      });
+
+      const token = await tokenFor(watch.watchId, watch.expiresAt);
+      const response = await checkAction({
+        request: request(token),
+        params: { watchId: watch.watchId },
+        context: {},
+      });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ result: "unavailable" });
+
+      const row = await getWatch(ctx.agentDb, { id: watch.watchId });
+      // Nothing was checked, so the watch is still due at the next tick.
+      expect(row?.lastCheckedAt?.getTime()).toBe(checkedAt.getTime());
+      // And the streak the earlier ticks built is still there to be continued.
+      expect(previousCheckFacts(row?.lastResult)).toMatchObject({
+        depth: 412,
+        notDecreasingStreak: 2,
+      });
+    },
+    120_000
   );
 
   postgresTest("403s once the watch is terminal", async ({ prisma, postgresContainer }) => {

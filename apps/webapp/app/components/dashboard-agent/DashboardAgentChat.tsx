@@ -28,6 +28,7 @@ import {
   pollSettledTranscript,
 } from "./settled-transcript";
 import { takeNavigateIntent } from "./turn-navigation";
+import { sendRequestOutcome } from "./send-request";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
@@ -226,13 +227,21 @@ export function DashboardAgentChat({
     [isStreaming, atMessageCap, sendMessage]
   );
 
-  // The panel only sends when the chat can take it, so this never lands mid-turn.
+  // The panel only sends when the chat can take it, so this never lands mid-turn. The cap it
+  // cannot see is why the request is held rather than consumed on sight.
   const sentRequestSeq = useRef<number | undefined>(undefined);
+  const canSend = !isStreaming && !atMessageCap;
   useEffect(() => {
-    if (!sendRequest || sentRequestSeq.current === sendRequest.seq) return;
+    if (!sendRequest) return;
+    const outcome = sendRequestOutcome({
+      requestSeq: sendRequest.seq,
+      consumedSeq: sentRequestSeq.current,
+      canSend,
+    });
+    if (outcome !== "send") return;
     sentRequestSeq.current = sendRequest.seq;
     submit(sendRequest.text);
-  }, [sendRequest, submit]);
+  }, [sendRequest, submit, canSend]);
 
   const retry = useCallback(() => {
     // A watch's consent record is a user message nobody typed, so retry never treats it as one.

@@ -5,6 +5,7 @@ import {
   nextVisibleChat,
   unreadWorkCount,
   unreadWorkForDot,
+  unreadWorkOnPanelClose,
 } from "./unread-counts";
 
 const list = () => [
@@ -79,6 +80,27 @@ describe("unreadWorkForDot", () => {
   });
 });
 
+/**
+ * Closing the panel stops the chat on screen being read, so the one the open panel took off the
+ * count comes straight back rather than a poll later.
+ */
+describe("unreadWorkOnPanelClose", () => {
+  it("settles the dot on the panel's own count", () => {
+    const open = unreadWorkForDot({ reported: 1, panelOpen: true, visibleChatId: "chat_a" });
+    expect(open).toBe(0);
+    // Work landed in another chat while chat_a was on screen: the panel's list still counts it.
+    expect(unreadWorkOnPanelClose({ shown: open, panelCount: 1 })).toBe(1);
+  });
+
+  it("leaves the shown count alone when the panel closed before its list loaded", () => {
+    expect(unreadWorkOnPanelClose({ shown: 2, panelCount: null })).toBe(2);
+  });
+
+  it("takes the panel's zero too, so reading the last chat darkens the dot at once", () => {
+    expect(unreadWorkOnPanelClose({ shown: 1, panelCount: 0 })).toBe(0);
+  });
+});
+
 describe("what the panel and the layout actually do with it", () => {
   const panel = readFileSync(new URL("./DashboardAgentPanel.tsx", import.meta.url), "utf8");
   const layout = readFileSync(new URL("./DashboardAgent.tsx", import.meta.url), "utf8");
@@ -103,6 +125,15 @@ describe("what the panel and the layout actually do with it", () => {
   it("reads the panel's state at poll time, not from the closure", () => {
     expect(layout).toContain("panelOpen: panelOpen.current,");
     expect(layout).not.toContain("open && visibleChat.current");
+  });
+
+  /** Structural: there is no DOM here to close a real panel in. */
+  it("settles the count on the closing edge instead of waiting for the poll", () => {
+    expect(panel).toContain("onUnreadWorkChange?.(unreadWorkCount(chats));");
+    expect(layout).toContain("panelWorkCount.current = count;");
+    expect(layout).toContain(
+      "unreadWorkOnPanelClose({ shown, panelCount: panelWorkCount.current })"
+    );
   });
 
   it("re-seeds both counts when the environment changes under the layout", () => {
