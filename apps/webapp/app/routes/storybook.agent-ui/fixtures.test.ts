@@ -4,8 +4,9 @@ import {
   watchExternalNotificationLine,
 } from "@internal/dashboard-agent-contracts";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEMO_MARKER } from "~/components/dashboard-agent/demo";
+import { DEMO_MARKER } from "~/components/dashboard-agent/demo/ids";
 import { planDiagnosisActions } from "~/components/dashboard-agent/diagnosis-actions";
 import { renderableActions } from "~/components/dashboard-agent/view-actions";
 import { reportTrust } from "~/presenters/v3/reports/report-layout";
@@ -151,4 +152,23 @@ describe("gallery report", () => {
     const trust = reportTrust(untrustworthyReport);
     expect(trust?.badge).toBe("stale data");
   });
+});
+
+/**
+ * `demo/index.ts` re-exports `DemoChartCard` and `DemoIntentBubble`, so importing it here would
+ * pull React components into a suite that runs without a DOM. `demo.test.ts` reaches past the
+ * barrel for the same reason; these fixtures and their test do too.
+ *
+ * Structural: what a module drags in is not observable from inside it.
+ */
+describe("the gallery fixtures stay out of the demo barrel", () => {
+  const BARREL = /from "~\/components\/dashboard-agent\/demo"/;
+
+  for (const file of ["fixtures.ts", "fixtures.test.ts"]) {
+    it(`${file} reaches past it`, () => {
+      const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+      expect(BARREL.test(source), `${file} imports the demo barrel`).toBe(false);
+      expect(source).toContain('"~/components/dashboard-agent/demo/');
+    });
+  }
 });

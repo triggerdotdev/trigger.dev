@@ -8,7 +8,8 @@ import {
   type ViewBlock,
   type WatchResultBlock as WatchResultBlockPayload,
 } from "@internal/dashboard-agent-contracts";
-import { DEMO_WORLD, demoFixtures, demoId, demoRunsUri } from "~/components/dashboard-agent/demo";
+import * as demoFixtures from "~/components/dashboard-agent/demo/fixtures";
+import { DEMO_WORLD, demoId, demoRunsUri } from "~/components/dashboard-agent/demo/ids";
 import type { TurnActivity } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { watchConfirmationBlockBody, watchOneShotBlockBody } from "~/presenters/v3/dashboardAgent";
 import {
