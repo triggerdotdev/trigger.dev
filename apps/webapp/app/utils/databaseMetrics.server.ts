@@ -1,3 +1,5 @@
+import { singleton } from "./singleton";
+
 export type MetricHistogramValue = {
   buckets: [number, number][];
   sum: number;
@@ -50,18 +52,21 @@ export type NormalizedDatabaseMetrics = {
   };
 };
 
-const sources: DatabaseMetricsSource[] = [];
+const sources = singleton(
+  "databaseMetricsSources",
+  () => new Map<string, DatabaseMetricsSource>()
+);
 
 export function registerDatabaseMetricsSource(source: DatabaseMetricsSource): void {
-  sources.push(source);
+  sources.set(source.clientType, source);
 }
 
 export function listDatabaseMetricsSources(): ReadonlyArray<DatabaseMetricsSource> {
-  return sources;
+  return Array.from(sources.values());
 }
 
 export function resetDatabaseMetricsSources(): void {
-  sources.length = 0;
+  sources.clear();
 }
 
 function indexByKey(entries: Array<{ key: string; value: number }>): Record<string, number> {
@@ -130,7 +135,7 @@ export function normalizeDatabaseMetrics(
 
 export async function collectDatabaseClientMetrics(): Promise<NormalizedDatabaseMetrics[]> {
   return Promise.all(
-    sources.map(async (source) => {
+    Array.from(sources.values()).map(async (source) => {
       let json: PrismaMetricsJson | undefined;
       try {
         json = await source.client.$metrics.json();
