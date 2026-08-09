@@ -1,6 +1,7 @@
 /**
  * Two seams a delegated user-actor token meets outside the route builder: the PAT-only
- * authentication (which enforces nothing, so it refuses the token outright), and the
+ * authentication (which enforces nothing, so it refuses the token outright while still
+ * authenticating an ordinary PAT), and the
  * environment JWT exchange (which ceilings the minted scopes by the token's cap and only
  * mints for the environment it was signed for).
  */
@@ -24,7 +25,10 @@ vi.mock("~/db.server", () => {
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
 vi.mock("~/env.server", () => ({
-  env: { SESSION_SECRET: "test-session-secret-for-user-actor-claims" },
+  env: {
+    SESSION_SECRET: "test-session-secret-for-user-actor-claims",
+    ENCRYPTION_KEY: "12345678901234567890123456789012",
+  },
 }));
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -63,7 +67,7 @@ vi.mock("~/services/rbac.server", async () => {
   };
 });
 
-const { authenticateApiRequestWithPersonalAccessToken } =
+const { authenticateApiRequestWithPersonalAccessToken, createPersonalAccessToken } =
   await import("~/services/personalAccessToken.server");
 const { action: jwtAction } = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
 
@@ -107,6 +111,29 @@ it("refuses a user-actor token that claims nothing", async () => {
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
+
+// The other direction: the refusal is aimed at the token type only, so an ordinary PAT still
+// authenticates through the same helper.
+postgresTest(
+  "authenticates an ordinary personal access token",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const user = await prisma.user.create({
+      data: { email: `pat_${suffix()}@example.com`, authenticationMethod: "MAGIC_LINK" },
+    });
+    const pat = await createPersonalAccessToken({ name: "claims-test", userId: user.id });
+
+    const result = await authenticateApiRequestWithPersonalAccessToken(bearer(pat.token));
+
+    expect(result?.userId).toBe(user.id);
+
+    // And it is the stored token that authenticates, not the prefix.
+    expect(
+      await authenticateApiRequestWithPersonalAccessToken(bearer(`tr_pat_${suffix()}`))
+    ).toBeUndefined();
+  },
+  60_000
+);
 
 /** An org with one project, a prod and a staging environment, and a member user. */
 async function seedProject(prisma: PrismaClient) {
