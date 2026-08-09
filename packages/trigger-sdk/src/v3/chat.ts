@@ -1759,6 +1759,50 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
         };
 
+        const openWithAuthRetry = async () => {
+          try {
+            return await connectSseOnce(state.publicAccessToken);
+          } catch (e) {
+            if (!isAuthError(e)) throw e;
+            const fresh = await this.resolveAccessToken({ chatId });
+            state.publicAccessToken = fresh;
+            this.notifySessionChange(chatId, state);
+            return await connectSseOnce(fresh);
+          }
+        };
+
+        // A body that ends without a turn-complete is only terminal when the
+        // server says the session settled — otherwise the turn is still
+        // running and we lost the connection (long-poll window closed, proxy
+        // restarted). Resubscribe from `state.lastEventId`, bounded so a
+        // permanently empty stream can't spin.
+        const MAX_EOF_RESUBSCRIBES = 5;
+        let eofResubscribes = 0;
+
+        const resumeAfterEof = async () => {
+          while (
+            state.isStreaming &&
+            !currentSubscription?.sessionSettled &&
+            !combinedSignal.aborted &&
+            eofResubscribes < MAX_EOF_RESUBSCRIBES
+          ) {
+            eofResubscribes++;
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.min(100 * 2 ** (eofResubscribes - 1), 5_000))
+            );
+            const opened = await openWithAuthRetry();
+            if (opened) return opened;
+          }
+
+          // Settled close, or the turn is gone — tell the UI instead of
+          // leaving it spinning on a stream nobody will finish.
+          if (state.isStreaming) {
+            state.isStreaming = false;
+            this.notifySessionChange(chatId, state);
+          }
+          return null;
+        };
+
         try {
           let reader: ReadableStreamDefaultReader<{
             id: string;
@@ -1767,30 +1811,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }>;
           let primed: { id: string; chunk: unknown; timestamp: number } | undefined;
 
-          try {
-            const opened = await connectSseOnce(state.publicAccessToken);
-            if (opened === null) {
-              controller.close();
-              return;
-            }
-            reader = opened.reader;
-            primed = opened.primed;
-          } catch (e) {
-            if (isAuthError(e)) {
-              const fresh = await this.resolveAccessToken({ chatId });
-              state.publicAccessToken = fresh;
-              this.notifySessionChange(chatId, state);
-              const opened = await connectSseOnce(fresh);
-              if (opened === null) {
-                controller.close();
-                return;
-              }
-              reader = opened.reader;
-              primed = opened.primed;
-            } else {
-              throw e;
-            }
+          const opened = (await openWithAuthRetry()) ?? (await resumeAfterEof());
+          if (opened === null) {
+            controller.close();
+            return;
           }
+          reader = opened.reader;
+          primed = opened.primed;
 
           this.emitEvent({
             type: "stream-connected",
@@ -1814,10 +1841,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             } else {
               const next = await reader.read();
               if (next.done) {
-                controller.close();
-                return;
+                const resumed = await resumeAfterEof();
+                if (resumed === null) {
+                  controller.close();
+                  return;
+                }
+                reader = resumed.reader;
+                primed = resumed.primed;
+                continue;
               }
               value = next.value;
+              // A productive connection re-earns the resubscribe budget, so a
+              // long turn spanning many long-poll windows keeps streaming.
+              eofResubscribes = 0;
             }
 
             if (combinedSignal.aborted) {

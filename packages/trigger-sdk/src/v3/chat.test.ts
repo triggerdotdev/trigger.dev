@@ -1054,6 +1054,90 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("stream body ends mid-turn", () => {
+    it("resubscribes from the last event id when the close was not settled", async () => {
+      const subscribeHeaders: Headers[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeHeaders.push(new Headers(init?.headers));
+          // First connection ends mid-turn: one chunk, no turn-complete,
+          // no `X-Session-Settled`.
+          return subscribeHeaders.length === 1
+            ? defaultSseResponse([{ type: "text-start", id: "part-1" }])
+            : defaultSseResponse([
+                { type: "text-delta", id: "part-1", delta: "resumed" },
+                { type: "trigger:turn-complete" },
+              ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-eof": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-eof",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      expect(subscribeHeaders).toHaveLength(2);
+      expect(subscribeHeaders[1]?.get("Last-Event-ID")).toBe("1");
+      expect(chunks).toEqual([
+        { type: "text-start", id: "part-1" },
+        { type: "text-delta", id: "part-1", delta: "resumed" },
+      ]);
+      expect(transport.getSession("chat-eof")?.isStreaming).toBe(false);
+    });
+
+    it("stops and clears isStreaming when the close was settled", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          const response = defaultSseResponse([{ type: "text-start", id: "part-1" }]);
+          const headers = new Headers(response.headers);
+          headers.set("X-Session-Settled", "true");
+          return new Response(response.body, { status: 200, headers });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const onSessionChange = vi.fn();
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onSessionChange,
+        sessions: { "chat-settled": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-settled",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(subscribeCount).toBe(1);
+      expect(transport.getSession("chat-settled")?.isStreaming).toBe(false);
+      expect(
+        onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === false)
+      ).toBe(true);
+    });
+  });
+
   describe("multi-tab coordination", () => {
     it("isReadOnly defaults to false when multiTab is disabled", () => {
       const transport = new TriggerChatTransport({

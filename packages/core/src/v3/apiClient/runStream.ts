@@ -206,6 +206,13 @@ export class SSEStreamSubscription implements StreamSubscription {
   private cancelledByConsumer = false;
   private completeNotified = false;
 
+  /**
+   * True when the most recent response carried `X-Session-Settled: true` —
+   * the server has no more records coming, so a clean end of the body is
+   * terminal rather than the end of a long-poll window.
+   */
+  sessionSettled = false;
+
   constructor(
     private url: string,
     private options: {
@@ -414,6 +421,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
 
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
+      this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
       this.retryCount = 0; // reset on success
       armStall();
 
