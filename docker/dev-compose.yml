@@ -12,7 +12,9 @@ networks:
 services:
   db:
     container_name: db-dev
-    image: postgres:14
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     restart: always
     volumes:
       - database-data:/var/lib/postgresql/data/
@@ -29,6 +31,8 @@ services:
       - listen_addresses=*
       - -c
       - wal_level=logical
+      - -c
+      - shared_preload_libraries=pg_partman_bgw
 
   electric:
     container_name: electric-dev
