@@ -18,8 +18,7 @@ import { liveInvestigation } from "~/components/dashboard-agent/progress-line";
 // connection is only stubbed so importing the service doesn't open a pool.
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: undefined }));
 
-const { sweepDashboardAgentInvestigations } =
-  await import("~/services/dashboardAgentInvestigationSweep.server");
+import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
 
 /**
  * The transcript half of the sweep, without a container: settling the row is invisible

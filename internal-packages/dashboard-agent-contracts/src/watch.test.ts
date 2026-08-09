@@ -23,6 +23,7 @@ import {
   type WatchKind,
   type WatchSpec,
 } from "./watch.js";
+import { watchResolvedBlockBody } from "./watch-wording.js";
 
 const common = { maxHours: 6, note: "because I asked" };
 
@@ -581,5 +582,32 @@ describe("resolveWatchResult", () => {
       resolveWatchResult({ kind: "backlog_drain", resolution: "condition_met", outcome })
         .headlineKey
     ).toBe("queue_drained");
+  });
+});
+
+describe("watchResolvedBlockBody", () => {
+  const identity = watchIdentity(specs.run_failed as WatchSpec);
+
+  it("marks good news as already true even when the window merely ran out", () => {
+    expect(
+      watchResolvedBlockBody({
+        watchId: "watch_1",
+        resolved: { kind: "run_failed", identity, resolution: "window_completed" },
+      }).outcome
+    ).toBe("already_true");
+  });
+
+  it("does not put a success check on bad news the watch caught", () => {
+    expect(
+      watchResolvedBlockBody({
+        watchId: "watch_1",
+        resolved: {
+          kind: "run_failed",
+          identity,
+          resolution: "condition_met",
+          observed: watchObservedOutcomeSchema.parse({ kind: "run_failed" }),
+        },
+      }).outcome
+    ).toBe("impossible");
   });
 });

@@ -40,18 +40,31 @@ export const loader = createLoaderPATApiRoute(
   }
 );
 
-// No org exists yet, so there is nothing to scope the gate to; any authenticated user can create
-// an org and becomes its ADMIN. The gate is still declared so a narrowly-capped delegated token
-// (which cannot `manage`) is refused rather than inheriting its user's full reach.
+// No org exists yet, so there is nothing to scope a route-level gate to; any authenticated user
+// can create an org and becomes its ADMIN. A narrowly-capped delegated token (which cannot
+// `manage`) is still refused rather than inheriting its user's full reach — but only for
+// user-actor tokens, so an ordinary PAT is unaffected.
 export const action = createActionPATApiRoute(
   {
     method: "POST",
     body: CreateOrgRequestBody,
-    authorization: { action: "manage", resource: () => ({ type: "organization" }) },
   },
-  async ({ body, authentication }) => {
+  async ({ body, authentication, ability }) => {
     if (env.ORG_CREATION_API_ENABLED !== "1") {
       return json({ error: "Not found" }, { status: 404 });
+    }
+
+    // After the env gate: an install with the API disabled should 404, not 403.
+    if (authentication.userActor && !ability.can("manage", { type: "organization" })) {
+      return json(
+        {
+          error: "Unauthorized",
+          code: "unauthorized",
+          param: "access_token",
+          type: "authorization",
+        },
+        { status: 403 }
+      );
     }
 
     // Mirror the dashboard: stash companyUrl/companySize as onboarding data and

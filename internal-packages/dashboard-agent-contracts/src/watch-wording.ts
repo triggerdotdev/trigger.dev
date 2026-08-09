@@ -615,6 +615,32 @@ export function watchConfirmationBlockBody(args: {
 }
 
 /**
+ * The confirmation for a watch that had already resolved before this submission settled
+ * (a retry adopting a fired or expired row). It states the outcome the watch reached
+ * rather than claiming something is still being watched.
+ */
+export function watchResolvedBlockBody(args: { watchId: string; resolved: WatchResolvedInput }): {
+  type: "watch_result";
+  outcome: "already_true" | "impossible";
+  headline: string;
+  lifetime: null;
+  detail: null;
+  followUp: never[];
+  watchId: string;
+} {
+  const presented = presentResolvedWatch(args.resolved);
+  return {
+    type: "watch_result",
+    outcome: presented.category === "positive" ? "already_true" : "impossible",
+    headline: presented.headline,
+    lifetime: null,
+    detail: null,
+    followUp: [],
+    watchId: args.watchId,
+  };
+}
+
+/**
  * The one-shot result block: the immediate check answered outright, so no watch was
  * created. Nothing is running, so there is no lifetime and no follow-ups.
  */

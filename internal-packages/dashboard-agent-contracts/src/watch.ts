@@ -37,6 +37,12 @@ export const WATCH_STALL_TICKS_MAX = 12;
 /** Ceiling on the `queue_oldest_age` SLA. */
 export const WATCH_MAX_QUEUE_AGE_MINUTES = 24 * 60;
 
+const watchQueueNameSchema = z
+  .string()
+  .describe(
+    "The stored queue name, keeping the `task/` prefix for task queues (e.g. `task/send-receipt`) — not the display name."
+  );
+
 /**
  * Kinds taking the same fields share one member with a `kind` enum. They still ask
  * different questions — `run_failed` inverts `run_finished`, `queue_depth_below` is
@@ -50,12 +56,12 @@ export const watchSpecSchema = z.discriminatedUnion("kind", [
     })
     .merge(runStateCadenceSchema),
   watchCommonSchema
-    .extend({ kind: z.literal("backlog_drain"), queue: z.string() })
+    .extend({ kind: z.literal("backlog_drain"), queue: watchQueueNameSchema })
     .merge(standardCadenceSchema),
   watchCommonSchema
     .extend({
       kind: z.enum(["queue_depth_above", "queue_depth_below"]),
-      queue: z.string(),
+      queue: watchQueueNameSchema,
       threshold: z.number().int().nonnegative().max(WATCH_MAX_QUEUE_THRESHOLD),
     })
     .merge(standardCadenceSchema),
@@ -64,7 +70,7 @@ export const watchSpecSchema = z.discriminatedUnion("kind", [
   watchCommonSchema
     .extend({
       kind: z.literal("queue_stalled"),
-      queue: z.string(),
+      queue: watchQueueNameSchema,
       ticks: z
         .number()
         .int()
@@ -76,7 +82,7 @@ export const watchSpecSchema = z.discriminatedUnion("kind", [
   watchCommonSchema
     .extend({
       kind: z.literal("queue_oldest_age"),
-      queue: z.string(),
+      queue: watchQueueNameSchema,
       thresholdMinutes: z.number().int().positive().max(WATCH_MAX_QUEUE_AGE_MINUTES),
     })
     .merge(standardCadenceSchema),
