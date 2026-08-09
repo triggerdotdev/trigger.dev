@@ -93,6 +93,7 @@ process.env.ALERT_EMAIL_TRANSPORT = "smtp";
 const {
   armDashboardAgentWatchBatch,
   authorizeWatchEnvironment,
+  cancelDashboardAgentWatch,
   createDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
@@ -781,6 +782,68 @@ describe("the chat cascade and the list view", () => {
       expect(await getWatch(ctx.agentDb, { id: theirs.watchId })).toMatchObject({
         status: "active",
       });
+    }
+  );
+
+  postgresTest(
+    "a user's own cancel leaves one neutral line in the chat, and only one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "usercancel");
+      await seedChat(seeded, "chat_1");
+
+      const created = await create({ seeded, chatId: "chat_1" });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const cancel = () =>
+        cancelDashboardAgentWatch({
+          watchId: created.watchId,
+          userId: seeded.user.id,
+          organizationId: seeded.organization.id,
+        });
+
+      expect(await cancel()).toMatchObject({
+        cancelled: true,
+        messages: [
+          {
+            id: `watch-cancelled:${created.watchId}`,
+            role: "assistant",
+            parts: [{ type: "text", text: "Stopped watching run run_1." }],
+          },
+        ],
+      });
+      expect(await getWatch(ctx.agentDb, { id: created.watchId })).toMatchObject({
+        status: "cancelled",
+        cancelReason: "user",
+        deliveryStatus: "not_required",
+      });
+      expect(await storedMessages(seeded, "chat_1")).toMatchObject([
+        { id: `watch-cancelled:${created.watchId}`, role: "assistant" },
+      ]);
+
+      // The row is no longer active, so the second cancel writes nothing at all.
+      expect(await cancel()).toEqual({ cancelled: false, messages: [] });
+      expect(await storedMessages(seeded, "chat_1")).toHaveLength(1);
+    }
+  );
+
+  postgresTest(
+    "a chat delete cancels its watches without a line in the chat",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "silentcancel");
+      await seedChat(seeded, "chat_1");
+
+      const created = await create({ seeded, chatId: "chat_1" });
+      expect(created.ok).toBe(true);
+
+      await deleteChatWithWatches({ chatId: "chat_1", userId: seeded.user.id });
+
+      const rows = await ctx.prisma.$queryRawUnsafe<{ message_id: string }[]>(
+        `select message_id from trigger_dashboard_agent.chat_messages where chat_id = 'chat_1'`
+      );
+      expect(rows).toEqual([]);
     }
   );
 

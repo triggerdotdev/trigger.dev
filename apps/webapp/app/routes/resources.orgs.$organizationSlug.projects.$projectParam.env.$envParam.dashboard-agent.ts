@@ -1,6 +1,5 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
-  cancelWatch,
   chatExists,
   countUnreadWatchWakes,
   countChatsWithUnreadWork,
@@ -36,6 +35,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   authorizeWatchEnvironmentById,
+  cancelDashboardAgentWatch,
   deleteChatWithWatches,
   listActiveWatchesForChats,
   submitDashboardAgentWatch,
@@ -670,10 +670,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "Chat not found" }, { status: 404 });
       }
 
-      // `cancelWatch` only touches an active row, so an already-resolved watch keeps
-      // its outcome and this is a no-op.
-      await cancelWatch(dashboardAgentDb, { id: watchId, reason: "user" });
-      return json({ ok: true });
+      // Only an active row is cancelled, so an already-resolved watch keeps its outcome,
+      // this is a no-op and no note is written.
+      const { messages } = await cancelDashboardAgentWatch({
+        watchId,
+        userId,
+        organizationId: project.organizationId,
+      });
+      return json({ ok: true, messages });
     }
   }
 };

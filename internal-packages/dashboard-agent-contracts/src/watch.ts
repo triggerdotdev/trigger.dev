@@ -136,6 +136,9 @@ export const WATCH_REQUEST_MESSAGE_ID_PREFIX = "watch-request:";
 /** The transcript id of the confirmation that a watch is running, keyed by the watch. */
 export const WATCH_CONFIRMATION_MESSAGE_ID_PREFIX = "watch-confirmation:";
 
+/** The transcript id of the note that the user stopped a watch, keyed by the watch. */
+export const WATCH_CANCELLED_MESSAGE_ID_PREFIX = "watch-cancelled:";
+
 /**
  * A deterministic consent record, not a turn the user spent, so it never counts
  * against the message cap and the retry button never resends it.
