@@ -457,10 +457,10 @@ export function ReportProvenance({ uri }: { uri: string }) {
 // --- sparkline --------------------------------------------------------------
 
 /** The fixed sparkline column. Keeps every sparkline aligned. */
-const SPARK_WIDTH_CLASS = "w-[6.5rem]";
+const SPARK_WIDTH_CLASS = "w-[5.5rem]";
 
 /** The chart's own width; the trailing peak label uses the column's remainder. */
-const SPARK_WIDTH = 72;
+const SPARK_WIDTH = 56;
 
 type ReportSparkDatum = { count: number; date: Date | null; hot: boolean };
 
@@ -563,18 +563,18 @@ export function ReportSparkline({
  * chart start on the same vertical whatever the value's width.
  */
 /**
- * Below a 22rem container the fixed tracks no longer fit beside the value, so the
+ * Below a 19rem container the fixed tracks no longer fit beside the value, so the
  * sparkline drops to its own line. The columns never change, so the value, delta
  * and note stay on the same verticals at every panel width.
  */
 const METRIC_ROW_CLASS =
-  "grid grid-cols-[7rem_minmax(0,1fr)_2.75rem_6.5rem] items-center gap-x-2 @max-[22rem]:grid-cols-[7rem_minmax(0,1fr)_2.75rem] @max-[22rem]:gap-y-1.5";
+  "grid grid-cols-[6rem_minmax(0,1fr)_2.75rem_5.5rem] items-center gap-x-2 @max-[19rem]:grid-cols-[6rem_minmax(0,1fr)_2.75rem] @max-[19rem]:gap-y-1.5";
 
 /** The sparkline cell: its own full-width line once the row goes narrow. */
-const SPARK_CELL_CLASS = "@max-[22rem]:col-span-3 @max-[22rem]:justify-self-end";
+const SPARK_CELL_CLASS = "@max-[19rem]:col-span-3 @max-[19rem]:justify-self-end";
 
-// Labels are never truncated: the column is sized for the longest one and
-// anything longer wraps.
+// Labels are never truncated: the column fits the common ones and anything
+// longer wraps.
 const LABEL_CLASS = "text-xs uppercase leading-tight tracking-wide text-text-dimmed";
 
 /** A metric's movement against its baseline. Direction is always an arrow. */
@@ -667,7 +667,7 @@ export function ReportMetricRow({
         ) : (
           // Keeps the column occupied so a series-less metric doesn't pull the
           // rows out of alignment.
-          <span aria-hidden className="@max-[22rem]:hidden" />
+          <span aria-hidden className="@max-[19rem]:hidden" />
         )}
       </li>
 
@@ -676,7 +676,7 @@ export function ReportMetricRow({
         // vertical as every other row's value.
         <li key={sub.label} className={METRIC_ROW_CLASS}>
           {/* Indented under the parent label, shallow enough to stay inside the
-              7rem label column. */}
+              6rem label column. */}
           <span className={cn(LABEL_CLASS, "pl-6")}>{sub.label}</span>
           <span className="whitespace-nowrap text-sm tabular-nums text-text-dimmed">
             {sub.value}
