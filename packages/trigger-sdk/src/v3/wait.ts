@@ -269,7 +269,7 @@ async function retrieveToken<T>(
   let output: T | undefined = undefined;
 
   if (result.outputIsError) {
-    error = new WaitpointTimeoutError(data.message);
+    error = new WaitpointTimeoutError(data?.message ?? "Waitpoint timed out");
   } else {
     output = data as T;
   }
@@ -615,7 +615,7 @@ export const wait = {
                 output: data,
               } as WaitpointTokenTypedResult<T>;
             } else {
-              const error = new WaitpointTimeoutError(data.message);
+              const error = new WaitpointTimeoutError(data?.message ?? "Waitpoint timed out");
 
               span.recordException(error);
               span.setStatus({
