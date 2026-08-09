@@ -167,7 +167,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       getChatMessages(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
       getSession(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
     ]);
-    return json({ messages: messages ?? [], session });
+    // Null is not an empty transcript: the chat is deleted or another org's, and a 200 would
+    // read as a real, empty chat.
+    if (messages === null) return json({ error: "Chat not found" }, { status: 404 });
+    return json({ messages, session });
   }
 
   const chats = await listChats(dashboardAgentDb, {
