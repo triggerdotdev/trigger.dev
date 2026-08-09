@@ -6,6 +6,7 @@ import {
   cardAlreadyOffersWatch,
   renderableActions,
   turnAlreadyOffersWatch,
+  turnProposesWatch,
   withoutWatchActions,
 } from "./view-actions";
 
@@ -117,6 +118,32 @@ describe("one watch button per answer", () => {
   });
 });
 
+describe("a turn that proposed a watch through the tool", () => {
+  const text = { type: "text", text: "here is what I found" };
+  const scheduled = (output: unknown, state = "output-available") => ({
+    type: "tool-schedule_watch",
+    state,
+    output,
+  });
+  const intent = { intent: watchAction.intent };
+
+  it("sees the proposal that opened the card", () => {
+    expect(turnProposesWatch([text, scheduled(intent)])).toBe(true);
+  });
+
+  it("leaves the button alone when the spec was rejected — no card opened", () => {
+    expect(turnProposesWatch([text, scheduled({ error: "Couldn't build that watch: bad" })])).toBe(
+      false
+    );
+  });
+
+  it("waits for the output: a call still running proposes nothing", () => {
+    expect(turnProposesWatch([scheduled(intent, "input-available")])).toBe(false);
+    expect(turnProposesWatch([{ type: "tool-schedule_watch", output: intent }])).toBe(false);
+    expect(turnProposesWatch([text])).toBe(false);
+  });
+});
+
 describe("ActionsBlock", () => {
   const source = readFileSync(new URL("./ActionsBlock.tsx", import.meta.url), "utf8");
 
@@ -152,6 +179,10 @@ describe("the one-watch-button flag is decided per turn, not per render_view cal
       turn.indexOf("for (let i = 0; i < parts.length; i++)")
     );
     expect(turn).toContain("watchOfferedInTurn={watchOfferedInTurn}");
+  });
+
+  it("counts the turn's own schedule_watch proposal as an offer", () => {
+    expect(turn).toMatch(/turnProposesWatch\(parts as never\) \|\|/);
   });
 
   it("lets a card add its own offer but never drop the turn's", () => {

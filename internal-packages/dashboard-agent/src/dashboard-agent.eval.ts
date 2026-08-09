@@ -200,7 +200,6 @@ const FIXTURES: Record<string, unknown> = {
       },
     },
     footer: [{ code: "raise_env_limit" }],
-    seriesOmitted: true,
   },
   get_queue: {
     queue: "task/send-email",

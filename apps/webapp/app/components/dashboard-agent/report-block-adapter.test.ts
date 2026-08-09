@@ -91,11 +91,14 @@ describe("reportBlockFromToolPart", () => {
     expect(reportBlockFromToolPart(part({ output: { ...vm, generatedAt: undefined } }))).toBeNull();
   });
 
-  it("accepts the curated tool output, which drops links and series", () => {
-    const { links, ...curated } = vm;
-    const block = reportBlockFromToolPart(part({ output: { ...curated, seriesOmitted: true } }))!;
-    expect(block.vm.links).toEqual([]);
-    expect(block.vm.metrics[0]!.series).toBeUndefined();
+  it("passes the tool output's series and links through", () => {
+    const series = { points: [80, 40, 120], kind: "measured" };
+    const links = [{ key: "queues", label: "Queues", url: "/queues" }];
+    const block = reportBlockFromToolPart(
+      part({ output: { ...vm, metrics: [{ ...vm.metrics[0], series }], links } })
+    )!;
+    expect(block.vm.metrics[0]!.series).toEqual(series);
+    expect(block.vm.links).toEqual(links);
     expect(block.vm.summary.severity).toBe("crit");
   });
 
