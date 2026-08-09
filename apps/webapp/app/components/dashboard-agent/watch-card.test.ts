@@ -111,8 +111,8 @@ describe("cadence limits", () => {
 });
 
 describe("condition variants (§3)", () => {
-  it("offers the run pair and the whole queue family", () => {
-    expect(variantsOf(runDraft())).toEqual(["run_finished", "run_failed"]);
+  it("offers the whole run family and the whole queue family", () => {
+    expect(variantsOf(runDraft())).toEqual(["run_start", "run_finished", "run_failed"]);
     expect(variantsOf(queueDraft())).toEqual([
       "backlog_drain",
       "queue_depth_above",

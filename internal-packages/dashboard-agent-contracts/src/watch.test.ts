@@ -340,7 +340,7 @@ describe("the queue pack (TRI-12890)", () => {
     );
   });
 
-  it("offers the whole queue family under Customize, and the run pair separately", () => {
+  it("offers the whole queue family under Customize, and the run family separately", () => {
     expect(watchConditionVariants("backlog_drain")).toEqual([
       "backlog_drain",
       "queue_depth_above",
@@ -352,7 +352,10 @@ describe("the queue pack (TRI-12890)", () => {
       expect(watchConditionVariants(kind)).toContain("backlog_drain");
       expect(watchConditionVariants(kind)).toContain(kind);
     }
-    expect(watchConditionVariants("run_finished")).toEqual(["run_finished", "run_failed"]);
+    // A run watch can be moved between all three of its questions, `run_start` included.
+    for (const kind of ["run_start", "run_finished", "run_failed"] as const) {
+      expect(watchConditionVariants(kind)).toEqual(["run_start", "run_finished", "run_failed"]);
+    }
     expect(watchConditionVariants("health_recovery")).toEqual(["health_recovery"]);
     expect(watchConditionVariants("error_recurrence")).toEqual(["error_recurrence"]);
   });

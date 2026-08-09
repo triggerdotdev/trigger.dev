@@ -17,36 +17,6 @@ export function nextVisibleChat(chatId: string, options: { leaving: boolean }): 
   return options.leaving ? null : chatId;
 }
 
-/**
- * The work count the launcher's dot shows, given what the poll just reported. A chat open in
- * the panel is being read right now, so it is not work anyone is waiting on.
- *
- * Both inputs have to be read at poll time rather than captured when the poll started: the
- * panel opens and closes without restarting it.
- */
-export function unreadWorkForDot(params: {
-  reported: number | undefined;
-  panelOpen: boolean;
-  visibleChatId: string | null;
-}): number {
-  const onScreen = params.panelOpen && params.visibleChatId !== null ? 1 : 0;
-  return Math.max(0, (params.reported ?? 0) - onScreen);
-}
-
-/**
- * The count the dot settles on the moment the panel closes. While the panel is open the poll
- * subtracts the chat on screen, and it only corrects itself a tick later — up to a minute of a
- * dark dot over work nobody has seen. The panel's own count is taken off the chat list it has
- * already marked read, so it settles the closing edge without waiting. `null` is a panel that
- * closed before its list loaded, which leaves the shown count alone.
- */
-export function unreadWorkOnPanelClose(params: {
-  shown: number;
-  panelCount: number | null;
-}): number {
-  return params.panelCount ?? params.shown;
-}
-
 /** Opening a chat settles everything unseen in it, not just the wake. */
 export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: string): T[] {
   return chats.map((chat) =>
@@ -54,7 +24,11 @@ export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: strin
   );
 }
 
-/** How many chats still hold work their owner hasn't seen. */
-export function unreadWorkCount(chats: UnreadChat[]): number {
-  return chats.filter((chat) => chat.hasUnreadWork).length;
+/**
+ * How many chats still hold work their owner hasn't seen. The chat on screen is being read
+ * right now, so a turn landing in it is not work anyone is waiting on — every count of this,
+ * here and on the server, leaves it out, so none of them has to be corrected afterwards.
+ */
+export function unreadWorkCount(chats: UnreadChat[], visibleChatId?: string | null): number {
+  return chats.filter((chat) => chat.hasUnreadWork && chat.id !== visibleChatId).length;
 }

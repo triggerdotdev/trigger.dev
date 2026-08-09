@@ -127,7 +127,8 @@ export async function countUserMessages(
  */
 export async function countChatsWithUnreadWork(
   db: DashboardAgentDb,
-  params: { organizationId: string; userId: string }
+  /** `excludeChatId` is the chat open on screen: it is being read, so it isn't waiting. */
+  params: { organizationId: string; userId: string; excludeChatId?: string }
 ): Promise<number> {
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -136,6 +137,7 @@ export async function countChatsWithUnreadWork(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        params.excludeChatId ? ne(chats.id, params.excludeChatId) : undefined,
         isNull(chats.deletedAt),
         sql`${chats.lastMessageAt} is not null`,
         sql`(${chats.lastReadAt} is null or ${chats.lastMessageAt} > ${chats.lastReadAt})`

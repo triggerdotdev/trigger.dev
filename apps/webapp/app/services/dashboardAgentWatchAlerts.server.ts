@@ -86,12 +86,12 @@ export async function canUseDashboardAgentAlerts(params: {
   userId: string;
   organizationSlug: string;
   organizationId: string;
-  isAdmin?: boolean;
   orgFeatureFlags?: Record<string, unknown> | null;
 }): Promise<DashboardAgentAlertGate> {
   const hasAgent = await canAccessDashboardAgent({
+    // `isAdmin` is left out on purpose: there is no session here, so the gate reads it off
+    // the user row and a watch an admin could create can still alert.
     userId: params.userId,
-    isAdmin: params.isAdmin ?? false,
     // Never an impersonated session: this runs in the background.
     isImpersonating: false,
     organizationSlug: params.organizationSlug,

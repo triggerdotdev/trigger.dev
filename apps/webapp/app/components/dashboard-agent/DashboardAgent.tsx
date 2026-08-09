@@ -22,7 +22,7 @@ import {
   writeAgentFullscreen,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
-import { nextVisibleChat, unreadWorkForDot, unreadWorkOnPanelClose } from "./unread-counts";
+import { nextVisibleChat } from "./unread-counts";
 import { startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
@@ -95,14 +95,9 @@ export function DashboardAgent({
       // Same as the read.
     }
   }, []);
-  // A wake in the on-screen chat toasts but must not light the dot.
+  // A wake in the on-screen chat toasts but must not light the dot. Read by the poll callback,
+  // which outlives the render that started it, so it has to be a ref.
   const visibleChat = useRef<string | null>(null);
-  // Read by the poll callback, which outlives the render that started it: `open` in its closure
-  // is whatever it was when polling began, and opening the panel does not restart the poll.
-  const panelOpen = useRef(open);
-  useEffect(() => {
-    panelOpen.current = open;
-  }, [open]);
 
   // Switching environment re-runs the layout loader but does not remount it, so the seeds
   // above would keep the old environment's counts.
@@ -146,22 +141,10 @@ export function DashboardAgent({
     undefined
   );
 
-  // The panel's own count, off the chat list it has already marked read. Kept so the closing
-  // edge can settle the dot instead of waiting a poll for the open-chat subtraction to lift.
-  const panelWorkCount = useRef<number | null>(null);
-  const handleUnreadWorkChange = useCallback((count: number) => {
-    panelWorkCount.current = count;
-    setUnreadWork(count);
-  }, []);
-
   const setPanelOpen = useCallback((next: boolean) => {
     setOpen(next);
     // Pending requests must be dropped or a stale one re-applies on the next open.
     if (!next) {
-      setUnreadWork((shown) =>
-        unreadWorkOnPanelClose({ shown, panelCount: panelWorkCount.current })
-      );
-      panelWorkCount.current = null;
       visibleChat.current = null;
       setFullscreen(false);
       writeAgentFullscreen(false);
@@ -216,10 +199,14 @@ export function DashboardAgent({
     let cancelled = false;
     const load = async () => {
       try {
+        // The chat on screen is being read, so the server leaves it out of the work count
+        // rather than the client subtracting it back off afterwards.
+        const onScreen = visibleChat.current;
         // Bounded, so one stuck request can't hold the poll's in-flight guard.
-        const res = await fetch(`${actionPath}?unread=1`, {
-          signal: AbortSignal.timeout(UNREAD_REQUEST_TIMEOUT_MS),
-        });
+        const res = await fetch(
+          `${actionPath}?unread=1${onScreen ? `&chatId=${encodeURIComponent(onScreen)}` : ""}`,
+          { signal: AbortSignal.timeout(UNREAD_REQUEST_TIMEOUT_MS) }
+        );
         if (!res.ok) return;
         const data = (await res.json()) as {
           unreadWakes?: number;
@@ -232,13 +219,7 @@ export function DashboardAgent({
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
-        setUnreadWork(
-          unreadWorkForDot({
-            reported: data.unreadWork,
-            panelOpen: panelOpen.current,
-            visibleChatId: visibleChat.current,
-          })
-        );
+        setUnreadWork(Math.max(0, data.unreadWork ?? 0));
 
         const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
@@ -357,7 +338,8 @@ export function DashboardAgent({
                   newChatSeq={newChatSeq}
                   promotedPrompt={promotedPrompt}
                   onChatRead={markChatRead}
-                  onUnreadWorkChange={handleUnreadWorkChange}
+                  // The panel's own count, off the chat list it has already marked read.
+                  onUnreadWorkChange={setUnreadWork}
                   onTurnActivityChange={handleTurnActivityChange}
                   isFullscreen={fullscreen}
                   onToggleFullscreen={toggleFullscreen}

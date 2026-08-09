@@ -591,7 +591,8 @@ export function watchCadenceOptions(kind: WatchKind): readonly number[] {
 }
 
 // One family per array, in the order the picker lists them.
-const RUN_CONDITION_VARIANTS = ["run_finished", "run_failed"] as const;
+// Lifecycle order: the three questions anyone can ask about one run.
+const RUN_CONDITION_VARIANTS = ["run_start", "run_finished", "run_failed"] as const;
 const QUEUE_CONDITION_VARIANTS = [
   "backlog_drain",
   "queue_depth_above",

@@ -139,6 +139,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       countChatsWithUnreadWork(dashboardAgentDb, {
         organizationId: scoped.organizationId,
         userId,
+        // The chat the panel has on screen, if any: it is being read as this is counted.
+        excludeChatId: searchParams.get("chatId") ?? undefined,
       }),
     ]);
 

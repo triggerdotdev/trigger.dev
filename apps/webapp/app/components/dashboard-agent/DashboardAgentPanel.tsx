@@ -334,8 +334,8 @@ export function DashboardAgentPanel({
   // The one source for the dot's work count: nudging it per open double-subtracts.
   useEffect(() => {
     if (!chatsLoaded) return;
-    onUnreadWorkChange?.(unreadWorkCount(chats));
-  }, [chats, chatsLoaded, onUnreadWorkChange]);
+    onUnreadWorkChange?.(unreadWorkCount(chats, active?.chatId));
+  }, [chats, chatsLoaded, active?.chatId, onUnreadWorkChange]);
 
   // Bound to its chat, which remounts with a fresh guard ref on every switch.
   const [sendRequest, setSendRequest] = useState<
