@@ -17,8 +17,9 @@ export function createCoalescedReload(run: () => Promise<void>): () => Promise<v
   };
 
   return () => {
-    if (!inFlight) return start();
+    // Queued first: `inFlight` is cleared one microtask before the queued run starts.
     if (queued) return queued;
+    if (!inFlight) return start();
     // Settles either way: a failed run must not strand the queued one.
     const next = inFlight
       .catch(() => {})
