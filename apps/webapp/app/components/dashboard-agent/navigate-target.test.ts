@@ -57,6 +57,7 @@ describe("navigateDestination", () => {
 
   it("refuses a protocol-relative path, which would change host", () => {
     expect(navigateDestination({ path: "//evil.example/runs" })).toEqual({ kind: "none" });
+    expect(navigateDestination({ path: "/\\evil.example/runs" })).toEqual({ kind: "none" });
   });
 
   it("resolves to nothing when there is no target", () => {

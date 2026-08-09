@@ -301,7 +301,8 @@ export function DashboardAgentTurns({
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
 
-  // Must stay the last child of this fragment; see `progress-line.ts`.
+  // Must not go null mid-flight: null unmounts the line and it blinks. The error
+  // callout below legitimately renders after it.
   const progress = liveProgress(stripped, activity);
 
   const investigationWinners = useInvestigationWinners(stripped);

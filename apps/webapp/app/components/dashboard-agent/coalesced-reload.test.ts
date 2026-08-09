@@ -77,6 +77,22 @@ describe("createCoalescedReload", () => {
     expect(started).toBe(2);
   });
 
+  it("joins the queued run when a request lands as the run in front of it settles", async () => {
+    const c = controllable();
+    const reload = createCoalescedReload(c.run);
+
+    const first = reload();
+    // Runs in the window between the first run settling and the queued one starting.
+    void first.then(() => {
+      void reload();
+    });
+    void reload();
+
+    c.finish(0);
+    await settle();
+    expect(c.started).toBe(2);
+  });
+
   it("starts a fresh run once nothing is in flight", async () => {
     const c = controllable();
     const reload = createCoalescedReload(c.run);
