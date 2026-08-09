@@ -49,12 +49,12 @@ import { workerRegionRegistry } from "./v3/workerRegions.server";
 const ABORT_DELAY = 30000;
 
 /**
- * Where a document may load images from. The agent's markdown renders no images at
- * all (`components/dashboard-agent/model-markdown.ts`); this is the backstop, so a
- * model-authored image that ever slips through still can't reach a remote host.
+ * Where a document may load images from. The markdown renderer that strips images
+ * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
+ * a model- or customer-authored image from reaching a remote host.
  *
- * Only exact origins: the GitHub avatar host we store avatar URLs for, plus
- * whatever `CSP_IMG_SRC_ALLOWLIST` adds (e.g. a self-hosted SSO avatar host).
+ * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
+ * (e.g. a self-hosted SSO avatar host).
  */
 const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
   singleton("CspImageOrigins", () => {
