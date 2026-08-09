@@ -306,7 +306,7 @@ export type {
 // Brace placeholders without a recognized namespace default to the event body. webhook./header./body.
 // pass through unchanged.
 export function normalizeKeyString(key: string): string {
-  return key.replace(/\{([^}]+)\}/g, (_match, path: string) =>
+  return key.replace(/\{([^{}]+)\}/g, (_match, path: string) =>
     path.startsWith("webhook.") || path.startsWith("header.") || path.startsWith("body.")
       ? `{${path}}`
       : `{body.${path}}`
