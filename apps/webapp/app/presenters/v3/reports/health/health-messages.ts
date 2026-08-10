@@ -34,7 +34,7 @@ const FINDING_REASONS: Record<string, string> = {
   "flow/unknown": "flow can't be assessed — the telemetry is stale",
   "flow/flow_unmeasured": "flow can't be assessed — the queue depth couldn't be measured",
   "execution/healthy": "completing normally", // collapsed
-  "execution/healthy@expanded": "the runs that DO start are fine",
+  "execution/healthy@expanded": "runs are executing normally",
   // liveness is telemetry freshness
   "liveness/fresh": "fresh — telemetry current, updated {age} ago",
   "liveness/lagging": "lagging — telemetry last updated {age} ago",
