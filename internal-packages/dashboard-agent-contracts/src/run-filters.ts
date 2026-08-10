@@ -9,7 +9,9 @@ const stringOrStringArray = z.union([z.string(), z.array(z.string())]).optional(
 export const runFiltersSchema = z.object({
   tasks: stringOrStringArray,
   versions: stringOrStringArray,
-  statuses: stringOrStringArray,
+  statuses: stringOrStringArray.describe(
+    "Run statuses as the dashboard names them: PENDING_VERSION, DELAYED, PENDING, DEQUEUED, EXECUTING, WAITING_TO_RESUME, COMPLETED_SUCCESSFULLY, COMPLETED_WITH_ERRORS, TIMED_OUT, CRASHED, SYSTEM_FAILURE, CANCELED, EXPIRED. FAILED is accepted as shorthand for any failing status; anything else is ignored."
+  ),
   tags: stringOrStringArray,
   queues: stringOrStringArray,
   /** Relative window shorthand, e.g. "1h", "24h", "7d". */
@@ -17,7 +19,6 @@ export const runFiltersSchema = z.object({
   /** Absolute window bounds as ISO strings. */
   from: z.string().optional(),
   to: z.string().optional(),
-  search: z.string().optional(),
   rootOnly: z.boolean().optional(),
   batchId: z.string().optional(),
   scheduleId: z.string().optional(),
