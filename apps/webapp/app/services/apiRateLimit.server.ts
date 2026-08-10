@@ -8,6 +8,14 @@ import type { Duration } from "./rateLimiter.server";
 
 const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
 
+// Rate-limit key for a delegated (agent/PAT-minted) JWT. Its token value rotates every
+// turn, so keying on the token would hand each turn a fresh bucket. Key on env+acting-user
+// so the agent's traffic shares one bucket across turns. The `jwt-actor:` prefix keeps it
+// off PRIVATE-key buckets, which key on the bare environment id.
+export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: string): string {
+  return `jwt-actor:${environmentId}:${actorSub}`;
+}
+
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
     port: env.RATE_LIMIT_REDIS_PORT,
@@ -55,13 +63,25 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     }
 
     if (authenticatedEnv.type === "PUBLIC_JWT") {
-      return {
-        config: {
-          type: "fixedWindow",
-          window: env.API_RATE_LIMIT_JWT_WINDOW,
-          tokens: env.API_RATE_LIMIT_JWT_TOKENS,
-        },
-      };
+      const config = {
+        type: "fixedWindow",
+        window: env.API_RATE_LIMIT_JWT_WINDOW,
+        tokens: env.API_RATE_LIMIT_JWT_TOKENS,
+      } as const;
+
+      // A delegated JWT (agent/PAT-minted) shares one bucket per env+acting-user across turns.
+      // A browser realtime JWT carries no `act`, so it keeps the hashed-token fallback.
+      if (authenticatedEnv.actor?.sub) {
+        return {
+          config,
+          identifier: jwtActorRateLimitIdentifier(
+            authenticatedEnv.environment.id,
+            authenticatedEnv.actor.sub
+          ),
+        };
+      }
+
+      return { config };
     }
 
     return {
