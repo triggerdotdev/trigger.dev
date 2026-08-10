@@ -1334,6 +1334,94 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("reconnectToStream stop-on-abort ownership (TRI-13070)", () => {
+    // A quiet stream: EOF, no records, never settled — the subscription
+    // stays alive (watch mode) so an abort mid-flight exercises the stop path.
+    function quietWatchTransport(): {
+      transport: TriggerChatTransport;
+      appends: () => number;
+    } {
+      let appendCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appendCount++;
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse([]);
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-own": { publicAccessToken: "p", isStreaming: true } },
+      });
+      return { transport, appends: () => appendCount };
+    }
+
+    it("passive subscriber aborting writes no stop chunk to .in", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("owning subscriber with stopOnAbort:true sends a stop chunk on abort", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+          stopOnAbort: true,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("abortSignal presence alone (stopOnAbort unset) sends no stop", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe("multi-tab coordination", () => {
     it("isReadOnly defaults to false when multiTab is disabled", () => {
       const transport = new TriggerChatTransport({
