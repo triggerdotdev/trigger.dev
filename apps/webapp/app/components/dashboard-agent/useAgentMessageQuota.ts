@@ -1,7 +1,6 @@
-import type { UIMessage } from "@ai-sdk/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { countUserMessages, resolveMessageQuota, type MessageQuota } from "./message-quota";
+import { resolveMessageQuota, type MessageQuota } from "./message-quota";
 
 // Gated on billing PRESENCE, not the plan value: no subscription means billing isn't wired
 // up (self-hosted), so there is no cap and no upgrade UI. A wired-up, non-paying plan is free.
@@ -11,20 +10,30 @@ function useIsFreePlan(): boolean | undefined {
   return subscription.isPaying === false;
 }
 
-// `used` is the server's per-period count for the org. Re-read whenever the user sends, so
-// the running total tracks the message just sent without counting the transcript twice.
+// `used` is the server's per-period count for the org. Re-read once a turn settles — the
+// server increment happens mid-turn in the `.in` proxy, so reading on optimistic append
+// would lag the count by one message and show the cap a message late.
 export function useAgentMessageQuota({
   actionPath,
   chatId,
-  messages,
+  status,
 }: {
   actionPath: string;
   chatId: string;
-  messages: UIMessage[];
+  status: string;
 }): MessageQuota {
   const isFreePlan = useIsFreePlan();
   const [used, setUsed] = useState<number | undefined>(undefined);
-  const sentCount = countUserMessages(messages);
+
+  // Bumped each time the status leaves streaming/submitted, which drives the re-read.
+  const [settleTick, setSettleTick] = useState(0);
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
+    const nowSettled = status === "ready" || status === "error";
+    prevStatus.current = status;
+    if (wasInFlight && nowSettled) setSettleTick((tick) => tick + 1);
+  }, [status]);
 
   useEffect(() => {
     if (isFreePlan !== true) return;
@@ -40,7 +49,7 @@ export function useAgentMessageQuota({
       }
     })();
     return () => controller.abort();
-  }, [isFreePlan, actionPath, chatId, sentCount]);
+  }, [isFreePlan, actionPath, chatId, settleTick]);
 
   return resolveMessageQuota({ isFreePlan, used });
 }

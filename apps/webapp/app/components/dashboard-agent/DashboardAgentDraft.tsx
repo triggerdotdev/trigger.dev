@@ -46,12 +46,14 @@ export function DashboardAgentDraft({
 
   const submit = useCallback(
     (text: string) => {
+      // Suggested prompts reach here via the hero, bypassing the composer's cap guard.
+      if (capReached) return;
       const trimmed = text.trim();
       if (!trimmed) return;
       setInput("");
       onSubmit(trimmed);
     },
-    [onSubmit]
+    [onSubmit, capReached]
   );
 
   return (
@@ -61,16 +63,19 @@ export function DashboardAgentDraft({
       promoted={promotedPrompt}
       composer={
         capReached ? (
-          <AgentUpgradeBlock
-            limit={capReached.limit}
-            context={
-              <DashboardAgentContextBanner
-                projectSlug={projectSlug}
-                environmentSlug={environmentSlug}
-                currentPage={currentPage}
-              />
-            }
-          />
+          <div className="flex w-full flex-col gap-3">
+            {watchCard}
+            <AgentUpgradeBlock
+              limit={capReached.limit}
+              context={
+                <DashboardAgentContextBanner
+                  projectSlug={projectSlug}
+                  environmentSlug={environmentSlug}
+                  currentPage={currentPage}
+                />
+              }
+            />
+          </div>
         ) : (
           <div className="flex w-full flex-col gap-3">
             {watchCard}
