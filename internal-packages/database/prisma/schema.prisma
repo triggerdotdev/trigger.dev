@@ -2067,6 +2067,7 @@ model EnvironmentVariableValue {
 
   @@unique([variableId, environmentId])
   @@index([environmentId])
+  @@index([valueReferenceId])
 }
 
 model Checkpoint {
