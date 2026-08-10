@@ -30,9 +30,12 @@ vi.mock("~/db.server", () => ({
   prisma: { personalAccessToken: { findFirst: mocks.patFindFirst } },
 }));
 
-import { verifyUserActorToken } from "@trigger.dev/rbac";
+import { signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { action as mintAction } from "~/routes/api.v1.auth.user-actor-token";
-import { assertSourcePatActive } from "~/services/personalAccessToken.server";
+import {
+  assertSourcePatActive,
+  resolveAndRecheckUserActorClaims,
+} from "~/services/personalAccessToken.server";
 
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
 
@@ -60,6 +63,54 @@ describe("assertSourcePatActive", () => {
     mocks.patFindFirst.mockResolvedValue(null);
 
     expect(await assertSourcePatActive({ userId: "usr_1", pat: "pat_1234" })).toBe(false);
+  });
+});
+
+describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
+  beforeEach(() => {
+    mocks.patFindFirst.mockReset();
+  });
+
+  async function tokenWithPat(pat: string) {
+    return signUserActorToken(SESSION_SECRET, {
+      userId: "usr_1",
+      client: "cli",
+      pat,
+    });
+  }
+
+  it("denies when the source PAT was revoked", async () => {
+    mocks.patFindFirst.mockResolvedValue(null);
+    const bearer = await tokenWithPat("pat_1234");
+
+    // Plugin supplies claims; the bearer's own `pat` is what must be rechecked.
+    const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" }, bearer);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("allows when the source PAT is still live", async () => {
+    mocks.patFindFirst.mockResolvedValue({ id: "pat_1234" });
+    const bearer = await tokenWithPat("pat_1234");
+
+    const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" }, bearer);
+
+    expect(result).toMatchObject({ userId: "usr_1" });
+  });
+
+  it("rechecks the token's authoritative pat even when plugin claims omit it", async () => {
+    // A stale RBAC plugin delivers pat-less claims; trusting them would no-op revocation.
+    // We re-verify the bearer, so the revoked source PAT is still caught here.
+    mocks.patFindFirst.mockResolvedValue(null);
+    const bearer = await tokenWithPat("pat_1234");
+
+    const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" /* no pat */ }, bearer);
+
+    expect(result).toBeUndefined();
+    expect(mocks.patFindFirst).toHaveBeenCalledWith({
+      where: { id: "pat_1234", revokedAt: null },
+      select: { id: true },
+    });
   });
 });
 

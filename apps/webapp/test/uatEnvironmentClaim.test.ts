@@ -671,3 +671,37 @@ describe("env JWT exchange — capless ceiling and TTL clamp", () => {
     expect(payload.exp).toBeGreaterThan(nowSec + 500);
   });
 });
+
+/**
+ * The other direct verify site: the UAT preamble that fronts the repo-snapshot / workers /
+ * commit reads. A token whose source PAT is no longer live must be turned away there too.
+ * (`assertSourcePatActive` is stubbed; the snapshot route stands in for the preamble.)
+ */
+describe("UAT preamble — source PAT liveness recheck", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+    mocks.resolveDashboardAgentRepoSnapshot.mockReset();
+    mocks.resolveDashboardAgentRepoSnapshot.mockResolvedValue({
+      url: "https://example.com/archive.tar.gz",
+    });
+  });
+
+  it("401s a snapshot read when the source PAT recheck fails", async () => {
+    mocks.assertSourcePatActive.mockResolvedValueOnce(false);
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await ROUTE_CASES[1].call(token, "prod");
+
+    expect(response.status).toBe(401);
+    expect(mocks.resolveDashboardAgentRepoSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("serves the snapshot read when the source PAT recheck passes", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await ROUTE_CASES[1].call(token, "prod");
+
+    expect(response.status).toBe(200);
+  });
+});

@@ -10,11 +10,13 @@ import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
-import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
-import { assertSourcePatActive, updateLastAccessedAtIfStale } from "../personalAccessToken.server";
+import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import { isUserActorToken } from "@trigger.dev/rbac";
+import {
+  resolveAndRecheckUserActorClaims,
+  updateLastAccessedAtIfStale,
+} from "../personalAccessToken.server";
 import { assertUserActorScope } from "../userActorEnvironment.server";
-import { env } from "~/env.server";
 import { safeJsonParse } from "~/utils/json";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
@@ -469,18 +471,6 @@ export function createLoaderApiRoute<
 // route enforces the scope by declaring it here.
 type PATRouteContext = { organizationId?: string; projectId?: string; environmentId?: string };
 
-// Fail closed: a plugin built against an older contract returns no claims, so verify here rather
-// than continue with no environment scope to enforce.
-async function resolveUserActorClaims(
-  claims: UserActorClaims | undefined,
-  bearer: string
-): Promise<UserActorClaims | undefined> {
-  const resolved = claims ?? (await verifyUserActorToken(env.SESSION_SECRET, bearer));
-  if (!resolved) return undefined;
-  // A token minted from a PAT dies with it — the PAT must still be live.
-  return (await assertSourcePatActive(resolved)) ? resolved : undefined;
-}
-
 type PATRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -666,7 +656,7 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        const claims = await resolveUserActorClaims(uatAuth.claims, bearer);
+        const claims = await resolveAndRecheckUserActorClaims(uatAuth.claims, bearer);
         if (!claims) {
           return await wrapResponse(
             request,
@@ -941,7 +931,7 @@ export function createActionPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        const claims = await resolveUserActorClaims(uatAuth.claims, bearer);
+        const claims = await resolveAndRecheckUserActorClaims(uatAuth.claims, bearer);
         if (!claims) {
           return await wrapResponse(
             request,

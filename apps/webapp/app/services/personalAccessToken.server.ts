@@ -6,7 +6,7 @@ import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
-import { isUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
+import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -304,6 +304,25 @@ export async function assertSourcePatActive(claims: UserActorClaims): Promise<bo
     select: { id: true },
   });
   return Boolean(found);
+}
+
+/**
+ * Resolve + source-PAT-recheck a user-actor token for a verify site where `claims` may be
+ * supplied by the RBAC plugin (the apiBuilder path). We re-verify the bearer locally so the
+ * recheck reads the token's OWN `pat`, not the plugin's: a plugin image predating the `pat`
+ * claim would deliver pat-less claims and silently no-op revocation here. Returns the claims
+ * to act on, or undefined to deny. The direct verify sites (jwt exchange, the UAT preamble)
+ * don't go through a plugin and call `assertSourcePatActive` on their own verified claims.
+ */
+export async function resolveAndRecheckUserActorClaims(
+  claims: UserActorClaims | undefined,
+  bearer: string
+): Promise<UserActorClaims | undefined> {
+  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer);
+  const resolved = claims ?? verified;
+  if (!resolved) return undefined;
+  // Recheck against the locally-verified claims when available, so `pat` is authoritative.
+  return (await assertSourcePatActive(verified ?? resolved)) ? resolved : undefined;
 }
 
 /**
