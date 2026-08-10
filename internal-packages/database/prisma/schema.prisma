@@ -2412,6 +2412,8 @@ model ProjectAlert {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([channelId])
 }
 
 enum ProjectAlertType {
