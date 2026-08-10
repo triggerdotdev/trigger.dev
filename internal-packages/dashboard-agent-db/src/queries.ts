@@ -9,6 +9,8 @@ import {
   chatSessions,
   chatTurnEvals,
   investigations,
+  watches,
+  watchSubmissions,
   type ChatSession,
   type Investigation,
   type NewChatTurnEval,
@@ -630,6 +632,75 @@ export async function deleteTurnEvalsOlderThan(
   `);
 
   return deleted.length;
+}
+
+/**
+ * Hard-delete a set of chats and every chatId-keyed child row. This DB is FK-free
+ * (cross-database in cloud), so the cascade is manual: children first, chats last.
+ *
+ * The SINGLE place that knows every chatId-keyed table — see the `chats` table
+ * comment in schema.ts. Add a new such table here or its rows leak on delete.
+ */
+async function deleteChatsByIds(tx: DashboardAgentDbOrTx, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  await tx.delete(chatMessages).where(inArray(chatMessages.chatId, ids));
+  await tx.delete(chatSessions).where(inArray(chatSessions.chatId, ids));
+  await tx.delete(chatTurnEvals).where(inArray(chatTurnEvals.chatId, ids));
+  await tx.delete(investigations).where(inArray(investigations.chatId, ids));
+  await tx.delete(watchSubmissions).where(inArray(watchSubmissions.chatId, ids));
+  await tx.delete(watches).where(inArray(watches.chatId, ids));
+
+  const deleted = await tx.delete(chats).where(inArray(chats.id, ids)).returning({ id: chats.id });
+  return deleted.map((row) => row.id);
+}
+
+/**
+ * Retention for soft-deleted chats: a bounded batch whose `deleted_at` is past the
+ * window is hard-deleted with its children, oldest first, so a backlog drains over
+ * several runs. One transaction, so a chat and its child rows go together.
+ */
+export async function hardDeleteChatsSoftDeletedBefore(
+  db: DashboardAgentDb,
+  params: { before: Date; limit?: number }
+): Promise<number> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: chats.id })
+      .from(chats)
+      .where(
+        and(
+          sql`${chats.deletedAt} is not null`,
+          // A string bind: postgres-js won't serialize a Date into a raw fragment.
+          sql`${chats.deletedAt} <= ${params.before.toISOString()}::timestamptz`
+        )
+      )
+      .orderBy(chats.deletedAt)
+      .limit(params.limit ?? 500);
+
+    const deleted = await deleteChatsByIds(
+      tx,
+      rows.map((row) => row.id)
+    );
+    return deleted.length;
+  });
+}
+
+/**
+ * Soft-delete every one of an organization's chats. The org-deletion path calls this;
+ * {@link hardDeleteChatsSoftDeletedBefore} does the eventual hard delete, so no
+ * cross-database hard delete runs inside the org-deletion request.
+ */
+export async function softDeleteChatsForOrganization(
+  db: DashboardAgentDb,
+  params: { organizationId: string }
+): Promise<number> {
+  const rows = await db
+    .update(chats)
+    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(chats.organizationId, params.organizationId), isNull(chats.deletedAt)))
+    .returning({ id: chats.id });
+  return rows.length;
 }
 
 export type UpsertInvestigationResult =

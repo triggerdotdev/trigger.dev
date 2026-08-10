@@ -11,6 +11,10 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
+import {
+  purgeDashboardAgentChatsForOrganization,
+  sweepDashboardAgentSoftDeletedChats,
+} from "~/services/dashboardAgentChatRetention.server";
 import { sweepDashboardAgentTurnEvals } from "~/services/dashboardAgentEvalRetention.server";
 import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
 import { logger } from "~/services/logger.server";
@@ -162,6 +166,16 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
+      // Soft-deletes a deleted organization's chats; the maintenance sweep purges them.
+      "dashboardAgent.purgeOrganization": {
+        schema: z.object({
+          organizationId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -243,7 +257,28 @@ function initializeWorker() {
           failure ??= error;
         }
 
+        // Hard-delete chats soft-deleted past the retention window, with their children.
+        try {
+          const chats = await sweepDashboardAgentSoftDeletedChats();
+          if (chats.purged > 0) {
+            logger.debug("Dashboard agent chat retention", chats);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
         if (failure) throw failure;
+      },
+      "dashboardAgent.purgeOrganization": async ({ payload }) => {
+        const soft = await purgeDashboardAgentChatsForOrganization({
+          organizationId: payload.organizationId,
+        });
+        if (soft > 0) {
+          logger.debug("Dashboard agent organization purge", {
+            organizationId: payload.organizationId,
+            softDeleted: soft,
+          });
+        }
       },
     },
   });
