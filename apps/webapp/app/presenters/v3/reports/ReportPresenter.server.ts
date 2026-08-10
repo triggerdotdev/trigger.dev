@@ -6,13 +6,17 @@ import {
   type UnkeyCache,
 } from "@internal/cache";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { HEALTH_THRESHOLDS } from "./health/health-core";
 import { REPORT_REGISTRY, type ReportLoader } from "./report-registry";
 import { type ReportViewModel } from "./report-view-model";
 
 const DEFAULT_PERIOD = "1h";
 
-/** How long a finished report stays reusable. */
-export const REPORT_CACHE_TTL_MS = 90_000;
+/**
+ * How long a finished report stays reusable. Capped at the liveness fresh window so a
+ * cached report can never render "fresh" while its telemetry is already stale.
+ */
+export const REPORT_CACHE_TTL_MS = HEALTH_THRESHOLDS.liveness.freshMs;
 
 /** How many report, environment and period triples one instance keeps. */
 const REPORT_CACHE_MAX_ENTRIES = 500;

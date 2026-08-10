@@ -116,7 +116,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
               runs are finishing at ~820/min
               nothing dead-lettered
 
-      🟢 EXECUTION   the runs that DO start are fine
+      🟢 EXECUTION   runs are executing normally
 
       🟢 LIVENESS    fresh — telemetry current, updated 4s ago
 
@@ -153,7 +153,7 @@ describe("health (Golden B — healthy)", () => {
           done          1,000/min
           triggered     1,000/min
 
-      🟢 EXECUTION   the runs that DO start are fine
+      🟢 EXECUTION   runs are executing normally
 
       🟢 LIVENESS    fresh — telemetry current, updated 2s ago
 

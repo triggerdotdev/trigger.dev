@@ -19,7 +19,7 @@ exports[`ANSI surface > paints the same layout (degraded) 1`] = `
 <grey>        not your code — failures and durations normal</>
 <grey>        runs are finishing at ~820/min</>
 
-<green>✓</> EXECUTION   the runs that DO start are fine
+<green>✓</> EXECUTION   runs are executing normally
 
 <green>✓</> LIVENESS    fresh — telemetry current, updated 18s ago
 
@@ -54,7 +54,7 @@ exports[`ANSI surface > paints the same layout (healthy) 1`] = `
     done          842/min
     triggered     830/min
 
-<green>✓</> EXECUTION   the runs that DO start are fine
+<green>✓</> EXECUTION   runs are executing normally
 
 <green>✓</> LIVENESS    fresh — telemetry current, updated 21s ago
 
@@ -99,7 +99,7 @@ exports[`markdown surface > renders (degraded) 1`] = `
         not your code — failures and durations normal
         runs are finishing at ~820/min
 
-🟢 EXECUTION   the runs that DO start are fine
+🟢 EXECUTION   runs are executing normally
 
 🟢 LIVENESS    fresh — telemetry current, updated 18s ago
 
@@ -134,7 +134,7 @@ exports[`markdown surface > renders (healthy) 1`] = `
     done          842/min
     triggered     830/min
 
-🟢 EXECUTION   the runs that DO start are fine
+🟢 EXECUTION   runs are executing normally
 
 🟢 LIVENESS    fresh — telemetry current, updated 21s ago
 
