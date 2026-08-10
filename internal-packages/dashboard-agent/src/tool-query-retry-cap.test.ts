@@ -30,6 +30,11 @@ const failure = {
   kind: "query" as const,
   error: "Unknown expression identifier 'createdAt'.",
 };
+const transportFailure = {
+  ok: false as const,
+  kind: "transport" as const,
+  error: "The environment is temporarily unavailable.",
+};
 const success = { ok: true as const, rows: [{ n: 1 }] };
 
 describe("run_query's consecutive-failure cap", () => {
@@ -69,5 +74,17 @@ describe("run_query's consecutive-failure cap", () => {
     const result = await run("bad");
 
     expect(result.error).toBe(failure.error);
+  });
+
+  it("does not count transport errors toward the cap", async () => {
+    const run = queryTool(async () => transportFailure);
+
+    let result: { error: string } = { error: "" };
+    for (let attempt = 0; attempt < MAX_CONSECUTIVE_QUERY_FAILURES + 2; attempt++) {
+      result = await run("SELECT createdAt FROM runs");
+    }
+
+    expect(result.error).toBe(transportFailure.error);
+    expect(result.error).not.toContain("answer the user with what you already have");
   });
 });

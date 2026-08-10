@@ -784,7 +784,13 @@ describe("the chat cascade and the list view", () => {
       expect(mine.ok && theirs.ok).toBe(true);
       if (!mine.ok || !theirs.ok) return;
 
-      expect(await deleteChatWithWatches({ chatId: "chat_1", userId: seeded.user.id })).toEqual({
+      expect(
+        await deleteChatWithWatches({
+          chatId: "chat_1",
+          userId: seeded.user.id,
+          organizationId: seeded.organization.id,
+        })
+      ).toEqual({
         deleted: true,
         cancelledWatches: 1,
       });
@@ -860,7 +866,11 @@ describe("the chat cascade and the list view", () => {
       const created = await create({ seeded, chatId: "chat_1" });
       expect(created.ok).toBe(true);
 
-      await deleteChatWithWatches({ chatId: "chat_1", userId: seeded.user.id });
+      await deleteChatWithWatches({
+        chatId: "chat_1",
+        userId: seeded.user.id,
+        organizationId: seeded.organization.id,
+      });
 
       const rows = await ctx.prisma.$queryRawUnsafe<{ message_id: string }[]>(
         `select message_id from trigger_dashboard_agent.chat_messages where chat_id = 'chat_1'`
@@ -1518,7 +1528,12 @@ describe("deleting a chat while a watch is being created", () => {
       await seedChat(seeded, chatId);
 
       const creating = () => create({ seeded, chatId });
-      const deleting = () => deleteChatWithWatches({ chatId, userId: seeded.user.id });
+      const deleting = () =>
+        deleteChatWithWatches({
+          chatId,
+          userId: seeded.user.id,
+          organizationId: seeded.organization.id,
+        });
       const [a, b] = deleteFirst
         ? await Promise.all([deleting(), creating()])
         : await Promise.all([creating(), deleting()]);
@@ -1542,7 +1557,11 @@ describe("deleting a chat while a watch is being created", () => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "race");
       await seedChat(seeded);
-      await deleteChatWithWatches({ chatId: "chat_1", userId: seeded.user.id });
+      await deleteChatWithWatches({
+        chatId: "chat_1",
+        userId: seeded.user.id,
+        organizationId: seeded.organization.id,
+      });
 
       expect(await create({ seeded })).toMatchObject({ ok: false, code: "chat_not_found" });
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toEqual([]);
