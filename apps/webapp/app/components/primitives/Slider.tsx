@@ -110,7 +110,7 @@ export function Slider({
               // keeps the line 1px wide and hangs the borders outside it, so
               // they read as a gap in the track rather than eating the line.
               className={cn(
-                "absolute top-1/2 box-content h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full border-x",
+                "absolute top-1/2 box-content h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full border-x-[3px]",
                 variation.mark
               )}
               style={{ left: `calc(${percent}% + ${offset}px)` }}
