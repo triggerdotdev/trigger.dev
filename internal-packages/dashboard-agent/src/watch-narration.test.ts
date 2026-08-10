@@ -33,10 +33,13 @@ describe("which model narrates a wake", () => {
     const plan = planWatchNarration(DRAINED);
     expect(plan.model).toBe("none");
     if (plan.model !== "none") throw new Error("unreachable");
-    // The dashboard's own sentence, the user's reason, then what to do.
-    expect(plan.text).toContain("task/send-receipt queue drained");
-    expect(plan.text).toContain("You asked to be told when: tell me when the backlog drains");
-    expect(plan.text).toContain("Nothing to do");
+    // The dashboard's own sentence, the user's reason, then what to do — each once.
+    // The banner above the wake carries the label and nothing else.
+    expect(plan.text.split("\n\n")).toEqual([
+      "task/send-receipt queue drained",
+      "You asked to be told when: tell me when the backlog drains",
+      "Nothing to do — I've stopped watching it.",
+    ]);
   });
 
   it("needs no model when the answer is that the watched thing is gone", () => {
@@ -57,13 +60,15 @@ describe("which model narrates a wake", () => {
     expect(planWatchNarration({ ...DRAINED, startsInvestigation: true }).model).toBe("sonnet");
   });
 
-  it("links the watched object when the wake carries the tenancy for one", () => {
+  it("links the watched object once, on the line that acts on it", () => {
     const { text } = deterministicWakeNarration({
       ...DRAINED,
       subjectLink: "[task/send-receipt](trigger://queue/proj_abc/env_abc/task%2Fsend-receipt)",
     });
-    expect(text).toContain("(trigger://queue/");
     expect(text).toContain("I've stopped watching [task/send-receipt]");
+    // The headline already names the queue, so it is not followed by the link too.
+    expect(text.split("\n\n")[0]).toBe("task/send-receipt queue drained");
+    expect(text.match(/trigger:\/\//g)).toHaveLength(1);
   });
 
   it("never says fired or expired", () => {

@@ -1,8 +1,11 @@
 /**
- * The banner above a wake narration.
+ * The banner above a wake narration: the label, the icon and the tone frame, and
+ * nothing else. The narration under it states the headline, the user's note and the
+ * next step, and each of those is said once per wake — so the banner marks the
+ * message as a wake rather than restating it.
  *
- * This component holds no kind-specific wording: tone, semantic icon and headline
- * come from contracts and `app/presenters/v3/dashboardAgent`. All it decides is which glyph a
+ * This component holds no kind-specific wording: tone and semantic icon come from
+ * contracts and `app/presenters/v3/dashboardAgent`. All it decides is which glyph a
  * semantic icon draws and which frame a tone paints.
  *
  * A wake is identified by its message id, `wake:watch:{watchId}:{fired|expired}`.
@@ -23,11 +26,7 @@ import type {
 } from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
-import {
-  presentResolvedWatch,
-  watchSubline,
-  WATCH_PRESENTATION_FALLBACK,
-} from "~/presenters/v3/dashboardAgent";
+import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "~/presenters/v3/dashboardAgent";
 
 const WAKE_ID_PREFIX = "wake:watch:";
 
@@ -137,20 +136,15 @@ export function WakeBanner({
   const presentation = wakePresentation(outcome, watch);
   const tone = presentation.tone as AgentTone;
   const Icon = SEMANTIC_ICON[presentation.semanticIcon];
-  const note = watchSubline(watch);
 
   return (
     <div
-      className={cn("flex items-start gap-2 rounded-r-md border-l-2 px-3 py-2", TONE_FRAME[tone])}
+      className={cn("flex items-center gap-2 rounded-r-md border-l-2 px-3 py-2", TONE_FRAME[tone])}
     >
-      <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_ICON_COLOR[tone])} />
-      <div className="min-w-0">
-        <p className="text-xxs font-medium uppercase tracking-wider text-text-dimmed">
-          {presentation.label}
-        </p>
-        <p className="text-sm font-medium text-text-bright">{presentation.headline}</p>
-        {note ? <p className="truncate text-xs text-text-dimmed">{note}</p> : null}
-      </div>
+      <Icon className={cn("size-4 shrink-0", TONE_ICON_COLOR[tone])} />
+      <p className="text-xxs font-medium uppercase tracking-wider text-text-dimmed">
+        {presentation.label}
+      </p>
     </div>
   );
 }

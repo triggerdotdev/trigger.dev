@@ -72,7 +72,8 @@ export function deterministicWakeNarration(wake: NarratableWake): {
   });
   const lines = [
     // The headline is already a complete fact, and every surface states it this way.
-    wake.subjectLink ? `${presentation.headline} (${wake.subjectLink})` : presentation.headline,
+    // The subject is not repeated after it — the next step links it, once.
+    presentation.headline,
     wake.note ? watchNoteLine(wake.note) : null,
     nextStep(presentation, wake.subjectLink),
   ].filter((line): line is string => Boolean(line));
