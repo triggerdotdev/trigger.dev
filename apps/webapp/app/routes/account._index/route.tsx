@@ -42,6 +42,10 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Your profile");
 
+/** The contrast the slider ticks and labels as "Default". Note this is not the
+ *  same as `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
+const DEFAULT_CONTRAST_MARK = 20;
+
 function themeIcon(value: ThemePreference) {
   const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
   return <Icon className="size-4 text-text-bright" />;
@@ -340,7 +344,10 @@ export default function Page() {
                         min={0}
                         max={100}
                         step={1}
-                        valueTooltip={(value) => `${value}%`}
+                        marks={[DEFAULT_CONTRAST_MARK]}
+                        valueTooltip={(value) =>
+                          value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
+                        }
                         value={[contrastPreview]}
                         onValueChange={(values) => {
                           // Live preview before the preference persists

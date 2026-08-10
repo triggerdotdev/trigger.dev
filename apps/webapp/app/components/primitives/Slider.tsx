@@ -16,6 +16,7 @@ const variants = {
     // light track
     thumb:
       "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
+    thumbSize: 18,
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
@@ -25,6 +26,7 @@ const variants = {
     range: "bg-transparent group-hover:bg-secondary",
     thumb:
       "h-3 w-3 border-2 border-text-dimmed bg-grid-bright shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] hover:border-text-dimmed focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)]",
+    thumbSize: 12,
   },
 };
 
@@ -40,6 +42,8 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
    * tracks the handle exactly. Reads the controlled `value`, so pass one.
    */
   valueTooltip?: (value: number) => string;
+  /** Values to tick on the track, e.g. the setting's default. */
+  marks?: number[];
 };
 
 export function Slider({
@@ -49,6 +53,7 @@ export function Slider({
   TrailingIcon,
   "aria-label": ariaLabel,
   valueTooltip,
+  marks,
   ...props
 }: SliderProps) {
   const variation = variants[variant];
@@ -56,6 +61,8 @@ export function Slider({
   // label up.
   const [isDragging, setIsDragging] = useState(false);
   const currentValue = props.value?.[0] ?? props.defaultValue?.[0] ?? 0;
+  const min = props.min ?? 0;
+  const max = props.max ?? 100;
 
   return (
     <div className={cn("group flex items-center", variation.container)}>
@@ -83,6 +90,23 @@ export function Slider({
         <RadixSlider.Track className={cn("relative grow rounded-full", variation.track)}>
           <RadixSlider.Range className={cn("absolute h-full rounded-full", variation.range)} />
         </RadixSlider.Track>
+        {marks?.map((mark) => {
+          const percent = ((mark - min) / (max - min)) * 100;
+          if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+          // Radix keeps the thumb inside the track by offsetting it against its
+          // own width, so a plain percentage would sit off the handle. Same
+          // formula as its `getThumbInBoundsOffset`, so the tick lands under
+          // the thumb's centre.
+          const offset = variation.thumbSize * (0.5 - percent / 100);
+          return (
+            <span
+              key={mark}
+              aria-hidden
+              className="absolute top-1/2 h-2 w-px -translate-x-1/2 -translate-y-1/2 bg-text-dimmed"
+              style={{ left: `calc(${percent}% + ${offset}px)` }}
+            />
+          );
+        })}
         {/* The thumb is the role="slider" element, so the label lives here */}
         <RadixSlider.Thumb
           aria-label={ariaLabel}
@@ -94,13 +118,16 @@ export function Slider({
           {valueTooltip && (
             <span
               className={cn(
-                "pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 text-xs tabular-nums text-text-bright shadow-md transition-opacity",
+                "pointer-events-none absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 text-xs tabular-nums text-text-bright shadow-md transition-opacity",
                 // Deliberately not keyed off focus: the thumb keeps focus after a
                 // click, which would leave the label stuck on.
                 isDragging ? "opacity-100" : "opacity-0 group-hover/thumb:opacity-100"
               )}
             >
               {valueTooltip(currentValue)}
+              {/* Straddles the bottom edge, hiding the border it overlaps, so the
+                  two outer sides read as an arrow pointing at the handle. */}
+              <span className="absolute left-1/2 top-full size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-l border-grid-bright bg-background-bright" />
             </span>
           )}
         </RadixSlider.Thumb>
