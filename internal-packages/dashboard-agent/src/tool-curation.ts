@@ -5,6 +5,23 @@ import type { JSONValue } from "@ai-sdk/provider";
  * `toModelOutput` projections and the period clamp. No IO, no auth.
  */
 
+// Free-text captured from runs, errors and commits is authored outside our
+// system, so it can carry text that reads like instructions to the model. Fence
+// it in a hard-to-spoof provenance delimiter (named to the model in the system
+// prompt) and cap its length so one field can't bury the fence or blow context.
+const MAX_UNTRUSTED_FIELD_CHARS = 4096;
+export function fenceUntrusted(label: string, text: unknown): string | undefined {
+  if (text === undefined || text === null) return undefined;
+  const raw = String(text);
+  const capped =
+    raw.length > MAX_UNTRUSTED_FIELD_CHARS
+      ? `${raw.slice(0, MAX_UNTRUSTED_FIELD_CHARS)}…[truncated ${
+          raw.length - MAX_UNTRUSTED_FIELD_CHARS
+        } chars]`
+      : raw;
+  return `«untrusted:${label}» ${capped} «/untrusted:${label}»`;
+}
+
 export function curateProjects(data: unknown) {
   const projects = Array.isArray(data) ? data : [];
   return {
@@ -47,7 +64,9 @@ export function curateRun(run: any) {
     costInCents: run.costInCents,
     attemptCount: run.attemptCount,
     tags: run.tags,
-    error: run.error ? { name: run.error.name, message: run.error.message } : undefined,
+    error: run.error
+      ? { name: run.error.name, message: fenceUntrusted("errorMessage", run.error.message) }
+      : undefined,
   };
 }
 
@@ -91,7 +110,7 @@ export function curateTrace(data: unknown) {
     // The two flags are emitted only when true; absent means false.
     spans.push({
       depth,
-      message: d.message,
+      message: fenceUntrusted("spanMessage", d.message),
       task: d.taskSlug,
       durationMs: d.duration,
       level: d.level,
@@ -115,7 +134,7 @@ export function curateErrors(data: unknown) {
       id: g.id,
       taskIdentifier: g.taskIdentifier,
       errorType: g.errorType,
-      errorMessage: g.errorMessage,
+      errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
       status: g.status,
       count: g.count,
       firstSeen: g.firstSeen,
@@ -130,7 +149,7 @@ export function curateError(group: any) {
     id: group.id,
     taskIdentifier: group.taskIdentifier,
     errorType: group.errorType,
-    errorMessage: group.errorMessage,
+    errorMessage: fenceUntrusted("errorMessage", group.errorMessage),
     status: group.status,
     count: group.count,
     firstSeen: group.firstSeen,
@@ -277,7 +296,7 @@ export function curateDeploy(deployment: any) {
     status: deployment?.status,
     createdAt: deployment?.createdAt,
     deployedAt: deployment?.deployedAt,
-    commitMessage: git?.commitMessage,
+    commitMessage: fenceUntrusted("commitMessage", git?.commitMessage),
     commitRef: git?.commitRef,
     pullRequestNumber: git?.pullRequestNumber,
     error: deployment?.error ? { name: deployment.error.name } : undefined,
