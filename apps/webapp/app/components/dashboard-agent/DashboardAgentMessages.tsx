@@ -138,6 +138,22 @@ function withoutSupersededInvestigations(
   });
 }
 
+function isActionsBlock(block: unknown): boolean {
+  return (block as { type?: unknown } | null)?.type === "actions";
+}
+
+/**
+ * Buttons belong at the bottom of a turn, wherever the model emitted them: the actions
+ * blocks are rendered after everything else, keeping their order among themselves.
+ * Display only — the parts the turn walks are untouched.
+ */
+export function splitActionsBlocks<T>(blocks: T[]): { content: T[]; actions: T[] } {
+  return {
+    content: blocks.filter((block) => !isActionsBlock(block)),
+    actions: blocks.filter(isActionsBlock),
+  };
+}
+
 // #region chat-layout transcript
 // `chat-layout.test.ts` fails if a spacing utility class appears in this region.
 
@@ -267,25 +283,28 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     );
 
   const body: React.ReactNode[] = [];
+  const actionRows: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
 
     const blocks = blocksByPart[i];
     if (blocks) {
-      if (blocks.length > 0) {
-        body.push(
-          <ChatCardSlot key={i}>
-            <ViewBlocks
-              blocks={blocks as never}
-              onIntent={onIntent}
-              resolveUri={resolveUri}
-              pagePaths={pagePaths}
-              answered={answerContinuesAfter(parts as never, i)}
-              watchOfferedInTurn={watchOfferedInTurn}
-            />
-          </ChatCardSlot>
-        );
-      }
+      // `answered` stays keyed on the emission index: the reorder is display only.
+      const slot = (list: unknown[], key: string) => (
+        <ChatCardSlot key={key}>
+          <ViewBlocks
+            blocks={list as never}
+            onIntent={onIntent}
+            resolveUri={resolveUri}
+            pagePaths={pagePaths}
+            answered={answerContinuesAfter(parts as never, i)}
+            watchOfferedInTurn={watchOfferedInTurn}
+          />
+        </ChatCardSlot>
+      );
+      const { content, actions } = splitActionsBlocks(blocks);
+      if (content.length > 0) body.push(slot(content, `${i}`));
+      if (actions.length > 0) actionRows.push(slot(actions, `actions-${i}`));
       continue;
     }
 
@@ -316,12 +335,18 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
           }
         >
           {body}
+          {actionRows}
         </ChatWakeSlot>
       </ChatTurn>
     );
   }
 
-  return <ChatTurn>{body}</ChatTurn>;
+  return (
+    <ChatTurn>
+      {body}
+      {actionRows}
+    </ChatTurn>
+  );
 });
 
 export function DashboardAgentTurns({
