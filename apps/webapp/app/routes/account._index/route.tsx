@@ -48,7 +48,9 @@ const DEFAULT_CONTRAST_MARK = 20;
 
 function themeIcon(value: ThemePreference) {
   const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
-  return <Icon className="size-4 text-text-bright" />;
+  // shrink-0: without it the icon is the flex item that gives way to a long
+  // label, and "System"/"Classic" squash it to a sliver.
+  return <Icon className="size-4 shrink-0 text-text-bright" />;
 }
 
 function createSchema(
@@ -309,10 +311,12 @@ export default function Page() {
                           {THEME_OPTIONS_BY_VALUE[value].label}
                         </span>
                       )}
-                      className="w-22"
+                      // Sized to the widest option (Classic, 106px) so no label
+                      // squeezes its icon, rounded up to the nearest step.
+                      className="w-27"
                       // The popover's 180px floor left a gap past the longest
-                      // label; track the trigger's width instead.
-                      popoverClassName="min-w-22"
+                      // label; match the trigger instead.
+                      popoverClassName="min-w-27"
                     >
                       {(items) =>
                         items.map((item) => (

@@ -127,7 +127,7 @@ export function Slider({
               {valueTooltip(currentValue)}
               {/* Straddles the bottom edge, hiding the border it overlaps, so the
                   two outer sides read as an arrow pointing at the handle. */}
-              <span className="absolute left-1/2 top-full size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-l border-grid-bright bg-background-bright" />
+              <span className="absolute left-1/2 top-full size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-grid-bright bg-background-bright" />
             </span>
           )}
         </RadixSlider.Thumb>
