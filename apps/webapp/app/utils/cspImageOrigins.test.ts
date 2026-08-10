@@ -50,10 +50,24 @@ describe("parseCspImageOrigins", () => {
     ["https://example.com#frag", "must be an origin only, with no path, query or hash"],
     ["example.com", "is not a valid absolute URL"],
     ["https://user:pw@example.com", "must not contain credentials"],
+    ["https://a.com;script-src", "must not contain ';' or ',' — these delimit CSP directives"],
   ])("rejects %s and says why", (value, reason) => {
     const { origins, rejected } = parseCspImageOrigins(value);
     expect(origins).toEqual([]);
     expect(rejected).toEqual([{ value, reason }]);
+  });
+
+  it("does not let a ';' smuggle a second directive into img-src", () => {
+    const { origins } = parseCspImageOrigins("https://a.com;script-src");
+    expect(origins).toEqual([]);
+    expect(buildImgSrcDirective(origins)).not.toContain("script-src");
+  });
+
+  it("splits on ',' so a comma can never ride inside a single origin", () => {
+    // "https://a.com" is valid; the "x" fragment after the comma is rejected on its own.
+    const { origins } = parseCspImageOrigins("https://a.com,x");
+    expect(origins).toEqual(["https://a.com"]);
+    expect(origins.some((origin) => origin.includes(","))).toBe(false);
   });
 
   it("keeps the valid entries when a sibling entry is rejected", () => {
