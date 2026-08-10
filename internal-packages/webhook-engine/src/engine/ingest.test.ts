@@ -202,7 +202,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(calls).toHaveLength(1);
       expect(runsByKey.size).toBe(1);
       expect(calls[0].taskId).toBe("handle-stripe-task");
-      expect(calls[0].idempotencyKey).toBe(eventId);
+      expect(calls[0].idempotencyKey).toBe(`${endpoint.id}:${eventId}`);
     } finally {
       await engine.quit();
     }
@@ -776,7 +776,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(calls).toHaveLength(1);
       expect(runsByKey.size).toBe(1);
       expect(calls[0].taskId).toBe("handle-stripe-task");
-      expect(calls[0].idempotencyKey).toBe(eventId);
+      expect(calls[0].idempotencyKey).toBe(`${endpoint.id}:${eventId}`);
     } finally {
       await engine.quit();
     }
