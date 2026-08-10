@@ -780,6 +780,14 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
+# node_modules may not exist when there are no dependencies to install
+RUN mkdir -p node_modules
+
+FROM build AS code
+
+# u+rwX first: non-root rm fails on read-only or non-traversable directories
+RUN chmod -R u+rwX node_modules && rm -rf node_modules
+
 FROM build AS indexer
 
 USER bun
@@ -831,8 +839,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Copy the files from the build stage
-COPY --from=build --chown=bun:bun /app ./
+# Unchanged dependencies produce an identical layer that repeat deploys skip
+COPY --from=build --chown=bun:bun /app/node_modules ./node_modules
+
+COPY --from=code --chown=bun:bun /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
@@ -888,6 +898,14 @@ ${postInstallCommands}
 # IMPORTANT: Doing this again to fix an issue with prisma generate removing the files in node_modules/trigger.dev for some reason...
 COPY --chown=node:node . .
 
+# node_modules may not exist when there are no dependencies to install
+RUN mkdir -p node_modules
+
+FROM build AS code
+
+# u+rwX first: non-root rm fails on read-only or non-traversable directories
+RUN chmod -R u+rwX node_modules && rm -rf node_modules
+
 FROM build AS indexer
 
 USER node
@@ -941,8 +959,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Copy the files from the install stage
-COPY --from=build --chown=node:node /app ./
+# Unchanged dependencies produce an identical layer that repeat deploys skip
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+
+COPY --from=code --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
