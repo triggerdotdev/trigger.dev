@@ -106,7 +106,8 @@ describe("every chat change goes through one door", () => {
     // The watch's own landing chat: without the claim, an earlier open still matches its seq.
     const submit = panel.slice(panel.indexOf("const submitWatch = useCallback("));
     const claim = submit.indexOf("claimChatSlot();");
-    const setActive = submit.indexOf("setActive({ chatId: data.chatId");
+    // Whitespace-tolerant: the formatter is free to wrap the call across lines.
+    const setActive = submit.search(/setActive\(\{\s*chatId:\s*data\.chatId/);
     expect(claim).toBeGreaterThan(-1);
     expect(setActive).toBeGreaterThan(claim);
   });

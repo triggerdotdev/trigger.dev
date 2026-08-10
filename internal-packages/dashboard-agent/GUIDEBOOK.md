@@ -371,7 +371,9 @@ falls within one cadence is always due, so the final evaluation is never missed.
 The group's chain stops only when nothing is active **and** nothing is owed.
 
 A check that came back `unavailable` in a batch is recorded as an attempt rather
-than as a check, so the stall streak and the last-checked time survive it.
+than as a check, so the stall streak and the last-checked time survive it. If the
+batch check itself can't be read, nothing was looked at, so nothing is recorded —
+and the chain still reschedules, so the group keeps its cadence.
 
 A sweep (`dashboardAgentWatchSweep.server.ts`) is the backstop:
 

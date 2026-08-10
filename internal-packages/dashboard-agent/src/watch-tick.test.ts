@@ -1344,28 +1344,42 @@ describe("runWatchBatchTick", () => {
     expect(appends.map((append) => append.chatId)).toEqual(["chat_2"]);
   });
 
-  it("throws when the batch check itself can't be read, before anything is scheduled", async () => {
-    const rows = group(2);
+  it("a batch check that can't be read keeps the chain alive, and records nothing", async () => {
+    const rows = group(2, { tickCount: 6, lastCheckedAt: NOW, lastResult: { runs: 1 } });
     const { store, calls } = fakeStore(rows[0]!, rows[1]!);
-    const { deliver } = fakeDeliver();
-    const triggers: unknown[] = [];
+    const { appends, deliver } = fakeDeliver();
+    const triggers: Array<{ payload: WatchBatchTickPayload; options: Record<string, unknown> }> =
+      [];
 
-    await expect(
-      runWatchBatchTick(
-        batchPayload(7),
-        batchDeps({
-          store,
-          response: async () => {
-            throw new Error("the batch check returned 500");
-          },
-          deliver,
-          reschedule: async () => void triggers.push(1),
-        })
-      )
-    ).rejects.toThrow("the batch check returned 500");
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: async () => {
+          throw new Error("the batch check returned 401");
+        },
+        deliver,
+        reschedule: async (payload, options) => void triggers.push({ payload, options }),
+      })
+    );
 
+    expect(result).toEqual({ outcome: "unavailable", results: [], rescheduled: true });
+
+    // Nothing was looked at, so the streak and the last-checked time stand.
     expect(calls.checks).toHaveLength(0);
-    expect(triggers).toHaveLength(0);
+    expect(calls.claims).toHaveLength(0);
+    expect(appends).toHaveLength(0);
+    expect(rows.map((row) => row.status)).toEqual(["active", "active"]);
+    expect(rows.map((row) => row.tickCount)).toEqual([6, 6]);
+    expect(rows.map((row) => row.lastCheckedAt)).toEqual([NOW, NOW]);
+
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]?.payload).toEqual(batchPayload(8));
+    // The same key the healthy path uses, so a retried tick can't fork the chain.
+    expect(triggers[0]?.options).toEqual({
+      delay: "5m",
+      idempotencyKey: "watch-batch:env_1:5:3:tick:8",
+    });
   });
 });
 
