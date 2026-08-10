@@ -207,26 +207,49 @@ function normalizeWatchSpec(spec: WatchSpec): WatchSpec {
   return { ...spec, fingerprint: normalizeErrorFingerprint(spec.fingerprint) };
 }
 
+const TASK_QUEUE_PREFIX = "task/";
+
 /**
- * Existence check for the thing a spec points at, in this environment. `error_recurrence`
- * has nothing to validate: zero occurrences so far is the normal case.
+ * The queue name as stored, from whatever the caller called it. The model can't tell a
+ * task queue (`task/<task id>`) from a custom one (a plain name), so both spellings are
+ * tried and the stored one wins. `null` means no queue by either name.
  */
-async function validateWatchTarget(spec: WatchSpec, deps: WatchCheckDeps): Promise<boolean> {
+async function resolveQueueName(queue: string, deps: WatchCheckDeps): Promise<string | null> {
+  const alternative = queue.startsWith(TASK_QUEUE_PREFIX)
+    ? queue.slice(TASK_QUEUE_PREFIX.length)
+    : `${TASK_QUEUE_PREFIX}${queue}`;
+  for (const candidate of [queue, alternative]) {
+    if (candidate.length > 0 && (await deps.queueExists(candidate))) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Resolve the thing a spec points at, in this environment, returning the spec the identity
+ * and the checks will see. `null` means the target doesn't exist. `error_recurrence` has
+ * nothing to validate: zero occurrences so far is the normal case.
+ */
+async function resolveWatchTarget(
+  spec: WatchSpec,
+  deps: WatchCheckDeps
+): Promise<WatchSpec | null> {
   switch (spec.kind) {
     case "run_start":
     case "run_finished":
     case "run_failed":
-      return (await deps.readRun(spec.runId)) !== null;
+      return (await deps.readRun(spec.runId)) !== null ? spec : null;
     case "backlog_drain":
     case "queue_depth_above":
     case "queue_depth_below":
     case "queue_stalled":
-    case "queue_oldest_age":
-      return await deps.queueExists(spec.queue);
+    case "queue_oldest_age": {
+      const queue = await resolveQueueName(spec.queue, deps);
+      return queue === null ? null : { ...spec, queue };
+    }
     case "error_recurrence":
-      return spec.fingerprint.length > 0;
+      return spec.fingerprint.length > 0 ? spec : null;
     case "health_recovery":
-      return isReportKey(spec.report);
+      return isReportKey(spec.report) ? spec : null;
   }
 }
 
@@ -255,7 +278,7 @@ export async function createDashboardAgentWatch(params: {
   const { environment, userId, chatId } = params;
   // Normalized before anything reads it: the page cites `error_<fingerprint>` and the tools
   // cite the bare one, and only one of the two spellings may reach the identity or the link.
-  const spec = normalizeWatchSpec(params.spec);
+  const requestedSpec = normalizeWatchSpec(params.spec);
   const now = params.now ?? new Date();
   // Creation reads the target on the primary; the polling checks stay on the replica.
   const buildCheckDeps = params.deps?.checkDeps ?? watchCreationCheckDeps;
@@ -271,7 +294,10 @@ export async function createDashboardAgentWatch(params: {
     };
   }
 
-  if (!(await validateWatchTarget(spec, checkDeps))) {
+  // Resolution rewrites the target's name, so the identity, the readers and the wording all
+  // see the stored one. A spec kept as asked would read the depth of a queue that isn't there.
+  const spec = await resolveWatchTarget(requestedSpec, checkDeps);
+  if (spec === null) {
     return {
       ok: false,
       code: "invalid_target",

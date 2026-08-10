@@ -40,7 +40,7 @@ export const WATCH_MAX_QUEUE_AGE_MINUTES = 24 * 60;
 const watchQueueNameSchema = z
   .string()
   .describe(
-    "The stored queue name, keeping the `task/` prefix for task queues (e.g. `task/send-receipt`) — not the display name."
+    "The queue name. A task's own queue is `task/<task id>`; a custom queue is its plain name. If unsure, pass the name as shown — the server resolves it."
   );
 
 /**

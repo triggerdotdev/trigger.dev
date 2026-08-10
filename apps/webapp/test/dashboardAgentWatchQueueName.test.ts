@@ -1,12 +1,14 @@
 /**
  * The queue detail page presents a task queue's name with the `task/` prefix stripped, but
- * `TaskQueue.name` keeps it — so the name the page hands a watch has to be the stored one,
- * or every task-queue watch is refused as a missing target.
+ * `TaskQueue.name` keeps it — and nobody asking for a watch can tell which kind of queue
+ * they are naming. Creation resolves the name against the environment and rewrites the spec
+ * to the stored one, so the identity and the depth readers never see the other spelling.
  */
 
 import {
   createChat,
   createDashboardAgentDb,
+  getWatch,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
@@ -75,13 +77,14 @@ async function boot(prisma: PrismaClient, connectionUri: string) {
 afterEach(async () => {
   await agentDbClient?.close();
   agentDbClient = undefined;
+  readNames.length = 0;
 });
 
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-/** One org, project and production environment, holding one virtual queue for `send-receipt`. */
+/** One org, project and production environment, holding a task queue and a custom one. */
 async function seed(prisma: PrismaClient) {
   const slug = `queue_name_${suffix()}`;
   const user = await prisma.user.create({
@@ -116,6 +119,17 @@ async function seed(prisma: PrismaClient) {
       runtimeEnvironmentId: environment.id,
     },
   });
+  // A custom queue, stored under the plain name the user gave it.
+  await prisma.taskQueue.create({
+    data: {
+      friendlyId: `queue_${suffix()}`,
+      name: "worker-1",
+      orderableName: "worker-1",
+      type: "NAMED",
+      projectId: project.id,
+      runtimeEnvironmentId: environment.id,
+    },
+  });
 
   await createChat(ctx.agentDb, {
     id: `chat_${suffix()}`,
@@ -141,35 +155,48 @@ function authenticated(seeded: Seeded) {
 }
 
 /** Only `queueExists` is real: it is the read the target validation is decided by. */
-function checkDeps(seeded: Seeded): WatchCheckDeps {
+function checkDeps(seeded: Seeded, readNames: string[]): WatchCheckDeps {
   return {
     readRun: async () => null,
     queueExists: (name: string) => watchQueueExistsOnPrimary(seeded.environment.id, name),
     readQueueDepth: async () => ({ depth: 3, source: "live_queue", current: true }),
-    readQueueOldestAge: async () => ({ ageMs: 1_000, source: "live_queue", current: true }),
+    readQueueOldestAge: async (name: string) => {
+      readNames.push(name);
+      return { ageMs: 1_000, source: "live_queue", current: true };
+    },
     readErrorRecurrence: async () => null,
     readHealth: async () => null,
   };
 }
 
-async function createFor(seeded: Seeded, spec: WatchSpec) {
-  const chatId = `chat_${suffix()}`;
-  await createChat(ctx.agentDb, {
-    id: chatId,
-    organizationId: seeded.organization.id,
-    userId: seeded.user.id,
-  });
+/** The names the depth readers were handed, so a spec left un-rewritten is visible. */
+const readNames: string[] = [];
+
+async function createFor(seeded: Seeded, spec: WatchSpec, chatId?: string) {
+  const id = chatId ?? `chat_${suffix()}`;
+  if (!chatId) {
+    await createChat(ctx.agentDb, {
+      id,
+      organizationId: seeded.organization.id,
+      userId: seeded.user.id,
+    });
+  }
   return createDashboardAgentWatch({
     environment: authenticated(seeded),
     userId: seeded.user.id,
-    chatId,
+    chatId: id,
     spec,
     deps: {
       configured: () => true,
-      checkDeps: () => checkDeps(seeded),
+      checkDeps: () => checkDeps(seeded, readNames),
       scheduleTick: async () => {},
     },
   });
+}
+
+async function persistedQueueName(created: { watchId?: string }) {
+  const watch = await getWatch(ctx.agentDb, { id: created.watchId! });
+  return (watch?.spec as { queue: string }).queue;
 }
 
 /** The queue as `QueueRetrievePresenter` hands it to the page: the prefix already stripped. */
@@ -191,13 +218,70 @@ describe("a watch on a task's own queue", () => {
   );
 
   postgresTest(
-    "is refused when the display name reaches the spec instead",
+    "is created under the stored name when the display name reaches the spec",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma);
 
       const created = await createFor(seeded, queueWatchRecommendation(PRESENTED.name));
-      expect(created).toMatchObject({ ok: false, code: "invalid_target" });
+      expect(created).toMatchObject({ ok: true, watching: true });
+      expect(await persistedQueueName(created as { watchId: string })).toBe("task/send-receipt");
+      expect(readNames).toEqual(["task/send-receipt"]);
     }
   );
+});
+
+describe("a watch on a custom queue", () => {
+  postgresTest(
+    "is created under the plain name when the model adds the `task/` prefix",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma);
+
+      const created = await createFor(seeded, queueWatchRecommendation("task/worker-1"));
+      expect(created).toMatchObject({ ok: true, watching: true });
+      expect(await persistedQueueName(created as { watchId: string })).toBe("worker-1");
+      expect(readNames).toEqual(["worker-1"]);
+    }
+  );
+
+  postgresTest(
+    "dedupes across both spellings, because the identity sees the stored name",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma);
+      const chatId = `chat_${suffix()}`;
+      await createChat(ctx.agentDb, {
+        id: chatId,
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+
+      const first = await createFor(seeded, queueWatchRecommendation("worker-1"), chatId);
+      expect(first).toMatchObject({ ok: true, watching: true });
+
+      const second = await createFor(seeded, queueWatchRecommendation("task/worker-1"), chatId);
+      expect(second).toMatchObject({
+        ok: false,
+        code: "duplicate",
+        existingId: (first as { watchId: string }).watchId,
+      });
+    }
+  );
+});
+
+describe("a queue that exists under neither spelling", () => {
+  postgresTest("is refused, either way round", async ({ prisma, postgresContainer }) => {
+    await boot(prisma, postgresContainer.getConnectionUri());
+    const seeded = await seed(prisma);
+
+    expect(await createFor(seeded, queueWatchRecommendation("worker-9"))).toMatchObject({
+      ok: false,
+      code: "invalid_target",
+    });
+    expect(await createFor(seeded, queueWatchRecommendation("task/worker-9"))).toMatchObject({
+      ok: false,
+      code: "invalid_target",
+    });
+  });
 });
