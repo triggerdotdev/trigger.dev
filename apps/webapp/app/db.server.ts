@@ -24,6 +24,7 @@ import {
   logTransactionInfrastructureError,
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
+import { registerDatabaseMetricsSource } from "./utils/databaseMetrics.server";
 import {
   isSplitEnabled,
   assertSplitRealtimeInterlock,
@@ -247,16 +248,16 @@ export function selectRunOpsTopology(
   if (config.legacySharesControlPlane) {
     legacyRunOps = controlPlane;
   } else {
-    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "legacy-run-ops-writer");
     const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
-      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "legacy-run-ops-replica")
       : legacyWriter;
     legacyRunOps = { writer: legacyWriter, replica: legacyReplica };
   }
 
-  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
+  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
-    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-new-reader")
+    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-replica")
     : newWriter;
 
   return {
@@ -430,19 +431,25 @@ function getClient() {
 
   return buildWriterClient({
     url,
-    clientType: "writer",
+    clientType: "control-plane-writer",
     poolTimeout: env.DATABASE_WRITER_POOL_TIMEOUT,
     connectTimeout: env.DATABASE_WRITER_CONNECTION_TIMEOUT,
     useDriverAdapter: env.CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER === "1",
   });
 }
 
+type DriverAdapterPool = {
+  adapter: PrismaPg;
+  pool: Pool;
+  poolCounters: { opened: () => number; closed: () => number };
+};
+
 function buildDriverAdapterPool(
   connectionString: string,
   clientType: string,
   poolTimeoutSeconds: number,
   connectionLimit: number
-): PrismaPg {
+): DriverAdapterPool {
   const pool = new Pool({
     connectionString,
     max: connectionLimit,
@@ -457,6 +464,15 @@ function buildDriverAdapterPool(
     });
   });
 
+  let opened = 0;
+  let closed = 0;
+  pool.on("connect", () => {
+    opened += 1;
+  });
+  pool.on("remove", () => {
+    closed += 1;
+  });
+
   let schema: string | undefined;
   try {
     schema = new URL(connectionString).searchParams.get("schema") ?? undefined;
@@ -464,7 +480,11 @@ function buildDriverAdapterPool(
     schema = undefined;
   }
 
-  return new PrismaPg(pool, { schema, disposeExternalPool: true });
+  return {
+    adapter: new PrismaPg(pool, { schema, disposeExternalPool: true }),
+    pool,
+    poolCounters: { opened: () => opened, closed: () => closed },
+  };
 }
 
 // Generalized writer builder shared by the control-plane client and the run-ops
@@ -548,20 +568,33 @@ export function buildWriterClient({
       : []) satisfies Prisma.LogDefinition[]),
   ] satisfies Prisma.LogDefinition[];
 
-  const client = useDriverAdapter
-    ? new PrismaClient({
-        adapter: buildDriverAdapterPool(
-          url,
-          clientType,
-          poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
-          env.DATABASE_CONNECTION_LIMIT
-        ),
-        log: logConfig,
-      })
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
+    ? new PrismaClient({ adapter: driverPool.adapter, log: logConfig })
     : new PrismaClient({
         datasources: { db: { url: databaseUrl.href } },
         log: logConfig,
       });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -631,7 +664,7 @@ function getReplicaClient() {
 
   return buildReplicaClient({
     url,
-    clientType: "reader",
+    clientType: "control-plane-replica",
     poolTimeout: env.DATABASE_READ_REPLICA_POOL_TIMEOUT,
     connectTimeout: env.DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
     useDriverAdapter: env.CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
@@ -719,20 +752,33 @@ export function buildReplicaClient({
       : []) satisfies Prisma.LogDefinition[]),
   ] satisfies Prisma.LogDefinition[];
 
-  const replicaClient = useDriverAdapter
-    ? new PrismaClient({
-        adapter: buildDriverAdapterPool(
-          url,
-          clientType,
-          poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
-          env.DATABASE_CONNECTION_LIMIT
-        ),
-        log: logConfig,
-      })
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const replicaClient = driverPool
+    ? new PrismaClient({ adapter: driverPool.adapter, log: logConfig })
     : new PrismaClient({
         datasources: { db: { url: replicaUrl.href } },
         log: logConfig,
       });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client: replicaClient,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client: replicaClient }
+  );
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -813,14 +859,18 @@ function buildRunOpsWriterClient({
     }`
   );
 
-  const client = useDriverAdapter
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
     ? new RunOpsPrismaClient({
-        adapter: buildDriverAdapterPool(
-          url,
-          clientType,
-          env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-          env.DATABASE_CONNECTION_LIMIT
-        ),
+        adapter: driverPool.adapter,
         log: [
           { emit: "event", level: "error" },
           { emit: "event", level: "info" },
@@ -843,6 +893,18 @@ function buildRunOpsWriterClient({
             : []) as { emit: "event"; level: "query" }[]),
         ],
       });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
@@ -894,14 +956,18 @@ function buildRunOpsReplicaClient({
     }`
   );
 
-  const client = useDriverAdapter
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+        env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
     ? new RunOpsPrismaClient({
-        adapter: buildDriverAdapterPool(
-          url,
-          clientType,
-          env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-          env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-        ),
+        adapter: driverPool.adapter,
         log: [
           { emit: "event", level: "error" },
           { emit: "event", level: "info" },
@@ -924,6 +990,18 @@ function buildRunOpsReplicaClient({
             : []) as { emit: "event"; level: "query" }[]),
         ],
       });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
