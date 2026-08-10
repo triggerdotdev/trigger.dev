@@ -23,7 +23,7 @@ import {
   type WatchKind,
   type WatchSpec,
 } from "./watch.js";
-import { watchResolvedBlockBody } from "./watch-wording.js";
+import { watchConditionWording, watchResolvedBlockBody } from "./watch-wording.js";
 
 const common = { maxHours: 6, note: "because I asked" };
 
@@ -609,5 +609,19 @@ describe("watchResolvedBlockBody", () => {
         },
       }).outcome
     ).toBe("impossible");
+  });
+});
+
+describe("watchConditionWording", () => {
+  it("shortens the fingerprint in the error-recurrence note", () => {
+    const note = watchConditionWording({
+      ...common,
+      kind: "error_recurrence",
+      fingerprint: "error_c4b4",
+      checkEveryMinutes: 15,
+    }).note;
+
+    expect(note).not.toContain("error error_");
+    expect(note).toBe("ping me if error c4b4 happens again");
   });
 });
