@@ -168,7 +168,7 @@ function groupForStatus(status: string): GroupLabel | undefined {
 }
 
 // Stable legend order for the deliveries activity chart.
-const DELIVERY_STATUSES = ["PENDING", "PROCESSING", "SUCCEEDED", "FAILED"] as const;
+const DELIVERY_STATUSES = ["PENDING", "PROCESSING", "SUCCEEDED", "FAILED", "FILTERED"] as const;
 
 const DELIVERIES_PAGE_SIZE = 25;
 

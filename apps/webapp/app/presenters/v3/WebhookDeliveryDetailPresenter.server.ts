@@ -82,7 +82,7 @@ export class WebhookDeliveryDetailPresenter {
     if (delivery.runId) {
       const [taskRun, sessionRun] = await Promise.all([
         runStore.findRun({ id: delivery.runId }, { select: { friendlyId: true } }, this.replica),
-        this.replica.sessionRun.findUnique({
+        this.replica.sessionRun.findFirst({
           where: { runId: delivery.runId },
           select: { session: { select: { friendlyId: true, externalId: true } } },
         }),
