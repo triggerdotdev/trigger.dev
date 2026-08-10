@@ -1184,11 +1184,12 @@ export async function cancelDashboardAgentWatch(params: {
 
 /**
  * Delete a chat and end its watches in one transaction, so no live watch is left on an
- * invisible chat. Owner-scoped, so a chatId the caller doesn't own deletes nothing.
+ * invisible chat. Org- and owner-scoped, so a chatId the caller doesn't own deletes nothing.
  */
 export async function deleteChatWithWatches(params: {
   chatId: string;
   userId: string;
+  organizationId: string;
 }): Promise<{ deleted: boolean; cancelledWatches: number }> {
   const result = await softDeleteChat(dashboardAgentDb, params);
   return { deleted: result.deleted, cancelledWatches: result.cancelledWatches.length };
