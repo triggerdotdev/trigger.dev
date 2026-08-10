@@ -334,6 +334,7 @@ async function runCase(
 ): Promise<{
   calls: RecordedCall[];
   answer: string;
+  chunks: UIMessageChunk[];
 }> {
   const calls: RecordedCall[] = [];
   const harness = mockChatAgent(dashboardAgent, {
@@ -347,7 +348,7 @@ async function runCase(
   });
   try {
     const turn = await harness.sendMessage(userMessage(question));
-    return { calls, answer: collectText(turn.chunks) };
+    return { calls, answer: collectText(turn.chunks), chunks: turn.chunks };
   } finally {
     await harness.close();
   }
@@ -461,6 +462,51 @@ function describeRenders(renders: InvestigationRender[]): string {
         `hypotheses=${(r.state.hypotheses ?? []).length} id=${r.investigationId ?? "(new)"}`
     )
     .join("\n");
+}
+
+// The turn as the user receives it: runs of prose and tool calls, in emission order.
+// Ordering assertions need this — `calls` alone can't say what came after the last word.
+type TurnPart = { kind: "text"; text: string } | { kind: "tool"; tool: string; input: unknown };
+
+function turnParts(chunks: UIMessageChunk[]): TurnPart[] {
+  const parts: TurnPart[] = [];
+  let text = "";
+  const flush = () => {
+    if (text.trim().length > 0) parts.push({ kind: "text", text });
+    text = "";
+  };
+  for (const chunk of chunks) {
+    if (chunk.type === "text-delta") text += chunk.delta;
+    else if (chunk.type === "tool-input-available") {
+      flush();
+      parts.push({ kind: "tool", tool: chunk.toolName, input: chunk.input });
+    }
+  }
+  flush();
+  return parts;
+}
+
+// The offer's button: an "actions" block whose intent opens the watch card.
+function watchButtons(input: unknown): Array<{ label?: string }> {
+  const blocks =
+    (
+      input as {
+        blocks?: Array<{
+          type?: string;
+          actions?: Array<{ label?: string; intent?: { kind?: string } }>;
+        }>;
+      }
+    ).blocks ?? [];
+  return blocks
+    .filter((b) => b?.type === "actions")
+    .flatMap((b) => b.actions ?? [])
+    .filter((a) => a?.intent?.kind === "watch");
+}
+
+function watchOfferParts(parts: TurnPart[]): TurnPart[] {
+  return parts.filter(
+    (p) => p.kind === "tool" && p.tool === "render_view" && watchButtons(p.input).length > 0
+  );
 }
 
 function describeCalls(calls: RecordedCall[]): string {
@@ -875,6 +921,154 @@ const TRUNCATED_FIXTURES: Record<string, unknown> = {
     nextCursor: "cursor_more",
   },
 };
+
+// One unresolved, recurring error, and nothing else wrong: the headline the watch
+// offer is written for.
+const RECURRING_ERROR_FIXTURES: Record<string, unknown> = {
+  list_errors: {
+    errors: [
+      {
+        id: "error_stripe",
+        taskIdentifier: "send-receipt",
+        errorType: "TimeoutError",
+        errorMessage: "Stripe API timed out after 30s",
+        status: "unresolved",
+        count: 37,
+      },
+    ],
+    nextCursor: undefined,
+  },
+  get_report: {
+    title: "health",
+    scope: "prod",
+    period: "last 1h",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    windowMinutes: 60,
+    summary: {
+      severity: "ok",
+      statements: [
+        { findingType: "flow", severity: "ok" },
+        { findingType: "execution", severity: "ok" },
+        { findingType: "liveness", severity: "ok" },
+      ],
+    },
+    findings: [
+      { type: "flow", severity: "ok", reason: "healthy", metricIds: [] },
+      { type: "execution", severity: "ok", reason: "healthy", metricIds: [] },
+      { type: "liveness", severity: "ok", reason: "fresh", metricIds: ["liveness"] },
+    ],
+    metrics: [{ id: "pending", value: 3, unit: "count", severity: "ok" }],
+    facts: { trustworthy: true },
+    footer: [],
+  },
+};
+
+// A degraded report, so the report card already carries its own "Watch recovery".
+const WARN_REPORT_FIXTURES: Record<string, unknown> = {
+  list_errors: { errors: [], nextCursor: undefined },
+  get_report: {
+    title: "health",
+    scope: "prod",
+    period: "last 1h",
+    baselineLabel: "vs your 7d normal",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    windowMinutes: 60,
+    summary: {
+      severity: "warn",
+      statements: [
+        { findingType: "flow", severity: "warn" },
+        { findingType: "execution", severity: "ok" },
+        { findingType: "liveness", severity: "ok" },
+      ],
+    },
+    findings: [
+      {
+        type: "flow",
+        severity: "warn",
+        reason: "queue_backlog_growing",
+        read: "backlog_building",
+        metricIds: ["pending", "start_latency_p95"],
+        attribution: { dim: "queue", key: "task/send-receipt", share: 0.74, of: "pending" },
+      },
+      { type: "execution", severity: "ok", reason: "healthy", metricIds: [] },
+      { type: "liveness", severity: "ok", reason: "fresh", metricIds: ["liveness"] },
+    ],
+    metrics: [
+      {
+        id: "start_latency_p95",
+        value: 9000,
+        unit: "ms",
+        aggregation: "p95",
+        normal: 900,
+        severity: "warn",
+      },
+      { id: "pending", value: 640, unit: "count", severity: "warn" },
+      { id: "concurrency", value: 32, unit: "count", breakdown: { limit: 50 }, severity: "ok" },
+    ],
+    facts: {
+      trustworthy: true,
+      flowSource: "queue_metrics_v1",
+      pendingEstimated: false,
+      flowEvidence: { envLimit: 50, throttledShare: 0.12, dlqDelta: 0 },
+    },
+    footer: [],
+  },
+  get_queue: {
+    queue: "task/send-receipt",
+    period: "1h",
+    waitMs: { p50: 3000, p95: 9000 },
+    peakQueued: 640,
+    startedCount: 4100,
+    startedPerMin: 68,
+    throttledCount: 120,
+    bucketIntervalMs: 300000,
+    depthTrend: [40, 120, 300, 480, 640],
+  },
+};
+
+describe.skipIf(!HAS_KEY)("dashboardAgent watch offer evals (real model)", () => {
+  it(
+    "recurring error: one watch offer, its line last, its button after it",
+    () =>
+      goldenCase(async () => {
+        const question = "What's broken?";
+        const { calls, answer, chunks } = await runCase(question, {
+          fixtures: RECURRING_ERROR_FIXTURES,
+        });
+        const parts = turnParts(chunks);
+        report("watch offer", calls, answer);
+
+        const offers = watchOfferParts(parts);
+        expect(offers).toHaveLength(1);
+        const offer = offers[0]!;
+        expect(offer.kind === "tool" ? watchButtons(offer.input) : []).toHaveLength(1);
+        // Nothing after the button, and the line before it is the offer question.
+        expect(parts[parts.length - 1]).toBe(offer);
+        const line = parts[parts.length - 2];
+        expect(line?.kind).toBe("text");
+        const text = line?.kind === "text" ? line.text.trim() : "";
+        expect(text).toMatch(/watch/i);
+        expect(text).toMatch(/\?$/);
+      }),
+    420_000
+  );
+
+  it(
+    "degraded report: the report card is the offer, so no second watch button",
+    () =>
+      goldenCase(async () => {
+        const question = "How is prod doing?";
+        const { calls, answer, chunks } = await runCase(question, {
+          fixtures: WARN_REPORT_FIXTURES,
+        });
+        report("no duplicate watch offer", calls, answer);
+
+        expect(calls.some((c) => c.tool === "get_report")).toBe(true);
+        expect(watchOfferParts(turnParts(chunks))).toHaveLength(0);
+      }),
+    420_000
+  );
+});
 
 describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () => {
   it(
