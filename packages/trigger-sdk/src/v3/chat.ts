@@ -1178,8 +1178,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       // Reconnect-on-reload opts into the server's settled-peek shortcut
       // so the SSE doesn't hang for 60s when no turn is in flight. Active
       // send-a-message paths must keep wait=60 to avoid racing the
-      // freshly-triggered turn's first chunk.
-      peekSettled: true,
+      // freshly-triggered turn's first chunk. Watch mode must NOT peek: a
+      // settled peek between turns sets sessionSettled and closes the
+      // standing subscription, so the viewer never sees the next turn.
+      peekSettled: !this.watchMode,
     });
   };
 
@@ -1833,6 +1835,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !currentSubscription?.sessionSettled &&
             !combinedSignal.aborted
           ) {
+            // Clear + persist before throwing so the surfaced error leaves
+            // consistent state — otherwise a reload sees isStreaming: true
+            // and reopens a doomed subscription.
+            state.isStreaming = false;
+            this.notifySessionChange(chatId, state);
             throw new Error(
               "Chat stream ended before the turn completed (reconnect budget exhausted)."
             );
@@ -2038,6 +2045,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           this.activeStreams.delete(chatId);
           this.coordinator?.release(chatId);
         }
+      },
+      // A consumer that stops reading without aborting (drops the reader)
+      // would otherwise leave the resubscribe loop running forever.
+      cancel() {
+        internalAbort.abort();
       },
     });
   }
