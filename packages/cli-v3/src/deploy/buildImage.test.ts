@@ -44,8 +44,7 @@ describe("generateContainerfile", () => {
         `COPY --from=build --chown=${user} /app/node_modules ./node_modules`
       );
       expect(containerfile).toContain(`COPY --from=code --chown=${user} /app ./`);
-      // The final stage must not copy all of /app from the build stage anymore,
-      // or node_modules would be duplicated across two layers
+      // copying all of /app from build would duplicate node_modules across two layers
       expect(containerfile).not.toContain(`COPY --from=build --chown=${user} /app ./`);
     }
   );
@@ -62,12 +61,11 @@ describe("generateContainerfile", () => {
       });
 
       const postInstall = containerfile.indexOf("RUN echo post-install");
-      // The guard must run after post-install commands so a command that prunes
-      // node_modules can't break the final-stage COPY of /app/node_modules
+      // guard after post-install so a command that prunes node_modules can't break the COPY
       const mkdirGuard = containerfile.indexOf("RUN mkdir -p node_modules");
       const codeStage = containerfile.indexOf("FROM build AS code");
       const rmNodeModules = containerfile.indexOf(
-        "RUN chmod -R u+w node_modules && rm -rf node_modules"
+        "RUN chmod -R u+rwX node_modules && rm -rf node_modules"
       );
 
       expect(postInstall).toBeGreaterThan(-1);

@@ -783,11 +783,10 @@ ${postInstallCommands}
 # node_modules may not exist when there are no dependencies to install
 RUN mkdir -p node_modules
 
-# App files without node_modules, so the final stage can layer them separately
 FROM build AS code
 
-# u+w first: rm as a non-root user fails on read-only directories
-RUN chmod -R u+w node_modules && rm -rf node_modules
+# u+rwX first: non-root rm fails on read-only or non-traversable directories
+RUN chmod -R u+rwX node_modules && rm -rf node_modules
 
 FROM build AS indexer
 
@@ -840,11 +839,9 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Dependencies as their own layer: unchanged deps produce an identical blob
-# that registries and workers already have, so repeat deploys skip it
+# Unchanged dependencies produce an identical layer that repeat deploys skip
 COPY --from=build --chown=bun:bun /app/node_modules ./node_modules
 
-# Copy the app files (without node_modules) from the code stage
 COPY --from=code --chown=bun:bun /app ./
 
 # Copy the index.json file from the indexer stage
@@ -904,11 +901,10 @@ COPY --chown=node:node . .
 # node_modules may not exist when there are no dependencies to install
 RUN mkdir -p node_modules
 
-# App files without node_modules, so the final stage can layer them separately
 FROM build AS code
 
-# u+w first: rm as a non-root user fails on read-only directories
-RUN chmod -R u+w node_modules && rm -rf node_modules
+# u+rwX first: non-root rm fails on read-only or non-traversable directories
+RUN chmod -R u+rwX node_modules && rm -rf node_modules
 
 FROM build AS indexer
 
@@ -963,11 +959,9 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Dependencies as their own layer: unchanged deps produce an identical blob
-# that registries and workers already have, so repeat deploys skip it
+# Unchanged dependencies produce an identical layer that repeat deploys skip
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 
-# Copy the app files (without node_modules) from the code stage
 COPY --from=code --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
