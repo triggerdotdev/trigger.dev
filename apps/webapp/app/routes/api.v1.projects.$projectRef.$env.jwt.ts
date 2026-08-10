@@ -18,6 +18,7 @@ import {
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
 import { assertUserActorEnvironment } from "~/services/userActorEnvironment.server";
+import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 
@@ -76,6 +77,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (isUat) {
       const claims = await verifyUserActorToken(appEnv.SESSION_SECRET, bearer!);
       if (!claims) {
+        return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      }
+      // A token minted from a PAT dies with it — the PAT must still be live.
+      if (!(await assertSourcePatActive(claims))) {
         return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
       }
       uatCap = claims.cap;
