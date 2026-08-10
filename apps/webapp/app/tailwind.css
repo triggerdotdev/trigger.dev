@@ -658,11 +658,8 @@
   --sidebar: var(--color-background-dimmed);
 
   /* Code block styling */
-  & [data-code-block-container] {
+  & [data-streamdown="code-block"] {
     @apply rounded-sm my-2 border-charcoal-700;
-  }
-  & [data-code-block] {
-    border-top: none;
   }
 
   & p {
@@ -733,23 +730,9 @@
     background-color: var(--muted);
   }
 
-  & [data-code-block-header] {
-    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
-  }
-  /* Override the bg-muted/40 class to let inline styles work */
-  & [data-code-block] pre {
-    background-color: inherit !important;
-    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
-  }
-  & [data-code-block] pre code {
-    @apply bg-transparent text-xs;
-  }
-  & [data-code-block] .line {
-    @apply leading-relaxed;
-  }
-  /* Streamdown renders the fenced block body at text-sm; code blocks are 12px. */
+  /* The body scrolls and sizes the code; streamdown ships it at text-sm. */
   & [data-streamdown="code-block-body"] {
-    @apply text-xs;
+    @apply text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
 }
 
