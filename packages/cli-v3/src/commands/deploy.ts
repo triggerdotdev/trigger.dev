@@ -11,7 +11,7 @@ import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
-import { isCI } from "std-env";
+import { env, isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
@@ -30,6 +30,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
+import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import { buildImage } from "../deploy/buildImage.js";
 import {
   checkLogsForErrors,
@@ -268,11 +269,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   verifyDirectory(dir, projectPath);
 
-  const authorization = await login({
-    embedded: true,
-    defaultApiUrl: options.apiUrl,
+  const authorization = await authenticateForDeploy({
+    secretKey: env.TRIGGER_SECRET_KEY,
+    apiUrl: env.TRIGGER_API_URL ?? options.apiUrl,
     profile: options.profile,
     silent: options.plain,
+    login,
   });
 
   if (!authorization.ok) {
@@ -368,7 +370,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       config: resolvedConfig,
       dashboardUrl: authorization.dashboardUrl,
       options,
-      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      userId: userIdForDeploy(authorization),
       gitMeta,
     });
     return;
@@ -424,7 +426,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectClient.client,
     {
       contentHash: buildManifest.contentHash,
-      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      userId: userIdForDeploy(authorization),
       gitMeta,
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,

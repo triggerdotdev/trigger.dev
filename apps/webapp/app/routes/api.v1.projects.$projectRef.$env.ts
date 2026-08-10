@@ -8,9 +8,9 @@ import {
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import {
-  authenticateEnvironmentScopedApiRequest,
+  apiKeyForProjectEnvironmentBootstrap,
+  authenticateEnvironmentBootstrapRequest,
   authorizePatEnvironmentAccess,
-  presentedApiKeyFromAuthentication,
 } from "~/services/environmentVariableApiAccess.server";
 
 const ParamsSchema = z.object({
@@ -30,9 +30,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { projectRef, env } = parsedParams.data;
 
   try {
-    // PAT/OAT authenticate on the legacy path; machine API keys go through
-    // the RBAC controller so additional keys (and their grants) are enforced.
-    const authResult = await authenticateEnvironmentScopedApiRequest(request, "read", "apiKeys");
+    // PAT/OAT authenticate on the legacy path; machine API keys only need to
+    // prove they are valid because bootstrap echoes the same key back.
+    const authResult = await authenticateEnvironmentBootstrapRequest(request);
     if (!authResult.ok) {
       return json({ error: authResult.error }, { status: authResult.status });
     }
@@ -46,29 +46,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     );
 
     // User tokens bootstrap the environment's secret key, so gate them on
-    // env-tier read:apiKeys. Machine credentials are checked against the same
-    // permission before their presented key is returned below.
-    const denied = await authorizePatEnvironmentAccess({
-      request,
-      authType: authenticationResult.type,
-      ability:
-        authenticationResult.type === "apiKey" && authenticationResult.result.ok
-          ? authenticationResult.result.ability
-          : undefined,
-      organizationId: environment.organizationId,
-      projectId: environment.project.id,
-      envType: environment.type,
-      resource: "apiKeys",
-      action: "read",
-    });
-    if (denied) return denied;
-
-    // API-key callers already possess a valid environment credential. Reuse
-    // exactly what they presented instead of exchanging it for the root key.
-    const presentedApiKey = presentedApiKeyFromAuthentication(authenticationResult);
+    // env-tier read:apiKeys. A machine credential never receives that root key.
+    if (authenticationResult.type !== "apiKey") {
+      const denied = await authorizePatEnvironmentAccess({
+        request,
+        authType: authenticationResult.type,
+        organizationId: environment.organizationId,
+        projectId: environment.project.id,
+        envType: environment.type,
+        resource: "apiKeys",
+        action: "read",
+      });
+      if (denied) return denied;
+    }
 
     const result: GetProjectEnvResponse = {
-      apiKey: presentedApiKey ?? environment.apiKey,
+      apiKey: apiKeyForProjectEnvironmentBootstrap(authenticationResult, environment.apiKey),
       name: environment.project.name,
       apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
       projectId: environment.project.id,

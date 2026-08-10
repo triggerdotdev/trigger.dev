@@ -13,7 +13,12 @@ import {
   findEnvironmentByPublicApiKey,
   toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
-import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
+import type {
+  BearerAuthOptions,
+  RbacAbility,
+  RbacResource,
+  UserActorClaims,
+} from "@trigger.dev/rbac";
 import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
@@ -33,6 +38,7 @@ import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import {
   authenticateAuthorizeBearerWithTelemetry,
+  authenticateBearerWithTelemetry,
   observeLegacyBearerAuthentication,
 } from "~/services/authTelemetry.server";
 
@@ -295,6 +301,37 @@ async function authenticateApiKeyWithFailure(
   }
 }
 
+/** Authenticate a private API-key request without requiring a resource scope. */
+export async function authenticateApiKeyRequest(
+  request: Request,
+  options: BearerAuthOptions = {},
+  authenticateBearer: typeof authenticateBearerWithTelemetry = authenticateBearerWithTelemetry
+): Promise<
+  | { ok: true; authentication: ApiAuthenticationResultSuccess }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
+  if (!apiKey) {
+    return { ok: false, status: 401, error: "Invalid or Missing API key" };
+  }
+
+  const result = await authenticateBearer(request, options);
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    authentication: {
+      ok: true,
+      apiKey,
+      type: "PRIVATE",
+      environment: result.environment,
+      ability: result.ability,
+    },
+  };
+}
+
 /**
  * Authenticate an API-key request for a legacy (non-apiBuilder) route that
  * needs to accept granular additional keys, then enforce that the key's ability
@@ -310,7 +347,13 @@ export async function authenticateApiKeyWithScope(
     action,
     resource,
     allowJWT = false,
-  }: { action: string; resource: RbacResource; allowJWT?: boolean },
+    allowPreviewParent = false,
+  }: {
+    action: string;
+    resource: RbacResource;
+    allowJWT?: boolean;
+    allowPreviewParent?: boolean;
+  },
   authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
@@ -321,7 +364,11 @@ export async function authenticateApiKeyWithScope(
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
   }
 
-  const result = await authorizeBearer(request, { action, resource }, { allowJWT });
+  const result = await authorizeBearer(
+    request,
+    { action, resource },
+    { allowJWT, allowPreviewParent }
+  );
   if (!result.ok) {
     return result;
   }
@@ -414,22 +461,22 @@ export type UserActorAuthenticatedActor = PersonalAccessTokenAuthenticationResul
 
 export type AuthenticationResult =
   | {
-      type: "personalAccessToken";
-      result: UserActorAuthenticatedActor;
-      /**
-       * Claims of the delegated user-actor token the caller presented, if any. A UAT authenticates
-       * as its user, so it rides on this variant; its environment scope is enforced on resolution.
-       */
-      userActor?: UserActorClaims;
-    }
+    type: "personalAccessToken";
+    result: UserActorAuthenticatedActor;
+    /**
+     * Claims of the delegated user-actor token the caller presented, if any. A UAT authenticates
+     * as its user, so it rides on this variant; its environment scope is enforced on resolution.
+     */
+    userActor?: UserActorClaims;
+  }
   | {
-      type: "organizationAccessToken";
-      result: OrganizationAccessTokenAuthenticationResult;
-    }
+    type: "organizationAccessToken";
+    result: OrganizationAccessTokenAuthenticationResult;
+  }
   | {
-      type: "apiKey";
-      result: ApiAuthenticationResult;
-    };
+    type: "apiKey";
+    result: ApiAuthenticationResult;
+  };
 
 type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | "apiKey";
 
@@ -446,11 +493,11 @@ type FilteredAuthenticationResult<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods,
 > =
   | (T["personalAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
+    : never)
   | (T["organizationAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
+    : never)
   | (T["apiKey"] extends true ? Extract<AuthenticationResult, { type: "apiKey" }> : never);
 
 /**
@@ -641,10 +688,10 @@ async function resolveEnvironmentForAuthentication(
             slug: slug,
             ...(slug === "dev"
               ? {
-                  orgMember: {
-                    userId: user.id,
-                  },
-                }
+                orgMember: {
+                  userId: user.id,
+                },
+              }
               : {}),
           },
           include: authIncludeBase,
@@ -664,10 +711,10 @@ async function resolveEnvironmentForAuthentication(
           branchName: resolvedBranch,
           ...(slug === "dev"
             ? {
-                orgMember: {
-                  userId: user.id,
-                },
-              }
+              orgMember: {
+                userId: user.id,
+              },
+            }
             : {}),
           archivedAt: null,
         },

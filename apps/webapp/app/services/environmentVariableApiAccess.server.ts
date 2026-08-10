@@ -3,6 +3,7 @@ import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import {
+  authenticateApiKeyRequest,
   authenticateApiKeyWithScope,
   authenticateRequest,
   type AuthenticationResult,
@@ -28,6 +29,13 @@ export function presentedApiKeyFromAuthentication(
     : undefined;
 }
 
+export function apiKeyForProjectEnvironmentBootstrap(
+  authentication: AuthenticationResult,
+  rootApiKey: string
+): string {
+  return presentedApiKeyFromAuthentication(authentication) ?? rootApiKey;
+}
+
 /**
  * Keep PAT/OAT authentication on the legacy path while routing machine API
  * keys through the RBAC controller, where plugin grants are applied.
@@ -35,6 +43,11 @@ export function presentedApiKeyFromAuthentication(
 type AuthenticationDependencies = {
   authenticateRequest: typeof authenticateRequest;
   authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
+};
+
+type BootstrapAuthenticationDependencies = {
+  authenticateRequest: typeof authenticateRequest;
+  authenticateApiKeyRequest: typeof authenticateApiKeyRequest;
 };
 
 export async function authenticateEnvironmentScopedApiRequest(
@@ -55,6 +68,40 @@ export async function authenticateEnvironmentScopedApiRequest(
   const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, {
     action,
     resource: { type: resource },
+  });
+  if (!apiKeyAuthentication.ok) {
+    return apiKeyAuthentication;
+  }
+
+  return {
+    ok: true,
+    authentication: { type: "apiKey", result: apiKeyAuthentication.authentication },
+  };
+}
+
+/**
+ * Bootstrap accepts any valid private environment key. Unlike env-var routes,
+ * it intentionally does not require a resource scope because it only echoes
+ * the credential the caller already presented.
+ */
+export async function authenticateEnvironmentBootstrapRequest(
+  request: Request,
+  dependencies: BootstrapAuthenticationDependencies = {
+    authenticateRequest,
+    authenticateApiKeyRequest,
+  }
+): Promise<EnvironmentScopedAuthentication> {
+  const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: false,
+  });
+  if (userOrOrganizationAuthentication) {
+    return { ok: true, authentication: userOrOrganizationAuthentication };
+  }
+
+  const apiKeyAuthentication = await dependencies.authenticateApiKeyRequest(request, {
+    allowPreviewParent: true,
   });
   if (!apiKeyAuthentication.ok) {
     return apiKeyAuthentication;
