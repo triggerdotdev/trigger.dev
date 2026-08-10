@@ -1,9 +1,11 @@
+import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import { ToggleSwitchIcon } from "~/assets/icons/ToggleSwitchIcon";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { THEME_OPTIONS } from "~/components/themeOptions";
 import { type loader as rootLoader } from "~/root";
+import { accountPath } from "~/utils/pathBuilder";
 import { normalizeThemePreference } from "~/utils/themePreference";
 import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SIDE_MENU_POPOVER_ITEM_ICON, SIDE_MENU_POPOVER_ITEM_LABEL } from "./sideMenuTypes";
@@ -49,6 +51,15 @@ export function AppearanceMenuItem() {
             }
           />
         ))}
+      </div>
+      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+        <PopoverMenuItem
+          to={accountPath()}
+          title="More options"
+          icon={EllipsisHorizontalIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
       </div>
     </SideMenuPopoverSubMenu>
   );

@@ -24,3 +24,10 @@ export const CLASSIC_OPTION: ThemeOption = {
   label: "Classic",
   icon: SwatchIcon,
 };
+
+/** Every theme, for the account page's full picker. */
+export const ALL_THEME_OPTIONS: ThemeOption[] = [...THEME_OPTIONS, CLASSIC_OPTION];
+
+export const THEME_OPTIONS_BY_VALUE = Object.fromEntries(
+  ALL_THEME_OPTIONS.map((option) => [option.value, option])
+) as Record<ThemePreference, ThemeOption>;

@@ -4,7 +4,6 @@ import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { Form, useActionData, useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { ThemeSegmentedControl } from "~/components/ThemeSegmentedControl";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -12,6 +11,7 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
@@ -20,6 +20,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOptions";
 import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -40,6 +41,11 @@ import { accountPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Your profile");
+
+function themeIcon(value: ThemePreference) {
+  const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
+  return <Icon className="size-4 text-text-dimmed" />;
+}
 
 function createSchema(
   constraints: {
@@ -281,17 +287,34 @@ export default function Page() {
                     <Label>Theme</Label>
                   </InputGroup>
                   <div className="flex flex-none items-center">
-                    <ThemeSegmentedControl
-                      name="appearance-account"
+                    <Select<ThemePreference, ThemePreference>
+                      aria-label="Theme"
                       value={theme}
-                      includeClassic
-                      onChange={(value) =>
+                      setValue={(value) =>
                         themeFetcher.submit(
                           { action: "update-theme", theme: value },
                           { method: "post" }
                         )
                       }
-                    />
+                      variant="secondary/small"
+                      dropdownIcon
+                      items={ALL_THEME_OPTIONS.map((option) => option.value)}
+                      text={(value) => (
+                        <span className="flex items-center gap-1.5">
+                          {themeIcon(value)}
+                          {THEME_OPTIONS_BY_VALUE[value].label}
+                        </span>
+                      )}
+                      className="w-44"
+                    >
+                      {(items) =>
+                        items.map((item) => (
+                          <SelectItem key={item} value={item} icon={themeIcon(item)}>
+                            {THEME_OPTIONS_BY_VALUE[item].label}
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -308,7 +331,8 @@ export default function Page() {
                         aria-label="Contrast"
                         min={0}
                         max={100}
-                        step={5}
+                        step={1}
+                        valueTooltip={(value) => `${value}%`}
                         value={[contrastPreview]}
                         onValueChange={(values) => {
                           // Live preview before the preference persists
