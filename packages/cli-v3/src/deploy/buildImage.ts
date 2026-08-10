@@ -700,6 +700,43 @@ const BASE_IMAGE: Record<BuildRuntime, string> = {
 
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
+// Freezes the Debian archive so the package layer is a pure function of this
+// timestamp and the base image, making it byte-identical across projects.
+// Bumping it (each CLI release) is how base packages pick up security updates.
+const DEBIAN_SNAPSHOT = "20260801T000000Z";
+
+// Files apt/dpkg write with wall-clock timestamps, which would break layer determinism
+const APT_SCRUB =
+  "rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /var/log/apt /var/log/alternatives.log /var/cache/ldconfig/aux-cache /var/cache/debconf/*-old";
+
+function aptSourcesSetup(): string {
+  if (process.env.TRIGGER_BUILD_SKIP_APT_SNAPSHOT === "1") {
+    return "";
+  }
+
+  // http, not https: the slim base images have no ca-certificates yet, and apt
+  // integrity comes from GPG-signed Release files rather than TLS
+  const sources = [
+    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main`,
+    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} bookworm-security main`,
+    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm-updates main`,
+  ];
+
+  return `printf '%s\\n' ${sources
+    .map((line) => `'${line}'`)
+    .join(" ")} > /etc/apt/sources.list && \\
+  rm -f /etc/apt/sources.list.d/debian.sources && \\
+  `;
+}
+
+function aptInstall(packages: string[], { setupSources }: { setupSources: boolean }): string {
+  return `RUN ${setupSources ? aptSourcesSetup() : ""}apt-get update && \\
+  apt-get --fix-broken install -y && \\
+  apt-get install -y --no-install-recommends ${packages.join(" ")} && \\
+  apt-get clean && \\
+  ${APT_SCRUB}`;
+}
+
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
@@ -726,36 +763,50 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
   const baseInstructions = (options.image?.instructions || []).join("\n");
-  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
-    " "
-  );
+
+  // Default packages install alone so their layer stays identical across
+  // projects; user packages and instructions only add layers on top
+  const defaultPackages = [...DEFAULT_PACKAGES].sort();
+  const userPackages = Array.from(new Set(options.image?.pkgs || []))
+    .filter((pkg) => !DEFAULT_PACKAGES.includes(pkg))
+    .sort();
+
+  const defaultPackagesInstall = aptInstall(defaultPackages, { setupSources: true });
+  const userPackagesInstall =
+    userPackages.length > 0 ? aptInstall(userPackages, { setupSources: false }) : "";
 
   return {
     baseImage: BASE_IMAGE[options.runtime],
     baseInstructions,
     buildArgs,
     buildEnvVars,
-    packages,
+    defaultPackagesInstall,
+    userPackagesInstall,
     postInstallCommands,
   };
 };
 
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildArgs,
+    buildEnvVars,
+    postInstallCommands,
+    baseInstructions,
+    defaultPackagesInstall,
+    userPackagesInstall,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
+ENV DEBIAN_FRONTEND=noninteractive
+${defaultPackagesInstall}
+
 ${baseInstructions}
 
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+${userPackagesInstall}
 
 FROM base AS build
 
@@ -853,20 +904,26 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildArgs,
+    buildEnvVars,
+    postInstallCommands,
+    baseInstructions,
+    defaultPackagesInstall,
+    userPackagesInstall,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
+ENV DEBIAN_FRONTEND=noninteractive
+${defaultPackagesInstall}
+
 ${baseInstructions}
 
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && rm -rf /var/lib/apt/lists/*
+${userPackagesInstall}
 
 FROM base AS build
 

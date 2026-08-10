@@ -1,5 +1,5 @@
 import type { BuildRuntime } from "@trigger.dev/core/v3/schemas";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateContainerfile } from "./buildImage.js";
 
 const nodeImages: Array<[BuildRuntime, string]> = [
@@ -74,4 +74,72 @@ describe("generateContainerfile", () => {
       expect(rmNodeModules).toBeGreaterThan(codeStage);
     }
   );
+
+  describe("apt snapshot pinning", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each(["node", "bun"] as BuildRuntime[])(
+      "pins apt to the Debian snapshot archive and scrubs timestamped files for %s",
+      async (runtime) => {
+        const containerfile = await generateContainerfile({
+          runtime,
+          build: {},
+          image: undefined,
+          indexScript: "index.js",
+          entrypoint: "entrypoint.js",
+        });
+
+        expect(containerfile).toMatch(
+          /deb \[check-valid-until=no\] http:\/\/snapshot\.debian\.org\/archive\/debian\/\d{8}T\d{6}Z bookworm main/
+        );
+        expect(containerfile).toContain("/archive/debian-security/");
+        expect(containerfile).toContain("rm -f /etc/apt/sources.list.d/debian.sources");
+        expect(containerfile).toContain("/var/log/dpkg.log");
+      }
+    );
+
+    it("keeps the default package layer identical for customized projects", async () => {
+      const containerfile = await generateContainerfile({
+        runtime: "node-22",
+        build: {},
+        image: {
+          pkgs: ["jq", "curl"],
+          instructions: ["RUN echo custom > /etc/marker"],
+        },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const defaultInstall = containerfile.indexOf(
+        "apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl"
+      );
+      const instructions = containerfile.indexOf("RUN echo custom > /etc/marker");
+      // sorted, deduplicated, and separate from the default install line
+      const userInstall = containerfile.indexOf("apt-get install -y --no-install-recommends curl jq");
+
+      expect(defaultInstall).toBeGreaterThan(-1);
+      expect(instructions).toBeGreaterThan(defaultInstall);
+      expect(userInstall).toBeGreaterThan(instructions);
+      // sources are only written once, in the default install
+      expect(containerfile.match(/snapshot\.debian\.org/g)?.length).toBe(3);
+    });
+
+    it("drops the snapshot pin when TRIGGER_BUILD_SKIP_APT_SNAPSHOT is set", async () => {
+      vi.stubEnv("TRIGGER_BUILD_SKIP_APT_SNAPSHOT", "1");
+
+      const containerfile = await generateContainerfile({
+        runtime: "node-22",
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).not.toContain("snapshot.debian.org");
+      expect(containerfile).toContain("RUN apt-get update");
+    }
+    );
+  });
 });
