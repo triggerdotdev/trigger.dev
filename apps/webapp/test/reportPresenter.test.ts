@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createReportCache, ReportPresenter } from "~/presenters/v3/reports/ReportPresenter.server";
+import { HEALTH_THRESHOLDS } from "~/presenters/v3/reports/health/health-core";
+import {
+  createReportCache,
+  ReportPresenter,
+  REPORT_CACHE_TTL_MS,
+} from "~/presenters/v3/reports/ReportPresenter.server";
 import { type ReportLoader } from "~/presenters/v3/reports/report-registry";
 import { type ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -188,5 +193,11 @@ describe("ReportPresenter — single-flight + TTL cache", () => {
       presenter.call({ environment: env("env_1"), key: "toString" })
     ).resolves.toBeUndefined();
     expect(loadCalls()).toBe(0);
+  });
+
+  // A report cached longer than the liveness fresh window could render "fresh" while its
+  // telemetry is already stale.
+  it("never caches a report past the liveness fresh window", () => {
+    expect(REPORT_CACHE_TTL_MS).toBeLessThanOrEqual(HEALTH_THRESHOLDS.liveness.freshMs);
   });
 });
