@@ -116,7 +116,7 @@ describe("the per-(org, period) counter", () => {
 
       // Deleting a chat must not move the counter: it is not joined to chats.
       await createChat(db, { id: "chat_del", organizationId: ORG, userId: USER });
-      await softDeleteChat(db, { chatId: "chat_del", userId: USER });
+      await softDeleteChat(db, { chatId: "chat_del", userId: USER, organizationId: ORG });
       expect(await getAgentMessageUsage(db, { organizationId: ORG, period })).toBe(2);
 
       // The next period and other orgs start fresh.

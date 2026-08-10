@@ -351,11 +351,14 @@ export function buildApiTools(args: {
         const result = await postQuery(query, period);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
         if (!result.ok) {
-          consecutiveQueryFailures++;
-          if (consecutiveQueryFailures >= MAX_CONSECUTIVE_QUERY_FAILURES) {
-            return {
-              error: `${result.error} That is ${consecutiveQueryFailures} queries in a row that failed. Stop querying and answer the user with what you already have.`,
-            };
+          // Only SQL errors count toward the cap; transport errors are transient.
+          if (result.kind === "query") {
+            consecutiveQueryFailures++;
+            if (consecutiveQueryFailures >= MAX_CONSECUTIVE_QUERY_FAILURES) {
+              return {
+                error: `${result.error} That is ${consecutiveQueryFailures} queries in a row that failed. Stop querying and answer the user with what you already have.`,
+              };
+            }
           }
           return { error: result.error };
         }
