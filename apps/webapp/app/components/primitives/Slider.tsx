@@ -17,6 +17,9 @@ const variants = {
     thumb:
       "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
     thumbSize: 18,
+    // Track-coloured line, notched off the track by borders in the colour of
+    // the page behind it (settings rows sit on background-dimmed).
+    mark: "bg-grid-bright border-background-dimmed",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
@@ -27,6 +30,7 @@ const variants = {
     thumb:
       "h-3 w-3 border-2 border-text-dimmed bg-grid-bright shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] hover:border-text-dimmed focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)]",
     thumbSize: 12,
+    mark: "bg-grid-bright border-background-dimmed",
   },
 };
 
@@ -102,10 +106,13 @@ export function Slider({
             <span
               key={mark}
               aria-hidden
-              // box-content keeps the line 1px wide and hangs the background-
-              // coloured borders outside it, notching the track either side so
-              // the mark reads in both themes.
-              className="absolute top-1/2 box-content h-4 w-px -translate-x-1/2 -translate-y-1/2 border-x border-background-bright bg-text-dimmed"
+              // Drawn after the track, so it sits on top of it. box-content
+              // keeps the line 1px wide and hangs the borders outside it, so
+              // they read as a gap in the track rather than eating the line.
+              className={cn(
+                "absolute top-1/2 box-content h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full border-x",
+                variation.mark
+              )}
               style={{ left: `calc(${percent}% + ${offset}px)` }}
             />
           );
