@@ -150,7 +150,7 @@ describe("closing a consented watch investigation's card", () => {
       const chatId = "chat_watch_card_deleted";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
       const id = await seed(chatId, openState());
-      await softDeleteChat(agentDb, { chatId, userId: USER_ID });
+      await softDeleteChat(agentDb, { chatId, userId: USER_ID, organizationId: ORG_ID });
 
       expect(
         await settleInvestigationStateAndCloseCard(agentDb, {
