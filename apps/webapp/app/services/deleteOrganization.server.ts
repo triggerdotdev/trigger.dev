@@ -5,6 +5,7 @@ import { featuresForRequest } from "~/features.server";
 import { DeleteProjectService } from "./deleteProject.server";
 import { getCurrentPlan } from "./platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { commonWorker } from "~/v3/commonWorker.server";
 
 export class DeleteOrganizationService {
   #prismaClient: PrismaClient;
@@ -86,5 +87,13 @@ export class DeleteOrganizationService {
 
     // runsEnabled + the org's projects (project.deletedAt) changed; drop all cached env rows.
     controlPlaneResolver.invalidateOrganization(organization.id);
+
+    // Soft-delete the org's dashboard agent chats; retention purges them later. Enqueued,
+    // not inline: the agent store is a separate database in cloud.
+    await commonWorker.enqueue({
+      id: `dashboardAgent.purgeOrganization:${organization.id}`,
+      job: "dashboardAgent.purgeOrganization",
+      payload: { organizationId: organization.id },
+    });
   }
 }
