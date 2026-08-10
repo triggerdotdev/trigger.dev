@@ -3,7 +3,7 @@ import {
   chatExists,
   countUnreadWatchWakes,
   countChatsWithUnreadWork,
-  countUserMessages,
+  getAgentMessageUsage,
   createChat,
   getChatMessages,
   getSession,
@@ -52,6 +52,11 @@ import {
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import {
+  currentAgentMessagePeriod,
+  recordAgentMessageSent,
+  resolveAgentMessageQuota,
+} from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
@@ -150,13 +155,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  // The open chat is excluded and counted from the live transcript instead, so an
-  // unpersisted turn still counts against the cap.
+  // The per-period counter, org-wide: a deleted chat can't lower it within the period.
   if (searchParams.get("quota") === "1") {
-    const used = await countUserMessages(dashboardAgentDb, {
+    const used = await getAgentMessageUsage(dashboardAgentDb, {
       organizationId: project.organizationId,
-      userId,
-      excludeChatId: searchParams.get("chatId") ?? undefined,
+      period: currentAgentMessagePeriod(),
     });
     return json({ used });
   }
@@ -290,6 +293,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return messageTooLarge();
     }
 
+    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+      organizationId: project.organizationId,
+    });
+    if (quota?.reached) {
+      return json({ error: "message_quota_reached", limit: quota.limit }, { status: 403 });
+    }
+
     let clientData: Record<string, unknown> | undefined;
     try {
       clientData = parsed.data.clientData
@@ -381,6 +391,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           });
         });
         throw error;
+      }
+
+      // Only the head start dispatches the first message here; a cold start sends it through
+      // the `in` proxy, which counts it there. Counting both would double-count.
+      if (headStarted) {
+        await recordAgentMessageSent(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
       }
 
       let publicAccessToken: string;

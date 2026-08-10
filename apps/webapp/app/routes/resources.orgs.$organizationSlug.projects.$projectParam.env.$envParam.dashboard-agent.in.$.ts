@@ -15,6 +15,12 @@ import {
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import {
+  agentTurnCountsAgainstQuota,
+  recordAgentMessageSent,
+  resolveAgentMessageQuota,
+} from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
@@ -127,6 +133,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return tooLarge();
       }
 
+      // Only a real user message consumes quota; action turns were refused above.
+      const countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
+      if (countsAgainstQuota) {
+        const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
+        if (quota?.reached) {
+          return json({ error: "message_quota_reached", limit: quota.limit }, { status: 403 });
+        }
+      }
+
       let userActorToken: string;
       try {
         userActorToken = await mintDashboardAgentUserActorToken(user.id, {
@@ -153,6 +170,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };
       body = JSON.stringify(parsed);
+
+      if (countsAgainstQuota) {
+        await recordAgentMessageSent(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
+      }
     }
   }
 

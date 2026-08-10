@@ -8,6 +8,7 @@ import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
+  agentMessageUsage,
   chatMessages,
   chats,
   chatSessions,
@@ -118,6 +119,45 @@ export async function countUserMessages(
       )
     );
   return rows[0]?.count ?? 0;
+}
+
+/**
+ * The message count for one org in one billing period. Reads the standalone counter,
+ * never the chat rows, so a deleted chat can't lower it within the period. `period` is
+ * a UTC calendar month, "YYYY-MM"; the caller chooses it.
+ */
+export async function getAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: agentMessageUsage.count })
+    .from(agentMessageUsage)
+    .where(
+      and(
+        eq(agentMessageUsage.organizationId, params.organizationId),
+        eq(agentMessageUsage.period, params.period)
+      )
+    )
+    .limit(1);
+  return rows[0]?.count ?? 0;
+}
+
+/** Bump the counter by one, creating the period row on first use. Returns the new count. */
+export async function incrementAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string; by?: number }
+): Promise<number> {
+  const by = params.by ?? 1;
+  const rows = await db
+    .insert(agentMessageUsage)
+    .values({ organizationId: params.organizationId, period: params.period, count: by })
+    .onConflictDoUpdate({
+      target: [agentMessageUsage.organizationId, agentMessageUsage.period],
+      set: { count: sql`${agentMessageUsage.count} + ${by}`, updatedAt: sql`now()` },
+    })
+    .returning({ count: agentMessageUsage.count });
+  return rows[0]?.count ?? by;
 }
 
 /**

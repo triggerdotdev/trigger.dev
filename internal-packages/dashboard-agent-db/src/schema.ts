@@ -180,6 +180,23 @@ export const investigations = dashboardAgentSchema.table(
   ]
 );
 
+/**
+ * Per-(org, period) message counter. Deliberately not joined to chats: deleting a chat
+ * must not free quota inside the period. `period` is a UTC calendar month, "YYYY-MM".
+ * Org id is a main-DB id with no FK.
+ */
+export const agentMessageUsage = dashboardAgentSchema.table(
+  "agent_message_usage",
+  {
+    organizationId: text("organization_id").notNull(),
+    period: text("period").notNull(),
+    count: integer("count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.organizationId, t.period] })]
+);
+
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
@@ -190,3 +207,5 @@ export type ChatTurnEval = typeof chatTurnEvals.$inferSelect;
 export type NewChatTurnEval = typeof chatTurnEvals.$inferInsert;
 export type Investigation = typeof investigations.$inferSelect;
 export type NewInvestigation = typeof investigations.$inferInsert;
+export type AgentMessageUsage = typeof agentMessageUsage.$inferSelect;
+export type NewAgentMessageUsage = typeof agentMessageUsage.$inferInsert;
