@@ -177,6 +177,9 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
   };
 }
 
+/** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
+export const MAX_CONSECUTIVE_QUERY_FAILURES = 3;
+
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -185,6 +188,12 @@ export function buildApiTools(args: {
   const { ctx, client, renderInvestigations } = args;
   const { userActorToken, projectRef, environmentName, environmentBranch } = ctx;
   const { origin, hasAuth, envApiGet, postQuery, validateChartQuery } = client;
+
+  // A failed query hands the model the database error to fix, and it usually does. When it
+  // doesn't, the only other limit is the turn's 10 steps, so one broken query can eat the
+  // whole turn and leave the user with no answer at all. This tool set is built per turn,
+  // so the counter caps consecutive failures within one turn.
+  let consecutiveQueryFailures = 0;
 
   return {
     list_projects: tool({
@@ -341,7 +350,16 @@ export function buildApiTools(args: {
       execute: async ({ query, period }) => {
         const result = await postQuery(query, period);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
-        if (!result.ok) return { error: result.error };
+        if (!result.ok) {
+          consecutiveQueryFailures++;
+          if (consecutiveQueryFailures >= MAX_CONSECUTIVE_QUERY_FAILURES) {
+            return {
+              error: `${result.error} That is ${consecutiveQueryFailures} queries in a row that failed. Stop querying and answer the user with what you already have.`,
+            };
+          }
+          return { error: result.error };
+        }
+        consecutiveQueryFailures = 0;
         const cap = 200;
         const rows = result.rows;
         return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
