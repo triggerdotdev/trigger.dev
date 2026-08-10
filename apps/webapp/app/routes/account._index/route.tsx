@@ -27,9 +27,11 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import {
   updateContrastPreference,
+  updateIconContrastPreference,
   updateThemePreference,
 } from "~/services/dashboardPreferences.server";
 import {
+  normalizeIconContrast,
   normalizeThemeContrast,
   normalizeThemePreference,
   type ThemePreference,
@@ -126,6 +128,20 @@ export const action: ActionFunction = async ({ request }) => {
     return json({ success: true });
   }
 
+  if (formData.get("action") === "update-icon-contrast") {
+    const user = await requireUser(request);
+    const showThemeSwitcher =
+      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    await updateIconContrastPreference({
+      user,
+      iconContrast: formData.get("iconContrast") === "true",
+    });
+    return json({ success: true });
+  }
+
   const formSchema = createSchema({
     isEmailUnique: async (email) => {
       const existingUser = await prisma.user.findFirst({
@@ -176,6 +192,12 @@ export default function Page() {
   const lastSubmission = useActionData();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
+  const iconContrastFetcher = useFetcher();
+  const pendingIconContrast = iconContrastFetcher.formData?.get("iconContrast");
+  const iconContrast =
+    typeof pendingIconContrast === "string"
+      ? pendingIconContrast === "true"
+      : normalizeIconContrast(user.dashboardPreferences.iconContrast);
   const pendingTheme = themeFetcher.formData?.get("theme");
   const pendingContrast = contrastFetcher.formData?.get("contrast");
   const contrast =
@@ -381,6 +403,30 @@ export default function Page() {
                   </div>
                 </div>
               )}
+              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <InputGroup className="flex-1">
+                    <Label>Icon contrast</Label>
+                  </InputGroup>
+                  <div className="flex flex-none items-center">
+                    <Switch
+                      variant="medium"
+                      aria-label="Icon contrast"
+                      checked={iconContrast}
+                      onCheckedChange={(checked) =>
+                        iconContrastFetcher.submit(
+                          {
+                            action: "update-icon-contrast",
+                            iconContrast: checked ? "true" : "false",
+                          },
+                          { method: "post" }
+                        )
+                      }
+                      className="w-fit"
+                    />
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </MainHorizontallyCenteredContainer>

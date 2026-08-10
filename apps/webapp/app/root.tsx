@@ -24,6 +24,7 @@ import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
+  normalizeIconContrast,
   normalizeThemeContrast,
   normalizeThemePreference,
   type ThemePreference,
@@ -94,6 +95,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const themeContrast = showThemeSwitcher
     ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
     : 0;
+  // Icon and badge accents. Off by default, and forced off with the switcher
+  // hidden so logged-out and unflagged pages render the Classic set.
+  const iconContrast = showThemeSwitcher
+    ? normalizeIconContrast(user?.dashboardPreferences.iconContrast)
+    : false;
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
@@ -123,6 +129,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       kapa,
       timezone,
       showThemeSwitcher,
+      iconContrast,
       themePreference,
       themeContrast,
       // Consumed by ResizablePanel: the browser check must match between SSR
@@ -176,6 +183,7 @@ export default function App() {
     kapa: _kapa,
     themePreference,
     themeContrast,
+    iconContrast,
   } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
   useSystemThemeSync(themePreference);
@@ -192,6 +200,8 @@ export default function App() {
         suppressHydrationWarning
         data-theme={resolvedTheme}
         data-theme-preference={themePreference}
+        // Accent set for icons and badges; the `system:` variant keys off this
+        data-icon-contrast={iconContrast ? "true" : "false"}
         // Contrast overlay input for the System themes; Classic never reads it
         style={{ "--theme-contrast": themeContrast / 100 } as CSSProperties}
       >
