@@ -35,8 +35,8 @@ export function AppearanceMenuItem() {
       : rootData.themePreference;
 
   return (
-    // Half the standard submenu width: three short labels don't need the room.
-    <SideMenuPopoverSubMenu title="Appearance" icon={ToggleSwitchIcon} contentClassName="min-w-32">
+    // Much narrower than the standard submenu: these labels don't need the room.
+    <SideMenuPopoverSubMenu title="Appearance" icon={ToggleSwitchIcon} contentClassName="min-w-36">
       <div className="flex flex-col gap-1 p-1">
         {THEME_OPTIONS.map((option) => (
           <PopoverMenuItem

@@ -44,7 +44,7 @@ export const meta = pageMeta("Your profile");
 
 function themeIcon(value: ThemePreference) {
   const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
-  return <Icon className="size-4 text-text-dimmed" />;
+  return <Icon className="size-4 text-text-bright" />;
 }
 
 function createSchema(
@@ -305,11 +305,19 @@ export default function Page() {
                           {THEME_OPTIONS_BY_VALUE[value].label}
                         </span>
                       )}
-                      className="w-44"
+                      className="w-22"
+                      // The popover's 180px floor left a gap past the longest
+                      // label; track the trigger's width instead.
+                      popoverClassName="min-w-22"
                     >
                       {(items) =>
                         items.map((item) => (
-                          <SelectItem key={item} value={item} icon={themeIcon(item)}>
+                          <SelectItem
+                            key={item}
+                            value={item}
+                            icon={themeIcon(item)}
+                            className="text-text-bright"
+                          >
                             {THEME_OPTIONS_BY_VALUE[item].label}
                           </SelectItem>
                         ))

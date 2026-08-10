@@ -12,10 +12,10 @@ const variants = {
     root: "h-4 grow",
     track: "h-1 bg-grid-bright",
     range: "bg-transparent",
-    // Matches the Switch thumb; the secondary-button hairline+shadow keeps the
-    // white dot visible on the light track
+    // The secondary-button hairline+shadow keeps the white dot visible on the
+    // light track
     thumb:
-      "h-3 w-3 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
+      "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
@@ -35,9 +35,9 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
   TrailingIcon?: RenderIcon;
   variant: VariantName;
   /**
-   * Opts into a small label above the thumb showing the formatted value, while
-   * hovering, dragging, or focused via the keyboard. It sits inside the thumb,
-   * so it tracks the handle exactly. Reads the controlled `value`, so pass one.
+   * Opts into a small label above the thumb showing the formatted value, shown
+   * while the thumb is hovered or being dragged. It sits inside the thumb, so it
+   * tracks the handle exactly. Reads the controlled `value`, so pass one.
    */
   valueTooltip?: (value: number) => string;
 };
@@ -95,9 +95,9 @@ export function Slider({
             <span
               className={cn(
                 "pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 text-xs tabular-nums text-text-bright shadow-md transition-opacity",
-                isDragging
-                  ? "opacity-100"
-                  : "opacity-0 group-hover/thumb:opacity-100 group-focus-visible/thumb:opacity-100"
+                // Deliberately not keyed off focus: the thumb keeps focus after a
+                // click, which would leave the label stuck on.
+                isDragging ? "opacity-100" : "opacity-0 group-hover/thumb:opacity-100"
               )}
             >
               {valueTooltip(currentValue)}
