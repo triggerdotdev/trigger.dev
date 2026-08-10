@@ -114,7 +114,7 @@ export function SettingsRowTitle({
   );
 }
 
-/** Description/subtitle typography for a row. */
+/** Description/subtitle typography for a row - a step down from the title. */
 export function SettingsRowDescription({
   children,
   className,
@@ -123,11 +123,15 @@ export function SettingsRowDescription({
   className?: string;
 }) {
   return (
-    <Paragraph variant="small" className={className}>
+    <Paragraph variant="extra-small" className={className}>
       {children}
     </Paragraph>
   );
 }
+
+/** Title-to-description spacing, kept in one place so every settings row and
+ *  anything hand-rolling the pair reads the same. */
+export const SETTINGS_ROW_TITLE_GAP = "space-y-0.5";
 
 /**
  * A single settings row: title + description on the left, action on the right.
@@ -170,7 +174,7 @@ export function SettingsRow({
       )}
     >
       {children ?? (
-        <div className="flex-1 space-y-1">
+        <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
           {title ? (
             <SettingsRowTitle htmlFor={htmlFor} className={titleClassName}>
               {title}
@@ -229,7 +233,7 @@ export function SettingsAlertRow({
 
   return (
     <SettingsRow action={action}>
-      <div className="flex-1 space-y-1">
+      <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
         <div className="flex items-center gap-1.5">
           <Icon className={cn("size-4 shrink-0", color)} />
           <SettingsRowTitle className={color}>{title}</SettingsRowTitle>

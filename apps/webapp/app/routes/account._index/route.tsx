@@ -20,7 +20,10 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SETTINGS_ROW_TITLE_GAP,
+  SettingsRowDescription,
+} from "~/components/primitives/SettingsLayout";
 import { CUSTOMIZE_SIDEBAR_PARAM } from "~/components/navigation/sideMenuTypes";
 import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOptions";
 import { prisma } from "~/db.server";
@@ -44,6 +47,7 @@ import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
+import { cn } from "~/utils/cn";
 
 export const meta = pageMeta("Your profile");
 
@@ -345,12 +349,12 @@ export default function Page() {
               {customizeSidebarPath && (
                 <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                   <div className="flex w-full items-center justify-between gap-4">
-                    <InputGroup className="flex-1">
+                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                       <Label>App sidebar</Label>
-                      <Paragraph variant="small">
+                      <SettingsRowDescription>
                         Customize sidebar item visibility, order and rename favorites
-                      </Paragraph>
-                    </InputGroup>
+                      </SettingsRowDescription>
+                    </div>
                     <div className="flex flex-none items-center">
                       <LinkButton to={customizeSidebarPath} variant="secondary/small">
                         Customize
@@ -361,10 +365,12 @@ export default function Page() {
               )}
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
-                  <InputGroup className="flex-1">
+                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                     <Label>Interface theme</Label>
-                    <Paragraph variant="small">Choose your interface color scheme</Paragraph>
-                  </InputGroup>
+                    <SettingsRowDescription>
+                      Choose your interface color scheme
+                    </SettingsRowDescription>
+                  </div>
                   <div className="flex flex-none items-center">
                     <Select<ThemePreference, ThemePreference>
                       aria-label="Interface theme"
@@ -410,10 +416,10 @@ export default function Page() {
               {theme !== "classic" && (
                 <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                   <div className="flex w-full items-center justify-between gap-4">
-                    <InputGroup className="flex-1">
+                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                       <Label>Contrast</Label>
-                      <Paragraph variant="small">Adjust the interface contrast</Paragraph>
-                    </InputGroup>
+                      <SettingsRowDescription>Adjust the interface contrast</SettingsRowDescription>
+                    </div>
                     <div className="flex flex-none items-center">
                       <Slider
                         variant="settings"
@@ -445,9 +451,12 @@ export default function Page() {
               )}
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
-                  <InputGroup className="flex-1">
+                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                     <Label>Icon contrast</Label>
-                  </InputGroup>
+                    <SettingsRowDescription>
+                      Increase the contrast of icons and badges
+                    </SettingsRowDescription>
+                  </div>
                   <div className="flex flex-none items-center">
                     <Switch
                       variant="medium"
