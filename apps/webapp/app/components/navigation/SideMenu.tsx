@@ -1,8 +1,4 @@
-import {
-  ArrowTopRightOnSquareIcon,
-  ChevronRightIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import {
   Form,
@@ -135,7 +131,7 @@ import {
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
-import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -158,6 +154,7 @@ import {
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
+import { AppearanceMenuItem } from "./AppearanceMenuItem";
 import {
   CustomizeSidebarDialog,
   type CustomizeSidebarSection,
@@ -178,6 +175,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem, SideMenuLabel } from "./SideMenuItem";
+import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SideMenuSection } from "./SideMenuSection";
 import {
   isItemHidden,
@@ -1898,6 +1896,7 @@ function AccountMenuItems({
           leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
           className={SIDE_MENU_POPOVER_ITEM_LABEL}
         />
+        <AppearanceMenuItem />
         <PopoverMenuItem
           to={personalAccessTokensPath()}
           title="Personal Access Tokens"
@@ -2098,80 +2097,6 @@ function ProjectSelector({
           })}
         </div>
       </PopoverContent>
-    </Popover>
-  );
-}
-
-/**
- * Hover-expandable submenu row for side-menu popovers (Account, Switch organization, Integrations):
- * a menu item with a trailing chevron that reveals `children` in a popover to the right, with a
- * short close delay so the pointer can cross the gap.
- */
-function SideMenuPopoverSubMenu({
-  title,
-  icon,
-  leadingIconClassName,
-  children,
-}: {
-  title: string;
-  icon: RenderIcon;
-  leadingIconClassName?: string;
-  children: ReactNode;
-}) {
-  const navigation = useNavigation();
-  const [isOpen, setIsOpen] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  // Close the submenu on navigation (the parent popover closes too).
-  useEffect(() => {
-    setIsOpen(false);
-  }, [navigation.location?.pathname]);
-
-  const openNow = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setIsOpen(true);
-  };
-  const closeSoon = () => {
-    // Small delay before closing so the pointer can move onto the content.
-    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
-  };
-
-  return (
-    <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
-      <div onMouseEnter={openNow} onMouseLeave={closeSoon} className="flex">
-        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
-          <ButtonContent
-            variant="small-menu-item"
-            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
-            LeadingIcon={icon}
-            leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, leadingIconClassName)}
-            TrailingIcon={ChevronRightIcon}
-            trailingIconClassName="text-text-dimmed"
-            textAlignLeft
-            fullWidth
-          >
-            {title}
-          </ButtonContent>
-        </PopoverTrigger>
-        <PopoverContent
-          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
-          side="right"
-          alignOffset={0}
-          sideOffset={-4}
-          onMouseEnter={openNow}
-          onMouseLeave={closeSoon}
-        >
-          {children}
-        </PopoverContent>
-      </div>
     </Popover>
   );
 }

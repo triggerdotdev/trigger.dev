@@ -1,10 +1,10 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { useEffect, useState } from "react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
-import { ComputerDesktopIcon, MoonIcon, SunIcon, SwatchIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { ThemeSegmentedControl } from "~/components/ThemeSegmentedControl";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -12,7 +12,6 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { Select, SelectItem } from "~/components/primitives/Select";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
@@ -39,36 +38,6 @@ import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
-
-const THEME_LABELS: Record<ThemePreference, string> = {
-  classic: "Classic",
-  system: "System preference",
-  dark: "Dark",
-  light: "Light",
-};
-
-function themeLabel(value: ThemePreference) {
-  return THEME_LABELS[value];
-}
-
-function themeIcon(value: ThemePreference) {
-  switch (value) {
-    case "classic":
-      return <SwatchIcon className="size-4 text-text-dimmed" />;
-    case "system":
-      return <ComputerDesktopIcon className="size-4 text-text-dimmed" />;
-    case "dark":
-      // Moon glyph reads small at its natural size, so nudge it up inside a
-      // size-4 box to line up with the other icons.
-      return (
-        <span className="grid size-4 place-items-center">
-          <MoonIcon className="size-3 text-text-dimmed" />
-        </span>
-      );
-    case "light":
-      return <SunIcon className="size-4 text-text-dimmed" />;
-  }
-}
 
 export const meta = pageMeta("Your profile");
 
@@ -303,67 +272,62 @@ export default function Page() {
           </Form>
           {showThemeSwitcher && (
             <>
-              <div className="mb-3 mt-8 w-full border-b border-grid-dimmed pb-3">
+              <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
                 <Header2>Appearance</Header2>
               </div>
-              <div className="flex w-full items-center justify-between gap-4">
-                <Label>Interface theme</Label>
-                <Select<ThemePreference, ThemePreference>
-                  aria-label="Interface theme"
-                  value={theme}
-                  setValue={(value) =>
-                    themeFetcher.submit(
-                      { action: "update-theme", theme: value },
-                      { method: "post" }
-                    )
-                  }
-                  variant="secondary/small"
-                  dropdownIcon
-                  items={["classic", "system", "dark", "light"]}
-                  text={(value) => (
-                    <span className="flex items-center gap-1.5">
-                      {themeIcon(value)}
-                      {themeLabel(value)}
-                    </span>
-                  )}
-                  className="w-44"
-                >
-                  {(items) =>
-                    items.map((item) => (
-                      <SelectItem key={item} value={item} icon={themeIcon(item)}>
-                        {themeLabel(item)}
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
+              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <InputGroup className="flex-1">
+                    <Label>Theme</Label>
+                  </InputGroup>
+                  <div className="flex flex-none items-center">
+                    <ThemeSegmentedControl
+                      name="appearance-account"
+                      value={theme}
+                      includeClassic
+                      onChange={(value) =>
+                        themeFetcher.submit(
+                          { action: "update-theme", theme: value },
+                          { method: "post" }
+                        )
+                      }
+                    />
+                  </div>
+                </div>
               </div>
               {theme !== "classic" && (
-                <div className="mt-4 flex w-full items-center justify-between gap-4">
-                  <Label>Contrast</Label>
-                  <Slider
-                    variant="settings"
-                    className="w-44"
-                    aria-label="Contrast"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={[contrastPreview]}
-                    onValueChange={(values) => {
-                      // Live preview before the preference persists
-                      const value = values[0] ?? 0;
-                      setContrastPreview(value);
-                      document.documentElement.style.setProperty(
-                        "--theme-contrast",
-                        String(value / 100)
-                      );
-                    }}
-                    onValueCommit={(values) =>
-                      contrastFetcher.submit(
-                        { action: "update-contrast", contrast: String(values[0] ?? 0) },
-                        { method: "post" }
-                      )
-                    }
-                  />
+                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <InputGroup className="flex-1">
+                      <Label>Contrast</Label>
+                    </InputGroup>
+                    <div className="flex flex-none items-center">
+                      <Slider
+                        variant="settings"
+                        className="w-44"
+                        aria-label="Contrast"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={[contrastPreview]}
+                        onValueChange={(values) => {
+                          // Live preview before the preference persists
+                          const value = values[0] ?? 0;
+                          setContrastPreview(value);
+                          document.documentElement.style.setProperty(
+                            "--theme-contrast",
+                            String(value / 100)
+                          );
+                        }}
+                        onValueCommit={(values) =>
+                          contrastFetcher.submit(
+                            { action: "update-contrast", contrast: String(values[0] ?? 0) },
+                            { method: "post" }
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </>
