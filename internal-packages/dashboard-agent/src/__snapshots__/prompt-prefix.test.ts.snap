@@ -4,8 +4,8 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
 {
   "assistant": {
     "prompt": {
-      "chars": 25965,
-      "estimatedTokens": 6491,
+      "chars": 26172,
+      "estimatedTokens": 6543,
     },
     "tools": {
       "chars": 39986,
@@ -13,15 +13,15 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
       "estimatedTokens": 9997,
     },
     "total": {
-      "chars": 65952,
-      "estimatedTokens": 16488,
-      "fingerprint": "14ba171e",
+      "chars": 66159,
+      "estimatedTokens": 16540,
+      "fingerprint": "9ce1218b",
     },
   },
   "code": {
     "prompt": {
-      "chars": 28720,
-      "estimatedTokens": 7180,
+      "chars": 28927,
+      "estimatedTokens": 7232,
     },
     "tools": {
       "chars": 42995,
@@ -29,9 +29,9 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
       "estimatedTokens": 10749,
     },
     "total": {
-      "chars": 71716,
-      "estimatedTokens": 17929,
-      "fingerprint": "f0aed439",
+      "chars": 71923,
+      "estimatedTokens": 17981,
+      "fingerprint": "1f1b1074",
     },
   },
 }
