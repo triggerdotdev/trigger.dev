@@ -116,7 +116,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
               runs are finishing at ~820/min
               nothing dead-lettered
 
-      🟢 EXECUTION   the runs that DO start are fine
+      🟢 EXECUTION   runs are executing normally
 
       🟢 LIVENESS    fresh — telemetry current, updated 4s ago
 
@@ -153,7 +153,7 @@ describe("health (Golden B — healthy)", () => {
           done          1,000/min
           triggered     1,000/min
 
-      🟢 EXECUTION   the runs that DO start are fine
+      🟢 EXECUTION   runs are executing normally
 
       🟢 LIVENESS    fresh — telemetry current, updated 2s ago
 
@@ -527,6 +527,37 @@ describe("freshness unknown is distinct from lagging", () => {
     expect(interpret(INPUT_A).metrics.find((m) => m.id === "liveness")!.availability).toBe(
       "measured"
     );
+  });
+});
+
+describe("start latency with no measurement", () => {
+  const unknownInput: HealthInput = {
+    ...INPUT_B,
+    startLatency: { p95Ms: 0, normalP95Ms: undefined, series: [], availability: "unknown" },
+  };
+
+  it("marks the metric 'unknown' and doesn't classify it", () => {
+    const metric = interpret(unknownInput).metrics.find((m) => m.id === "start_latency_p95")!;
+    expect(metric.availability).toBe("unknown");
+    expect(metric.severity).toBe("ok");
+    expect(metric.normal).toBeUndefined();
+    expect(metric.series).toBeUndefined(); // no sparkline for a placeholder
+  });
+
+  it("renders 'unknown', never a confident 0ms", () => {
+    const md = renderReportMarkdown(interpret(unknownInput));
+    expect(md).toMatch(/start latency\s+unknown/);
+    expect(md).not.toMatch(/start latency\s+p95 0ms/);
+  });
+
+  it("keeps a genuine 0 a measured 0ms", () => {
+    const measured = interpret({
+      ...INPUT_B,
+      startLatency: { p95Ms: 0, normalP95Ms: 7000, series: [0, 0], availability: "measured" },
+    });
+    const metric = measured.metrics.find((m) => m.id === "start_latency_p95")!;
+    expect(metric.availability).toBe("measured");
+    expect(renderReportMarkdown(measured)).toMatch(/start latency\s+p95 0ms/);
   });
 });
 

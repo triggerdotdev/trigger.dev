@@ -8,7 +8,7 @@ generator client {
   provider        = "prisma-client-js"
   output          = "../generated/prisma"
   binaryTargets   = ["native", "debian-openssl-1.1.x"]
-  previewFeatures = ["metrics"]
+  previewFeatures = ["metrics", "driverAdapters"]
 }
 
 model User {
@@ -2067,6 +2067,7 @@ model EnvironmentVariableValue {
 
   @@unique([variableId, environmentId])
   @@index([environmentId])
+  @@index([valueReferenceId])
 }
 
 model Checkpoint {
@@ -2412,6 +2413,8 @@ model ProjectAlert {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([channelId])
 }
 
 enum ProjectAlertType {
