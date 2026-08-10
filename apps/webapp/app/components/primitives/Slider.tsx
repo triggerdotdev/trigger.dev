@@ -102,7 +102,10 @@ export function Slider({
             <span
               key={mark}
               aria-hidden
-              className="absolute top-1/2 h-2 w-px -translate-x-1/2 -translate-y-1/2 bg-text-dimmed"
+              // box-content keeps the line 1px wide and hangs the background-
+              // coloured borders outside it, notching the track either side so
+              // the mark reads in both themes.
+              className="absolute top-1/2 box-content h-4 w-px -translate-x-1/2 -translate-y-1/2 border-x border-background-bright bg-text-dimmed"
               style={{ left: `calc(${percent}% + ${offset}px)` }}
             />
           );
