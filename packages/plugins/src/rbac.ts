@@ -297,6 +297,10 @@ export type UserActorClaims = {
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
   cap?: string[];
+  // The token's own expiry (`exp`, epoch seconds) when signed with one. Used to
+  // clamp the lifetime of anything minted from it — a delegated token can't be
+  // exchanged for a longer-lived one.
+  expiresAt?: number;
 };
 
 export function isUserActorToken(token: string): boolean {
@@ -353,6 +357,7 @@ export async function verifyUserActorToken(
     sessionId: act?.sessionId,
     environmentId: act?.environmentId,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
+    expiresAt: typeof payload.exp === "number" ? payload.exp : undefined,
   };
 }
 

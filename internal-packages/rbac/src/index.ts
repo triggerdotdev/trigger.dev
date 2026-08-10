@@ -18,6 +18,9 @@ import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
 
 import { RoleBaseAccessFallback } from "./fallback.js";
+// Single source of truth for the capless-token scope ceiling; the env-JWT
+// exchange route imports it to project requested scopes against it.
+export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
 export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
 export type {
