@@ -35,9 +35,12 @@ export function cardAlreadyOffersWatch(blocks: ViewBlock[]): boolean {
 /**
  * The report card's watch button isn't in the block — `ReportView` grows it from the
  * view model, for a health report with something to recover from. Same condition here,
- * so the button the user will see is the one the guard counts.
+ * so the button the user will see is the one the guard counts. A predicate, so a caller
+ * building the recovery spec keeps the narrowed severity.
  */
-export function reportOffersRecoveryWatch(vm: ReportViewModelPayload): boolean {
+export function reportOffersRecoveryWatch(
+  vm: ReportViewModelPayload
+): vm is ReportViewModelPayload & { summary: { severity: "warn" | "crit" } } {
   return (
     vm.title === "health" && (vm.summary.severity === "warn" || vm.summary.severity === "crit")
   );

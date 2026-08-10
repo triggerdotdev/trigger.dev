@@ -416,7 +416,12 @@ export function DashboardAgentPanel({
       } else {
         claimChatSlot();
         // No session: nothing is streaming and the records are the whole chat.
-        setActive({ chatId: data.chatId, messages, session: null });
+        setActive({
+          chatId: data.chatId,
+          messages,
+          session: null,
+          organizationId: organization.id,
+        });
       }
       void loadHistory();
     } catch (error) {
