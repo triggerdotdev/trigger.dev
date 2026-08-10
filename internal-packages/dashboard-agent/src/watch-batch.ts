@@ -59,7 +59,8 @@ export type WatchBatchTickDeps = {
 };
 
 export type WatchBatchTickResult = {
-  outcome: "ticked" | "stale";
+  // `unavailable`: the check phase itself couldn't run, so the group learned nothing.
+  outcome: "ticked" | "stale" | "unavailable";
   results: Array<{ watchId: string; outcome?: WatchTickOutcome; error?: string }>;
   rescheduled: boolean;
 };
@@ -92,7 +93,22 @@ export async function runWatchBatchTick(
   payload: WatchBatchTickPayload,
   deps: WatchBatchTickDeps
 ): Promise<WatchBatchTickResult> {
-  const response = await deps.checkBatch(payload);
+  let response: WatchBatchCheckResponse;
+  try {
+    response = await deps.checkBatch(payload);
+  } catch (error) {
+    // A check failure is never a verdict: the group learned nothing, so nothing is
+    // recorded — no watch was looked at — and the chain ticks on to try again.
+    logger.error("dashboard-agent watch batch check is unavailable; ticking on", {
+      environmentId: payload.environmentId,
+      cadenceMinutes: payload.cadenceMinutes,
+      epoch: payload.epoch,
+      tick: payload.tick,
+      error: (error as Error).message,
+    });
+    await scheduleNextBatchTick(payload, deps);
+    return { outcome: "unavailable", results: [], rescheduled: true };
+  }
 
   if (response.stale) {
     logger.info("dashboard-agent watch batch is stale; exiting", {
@@ -114,16 +130,7 @@ export async function runWatchBatchTick(
   // Before the rethrow below, so the chain survives a watch that keeps failing.
   let rescheduled = false;
   if (response.continues) {
-    const next = payload.tick + 1;
-    await deps.reschedule(
-      { ...payload, tick: next },
-      {
-        delay: `${payload.cadenceMinutes}m`,
-        // Keyed on the epoch too, so a re-armed chain can't collide with its
-        // predecessor's keys.
-        idempotencyKey: `watch-batch:${payload.environmentId}:${payload.cadenceMinutes}:${payload.epoch}:tick:${next}`,
-      }
-    );
+    await scheduleNextBatchTick(payload, deps);
     rescheduled = true;
   }
 
@@ -139,6 +146,24 @@ export async function runWatchBatchTick(
   }
 
   return { outcome: "ticked", results, rescheduled };
+}
+
+// The successor's generation comes from this run's own, and rides in the idempotency
+// key, so a resumed or duplicated tick schedules the same successor once.
+async function scheduleNextBatchTick(
+  payload: WatchBatchTickPayload,
+  deps: WatchBatchTickDeps
+): Promise<void> {
+  const next = payload.tick + 1;
+  await deps.reschedule(
+    { ...payload, tick: next },
+    {
+      delay: `${payload.cadenceMinutes}m`,
+      // Keyed on the epoch too, so a re-armed chain can't collide with its
+      // predecessor's keys.
+      idempotencyKey: `watch-batch:${payload.environmentId}:${payload.cadenceMinutes}:${payload.epoch}:tick:${next}`,
+    }
+  );
 }
 
 /** One watch of a batch: each resolves in its own try, so a failure isolates. */

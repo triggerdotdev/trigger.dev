@@ -97,7 +97,8 @@ const WATCH_BATCH_TOKEN_CLIENT = "dashboard-agent-watch-batch";
 
 /**
  * How long a chain's token lives. A chain has no deadline to pin it to, but it must still
- * expire; an expired one is self-healing via the re-arm backstop.
+ * expire. A chain whose token no longer verifies keeps ticking — a failed check is never a
+ * verdict — and gets a fresh token when the re-arm backstop starts the next epoch.
  */
 export const WATCH_BATCH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
