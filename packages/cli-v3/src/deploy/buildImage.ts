@@ -702,8 +702,14 @@ const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "ope
 
 // Freezes the Debian archive so the package layer is a pure function of this
 // timestamp and the base image, making it byte-identical across projects.
-// Bumping it (each CLI release) is how base packages pick up security updates.
-const DEBIAN_SNAPSHOT = "20260801T000000Z";
+// INVARIANT: must be at or after the archive state every BASE_IMAGE was built
+// from, or apt hits unsatisfiable exact-version downgrades; bump it whenever
+// a base pin is bumped (this is also how packages pick up security updates).
+const DEBIAN_SNAPSHOT = "20260810T000000Z";
+
+// Must match the Debian release of every BASE_IMAGE; the generated Containerfile
+// asserts this at build time
+const DEBIAN_SUITE = "bookworm";
 
 // Files apt/dpkg write with wall-clock timestamps, which would break layer determinism
 const APT_SCRUB =
@@ -714,25 +720,48 @@ function aptSourcesSetup(): string {
     return "";
   }
 
+  // check-valid-until=no: pinned Release files outlive their Valid-Until window.
   // http, not https: the slim base images have no ca-certificates yet, and apt
-  // integrity comes from GPG-signed Release files rather than TLS
+  // integrity comes from GPG-signed Release files rather than TLS.
+  const sourceOptions =
+    "[check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg]";
   const sources = [
-    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main`,
-    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} bookworm-security main`,
-    `deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm-updates main`,
+    `deb ${sourceOptions} http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE} main`,
+    `deb ${sourceOptions} http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main`,
+    `deb ${sourceOptions} http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main`,
   ];
 
-  return `printf '%s\\n' ${sources
-    .map((line) => `'${line}'`)
-    .join(" ")} > /etc/apt/sources.list && \\
+  return `. /etc/os-release && [ "$VERSION_CODENAME" = "${DEBIAN_SUITE}" ] || { echo "Base image is Debian $VERSION_CODENAME but the CLI pins ${DEBIAN_SUITE} apt sources. Set TRIGGER_BUILD_SKIP_APT_SNAPSHOT=1 to use the live archive."; exit 1; } && \\
+  printf '%s\\n' ${sources.map((line) => `'${line}'`).join(" ")} > /etc/apt/sources.list && \\
   rm -f /etc/apt/sources.list.d/debian.sources && \\
+  echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \\
   `;
 }
 
 function aptInstall(packages: string[], { setupSources }: { setupSources: boolean }): string {
+  // fix-broken repairs dpkg state left by instructions (e.g. dpkg -i of a local
+  // .deb); pointless in the default install, which runs on a pristine base.
+  // --allow-downgrades: a user pin of a default package (e.g. openssl=<older>) is
+  // a downgrade by the time the user install runs on top of the default layer.
+  const repair = setupSources
+    ? ""
+    : `apt-get --fix-broken install -y && \\
+  `;
+  const installFlags = setupSources
+    ? "-y --no-install-recommends"
+    : "-y --no-install-recommends --allow-downgrades";
+
   return `RUN ${setupSources ? aptSourcesSetup() : ""}apt-get update && \\
+  ${repair}apt-get install ${installFlags} ${packages.join(" ")} && \\
+  apt-get clean && \\
+  ${APT_SCRUB}`;
+}
+
+// Instructions can leave dpkg in a broken state that the user-packages install
+// would normally repair; when there are no user packages, repair explicitly
+function aptRepair(): string {
+  return `RUN apt-get update && \\
   apt-get --fix-broken install -y && \\
-  apt-get install -y --no-install-recommends ${packages.join(" ")} && \\
   apt-get clean && \\
   ${APT_SCRUB}`;
 }
@@ -773,7 +802,11 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
 
   const defaultPackagesInstall = aptInstall(defaultPackages, { setupSources: true });
   const userPackagesInstall =
-    userPackages.length > 0 ? aptInstall(userPackages, { setupSources: false }) : "";
+    userPackages.length > 0
+      ? aptInstall(userPackages, { setupSources: false })
+      : baseInstructions.length > 0
+        ? aptRepair()
+        : "";
 
   return {
     baseImage: BASE_IMAGE[options.runtime],

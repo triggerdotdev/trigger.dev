@@ -32,3 +32,12 @@ export default defineConfig({
   },
 });
 ```
+
+<Note>
+  Packages install from a [Debian snapshot archive](https://snapshot.debian.org) pinned per CLI
+  version, so builds are reproducible and version pins keep working even after the live archive
+  moves on. This also means a pinned version must exist in that snapshot: a version published after
+  the CLI release's snapshot date won't resolve until you update the CLI. Set the
+  `TRIGGER_BUILD_SKIP_APT_SNAPSHOT=1` environment variable when running the deploy command to
+  install from the live Debian archive instead.
+</Note>

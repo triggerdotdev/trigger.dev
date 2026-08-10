@@ -92,8 +92,10 @@ describe("generateContainerfile", () => {
         });
 
         expect(containerfile).toMatch(
-          /deb \[check-valid-until=no\] http:\/\/snapshot\.debian\.org\/archive\/debian\/\d{8}T\d{6}Z bookworm main/
+          /deb \[check-valid-until=no signed-by=\S+\] http:\/\/snapshot\.debian\.org\/archive\/debian\/\d{8}T\d{6}Z bookworm main/
         );
+        // codename guard so a future non-bookworm base pin fails with an actionable error
+        expect(containerfile).toContain('[ "$VERSION_CODENAME" = "bookworm" ]');
         expect(containerfile).toContain("/archive/debian-security/");
         expect(containerfile).toContain("rm -f /etc/apt/sources.list.d/debian.sources");
         expect(containerfile).toContain("/var/log/dpkg.log");
@@ -117,13 +119,15 @@ describe("generateContainerfile", () => {
       );
       const instructions = containerfile.indexOf("RUN echo custom > /etc/marker");
       // sorted, deduplicated, and separate from the default install line
-      const userInstall = containerfile.indexOf("apt-get install -y --no-install-recommends curl jq");
+      const userInstall = containerfile.indexOf(
+        "apt-get install -y --no-install-recommends --allow-downgrades curl jq"
+      );
 
       expect(defaultInstall).toBeGreaterThan(-1);
       expect(instructions).toBeGreaterThan(defaultInstall);
       expect(userInstall).toBeGreaterThan(instructions);
-      // sources are only written once, in the default install
-      expect(containerfile.match(/snapshot\.debian\.org/g)?.length).toBe(3);
+      // the user install reuses the sources written by the default install
+      expect(containerfile.slice(userInstall)).not.toContain("snapshot.debian.org");
     });
 
     it("drops the snapshot pin when TRIGGER_BUILD_SKIP_APT_SNAPSHOT is set", async () => {
@@ -138,8 +142,48 @@ describe("generateContainerfile", () => {
       });
 
       expect(containerfile).not.toContain("snapshot.debian.org");
-      expect(containerfile).toContain("RUN apt-get update");
-    }
-    );
+      // the base-stage default install must still be present, from the live archive
+      expect(containerfile).toContain(
+        "apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl"
+      );
+    });
+
+    it("repairs dpkg state after instructions when there are no user packages", async () => {
+      const containerfile = await generateContainerfile({
+        runtime: "node-22",
+        build: {},
+        image: { instructions: ["RUN echo custom > /etc/marker"] },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const instructions = containerfile.indexOf("RUN echo custom > /etc/marker");
+      const repair = containerfile.indexOf("apt-get --fix-broken install -y");
+
+      expect(instructions).toBeGreaterThan(-1);
+      expect(repair).toBeGreaterThan(instructions);
+    });
+
+    it("pins a snapshot no older than 90 days", async () => {
+      const containerfile = await generateContainerfile({
+        runtime: "node-22",
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const match = containerfile.match(/archive\/debian\/(\d{4})(\d{2})(\d{2})T/);
+      expect(match).not.toBeNull();
+
+      const [, year, month, day] = match!;
+      const snapshotAgeDays =
+        (Date.now() - Date.UTC(Number(year), Number(month) - 1, Number(day))) / 86_400_000;
+
+      expect(
+        snapshotAgeDays,
+        "DEBIAN_SNAPSHOT is stale; deployed images are missing recent Debian security updates. Bump it in buildImage.ts."
+      ).toBeLessThan(90);
+    });
   });
 });
