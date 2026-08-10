@@ -20,6 +20,9 @@ export * from "./watch-schema.js";
 /**
  * Scoped to org + user. `organizationId` and `userId` are main-DB ids with no FK:
  * in cloud this table lives in a different database.
+ *
+ * No FK means no cascade: a new chatId-keyed table must be added to `deleteChatsByIds`
+ * in queries.ts, or its rows leak when a chat is hard-deleted.
  */
 export const chats = dashboardAgentSchema.table(
   "chats",
