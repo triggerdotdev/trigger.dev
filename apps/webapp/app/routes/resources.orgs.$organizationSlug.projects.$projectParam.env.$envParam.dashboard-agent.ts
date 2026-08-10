@@ -289,7 +289,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         // handover was dispatched and no message was sent: a session the call did create in
         // spite of the error idles out having done nothing. The empty row is all there is to undo.
         // Swallowed so the start's own error is what surfaces and gets logged.
-        await softDeleteChat(dashboardAgentDb, { chatId, userId }).catch((cleanupError) => {
+        await softDeleteChat(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }).catch((cleanupError) => {
           logger.error("Failed to remove a dashboard agent chat whose start failed", {
             chatId,
             error: cleanupError,
@@ -456,8 +460,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "delete": {
-      // `softDeleteChat` is owner-scoped but takes no org, so the org scope has to be
-      // enforced here.
+      // Existence check gives a 404 for a chat this caller can't see; the delete itself
+      // is org- and owner-scoped too.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -467,7 +471,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
-      await softDeleteChat(dashboardAgentDb, { chatId, userId });
+      await softDeleteChat(dashboardAgentDb, {
+        chatId,
+        userId,
+        organizationId: project.organizationId,
+      });
       return json({ ok: true });
     }
   }

@@ -427,6 +427,7 @@ export const dashboardAgent = chat.agent({
     turn,
     uiMessages,
     newMessages,
+    newUIMessages,
     responseMessage,
     clientData,
     chatAccessToken,
@@ -453,7 +454,7 @@ export const dashboardAgent = chat.agent({
     // operation is what could leave a terminal row whose card never arrived — and the
     // stale sweep only selects `in_progress`, so nothing would ever repair it.
     // Only what this turn produced may be finalised; the rest of the snapshot is history.
-    const produced = [...(newMessages ?? []), ...(responseMessage ? [responseMessage] : [])]
+    const produced = [...(newUIMessages ?? []), ...(responseMessage ? [responseMessage] : [])]
       .map((message) => (message as { id?: unknown }).id)
       .filter((id): id is string => typeof id === "string");
 

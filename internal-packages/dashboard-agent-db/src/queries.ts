@@ -225,12 +225,18 @@ export async function setChatPinned(
 /** Owner-scoped: a client chatId can only delete the caller's own chat. */
 export async function softDeleteChat(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string }
+  params: { chatId: string; userId: string; organizationId: string }
 ): Promise<{ deleted: boolean }> {
   const deleted = await db
     .update(chats)
     .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)))
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        eq(chats.organizationId, params.organizationId)
+      )
+    )
     .returning({ id: chats.id });
 
   return { deleted: deleted.length > 0 };
