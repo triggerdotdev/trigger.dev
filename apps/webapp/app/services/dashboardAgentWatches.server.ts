@@ -10,6 +10,7 @@ import {
   cancelWatch,
   chatExists,
   claimWatchSubmission,
+  countActiveWatchesForOrg,
   createChat,
   createWatch,
   generateWatchId,
@@ -68,6 +69,12 @@ import {
 import { watchCreationCheckDeps } from "~/services/dashboardAgentWatchChecks.server";
 import { normalizeErrorFingerprint } from "~/services/dashboardAgentWatchErrorChecks";
 import { subscribeUserToWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
+import {
+  effectiveWatchMaxHours,
+  resolveWatchPlanLimits,
+  watchLimitHint,
+  type WatchPlanLimits,
+} from "~/services/dashboardAgentWatchLimits.server";
 import {
   mintDashboardAgentWatchBatchToken,
   mintDashboardAgentWatchToken,
@@ -165,6 +172,7 @@ export async function authorizeWatchEnvironmentById(params: {
 
 export type CreateWatchErrorCode =
   | "limit_reached"
+  | "watch_limit_reached"
   | "duplicate"
   | "invalid_target"
   | "chat_not_found"
@@ -273,6 +281,12 @@ export async function createDashboardAgentWatch(params: {
     scheduleTick?: typeof scheduleWatchTick;
     /** Skip the real trigger-config gate when a tick scheduler is injected. */
     configured?: () => boolean;
+    /** Plan floors on window and count. Fails open to unlimited when absent. */
+    resolveLimits?: (organizationId: string) => Promise<WatchPlanLimits>;
+    /** Org-wide active-watch count, for the watcher-count floor. */
+    countActiveWatches?: (organizationId: string) => Promise<number>;
+    /** Gates the upgrade nudge, so self-hosted stays quiet. */
+    billingConfigured?: () => boolean;
   };
 }): Promise<CreateDashboardAgentWatchResult> {
   const { environment, userId, chatId } = params;
@@ -284,6 +298,11 @@ export async function createDashboardAgentWatch(params: {
   const buildCheckDeps = params.deps?.checkDeps ?? watchCreationCheckDeps;
   const scheduleTick = params.deps?.scheduleTick ?? scheduleWatchTick;
   const isDashboardAgentConfigured = params.deps?.configured ?? isDashboardAgentConfiguredDefault;
+  const resolveLimits = params.deps?.resolveLimits ?? resolveWatchPlanLimits;
+  const countActiveWatches =
+    params.deps?.countActiveWatches ??
+    ((organizationId: string) => countActiveWatchesForOrg(dashboardAgentDb, { organizationId }));
+  const hint = (base: string) => watchLimitHint(base, params.deps?.billingConfigured?.());
   const checkDeps = buildCheckDeps(environment, now);
 
   if (!isDashboardAgentConfigured()) {
@@ -317,6 +336,17 @@ export async function createDashboardAgentWatch(params: {
   });
   if (!precheck.ok) return creationGuardrailError(precheck);
 
+  // Plan floors sit below the code ceilings (min(plan, ceiling)). Fails open: an absent
+  // limit resolves to unlimited, so neither floor bites on self-hosted.
+  const planLimits = await resolveLimits(environment.organizationId);
+  if (spec.maxHours > effectiveWatchMaxHours(planLimits.maxHours)) {
+    return {
+      ok: false,
+      code: "watch_limit_reached",
+      error: hint("That watch window is longer than your plan allows."),
+    };
+  }
+
   // `since` is server-set so the model can't backdate a recurrence window.
   const persistedSpec: PersistedWatchSpec =
     spec.kind === "error_recurrence" ? { ...spec, since: now.toISOString() } : spec;
@@ -329,6 +359,18 @@ export async function createDashboardAgentWatch(params: {
   if (immediate.result === "satisfied" || immediate.result === "terminal_unsatisfied") {
     // Nothing is persisted: no row means no delivery claim and no wake.
     return { ok: true, watching: false, identity, immediate };
+  }
+
+  // Counted only now the immediate check didn't answer: a one-shot creates no row and so
+  // consumes no watcher slot. The per-chat cap of 3 still applies independently, in
+  // `createWatch`.
+  const activeCount = await countActiveWatches(environment.organizationId);
+  if (activeCount >= planLimits.watchers) {
+    return {
+      ok: false,
+      code: "watch_limit_reached",
+      error: hint("You've reached the number of active watches your plan allows."),
+    };
   }
 
   const expiresAt = new Date(now.getTime() + spec.maxHours * 60 * 60 * 1000);

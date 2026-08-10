@@ -111,7 +111,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (!result.ok) {
       const status =
-        result.code === "limit_reached" || result.code === "duplicate"
+        result.code === "limit_reached" ||
+        result.code === "watch_limit_reached" ||
+        result.code === "duplicate"
           ? 409
           : result.code === "invalid_target"
             ? 404
