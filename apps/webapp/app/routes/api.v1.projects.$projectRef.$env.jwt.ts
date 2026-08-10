@@ -8,6 +8,7 @@ import {
   verifyUserActorToken,
   type UserActorClaims,
 } from "@trigger.dev/rbac";
+import parseDuration from "parse-duration";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
@@ -33,6 +34,27 @@ const RequestBodySchema = z.object({
     .optional(),
   expirationTime: z.union([z.number(), z.string()]).optional(),
 });
+
+// A requested `expirationTime` above this (epoch seconds, ~2001) is an absolute
+// timestamp; a smaller number is a relative offset in seconds.
+const EXPIRY_EPOCH_THRESHOLD_SECONDS = 1_000_000_000;
+const DEFAULT_EXPIRY = "1h";
+
+// Resolve the requested expiry to an absolute epoch-second timestamp so it can be
+// clamped against a delegated token's own expiry.
+function resolveRequestedExpirySeconds(
+  expirationTime: number | string | undefined,
+  nowSec: number
+): number {
+  if (typeof expirationTime === "number") {
+    return expirationTime > EXPIRY_EPOCH_THRESHOLD_SECONDS
+      ? expirationTime
+      : nowSec + expirationTime;
+  }
+  const durationMs = parseDuration(expirationTime ?? DEFAULT_EXPIRY);
+  const seconds = durationMs != null ? Math.floor(durationMs / 1000) : 60 * 60;
+  return nowSec + seconds;
+}
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
@@ -160,10 +182,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
         : {}),
     };
 
+    // A delegated token can't mint a longer-lived JWT than itself: clamp the
+    // requested expiry to the token's own `exp`. Non-UAT callers are unchanged.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const requestedAbsSec = resolveRequestedExpirySeconds(parsedBody.data.expirationTime, nowSec);
+    const expirationTime =
+      isUat && userActor?.expiresAt !== undefined
+        ? Math.min(requestedAbsSec, userActor.expiresAt)
+        : (parsedBody.data.expirationTime ?? DEFAULT_EXPIRY);
+
     const jwt = await internal_generateJWT({
       secretKey: runtimeEnv.apiKey,
       payload: claims,
-      expirationTime: parsedBody.data.expirationTime ?? "1h",
+      expirationTime,
     });
 
     return json({ token: jwt });

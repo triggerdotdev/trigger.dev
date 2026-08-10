@@ -539,12 +539,13 @@ describe("env JWT exchange — capless ceiling and TTL clamp", () => {
     return JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString());
   }
 
-  function mintUat(opts: { cap?: string[] } = {}) {
+  function mintUat(opts: { cap?: string[]; expirationTime?: number } = {}) {
     return signUserActorToken(SESSION_SECRET, {
       userId: USER_ID,
       client: "dashboard-agent",
       environmentId: ENV_A.id,
       ...(opts.cap ? { cap: opts.cap } : {}),
+      ...(opts.expirationTime ? { expirationTime: opts.expirationTime } : {}),
     });
   }
 
@@ -620,5 +621,16 @@ describe("env JWT exchange — capless ceiling and TTL clamp", () => {
     const payload = await exchange("tr_pat_e2e_token", { claims: { scopes: requested } });
 
     expect(payload.scopes).toEqual(requested);
+  });
+
+  it("clamps the minted JWT lifetime to the token's own expiry", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const tokenExp = nowSec + 600;
+    const token = await mintUat({ expirationTime: tokenExp });
+
+    const payload = await exchange(token, { expirationTime: "365d" });
+
+    expect(payload.exp).toBeLessThanOrEqual(tokenExp + 1);
+    expect(payload.exp).toBeGreaterThan(nowSec + 500);
   });
 });
