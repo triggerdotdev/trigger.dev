@@ -23,7 +23,7 @@ import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./abil
 import { BearerCredentialResolver } from "./bearerCredentials.js";
 
 // Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
-const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
+export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
 
 export type FallbackPrismaClients = {
   // Used for writes (setUserRole, mutateRole, etc.) and any reads that

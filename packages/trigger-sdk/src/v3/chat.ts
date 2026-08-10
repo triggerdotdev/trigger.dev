@@ -1813,12 +1813,29 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 combinedSignal.removeEventListener("abort", done);
                 resolve();
               };
-              timer = setTimeout(done, Math.min(100 * 2 ** (eofResubscribes - 1), 5_000));
+              // Jitter the backoff so many clients reconnecting after the same
+              // dropped window don't resubscribe in lockstep.
+              const backoff = Math.min(100 * 2 ** (eofResubscribes - 1), 5_000);
+              timer = setTimeout(done, backoff * (0.5 + Math.random() * 0.5));
               combinedSignal.addEventListener("abort", done);
             });
             if (combinedSignal.aborted) break;
             const opened = await openWithAuthRetry();
             if (opened) return opened;
+          }
+
+          // A settled session or an abort ends the turn cleanly. Exhausting the
+          // resubscribe budget while the turn is still streaming means it was cut
+          // off — surface an error so the UI doesn't read a truncated reply as
+          // complete. The caller's catch emits stream-error and errors the stream.
+          if (
+            state.isStreaming &&
+            !currentSubscription?.sessionSettled &&
+            !combinedSignal.aborted
+          ) {
+            throw new Error(
+              "Chat stream ended before the turn completed (reconnect budget exhausted)."
+            );
           }
 
           // Settled close, or the turn is gone — tell the UI instead of

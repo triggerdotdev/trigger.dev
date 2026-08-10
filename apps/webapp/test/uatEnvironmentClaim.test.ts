@@ -38,8 +38,9 @@ vi.mock("~/services/rbac.server", () => ({
   },
 }));
 vi.mock("~/services/personalAccessToken.server", () => ({
-  authenticateApiRequestWithPersonalAccessToken: vi.fn(),
-  isPersonalAccessToken: () => false,
+  // A `tr_pat_` bearer resolves to the member user, driving the non-UAT branch.
+  authenticateApiRequestWithPersonalAccessToken: async () => ({ userId: USER_ID }),
+  isPersonalAccessToken: (token: string) => token.startsWith("tr_pat_"),
 }));
 vi.mock("~/services/organizationAccessToken.server", () => ({
   authenticateApiRequestWithOrganizationAccessToken: vi.fn(),
@@ -519,5 +520,117 @@ describe("repo snapshot authorization", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ url: "https://example.com/archive.tar.gz" });
+  });
+});
+
+/**
+ * The scope ceiling closes the capless-token hole: a delegated token with no `cap` is
+ * read-only, not full-admin, and the exchange projects requested scopes through the scope
+ * grammar (so a `read:all` ceiling still admits reads rather than denying everything). The
+ * TTL clamp keeps the minted JWT from outliving the token it was exchanged from.
+ */
+describe("env JWT exchange — capless ceiling and TTL clamp", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+  });
+
+  function decodeJwt(jwt: string): { scopes?: string[]; exp?: number } {
+    return JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString());
+  }
+
+  function mintUat(opts: { cap?: string[]; expirationTime?: number } = {}) {
+    return signUserActorToken(SESSION_SECRET, {
+      userId: USER_ID,
+      client: "dashboard-agent",
+      environmentId: ENV_A.id,
+      ...(opts.cap ? { cap: opts.cap } : {}),
+      ...(opts.expirationTime ? { expirationTime: opts.expirationTime } : {}),
+    });
+  }
+
+  async function exchange(token: string, body: Record<string, unknown>) {
+    const response = await respond(
+      () =>
+        jwtAction({
+          request: requestFor(token, `/api/v1/projects/${PROJECT.externalRef}/prod/jwt`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          }),
+          params: { projectRef: PROJECT.externalRef, env: "prod" },
+          context: {} as any,
+        }) as Promise<Response>
+    );
+    expect(response.status).toBe(200);
+    const { token: jwt } = (await response.json()) as { token: string };
+    return decodeJwt(jwt);
+  }
+
+  it("denies admin to a capless token, projecting to the read-only ceiling", async () => {
+    const token = await mintUat();
+
+    const payload = await exchange(token, { claims: { scopes: ["admin"] } });
+
+    expect(payload.scopes).toEqual([]);
+    expect(payload.scopes).not.toContain("admin");
+  });
+
+  it("admits a read through the read:all wildcard ceiling", async () => {
+    const token = await mintUat();
+
+    const payload = await exchange(token, { claims: { scopes: ["read:runs"] } });
+
+    expect(payload.scopes).toEqual(["read:runs"]);
+  });
+
+  it("defaults a capless token to the read-only ceiling", async () => {
+    const token = await mintUat();
+
+    const payload = await exchange(token, {});
+
+    expect(payload.scopes).toEqual(["read:all"]);
+  });
+
+  it("passes a capped token's requested scopes through unchanged", async () => {
+    const token = await mintUat({ cap: ["read:runs", "read:apiKeys"] });
+
+    const payload = await exchange(token, { claims: { scopes: ["read:runs", "read:apiKeys"] } });
+
+    expect(payload.scopes).toEqual(["read:runs", "read:apiKeys"]);
+  });
+
+  it("drops a scope the cap doesn't carry", async () => {
+    const token = await mintUat({ cap: ["read:runs"] });
+
+    const payload = await exchange(token, { claims: { scopes: ["read:runs", "write:runs"] } });
+
+    expect(payload.scopes).toEqual(["read:runs"]);
+  });
+
+  it("preserves a write scope the cap carries", async () => {
+    const token = await mintUat({ cap: ["write:errors"] });
+
+    const payload = await exchange(token, { claims: { scopes: ["write:errors"] } });
+
+    expect(payload.scopes).toEqual(["write:errors"]);
+  });
+
+  it("leaves a non-UAT (PAT) exchange's scopes untouched", async () => {
+    const requested = ["read:runs", "write:runs", "admin"];
+
+    const payload = await exchange("tr_pat_e2e_token", { claims: { scopes: requested } });
+
+    expect(payload.scopes).toEqual(requested);
+  });
+
+  it("clamps the minted JWT lifetime to the token's own expiry", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const tokenExp = nowSec + 600;
+    const token = await mintUat({ expirationTime: tokenExp });
+
+    const payload = await exchange(token, { expirationTime: "365d" });
+
+    expect(payload.exp).toBeLessThanOrEqual(tokenExp + 1);
+    expect(payload.exp).toBeGreaterThan(nowSec + 500);
   });
 });
