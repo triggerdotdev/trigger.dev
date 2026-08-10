@@ -6,6 +6,7 @@ import {
   useLocation,
   useNavigation,
   useRevalidator,
+  useSearchParams,
   useSubmit,
 } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
@@ -178,6 +179,7 @@ import { SideMenuItem, SideMenuLabel } from "./SideMenuItem";
 import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SideMenuSection } from "./SideMenuSection";
 import {
+  CUSTOMIZE_SIDEBAR_PARAM,
   isItemHidden,
   orderByPreference,
   SIDE_MENU_POPOVER_ITEM_ICON,
@@ -403,6 +405,17 @@ export function SideMenu({
   const isV3Project = project.engine === "V1";
   const favorites = useFavorites();
   const [isCustomizeOpen, setCustomizeOpen] = useState(false);
+  // Deep link from the profile page, which has no project context of its own to
+  // build the section list from. The param is dropped once consumed so a
+  // refresh (or a later back navigation) doesn't reopen the modal.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (!searchParams.has(CUSTOMIZE_SIDEBAR_PARAM)) return;
+    setCustomizeOpen(true);
+    const remaining = new URLSearchParams(searchParams);
+    remaining.delete(CUSTOMIZE_SIDEBAR_PARAM);
+    setSearchParams(remaining, { replace: true, preventScrollReset: true });
+  }, [searchParams, setSearchParams]);
   // Lives here (not in the dialog): the dialog unmounts on close, which would abort a fetcher it
   // owned mid-request.
   const customizationFetcher = useFetcher<{ success: boolean }>();

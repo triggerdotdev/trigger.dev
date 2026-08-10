@@ -14,6 +14,10 @@ export const SideMenuSectionIdSchema = z.enum([
 // Inferred type from the schema
 export type SideMenuSectionId = z.infer<typeof SideMenuSectionIdSchema>;
 
+/** Deep link that opens the "Customize sidebar" modal, so pages outside the app
+ *  shell (the profile page) can reach it. Consumed and stripped by SideMenu. */
+export const CUSTOMIZE_SIDEBAR_PARAM = "customizeSidebar";
+
 // Size popover items to match the side-menu items, overriding the smaller small-menu-item
 // defaults via tailwind-merge; icon carries the default dimmed color.
 export const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";

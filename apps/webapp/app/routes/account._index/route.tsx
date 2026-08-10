@@ -10,7 +10,7 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
@@ -20,8 +20,11 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { CUSTOMIZE_SIDEBAR_PARAM } from "~/components/navigation/sideMenuTypes";
 import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOptions";
 import { prisma } from "~/db.server";
+import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
@@ -39,7 +42,7 @@ import {
 import { cachedFlag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
-import { accountPath } from "~/utils/pathBuilder";
+import { accountPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Your profile");
@@ -96,7 +99,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-  return json({ showThemeSwitcher });
+
+  // The customize modal builds its section list from the side menu's project
+  // context, which this page doesn't have - so the button deep links into the
+  // user's current environment instead. Null when they have no project yet.
+  let customizeSidebarPath: string | null = null;
+  try {
+    const { organization, project, environment } = await new SelectBestEnvironmentPresenter().call({
+      user,
+    });
+    customizeSidebarPath = `${v3EnvironmentPath(
+      organization,
+      project,
+      environment
+    )}?${CUSTOMIZE_SIDEBAR_PARAM}=true`;
+  } catch {
+    // No project to customize a sidebar for; the row hides itself
+  }
+
+  return json({ showThemeSwitcher, customizeSidebarPath });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -188,7 +209,7 @@ export const action: ActionFunction = async ({ request }) => {
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, customizeSidebarPath } = useLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
@@ -319,16 +340,34 @@ export default function Page() {
           {showThemeSwitcher && (
             <>
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
-                <Header2>Appearance</Header2>
+                <Header2>Interface and theme</Header2>
               </div>
+              {customizeSidebarPath && (
+                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <InputGroup className="flex-1">
+                      <Label>App sidebar</Label>
+                      <Paragraph variant="small">
+                        Customize sidebar item visibility, order and rename favorites
+                      </Paragraph>
+                    </InputGroup>
+                    <div className="flex flex-none items-center">
+                      <LinkButton to={customizeSidebarPath} variant="secondary/small">
+                        Customize
+                      </LinkButton>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <InputGroup className="flex-1">
-                    <Label>Theme</Label>
+                    <Label>Interface theme</Label>
+                    <Paragraph variant="small">Choose your interface color scheme</Paragraph>
                   </InputGroup>
                   <div className="flex flex-none items-center">
                     <Select<ThemePreference, ThemePreference>
-                      aria-label="Theme"
+                      aria-label="Interface theme"
                       value={theme}
                       setValue={(value) =>
                         themeFetcher.submit(
@@ -336,7 +375,7 @@ export default function Page() {
                           { method: "post" }
                         )
                       }
-                      variant="secondary/small"
+                      variant="secondary/medium"
                       dropdownIcon
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}
                       text={(value) => (
@@ -373,6 +412,7 @@ export default function Page() {
                   <div className="flex w-full items-center justify-between gap-4">
                     <InputGroup className="flex-1">
                       <Label>Contrast</Label>
+                      <Paragraph variant="small">Adjust the interface contrast</Paragraph>
                     </InputGroup>
                     <div className="flex flex-none items-center">
                       <Slider
