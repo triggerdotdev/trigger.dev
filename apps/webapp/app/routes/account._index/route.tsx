@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { Form, useActionData, useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -10,7 +10,8 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
@@ -24,11 +25,22 @@ import {
   SETTINGS_ROW_TITLE_GAP,
   SettingsRowDescription,
 } from "~/components/primitives/SettingsLayout";
-import { CUSTOMIZE_SIDEBAR_PARAM } from "~/components/navigation/sideMenuTypes";
+import {
+  CustomizeSidebarDialog,
+  type CustomizeSidebarSection,
+} from "~/components/navigation/CustomizeSidebarDialog";
+import {
+  favoritePageIcon,
+  favoritePageIconClassName,
+  useFavorites,
+} from "~/components/navigation/favoritePages";
+import { buildSideMenuSections } from "~/components/navigation/sideMenuSections";
 import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOptions";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { useUser } from "~/hooks/useUser";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
+import { useFeatures } from "~/hooks/useFeatures";
+import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import {
@@ -45,7 +57,7 @@ import {
 import { cachedFlag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
-import { accountPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { accountPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
 
@@ -104,24 +116,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
 
-  // The customize modal builds its section list from the side menu's project
-  // context, which this page doesn't have - so the button deep links into the
-  // user's current environment instead. Null when they have no project yet.
-  let customizeSidebarPath: string | null = null;
+  // The customize modal's section list is built from the side menu's items, which
+  // are keyed to a project and environment. Resolve the user's current one so the
+  // modal can open here rather than sending them into the app to find it. Null
+  // when they have no project yet, and the row hides itself.
+  let sidebarContext: {
+    organization: { slug: string };
+    project: { slug: string };
+    environment: { slug: string };
+  } | null = null;
   try {
     const { organization, project, environment } = await new SelectBestEnvironmentPresenter().call({
       user,
     });
-    customizeSidebarPath = `${v3EnvironmentPath(
-      organization,
-      project,
-      environment
-    )}?${CUSTOMIZE_SIDEBAR_PARAM}=true`;
+    sidebarContext = {
+      organization: { slug: organization.slug },
+      project: { slug: project.slug },
+      environment: { slug: environment.slug },
+    };
   } catch {
-    // No project to customize a sidebar for; the row hides itself
+    // No project to customize a sidebar for
   }
 
-  return json({ showThemeSwitcher, customizeSidebarPath });
+  return json({ showThemeSwitcher, sidebarContext });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -211,9 +228,124 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
+/**
+ * Opens the side menu's own "Customize sidebar" modal from here, so the settings row doesn't send
+ * anyone into the app to find it. The section list is built from the same source the side menu
+ * renders from, keyed to the user's current project and environment.
+ *
+ * The fetcher lives here rather than in the dialog because closing the dialog unmounts it, which
+ * would abort a save mid-request - the same reason the side menu owns its copy.
+ */
+function CustomizeSidebarButton({
+  context,
+}: {
+  context: {
+    organization: { slug: string };
+    project: { slug: string };
+    environment: { slug: string };
+  };
+}) {
+  const user = useUser();
+  const isAdmin = useHasAdminAccess();
+  const featureFlags = useFeatureFlags();
+  const { isManagedCloud } = useFeatures();
+  const favorites = useFavorites();
+  const [isOpen, setIsOpen] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [error, setError] = useState<string>();
+  const fetcher = useFetcher<{ success: boolean }>();
+  // The fetcher's data outlives a confirm, so only settle once THIS submission has been in flight.
+  const submitSeenRef = useRef(false);
+
+  useEffect(() => {
+    if (!isConfirming) return;
+    if (fetcher.state !== "idle") {
+      submitSeenRef.current = true;
+      return;
+    }
+    if (!submitSeenRef.current) return;
+    setIsConfirming(false);
+    if (fetcher.data?.success) {
+      setIsOpen(false);
+    } else {
+      setError("Couldn't save your changes. Please try again.");
+    }
+  }, [isConfirming, fetcher.state, fetcher.data]);
+
+  const sideMenuPrefs = user.dashboardPreferences.sideMenu;
+  const sections: CustomizeSidebarSection[] = [
+    ...(favorites.length > 0
+      ? [
+          {
+            id: "favorites",
+            title: "Favorites",
+            items: favorites.map((favorite) => ({
+              id: favorite.id,
+              name: favorite.label,
+              icon: favoritePageIcon(favorite.icon),
+              iconClassName: favoritePageIconClassName(favorite.icon),
+              isFavorite: true,
+            })),
+          },
+        ]
+      : []),
+    ...buildSideMenuSections({ ...context, isAdmin, featureFlags, isManagedCloud }).map(
+      (section) => ({
+        id: section.id,
+        title: section.title,
+        items: section.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          icon: item.icon,
+          defaultHidden: item.defaultHidden,
+        })),
+      })
+    ),
+  ];
+
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) {
+          setIsConfirming(false);
+          setError(undefined);
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary/medium">Customize</Button>
+      </DialogTrigger>
+      {/* Mounted only while open so the modal re-seeds from current preferences each time */}
+      {isOpen && (
+        <CustomizeSidebarDialog
+          sections={sections}
+          prefs={{
+            sectionOrder: sideMenuPrefs?.sectionOrder,
+            hiddenItems: sideMenuPrefs?.hiddenItems,
+            sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
+          }}
+          onConfirm={(payload) => {
+            setError(undefined);
+            setIsConfirming(true);
+            submitSeenRef.current = false;
+            fetcher.submit(
+              { customization: JSON.stringify(payload) },
+              { method: "POST", action: "/resources/preferences/sidemenu" }
+            );
+          }}
+          isConfirming={isConfirming}
+          confirmError={error}
+        />
+      )}
+    </Dialog>
+  );
+}
+
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, customizeSidebarPath } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
@@ -346,7 +478,7 @@ export default function Page() {
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
                 <Header2>Interface and theme</Header2>
               </div>
-              {customizeSidebarPath && (
+              {sidebarContext && (
                 <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                   <div className="flex w-full items-center justify-between gap-4">
                     <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
@@ -356,9 +488,7 @@ export default function Page() {
                       </SettingsRowDescription>
                     </div>
                     <div className="flex flex-none items-center">
-                      <LinkButton to={customizeSidebarPath} variant="secondary/small">
-                        Customize
-                      </LinkButton>
+                      <CustomizeSidebarButton context={sidebarContext} />
                     </div>
                   </div>
                 </div>
@@ -390,9 +520,9 @@ export default function Page() {
                           {THEME_OPTIONS_BY_VALUE[value].label}
                         </span>
                       )}
-                      // Sized to the widest option (Classic, 106px) so no label
-                      // squeezes its icon, rounded up to the nearest step.
-                      className="w-27"
+                      // Hugs its label; the popover keeps the wider floor below so
+                      // the options aren't cramped by the shortest one.
+                      className="w-fit"
                       // The popover's 180px floor left a gap past the longest
                       // label; match the trigger instead.
                       popoverClassName="min-w-27"

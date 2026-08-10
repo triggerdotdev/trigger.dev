@@ -6,7 +6,6 @@ import {
   useLocation,
   useNavigation,
   useRevalidator,
-  useSearchParams,
   useSubmit,
 } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
@@ -21,44 +20,27 @@ import {
   useState,
 } from "react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
-import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
 import { ArrowRightSquareIcon } from "~/assets/icons/ArrowRightSquareIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
-import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
-import { Box3DIcon } from "~/assets/icons/Box3DIcon";
-import { BugIcon } from "~/assets/icons/BugIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
-import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
-import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
-import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import { DialIcon } from "~/assets/icons/DialIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { EyeClosedIcon } from "~/assets/icons/EyeClosedIcon";
 import { EyeOpenIcon } from "~/assets/icons/EyeOpenIcon";
 import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
-import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { HomeIcon } from "~/assets/icons/HomeIcon";
-import { IDIcon } from "~/assets/icons/IDIcon";
 import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
-import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { LeftSideMenuCollapsedIcon } from "~/assets/icons/LeftSideMenuCollapsedIcon";
 import { LeftSideMenuIcon } from "~/assets/icons/LeftSideMenuIcon";
-import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
-import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { SidebarCustomizeIcon } from "~/assets/icons/SidebarCustomizeIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { UserCrossIcon } from "~/assets/icons/UserCrossIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
@@ -90,9 +72,6 @@ import {
   accountSecurityPath,
   personalAccessTokensPath,
   adminPath,
-  branchesPath,
-  concurrencyPath,
-  limitsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -103,35 +82,19 @@ import {
   organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
-  queryPath,
-  regionsPath,
-  v3ApiKeysPath,
-  v3BatchesPath,
   v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
-  v3BulkActionsPath,
-  v3DashboardsLandingPath,
-  v3DeploymentsPath,
   v3EnvironmentPath,
-  v3EnvironmentVariablesPath,
-  v3ErrorsPath,
-  v3LogsPath,
-  v3ModelsPath,
-  v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
-  v3ProjectSettingsIntegrationsPath,
-  v3PromptsPath,
-  v3QueuesPath,
   v3RunsPath,
   v3SessionsPath,
   v3UsagePath,
-  v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
+import { NewBadge } from "../FeatureBadges";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
@@ -176,10 +139,10 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem, SideMenuLabel } from "./SideMenuItem";
+import { buildSideMenuSections, type SideMenuSectionConfig } from "./sideMenuSections";
 import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SideMenuSection } from "./SideMenuSection";
 import {
-  CUSTOMIZE_SIDEBAR_PARAM,
   isItemHidden,
   orderByPreference,
   SIDE_MENU_POPOVER_ITEM_ICON,
@@ -194,31 +157,6 @@ function getSectionCollapsed(
 ): boolean {
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
-
-type SideMenuItemConfig = {
-  /** Stable id used for hidden/order preferences; never rename once shipped. */
-  id: string;
-  name: string;
-  icon: RenderIcon;
-  activeIconColor: string;
-  inactiveIconColor?: string;
-  to: string;
-  dataAction?: string;
-  badge?: ReactNode;
-  trailingIconClassName?: string;
-  /** Hidden for every user who hasn't set their own preference for this item. */
-  defaultHidden?: boolean;
-  /** Right-side action (e.g. the + button on Dashboards); only rendered when visible. */
-  action?: ReactNode;
-  /** Extra content rendered directly after the item (e.g. the dashboards list). */
-  after?: ReactNode;
-};
-
-type SideMenuSectionConfig = {
-  id: SideMenuSectionId;
-  title: string;
-  items: SideMenuItemConfig[];
-};
 
 // Impersonation accent (menu border + "Stop impersonating"). Full class strings so Tailwind's
 // static scanner picks them up.
@@ -405,17 +343,6 @@ export function SideMenu({
   const isV3Project = project.engine === "V1";
   const favorites = useFavorites();
   const [isCustomizeOpen, setCustomizeOpen] = useState(false);
-  // Deep link from the profile page, which has no project context of its own to
-  // build the section list from. The param is dropped once consumed so a
-  // refresh (or a later back navigation) doesn't reopen the modal.
-  const [searchParams, setSearchParams] = useSearchParams();
-  useEffect(() => {
-    if (!searchParams.has(CUSTOMIZE_SIDEBAR_PARAM)) return;
-    setCustomizeOpen(true);
-    const remaining = new URLSearchParams(searchParams);
-    remaining.delete(CUSTOMIZE_SIDEBAR_PARAM);
-    setSearchParams(remaining, { replace: true, preventScrollReset: true });
-  }, [searchParams, setSearchParams]);
   // Lives here (not in the dialog): the dialog unmounts on close, which would abort a fetcher it
   // owned mid-request.
   const customizationFetcher = useFetcher<{ success: boolean }>();
@@ -804,219 +731,32 @@ export function SideMenu({
 
   // The customizable sections (everything except Tasks/Runs/Sessions), in DEFAULT order. The
   // user's saved order/hidden preferences are applied at render below.
-  const staticSections: SideMenuSectionConfig[] = [];
-
-  if (isAdmin || featureFlags.hasAiAccess) {
-    staticSections.push({
-      id: "ai",
-      title: "AI",
-      items: [
-        {
-          id: "prompts",
-          name: "Prompts",
-          icon: AIPenIcon,
-          trailingIconClassName: "size-6",
-          activeIconColor: "text-aiPrompts",
-          to: v3PromptsPath(organization, project, environment),
-          dataAction: "prompts",
-          badge: <NewBadge />,
-        },
-        {
-          id: "models",
-          name: "Models",
-          icon: Box3DIcon,
-          activeIconColor: "text-models",
-          to: v3ModelsPath(organization, project, environment),
-          dataAction: "models",
-          badge: <NewBadge />,
-        },
-      ],
-    });
-  }
-
-  if (isAdmin || featureFlags.hasQueryAccess) {
-    staticSections.push({
-      id: "metrics",
-      title: "Observability",
-      items: [
-        ...(isAdmin || featureFlags.hasLogsPageAccess
-          ? [
-              {
-                id: "logs",
-                name: "Logs",
-                icon: LogsIcon,
-                activeIconColor: "text-logs",
-                to: v3LogsPath(organization, project, environment),
-                dataAction: "logs",
-                badge: <AlphaBadge />,
-              } satisfies SideMenuItemConfig,
-            ]
-          : []),
-        {
-          id: "errors",
-          name: "Errors",
-          icon: BugIcon,
-          activeIconColor: "text-errors",
-          to: v3ErrorsPath(organization, project, environment),
-          dataAction: "errors",
-        },
-        {
-          id: "query",
-          name: "Query",
-          icon: CodeSquareIcon,
-          activeIconColor: "text-query",
-          to: queryPath(organization, project, environment),
-          dataAction: "query",
-        },
-        {
-          id: "queues",
-          name: "Queues",
-          icon: QueuesIcon,
-          activeIconColor: "text-queues",
-          to: v3QueuesPath(organization, project, environment),
-          dataAction: "queues",
-        },
-        {
-          id: "dashboards",
-          name: "Dashboards",
-          icon: ChartBarIcon,
-          activeIconColor: "text-metrics",
-          to: v3DashboardsLandingPath(organization, project, environment),
-          dataAction: "dashboards-landing",
-          action: (
-            <CreateDashboardButton
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-            />
-          ),
-          after: (
-            <DashboardList
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-              user={user}
-            />
-          ),
-        },
-      ],
-    });
-  }
-
-  staticSections.push({
-    id: "deployments",
-    title: "Deployments",
-    items: [
-      {
-        id: "deployments",
-        name: "Deploys",
-        icon: DeploymentsIcon,
-        activeIconColor: "text-deployments",
-        to: v3DeploymentsPath(organization, project, environment),
-        dataAction: "deployments",
-      },
-      {
-        id: "environment-variables",
-        name: "Environment variables",
-        icon: IDIcon,
-        activeIconColor: "text-environmentVariables",
-        to: v3EnvironmentVariablesPath(organization, project, environment),
-        dataAction: "environment variables",
-      },
-      {
-        id: "preview-branches",
-        name: "Preview branches",
-        icon: BranchEnvironmentIconSmall,
-        activeIconColor: "text-previewBranches",
-        to: branchesPath(organization, project, environment),
-        dataAction: "preview-branches",
-      },
-      {
-        id: "regions",
-        name: "Regions",
-        icon: GlobeLinesIcon,
-        activeIconColor: "text-regions",
-        to: regionsPath(organization, project, environment),
-        dataAction: "regions",
-      },
-    ],
-  });
-
-  staticSections.push({
-    id: "manage",
-    title: "Manage",
-    items: [
-      {
-        id: "waitpoint-tokens",
-        name: "Waitpoint tokens",
-        icon: WaitpointTokenIcon,
-        activeIconColor: "text-sky-500",
-        to: v3WaitpointTokensPath(organization, project, environment),
-        dataAction: "waitpoint-tokens",
-      },
-      {
-        id: "batches",
-        name: "Batches",
-        icon: BatchesIcon,
-        activeIconColor: "text-batches",
-        to: v3BatchesPath(organization, project, environment),
-        dataAction: "batches",
-      },
-      {
-        id: "bulk-actions",
-        name: "Bulk actions",
-        icon: ListCheckedIcon,
-        activeIconColor: "text-text-bright",
-        to: v3BulkActionsPath(organization, project, environment),
-        dataAction: "bulk actions",
-      },
-      {
-        id: "api-keys",
-        name: "API keys",
-        icon: KeyIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ApiKeysPath(organization, project, environment),
-        dataAction: "api keys",
-      },
-      {
-        id: "alerts",
-        name: "Alerts",
-        icon: BellIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ProjectAlertsPath(organization, project, environment),
-        dataAction: "alerts",
-      },
-      ...(isManagedCloud
-        ? [
-            {
-              id: "concurrency",
-              name: "Concurrency",
-              icon: ConcurrencyIcon,
-              activeIconColor: "text-text-bright",
-              to: concurrencyPath(organization, project, environment),
-              dataAction: "concurrency",
-            } satisfies SideMenuItemConfig,
-          ]
-        : []),
-      {
-        id: "limits",
-        name: "Limits",
-        icon: DialIcon,
-        activeIconColor: "text-text-bright",
-        to: limitsPath(organization, project, environment),
-        dataAction: "limits",
-      },
-      {
-        id: "integrations",
-        name: "Integrations",
-        icon: IntegrationsIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ProjectSettingsIntegrationsPath(organization, project, environment),
-        dataAction: "project-settings-integrations",
-      },
-    ],
+  const staticSections = buildSideMenuSections({
+    organization,
+    project,
+    environment,
+    isAdmin,
+    featureFlags,
+    isManagedCloud,
+    dashboards: {
+      action: (
+        <CreateDashboardButton
+          organization={organization}
+          project={project}
+          environment={environment}
+          isCollapsed={isCollapsed}
+        />
+      ),
+      after: (
+        <DashboardList
+          organization={organization}
+          project={project}
+          environment={environment}
+          isCollapsed={isCollapsed}
+          user={user}
+        />
+      ),
+    },
   });
 
   const sideMenuPrefs = user.dashboardPreferences.sideMenu;
