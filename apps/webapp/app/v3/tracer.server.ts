@@ -521,17 +521,23 @@ function configurePrismaMetrics({ meter }: { meter: Meter }) {
         const attributes = { db_client: client.clientType, db_driver: client.driver };
         const { pool, counters, gauges, histograms } = client;
 
+        if (pool) {
+          res.observe(connectionsOpenedTotal, pool.openedTotal, attributes);
+          res.observe(connectionsClosedTotal, pool.closedTotal, attributes);
+          res.observe(totalGauge, pool.open, attributes);
+          res.observe(busyGauge, pool.busy, attributes);
+          res.observe(freeGauge, pool.idle, attributes);
+          res.observe(waitingGauge, pool.waiting, attributes);
+        }
+
+        if (!counters || !gauges) {
+          continue;
+        }
+
         res.observe(queriesTotal, counters.queriesTotal, attributes);
         res.observe(datasourceQueriesTotal, counters.datasourceQueriesTotal, attributes);
-        res.observe(connectionsOpenedTotal, pool.openedTotal, attributes);
-        res.observe(connectionsClosedTotal, pool.closedTotal, attributes);
-
         res.observe(queriesActive, gauges.queriesActive, attributes);
         res.observe(queriesWait, gauges.queriesWait, attributes);
-        res.observe(totalGauge, pool.open, attributes);
-        res.observe(busyGauge, pool.busy, attributes);
-        res.observe(freeGauge, pool.idle, attributes);
-        res.observe(waitingGauge, pool.waiting, attributes);
 
         if (histograms.queriesWait) {
           res.observe(queriesWaitTimeCount, histograms.queriesWait.count, attributes);

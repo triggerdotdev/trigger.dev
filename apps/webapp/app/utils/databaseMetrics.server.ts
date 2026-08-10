@@ -42,9 +42,10 @@ export type NormalizedPoolMetrics = {
 export type NormalizedDatabaseMetrics = {
   clientType: string;
   driver: "pg-adapter" | "quaint";
-  pool: NormalizedPoolMetrics;
-  counters: { queriesTotal: number; datasourceQueriesTotal: number };
-  gauges: { queriesActive: number; queriesWait: number };
+  engineMetricsAvailable: boolean;
+  pool?: NormalizedPoolMetrics;
+  counters?: { queriesTotal: number; datasourceQueriesTotal: number };
+  gauges?: { queriesActive: number; queriesWait: number };
   histograms: {
     queriesWait?: MetricHistogramValue;
     queriesDuration?: MetricHistogramValue;
@@ -78,16 +79,11 @@ export function normalizeDatabaseMetrics(
   source: DatabaseMetricsSource,
   json: PrismaMetricsJson | undefined
 ): NormalizedDatabaseMetrics {
-  const counters = json ? indexByKey(json.counters) : {};
-  const gauges = json ? indexByKey(json.gauges) : {};
-  const histograms: Record<string, MetricHistogramValue> = {};
-  if (json) {
-    for (const histogram of json.histograms) {
-      histograms[histogram.key] = histogram.value;
-    }
-  }
+  const driver = source.usesDriverAdapter ? ("pg-adapter" as const) : ("quaint" as const);
+  const counters = json ? indexByKey(json.counters) : undefined;
+  const gauges = json ? indexByKey(json.gauges) : undefined;
 
-  let pool: NormalizedPoolMetrics;
+  let pool: NormalizedPoolMetrics | undefined;
   if (source.usesDriverAdapter && source.pool) {
     const total = source.pool.totalCount;
     const idle = source.pool.idleCount;
@@ -99,7 +95,7 @@ export function normalizeDatabaseMetrics(
       openedTotal: source.poolCounters?.opened() ?? 0,
       closedTotal: source.poolCounters?.closed() ?? 0,
     };
-  } else {
+  } else if (counters && gauges) {
     pool = {
       open: gauges["prisma_pool_connections_open"] ?? 0,
       busy: gauges["prisma_pool_connections_busy"] ?? 0,
@@ -110,24 +106,35 @@ export function normalizeDatabaseMetrics(
     };
   }
 
-  return {
+  const result: NormalizedDatabaseMetrics = {
     clientType: source.clientType,
-    driver: source.usesDriverAdapter ? "pg-adapter" : "quaint",
+    driver,
+    engineMetricsAvailable: json !== undefined,
     pool,
-    counters: {
+    histograms: {},
+  };
+
+  if (json && counters && gauges) {
+    const histograms: Record<string, MetricHistogramValue> = {};
+    for (const histogram of json.histograms) {
+      histograms[histogram.key] = histogram.value;
+    }
+    result.counters = {
       queriesTotal: counters["prisma_client_queries_total"] ?? 0,
       datasourceQueriesTotal: counters["prisma_datasource_queries_total"] ?? 0,
-    },
-    gauges: {
+    };
+    result.gauges = {
       queriesActive: gauges["prisma_client_queries_active"] ?? 0,
       queriesWait: gauges["prisma_client_queries_wait"] ?? 0,
-    },
-    histograms: {
+    };
+    result.histograms = {
       queriesWait: histograms["prisma_client_queries_wait_histogram_ms"],
       queriesDuration: histograms["prisma_client_queries_duration_histogram_ms"],
       datasourceQueriesDuration: histograms["prisma_datasource_queries_duration_histogram_ms"],
-    },
-  };
+    };
+  }
+
+  return result;
 }
 
 export async function collectDatabaseClientMetrics(): Promise<NormalizedDatabaseMetrics[]> {

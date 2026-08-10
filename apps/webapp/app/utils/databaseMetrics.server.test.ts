@@ -47,6 +47,7 @@ describe("normalizeDatabaseMetrics", () => {
 
     expect(result.driver).toBe("quaint");
     expect(result.clientType).toBe("writer");
+    expect(result.engineMetricsAvailable).toBe(true);
     expect(result.pool).toEqual({
       open: 9,
       busy: 4,
@@ -72,6 +73,7 @@ describe("normalizeDatabaseMetrics", () => {
     const result = normalizeDatabaseMetrics(source, quaintJson());
 
     expect(result.driver).toBe("pg-adapter");
+    expect(result.engineMetricsAvailable).toBe(true);
     expect(result.pool).toEqual({
       open: 8,
       busy: 5,
@@ -94,10 +96,10 @@ describe("normalizeDatabaseMetrics", () => {
 
     const result = normalizeDatabaseMetrics(source, quaintJson());
 
-    expect(result.pool.busy).toBe(0);
+    expect(result.pool?.busy).toBe(0);
   });
 
-  it("falls back to zeroed query/pool metrics when $metrics is unavailable for a quaint client", () => {
+  it("omits engine-derived metrics and pool when $metrics is unavailable for a quaint client", () => {
     const source: DatabaseMetricsSource = {
       clientType: "writer",
       usesDriverAdapter: false,
@@ -106,19 +108,14 @@ describe("normalizeDatabaseMetrics", () => {
 
     const result = normalizeDatabaseMetrics(source, undefined);
 
-    expect(result.pool).toEqual({
-      open: 0,
-      busy: 0,
-      idle: 0,
-      waiting: 0,
-      openedTotal: 0,
-      closedTotal: 0,
-    });
-    expect(result.counters).toEqual({ queriesTotal: 0, datasourceQueriesTotal: 0 });
+    expect(result.engineMetricsAvailable).toBe(false);
+    expect(result.pool).toBeUndefined();
+    expect(result.counters).toBeUndefined();
+    expect(result.gauges).toBeUndefined();
     expect(result.histograms.queriesDuration).toBeUndefined();
   });
 
-  it("keeps adapter pool figures even when $metrics is unavailable", () => {
+  it("keeps pg.Pool figures but omits engine metrics when $metrics is unavailable for an adapter client", () => {
     const source: DatabaseMetricsSource = {
       clientType: "control-plane-writer",
       usesDriverAdapter: true,
@@ -129,6 +126,7 @@ describe("normalizeDatabaseMetrics", () => {
 
     const result = normalizeDatabaseMetrics(source, undefined);
 
+    expect(result.engineMetricsAvailable).toBe(false);
     expect(result.pool).toEqual({
       open: 7,
       busy: 5,
@@ -137,6 +135,7 @@ describe("normalizeDatabaseMetrics", () => {
       openedTotal: 9,
       closedTotal: 2,
     });
-    expect(result.counters).toEqual({ queriesTotal: 0, datasourceQueriesTotal: 0 });
+    expect(result.counters).toBeUndefined();
+    expect(result.gauges).toBeUndefined();
   });
 });
