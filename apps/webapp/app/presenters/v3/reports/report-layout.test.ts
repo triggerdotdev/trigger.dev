@@ -29,6 +29,52 @@ const livenessFinding = {
   metricIds: ["liveness"],
 };
 
+function vmWithMetric(metric: LayoutViewModel["metrics"][number]): LayoutViewModel {
+  return {
+    title: "health",
+    scope: "prod",
+    period: "last 60 min",
+    windowMinutes: 60,
+    summary: { severity: "warn", statements: [] },
+    findings: [{ type: "queue", severity: "warn", reason: "backlog", metricIds: [metric.id] }],
+    metrics: [metric],
+    footer: [],
+  };
+}
+
+function heroDelta(metric: LayoutViewModel["metrics"][number]) {
+  const layout = buildReportLayout(vmWithMetric(metric), reportMessages("health"));
+  return layout.hero?.metrics.find((m) => m.id === metric.id)?.delta;
+}
+
+describe("buildReportLayout metric deltas", () => {
+  it("renders no delta when a metric collapsed to nothing", () => {
+    expect(
+      heroDelta({
+        id: "pending",
+        value: 0,
+        unit: "count",
+        severity: "warn",
+        normal: 40,
+        delta: { dir: "down", mult: 0 },
+      })
+    ).toBeUndefined();
+  });
+
+  it("still renders a multiplier for a genuine fall", () => {
+    expect(
+      heroDelta({
+        id: "pending",
+        value: 10,
+        unit: "count",
+        severity: "warn",
+        normal: 40,
+        delta: { dir: "down", mult: 0 },
+      })
+    ).toEqual({ text: "↓ 4×", dir: "down" });
+  });
+});
+
 describe("buildReportLayout self-evident findings", () => {
   it("drops the metric row of a non-hero finding whose only metric is its own line", () => {
     const layout = buildReportLayout(
