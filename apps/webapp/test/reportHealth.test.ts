@@ -495,6 +495,37 @@ describe("freshness unknown is distinct from lagging", () => {
   });
 });
 
+describe("start latency with no measurement", () => {
+  const unknownInput: HealthInput = {
+    ...INPUT_B,
+    startLatency: { p95Ms: 0, normalP95Ms: undefined, series: [], availability: "unknown" },
+  };
+
+  it("marks the metric 'unknown' and doesn't classify it", () => {
+    const metric = interpret(unknownInput).metrics.find((m) => m.id === "start_latency_p95")!;
+    expect(metric.availability).toBe("unknown");
+    expect(metric.severity).toBe("ok");
+    expect(metric.normal).toBeUndefined();
+    expect(metric.series).toBeUndefined(); // no sparkline for a placeholder
+  });
+
+  it("renders 'unknown', never a confident 0ms", () => {
+    const md = renderReportMarkdown(interpret(unknownInput));
+    expect(md).toContain("starts p95 unknown");
+    expect(md).not.toContain("starts p95 0ms");
+  });
+
+  it("keeps a genuine 0 a measured 0ms", () => {
+    const measured = interpret({
+      ...INPUT_B,
+      startLatency: { p95Ms: 0, normalP95Ms: 7000, series: [0, 0], availability: "measured" },
+    });
+    const metric = measured.metrics.find((m) => m.id === "start_latency_p95")!;
+    expect(metric.availability).toBe("measured");
+    expect(renderReportMarkdown(measured)).toContain("starts p95 0ms");
+  });
+});
+
 describe("zero baseline is not a false green (absolute floors)", () => {
   it("pending spiking from a 0 baseline is not healthy", () => {
     const vm = interpret({
