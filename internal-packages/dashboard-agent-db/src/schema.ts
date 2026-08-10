@@ -170,6 +170,10 @@ export const investigations = dashboardAgentSchema.table(
     // Monotonic; bumped by a single atomic UPDATE.
     revision: integer("revision").notNull().default(0),
     state: jsonb("state").$type<unknown>().notNull(),
+    // Failed stale-sweep settle attempts. Bumped outside the rolled-back settle tx so a
+    // row that can't render rotates to the back of the sweep order instead of pinning it.
+    sweepAttempts: integer("sweep_attempts").notNull().default(0),
+    lastSweepAttemptAt: timestamp("last_sweep_attempt_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

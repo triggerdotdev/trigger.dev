@@ -1057,6 +1057,10 @@ export async function listChatIdsWithOpenInvestigations(
 /**
  * Sweep for investigations nothing else settles. `olderThan` is on `updated_at`,
  * which every revision bumps, so a card a live turn is writing to stays out.
+ *
+ * Order is `last_sweep_attempt_at` nulls first, then `updated_at`: a never-attempted
+ * row is always seen before one a prior sweep already failed on, so a row that can't
+ * settle rotates to the back instead of pinning the head and starving newer rows.
  */
 export async function listStaleOpenInvestigations(
   db: DashboardAgentDb,
@@ -1074,10 +1078,37 @@ export async function listStaleOpenInvestigations(
         sql`${investigations.updatedAt} <= ${params.olderThan.toISOString()}::timestamptz`
       )
     )
-    .orderBy(investigations.updatedAt)
+    .orderBy(sql`${investigations.lastSweepAttemptAt} asc nulls first`, investigations.updatedAt)
     .limit(params.limit ?? 100);
 
   return rows.map((row) => row.investigation);
+}
+
+/**
+ * Record a failed stale-sweep settle on its own, committed outside the settle tx that
+ * rolled back. Bumps the attempt count and stamps `last_sweep_attempt_at` — which does
+ * NOT touch `updated_at`, so the row still reads as stale, only later in the order.
+ * Returns the new count, or null when the row is no longer `in_progress`.
+ */
+export async function recordInvestigationSweepAttempt(
+  db: DashboardAgentDbOrTx,
+  params: { id: string }
+): Promise<number | null> {
+  const rows = await db
+    .update(investigations)
+    .set({
+      sweepAttempts: sql`${investigations.sweepAttempts} + 1`,
+      lastSweepAttemptAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(investigations.id, params.id),
+        sql`${investigations.state}->>'outcome' = 'in_progress'`
+      )
+    )
+    .returning({ sweepAttempts: investigations.sweepAttempts });
+
+  return rows[0]?.sweepAttempts ?? null;
 }
 
 /** What the settle wrote, which is what the closing card has to render. */
