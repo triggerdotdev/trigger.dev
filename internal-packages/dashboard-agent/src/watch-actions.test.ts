@@ -116,10 +116,9 @@ describe("watch wake narration", () => {
 
     const first = await harness.sendAction(WAKE);
     // A drained queue is a fact the check already established, so the sentence is the
-    // dashboard's own wording and no model is called for it.
-    expect(collectText(first.chunks)).toBe(
-      "task/send-receipt queue drained\n\nNothing to do — I've stopped watching it."
-    );
+    // dashboard's own wording and no model is called for it. The banner states the
+    // headline, so the wake only says what happens next.
+    expect(collectText(first.chunks)).toBe("Nothing to do — I've stopped watching.");
 
     // The streamed message must carry the same id the read-model copy is persisted
     // under, or the panel renders the narration twice.
@@ -251,8 +250,11 @@ describe("watch wake narration", () => {
       facts: { reason: "terminal_unsatisfied" },
     });
 
-    // Read as `condition_impossible`: only that resolution says the queue is gone.
-    expect(collectText(wake.chunks)).toContain("task/send-receipt queue no longer exists");
+    // Read as `condition_impossible`: only that resolution is neutral here, and only a
+    // neutral outcome offers another watch instead of reporting a problem.
+    expect(collectText(wake.chunks)).toBe(
+      "I've stopped watching. Ask me if you want another watch set up."
+    );
     expect(wakeText(prompts)).toBe("[]");
   });
 
@@ -463,7 +465,7 @@ describe("watch wake narration", () => {
     const first = await harness.sendAction(WAKE);
     // Streamed — so it is on `session.out` and in the next boot's history — while the
     // row it was supposed to land alongside never arrived.
-    expect(collectText(first.chunks)).toContain("queue drained");
+    expect(collectText(first.chunks)).toContain("I've stopped watching");
     expect(failing.calls.appendMessage).toHaveLength(1);
     expect(table.countOf(chatId, wakeId)).toBe(0);
     const durable = first.chunks;

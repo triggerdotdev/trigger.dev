@@ -1,6 +1,5 @@
 import {
   presentResolvedWatch,
-  watchNoteLine,
   type WatchObservedOutcome,
   type WatchPresentation,
   type WatchResolution,
@@ -34,8 +33,6 @@ export type NarratableWake = {
   resolution: WatchResolution;
   observed?: WatchObservedOutcome;
   note?: string;
-  /** The watched thing as a `trigger://` markdown link, when the tenancy allows one. */
-  subjectLink?: string;
   /** The user pre-approved an investigation and it has already been started. */
   startsInvestigation: boolean;
 };
@@ -45,21 +42,25 @@ export type NarratableWake = {
  * exactly the judgement a model is for, and this lane is the one where there is
  * nothing to judge.
  */
-function nextStep(presentation: WatchPresentation, subjectLink?: string): string {
-  const subject = subjectLink ?? "it";
+function nextStep(presentation: WatchPresentation): string {
   switch (presentation.category) {
     case "positive":
-      return `Nothing to do — I've stopped watching ${subject}.`;
+      return "Nothing to do — I've stopped watching.";
     // A neutral outcome is an answer without a problem in it: the watched thing is
     // gone, cancelled, or was never readable.
     case "neutral":
-      return `I've stopped watching ${subject}. Ask me if you want another watch set up.`;
+      return "I've stopped watching. Ask me if you want another watch set up.";
     case "attention":
-      return `Ask me to look into ${subject} if you want the why.`;
+      return "Ask me to look into it if you want the why.";
   }
 }
 
-/** The whole wake message, when no model is needed. */
+/**
+ * The whole wake message, when no model is needed.
+ *
+ * Only the next step: the wake banner above it already states the headline and the
+ * user's note, and each fact is said once per wake.
+ */
 export function deterministicWakeNarration(wake: NarratableWake): {
   text: string;
   presentation: WatchPresentation;
@@ -70,14 +71,7 @@ export function deterministicWakeNarration(wake: NarratableWake): {
     resolution: wake.resolution,
     observed: wake.observed ?? null,
   });
-  const lines = [
-    // The headline is already a complete fact, and every surface states it this way.
-    wake.subjectLink ? `${presentation.headline} (${wake.subjectLink})` : presentation.headline,
-    wake.note ? watchNoteLine(wake.note) : null,
-    nextStep(presentation, wake.subjectLink),
-  ].filter((line): line is string => Boolean(line));
-
-  return { text: lines.join("\n\n"), presentation };
+  return { text: nextStep(presentation), presentation };
 }
 
 /**

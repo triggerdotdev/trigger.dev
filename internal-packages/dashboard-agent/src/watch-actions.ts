@@ -510,7 +510,6 @@ async function narrateWatchWake(args: {
     resolution: wakeResolution(action),
     observed: action.observed,
     note: action.note,
-    subjectLink: wakeSubjectLink(action, tenancy),
     startsInvestigation: wakeStartsInvestigation(action),
   });
   logger.info("dashboard-agent watch wake narration lane", {
