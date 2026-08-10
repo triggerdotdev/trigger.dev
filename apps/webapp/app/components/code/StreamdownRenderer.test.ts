@@ -1,5 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { restrictModelUrls } from "./StreamdownRenderer";
+import { restrictModelUrls, StreamdownRenderer } from "./StreamdownRenderer";
 
 // streamdown calls urlTransform(url, key, node) to compute each url attribute; a
 // returned undefined removes the attribute, so no request is ever issued.
@@ -40,5 +42,39 @@ describe("restrictModelUrls (link href)", () => {
   it("drops unsafe link schemes", () => {
     expect(restrictModelUrls("javascript:alert(1)", "href", link)).toBeUndefined();
     expect(restrictModelUrls("data:text/html,<script>", "href", link)).toBeUndefined();
+  });
+});
+
+// Force the lazy component to load, then return its resolved default so we can render it
+// synchronously. This proves the policy is actually wired into the JSX, not just exported.
+async function resolveStreamdownRenderer() {
+  const lazy = StreamdownRenderer as unknown as {
+    _payload: unknown;
+    _init: (payload: unknown) => (props: { children: string }) => JSX.Element;
+  };
+  try {
+    lazy._init(lazy._payload);
+  } catch (thenable) {
+    await thenable;
+  }
+  return lazy._init(lazy._payload);
+}
+
+describe("StreamdownRenderer (rendered markdown)", () => {
+  it("never lets a model-authored remote image src reach the DOM", async () => {
+    const Renderer = await resolveStreamdownRenderer();
+    const markdown = [
+      "![x](https://www.google.com/s2/favicons?domain=SECRET.evil.tld)",
+      "![y](//evil.tld/pixel.gif)",
+      "![z](/local/pic.png)",
+    ].join("\n\n");
+    const html = renderToStaticMarkup(createElement(Renderer, null, markdown));
+
+    // No remote host is ever fetched: no absolute or protocol-relative image src survives.
+    expect(html).not.toContain('src="http');
+    expect(html).not.toContain('src="//');
+    expect(html).not.toContain("SECRET.evil.tld");
+    // A same-origin relative image is untouched, so the policy does not over-block.
+    expect(html).toContain('src="/local/pic.png"');
   });
 });
