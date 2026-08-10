@@ -146,6 +146,9 @@ export function DashboardAgentPanel({
         if (!res.ok && res.status !== 404) {
           console.error(`Dashboard agent: failed to open chat ${id} (${res.status})`);
           toast.error("We couldn't open that chat. Try again in a moment.");
+          // Transient failure: keep the stored pointer so the chat can be reopened.
+          if (seq === openChatRequestSeq.current) setActive(null);
+          return;
         }
         const data = res.ok ? ((await res.json()) as OpenedChatResponse) : undefined;
         if (seq !== openChatRequestSeq.current) return;
