@@ -195,8 +195,15 @@ export function useDeliveriesLiveReload({
       if (checkForNewDeliveries) {
         searchParams.set("includeNewDeliveries", "true");
         searchParams.set("since", String(knownNewestDeliveryMs));
-        const to = new URLSearchParams(location.search).get("to");
+        const current = new URLSearchParams(location.search);
+        const to = current.get("to");
         if (to) searchParams.set("to", to);
+        for (const status of current.getAll("statuses")) searchParams.append("statuses", status);
+        for (const webhook of current.getAll("webhooks")) searchParams.append("webhooks", webhook);
+        for (const key of ["deliveryId", "runId", "test"] as const) {
+          const value = current.get(key);
+          if (value) searchParams.set(key, value);
+        }
       }
 
       deliveriesPollFetcher.load(`${deliveriesResourcesBasePath}/live?${searchParams.toString()}`);

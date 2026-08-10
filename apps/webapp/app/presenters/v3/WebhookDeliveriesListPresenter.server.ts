@@ -62,32 +62,11 @@ export class WebhookDeliveriesListPresenter {
   }): Promise<WebhookDeliveriesListResult> {
     const periodMs = period ? (parseDuration(period) ?? undefined) : undefined;
 
-    // Resolve the handler-slug webhook filter to endpoint ids. A non-empty webhook
-    // filter that matches no endpoints must return nothing, so fall back to a
-    // sentinel id that can never match rather than dropping the filter entirely.
-    let webhookEndpointIds: string[] | undefined;
-    if (webhooks && webhooks.length > 0) {
-      const endpoints = await webhookReplica.webhookEndpoint.findMany({
-        where: {
-          runtimeEnvironmentId: environmentId,
-          handlerWebhookId: { in: boundedIn(webhooks) },
-        },
-        select: { id: true },
-      });
-      webhookEndpointIds = endpoints.length > 0 ? endpoints.map((e) => e.id) : ["__none__"];
-    }
-
-    // The runId param is a FRIENDLY run id; the deliveries store the INTERNAL id.
-    // Resolve it, and force empty results when no run matches.
-    let internalRunId: string | undefined;
-    if (runId) {
-      const run = await runStore.findRun(
-        { friendlyId: runId },
-        { select: { id: true } },
-        this.replica
-      );
-      internalRunId = run?.id ?? "__none__";
-    }
+    const { webhookEndpointIds, internalRunId } = await this.#resolveFilterScope(
+      environmentId,
+      webhooks,
+      runId
+    );
 
     // Built per request (factory, NOT a singleton), matching every RunsRepository consumer.
     const repository = webhookDeliveriesRepository({
@@ -156,5 +135,102 @@ export class WebhookDeliveriesListPresenter {
         previous: pagination.previousCursor ?? undefined,
       },
     };
+  }
+
+  /**
+   * Count deliveries newer than `since` that match the same filters the list is showing, for the
+   * live "N new deliveries" badge. Applies the same filter resolution as {@link call} so the badge
+   * never counts events the filtered list would exclude. `webhookEndpointId` scopes to a single
+   * endpoint (the per-webhook page); `webhooks` is the cross-endpoint handler filter.
+   */
+  async countNewDeliveries({
+    organizationId,
+    projectId,
+    environmentId,
+    webhookEndpointId,
+    webhooks,
+    statuses,
+    deliveryId,
+    runId,
+    isTest,
+    since,
+    to,
+  }: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    webhookEndpointId?: string;
+    webhooks?: string[];
+    statuses?: WebhookDeliveryStatus[];
+    deliveryId?: string;
+    runId?: string;
+    isTest?: boolean;
+    since: number;
+    to?: number;
+  }): Promise<number> {
+    if (to !== undefined && to <= since) return 0;
+
+    const { webhookEndpointIds, internalRunId } = await this.#resolveFilterScope(
+      environmentId,
+      webhooks,
+      runId
+    );
+
+    const repository = webhookDeliveriesRepository({
+      clickhouse: this.clickhouse,
+      prisma: webhookReplica,
+    });
+
+    const { deliveryIds } = await repository.listDeliveryIds({
+      organizationId,
+      projectId,
+      environmentId,
+      webhookEndpointId,
+      webhookEndpointIds,
+      deliveryId,
+      runId: internalRunId,
+      statuses,
+      isTest,
+      from: since + 1,
+      to,
+      page: { size: 100 },
+    });
+
+    return deliveryIds.length;
+  }
+
+  /**
+   * Resolve the handler-slug webhook filter to endpoint ids and the friendly runId to the internal
+   * id. A non-empty filter that matches nothing resolves to a sentinel that can never match, so the
+   * filter returns nothing rather than being dropped.
+   */
+  async #resolveFilterScope(
+    environmentId: string,
+    webhooks?: string[],
+    runId?: string
+  ): Promise<{ webhookEndpointIds?: string[]; internalRunId?: string }> {
+    let webhookEndpointIds: string[] | undefined;
+    if (webhooks && webhooks.length > 0) {
+      const endpoints = await webhookReplica.webhookEndpoint.findMany({
+        where: {
+          runtimeEnvironmentId: environmentId,
+          handlerWebhookId: { in: boundedIn(webhooks) },
+        },
+        select: { id: true },
+      });
+      webhookEndpointIds = endpoints.length > 0 ? endpoints.map((e) => e.id) : ["__none__"];
+    }
+
+    let internalRunId: string | undefined;
+    if (runId) {
+      const run = await runStore.findRun(
+        { friendlyId: runId },
+        { select: { id: true } },
+        this.replica
+      );
+      internalRunId = run?.id ?? "__none__";
+    }
+
+    return { webhookEndpointIds, internalRunId };
   }
 }

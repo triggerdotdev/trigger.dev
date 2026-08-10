@@ -1,7 +1,9 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
+import { type WebhookDeliveryStatus } from "@trigger.dev/database";
 import { $replica, webhookReplica } from "~/db.server";
+import { WebhookDeliveriesListPresenter } from "~/presenters/v3/WebhookDeliveriesListPresenter.server";
 import { resolveDeliveryRunTargets } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
@@ -35,6 +37,38 @@ const SearchParamsSchema = z.object({
   since: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
 });
+
+const KNOWN_DELIVERY_STATUSES: readonly WebhookDeliveryStatus[] = [
+  "PENDING",
+  "PROCESSING",
+  "SUCCEEDED",
+  "FAILED",
+  "FILTERED",
+];
+
+/**
+ * Parse the deliveries-list filters so the new-deliveries count applies the same ones the list is
+ * showing (its badge must never count events the filtered list would exclude). Mirrors the top-level
+ * list's param parsing: repeated or CSV `statuses`, repeated `webhooks`, `deliveryId`, `runId`, `test`.
+ */
+function parseListFilters(searchParams: URLSearchParams) {
+  const statusValues = searchParams
+    .getAll("statuses")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value): value is WebhookDeliveryStatus =>
+      KNOWN_DELIVERY_STATUSES.includes(value as WebhookDeliveryStatus)
+    );
+  const webhooks = searchParams.getAll("webhooks").filter((value) => value.length > 0);
+  const testParam = searchParams.get("test");
+  return {
+    statuses: statusValues.length > 0 ? statusValues : undefined,
+    webhooks: webhooks.length > 0 ? webhooks : undefined,
+    deliveryId: searchParams.get("deliveryId") ?? undefined,
+    runId: searchParams.get("runId") ?? undefined,
+    isTest: testParam === "only" ? true : testParam === "hide" ? false : undefined,
+  };
+}
 
 export type LiveDeliveryFields = {
   friendlyId: string;
@@ -114,19 +148,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       : Promise.resolve([]),
     newDeliveriesSince !== undefined
       ? (async () => {
-          if (to !== undefined && to <= newDeliveriesSince) {
-            return { count: 0, since: newDeliveriesSince };
-          }
-          const { deliveryIds: newIds } = await repository.listDeliveryIds({
+          const filters = parseListFilters(url.searchParams);
+          const count = await new WebhookDeliveriesListPresenter(
+            $replica,
+            clickhouse
+          ).countNewDeliveries({
             organizationId: project.organizationId,
             projectId: project.id,
             environmentId: environment.id,
             webhookEndpointId,
-            from: newDeliveriesSince + 1,
+            ...filters,
+            since: newDeliveriesSince,
             to,
-            page: { size: 100 },
           });
-          return { count: newIds.length, since: newDeliveriesSince };
+          return { count, since: newDeliveriesSince };
         })()
       : Promise.resolve(undefined),
   ]);
