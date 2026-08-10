@@ -12,7 +12,7 @@ import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
 import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
-import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
+import { assertSourcePatActive, updateLastAccessedAtIfStale } from "../personalAccessToken.server";
 import { assertUserActorScope } from "../userActorEnvironment.server";
 import { env } from "~/env.server";
 import { safeJsonParse } from "~/utils/json";
@@ -475,7 +475,10 @@ async function resolveUserActorClaims(
   claims: UserActorClaims | undefined,
   bearer: string
 ): Promise<UserActorClaims | undefined> {
-  return claims ?? (await verifyUserActorToken(env.SESSION_SECRET, bearer));
+  const resolved = claims ?? (await verifyUserActorToken(env.SESSION_SECRET, bearer));
+  if (!resolved) return undefined;
+  // A token minted from a PAT dies with it — the PAT must still be live.
+  return (await assertSourcePatActive(resolved)) ? resolved : undefined;
 }
 
 type PATRouteBuilderOptions<

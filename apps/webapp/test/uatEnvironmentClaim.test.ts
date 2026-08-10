@@ -10,12 +10,19 @@ const { SESSION_SECRET } = vi.hoisted(() => ({
   SESSION_SECRET: "test-session-secret-for-uat-environment-claim",
 }));
 
-const mocks = vi.hoisted(() => ({
-  can: vi.fn<(...args: any[]) => boolean>(),
-  resolveRunCommit: vi.fn<(...args: any[]) => Promise<any>>(),
-  resolveDashboardAgentRepoSnapshot: vi.fn<(...args: any[]) => Promise<any>>(),
-  findCurrentWorkerFromEnvironment: vi.fn<(...args: any[]) => Promise<any>>(),
-}));
+const mocks = vi.hoisted(() => {
+  // Defaults to "PAT still live" so the many existing UAT route cases keep passing;
+  // the recheck describe overrides it per-case.
+  const assertSourcePatActive = vi.fn<(...args: any[]) => Promise<boolean>>();
+  assertSourcePatActive.mockResolvedValue(true);
+  return {
+    can: vi.fn<(...args: any[]) => boolean>(),
+    resolveRunCommit: vi.fn<(...args: any[]) => Promise<any>>(),
+    resolveDashboardAgentRepoSnapshot: vi.fn<(...args: any[]) => Promise<any>>(),
+    findCurrentWorkerFromEnvironment: vi.fn<(...args: any[]) => Promise<any>>(),
+    assertSourcePatActive,
+  };
+});
 
 vi.mock("@internal/tracing", () => ({
   getMeter: () => ({
@@ -41,6 +48,7 @@ vi.mock("~/services/personalAccessToken.server", () => ({
   // A `tr_pat_` bearer resolves to the member user, driving the non-UAT branch.
   authenticateApiRequestWithPersonalAccessToken: async () => ({ userId: USER_ID }),
   isPersonalAccessToken: (token: string) => token.startsWith("tr_pat_"),
+  assertSourcePatActive: mocks.assertSourcePatActive,
 }));
 vi.mock("~/services/organizationAccessToken.server", () => ({
   authenticateApiRequestWithOrganizationAccessToken: vi.fn(),
@@ -520,6 +528,35 @@ describe("repo snapshot authorization", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ url: "https://example.com/archive.tar.gz" });
+  });
+});
+
+/**
+ * The env-JWT exchange is the load-bearing UAT verify site. A token whose source PAT is no
+ * longer live must be turned away there — `assertSourcePatActive` is the recheck, stubbed
+ * here so the wiring is what's under test (its own logic is unit-tested separately).
+ */
+describe("env JWT exchange — source PAT liveness recheck", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+  });
+
+  it("401s when the source PAT recheck fails", async () => {
+    mocks.assertSourcePatActive.mockResolvedValueOnce(false);
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    expect(response.status).toBe(401);
+  });
+
+  it("mints when the source PAT recheck passes", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    expect(response.status).toBe(200);
   });
 });
 

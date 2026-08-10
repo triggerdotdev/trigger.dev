@@ -68,6 +68,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const token = await signUserActorToken(env.SESSION_SECRET, {
       userId: patAuth.userId,
       client: body.client ?? "personal-access-token",
+      // Bind the token to its source PAT so revoking the PAT invalidates it.
+      pat: patAuth.tokenId,
       cap: body.cap,
       // Absolute exp (seconds since epoch). jose treats a number as absolute.
       expirationTime: Math.floor(Date.now() / 1000) + ttlSeconds,

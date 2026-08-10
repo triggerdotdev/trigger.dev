@@ -291,6 +291,22 @@ export function isPersonalAccessToken(token: string) {
 }
 
 /**
+ * A user-actor token minted from a PAT carries the source PAT's id (`claims.pat`).
+ * The token is stateless, so revoking the PAT can't invalidate it by itself — hosts
+ * recheck the source PAT is still live here. A token with no `pat` (e.g. the dashboard
+ * agent's) has no source to check and is left alone.
+ */
+export async function assertSourcePatActive(claims: UserActorClaims): Promise<boolean> {
+  if (!claims.pat) return true;
+
+  const found = await prisma.personalAccessToken.findFirst({
+    where: { id: claims.pat, revokedAt: null },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
+/**
  * Read-only check that an authorization code is still mintable: it exists, is
  * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
  * consent-screen loader show Authorize vs expired/invalid without minting a PAT.
