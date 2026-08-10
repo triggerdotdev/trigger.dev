@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { TriggerChatTransport, createChatTransport } from "./chat.js";
+import { TriggerChatTransport, createChatTransport, type ChatTransportEvent } from "./chat.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -1176,7 +1176,7 @@ describe("TriggerChatTransport", () => {
       expect(transport.getSession("chat-slow")?.isStreaming).toBe(false);
     });
 
-    it("gives up after a bounded number of resubscribes", async () => {
+    it("surfaces an error after the resubscribe budget is exhausted", async () => {
       // Fake timers so the 100ms..1.6s backoffs don't cost real seconds.
       vi.useFakeTimers();
       try {
@@ -1205,12 +1205,18 @@ describe("TriggerChatTransport", () => {
           messages: [createUserMessage("hi")],
           abortSignal: undefined,
         });
+        // A cut-off turn surfaces an error rather than reading as complete.
+        // Attach the rejection assertion before advancing timers so the
+        // rejection is never unhandled.
         const drained = drainChunks(stream);
+        const rejects = expect(drained).rejects.toThrow(/reconnect budget exhausted/i);
         await vi.advanceTimersByTimeAsync(10_000);
-        await drained;
+        await rejects;
 
         // One initial connect plus the five-attempt resubscribe budget.
         expect(subscribeCount).toBe(6);
+        // State is cleared before the throw, so a reload won't reopen a
+        // doomed subscription.
         expect(transport.getSession("chat-empty")?.isStreaming).toBe(false);
       } finally {
         vi.useRealTimers();
@@ -1258,6 +1264,102 @@ describe("TriggerChatTransport", () => {
         { type: "text-delta", id: "p1", delta: "turn1" },
         { type: "text-delta", id: "p2", delta: "wake" },
       ]);
+    });
+
+    it("does not peek-settle an idle resubscribe, so the next turn is delivered", async () => {
+      // Watch mode must NOT send X-Peek-Settled between turns: a settled peek
+      // while no turn is in flight closes the standing subscription and the
+      // viewer never sees turn 2. This mock plays the server's peek shortcut —
+      // a peek request with nothing in flight settles — to prove the transport
+      // long-polls instead.
+      const subscribeHeaders: Headers[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeHeaders.push(new Headers(init?.headers));
+          const n = subscribeHeaders.length;
+          if (n === 1) {
+            // Turn 1 completes, then the body EOFs (no settled header).
+            return defaultSseResponse([
+              { type: "text-delta", id: "p1", delta: "turn1" },
+              { type: "trigger:turn-complete" },
+            ]);
+          }
+          if (n === 2) {
+            // Idle resubscribe. If it peeked, the server settles and the
+            // subscription would close before turn 2; a long-poll delivers it.
+            if (init && new Headers(init.headers).get("X-Peek-Settled")) {
+              return settled(defaultSseResponse([]));
+            }
+            return defaultSseResponse([
+              { type: "text-delta", id: "p2", delta: "turn2" },
+              { type: "trigger:turn-complete" },
+            ]);
+          }
+          // Turn 2 done — end the watch cleanly.
+          return settled(defaultSseResponse([]));
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-watch-turn2": { publicAccessToken: "p", isStreaming: true } },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-watch-turn2" });
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeHeaders[1]?.get("X-Peek-Settled")).toBeNull();
+      expect(chunks).toEqual([
+        { type: "text-delta", id: "p1", delta: "turn1" },
+        { type: "text-delta", id: "p2", delta: "turn2" },
+      ]);
+    });
+
+    it("cancelling the reader stops the resubscribe loop", async () => {
+      // A consumer that stops reading without aborting must not leak the
+      // resubscribe loop — the stream's cancel() aborts it.
+      vi.useFakeTimers();
+      try {
+        let subscribeCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            subscribeCount++;
+            // Quiet: EOF, no records, never settled — watch keeps resubscribing.
+            return defaultSseResponse([]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const events: ChatTransportEvent[] = [];
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          watch: true,
+          onEvent: (e) => events.push(e),
+          sessions: { "chat-watch-cancel": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const stream = await transport.reconnectToStream({ chatId: "chat-watch-cancel" });
+        const reader = stream!.getReader();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(subscribeCount).toBeGreaterThan(1);
+
+        const countAtCancel = subscribeCount;
+        await reader.cancel();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(subscribeCount).toBe(countAtCancel);
+        // A clean cancel must not surface a spurious stream-error (an
+        // unguarded controller.close() after cancel would throw "Invalid
+        // state" and leak it onto the telemetry channel).
+        expect(events.some((e) => e.type === "stream-error")).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stops when the server says the session settled", async () => {
