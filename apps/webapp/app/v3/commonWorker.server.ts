@@ -170,8 +170,7 @@ function initializeWorker() {
       "dashboardAgent.watchMaintenance": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
-        cron: "*/5 * * * *",
-        jitterInMs: 30_000,
+        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
         retry: {
           maxAttempts: 1,
         },
