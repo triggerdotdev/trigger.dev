@@ -1780,11 +1780,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         let eofResubscribes = 0;
 
         const resumeAfterEof = async () => {
+          // Watch mode is a standing subscription: it outlives turn-complete
+          // (which clears `isStreaming`) and idle windows EOF by design, so the
+          // give-up budget doesn't apply. Only abort or a settled session ends it.
           while (
-            state.isStreaming &&
+            (this.watchMode || (state.isStreaming && eofResubscribes < MAX_EOF_RESUBSCRIBES)) &&
             !currentSubscription?.sessionSettled &&
-            !combinedSignal.aborted &&
-            eofResubscribes < MAX_EOF_RESUBSCRIBES
+            !combinedSignal.aborted
           ) {
             eofResubscribes++;
             // Sleep, but wake immediately on abort — otherwise a stop lands
