@@ -12,7 +12,10 @@ import type { JSONValue } from "@ai-sdk/provider";
 const MAX_UNTRUSTED_FIELD_CHARS = 4096;
 export function fenceUntrusted(label: string, text: unknown): string | undefined {
   if (text === undefined || text === null) return undefined;
-  const raw = String(text);
+  // Neutralize the guillemet delimiter bytes so the payload can't reproduce the
+  // closing token and break out of its own fence. Guillemets are effectively
+  // absent from real run/error/commit text, so flattening them to ASCII is safe.
+  const raw = String(text).replaceAll("«", "<").replaceAll("»", ">");
   const capped =
     raw.length > MAX_UNTRUSTED_FIELD_CHARS
       ? `${raw.slice(0, MAX_UNTRUSTED_FIELD_CHARS)}…[truncated ${
@@ -160,7 +163,7 @@ export function curateError(group: any) {
     resolvedBy: group.resolvedBy,
     ignoredAt: group.ignoredAt,
     ignoredUntil: group.ignoredUntil,
-    ignoredReason: group.ignoredReason,
+    ignoredReason: fenceUntrusted("ignoredReason", group.ignoredReason),
     ignoredByUserId: group.ignoredByUserId,
   };
 }
@@ -297,7 +300,7 @@ export function curateDeploy(deployment: any) {
     createdAt: deployment?.createdAt,
     deployedAt: deployment?.deployedAt,
     commitMessage: fenceUntrusted("commitMessage", git?.commitMessage),
-    commitRef: git?.commitRef,
+    commitRef: fenceUntrusted("commitRef", git?.commitRef),
     pullRequestNumber: git?.pullRequestNumber,
     error: deployment?.error ? { name: deployment.error.name } : undefined,
   };
