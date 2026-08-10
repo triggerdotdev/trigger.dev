@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { appendRunFilters, navigateDestination, sameOriginPath } from "./navigate-target";
 
 const RUNS_PATH = "/orgs/acme/projects/api/env/prod/runs";
+
+const FAILING = [
+  "COMPLETED_WITH_ERRORS",
+  "SYSTEM_FAILURE",
+  "CRASHED",
+  "EXPIRED",
+  "TIMED_OUT",
+  "INTERRUPTED",
+];
+
+/** What the runs page makes of a URL this module produced. */
+function pageReads(path: string) {
+  return getRunFiltersFromSearchParams(
+    new URLSearchParams(new URL(path, "https://x.invalid").search)
+  );
+}
 
 describe("appendRunFilters", () => {
   it("returns the path untouched with no filters", () => {
@@ -10,13 +27,13 @@ describe("appendRunFilters", () => {
 
   it("writes arrays as repeated params and keeps existing ones", () => {
     const result = appendRunFilters(`${RUNS_PATH}?query=payments`, {
-      statuses: ["FAILED", "CRASHED"],
+      statuses: ["COMPLETED_WITH_ERRORS", "CRASHED"],
       tasks: "send-email",
       period: "1d",
     });
 
     expect(result).toBe(
-      `${RUNS_PATH}?query=payments&statuses=FAILED&statuses=CRASHED&tasks=send-email&period=1d`
+      `${RUNS_PATH}?query=payments&statuses=COMPLETED_WITH_ERRORS&statuses=CRASHED&tasks=send-email&period=1d`
     );
   });
 
@@ -30,6 +47,51 @@ describe("appendRunFilters", () => {
     expect(appendRunFilters(RUNS_PATH, { search: "", rootOnly: false, tags: [] })).toBe(RUNS_PATH);
     expect(appendRunFilters(RUNS_PATH, { rootOnly: true })).toBe(`${RUNS_PATH}?rootOnly=true`);
   });
+
+  it("expands FAILED into the statuses the page calls failures", () => {
+    const result = appendRunFilters(RUNS_PATH, { statuses: ["FAILED"], period: "1d" });
+
+    expect(pageReads(result)).toEqual({ statuses: FAILING, period: "1d" });
+  });
+
+  it("takes the status the user said, however they cased it", () => {
+    expect(pageReads(appendRunFilters(RUNS_PATH, { statuses: "failed" }))).toEqual({
+      statuses: FAILING,
+    });
+  });
+
+  it("passes a page-native status through untranslated", () => {
+    const result = appendRunFilters(RUNS_PATH, { statuses: ["COMPLETED_SUCCESSFULLY"] });
+
+    expect(result).toBe(`${RUNS_PATH}?statuses=COMPLETED_SUCCESSFULLY`);
+    expect(pageReads(result)).toEqual({ statuses: ["COMPLETED_SUCCESSFULLY"] });
+  });
+
+  it("translates the other API status names the model borrows", () => {
+    expect(pageReads(appendRunFilters(RUNS_PATH, { statuses: ["QUEUED", "COMPLETED"] }))).toEqual({
+      statuses: ["PENDING", "COMPLETED_SUCCESSFULLY"],
+    });
+  });
+
+  it("drops a status the page cannot parse rather than losing every filter with it", () => {
+    const result = appendRunFilters(RUNS_PATH, { statuses: ["NONSENSE"], period: "1d" });
+
+    expect(result).toBe(`${RUNS_PATH}?period=1d`);
+    expect(pageReads(result)).toEqual({ period: "1d" });
+  });
+
+  // The page's parser has no `search`, and an unread param is only noise in the URL.
+  it("leaves search out of the URL", () => {
+    expect(appendRunFilters(RUNS_PATH, { search: "boom", period: "1d" })).toBe(
+      `${RUNS_PATH}?period=1d`
+    );
+  });
+
+  // Control: the untranslated URL is what the live failure looked like. One status the
+  // page cannot parse and it discards everything, the period included.
+  it("pins why translation is needed: raw FAILED wipes the whole filter set", () => {
+    expect(pageReads(`${RUNS_PATH}?statuses=FAILED&period=1d`)).toEqual({});
+  });
 });
 
 describe("navigateDestination", () => {
@@ -38,7 +100,10 @@ describe("navigateDestination", () => {
   it("routes a dashboard path and applies the intent's filters", () => {
     expect(
       navigateDestination({ path: RUNS_PATH, external: false }, { statuses: ["FAILED"] })
-    ).toEqual({ kind: "route", path: `${RUNS_PATH}?statuses=FAILED` });
+    ).toEqual({
+      kind: "route",
+      path: `${RUNS_PATH}?${FAILING.map((s) => `statuses=${s}`).join("&")}`,
+    });
   });
 
   it("never routes a source file, it leaves the dashboard", () => {
