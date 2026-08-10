@@ -51,6 +51,8 @@ const ctx = vi.hoisted(() => ({
   agentDb: undefined as unknown as DashboardAgentDb,
   canAccess: true,
   actor: undefined as undefined | { userId: string; client?: string; environmentId?: string },
+  /** Every task id the suite would have triggered for real. */
+  triggered: [] as string[],
 }));
 
 vi.mock("~/services/uatRoutePreamble.server", () => ({
@@ -83,6 +85,23 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.canAccess,
 }));
+
+// The routes drive the real service, which builds a TriggerClient from .env — so an unmocked
+// suite triggers actual runs against whatever origin .env names.
+vi.mock("@trigger.dev/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@trigger.dev/sdk")>();
+  return {
+    ...actual,
+    TriggerClient: class {
+      tasks = {
+        trigger: async (taskId: string) => {
+          ctx.triggered.push(taskId);
+          return { id: "run_test" };
+        },
+      };
+    },
+  };
+});
 
 const SESSION_SECRET = "test-session-secret-for-watch-tokens";
 process.env.SESSION_SECRET = SESSION_SECRET;
@@ -1593,6 +1612,9 @@ describe("the check endpoint", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.result).toBe("terminal_unsatisfied");
+
+    // Arming the chain goes through the stubbed client, never a real trigger.
+    expect(ctx.triggered).toContain("dashboard-agent-watch-batch");
 
     const row = await getWatch(ctx.agentDb, { id: watch.watchId });
     expect(row?.lastCheckedAt).not.toBeNull();
