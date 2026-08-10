@@ -121,6 +121,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     parsed = undefined;
   }
 
+  // Hoisted so it is visible after the fetch: quota is charged only once the send succeeds.
+  let countsAgainstQuota = false;
+
   if (parsed) {
     // Actions are placed by the server only, and this proxy is the one path a browser
     // can reach `.in` through.
@@ -134,7 +137,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       // Only a real user message consumes quota; action turns were refused above.
-      const countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
+      countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
       if (countsAgainstQuota) {
         const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
           organizationId: project.organizationId,
@@ -170,12 +173,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };
       body = JSON.stringify(parsed);
-
-      if (countsAgainstQuota) {
-        await recordAgentMessageSent(dashboardAgentDb, {
-          organizationId: project.organizationId,
-        });
-      }
     }
   }
 
@@ -188,6 +185,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const upstream = await fetch(upstreamUrl, { method: "POST", headers, body });
     const text = await upstream.text();
+    // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
+    // must not burn a send that never reached the agent.
+    if (countsAgainstQuota && upstream.ok) {
+      await recordAgentMessageSent(dashboardAgentDb, {
+        organizationId: project.organizationId,
+      });
+    }
     return new Response(text, {
       status: upstream.status,
       headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
