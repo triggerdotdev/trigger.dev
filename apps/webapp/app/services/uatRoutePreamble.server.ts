@@ -1,6 +1,7 @@
 import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 import { env } from "~/env.server";
 import { authenticateRequest, type AuthenticationResult } from "~/services/apiAuth.server";
+import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 
 /**
  * Auth preamble for `api.v1` routes that opt into delegated user-actor tokens alongside a PAT
@@ -23,6 +24,8 @@ export async function authenticateUatOrApiRequest(
   if (bearer && isUserActorToken(bearer)) {
     const claims = await verifyUserActorToken(env.SESSION_SECRET, bearer);
     if (!claims) return undefined;
+    // A token minted from a PAT dies with it — the PAT must still be live.
+    if (!(await assertSourcePatActive(claims))) return undefined;
     return {
       // The claims ride on the authentication result too: resolving an environment from it
       // enforces the token's environment scope, so no route has to remember to.
