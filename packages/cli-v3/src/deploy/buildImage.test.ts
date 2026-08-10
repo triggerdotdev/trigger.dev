@@ -25,4 +25,32 @@ describe("generateContainerfile", () => {
 
     expect(containerfile).toContain(`FROM ${image} AS base`);
   });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "splits node_modules and app code into separate layers for %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const user = runtime === "bun" ? "bun:bun" : "node:node";
+
+      expect(containerfile).toContain("FROM build AS code");
+      expect(containerfile).toContain("RUN rm -rf node_modules");
+      expect(containerfile).toContain(
+        `COPY --from=build --chown=${user} /app/node_modules ./node_modules`
+      );
+      expect(containerfile).toContain(`COPY --from=code --chown=${user} /app ./`);
+      // The final stage must not copy all of /app from the build stage anymore,
+      // or node_modules would be duplicated across two layers
+      expect(containerfile).not.toContain(`COPY --from=build --chown=${user} /app ./`);
+
+      // node_modules must exist even for projects with zero external dependencies
+      expect(containerfile).toContain("mkdir -p node_modules");
+    }
+  );
 });

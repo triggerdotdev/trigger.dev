@@ -772,13 +772,19 @@ ${buildArgs}
 ${buildEnvVars}
 
 COPY --chown=bun:bun package.json ./
-RUN bun install --production --no-save
+# mkdir guards against bun not creating node_modules when there are no dependencies
+RUN bun install --production --no-save && mkdir -p node_modules
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
 COPY --chown=bun:bun . .
 
 ${postInstallCommands}
+
+# App files without node_modules, so the final stage can layer them separately
+FROM build AS code
+
+RUN rm -rf node_modules
 
 FROM build AS indexer
 
@@ -831,8 +837,12 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Copy the files from the build stage
-COPY --from=build --chown=bun:bun /app ./
+# Dependencies as their own layer: unchanged deps produce an identical blob
+# that registries and workers already have, so repeat deploys skip it
+COPY --from=build --chown=bun:bun /app/node_modules ./node_modules
+
+# Copy the app files (without node_modules) from the code stage
+COPY --from=code --chown=bun:bun /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
@@ -877,7 +887,8 @@ ENV NODE_ENV=production
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 COPY --chown=node:node package.json ./
-RUN npm i --no-audit --no-fund --no-save --no-package-lock
+# mkdir guards against npm not creating node_modules when there are no dependencies
+RUN npm i --no-audit --no-fund --no-save --no-package-lock && mkdir -p node_modules
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
@@ -887,6 +898,11 @@ ${postInstallCommands}
 
 # IMPORTANT: Doing this again to fix an issue with prisma generate removing the files in node_modules/trigger.dev for some reason...
 COPY --chown=node:node . .
+
+# App files without node_modules, so the final stage can layer them separately
+FROM build AS code
+
+RUN rm -rf node_modules
 
 FROM build AS indexer
 
@@ -941,8 +957,12 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Copy the files from the install stage
-COPY --from=build --chown=node:node /app ./
+# Dependencies as their own layer: unchanged deps produce an identical blob
+# that registries and workers already have, so repeat deploys skip it
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+
+# Copy the app files (without node_modules) from the code stage
+COPY --from=code --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
