@@ -463,7 +463,7 @@ export function watchConditionWording(spec: WatchSpec): WatchConditionWording {
         label: "If it happens again",
         clause: "in case it happens again",
         tooltip: "Get notified if this error happens again",
-        note: `ping me if error ${spec.fingerprint} happens again`,
+        note: `ping me if error ${shortFingerprint(spec.fingerprint)} happens again`,
       };
     case "health_recovery":
       return {

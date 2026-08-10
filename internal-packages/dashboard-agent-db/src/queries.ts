@@ -287,7 +287,7 @@ export async function markChatRead(
  */
 export async function softDeleteChat(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string }
+  params: { chatId: string; userId: string; organizationId: string }
 ): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
   return db.transaction(async (tx) => {
     // The same lock `createWatch` takes, or a concurrent create lands an active
@@ -297,7 +297,13 @@ export async function softDeleteChat(
     const deleted = await tx
       .update(chats)
       .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)))
+      .where(
+        and(
+          eq(chats.id, params.chatId),
+          eq(chats.userId, params.userId),
+          eq(chats.organizationId, params.organizationId)
+        )
+      )
       .returning({ id: chats.id });
 
     if (deleted.length === 0) return { deleted: false, cancelledWatches: [] };
