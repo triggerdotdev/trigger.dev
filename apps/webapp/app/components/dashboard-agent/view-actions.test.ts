@@ -102,6 +102,24 @@ describe("one watch button per answer", () => {
     expect(turnAlreadyOffersWatch([actionsCall, investigationCall])).toBe(true);
   });
 
+  // The report card grows its own "Watch…" button from the view model, so the block
+  // carries no watch action to match on.
+  const reportCard = (title: string, severity: string) =>
+    ({ type: "report", vm: { title, summary: { severity, statements: [] } } }) as never;
+
+  it("sees the health report card's recovery watch", () => {
+    expect(cardAlreadyOffersWatch([reportCard("health", "crit")])).toBe(true);
+    expect(cardAlreadyOffersWatch([reportCard("health", "warn")])).toBe(true);
+    const actionsCall = [{ type: "actions", actions: [watchAction] }] as never[];
+    expect(turnAlreadyOffersWatch([[reportCard("health", "crit")], actionsCall])).toBe(true);
+  });
+
+  it("leaves a report card with no watch button alone", () => {
+    // Green: nothing to recover from. And only the health report has a recovery watch.
+    expect(cardAlreadyOffersWatch([reportCard("health", "ok")])).toBe(false);
+    expect(cardAlreadyOffersWatch([reportCard("cost", "crit")])).toBe(false);
+  });
+
   it("says no when no call in the turn has a card offering one", () => {
     const plain = [card([{ label: "Keep digging", intent: { kind: "ask", prompt: "" } }])];
     expect(turnAlreadyOffersWatch([plain, []])).toBe(false);

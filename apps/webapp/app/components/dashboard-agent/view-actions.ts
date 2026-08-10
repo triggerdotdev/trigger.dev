@@ -5,6 +5,7 @@ import {
   isTriggerUri,
   type ActionsBlockAction,
   type ChartAction,
+  type ReportViewModelPayload,
   type ViewBlock,
 } from "@internal/dashboard-agent-contracts";
 
@@ -23,10 +24,22 @@ export function renderableActions<T extends CardAction>(actions: T[]): T[] {
  * shows the same button twice. The card wins: it is the one with the pre-filled spec.
  */
 export function cardAlreadyOffersWatch(blocks: ViewBlock[]): boolean {
-  return blocks.some(
-    (block) =>
-      block.type === "investigation" &&
-      (block.capabilities?.actions ?? []).some((action) => action.intent.kind === "watch")
+  return blocks.some((block) => {
+    if (block.type === "investigation") {
+      return (block.capabilities?.actions ?? []).some((action) => action.intent.kind === "watch");
+    }
+    return block.type === "report" && reportOffersRecoveryWatch(block.vm);
+  });
+}
+
+/**
+ * The report card's watch button isn't in the block — `ReportView` grows it from the
+ * view model, for a health report with something to recover from. Same condition here,
+ * so the button the user will see is the one the guard counts.
+ */
+export function reportOffersRecoveryWatch(vm: ReportViewModelPayload): boolean {
+  return (
+    vm.title === "health" && (vm.summary.severity === "warn" || vm.summary.severity === "crit")
   );
 }
 

@@ -51,6 +51,7 @@ import {
   ReportSeverityIcon,
   type ReportFooterItem,
 } from "./report-sparkline";
+import { reportOffersRecoveryWatch } from "./view-actions";
 
 export type ResolvedUri = { label: string; url: string };
 
@@ -319,19 +320,18 @@ export function ReportView({
 
   // Only offered when there is something to recover from, and only for the health
   // report, which is the one with a recovery watch kind.
-  const recoveryWatch: AgentIntent | null =
-    vm.title === "health" && (severity === "warn" || severity === "crit")
-      ? {
-          kind: "watch",
-          spec: {
-            kind: "health_recovery",
-            report: "health",
-            fromSeverity: severity,
-            note: `${vm.scope} health back to normal`,
-            ...RECOVERY_WATCH,
-          },
-        }
-      : null;
+  const recoveryWatch: AgentIntent | null = reportOffersRecoveryWatch(vm)
+    ? {
+        kind: "watch",
+        spec: {
+          kind: "health_recovery",
+          report: "health",
+          fromSeverity: severity,
+          note: `${vm.scope} health back to normal`,
+          ...RECOVERY_WATCH,
+        },
+      }
+    : null;
 
   // Links a footer action already speaks for aren't repeated as reading matter.
   const footerLinkKeys = new Set(layout.footer.map((entry) => entry.link).filter(Boolean));
