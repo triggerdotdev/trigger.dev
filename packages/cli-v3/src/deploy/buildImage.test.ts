@@ -25,4 +25,53 @@ describe("generateContainerfile", () => {
 
     expect(containerfile).toContain(`FROM ${image} AS base`);
   });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "splits node_modules and app code into separate layers for %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const user = runtime === "bun" ? "bun:bun" : "node:node";
+
+      expect(containerfile).toContain("FROM build AS code");
+      expect(containerfile).toContain(
+        `COPY --from=build --chown=${user} /app/node_modules ./node_modules`
+      );
+      expect(containerfile).toContain(`COPY --from=code --chown=${user} /app ./`);
+      // copying all of /app from build would duplicate node_modules across two layers
+      expect(containerfile).not.toContain(`COPY --from=build --chown=${user} /app ./`);
+    }
+  );
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "orders post-install commands, the node_modules guard, and the code stage for %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: { commands: ["echo post-install"] },
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const postInstall = containerfile.indexOf("RUN echo post-install");
+      // guard after post-install so a command that prunes node_modules can't break the COPY
+      const mkdirGuard = containerfile.indexOf("RUN mkdir -p node_modules");
+      const codeStage = containerfile.indexOf("FROM build AS code");
+      const rmNodeModules = containerfile.indexOf(
+        "RUN chmod -R u+rwX node_modules && rm -rf node_modules"
+      );
+
+      expect(postInstall).toBeGreaterThan(-1);
+      expect(mkdirGuard).toBeGreaterThan(postInstall);
+      expect(codeStage).toBeGreaterThan(mkdirGuard);
+      expect(rmNodeModules).toBeGreaterThan(codeStage);
+    }
+  );
 });

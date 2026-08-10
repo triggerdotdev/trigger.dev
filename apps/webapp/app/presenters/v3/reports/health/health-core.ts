@@ -19,7 +19,16 @@ export type HealthInput = {
     estimated: boolean;
     availability?: "measured" | "unknown";
   };
-  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
+  /**
+   * p95 wait. `availability: "unknown"` = the source had no measurement, so `p95Ms` is a
+   * placeholder that must not be graded — a 0 would read as a confident green.
+   */
+  startLatency: {
+    p95Ms: number;
+    normalP95Ms?: number;
+    series: number[];
+    availability?: "measured" | "unknown";
+  };
   /** `finishedPerMin` is all terminal runs and the drain rate. `completedPerMin` is successes only. */
   throughput: {
     finishedPerMin: number;
@@ -156,21 +165,30 @@ export function buildMetrics(input: HealthInput): Metric[] {
   const t = HEALTH_THRESHOLDS;
   const ev = input.flowEvidence;
 
+  const startLatencyUnknown = input.startLatency.availability === "unknown";
   const startLatency: Metric = {
     id: "start_latency_p95",
     value: input.startLatency.p95Ms,
+    availability: startLatencyUnknown ? "unknown" : "measured",
     unit: "ms",
     aggregation: "p95",
-    normal: input.startLatency.normalP95Ms,
-    delta: delta(input.startLatency.p95Ms, input.startLatency.normalP95Ms),
-    series: { points: input.startLatency.series, kind: "measured" },
-    severity: multiplierSeverity(
-      input.startLatency.p95Ms,
-      input.startLatency.normalP95Ms,
-      t.startLatency.warnMult,
-      t.startLatency.critMult,
-      t.startLatency.floor
-    ),
+    normal: startLatencyUnknown ? undefined : input.startLatency.normalP95Ms,
+    delta: startLatencyUnknown
+      ? undefined
+      : delta(input.startLatency.p95Ms, input.startLatency.normalP95Ms),
+    series: startLatencyUnknown
+      ? undefined
+      : { points: input.startLatency.series, kind: "measured" },
+    // Nothing measured -> nothing to classify (a placeholder must never grade green).
+    severity: startLatencyUnknown
+      ? "ok"
+      : multiplierSeverity(
+          input.startLatency.p95Ms,
+          input.startLatency.normalP95Ms,
+          t.startLatency.warnMult,
+          t.startLatency.critMult,
+          t.startLatency.floor
+        ),
   };
 
   // An unmeasurable depth must not be classified: a placeholder 0 would read as a confident green.
