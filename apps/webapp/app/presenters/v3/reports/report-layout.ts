@@ -574,7 +574,8 @@ function metricDelta(metric: LayoutMetricInput): LayoutDelta | undefined {
   // A fall's own multiplier rounds to 0 or 1, so measure how far it fell instead.
   if (delta?.dir === "down") {
     const fall = fallMultiplier(metric);
-    if (fall === null) return { text: REPORT_GLYPH.down, dir: "down" };
+    // An arrow with no multiplier behind it says nothing the sparkline hasn't.
+    if (fall === null) return undefined;
     if (fall !== undefined) return { text: `${REPORT_GLYPH.down} ${fall}×`, dir: "down" };
   }
   if (delta && delta.mult !== undefined && delta.mult > 1 && delta.dir !== "flat") {
