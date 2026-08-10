@@ -747,6 +747,10 @@
   & [data-code-block] .line {
     @apply leading-relaxed;
   }
+  /* Streamdown renders the fenced block body at text-sm; code blocks are 12px. */
+  & [data-streamdown="code-block-body"] {
+    @apply text-xs;
+  }
 }
 
 /*
