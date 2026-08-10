@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { TriggerChatTransport, createChatTransport } from "./chat.js";
+import { TriggerChatTransport, createChatTransport, type ChatTransportEvent } from "./chat.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -1335,10 +1335,12 @@ describe("TriggerChatTransport", () => {
           throw new Error(`Unexpected URL: ${urlStr}`);
         });
 
+        const events: ChatTransportEvent[] = [];
         const transport = new TriggerChatTransport({
           task: "my-chat-task",
           accessToken: () => "pat",
           watch: true,
+          onEvent: (e) => events.push(e),
           sessions: { "chat-watch-cancel": { publicAccessToken: "p", isStreaming: true } },
         });
 
@@ -1351,6 +1353,10 @@ describe("TriggerChatTransport", () => {
         await reader.cancel();
         await vi.advanceTimersByTimeAsync(10_000);
         expect(subscribeCount).toBe(countAtCancel);
+        // A clean cancel must not surface a spurious stream-error (an
+        // unguarded controller.close() after cancel would throw "Invalid
+        // state" and leak it onto the telemetry channel).
+        expect(events.some((e) => e.type === "stream-error")).toBe(false);
       } finally {
         vi.useRealTimers();
       }

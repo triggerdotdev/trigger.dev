@@ -1864,7 +1864,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
           const opened = (await openWithAuthRetry()) ?? (await resumeAfterEof());
           if (opened === null) {
-            controller.close();
+            try {
+              controller.close();
+            } catch {
+              /* already closed by a consumer cancel */
+            }
             return;
           }
           reader = opened.reader;
@@ -1894,7 +1898,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (next.done) {
                 const resumed = await resumeAfterEof();
                 if (resumed === null) {
-                  controller.close();
+                  try {
+                    controller.close();
+                  } catch {
+                    /* already closed by a consumer cancel */
+                  }
                   return;
                 }
                 reader = resumed.reader;
@@ -1907,7 +1915,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             if (combinedSignal.aborted) {
               internalAbort.abort();
               await reader.cancel();
-              controller.close();
+              try {
+                controller.close();
+              } catch {
+                /* already closed by a consumer cancel */
+              }
               return;
             }
 
