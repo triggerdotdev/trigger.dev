@@ -326,7 +326,7 @@ export function ReportView({
         spec: {
           kind: "health_recovery",
           report: "health",
-          fromSeverity: severity,
+          fromSeverity: vm.summary.severity,
           note: `${vm.scope} health back to normal`,
           ...RECOVERY_WATCH,
         },
