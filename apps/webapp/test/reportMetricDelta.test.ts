@@ -55,7 +55,7 @@ describe("report layout — a metric's movement against its baseline", () => {
     expect(row.delta).toEqual({ text: `${REPORT_GLYPH.down} 20×`, dir: "down" });
   });
 
-  it("renders a collapse to zero as a bare down arrow", () => {
+  it("says nothing about a collapse to zero, which has no multiplier", () => {
     const row = metricRow({
       id: "throughput",
       value: 0,
@@ -64,7 +64,7 @@ describe("report layout — a metric's movement against its baseline", () => {
       severity: "crit",
     });
 
-    expect(row.delta).toEqual({ text: REPORT_GLYPH.down, dir: "down" });
+    expect(row.delta).toBeUndefined();
   });
 
   it("leaves a dip that doesn't round past 1× reading as flat", () => {
