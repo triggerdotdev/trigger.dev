@@ -46,7 +46,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const query = url.searchParams.get("q");
 
   if (!query) {
-    return new Response("No query", { status: 404 });
+    return new Response("No query", { status: 400 });
   }
 
   const showAdminUi = hasAdminDisplayAccess(user);

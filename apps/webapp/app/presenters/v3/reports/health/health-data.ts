@@ -26,6 +26,12 @@ function num(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Like `num`, but keeps "no measurement" distinct from a measured 0. */
+function optionalNum(value: unknown): number | undefined {
+  const n = num(value, NaN);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function mean(xs: number[]): number {
   return xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 }
@@ -260,7 +266,7 @@ async function tryQuery(
 export type FlowData = {
   flowSource: HealthInput["flowSource"];
   pending: HealthInput["pending"];
-  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
+  startLatency: HealthInput["startLatency"];
   evidence: HealthInput["flowEvidence"];
   /** Epoch ms of the freshest telemetry. Null means no signal, which makes liveness unknown. */
   telemetryLastTs: number | null;
@@ -455,6 +461,8 @@ function buildQueueMetricsFlow(args: {
     ? bucketTimestamps
     : undefined;
 
+  const waitP95 = optionalNum(liveScalar.wait_p95);
+
   return {
     flowSource: "queue_metrics_v1",
     pending: {
@@ -465,9 +473,10 @@ function buildQueueMetricsFlow(args: {
       availability: "measured",
     },
     startLatency: {
-      p95Ms: num(liveScalar.wait_p95),
-      normalP95Ms: num(baselineScalar.wait_p95),
+      p95Ms: waitP95 ?? 0,
+      normalP95Ms: optionalNum(baselineScalar.wait_p95),
       series: resampleSeries(series.map((r) => num(r.wait_p95))),
+      availability: waitP95 === undefined ? "unknown" : "measured",
     },
     evidence: {
       runningSeries: series.map((r) => num(r.running)),
@@ -498,6 +507,7 @@ export const SnapshotFlowSource: FlowSource = {
       return backlog;
     });
     const series = resampleSeries(proxy);
+    const startLatencyP95 = optionalNum(ctx.liveScalar.start_latency_p95);
 
     // Redis is the only depth measurement here, so a failure must not substitute 0. Fall back to the
     // last proxy point and mark the depth unknown.
@@ -517,9 +527,10 @@ export const SnapshotFlowSource: FlowSource = {
           availability: depthUnavailable ? "unknown" : "measured",
         },
         startLatency: {
-          p95Ms: num(ctx.liveScalar.start_latency_p95),
-          normalP95Ms: num(ctx.baselineScalar.start_latency_p95),
+          p95Ms: startLatencyP95 ?? 0,
+          normalP95Ms: optionalNum(ctx.baselineScalar.start_latency_p95),
           series: resampleSeries(ctx.liveSeries.map((r) => num(r.start_latency_p95))),
+          availability: startLatencyP95 === undefined ? "unknown" : "measured",
         },
         // No cause-tree evidence; interpret falls back to v1 symptoms.
         evidence: EMPTY_EVIDENCE,

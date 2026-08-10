@@ -148,4 +148,17 @@ describe("the dashboard agent's ingress cap", () => {
     expect(response.status).toBe(200);
     expect(buffered()).toBe(size);
   });
+
+  it("does not cap a task whose id is literally dashboard-agent", async () => {
+    const { url, buffered } = await listen();
+    const size = DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024;
+
+    const response = await fetch(`${url}/api/v1/tasks/dashboard-agent/trigger`, {
+      method: "POST",
+      body: "x".repeat(size),
+    });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(size);
+  });
 });

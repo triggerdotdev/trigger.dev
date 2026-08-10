@@ -16,7 +16,10 @@ const INGRESS_SLACK_BYTES = 8 * 1024;
 
 export const DASHBOARD_AGENT_MAX_INGRESS_BYTES = MAX_MESSAGE_BODY_BYTES + INGRESS_SLACK_BYTES;
 
-const AGENT_PATH = /\/dashboard-agent(\/|$)/;
+// The agent's own routes only: the `/api/v1/dashboard-agent/…` endpoints and the
+// `/…/env/<env>/dashboard-agent…` chat resources. Anchored so a task named
+// `dashboard-agent` (`/api/v1/tasks/dashboard-agent/trigger`) is not capped.
+const AGENT_PATH = /^\/api\/v1\/dashboard-agent(\/|$)|\/env\/[^/]+\/dashboard-agent(\/|$)/;
 
 /** Methods that can carry one. GET and HEAD cannot, and streaming them would be wasted work. */
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);

@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("~/db.server", () => ({ $replica: {}, prisma: {} }));
-vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
+// env.server is left real: the route transitively pulls in the ClickHouse client singleton,
+// which reads its URLs and tuning from the parsed env at import. A stubbed env starves those
+// (`Invalid URL`); the real schema fills them from CI's CLICKHOUSE_URL, same as every other
+// route test.
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),
 }));
