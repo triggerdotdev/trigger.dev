@@ -291,6 +291,10 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
+  // The id of the source PAT this token was minted from, when it was minted
+  // from one. Hosts recheck it is still live so revoking the PAT invalidates
+  // the token. Absent for flows with no source PAT (e.g. the dashboard agent).
+  pat?: string;
   // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
   // body. Optional because other UAT flows are environment-agnostic.
   environmentId?: string;
@@ -314,6 +318,7 @@ export async function signUserActorToken(
     client: string;
     sessionId?: string;
     environmentId?: string;
+    pat?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
   }
@@ -327,6 +332,7 @@ export async function signUserActorToken(
         client: opts.client,
         ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
         ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+        ...(opts.pat ? { pat: opts.pat } : {}),
       },
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
@@ -349,13 +355,14 @@ export async function verifyUserActorToken(
   if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
 
   const act = payload.act as
-    | { client?: string; sessionId?: string; environmentId?: string }
+    | { client?: string; sessionId?: string; environmentId?: string; pat?: string }
     | undefined;
   return {
     userId: payload.sub,
     client: act?.client,
     sessionId: act?.sessionId,
     environmentId: act?.environmentId,
+    pat: act?.pat,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
     expiresAt: typeof payload.exp === "number" ? payload.exp : undefined,
   };
