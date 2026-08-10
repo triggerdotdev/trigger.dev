@@ -873,7 +873,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, abortSignal, chatId, { sinceInSeq: inSeq });
+    // Owning turn: aborting this live send stops the turn the user drives.
+    return this.subscribeToSessionStream(state, abortSignal, chatId, {
+      sinceInSeq: inSeq,
+      sendStopOnAbort: true,
+    });
   };
 
   /**
@@ -1146,6 +1150,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     options: {
       chatId: string;
       abortSignal?: AbortSignal | undefined;
+      /**
+       * Whether aborting this subscription sends `{kind:"stop"}` on `.in`.
+       * A subscription ending is not session ownership — a passive/watch
+       * reader unmounting must never stop a turn it doesn't drive. Only
+       * pass `true` from a caller that owns the live turn. @default false
+       */
+      stopOnAbort?: boolean;
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk> | null> => {
     const state = this.sessions.get(options.chatId);
@@ -1163,7 +1174,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
       resumed: true,
-      sendStopOnAbort: !!options.abortSignal,
+      sendStopOnAbort: options.stopOnAbort ?? false,
       // Reconnect-on-reload opts into the server's settled-peek shortcut
       // so the SSE doesn't hang for 60s when no turn is in flight. Active
       // send-a-message paths must keep wait=60 to avoid racing the
@@ -1266,7 +1277,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, undefined, chatId, { sinceInSeq: inSeq });
+    // Owning action: aborting this send stops the turn the user drives.
+    return this.subscribeToSessionStream(state, undefined, chatId, {
+      sinceInSeq: inSeq,
+      sendStopOnAbort: true,
+    });
   };
 
   // -------------------------------------------------------------------------
