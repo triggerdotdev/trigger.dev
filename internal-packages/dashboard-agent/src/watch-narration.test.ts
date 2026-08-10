@@ -33,24 +33,20 @@ describe("which model narrates a wake", () => {
     const plan = planWatchNarration(DRAINED);
     expect(plan.model).toBe("none");
     if (plan.model !== "none") throw new Error("unreachable");
-    // Just what to do. The banner above the wake already states the headline and
-    // the user's reason, and a wake says each fact once.
-    expect(plan.text).toBe("Nothing to do — I've stopped watching.");
-    expect(plan.presentation.headline).toBe("task/send-receipt queue drained");
+    // The dashboard's own sentence, the user's reason, then what to do — each once.
+    // The banner above the wake carries the label and nothing else.
+    expect(plan.text.split("\n\n")).toEqual([
+      "task/send-receipt queue drained",
+      "You asked to be told when: tell me when the backlog drains",
+      "Nothing to do — I've stopped watching it.",
+    ]);
   });
 
   it("needs no model when the answer is that the watched thing is gone", () => {
     const plan = planWatchNarration({ ...DRAINED, resolution: "condition_impossible" });
     expect(plan.model).toBe("none");
     if (plan.model !== "none") throw new Error("unreachable");
-    expect(plan.presentation.headline).toContain("no longer exists");
-  });
-
-  it("never repeats the headline or the note the banner already states", () => {
-    const { text } = deterministicWakeNarration(DRAINED);
-    expect(text).not.toContain("queue drained");
-    expect(text).not.toContain("tell me when the backlog drains");
-    expect(text).not.toContain("You asked to be told when");
+    expect(plan.text).toContain("no longer exists");
   });
 
   it("uses Haiku when the fact has to be turned into what to do", () => {
@@ -64,10 +60,15 @@ describe("which model narrates a wake", () => {
     expect(planWatchNarration({ ...DRAINED, startsInvestigation: true }).model).toBe("sonnet");
   });
 
-  it("never names the watched object again — the banner just named it", () => {
-    const { text } = deterministicWakeNarration(DRAINED);
-    expect(text).not.toContain("task/send-receipt");
-    expect(text).not.toContain("trigger://");
+  it("links the watched object once, on the line that acts on it", () => {
+    const { text } = deterministicWakeNarration({
+      ...DRAINED,
+      subjectLink: "[task/send-receipt](trigger://queue/proj_abc/env_abc/task%2Fsend-receipt)",
+    });
+    expect(text).toContain("I've stopped watching [task/send-receipt]");
+    // The headline already names the queue, so it is not followed by the link too.
+    expect(text.split("\n\n")[0]).toBe("task/send-receipt queue drained");
+    expect(text.match(/trigger:\/\//g)).toHaveLength(1);
   });
 
   it("never says fired or expired", () => {
