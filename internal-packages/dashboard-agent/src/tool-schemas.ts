@@ -264,7 +264,7 @@ export const navigateToSchema = tool({
           filters: runFiltersSchema
             .optional()
             .describe(
-              "Filters to apply to the runs list: tasks, statuses, versions, tags, queues, and a period like '1d'."
+              "Filters to apply to the runs list: tasks, statuses, versions, tags, queues, and a period like '1d'. Statuses must be the dashboard's own status names — see the field's own description."
             ),
         }),
         z.object({
