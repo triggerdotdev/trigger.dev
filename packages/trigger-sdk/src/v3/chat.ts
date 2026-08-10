@@ -1821,6 +1821,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             if (opened) return opened;
           }
 
+          // A settled session or an abort ends the turn cleanly. Exhausting the
+          // resubscribe budget while the turn is still streaming means it was cut
+          // off — surface an error so the UI doesn't read a truncated reply as
+          // complete. The caller's catch emits stream-error and errors the stream.
+          if (
+            state.isStreaming &&
+            !currentSubscription?.sessionSettled &&
+            !combinedSignal.aborted
+          ) {
+            throw new Error(
+              "Chat stream ended before the turn completed (reconnect budget exhausted)."
+            );
+          }
+
           // Settled close, or the turn is gone — tell the UI instead of
           // leaving it spinning on a stream nobody will finish.
           if (state.isStreaming) {
