@@ -75,8 +75,6 @@ exports[`ANSI surface > paints the same layout (untrustworthy) 1`] = `
 
 <red>✕</> LIVENESS    stale — no telemetry in 21m
 
-    liveness   21m
-
 → Check control plane"
 `;
 
@@ -154,8 +152,6 @@ exports[`markdown surface > renders (untrustworthy) 1`] = `
 🔴 EXECUTION   execution can't be assessed — the telemetry is stale
 
 🔴 LIVENESS    stale — no telemetry in 21m
-
-    liveness   21m
 
 → Check control plane"
 `;
