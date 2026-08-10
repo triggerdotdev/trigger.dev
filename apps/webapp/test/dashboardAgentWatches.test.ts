@@ -89,7 +89,7 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
 // The routes drive the real service, which builds a TriggerClient from .env — so an unmocked
 // suite triggers actual runs against whatever origin .env names.
 vi.mock("@trigger.dev/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@trigger.dev/sdk")>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     TriggerClient: class {
@@ -108,6 +108,9 @@ process.env.SESSION_SECRET = SESSION_SECRET;
 // The agent's subscribe endpoint refuses without an email transport configured.
 process.env.ALERT_FROM_EMAIL = "alerts@example.com";
 process.env.ALERT_EMAIL_TRANSPORT = "smtp";
+// Arming a batch chain builds a (stubbed) client only when this is set; unset in CI, it would
+// no-op and the check test's trigger assertion would never see the batch task.
+process.env.DASHBOARD_AGENT_SECRET_KEY = "test-dashboard-agent-secret";
 
 const {
   armDashboardAgentWatchBatch,
