@@ -47,10 +47,7 @@
       "compositePrimaryKeys": {
         "agent_message_usage_organization_id_period_pk": {
           "name": "agent_message_usage_organization_id_period_pk",
-          "columns": [
-            "organization_id",
-            "period"
-          ]
+          "columns": ["organization_id", "period"]
         }
       },
       "uniqueConstraints": {},
@@ -128,20 +125,14 @@
       "compositePrimaryKeys": {
         "chat_messages_chat_id_message_id_pk": {
           "name": "chat_messages_chat_id_message_id_pk",
-          "columns": [
-            "chat_id",
-            "message_id"
-          ]
+          "columns": ["chat_id", "message_id"]
         }
       },
       "uniqueConstraints": {
         "chat_messages_chat_position_key": {
           "name": "chat_messages_chat_position_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "chat_id",
-            "position"
-          ]
+          "columns": ["chat_id", "position"]
         }
       },
       "policies": {},
@@ -462,10 +453,7 @@
       "compositePrimaryKeys": {
         "chat_turn_evals_chat_id_turn_pk": {
           "name": "chat_turn_evals_chat_id_turn_pk",
-          "columns": [
-            "chat_id",
-            "turn"
-          ]
+          "columns": ["chat_id", "turn"]
         }
       },
       "uniqueConstraints": {},
@@ -764,10 +752,7 @@
       "compositePrimaryKeys": {
         "watch_batches_environment_id_cadence_minutes_pk": {
           "name": "watch_batches_environment_id_cadence_minutes_pk",
-          "columns": [
-            "environment_id",
-            "cadence_minutes"
-          ]
+          "columns": ["environment_id", "cadence_minutes"]
         }
       },
       "uniqueConstraints": {},
@@ -920,10 +905,7 @@
       "compositePrimaryKeys": {
         "watch_submissions_chat_id_client_request_id_pk": {
           "name": "watch_submissions_chat_id_client_request_id_pk",
-          "columns": [
-            "chat_id",
-            "client_request_id"
-          ]
+          "columns": ["chat_id", "client_request_id"]
         }
       },
       "uniqueConstraints": {},
