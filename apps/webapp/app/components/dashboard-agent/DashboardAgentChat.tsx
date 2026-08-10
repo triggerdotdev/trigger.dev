@@ -17,7 +17,7 @@ import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
-import { FREE_PLAN_MESSAGE_LIMIT } from "./message-quota";
+import { FREE_PLAN_MESSAGE_LIMIT, parseQuotaReachedResponse } from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
@@ -138,8 +138,9 @@ export function DashboardAgentChat({
           .clone()
           .json()
           .catch(() => null)) as { error?: string; limit?: number } | null;
-        if (data?.error === "message_quota_reached") {
-          setQuotaReached({ limit: data.limit ?? FREE_PLAN_MESSAGE_LIMIT });
+        const reached = parseQuotaReachedResponse(res.status, data);
+        if (reached) {
+          setQuotaReached(reached);
           throw new Error("You've reached your message limit.");
         }
       }

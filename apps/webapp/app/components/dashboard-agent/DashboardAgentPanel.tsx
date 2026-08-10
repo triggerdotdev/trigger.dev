@@ -24,6 +24,7 @@ import {
   writeLastChat,
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { parseQuotaReachedResponse } from "./message-quota";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
 import { NO_WATCH_CARD, watchCardReducer } from "./watch-card-state";
@@ -108,6 +109,8 @@ export function DashboardAgentPanel({
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
+  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
+  const [capReached, setCapReached] = useState<{ limit: number } | null>(null);
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
@@ -238,14 +241,22 @@ export function DashboardAgentPanel({
           publicAccessToken?: string;
           headStarted?: boolean;
           error?: string;
+          limit?: number;
         };
         if (seq !== openChatRequestSeq.current) return;
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
+          const reached = parseQuotaReachedResponse(res.status, data);
+          if (reached) {
+            setCapReached(reached);
+            setActive(null);
+            return;
+          }
           console.error(`Dashboard agent: failed to create chat (${res.status})`, data.error);
           toast.error(data.error ?? "We couldn't start that chat. Try again in a moment.");
           setActive(null);
           return;
         }
+        setCapReached(null);
         setActive({
           chatId: data.chatId,
           organizationId: organization.id,
@@ -287,6 +298,7 @@ export function DashboardAgentPanel({
     panelOrg.current = organization.id;
     claimChatSlot();
     setActive(null);
+    setCapReached(null);
     setLoading(false);
     setChats([]);
     setChatsLoaded(false);
@@ -614,6 +626,7 @@ export function DashboardAgentPanel({
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
             watchCard={watchCardElement}
+            capReached={capReached}
           />
         )}
       </AgentPanelColumn>
