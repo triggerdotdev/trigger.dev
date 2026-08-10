@@ -541,6 +541,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     if (!result.ok) {
       const status =
         result.code === "limit_reached" ||
+        result.code === "watch_limit_reached" ||
         result.code === "duplicate" ||
         result.code === "request_conflict"
           ? 409
