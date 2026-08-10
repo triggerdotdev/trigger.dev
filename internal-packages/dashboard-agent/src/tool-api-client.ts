@@ -36,6 +36,12 @@ export function isEnvUnavailable(result: object): result is EnvUnavailable {
 
 const MISSING_ENV: EnvUnavailable = { ok: false, envUnavailable: "missing" };
 
+// Node's fetch has no default timeout, so a stalled connection would hang the tool loop
+// forever. A timeout aborts the fetch, which throws and is caught as a transport failure.
+const GET_TIMEOUT_MS = 10_000;
+const JWT_TIMEOUT_MS = 10_000;
+const QUERY_TIMEOUT_MS = 30_000;
+
 // "query" is the server rejecting the TRQL, "transport" is the request breaking. Chart
 // validation only fails a render on "query".
 export type QueryPostResult =
@@ -59,7 +65,7 @@ export async function apiGet(
   if (branch) headers["x-trigger-branch"] = branch;
   let res: Response;
   try {
-    res = await fetch(`${origin}${path}`, { headers });
+    res = await fetch(`${origin}${path}`, { headers, signal: AbortSignal.timeout(GET_TIMEOUT_MS) });
   } catch (error) {
     return { ok: false, transport: (error as Error).message };
   }
@@ -91,6 +97,7 @@ async function exchangeEnvJwt(
       method: "POST",
       headers,
       body: JSON.stringify({ claims: { scopes: [...DASHBOARD_AGENT_ENV_JWT_SCOPES] } }),
+      signal: AbortSignal.timeout(JWT_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, envUnavailable: "unknown" };
@@ -193,6 +200,7 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
                 Accept: "application/json",
               },
               body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
+              signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
             }),
           };
         } catch (error) {

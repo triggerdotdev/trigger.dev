@@ -43,6 +43,11 @@ function initializeWorker() {
 
   logger.debug(`👨‍🏭 Initializing common worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
 
+  // Only schedule the agent maintenance cron where the agent is actually set up. Otherwise
+  // its sweeps hit a missing schema and drip a dead-letter entry every run.
+  const dashboardAgentConfigured =
+    env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
+
   const worker = new RedisWorker({
     name: "common-worker",
     redisOptions,
@@ -156,8 +161,7 @@ function initializeWorker() {
       "dashboardAgent.maintenance": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
-        cron: "*/5 * * * *",
-        jitterInMs: 30_000,
+        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
         retry: {
           maxAttempts: 1,
         },

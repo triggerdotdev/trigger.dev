@@ -18,6 +18,7 @@ export default defineConfig({
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
       "app/utils/**/*.test.ts",
+      "app/components/code/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
       "app/presenters/v3/reports/**/*.test.ts",

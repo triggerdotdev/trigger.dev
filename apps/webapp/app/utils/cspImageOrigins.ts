@@ -73,6 +73,11 @@ function rejectionReason(value: string, allowHttp: boolean): string | undefined 
   if (/\s/.test(value)) {
     return "contains whitespace";
   }
+  // `;` and `,` delimit CSP directives / source lists; an entry containing one would
+  // land verbatim in the space-joined img-src and inject or truncate a directive.
+  if (/[;,]/.test(value)) {
+    return "must not contain ';' or ',' — these delimit CSP directives";
+  }
 
   let url: URL;
   try {
