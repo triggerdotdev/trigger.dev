@@ -198,6 +198,18 @@ export default function Page() {
     }
   }, [contrastFetcher.state, contrast]);
 
+  // Dragging previews through the CSS var; releasing (or clicking the default
+  // mark) persists it.
+  const previewContrast = (value: number) => {
+    setContrastPreview(value);
+    document.documentElement.style.setProperty("--theme-contrast", String(value / 100));
+  };
+  const saveContrast = (value: number) =>
+    contrastFetcher.submit(
+      { action: "update-contrast", contrast: String(value) },
+      { method: "post" }
+    );
+
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
     // TODO: type this
@@ -348,26 +360,22 @@ export default function Page() {
                         min={0}
                         max={100}
                         step={1}
-                        marks={[DEFAULT_CONTRAST_MARK]}
+                        marks={[
+                          {
+                            value: DEFAULT_CONTRAST_MARK,
+                            label: "Reset to default",
+                            onSelect: () => {
+                              previewContrast(DEFAULT_CONTRAST_MARK);
+                              saveContrast(DEFAULT_CONTRAST_MARK);
+                            },
+                          },
+                        ]}
                         valueTooltip={(value) =>
                           value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
                         }
                         value={[contrastPreview]}
-                        onValueChange={(values) => {
-                          // Live preview before the preference persists
-                          const value = values[0] ?? 0;
-                          setContrastPreview(value);
-                          document.documentElement.style.setProperty(
-                            "--theme-contrast",
-                            String(value / 100)
-                          );
-                        }}
-                        onValueCommit={(values) =>
-                          contrastFetcher.submit(
-                            { action: "update-contrast", contrast: String(values[0] ?? 0) },
-                            { method: "post" }
-                          )
-                        }
+                        onValueChange={(values) => previewContrast(values[0] ?? 0)}
+                        onValueCommit={(values) => saveContrast(values[0] ?? 0)}
                       />
                     </div>
                   </div>

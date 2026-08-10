@@ -3,6 +3,7 @@ import { type ComponentProps, useState } from "react";
 import { cn } from "~/utils/cn";
 import type { RenderIcon } from "./Icon";
 import { Icon } from "./Icon";
+import { SimpleTooltip } from "./Tooltip";
 
 const variants = {
   /* Quiet variant for settings rows: no hover box, no thumb halo */
@@ -20,6 +21,7 @@ const variants = {
     // Track-coloured line, notched off the track by borders in the colour of
     // the page behind it (settings rows sit on background-dimmed).
     mark: "bg-grid-bright border-background-dimmed",
+    markHover: "hover:bg-text-dimmed",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
@@ -31,6 +33,7 @@ const variants = {
       "h-3 w-3 border-2 border-text-dimmed bg-grid-bright shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] hover:border-text-dimmed focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)]",
     thumbSize: 12,
     mark: "bg-grid-bright border-background-dimmed",
+    markHover: "hover:bg-text-dimmed",
   },
 };
 
@@ -47,7 +50,15 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
    */
   valueTooltip?: (value: number) => string;
   /** Values to tick on the track, e.g. the setting's default. */
-  marks?: number[];
+  marks?: SliderMark[];
+};
+
+export type SliderMark = {
+  value: number;
+  /** Tooltip on hover, and the accessible name once `onSelect` is set. */
+  label?: string;
+  /** Makes the mark a button, e.g. to reset the setting to its default. */
+  onSelect?: () => void;
 };
 
 export function Slider({
@@ -95,25 +106,49 @@ export function Slider({
           <RadixSlider.Range className={cn("absolute h-full rounded-full", variation.range)} />
         </RadixSlider.Track>
         {marks?.map((mark) => {
-          const percent = ((mark - min) / (max - min)) * 100;
+          const percent = ((mark.value - min) / (max - min)) * 100;
           if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
           // Radix keeps the thumb inside the track by offsetting it against its
           // own width, so a plain percentage would sit off the handle. Same
           // formula as its `getThumbInBoundsOffset`, so the tick lands under
           // the thumb's centre.
           const offset = variation.thumbSize * (0.5 - percent / 100);
+          const style = { left: `calc(${percent}% + ${offset}px)` };
+          // Drawn after the track, so it sits on top of it - and before the
+          // thumb, so an overlapping handle keeps the hover and the click.
+          // box-content keeps the line 2px wide and hangs the borders outside
+          // it, so they read as a gap in the track rather than eating the line.
+          const markClassName = cn(
+            "absolute top-1/2 box-content h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-x-[3px]",
+            variation.mark
+          );
+
+          if (!mark.onSelect) {
+            return <span key={mark.value} aria-hidden className={markClassName} style={style} />;
+          }
+
           return (
-            <span
-              key={mark}
-              aria-hidden
-              // Drawn after the track, so it sits on top of it. box-content
-              // keeps the line 1px wide and hangs the borders outside it, so
-              // they read as a gap in the track rather than eating the line.
-              className={cn(
-                "absolute top-1/2 box-content h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-x-[3px]",
-                variation.mark
-              )}
-              style={{ left: `calc(${percent}% + ${offset}px)` }}
+            <SimpleTooltip
+              key={mark.value}
+              asChild
+              tabbable
+              disableHoverableContent
+              side="top"
+              sideOffset={6}
+              className="px-2 py-1.5 text-xs"
+              content={mark.label}
+              button={
+                <button
+                  type="button"
+                  aria-label={mark.label}
+                  className={cn(markClassName, "cursor-pointer", variation.markHover)}
+                  style={style}
+                  // Without this Radix reads the press as a click on the track
+                  // and drags the thumb to it.
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={mark.onSelect}
+                />
+              }
             />
           );
         })}
