@@ -7,6 +7,7 @@ import type {
   MollifierDrainerTerminalFailureHandler,
 } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
+import { looksLikeConnectivityError } from "~/utils/prismaErrors";
 import { recordRunDebugLog } from "~/v3/eventRepository/index.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { startSpan } from "~/v3/tracing.server";
@@ -29,6 +30,7 @@ export function isRetryablePgError(err: unknown): boolean {
   if (msg.includes("Can't reach database server")) return true;
   if (msg.includes("Connection lost")) return true;
   if (msg.includes("ECONNRESET")) return true;
+  if (looksLikeConnectivityError(err)) return true;
   return false;
 }
 
