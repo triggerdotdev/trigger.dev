@@ -16,6 +16,65 @@ export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: str
   return `jwt-actor:${environmentId}:${actorSub}`;
 }
 
+// The per-request bucket decision for the API limiter. Exported so the branch below
+// (a delegated JWT keys on env+acting-user, everything else keeps its prior key) is
+// testable without standing up the middleware and its Redis.
+export async function resolveApiRateLimitOverride(
+  authorizationValue: string
+): Promise<{ config?: unknown; identifier?: string } | undefined> {
+  const rawApiKey = authorizationValue.replace(/^Bearer /, "");
+
+  if (rawApiKey.startsWith("tr_")) {
+    const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
+
+    if (!scope) {
+      return;
+    }
+
+    return {
+      config: scope.apiRateLimiterConfig,
+      identifier: scope.environmentId,
+    };
+  }
+
+  const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
+    allowPublicKey: true,
+    allowJWT: true,
+  });
+
+  if (!authenticatedEnv || !authenticatedEnv.ok) {
+    return;
+  }
+
+  if (authenticatedEnv.type === "PUBLIC_JWT") {
+    const config = {
+      type: "fixedWindow",
+      window: env.API_RATE_LIMIT_JWT_WINDOW,
+      tokens: env.API_RATE_LIMIT_JWT_TOKENS,
+    } as const;
+
+    // A delegated JWT (agent/PAT-minted) shares one bucket per env+acting-user across turns.
+    // A browser realtime JWT carries no `act`, so it keeps the hashed-token fallback.
+    if (authenticatedEnv.actor?.sub) {
+      return {
+        config,
+        identifier: jwtActorRateLimitIdentifier(
+          authenticatedEnv.environment.id,
+          authenticatedEnv.actor.sub
+        ),
+      };
+    }
+
+    return { config };
+  }
+
+  return {
+    config: authenticatedEnv.environment.organization.apiRateLimiterConfig,
+    // Public keys are browser-distributed, so keep them on per-key buckets.
+    identifier: authenticatedEnv.type === "PRIVATE" ? authenticatedEnv.environment.id : undefined,
+  };
+}
+
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
     port: env.RATE_LIMIT_REDIS_PORT,
@@ -37,59 +96,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     stale: 60_000 * 20, // Date is stale after 20 minutes
     maxItems: 1000,
   },
-  limiterConfigOverride: async (authorizationValue) => {
-    const rawApiKey = authorizationValue.replace(/^Bearer /, "");
-
-    if (rawApiKey.startsWith("tr_")) {
-      const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
-
-      if (!scope) {
-        return;
-      }
-
-      return {
-        config: scope.apiRateLimiterConfig,
-        identifier: scope.environmentId,
-      };
-    }
-
-    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
-      allowPublicKey: true,
-      allowJWT: true,
-    });
-
-    if (!authenticatedEnv || !authenticatedEnv.ok) {
-      return;
-    }
-
-    if (authenticatedEnv.type === "PUBLIC_JWT") {
-      const config = {
-        type: "fixedWindow",
-        window: env.API_RATE_LIMIT_JWT_WINDOW,
-        tokens: env.API_RATE_LIMIT_JWT_TOKENS,
-      } as const;
-
-      // A delegated JWT (agent/PAT-minted) shares one bucket per env+acting-user across turns.
-      // A browser realtime JWT carries no `act`, so it keeps the hashed-token fallback.
-      if (authenticatedEnv.actor?.sub) {
-        return {
-          config,
-          identifier: jwtActorRateLimitIdentifier(
-            authenticatedEnv.environment.id,
-            authenticatedEnv.actor.sub
-          ),
-        };
-      }
-
-      return { config };
-    }
-
-    return {
-      config: authenticatedEnv.environment.organization.apiRateLimiterConfig,
-      // Public keys are browser-distributed, so keep them on per-key buckets.
-      identifier: authenticatedEnv.type === "PRIVATE" ? authenticatedEnv.environment.id : undefined,
-    };
-  },
+  limiterConfigOverride: resolveApiRateLimitOverride,
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
