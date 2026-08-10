@@ -772,8 +772,7 @@ ${buildArgs}
 ${buildEnvVars}
 
 COPY --chown=bun:bun package.json ./
-# mkdir guards against bun not creating node_modules when there are no dependencies
-RUN bun install --production --no-save && mkdir -p node_modules
+RUN bun install --production --no-save
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
@@ -781,10 +780,14 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
+# node_modules may not exist when there are no dependencies to install
+RUN mkdir -p node_modules
+
 # App files without node_modules, so the final stage can layer them separately
 FROM build AS code
 
-RUN rm -rf node_modules
+# u+w first: rm as a non-root user fails on read-only directories
+RUN chmod -R u+w node_modules && rm -rf node_modules
 
 FROM build AS indexer
 
@@ -887,8 +890,7 @@ ENV NODE_ENV=production
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 COPY --chown=node:node package.json ./
-# mkdir guards against npm not creating node_modules when there are no dependencies
-RUN npm i --no-audit --no-fund --no-save --no-package-lock && mkdir -p node_modules
+RUN npm i --no-audit --no-fund --no-save --no-package-lock
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
@@ -899,10 +901,14 @@ ${postInstallCommands}
 # IMPORTANT: Doing this again to fix an issue with prisma generate removing the files in node_modules/trigger.dev for some reason...
 COPY --chown=node:node . .
 
+# node_modules may not exist when there are no dependencies to install
+RUN mkdir -p node_modules
+
 # App files without node_modules, so the final stage can layer them separately
 FROM build AS code
 
-RUN rm -rf node_modules
+# u+w first: rm as a non-root user fails on read-only directories
+RUN chmod -R u+w node_modules && rm -rf node_modules
 
 FROM build AS indexer
 

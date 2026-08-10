@@ -40,7 +40,6 @@ describe("generateContainerfile", () => {
       const user = runtime === "bun" ? "bun:bun" : "node:node";
 
       expect(containerfile).toContain("FROM build AS code");
-      expect(containerfile).toContain("RUN rm -rf node_modules");
       expect(containerfile).toContain(
         `COPY --from=build --chown=${user} /app/node_modules ./node_modules`
       );
@@ -48,9 +47,33 @@ describe("generateContainerfile", () => {
       // The final stage must not copy all of /app from the build stage anymore,
       // or node_modules would be duplicated across two layers
       expect(containerfile).not.toContain(`COPY --from=build --chown=${user} /app ./`);
+    }
+  );
 
-      // node_modules must exist even for projects with zero external dependencies
-      expect(containerfile).toContain("mkdir -p node_modules");
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "orders post-install commands, the node_modules guard, and the code stage for %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: { commands: ["echo post-install"] },
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const postInstall = containerfile.indexOf("RUN echo post-install");
+      // The guard must run after post-install commands so a command that prunes
+      // node_modules can't break the final-stage COPY of /app/node_modules
+      const mkdirGuard = containerfile.indexOf("RUN mkdir -p node_modules");
+      const codeStage = containerfile.indexOf("FROM build AS code");
+      const rmNodeModules = containerfile.indexOf(
+        "RUN chmod -R u+w node_modules && rm -rf node_modules"
+      );
+
+      expect(postInstall).toBeGreaterThan(-1);
+      expect(mkdirGuard).toBeGreaterThan(postInstall);
+      expect(codeStage).toBeGreaterThan(mkdirGuard);
+      expect(rmNodeModules).toBeGreaterThan(codeStage);
     }
   );
 });
