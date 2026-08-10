@@ -201,8 +201,8 @@ export function DashboardAgentChat({
   const orderRef = useRef(createTranscriptOrder(initialMessages));
   const messages = orderTranscript(rawMessages, orderRef.current);
 
-  // Counted here, not in the panel, so it includes the turn just sent.
-  const quota = useAgentMessageQuota({ actionPath, chatId, messages });
+  // Read here, not in the panel, so it re-reads as each turn settles.
+  const quota = useAgentMessageQuota({ actionPath, chatId, status });
   // Either the poll saw the cap, or a send was just refused over it.
   const atMessageCap = quota.kind === "reached" || quotaReached !== null;
   const messageCapLimit =
@@ -271,6 +271,8 @@ export function DashboardAgentChat({
   }, [sendRequest, submit, canSend]);
 
   const retry = useCallback(() => {
+    // Over the cap, a retry only earns another 403 — same guard as `submit`.
+    if (atMessageCap) return;
     // A watch's consent record is a user message nobody typed, so retry never treats it as one.
     const action = retryAction(
       messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
@@ -283,7 +285,7 @@ export function DashboardAgentChat({
       return;
     }
     void sendMessage({ text: action.text, messageId: action.messageId });
-  }, [messages, sendMessage, regenerate, clearError]);
+  }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
