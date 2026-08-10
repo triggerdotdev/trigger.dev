@@ -1,6 +1,13 @@
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
-import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
+import {
+  buildJwtAbility,
+  CAPLESS_USER_ACTOR_SCOPES,
+  isUserActorToken,
+  scopesWithinAbility,
+  verifyUserActorToken,
+  type UserActorClaims,
+} from "@trigger.dev/rbac";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
@@ -113,19 +120,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // The env JWT carries scopes only — downstream auth builds its ability
     // from them with no role context. So for a user-actor token we ceiling
-    // the scopes by the token's own cap here (a read-only agent token can't
-    // widen its grant through the exchange) and stamp the user via `act` so
-    // the minted env JWT stays attributable. The cap is a ceiling, not a
-    // replacement: intersect what the caller asked for with the cap (or use
-    // the full cap if they asked for nothing). No cap → the request passes
-    // through, same as a PAT.
+    // the scopes here (a read-only agent token can't widen its grant through
+    // the exchange) and stamp the user via `act` so the minted env JWT stays
+    // attributable. A capless token's ceiling is read-only, never full access.
+    // The ceiling is applied through the scope grammar, not literal membership:
+    // `read:all` is a wildcard no literal request string equals, so a literal
+    // filter against it would wrongly deny every read.
     const requestedScopes = parsedBody.data.claims?.scopes;
-    const scopes =
-      isUat && uatCap
-        ? requestedScopes && requestedScopes.length > 0
-          ? requestedScopes.filter((scope) => uatCap.includes(scope))
-          : uatCap
-        : requestedScopes;
+    let scopes: string[] | undefined;
+    if (isUat) {
+      const ceiling = uatCap && uatCap.length > 0 ? uatCap : CAPLESS_USER_ACTOR_SCOPES;
+      const ability = buildJwtAbility(ceiling);
+      const scopeGranted = (scope: string) => scopesWithinAbility([scope], ability).ok;
+      scopes =
+        requestedScopes && requestedScopes.length > 0
+          ? requestedScopes.filter(scopeGranted)
+          : ceiling;
+    } else {
+      scopes = requestedScopes;
+    }
 
     // Attribution: stamp the acting user on the minted env JWT. A UAT carries
     // its user as `userActorId`; a PAT exchange resolves the user from the
