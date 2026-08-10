@@ -240,6 +240,7 @@ const EnvironmentSchema = z
     CONTROL_PLANE_DATABASE_READ_REPLICA_URL: z.string().optional(),
     CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA: z.string().default("0"),
     RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
