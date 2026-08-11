@@ -1,4 +1,4 @@
-import { calculateNextNominalTimestamp } from "./scheduleCalculation.js";
+import { calculateNextNominalTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
 
 describe("calculateNextNominalTimestamp", () => {
   it("advances from the previous nominal tick instead of wall-clock time", () => {
@@ -35,5 +35,22 @@ describe("calculateNextNominalTimestamp", () => {
     );
 
     expect(next).toEqual(new Date("2027-02-28T23:00:00.000Z"));
+  });
+});
+
+describe("nextScheduledTimestamps", () => {
+  it("advances every timestamp from the preceding nominal tick", () => {
+    const upcoming = nextScheduledTimestamps(
+      "* * * * *",
+      "UTC",
+      new Date("2024-01-01T09:00:00.000Z"),
+      3
+    );
+
+    expect(upcoming).toEqual([
+      new Date("2024-01-01T09:01:00.000Z"),
+      new Date("2024-01-01T09:02:00.000Z"),
+      new Date("2024-01-01T09:03:00.000Z"),
+    ]);
   });
 });

@@ -82,6 +82,7 @@ function createScheduleEngine() {
       scheduleInstanceId,
       scheduleId,
       exactScheduleTime,
+      effectiveScheduleTime,
     }) => {
       try {
         // v3 (engine V1) is retired: skip firing V1 schedules instead of triggering into a guaranteed rejection every tick.
@@ -105,6 +106,7 @@ function createScheduleEngine() {
           scheduleInstanceId,
           scheduleId,
           exactScheduleTime,
+          effectiveScheduleTime,
         });
 
         const result = await triggerService.call(
@@ -115,7 +117,7 @@ function createScheduleEngine() {
             customIcon: "scheduled",
             scheduleId,
             scheduleInstanceId,
-            queueTimestamp: exactScheduleTime,
+            queueTimestamp: effectiveScheduleTime,
             overrideCreatedAt: exactScheduleTime,
             triggerSource: "schedule",
             triggerAction: "trigger",

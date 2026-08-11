@@ -5,7 +5,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import {
-  calculateNextScheduledTimestamp,
+  calculateNextNominalTimestamp,
   nextScheduledTimestamps,
   previousScheduledTimestamp,
 } from "./scheduleCalculation.js";
@@ -15,7 +15,11 @@ import type {
   TriggerScheduledTaskCallback,
   TriggerScheduleParams,
 } from "./types.js";
-import { calculateSchedulePhase } from "./scheduleTiming.js";
+import {
+  calculateEffectiveScheduleTime,
+  calculateSchedulePhase,
+  type NormalizedScheduleWindow,
+} from "./scheduleTiming.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 
@@ -72,7 +76,7 @@ export class ScheduleEngine {
     this.distributionOffsetHistogram = this.meter.createHistogram(
       "schedule_distribution_offset_ms",
       {
-        description: "Distribution offset from exact schedule time in milliseconds",
+        description: "Distribution offset from effective schedule time in milliseconds",
         unit: "ms",
       }
     );
@@ -169,15 +173,27 @@ export class ScheduleEngine {
           instance.taskSchedule.generatorExpression
         );
 
-        const hasScheduleWindow =
-          instance.taskSchedule.windowDurationSeconds !== null ||
-          instance.taskSchedule.windowPercentage !== null;
-        if (hasScheduleWindow && instance.schedulePhase === null) {
-          const schedulePhase = calculateSchedulePhase({
+        const scheduleWindow: NormalizedScheduleWindow | undefined =
+          instance.taskSchedule.windowPercentage !== null
+            ? {
+                type: "percentage",
+                percentage: instance.taskSchedule.windowPercentage,
+              }
+            : instance.taskSchedule.windowDurationSeconds !== null
+              ? {
+                  type: "duration",
+                  durationSeconds: instance.taskSchedule.windowDurationSeconds,
+                }
+              : undefined;
+        const schedulePhase =
+          instance.schedulePhase ??
+          calculateSchedulePhase({
             secret: this.options.schedulePhaseSecret,
             environmentId: instance.environmentId,
             deduplicationKey: instance.taskSchedule.deduplicationKey,
           });
+
+        if (scheduleWindow && instance.schedulePhase === null) {
           const result = await this.prisma.taskScheduleInstance.updateMany({
             where: {
               id: instance.id,
@@ -187,32 +203,46 @@ export class ScheduleEngine {
               schedulePhase,
             },
           });
-
-          span.setAttribute("schedule_phase", schedulePhase);
-          span.setAttribute("schedule_phase_persisted", result.count === 1);
-        } else if (instance.schedulePhase !== null) {
-          span.setAttribute("schedule_phase", instance.schedulePhase);
-          span.setAttribute("schedule_phase_persisted", false);
+          span.setAttribute("schedule_phase_persisted_during_registration", result.count === 1);
         }
+
+        span.setAttribute(
+          "schedule_phase_source",
+          instance.schedulePhase === null ? "derived" : "persisted"
+        );
+        span.setAttribute("schedule_phase", schedulePhase);
 
         const fromTimestamp = params.fromTimestamp ?? new Date();
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());
 
-        const nextScheduledTimestamp = calculateNextScheduledTimestamp(
+        const nominalAt = calculateNextNominalTimestamp(
           instance.taskSchedule.generatorExpression,
           instance.taskSchedule.timezone,
           fromTimestamp
         );
+        const nextNominalAt = calculateNextNominalTimestamp(
+          instance.taskSchedule.generatorExpression,
+          instance.taskSchedule.timezone,
+          nominalAt
+        );
+        const { effectiveAt } = calculateEffectiveScheduleTime({
+          nominalAt,
+          nextNominalAt,
+          schedulePhase,
+          window: scheduleWindow,
+        });
 
-        span.setAttribute("next_scheduled_timestamp", nextScheduledTimestamp.toISOString());
+        span.setAttribute("next_scheduled_timestamp", nominalAt.toISOString());
+        span.setAttribute("effective_schedule_time", effectiveAt.toISOString());
 
-        const schedulingDelayMs = nextScheduledTimestamp.getTime() - Date.now();
+        const schedulingDelayMs = effectiveAt.getTime() - Date.now();
         span.setAttribute("scheduling_delay_ms", schedulingDelayMs);
 
-        this.logger.debug("Calculated next schedule timestamp", {
+        this.logger.debug("Calculated next schedule timestamps", {
           instanceId: params.instanceId,
           taskIdentifier: instance.taskSchedule.taskIdentifier,
-          nextScheduledTimestamp: nextScheduledTimestamp.toISOString(),
+          nominalAt: nominalAt.toISOString(),
+          effectiveAt: effectiveAt.toISOString(),
           schedulingDelayMs,
           generatorExpression: instance.taskSchedule.generatorExpression,
           timezone: instance.taskSchedule.timezone,
@@ -251,11 +281,12 @@ export class ScheduleEngine {
           }
         }
 
-        await this.enqueueScheduledTask(
-          params.instanceId,
-          nextScheduledTimestamp,
-          lastScheduleTime
-        );
+        await this.enqueueScheduledTask({
+          instanceId: params.instanceId,
+          exactScheduleTime: nominalAt,
+          effectiveScheduleTime: effectiveAt,
+          lastScheduleTime,
+        });
 
         // Record metrics
         this.scheduleRegistrationCounter.add(1, {
@@ -295,6 +326,7 @@ export class ScheduleEngine {
       instanceId: payload.instanceId,
       finalAttempt: false, // TODO: implement retry logic
       exactScheduleTime: payload.exactScheduleTime,
+      effectiveScheduleTime: payload.effectiveScheduleTime,
       lastScheduleTime: payload.lastScheduleTime,
     });
   }
@@ -308,14 +340,17 @@ export class ScheduleEngine {
 
       span.setAttribute("instanceId", params.instanceId);
       span.setAttribute("finalAttempt", params.finalAttempt);
-      if (params.exactScheduleTime) {
-        span.setAttribute("exactScheduleTime", params.exactScheduleTime.toISOString());
-      }
+      const exactScheduleTime = params.exactScheduleTime ?? new Date();
+      const effectiveScheduleTime = params.effectiveScheduleTime ?? exactScheduleTime;
+
+      span.setAttribute("exactScheduleTime", exactScheduleTime.toISOString());
+      span.setAttribute("effectiveScheduleTime", effectiveScheduleTime.toISOString());
 
       this.logger.debug("Starting scheduled task trigger", {
         instanceId: params.instanceId,
         finalAttempt: params.finalAttempt,
-        exactScheduleTime: params.exactScheduleTime?.toISOString(),
+        exactScheduleTime: exactScheduleTime.toISOString(),
+        effectiveScheduleTime: effectiveScheduleTime.toISOString(),
       });
 
       let taskIdentifier: string | undefined;
@@ -439,9 +474,6 @@ export class ScheduleEngine {
           span.setAttribute("skip_reason", skipReason);
         }
 
-        // Calculate the schedule timestamp that will be used (regardless of whether we trigger or not)
-        const scheduleTimestamp = params.exactScheduleTime ?? new Date();
-
         if (shouldTrigger) {
           // payload.lastTimestamp is the actual previous fire time. Sources, in
           // order:
@@ -458,21 +490,21 @@ export class ScheduleEngine {
           const payload = {
             scheduleId: instance.taskSchedule.friendlyId,
             type: instance.taskSchedule.type as "DECLARATIVE" | "IMPERATIVE",
-            timestamp: scheduleTimestamp,
+            timestamp: exactScheduleTime,
             lastTimestamp,
             externalId: instance.taskSchedule.externalId ?? undefined,
             timezone: instance.taskSchedule.timezone,
             upcoming: nextScheduledTimestamps(
               instance.taskSchedule.generatorExpression,
               instance.taskSchedule.timezone,
-              scheduleTimestamp,
+              exactScheduleTime,
               10
             ),
           };
 
           // Calculate execution timing metrics
           const actualExecutionTime = new Date();
-          const schedulingAccuracyMs = actualExecutionTime.getTime() - scheduleTimestamp.getTime();
+          const schedulingAccuracyMs = actualExecutionTime.getTime() - exactScheduleTime.getTime();
 
           span.setAttribute("scheduling_accuracy_ms", schedulingAccuracyMs);
           span.setAttribute("actual_execution_time", actualExecutionTime.toISOString());
@@ -480,7 +512,8 @@ export class ScheduleEngine {
           this.logger.debug("Triggering scheduled task", {
             instanceId: params.instanceId,
             taskIdentifier: instance.taskSchedule.taskIdentifier,
-            scheduleTimestamp: scheduleTimestamp.toISOString(),
+            exactScheduleTime: exactScheduleTime.toISOString(),
+            effectiveScheduleTime: effectiveScheduleTime.toISOString(),
             actualExecutionTime: actualExecutionTime.toISOString(),
             schedulingAccuracyMs,
             lastTimestamp: lastTimestamp?.toISOString(),
@@ -496,7 +529,8 @@ export class ScheduleEngine {
               payload,
               scheduleInstanceId: instance.id,
               scheduleId: instance.taskSchedule.id,
-              exactScheduleTime: scheduleTimestamp,
+              exactScheduleTime,
+              effectiveScheduleTime,
             })
           );
 
@@ -608,13 +642,13 @@ export class ScheduleEngine {
         // a long pause/disconnect doesn't quietly overwrite the real
         // last-fire timestamp with a series of skipped slots.
         const carriedLastScheduleTime = shouldTrigger
-          ? scheduleTimestamp
+          ? exactScheduleTime
           : (params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined);
 
         const [nextRunError] = await tryCatch(
           this.registerNextTaskScheduleInstance({
             instanceId: params.instanceId,
-            fromTimestamp: scheduleTimestamp,
+            fromTimestamp: exactScheduleTime,
             lastScheduleTime: carriedLastScheduleTime,
           })
         );
@@ -671,25 +705,33 @@ export class ScheduleEngine {
   /**
    * Enqueues a scheduled task with distributed execution timing
    */
-  private async enqueueScheduledTask(
-    instanceId: string,
-    exactScheduleTime: Date,
-    lastScheduleTime?: Date
-  ) {
+  private async enqueueScheduledTask({
+    instanceId,
+    exactScheduleTime,
+    effectiveScheduleTime,
+    lastScheduleTime,
+  }: {
+    instanceId: string;
+    exactScheduleTime: Date;
+    effectiveScheduleTime: Date;
+    lastScheduleTime?: Date;
+  }) {
     return startSpan(this.tracer, "enqueueScheduledTask", async (span) => {
       span.setAttribute("instanceId", instanceId);
       span.setAttribute("exactScheduleTime", exactScheduleTime.toISOString());
+      span.setAttribute("effectiveScheduleTime", effectiveScheduleTime.toISOString());
       if (lastScheduleTime) {
         span.setAttribute("lastScheduleTime", lastScheduleTime.toISOString());
       }
 
       const distributedExecutionTime = calculateDistributedExecutionTime(
-        exactScheduleTime,
+        effectiveScheduleTime,
         this.distributionWindowSeconds,
         instanceId
       );
 
-      const distributionOffsetMs = exactScheduleTime.getTime() - distributedExecutionTime.getTime();
+      const distributionOffsetMs =
+        effectiveScheduleTime.getTime() - distributedExecutionTime.getTime();
 
       span.setAttribute("distributedExecutionTime", distributedExecutionTime.toISOString());
       span.setAttribute("distributionOffsetMs", distributionOffsetMs);
@@ -702,6 +744,7 @@ export class ScheduleEngine {
       this.logger.debug("Enqueuing scheduled task with distributed execution", {
         instanceId,
         exactScheduleTime: exactScheduleTime.toISOString(),
+        effectiveScheduleTime: effectiveScheduleTime.toISOString(),
         distributedExecutionTime: distributedExecutionTime.toISOString(),
         distributionOffsetMs,
         distributionWindowSeconds: this.distributionWindowSeconds,
@@ -714,6 +757,7 @@ export class ScheduleEngine {
           payload: {
             instanceId,
             exactScheduleTime,
+            effectiveScheduleTime,
             lastScheduleTime,
           },
           availableAt: distributedExecutionTime,

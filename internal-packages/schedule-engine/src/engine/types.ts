@@ -21,7 +21,8 @@ export type TriggerScheduledTaskParams = {
   };
   scheduleInstanceId: string;
   scheduleId: string;
-  exactScheduleTime?: Date;
+  exactScheduleTime: Date;
+  effectiveScheduleTime: Date;
 };
 
 export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "OUT_OF_ENTITLEMENTS" | "SYSTEM_ERROR";
@@ -75,6 +76,7 @@ export interface TriggerScheduleParams {
   instanceId: string;
   finalAttempt: boolean;
   exactScheduleTime?: Date;
+  effectiveScheduleTime?: Date;
   lastScheduleTime?: Date;
 }
 

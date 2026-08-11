@@ -96,6 +96,9 @@ describe("ScheduleEngine Integration", () => {
             environmentId: environment.id,
             projectId: project.id,
             active: true,
+            // Keep the lifecycle test fast and deterministic. Non-zero phase
+            // behavior is covered by the focused registration tests.
+            schedulePhase: 0,
           },
         });
 
@@ -210,6 +213,7 @@ describe("ScheduleEngine Integration", () => {
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
           exactScheduleTime: firstScheduledTime,
+          effectiveScheduleTime: firstScheduledTime,
         });
 
         // Verify the second execution parameters
@@ -233,6 +237,7 @@ describe("ScheduleEngine Integration", () => {
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
           exactScheduleTime: secondScheduledTime,
+          effectiveScheduleTime: secondScheduledTime,
         });
       } finally {
         // Clean up: stop the worker

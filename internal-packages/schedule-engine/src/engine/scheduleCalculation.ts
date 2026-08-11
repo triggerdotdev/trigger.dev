@@ -67,11 +67,7 @@ export function nextScheduledTimestamps(
   let nextScheduledTimestamp = lastScheduledTimestamp;
 
   for (let i = 0; i < count; i++) {
-    nextScheduledTimestamp = calculateNextScheduledTimestamp(
-      cron,
-      timezone,
-      nextScheduledTimestamp
-    );
+    nextScheduledTimestamp = calculateNextNominalTimestamp(cron, timezone, nextScheduledTimestamp);
 
     result.push(nextScheduledTimestamp);
   }

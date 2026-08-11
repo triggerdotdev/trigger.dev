@@ -2,7 +2,13 @@ import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { describe, expect, vi } from "vitest";
 import type { TriggerScheduledTaskParams } from "../src/engine/types.js";
-import { calculateSchedulePhase, ScheduleEngine } from "../src/index.js";
+import {
+  calculateEffectiveScheduleTime,
+  calculateNextNominalTimestamp,
+  calculateSchedulePhase,
+  ScheduleEngine,
+} from "../src/index.js";
+import { calculateDistributedExecutionTime } from "../src/engine/distributedScheduling.js";
 
 describe("ScheduleEngine Integration (part 2)", () => {
   // Deploy-moment backward compatibility. At deploy time, in-flight Redis jobs
@@ -89,21 +95,46 @@ describe("ScheduleEngine Integration (part 2)", () => {
           },
         });
 
-        // Call triggerScheduledTask directly without lastScheduleTime,
-        // simulating an in-flight Redis job enqueued by the old engine.
+        // Call triggerScheduledTask directly without lastScheduleTime or an
+        // effective time, simulating an in-flight Redis job from the old engine.
         const exactScheduleTime = new Date("2026-04-30T10:05:00.000Z");
         await engine.triggerScheduledTask({
           instanceId: scheduleInstance.id,
           finalAttempt: false,
           exactScheduleTime,
-          // lastScheduleTime intentionally omitted — legacy payload shape
+          // effectiveScheduleTime and lastScheduleTime intentionally omitted
         });
 
         expect(triggerCalls.length).toBe(1);
         expect(triggerCalls[0].payload.timestamp).toEqual(exactScheduleTime);
+        expect(triggerCalls[0].exactScheduleTime).toEqual(exactScheduleTime);
+        expect(triggerCalls[0].effectiveScheduleTime).toEqual(exactScheduleTime);
         // Falls back to instance.lastScheduledTimestamp from the DB rather
         // than reporting undefined for this one transitional fire.
         expect(triggerCalls[0].payload.lastTimestamp).toEqual(preDeployLastFire);
+
+        const nextJob = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
+        const nextJobPayload = nextJob!.item as unknown as {
+          exactScheduleTime: string;
+          effectiveScheduleTime: string;
+        };
+        const nextNominalAt = new Date("2026-04-30T10:10:00.000Z");
+        const followingNominalAt = new Date("2026-04-30T10:15:00.000Z");
+        const schedulePhase = calculateSchedulePhase({
+          secret: "test-schedule-phase-secret",
+          environmentId: environment.id,
+          deduplicationKey: taskSchedule.deduplicationKey,
+        });
+        const { effectiveAt: nextEffectiveAt } = calculateEffectiveScheduleTime({
+          nominalAt: nextNominalAt,
+          nextNominalAt: followingNominalAt,
+          schedulePhase,
+        });
+
+        // The next job advances from the legacy job's nominal T, not from E
+        // or the current wall clock, and newly enqueued jobs carry both times.
+        expect(new Date(nextJobPayload.exactScheduleTime)).toEqual(nextNominalAt);
+        expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextEffectiveAt);
       } finally {
         await engine.quit();
       }
@@ -115,6 +146,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
     { timeout: 30_000 },
     async ({ prisma, redisOptions }) => {
       const schedulePhaseSecret = "test-schedule-phase-secret";
+      const triggerCalls: TriggerScheduledTaskParams[] = [];
       const engine = new ScheduleEngine({
         prisma,
         redis: redisOptions,
@@ -126,7 +158,10 @@ describe("ScheduleEngine Integration (part 2)", () => {
           pollIntervalMs: 1000,
         },
         tracer: trace.getTracer("test", "0.0.0"),
-        onTriggerScheduledTask: async () => ({ success: true }),
+        onTriggerScheduledTask: async (params) => {
+          triggerCalls.push(params);
+          return { success: true };
+        },
         isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
       });
 
@@ -181,6 +216,32 @@ describe("ScheduleEngine Integration (part 2)", () => {
         });
         expect(unwindowedInstance.schedulePhase).toBeNull();
 
+        const unwindowedJob = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
+        const unwindowedPayload = unwindowedJob!.item as unknown as {
+          exactScheduleTime: string;
+          effectiveScheduleTime: string;
+        };
+        const unwindowedNominalAt = new Date(unwindowedPayload.exactScheduleTime);
+        const unwindowedNextNominalAt = calculateNextNominalTimestamp(
+          taskSchedule.generatorExpression,
+          taskSchedule.timezone,
+          unwindowedNominalAt
+        );
+        const unwindowedPhase = calculateSchedulePhase({
+          secret: schedulePhaseSecret,
+          environmentId: environment.id,
+          deduplicationKey: taskSchedule.deduplicationKey,
+        });
+        const { effectiveAt: unwindowedEffectiveAt } = calculateEffectiveScheduleTime({
+          nominalAt: unwindowedNominalAt,
+          nextNominalAt: unwindowedNextNominalAt,
+          schedulePhase: unwindowedPhase,
+        });
+        expect(new Date(unwindowedPayload.effectiveScheduleTime)).toEqual(unwindowedEffectiveAt);
+        expect(unwindowedJob!.timestamp).toEqual(
+          calculateDistributedExecutionTime(unwindowedEffectiveAt, 10, scheduleInstance.id)
+        );
+
         await prisma.taskSchedule.update({
           where: { id: taskSchedule.id },
           data: { windowDurationSeconds: 60 },
@@ -217,6 +278,40 @@ describe("ScheduleEngine Integration (part 2)", () => {
           select: { schedulePhase: true },
         });
         expect(preservedInstance.schedulePhase).toBe(pinnedPhase);
+
+        const exactScheduleTime = new Date("2026-04-30T10:00:00.000Z");
+        const effectiveScheduleTime = new Date("2026-04-30T10:00:45.000Z");
+        await engine.triggerScheduledTask({
+          instanceId: scheduleInstance.id,
+          finalAttempt: false,
+          exactScheduleTime,
+          effectiveScheduleTime,
+        });
+
+        expect(triggerCalls).toHaveLength(1);
+        expect(triggerCalls[0].payload.timestamp).toEqual(exactScheduleTime);
+        expect(triggerCalls[0].exactScheduleTime).toEqual(exactScheduleTime);
+        expect(triggerCalls[0].effectiveScheduleTime).toEqual(effectiveScheduleTime);
+
+        const nextJob = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
+        const nextJobPayload = nextJob!.item as unknown as {
+          exactScheduleTime: string;
+          effectiveScheduleTime: string;
+        };
+        const nextNominalAt = new Date("2026-04-30T10:05:00.000Z");
+        const followingNominalAt = new Date("2026-04-30T10:10:00.000Z");
+        const { effectiveAt: nextEffectiveAt } = calculateEffectiveScheduleTime({
+          nominalAt: nextNominalAt,
+          nextNominalAt: followingNominalAt,
+          schedulePhase: pinnedPhase,
+          window: { type: "duration", durationSeconds: 60 },
+        });
+
+        expect(new Date(nextJobPayload.exactScheduleTime)).toEqual(nextNominalAt);
+        expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextEffectiveAt);
+        expect(nextJob!.timestamp).toEqual(
+          calculateDistributedExecutionTime(nextEffectiveAt, 10, scheduleInstance.id)
+        );
       } finally {
         await engine.quit();
       }
