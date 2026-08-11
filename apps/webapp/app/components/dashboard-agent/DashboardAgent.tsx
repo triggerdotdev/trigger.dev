@@ -23,7 +23,7 @@ import {
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
-import { startWakePolling, wakesToToast } from "./wake-poll";
+import { planWakeToasts, startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
   showWatchWakesSummaryToast,
@@ -98,6 +98,11 @@ export function DashboardAgent({
   // A wake in the on-screen chat toasts but must not light the dot. Read by the poll callback,
   // which outlives the render that started it, so it has to be a ref.
   const visibleChat = useRef<string | null>(null);
+
+  // The count the still-visible grouped toast claims. Consecutive polls add to it so a
+  // later batch grows the summary instead of overwriting it with only its own count;
+  // reset when the user opens the panel from that toast.
+  const summaryPending = useRef(0);
 
   // Switching environment re-runs the layout loader but does not remount it, so the seeds
   // above would keep the old environment's counts.
@@ -224,11 +229,22 @@ export function DashboardAgent({
         const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
 
-        if (fresh.length > WAKE_TOAST_MAX_INDIVIDUAL) {
-          showWatchWakesSummaryToast(fresh.length, () => setPanelOpen(true));
-        } else {
-          for (const wake of [...fresh].reverse()) {
-            showWatchWakeToast(wake, openChat);
+        if (fresh.length > 0) {
+          const { plan, pending } = planWakeToasts(
+            fresh,
+            summaryPending.current,
+            WAKE_TOAST_MAX_INDIVIDUAL
+          );
+          summaryPending.current = pending;
+          if (plan.mode === "summary") {
+            showWatchWakesSummaryToast(plan.count, () => {
+              summaryPending.current = 0;
+              setPanelOpen(true);
+            });
+          } else {
+            for (const wake of [...plan.wakes].reverse()) {
+              showWatchWakeToast(wake, openChat);
+            }
           }
         }
       } catch {

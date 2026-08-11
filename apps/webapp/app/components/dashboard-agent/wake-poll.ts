@@ -21,6 +21,30 @@ export function wakesToToast<T extends { watchId: string; unread?: boolean }>(
   return (wakes ?? []).filter((wake) => wake.unread === true && !toasted.has(wake.watchId));
 }
 
+export type WakeToastPlan<T> =
+  | { mode: "summary"; count: number }
+  | { mode: "individual"; wakes: T[] };
+
+/**
+ * Whether this poll's fresh wakes join a grouped summary or each get their own toast.
+ * `pending` is the running count of unacknowledged wakes carried from earlier polls; a
+ * batch that pushes the total past `max` shows the summary with that cumulative count, so
+ * a later batch adds to it rather than replacing it with only its own, smaller number.
+ * The returned `pending` is what the caller carries into the next poll; it resets to zero
+ * once the user acknowledges (opens the panel).
+ */
+export function planWakeToasts<T>(
+  fresh: T[],
+  pending: number,
+  max: number
+): { plan: WakeToastPlan<T>; pending: number } {
+  const total = pending + fresh.length;
+  if (total > max) {
+    return { plan: { mode: "summary", count: total }, pending: total };
+  }
+  return { plan: { mode: "individual", wakes: fresh }, pending: total };
+}
+
 export type WakePollOptions = {
   load: () => Promise<void>;
   isHidden: () => boolean;
