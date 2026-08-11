@@ -1,5 +1,5 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -11,6 +11,12 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
+import {
+  purgeDashboardAgentChatsForOrganization,
+  sweepDashboardAgentSoftDeletedChats,
+} from "~/services/dashboardAgentChatRetention.server";
+import { sweepDashboardAgentTurnEvals } from "~/services/dashboardAgentEvalRetention.server";
+import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
 import { logger } from "~/services/logger.server";
 import {
   MembershipDevEnvironmentsSchema,
@@ -36,6 +42,11 @@ function initializeWorker() {
   };
 
   logger.debug(`👨‍🏭 Initializing common worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
+
+  // Only schedule the agent maintenance cron where the agent is actually set up. Otherwise
+  // its sweeps hit a missing schema and drip a dead-letter entry every run.
+  const dashboardAgentConfigured =
+    env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
 
   const worker = new RedisWorker({
     name: "common-worker",
@@ -146,6 +157,25 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // Stuck investigation cards and turn-eval retention.
+      "dashboardAgent.maintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      // Soft-deletes a deleted organization's chats; the maintenance sweep purges them.
+      "dashboardAgent.purgeOrganization": {
+        schema: z.object({
+          organizationId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -203,6 +233,52 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
+      },
+      "dashboardAgent.maintenance": async () => {
+        // Each backstop runs independently; the first failure is rethrown at the end.
+        let failure: unknown;
+
+        try {
+          const investigations = await sweepDashboardAgentInvestigations();
+          if (investigations.stale > 0) {
+            logger.debug("Dashboard agent investigation sweep", investigations);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        // Retention on the judged-turn rows. Independent of the agent being configured.
+        try {
+          const evals = await sweepDashboardAgentTurnEvals();
+          if (evals.purged > 0) {
+            logger.debug("Dashboard agent turn-eval retention", evals);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        // Hard-delete chats soft-deleted past the retention window, with their children.
+        try {
+          const chats = await sweepDashboardAgentSoftDeletedChats();
+          if (chats.purged > 0) {
+            logger.debug("Dashboard agent chat retention", chats);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        if (failure) throw failure;
+      },
+      "dashboardAgent.purgeOrganization": async ({ payload }) => {
+        const soft = await purgeDashboardAgentChatsForOrganization({
+          organizationId: payload.organizationId,
+        });
+        if (soft > 0) {
+          logger.debug("Dashboard agent organization purge", {
+            organizationId: payload.organizationId,
+            softDeleted: soft,
+          });
+        }
       },
     },
   });

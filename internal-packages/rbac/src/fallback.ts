@@ -19,8 +19,11 @@ import {
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
-import { buildFallbackAbility, permissiveAbility } from "./ability.js";
+import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 import { BearerCredentialResolver } from "./bearerCredentials.js";
+
+// Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
+export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
 
 export type FallbackPrismaClients = {
   // Used for writes (setUserRole, mutateRole, etc.) and any reads that
@@ -98,6 +101,21 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     const user = await this.replica.user.findFirst({ where: { id: context.userId } });
     if (!user) return { ok: false, reason: "unauthenticated" };
 
+    // A non-member in a scoped context is denied, not handed a permissive
+    // ability. buildFallbackAbility is permissive for a non-admin
+    // (can: () => true), so ability.can is not a tenant floor; returning it here
+    // let a non-member act on any org whose slug they knew. An unscoped context
+    // stays permissive (identity-only checks predate any scope), and a platform
+    // admin keeps their ability.
+    if (!user.admin) {
+      const denied = await this.deniedByMembership(
+        context.organizationId,
+        context.projectId,
+        user.id
+      );
+      if (denied) return { ok: false, reason: "unauthorized" };
+    }
+
     const subject: RbacSubject = {
       type: "user",
       userId: user.id,
@@ -111,6 +129,46 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       subject,
       ability: buildFallbackAbility(user.admin),
     };
+  }
+
+  /**
+   * Whether a non-admin user is outside the tenant a scoped context names. A project-only scope
+   * resolves through the project's organization, so the floor holds whichever scope a route
+   * resolves; an unscoped context is not a tenant claim and is never denied here.
+   *
+   * Both lookups read the replica first and fall back to the primary before denying: org creation,
+   * invite acceptance and SSO provisioning all write to the primary, so a member who just joined
+   * must not be bounced while the row replicates.
+   */
+  private async deniedByMembership(
+    organizationId: string | undefined,
+    projectId: string | undefined,
+    userId: string
+  ): Promise<boolean> {
+    let orgId = organizationId;
+
+    if (!orgId && projectId) {
+      const project =
+        (await this.replica.project.findFirst({
+          where: { id: projectId },
+          select: { organizationId: true },
+        })) ??
+        (await this.prisma.project.findFirst({
+          where: { id: projectId },
+          select: { organizationId: true },
+        }));
+      // An unresolvable project names no tenant, so there is nothing to deny against.
+      if (!project) return false;
+      orgId = project.organizationId;
+    }
+
+    if (!orgId) return false;
+
+    const where = { organizationId: orgId, userId };
+    const member =
+      (await this.replica.orgMember.findFirst({ where, select: { id: true } })) ??
+      (await this.prisma.orgMember.findFirst({ where, select: { id: true } }));
+    return !member;
   }
 
   async authenticateAuthorizeBearer(
@@ -204,15 +262,17 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return {
       ok: true,
       userId: claims.userId,
+      claims,
       subject: {
         type: "userActor",
         userId: claims.userId,
         client: claims.client,
+        environmentId: claims.environmentId,
         organizationId: context.organizationId ?? "",
         projectId: context.projectId,
       },
-      // No plugin → permissive, matching the fallback's PAT behaviour.
-      ability: permissiveAbility,
+      // A delegated token is a downgrade of the user: never the blanket ability a PAT gets here.
+      ability: buildJwtAbility(claims.cap ?? CAPLESS_USER_ACTOR_SCOPES),
     };
   }
 

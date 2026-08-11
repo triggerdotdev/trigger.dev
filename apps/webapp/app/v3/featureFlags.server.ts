@@ -25,21 +25,25 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   async function flag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T>
   ): Promise<z.infer<(typeof FeatureFlagCatalog)[T]> | undefined> {
+    const flagSchema = FeatureFlagCatalog[opts.key];
+
+    const override = opts.overrides?.[opts.key];
+
+    if (override !== undefined) {
+      const parsed = flagSchema.safeParse(override);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      // an override that fails the schema is ignored: the global value still wins
+    }
+
     const value = await _prisma.featureFlag.findFirst({
       where: {
         key: opts.key,
       },
     });
-
-    const flagSchema = FeatureFlagCatalog[opts.key];
-
-    if (opts.overrides?.[opts.key] !== undefined) {
-      const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
-
-      if (parsed.success) {
-        return parsed.data;
-      }
-    }
 
     if (value !== null) {
       const parsed = flagSchema.safeParse(value.value);

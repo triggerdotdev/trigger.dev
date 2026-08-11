@@ -70,7 +70,10 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   organizationId: string;
   projectId: string;
   environmentId: string;
-  /** The scope of the query - determines tenant isolation */
+  /**
+   * The scope of the query - determines tenant isolation. Callers that take it from
+   * a request body must cap it against the credential first; see `v3/queryScope.ts`.
+   */
   scope: QueryScope;
   period?: string | null;
   from?: string | null;

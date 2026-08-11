@@ -9,7 +9,7 @@ import {
 } from "~/services/apiAuth.server";
 import { rbac } from "~/services/rbac.server";
 
-type EnvironmentScopedResource = "envvars" | "apiKeys";
+type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments";
 
 type EnvironmentScopedAuthentication =
   | { ok: true; authentication: AuthenticationResult }
@@ -32,12 +32,18 @@ export function presentedApiKeyFromAuthentication(
  * Keep PAT/OAT authentication on the legacy path while routing machine API
  * keys through the RBAC controller, where plugin grants are applied.
  */
+type AuthenticationDependencies = {
+  authenticateRequest: typeof authenticateRequest;
+  authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
+};
+
 export async function authenticateEnvironmentScopedApiRequest(
   request: Request,
   action: "read" | "write",
-  resource: EnvironmentScopedResource
+  resource: EnvironmentScopedResource,
+  dependencies: AuthenticationDependencies = { authenticateRequest, authenticateApiKeyWithScope }
 ): Promise<EnvironmentScopedAuthentication> {
-  const userOrOrganizationAuthentication = await authenticateRequest(request, {
+  const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
     personalAccessToken: true,
     organizationAccessToken: true,
     apiKey: false,
@@ -46,7 +52,7 @@ export async function authenticateEnvironmentScopedApiRequest(
     return { ok: true, authentication: userOrOrganizationAuthentication };
   }
 
-  const apiKeyAuthentication = await authenticateApiKeyWithScope(request, {
+  const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, {
     action,
     resource: { type: resource },
   });
@@ -63,14 +69,16 @@ export async function authenticateEnvironmentScopedApiRequest(
 /** Env var API routes: PAT/OAT on the legacy path, machine keys via RBAC. */
 export function authenticateEnvVarApiRequest(
   request: Request,
-  action: "read" | "write"
+  action: "read" | "write",
+  dependencies?: AuthenticationDependencies
 ): Promise<EnvironmentScopedAuthentication> {
-  return authenticateEnvironmentScopedApiRequest(request, action, "envvars");
+  return authenticateEnvironmentScopedApiRequest(request, action, "envvars", dependencies);
 }
 
 const RESOURCE_LABELS: Record<EnvironmentScopedResource, string> = {
   envvars: "environment variables",
   apiKeys: "API keys",
+  deployments: "deployments",
 };
 
 /**

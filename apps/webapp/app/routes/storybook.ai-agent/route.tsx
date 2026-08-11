@@ -89,9 +89,9 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {(
           [
-            ["ask-ai/small", 16, "small"],
-            ["ask-ai/medium", 16, "medium"],
-            ["ask-ai/large", 20, "large"],
+            ["ask-trigger/small", 16, "small"],
+            ["ask-trigger/medium", 16, "medium"],
+            ["ask-trigger/large", 20, "large"],
           ] as [ButtonVariant, number, string][]
         ).map(([variant, matrixSize, label]) => (
           <div key={variant} className="flex flex-col items-center gap-2">
@@ -106,7 +106,7 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {[14, 15, 16].map((s) => (
           <div key={s} className="flex flex-col items-center gap-2">
-            <AskAiButton variant="ask-ai/small" matrixSize={s} />
+            <AskAiButton variant="ask-trigger/small" matrixSize={s} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{s}px icon</div>
           </div>
         ))}
@@ -231,7 +231,7 @@ function FaceButton({ name }: { name: DotShapeName }) {
 
   return (
     <Button
-      variant="ask-ai/small"
+      variant="ask-trigger/small"
       onClick={trigger}
       LeadingIcon={
         <AgentDotMatrix

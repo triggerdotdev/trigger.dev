@@ -15,6 +15,7 @@ import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
 import { runStore } from "~/v3/runStore.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
 
+import { boundedIn } from "@trigger.dev/database";
 type RunCursorRow = { runId: string; createdAt: number };
 
 /**
@@ -248,7 +249,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const runs = await this.#hydrateRunsByIds(runIds, (client, ids) =>
       store.findRuns(
         {
-          where: { id: { in: ids } },
+          where: { id: { in: boundedIn(ids) } },
           select: { id: true, friendlyId: true },
         },
         client
@@ -268,7 +269,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         {
           where: {
             id: {
-              in: ids,
+              in: boundedIn(ids),
             },
           },
           select: {

@@ -11,6 +11,10 @@ const variations = {
     "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group focus-visible:focus-custom",
   secondary:
     "text-text-dimmed transition hover:text-text-bright inline-flex gap-0.5 items-center group focus-visible:focus-custom",
+  // The theme-remapped link token, for links inside themed surfaces where the
+  // raw indigo of `primary` is dark-theme only.
+  token:
+    "text-text-link transition hover:underline inline-flex gap-0.5 items-center group focus-visible:focus-custom",
 } as const;
 
 type TextLinkProps = {

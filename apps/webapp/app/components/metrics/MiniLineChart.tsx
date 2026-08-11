@@ -42,6 +42,8 @@ export type MiniLineChartProps = {
    * throttled magnitude carried by the tooltip.
    */
   throttled?: number[];
+  /** Tooltip wording for the overlay buckets. Null omits the overlay line. */
+  overlayLabel?: string | null;
   /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
   bucketStartMs?: number;
   /** Width of each bucket in ms. Defaults to one hour. */
@@ -76,6 +78,7 @@ export type MiniLineChartProps = {
 export function MiniLineChart({
   data,
   throttled,
+  overlayLabel = "throttled",
   bucketStartMs,
   bucketIntervalMs,
   color = "var(--color-tasks)",
@@ -128,7 +131,7 @@ export function MiniLineChart({
       <YAxis domain={[0, max || 1]} hide />
       <Tooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.2)", strokeWidth: 1 }}
-        content={<MiniLineChartTooltip unitLabel={unitLabel} />}
+        content={<MiniLineChartTooltip unitLabel={unitLabel} overlayLabel={overlayLabel} />}
         allowEscapeViewBox={{ x: true, y: true }}
         wrapperStyle={{ zIndex: 1000 }}
         animationDuration={0}
@@ -195,7 +198,8 @@ function MiniLineChartTooltip({
   active,
   payload,
   unitLabel,
-}: TooltipProps<number, string> & { unitLabel: UnitLabel }) {
+  overlayLabel = "throttled",
+}: TooltipProps<number, string> & { unitLabel: UnitLabel; overlayLabel?: string | null }) {
   if (!active || !payload || payload.length === 0) return null;
   const entry = payload[0].payload as MiniLineChartDatum;
   const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
@@ -211,9 +215,9 @@ function MiniLineChartTooltip({
             {entry.count === 1 ? unitLabel.singular : unitLabel.plural}
           </span>
         </div>
-        {throttled > 0 && (
+        {throttled > 0 && overlayLabel !== null && (
           <div className="mt-1 text-xs text-warning">
-            <span className="tabular-nums">{throttled.toLocaleString()}</span> throttled
+            <span className="tabular-nums">{throttled.toLocaleString()}</span> {overlayLabel}
           </div>
         )}
       </div>

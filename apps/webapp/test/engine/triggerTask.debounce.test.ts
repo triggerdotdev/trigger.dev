@@ -459,4 +459,151 @@ describe("RunEngineTriggerTaskService", () => {
     expect(result).toBeDefined();
     expect(result?.run.friendlyId).toBeDefined();
   });
+
+  containerTest(
+    "should reject a debounce maxDelay that leaves no room to push the run back",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      onTestFinished(() => engine.quit());
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const queuesManager = new DefaultQueueManager(prisma, engine);
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern()
+      );
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+      });
+
+      const triggerWithDebounce = (debounce: { key: string; delay: string; maxDelay?: string }) =>
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { test: "test" }, options: { debounce } },
+        });
+
+      await expect(
+        triggerWithDebounce({ key: "equal", delay: "12h", maxDelay: "12h" })
+      ).rejects.toThrow(/must be longer than debounce.delay/);
+
+      await expect(
+        triggerWithDebounce({ key: "shorter", delay: "12h", maxDelay: "1h" })
+      ).rejects.toThrow(/must be longer than debounce.delay/);
+
+      await expect(
+        triggerWithDebounce({ key: "unparseable", delay: "10s", maxDelay: "soon" })
+      ).rejects.toThrow(/Invalid debounce maxDelay/);
+
+      await expect(
+        triggerWithDebounce({ key: "empty", delay: "10s", maxDelay: "" })
+      ).rejects.toThrow(/Invalid debounce maxDelay/);
+
+      const compound = await triggerWithDebounce({
+        key: "compound",
+        delay: "2h30m",
+        maxDelay: "1d",
+      });
+      expect(compound?.run.friendlyId).toBeDefined();
+
+      const withRoom = await triggerWithDebounce({
+        key: "with-room",
+        delay: "10s",
+        maxDelay: "5m",
+      });
+      expect(withRoom?.run.friendlyId).toBeDefined();
+
+      const noMaxDelay = await triggerWithDebounce({ key: "no-max-delay", delay: "12h" });
+      expect(noMaxDelay?.run.friendlyId).toBeDefined();
+
+      await expect(
+        triggerWithDebounce({ key: "date-delay", delay: "2027-01-01T00:00:00.000Z" })
+      ).rejects.toThrow(/must be a duration, not a date/);
+
+      const withServerCeiling = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+        maximumDebounceDurationMs: 60 * 60 * 1000,
+      });
+
+      await expect(
+        withServerCeiling.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: {
+            payload: { test: "test" },
+            options: { debounce: { key: "over-server-ceiling", delay: "12h" } },
+          },
+        })
+      ).rejects.toThrow(/at or above this server's maximum debounce duration of 1h/);
+
+      const underServerCeiling = await withServerCeiling.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: { debounce: { key: "under-server-ceiling", delay: "10s" } },
+        },
+      });
+      expect(underServerCeiling?.run.friendlyId).toBeDefined();
+
+      const overCeilingWithMaxDelay = await withServerCeiling.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: { debounce: { key: "override", delay: "12h", maxDelay: "24h" } },
+        },
+      });
+      expect(overCeilingWithMaxDelay?.run.friendlyId).toBeDefined();
+    }
+  );
 });

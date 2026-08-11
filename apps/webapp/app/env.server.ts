@@ -114,6 +114,18 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
+/**
+ * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
+ * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
+ */
+const OptionalLimitEnv = z.preprocess((v) => {
+  if (typeof v === "string" && (v.trim() === "" || Number(v.trim()) === 0)) {
+    return undefined;
+  }
+
+  return v === 0 ? undefined : v;
+}, z.coerce.number().int().positive().optional());
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -226,6 +238,13 @@ const EnvironmentSchema = z
       )
       .optional(),
     CONTROL_PLANE_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA: z.string().default("0"),
+    RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
@@ -250,6 +269,9 @@ const EnvironmentSchema = z
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
+    // Extra exact origins (comma separated) added to the document `img-src` CSP,
+    // e.g. an SSO host serving profile images. Wildcards are refused.
+    CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
     API_ORIGIN: z.string().optional(),
     // Alternative API origin for deployed runs whose org has the
     // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
@@ -594,6 +616,14 @@ const EnvironmentSchema = z
 
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
+
+    // Separate budget for deploy-flow endpoints, see deploymentRateLimit.server.ts
+    DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    DEPLOYMENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1500),
+    DEPLOYMENT_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(500),
+    DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+    DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+    DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
     // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
     // (/otel/*). Bounds unauthenticated request rates. Opt-in
@@ -1034,11 +1064,16 @@ const EnvironmentSchema = z
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
-    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
-      .number()
-      .int()
-      .default(60_000 * 60), // 1 hour
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the first
+     * trigger. Unset by default: a continuously triggered debounce key is pushed back for as
+     * long as the triggers keep coming, and `debounce.maxDelay` on the trigger is the only
+     * bound. Setting this applies a ceiling to every debounced run that does not carry its own
+     * `maxDelay`, and any `delay` at or above it is rejected at trigger time. It is a default
+     * rather than an enforced limit: a trigger that sets `maxDelay` uses that value even when it
+     * is longer than this. `0` and blank both mean no ceiling.
+     */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalLimitEnv,
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
@@ -1694,7 +1729,7 @@ const EnvironmentSchema = z
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
 
-    // kapa.ai
+    // kapa.ai — deprecated, see `AskAI.tsx`. Nothing reads it while no surface mounts the widget.
     KAPA_AI_WEBSITE_ID: z.string().optional(),
 
     // BetterStack

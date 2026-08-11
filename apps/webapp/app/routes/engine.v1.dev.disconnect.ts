@@ -3,7 +3,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { tryCatch } from "@trigger.dev/core";
 import { DevDisconnectRequestBody } from "@trigger.dev/core/v3";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { BulkActionNotificationType, BulkActionType } from "@trigger.dev/database";
+import { BulkActionNotificationType, BulkActionType, boundedIn } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
@@ -106,7 +106,7 @@ async function cancelRunsInline(runFriendlyIds: string[], environmentId: string)
   const runs = await runStore.findRuns(
     {
       where: {
-        id: { in: runIds },
+        id: { in: boundedIn(runIds) },
         runtimeEnvironmentId: environmentId,
       },
       select: {

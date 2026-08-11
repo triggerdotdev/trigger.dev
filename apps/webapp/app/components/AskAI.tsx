@@ -1,3 +1,9 @@
+/**
+ * @deprecated Superseded by the dashboard agent (`components/dashboard-agent`). Nothing mounts
+ * this any more — every Ask AI entry point now opens Ask Trigger. Kept until the agent has
+ * shipped, then removed along with `@kapaai/react-sdk` and `KAPA_AI_WEBSITE_ID`.
+ */
+
 import {
   ArrowPathIcon,
   ArrowUpIcon,
@@ -81,6 +87,8 @@ function useAskAIState() {
  * it around the popover, not inside, so the dialog and shortcut survive the popover closing.
  * `children` receives the open function, or undefined when Ask AI is unavailable (self-hosted, no
  * Kapa website id, or SSR).
+ *
+ * @deprecated See the note at the top of this file.
  */
 export function AskAIRoot({
   children,
@@ -137,6 +145,7 @@ function AskAIRootProvider({
   );
 }
 
+/** @deprecated See the note at the top of this file. */
 export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const { isManagedCloud } = useFeatures();
   const websiteId = useKapaWebsiteId();

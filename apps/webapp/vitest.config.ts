@@ -18,6 +18,8 @@ export default defineConfig({
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
       "app/utils/**/*.test.ts",
+      "app/components/code/**/*.test.ts",
+      "app/components/dashboard-agent/**/*.test.ts",
       "app/presenters/**/*.test.ts",
     ],
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.

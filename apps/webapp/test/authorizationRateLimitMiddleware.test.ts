@@ -150,10 +150,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
         limiterConfigOverride: async (authorizationValue) => {
           if (authorizationValue === "Bearer premium-token") {
             return {
-              type: "tokenBucket",
-              refillRate: 10,
-              interval: "1m",
-              maxTokens: 100,
+              config: {
+                type: "tokenBucket",
+                refillRate: 10,
+                interval: "1m",
+                maxTokens: 100,
+              },
             };
           }
           return undefined;
@@ -183,6 +185,75 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       expect(premiumResponse2.status).toBe(200);
     }
   );
+
+  redisTest(
+    "should share a bucket across tokens that resolve to the same identifier",
+    async ({ redisOptions }) => {
+      const rateLimitMiddleware = authorizationRateLimitMiddleware({
+        redis: { ...redisOptions, tlsDisabled: true },
+        keyPrefix: "test-identifier",
+        defaultLimiter: {
+          type: "tokenBucket",
+          refillRate: 1,
+          interval: "1m",
+          maxTokens: 1,
+        },
+        pathMatchers: [/^\/api/],
+        // Both tokens map to the same environment identifier, so they should
+        // consume from a single shared bucket rather than one bucket each.
+        limiterConfigOverride: async () => ({ identifier: "env_shared" }),
+      });
+
+      app.use(rateLimitMiddleware);
+      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+      // First token uses the single token in the shared bucket.
+      const first = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_aaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(first.status).toBe(200);
+
+      // A different token that resolves to the same identifier is limited,
+      // because the bucket is shared rather than per-key.
+      const second = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_bbbbbbbbbbbbbbbbbbbbbbbb");
+      expect(second.status).toBe(429);
+    }
+  );
+
+  redisTest("should key per token when no identifier is supplied", async ({ redisOptions }) => {
+    const rateLimitMiddleware = authorizationRateLimitMiddleware({
+      redis: { ...redisOptions, tlsDisabled: true },
+      keyPrefix: "test-no-identifier",
+      defaultLimiter: {
+        type: "tokenBucket",
+        refillRate: 1,
+        interval: "1m",
+        maxTokens: 1,
+      },
+      pathMatchers: [/^\/api/],
+      // Override supplies a config but no identifier: bucketing stays per-key
+      // (hashed Authorization header), the legacy behavior.
+      limiterConfigOverride: async () => ({
+        config: { type: "tokenBucket", refillRate: 1, interval: "1m", maxTokens: 1 },
+      }),
+    });
+
+    app.use(rateLimitMiddleware);
+    app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+    const first = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+    expect(first.status).toBe(200);
+
+    // Same token is limited...
+    const firstAgain = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+    expect(firstAgain.status).toBe(429);
+
+    // ...but a different token gets its own bucket.
+    const second = await request(app).get("/api/test").set("Authorization", "Bearer token-b");
+    expect(second.status).toBe(200);
+  });
 
   describe("Advanced Cases", () => {
     // 1. Test different rate limit configurations
@@ -375,10 +446,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
           configOverrideCalls++;
           if (authorizationValue === "Bearer premium-token") {
             return {
-              type: "tokenBucket",
-              refillRate: 10,
-              interval: "1m",
-              maxTokens: 100,
+              config: {
+                type: "tokenBucket",
+                refillRate: 10,
+                interval: "1m",
+                maxTokens: 100,
+              },
             };
           }
           return undefined;

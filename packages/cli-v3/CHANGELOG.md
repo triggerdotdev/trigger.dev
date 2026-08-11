@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.5.10
+
+### Patch Changes
+
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- You can now choose the region a run executes in when triggering a task through the MCP server. ([#4439](https://github.com/triggerdotdev/trigger.dev/pull/4439))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+  - `@trigger.dev/build@4.5.10`
+  - `@trigger.dev/schema-to-json@4.5.10`
+
 ## 4.5.9
 
 ### Patch Changes

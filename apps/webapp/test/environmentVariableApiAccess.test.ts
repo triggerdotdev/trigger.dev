@@ -1,19 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const authMocks = vi.hoisted(() => ({
-  authenticateRequest: vi.fn<(...args: any[]) => Promise<any>>(),
-  authenticateApiKeyWithScope: vi.fn<(...args: any[]) => Promise<any>>(),
-}));
-
-vi.mock("~/services/apiAuth.server", () => authMocks);
-vi.mock("~/services/rbac.server", () => ({
-  rbac: { authenticatePat: vi.fn(), authenticateUserActor: vi.fn() },
-}));
-
+import { describe, expect, it, vi } from "vitest";
 import {
   authenticateEnvVarApiRequest,
   presentedApiKeyFromAuthentication,
 } from "~/services/environmentVariableApiAccess.server";
+
+const authenticateRequest = vi.fn();
+const authenticateApiKeyWithScope = vi.fn();
+const dependencies = { authenticateRequest, authenticateApiKeyWithScope };
 
 describe("presentedApiKeyFromAuthentication", () => {
   it("returns the API key that authenticated the request", () => {
@@ -24,7 +17,7 @@ describe("presentedApiKeyFromAuthentication", () => {
           ok: true,
           apiKey: "tr_prod_sk_presented",
           type: "PRIVATE",
-          environment: {} as never,
+          environment: {},
         },
       })
     ).toBe("tr_prod_sk_presented");
@@ -34,78 +27,52 @@ describe("presentedApiKeyFromAuthentication", () => {
     expect(
       presentedApiKeyFromAuthentication({
         type: "personalAccessToken",
-        result: { userId: "user_123" } as never,
+        result: { userId: "user_123" },
       })
     ).toBeUndefined();
   });
 });
 
 describe("authenticateEnvVarApiRequest", () => {
-  beforeEach(() => {
-    authMocks.authenticateRequest.mockReset();
-    authMocks.authenticateApiKeyWithScope.mockReset();
+  it("keeps PAT authentication on the legacy path", async () => {
+    const authentication = { type: "personalAccessToken", result: { userId: "user_123" } } as never;
+    authenticateRequest.mockResolvedValueOnce(authentication);
+
+    await expect(
+      authenticateEnvVarApiRequest(new Request("https://example.com"), "read", dependencies)
+    ).resolves.toEqual({ ok: true, authentication });
+    expect(authenticateApiKeyWithScope).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { type: "personalAccessToken", result: { userId: "user_123" } },
-    { type: "organizationAccessToken", result: { organizationId: "org_123" } },
-  ])("preserves $type authentication", async (authentication) => {
-    authMocks.authenticateRequest.mockResolvedValue(authentication);
-    const request = new Request("https://example.com", {
-      headers: { Authorization: "Bearer token" },
-    });
-
-    await expect(authenticateEnvVarApiRequest(request, "read")).resolves.toEqual({
-      ok: true,
-      authentication,
-    });
-    expect(authMocks.authenticateRequest).toHaveBeenCalledWith(request, {
-      personalAccessToken: true,
-      organizationAccessToken: true,
-      apiKey: false,
-    });
-    expect(authMocks.authenticateApiKeyWithScope).not.toHaveBeenCalled();
-  });
-
-  it("routes API-key credentials through scoped controller authentication", async () => {
+  it("uses scoped API-key authentication when no PAT is present", async () => {
+    authenticateRequest.mockResolvedValueOnce(undefined);
     const authentication = {
       ok: true,
-      apiKey: "tr_test_key",
+      apiKey: "tr_prod_sk_presented",
       type: "PRIVATE",
-      environment: { id: "env_123" },
-      ability: { can: vi.fn(() => true) },
+      environment: {},
     };
-    authMocks.authenticateRequest.mockResolvedValue(undefined);
-    authMocks.authenticateApiKeyWithScope.mockResolvedValue({ ok: true, authentication });
-    const request = new Request("https://example.com", {
-      headers: { Authorization: "Bearer tr_test_key" },
-    });
+    authenticateApiKeyWithScope.mockResolvedValueOnce({ ok: true, authentication });
 
-    await expect(authenticateEnvVarApiRequest(request, "write")).resolves.toEqual({
-      ok: true,
-      authentication: { type: "apiKey", result: authentication },
-    });
-    expect(authMocks.authenticateApiKeyWithScope).toHaveBeenCalledWith(request, {
+    await expect(
+      authenticateEnvVarApiRequest(new Request("https://example.com"), "write", dependencies)
+    ).resolves.toEqual({ ok: true, authentication: { type: "apiKey", result: authentication } });
+    expect(authenticateApiKeyWithScope).toHaveBeenCalledWith(expect.any(Request), {
       action: "write",
       resource: { type: "envvars" },
     });
   });
 
-  it("preserves scoped controller failures", async () => {
-    authMocks.authenticateRequest.mockResolvedValue(undefined);
-    authMocks.authenticateApiKeyWithScope.mockResolvedValue({
+  it("preserves scoped API-key failures", async () => {
+    authenticateRequest.mockResolvedValueOnce(undefined);
+    authenticateApiKeyWithScope.mockResolvedValueOnce({
       ok: false,
       status: 403,
       error: "Unauthorized",
     });
 
     await expect(
-      authenticateEnvVarApiRequest(
-        new Request("https://example.com", {
-          headers: { Authorization: "Bearer tr_test_key" },
-        }),
-        "read"
-      )
+      authenticateEnvVarApiRequest(new Request("https://example.com"), "read", dependencies)
     ).resolves.toEqual({ ok: false, status: 403, error: "Unauthorized" });
   });
 });

@@ -940,6 +940,9 @@ export type TriggerOptions = {
    *
    * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
    *
+   * There is no time limit by default: while triggers keep arriving on the same key, the run
+   * keeps being pushed back and never executes. Set `maxDelay` to bound that.
+   *
    * @example
    *
    * ```ts
@@ -964,10 +967,18 @@ export type TriggerOptions = {
      * Duration string specifying how long to delay the run. If another trigger with the same key
      * occurs within this duration, the delay is extended.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks). Minimum delay is 1 second.
+     * When you also set `maxDelay`, keep `delay` well below it. A run is only pushed back while
+     * the new execution time stays inside `maxDelay`, so a `delay` at or above `maxDelay` leaves
+     * no room to push and every trigger creates its own run.
      *
-     * @example "1s", "5s", "1m", "30m", "1h"
+     * Must be a duration, not a date: the value is re-applied every time the run is pushed
+     * back, so an absolute date cannot work and debouncing silently stops collapsing.
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
+     * Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h", "2h30m"
      */
     delay: string;
     /**
@@ -988,12 +999,15 @@ export type TriggerOptions = {
      * (measured from the first trigger), the current debounced run will be allowed to execute
      * and a new run will be created for subsequent triggers.
      *
-     * If not specified, falls back to the server's default maximum (typically 1 hour).
+     * Without it a continuously triggered key is pushed back indefinitely and never runs. The
+     * gap between the two values is the room you have to push: a `delay` of `"10s"` with a
+     * `maxDelay` of `"5m"` keeps extending for just under 5 minutes from the first trigger,
+     * then runs.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks).
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
      *
-     * @example "30m", "2h", "1d"
+     * @example "30m", "2h", "1d", "2h30m"
      */
     maxDelay?: string;
   };

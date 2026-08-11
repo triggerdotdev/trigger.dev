@@ -11,7 +11,7 @@ import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isom
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, Prisma } from "~/db.server";
+import { $transaction, Prisma, boundedIn } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -767,7 +767,7 @@ export async function syncDeclarativeSchedules(
   const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
     where: {
       id: {
-        in: Array.from(missingSchedules),
+        in: boundedIn(Array.from(missingSchedules)),
       },
     },
     include: {
@@ -775,27 +775,40 @@ export async function syncDeclarativeSchedules(
     },
   });
 
+  const scheduleIdsToDelete: string[] = [];
+  const scheduleIdsToDetachFromEnvironment: string[] = [];
+
   for (const schedule of potentiallyDeletableSchedules) {
     const canDeleteSchedule =
       schedule.instances.length === 0 ||
       schedule.instances.every((instance) => instance.environmentId === environment.id);
 
     if (canDeleteSchedule) {
-      //we can delete schedules with no instances other than ones for the current environment
-      await prisma.taskSchedule.delete({
-        where: {
-          id: schedule.id,
-        },
-      });
-    } else {
-      //otherwise we delete the instance (other environments remain untouched)
-      await prisma.taskScheduleInstance.deleteMany({
-        where: {
-          taskScheduleId: schedule.id,
-          environmentId: environment.id,
-        },
-      });
+      scheduleIdsToDelete.push(schedule.id);
+    } else if (schedule.instances.some((instance) => instance.environmentId === environment.id)) {
+      scheduleIdsToDetachFromEnvironment.push(schedule.id);
     }
+  }
+
+  if (scheduleIdsToDelete.length > 0) {
+    await prisma.taskSchedule.deleteMany({
+      where: {
+        id: {
+          in: boundedIn(scheduleIdsToDelete),
+        },
+      },
+    });
+  }
+
+  if (scheduleIdsToDetachFromEnvironment.length > 0) {
+    await prisma.taskScheduleInstance.deleteMany({
+      where: {
+        taskScheduleId: {
+          in: boundedIn(scheduleIdsToDetachFromEnvironment),
+        },
+        environmentId: environment.id,
+      },
+    });
   }
 }
 

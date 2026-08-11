@@ -15,6 +15,7 @@ import {
   Prisma as PrismaNamespace,
   prisma,
   type PrismaClientOrTransaction,
+  type PrismaReplicaClient,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
@@ -41,8 +42,12 @@ const nanoid = customAlphabet("1234567890abcdef", 4);
  * miss, so replica lag never leaves a real org unresolved, which the dashboard
  * route builder treats as an unauthorized request.
  */
-export async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const fromReplica = await $replica.organization.findFirst({
+export async function resolveOrgIdFromSlug(
+  slug: string,
+  replicaClient: PrismaReplicaClient = $replica,
+  prismaClient: PrismaClientOrTransaction = prisma
+): Promise<string | null> {
+  const fromReplica = await replicaClient.organization.findFirst({
     where: { slug },
     select: { id: true },
   });
@@ -50,10 +55,33 @@ export async function resolveOrgIdFromSlug(slug: string): Promise<string | null>
     return fromReplica.id;
   }
 
-  const fromPrimary = await prisma.organization.findFirst({
+  const fromPrimary = await prismaClient.organization.findFirst({
     where: { slug },
     select: { id: true },
   });
+  return fromPrimary?.id ?? null;
+}
+
+/**
+ * Like `resolveOrgIdFromSlug`, but only resolves an org the user is a member of. `ability.can` is not
+ * a tenant floor (the OSS fallback and the cloud plugin both return a permissive ability for a
+ * non-member), so a route that scopes only by slug lets a non-member reach the handler; the
+ * membership filter here is the tenant floor. Returns null for a non-member, which the dashboard
+ * route builder treats as no scope and fails closed.
+ */
+export async function resolveOrgIdFromSlugForUser(
+  slug: string,
+  userId: string,
+  replicaClient: PrismaReplicaClient = $replica,
+  prismaClient: PrismaClientOrTransaction = prisma
+): Promise<string | null> {
+  const where = { slug, members: { some: { userId } } };
+  const fromReplica = await replicaClient.organization.findFirst({ where, select: { id: true } });
+  if (fromReplica) {
+    return fromReplica.id;
+  }
+
+  const fromPrimary = await prismaClient.organization.findFirst({ where, select: { id: true } });
   return fromPrimary?.id ?? null;
 }
 

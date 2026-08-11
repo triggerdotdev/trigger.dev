@@ -8,6 +8,7 @@ import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectInteg
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 
+import { boundedIn } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
 
@@ -72,7 +73,7 @@ export class EnvironmentVariablesPresenter {
           },
           where: {
             environmentId: {
-              in: environmentIds,
+              in: boundedIn(environmentIds),
             },
           },
         },
@@ -103,7 +104,7 @@ export class EnvironmentVariablesPresenter {
         ? await this.#replicaClient.user.findMany({
             where: {
               id: {
-                in: Array.from(userIds),
+                in: boundedIn(Array.from(userIds)),
               },
             },
             select: {

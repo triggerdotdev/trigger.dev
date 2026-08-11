@@ -37,6 +37,7 @@ import {
   type TaskRunExecutionSnapshot,
   type Waitpoint,
   Prisma,
+  boundedIn,
 } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
@@ -384,7 +385,7 @@ export class RunEngine {
       redis: options.debounce?.redis ?? options.runLock.redis,
       executionSnapshotSystem: this.executionSnapshotSystem,
       delayedRunSystem: this.delayedRunSystem,
-      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs,
       quantizeNewDelayUntilMs: options.debounce?.quantizeNewDelayUntilMs ?? 1000,
       fastPathSkipEnabled: options.debounce?.fastPathSkipEnabled ?? true,
       useReplicaForFastPathRead: options.debounce?.useReplicaForFastPathRead ?? false,
@@ -2955,7 +2956,7 @@ export class RunEngine {
   ): Promise<Array<{ id: string; orgId: string }>> {
     const runs = await this.runStore.findRuns({
       where: {
-        id: { in: runIds },
+        id: { in: boundedIn(runIds) },
         completedAt: {
           lte: new Date(Date.now() - completedAtOffsetMs), // This only finds runs that were completed more than 10 minutes ago
         },
@@ -2963,7 +2964,7 @@ export class RunEngine {
           not: null,
         },
         status: {
-          in: getFinalRunStatuses(),
+          in: boundedIn(getFinalRunStatuses()),
         },
       },
       select: {
