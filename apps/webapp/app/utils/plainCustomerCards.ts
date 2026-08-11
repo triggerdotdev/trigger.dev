@@ -30,6 +30,20 @@ export const PlainCustomerCardRequestSchema = z.object({
 
 export type PlainCustomerCardRequest = z.infer<typeof PlainCustomerCardRequestSchema>;
 
+/**
+ * An email in the form `User.email` is stored in.
+ *
+ * Users are written with `email.toLowerCase().trim()` (see `createUser` / SSO upsert in
+ * `models/user.server.ts`), and `User.email` is unique, so an exact lookup on whatever Plain sends
+ * would miss a real account whenever the address arrives with different casing or padding — which
+ * it can, because for customers created outside our own writes it comes from a sender address.
+ *
+ * Returns null for an address with nothing left after trimming, so callers can skip the lookup.
+ */
+export function normalizeEmail(email: string | null | undefined): string | null {
+  return email?.toLowerCase().trim() || null;
+}
+
 type NoDataCard = { key: string; components: null };
 
 /**

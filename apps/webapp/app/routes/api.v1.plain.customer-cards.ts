@@ -5,7 +5,11 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { generateImpersonationToken } from "~/services/impersonation.server";
-import { answerAllCardKeys, PlainCustomerCardRequestSchema } from "~/utils/plainCustomerCards";
+import {
+  answerAllCardKeys,
+  normalizeEmail,
+  PlainCustomerCardRequestSchema,
+} from "~/utils/plainCustomerCards";
 
 function sanitizeHeaders(
   request: Request,
@@ -113,24 +117,31 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     };
 
-    const where = customer.externalId
-      ? { id: customer.externalId }
-      : customer.email
-        ? { email: customer.email }
-        : null;
+    // The external id is ours (`User.id`), so it's tried first. Falling back to email when it
+    // doesn't resolve covers a stale id — one naming a user row that no longer exists — instead of
+    // leaving the card blank for a customer we could still identify.
+    const byExternalId = customer.externalId
+      ? await prisma.user.findFirst({ where: { id: customer.externalId }, include: userInclude })
+      : null;
 
-    const user = where ? await prisma.user.findFirst({ where, include: userInclude }) : null;
+    const email = normalizeEmail(customer.email);
+    const user =
+      byExternalId ??
+      (email ? await prisma.user.findFirst({ where: { email }, include: userInclude }) : null);
 
     /**
-     * Impersonation is offered only when the customer was matched on `externalId` — a value we set
+     * Impersonation is offered only when the customer matched on `externalId` — a value we set
      * ourselves from `User.id`.
      *
      * Matching on email is a weaker claim: the address on a Plain customer isn't verified, and for
      * customers created outside our own writes it comes from whoever sent the message. Offering a
      * one-click impersonation link off the back of that would let an unverified address stand in
      * for an account, so email-matched customers get the account rows without it.
+     *
+     * Derived from which lookup actually matched, not from whether an external id was *sent* — an
+     * id that misses and falls through to email must not unlock impersonation.
      */
-    const canImpersonate = !!customer.externalId;
+    const canImpersonate = Boolean(byExternalId);
 
     // No matching user: still answer every requested key, with no data so Plain hides the cards.
     if (!user) {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { answerAllCardKeys, PlainCustomerCardRequestSchema } from "./plainCustomerCards";
+import {
+  answerAllCardKeys,
+  normalizeEmail,
+  PlainCustomerCardRequestSchema,
+} from "./plainCustomerCards";
 
 const request = (overrides: Record<string, unknown> = {}) => ({
   cardKeys: ["account-details"],
@@ -52,6 +56,25 @@ describe("PlainCustomerCardRequestSchema", () => {
     expect(PlainCustomerCardRequestSchema.safeParse({ customer: { id: "c_1" } }).success).toBe(
       false
     );
+  });
+});
+
+// Users are stored with a lowercased, trimmed email, so a lookup on the raw value Plain sends
+// would miss a real account whose address differs only in casing or padding.
+describe("normalizeEmail", () => {
+  it("lowercases and trims", () => {
+    expect(normalizeEmail("  DEV@Example.COM ")).toBe("dev@example.com");
+  });
+
+  it("leaves an already-normalized address alone", () => {
+    expect(normalizeEmail("dev@example.com")).toBe("dev@example.com");
+  });
+
+  it("is null for absent or empty addresses, so the lookup can be skipped", () => {
+    expect(normalizeEmail(null)).toBeNull();
+    expect(normalizeEmail(undefined)).toBeNull();
+    expect(normalizeEmail("")).toBeNull();
+    expect(normalizeEmail("   ")).toBeNull();
   });
 });
 
