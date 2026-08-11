@@ -33,7 +33,7 @@ afterAll(async () => {
   await server?.stop();
 }, 120_000);
 
-const STREAM_ID = "browserPreview";
+const STREAM_ID = "frames";
 const PART_ID = "part";
 const FRAME_BYTES = 250 * 1024;
 const FRAME_COUNT = 8;
