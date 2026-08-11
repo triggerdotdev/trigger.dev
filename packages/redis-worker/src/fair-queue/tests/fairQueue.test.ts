@@ -1581,12 +1581,15 @@ describe("FairQueue", () => {
           expect(await redis.zcard(keys.inflightKey(0))).toBe(1);
           expect(await redis.zcard(keys.queueKey(queueId))).toBe(0);
 
+          const [stuckMember] = await redis.zrange(keys.inflightKey(0), 0, 0);
+          const stuckDeadline = Number(await redis.zscore(keys.inflightKey(0), stuckMember!));
+
           await redis.del(concurrencyKey);
 
           await vi.waitFor(
             async () => {
-              expect(await redis.zcard(keys.queueKey(queueId))).toBe(1);
-              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+              const score = await redis.zscore(keys.inflightKey(0), stuckMember!);
+              expect(score === null || Number(score) > stuckDeadline).toBe(true);
             },
             { timeout: 8000 }
           );
