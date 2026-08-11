@@ -109,8 +109,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     where: {
       organization: organizationFilter,
       // Dev branches are per-org-member: only the owner may archive their own.
-      ...(authenticationResult.type === "personalAccessToken" &&
-      environmentType === "DEVELOPMENT"
+      ...(authenticationResult.type === "personalAccessToken" && environmentType === "DEVELOPMENT"
         ? { orgMember: { userId: authenticationResult.result.userId } }
         : {}),
       project: {
