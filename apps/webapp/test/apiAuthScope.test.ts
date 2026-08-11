@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { authenticateApiKeyRequest, authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import {
+  authenticateApiKeyRequest,
+  authenticateApiKeyWithScope,
+  authenticateRequestWithScopedApiKey,
+} from "~/services/apiAuth.server";
 
 const authorizeBearer = vi.fn();
 
@@ -149,5 +153,63 @@ describe("authenticateApiKeyWithScope", () => {
       )
     ).resolves.toEqual({ ok: false, status: 403, error: "Unauthorized" });
     expect(ability.can).not.toHaveBeenCalled();
+  });
+});
+
+describe("authenticateRequestWithScopedApiKey", () => {
+  const options = {
+    personalAccessToken: true as const,
+    organizationAccessToken: true as const,
+    apiKey: {
+      action: "write",
+      resource: { type: "branches" },
+      allowPreviewParent: true,
+    },
+  };
+
+  it("keeps user and organization tokens on the legacy path", async () => {
+    const authentication = {
+      type: "personalAccessToken",
+      result: { userId: "user_123" },
+    } as const;
+    const authenticateRequest = vi.fn().mockResolvedValueOnce(authentication);
+    const authenticateApiKeyWithScope = vi.fn();
+
+    await expect(
+      authenticateRequestWithScopedApiKey(new Request("https://example.com"), options, {
+        authenticateRequest,
+        authenticateApiKeyWithScope,
+      })
+    ).resolves.toEqual({ ok: true, authentication });
+    expect(authenticateRequest).toHaveBeenCalledWith(expect.any(Request), {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: false,
+    });
+    expect(authenticateApiKeyWithScope).not.toHaveBeenCalled();
+  });
+
+  it("uses scoped RBAC authentication for API keys", async () => {
+    const apiKeyAuthentication = {
+      ok: true,
+      apiKey: "tr_preview_sk_test",
+      type: "PRIVATE",
+      environment: {},
+    } as const;
+    const authenticateRequest = vi.fn().mockResolvedValueOnce(undefined);
+    const authenticateApiKeyWithScope = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, authentication: apiKeyAuthentication });
+
+    await expect(
+      authenticateRequestWithScopedApiKey(new Request("https://example.com"), options, {
+        authenticateRequest,
+        authenticateApiKeyWithScope,
+      })
+    ).resolves.toEqual({
+      ok: true,
+      authentication: { type: "apiKey", result: apiKeyAuthentication },
+    });
+    expect(authenticateApiKeyWithScope).toHaveBeenCalledWith(expect.any(Request), options.apiKey);
   });
 });

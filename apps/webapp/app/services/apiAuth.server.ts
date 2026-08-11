@@ -341,19 +341,16 @@ export async function authenticateApiKeyRequest(
  * Only apiKey credentials are accepted (no PAT / org token / public key). Use
  * this for routes previously guarded by a bare `authenticateApiRequest` call.
  */
+export type ApiKeyScopeAuthorization = {
+  action: string;
+  resource: RbacResource;
+  allowJWT?: boolean;
+  allowPreviewParent?: boolean;
+};
+
 export async function authenticateApiKeyWithScope(
   request: Request,
-  {
-    action,
-    resource,
-    allowJWT = false,
-    allowPreviewParent = false,
-  }: {
-    action: string;
-    resource: RbacResource;
-    allowJWT?: boolean;
-    allowPreviewParent?: boolean;
-  },
+  { action, resource, allowJWT = false, allowPreviewParent = false }: ApiKeyScopeAuthorization,
   authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
@@ -382,6 +379,50 @@ export async function authenticateApiKeyWithScope(
       environment: result.environment,
       ability: result.ability,
     },
+  };
+}
+
+export type ScopedApiKeyAuthenticationDependencies = {
+  authenticateRequest: typeof authenticateRequest;
+  authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
+};
+
+export async function authenticateRequestWithScopedApiKey(
+  request: Request,
+  {
+    personalAccessToken,
+    organizationAccessToken,
+    apiKey,
+  }: {
+    personalAccessToken: true;
+    organizationAccessToken: true;
+    apiKey: ApiKeyScopeAuthorization;
+  },
+  dependencies: ScopedApiKeyAuthenticationDependencies = {
+    authenticateRequest,
+    authenticateApiKeyWithScope,
+  }
+): Promise<
+  | { ok: true; authentication: AuthenticationResult }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
+    personalAccessToken,
+    organizationAccessToken,
+    apiKey: false,
+  });
+  if (userOrOrganizationAuthentication) {
+    return { ok: true, authentication: userOrOrganizationAuthentication };
+  }
+
+  const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, apiKey);
+  if (!apiKeyAuthentication.ok) {
+    return apiKeyAuthentication;
+  }
+
+  return {
+    ok: true,
+    authentication: { type: "apiKey", result: apiKeyAuthentication.authentication },
   };
 }
 

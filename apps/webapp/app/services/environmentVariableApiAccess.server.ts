@@ -4,9 +4,10 @@ import { isUserActorToken } from "@trigger.dev/rbac";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import {
   authenticateApiKeyRequest,
-  authenticateApiKeyWithScope,
   authenticateRequest,
+  authenticateRequestWithScopedApiKey,
   type AuthenticationResult,
+  type ScopedApiKeyAuthenticationDependencies,
 } from "~/services/apiAuth.server";
 import { rbac } from "~/services/rbac.server";
 
@@ -40,10 +41,7 @@ export function apiKeyForProjectEnvironmentBootstrap(
  * Keep PAT/OAT authentication on the legacy path while routing machine API
  * keys through the RBAC controller, where plugin grants are applied.
  */
-type AuthenticationDependencies = {
-  authenticateRequest: typeof authenticateRequest;
-  authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
-};
+type AuthenticationDependencies = ScopedApiKeyAuthenticationDependencies;
 
 type BootstrapAuthenticationDependencies = {
   authenticateRequest: typeof authenticateRequest;
@@ -54,29 +52,17 @@ export async function authenticateEnvironmentScopedApiRequest(
   request: Request,
   action: "read" | "write",
   resource: EnvironmentScopedResource,
-  dependencies: AuthenticationDependencies = { authenticateRequest, authenticateApiKeyWithScope }
+  dependencies?: AuthenticationDependencies
 ): Promise<EnvironmentScopedAuthentication> {
-  const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: false,
-  });
-  if (userOrOrganizationAuthentication) {
-    return { ok: true, authentication: userOrOrganizationAuthentication };
-  }
-
-  const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, {
-    action,
-    resource: { type: resource },
-  });
-  if (!apiKeyAuthentication.ok) {
-    return apiKeyAuthentication;
-  }
-
-  return {
-    ok: true,
-    authentication: { type: "apiKey", result: apiKeyAuthentication.authentication },
-  };
+  return authenticateRequestWithScopedApiKey(
+    request,
+    {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: { action, resource: { type: resource } },
+    },
+    dependencies
+  );
 }
 
 /**

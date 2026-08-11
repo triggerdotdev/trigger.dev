@@ -3,11 +3,7 @@ import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH, isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiKeyWithScope,
-  authenticateRequest,
-  type AuthenticationResult,
-} from "~/services/apiAuth.server";
+import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
@@ -25,29 +21,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   logger.info("project upsert branch", { url: request.url });
 
-  const userOrOrganizationAuthentication = await authenticateRequest(request, {
+  const authentication = await authenticateRequestWithScopedApiKey(request, {
     personalAccessToken: true,
     organizationAccessToken: true,
-    apiKey: false,
-  });
-
-  let authenticationResult: AuthenticationResult;
-  if (userOrOrganizationAuthentication) {
-    authenticationResult = userOrOrganizationAuthentication;
-  } else {
-    const apiKeyAuthentication = await authenticateApiKeyWithScope(request, {
+    apiKey: {
       action: "write",
       resource: { type: "branches" },
       allowPreviewParent: true,
-    });
-    if (!apiKeyAuthentication.ok) {
-      return json({ error: apiKeyAuthentication.error }, { status: apiKeyAuthentication.status });
-    }
-    authenticationResult = {
-      type: "apiKey",
-      result: apiKeyAuthentication.authentication,
-    };
+    },
+  });
+  if (!authentication.ok) {
+    return json({ error: authentication.error }, { status: authentication.status });
   }
+  const authenticationResult = authentication.authentication;
 
   const apiKeyEnvironment =
     authenticationResult.type === "apiKey" && authenticationResult.result.ok
