@@ -50,8 +50,9 @@ vi.mock("@trigger.dev/sdk", async (importOriginal) => {
 process.env.SESSION_SECRET = "test-session-secret-for-watch-limits";
 
 const { createDashboardAgentWatch } = await import("~/services/dashboardAgentWatches.server");
-const { effectiveWatchMaxHours, watchLimitHint, UNLIMITED_WATCH_LIMIT } =
+const { effectiveWatchMaxHours, resolveWatchPlanLimits, watchLimitHint, UNLIMITED_WATCH_LIMIT } =
   await import("~/services/dashboardAgentWatchLimits.server");
+const { limitValueAllowingZero } = await import("~/services/platform.v3.server");
 
 async function applyAgentSchema(prisma: PrismaClient) {
   const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
@@ -167,6 +168,7 @@ function create(args: {
   limits?: WatchPlanLimits;
   billingConfigured?: boolean;
   countActiveWatches?: (organizationId: string) => Promise<number>;
+  checkDeps?: Partial<WatchCheckDeps>;
 }) {
   return createDashboardAgentWatch({
     environment: authenticated(args.seeded),
@@ -175,7 +177,7 @@ function create(args: {
     spec: args.spec,
     deps: {
       configured: () => true,
-      checkDeps: () => fakeCheckDeps(),
+      checkDeps: () => fakeCheckDeps(args.checkDeps),
       scheduleTick: async () => {},
       resolveLimits: async () => args.limits ?? UNLIMITED,
       ...(args.countActiveWatches ? { countActiveWatches: args.countActiveWatches } : {}),
@@ -196,6 +198,26 @@ describe("watch plan limits (pure)", () => {
     expect(effectiveWatchMaxHours(100)).toBe(24);
     expect(effectiveWatchMaxHours(1)).toBe(1);
     expect(effectiveWatchMaxHours(0.5)).toBe(0.5);
+  });
+
+  it("reads a plan limit of zero as zero, not as an absent limit", async () => {
+    // The read the cached platform limit performs: a plan that switched watches off must not
+    // fall back to the unlimited sentinel.
+    expect(
+      limitValueAllowingZero(
+        { agentWatchMaxHours: 0 } as never,
+        "agentWatchMaxHours" as never,
+        UNLIMITED_WATCH_LIMIT
+      )
+    ).toBe(0);
+    expect(
+      limitValueAllowingZero(undefined, "agentWatchMaxHours" as never, UNLIMITED_WATCH_LIMIT)
+    ).toBe(UNLIMITED_WATCH_LIMIT);
+
+    expect(await resolveWatchPlanLimits("org_1", async () => 0)).toEqual({
+      maxHours: 0,
+      watchers: 0,
+    });
   });
 
   it("adds an upgrade nudge only when billing is configured", () => {
@@ -305,6 +327,67 @@ describe("createDashboardAgentWatch plan enforcement", () => {
       expect(result).toMatchObject({ ok: false, code: "watch_limit_reached" });
       if (result.ok) return;
       expect(result.error).not.toContain("Upgrade");
+    }
+  );
+
+  postgresTest(
+    "a plan window of zero hours refuses every watch",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "zerohours");
+      await seedChat(seeded, "chat_1");
+
+      const result = await create({
+        seeded,
+        chatId: "chat_1",
+        spec: runStart("run_1", 1),
+        limits: { maxHours: 0, watchers: UNLIMITED_WATCH_LIMIT },
+      });
+
+      expect(result).toMatchObject({ ok: false, code: "watch_limit_reached" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "a plan of zero watchers refuses creation",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "zerowatchers");
+      await seedChat(seeded, "chat_1");
+
+      const result = await create({
+        seeded,
+        chatId: "chat_1",
+        spec: runStart("run_1", 1),
+        limits: { maxHours: UNLIMITED_WATCH_LIMIT, watchers: 0 },
+      });
+
+      expect(result).toMatchObject({ ok: false, code: "watch_limit_reached" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "answers a condition that already happened, instead of refusing the window",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "instant");
+      await seedChat(seeded, "chat_1");
+
+      const result = await create({
+        seeded,
+        chatId: "chat_1",
+        spec: runStart("run_1", 2),
+        limits: { maxHours: 1, watchers: 0 },
+        billingConfigured: true,
+        checkDeps: {
+          readRun: async () => runRow({ status: "EXECUTING", startedAt: new Date() }),
+        },
+      });
+
+      expect(result).toMatchObject({ ok: true, watching: false });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
     }
   );
 

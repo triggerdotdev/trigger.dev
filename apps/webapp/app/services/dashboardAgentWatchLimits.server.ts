@@ -1,6 +1,6 @@
 import type { Limits } from "@trigger.dev/platform";
 import { WATCH_MAX_HOURS } from "@internal/dashboard-agent-contracts";
-import { getCachedLimit, isBillingConfigured } from "./platform.v3.server";
+import { getCachedLimitAllowingZero, isBillingConfigured } from "./platform.v3.server";
 
 // The unlimited sentinel, matching the message quota (TRI-12863 P1). Never Infinity: it
 // serializes to null in the limit cache.
@@ -19,19 +19,25 @@ export type WatchPlanLimits = {
 };
 
 async function readLimit(organizationId: string, key: keyof Limits): Promise<number> {
-  const cached = await getCachedLimit(organizationId, key, UNLIMITED_WATCH_LIMIT);
+  // A plan of 0 means zero, not absent: an org with watches switched off must not read as
+  // unlimited. Only a missing limit falls open.
+  const cached = await getCachedLimitAllowingZero(organizationId, key, UNLIMITED_WATCH_LIMIT);
   // A cache error leaves `val` empty; fall open to unlimited.
   return cached.val ?? UNLIMITED_WATCH_LIMIT;
 }
 
 /**
  * The org's plan floors for watches. Fails open: an absent limit (self-hosted, or before the
- * cloud side ships) resolves to the unlimited sentinel, so neither floor bites.
+ * cloud side ships) resolves to the unlimited sentinel, so neither floor bites. `read` is the
+ * plan-limit seam: tests pass their own reader instead of the cached platform one.
  */
-export async function resolveWatchPlanLimits(organizationId: string): Promise<WatchPlanLimits> {
+export async function resolveWatchPlanLimits(
+  organizationId: string,
+  read: (organizationId: string, key: keyof Limits) => Promise<number> = readLimit
+): Promise<WatchPlanLimits> {
   const [maxHours, watchers] = await Promise.all([
-    readLimit(organizationId, WATCH_MAX_HOURS_LIMIT_KEY),
-    readLimit(organizationId, WATCH_COUNT_LIMIT_KEY),
+    read(organizationId, WATCH_MAX_HOURS_LIMIT_KEY),
+    read(organizationId, WATCH_COUNT_LIMIT_KEY),
   ]);
   return { maxHours, watchers };
 }

@@ -55,6 +55,8 @@ vi.mock("~/services/dashboardAgentWatchLimits.server", async (importOriginal) =>
 });
 
 process.env.SESSION_SECRET = "test-session-secret-for-watch-limit-status";
+// Unset, watch creation stops at `not_configured` (501) before the plan floor is read.
+process.env.DASHBOARD_AGENT_SECRET_KEY = "test-dashboard-agent-secret";
 
 const { action } =
   await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent");

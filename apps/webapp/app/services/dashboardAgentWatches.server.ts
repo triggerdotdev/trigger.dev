@@ -336,17 +336,6 @@ export async function createDashboardAgentWatch(params: {
   });
   if (!precheck.ok) return creationGuardrailError(precheck);
 
-  // Plan floors sit below the code ceilings (min(plan, ceiling)). Fails open: an absent
-  // limit resolves to unlimited, so neither floor bites on self-hosted.
-  const planLimits = await resolveLimits(environment.organizationId);
-  if (spec.maxHours > effectiveWatchMaxHours(planLimits.maxHours)) {
-    return {
-      ok: false,
-      code: "watch_limit_reached",
-      error: hint("That watch window is longer than your plan allows."),
-    };
-  }
-
   // `since` is server-set so the model can't backdate a recurrence window.
   const persistedSpec: PersistedWatchSpec =
     spec.kind === "error_recurrence" ? { ...spec, since: now.toISOString() } : spec;
@@ -361,9 +350,20 @@ export async function createDashboardAgentWatch(params: {
     return { ok: true, watching: false, identity, immediate };
   }
 
-  // Counted only now the immediate check didn't answer: a one-shot creates no row and so
-  // consumes no watcher slot. The per-chat cap of 3 still applies independently, in
-  // `createWatch`.
+  // Both floors are read only now the immediate check didn't answer: a one-shot creates no
+  // row, so a plan floor must not turn an answerable question into an upgrade nudge. Plan
+  // floors sit below the code ceilings (min(plan, ceiling)) and fail open: an absent limit
+  // resolves to unlimited, so neither bites on self-hosted.
+  const planLimits = await resolveLimits(environment.organizationId);
+  if (spec.maxHours > effectiveWatchMaxHours(planLimits.maxHours)) {
+    return {
+      ok: false,
+      code: "watch_limit_reached",
+      error: hint("That watch window is longer than your plan allows."),
+    };
+  }
+
+  // The per-chat cap of 3 still applies independently, in `createWatch`.
   const activeCount = await countActiveWatches(environment.organizationId);
   if (activeCount >= planLimits.watchers) {
     return {
