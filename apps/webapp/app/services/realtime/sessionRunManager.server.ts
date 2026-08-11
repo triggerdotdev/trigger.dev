@@ -52,13 +52,7 @@ type EnsureRunForSessionParams = {
    */
   session: Pick<
     Session,
-    | "id"
-    | "friendlyId"
-    | "taskIdentifier"
-    | "triggerConfig"
-    | "currentRunId"
-    | "currentRunVersion"
-    | "streamBasinName"
+    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
   >;
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
@@ -241,7 +235,6 @@ export async function ensureRunForSession(
       triggerConfig: true,
       currentRunId: true,
       currentRunVersion: true,
-      streamBasinName: true,
     },
   });
 
@@ -291,7 +284,7 @@ export async function ensureRunForSession(
  * degrades to v1 where v2 streams are not configured.
  */
 async function triggerSessionRun(params: {
-  session: Pick<Session, "id" | "taskIdentifier" | "streamBasinName">;
+  session: Pick<Session, "id" | "taskIdentifier">;
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
@@ -326,7 +319,7 @@ async function triggerSessionRun(params: {
     triggerAction: "trigger",
     realtimeStreamsVersion: determineRealtimeStreamsVersion(
       "v2",
-      session.streamBasinName ?? environment.organization.streamBasinName
+      environment.organization.streamBasinName
     ),
   });
 
@@ -348,13 +341,7 @@ type SwapSessionRunParams = {
    */
   session: Pick<
     Session,
-    | "id"
-    | "friendlyId"
-    | "taskIdentifier"
-    | "triggerConfig"
-    | "currentRunId"
-    | "currentRunVersion"
-    | "streamBasinName"
+    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
   >;
   /**
    * The run requesting the swap. Optimistic claim requires
