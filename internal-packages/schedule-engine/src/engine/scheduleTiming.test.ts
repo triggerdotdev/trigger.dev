@@ -1,4 +1,5 @@
 import {
+  MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS,
   MAX_SCHEDULE_PHASE,
   MINIMUM_SCHEDULE_RANGE_MS,
   SCHEDULE_PHASE_DENOMINATOR,
@@ -7,17 +8,15 @@ import {
   parseScheduleWindow,
   resolveScheduleWindowMs,
   validateScheduleWindow,
-  validateScheduleWindowForInterval,
 } from "./scheduleTiming.js";
 
 describe("parseScheduleWindow", () => {
   it.each([
     ["30m", { type: "duration", durationSeconds: 1_800 }],
     ["2h", { type: "duration", durationSeconds: 7_200 }],
-    ["1d", { type: "duration", durationSeconds: 86_400 }],
+    ["24h", { type: "duration", durationSeconds: 86_400 }],
     ["0m", { type: "duration", durationSeconds: 0 }],
     ["0h", { type: "duration", durationSeconds: 0 }],
-    ["0d", { type: "duration", durationSeconds: 0 }],
     ["0%", { type: "percentage", percentage: 0 }],
     ["12%", { type: "percentage", percentage: 12 }],
     ["100%", { type: "percentage", percentage: 100 }],
@@ -30,6 +29,10 @@ describe("parseScheduleWindow", () => {
     "00m",
     "01m",
     "1.5h",
+    "0d",
+    "1d",
+    "25h",
+    "1441m",
     "30s",
     "0.01%",
     "1.0%",
@@ -44,8 +47,13 @@ describe("parseScheduleWindow", () => {
     expect(() => parseScheduleWindow(input)).toThrow();
   });
 
-  it("rejects durations that cannot be persisted as a Postgres Int", () => {
-    expect(() => parseScheduleWindow("24856d")).toThrow("duration is too large");
+  it("rejects normalized durations over 24 hours", () => {
+    expect(() =>
+      validateScheduleWindow({
+        type: "duration",
+        durationSeconds: MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS + 1,
+      })
+    ).toThrow("up to 24 hours");
   });
 });
 
@@ -56,18 +64,6 @@ describe("schedule window validation", () => {
 
   it("allows a zero-duration window", () => {
     expect(() => validateScheduleWindow({ type: "duration", durationSeconds: 0 })).not.toThrow();
-  });
-
-  it("allows an absolute window equal to the nominal interval", () => {
-    expect(() =>
-      validateScheduleWindowForInterval({ type: "duration", durationSeconds: 300 }, 5 * 60_000)
-    ).not.toThrow();
-  });
-
-  it("rejects an absolute window larger than the nominal interval", () => {
-    expect(() =>
-      validateScheduleWindowForInterval({ type: "duration", durationSeconds: 1_800 }, 5 * 60_000)
-    ).toThrow("cannot exceed the interval");
   });
 
   it.each([
@@ -111,7 +107,7 @@ describe("calculateEffectiveScheduleTime", () => {
       windowMs: 0,
       effectiveRangeMs: MINIMUM_SCHEDULE_RANGE_MS,
       offsetMs: 30_000,
-      rangeWasClamped: false,
+      windowWasCappedToInterval: false,
     });
   });
 
@@ -189,7 +185,7 @@ describe("calculateEffectiveScheduleTime", () => {
     expect(timing.effectiveAt).toEqual(new Date("2027-01-01T00:30:00.000Z"));
   });
 
-  it("defensively clamps an invalid range to the next nominal tick", () => {
+  it("caps an absolute window at the interval to the next nominal tick", () => {
     const timing = calculateEffectiveScheduleTime({
       nominalAt,
       nextNominalAt: new Date("2026-08-10T10:05:00.000Z"),
@@ -199,7 +195,7 @@ describe("calculateEffectiveScheduleTime", () => {
 
     expect(timing.windowMs).toBe(1_800_000);
     expect(timing.effectiveRangeMs).toBe(300_000);
-    expect(timing.rangeWasClamped).toBe(true);
+    expect(timing.windowWasCappedToInterval).toBe(true);
     expect(timing.effectiveAt).toEqual(new Date("2026-08-10T10:02:30.000Z"));
   });
 

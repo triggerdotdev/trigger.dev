@@ -1,6 +1,7 @@
 export { ScheduleEngine } from "./engine/index.js";
 export { calculateNextNominalTimestamp } from "./engine/scheduleCalculation.js";
 export {
+  MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS,
   MAX_SCHEDULE_PHASE,
   MINIMUM_SCHEDULE_RANGE_MS,
   SCHEDULE_PHASE_DENOMINATOR,
@@ -9,7 +10,6 @@ export {
   parseScheduleWindow,
   resolveScheduleWindowMs,
   validateScheduleWindow,
-  validateScheduleWindowForInterval,
 } from "./engine/scheduleTiming.js";
 export type {
   EffectiveScheduleTime,

@@ -7,7 +7,7 @@ import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
 import type { ScheduleWindow } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
-import { validateScheduleWindowAgainstCron } from "../scheduleWindow.server";
+import { validateScheduleWindowSyntax } from "../scheduleWindow.server";
 
 type Schedule = {
   cron: string;
@@ -42,11 +42,7 @@ export class CheckScheduleService extends BaseService {
       }
     }
 
-    const windowValidation = validateScheduleWindowAgainstCron({
-      window: schedule.window,
-      cron: schedule.cron,
-      timezone: schedule.timezone ?? "UTC",
-    });
+    const windowValidation = validateScheduleWindowSyntax(schedule.window);
     if (!windowValidation.valid) {
       throw new ServiceValidationError(windowValidation.message);
     }

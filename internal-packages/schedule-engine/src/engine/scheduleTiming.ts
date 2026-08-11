@@ -3,8 +3,8 @@ import { createHmac } from "node:crypto";
 export const SCHEDULE_PHASE_DENOMINATOR = 2_147_483_648;
 export const MAX_SCHEDULE_PHASE = SCHEDULE_PHASE_DENOMINATOR - 1;
 export const MINIMUM_SCHEDULE_RANGE_MS = 60_000;
+export const MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS = 24 * 60 * 60;
 
-const MAX_POSTGRES_INT = 2_147_483_647;
 const PERCENTAGE_DENOMINATOR = 100;
 
 export type NormalizedScheduleWindow =
@@ -25,26 +25,29 @@ export type EffectiveScheduleTime = {
   windowMs: number;
   effectiveRangeMs: number;
   offsetMs: number;
-  rangeWasClamped: boolean;
+  windowWasCappedToInterval: boolean;
 };
 
 /**
  * Parses the public schedule-window syntax.
  *
- * Durations are non-negative whole minutes, hours, or days. Percentages are
- * whole numbers from 0% through 100%.
+ * Durations are non-negative whole minutes or hours up to 24 hours.
+ * Percentages are whole numbers from 0% through 100%.
  */
 export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
-  const durationMatch = /^(0|[1-9]\d*)([mhd])$/.exec(value);
+  const durationMatch = /^(0|[1-9]\d*)([mh])$/.exec(value);
 
   if (durationMatch) {
     const amount = Number(durationMatch[1]);
-    const unit = durationMatch[2] as "m" | "h" | "d";
-    const unitSeconds = unit === "m" ? 60 : unit === "h" ? 3_600 : 86_400;
+    const unit = durationMatch[2] as "m" | "h";
+    const unitSeconds = unit === "m" ? 60 : 3_600;
     const durationSeconds = amount * unitSeconds;
 
-    if (!Number.isSafeInteger(durationSeconds) || durationSeconds > MAX_POSTGRES_INT) {
-      throw new RangeError("Schedule window duration is too large");
+    if (
+      !Number.isSafeInteger(durationSeconds) ||
+      durationSeconds > MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS
+    ) {
+      throw new RangeError("Schedule window duration cannot exceed 24 hours");
     }
 
     return { type: "duration", durationSeconds };
@@ -57,7 +60,7 @@ export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
   }
 
   throw new TypeError(
-    'Schedule window must be a whole duration such as "30m", "2h", or "1d", or a percentage such as "30%"'
+    'Schedule window must be a whole duration such as "0m", "30m", or "24h", or a percentage such as "30%"'
   );
 }
 
@@ -66,10 +69,10 @@ export function validateScheduleWindow(window: NormalizedScheduleWindow): void {
     if (
       !Number.isSafeInteger(window.durationSeconds) ||
       window.durationSeconds < 0 ||
-      window.durationSeconds > MAX_POSTGRES_INT
+      window.durationSeconds > MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS
     ) {
       throw new RangeError(
-        "Schedule window duration must be a non-negative integer number of seconds"
+        "Schedule window duration must be a non-negative integer up to 24 hours"
       );
     }
 
@@ -106,24 +109,11 @@ export function resolveScheduleWindowMs(
   return Number((BigInt(intervalMs) * BigInt(window.percentage)) / BigInt(PERCENTAGE_DENOMINATOR));
 }
 
-/** Validates customer intent against one nominal-to-nominal interval. Equality is allowed. */
-export function validateScheduleWindowForInterval(
-  window: NormalizedScheduleWindow,
-  intervalMs: number
-): void {
-  const windowMs = resolveScheduleWindowMs(window, intervalMs);
-
-  if (windowMs > intervalMs) {
-    throw new RangeError("Schedule window cannot exceed the interval to the next nominal tick");
-  }
-}
-
 /**
  * Calculates the stable effective time for one nominal occurrence using integer arithmetic.
  *
- * The range is defensively capped at the nominal interval. Valid configuration should make
- * this cap redundant, but retaining it guarantees that an occurrence never reaches or passes
- * the next nominal tick.
+ * An absolute window is a maximum. Each occurrence caps it at the interval to its next nominal
+ * tick, guaranteeing that the effective time never reaches or passes the next occurrence.
  */
 export function calculateEffectiveScheduleTime({
   nominalAt,
@@ -146,7 +136,7 @@ export function calculateEffectiveScheduleTime({
   const windowMs = resolveScheduleWindowMs(window, intervalMs);
   const requestedRangeMs = Math.max(MINIMUM_SCHEDULE_RANGE_MS, windowMs);
   const effectiveRangeMs = Math.min(intervalMs, requestedRangeMs);
-  const rangeWasClamped = effectiveRangeMs !== requestedRangeMs;
+  const windowWasCappedToInterval = effectiveRangeMs !== requestedRangeMs;
   const offsetMs = Number(
     (BigInt(schedulePhase) * BigInt(effectiveRangeMs)) / BigInt(SCHEDULE_PHASE_DENOMINATOR)
   );
@@ -164,7 +154,7 @@ export function calculateEffectiveScheduleTime({
     windowMs,
     effectiveRangeMs,
     offsetMs,
-    rangeWasClamped,
+    windowWasCappedToInterval,
   };
 }
 

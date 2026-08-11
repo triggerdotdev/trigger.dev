@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatScheduleWindow,
   normalizeScheduleWindow,
-  validateScheduleWindowAgainstCron,
+  validateScheduleWindowSyntax,
 } from "~/v3/scheduleWindow.server";
 
 describe("schedule window persistence", () => {
@@ -37,7 +37,7 @@ describe("schedule window persistence", () => {
         windowDurationSeconds: 86_400,
         windowPercentage: null,
       })
-    ).toBe("1d");
+    ).toBe("24h");
     expect(
       formatScheduleWindow({
         windowDurationSeconds: 7_200,
@@ -52,31 +52,14 @@ describe("schedule window persistence", () => {
     ).toBe("30%");
   });
 
-  it("rejects invalid syntax through the authoritative timing parser", () => {
-    expect(
-      validateScheduleWindowAgainstCron({
-        window: "30.5%",
-        cron: "0 * * * *",
-        timezone: "UTC",
-      })
-    ).toMatchObject({ valid: false });
-  });
+  it.each(["30.5%", "1d", "25h"])(
+    "rejects invalid syntax through the authoritative timing parser: %s",
+    (window) => {
+      expect(validateScheduleWindowSyntax(window)).toMatchObject({ valid: false });
+    }
+  );
 
-  it("rejects an absolute window longer than the next nominal interval", () => {
-    expect(
-      validateScheduleWindowAgainstCron({
-        window: "30m",
-        cron: "*/5 * * * *",
-        timezone: "UTC",
-      })
-    ).toMatchObject({ valid: false });
-
-    expect(
-      validateScheduleWindowAgainstCron({
-        window: "5m",
-        cron: "*/5 * * * *",
-        timezone: "UTC",
-      })
-    ).toEqual({ valid: true });
+  it("accepts an absolute window independently of the cron interval", () => {
+    expect(validateScheduleWindowSyntax("30m")).toEqual({ valid: true });
   });
 });

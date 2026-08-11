@@ -77,12 +77,19 @@ describe("Schedules API windows", () => {
     });
   });
 
-  it("accepts zero duration and percentage windows", async () => {
+  it("accepts zero windows and absolute windows longer than the cron interval", async () => {
     const server = getTestServer();
     const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
     await seedScheduledTask(server.prisma, project.id, environment.id);
 
-    for (const [index, window] of ["0m", "0h", "0d", "0%"].entries()) {
+    const windows = [
+      ["0m", "0m"],
+      ["0h", "0m"],
+      ["0%", "0%"],
+      ["2h", "2h"],
+    ] as const;
+
+    for (const [index, [window, expectedWindow]] of windows.entries()) {
       const response = await server.webapp.fetch("/api/v1/schedules", {
         method: "POST",
         headers: authHeaders(apiKey),
@@ -95,9 +102,7 @@ describe("Schedules API windows", () => {
       });
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({
-        window: window === "0%" ? "0%" : "0m",
-      });
+      await expect(response.json()).resolves.toMatchObject({ window: expectedWindow });
     }
   });
 
@@ -109,7 +114,8 @@ describe("Schedules API windows", () => {
     const invalidRequests = [
       { window: 30, expectedStatus: 400 },
       { window: "30.5%", expectedStatus: 422 },
-      { window: "2h", expectedStatus: 422 },
+      { window: "1d", expectedStatus: 422 },
+      { window: "25h", expectedStatus: 422 },
     ];
 
     for (const [index, { window, expectedStatus }] of invalidRequests.entries()) {

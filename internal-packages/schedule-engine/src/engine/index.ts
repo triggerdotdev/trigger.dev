@@ -36,6 +36,7 @@ export class ScheduleEngine {
   private scheduleExecutionDuration: Histogram;
   private scheduleExecutionFailureCounter: Counter;
   private distributionOffsetHistogram: Histogram;
+  private scheduleWindowCappedCounter: Counter;
   private devEnvironmentCheckCounter: Counter;
 
   prisma: PrismaClient;
@@ -80,6 +81,10 @@ export class ScheduleEngine {
         unit: "ms",
       }
     );
+
+    this.scheduleWindowCappedCounter = this.meter.createCounter("schedule_windows_capped_total", {
+      description: "Total number of absolute schedule windows capped at the next nominal interval",
+    });
 
     this.devEnvironmentCheckCounter = this.meter.createCounter("dev_environment_checks_total", {
       description: "Total number of development environment connectivity checks",
@@ -230,7 +235,8 @@ export class ScheduleEngine {
           effectiveRangeMs,
           windowMs,
           offsetMs: candidateDelayMs,
-          rangeWasClamped,
+          intervalMs,
+          windowWasCappedToInterval,
         } = calculateEffectiveScheduleTime({
           nominalAt,
           nextNominalAt,
@@ -249,7 +255,18 @@ export class ScheduleEngine {
         span.setAttribute("applied_delay_ms", appliedDelayMs);
         span.setAttribute("schedule_window_ms", windowMs);
         span.setAttribute("effective_range_ms", effectiveRangeMs);
-        span.setAttribute("schedule_range_was_clamped", rangeWasClamped);
+        span.setAttribute("schedule_window_was_capped_to_interval", windowWasCappedToInterval);
+
+        if (windowWasCappedToInterval) {
+          span.addEvent("schedule_window_capped_to_interval", {
+            requested_window_ms: windowMs,
+            nominal_interval_ms: intervalMs,
+          });
+          this.scheduleWindowCappedCounter.add(1, {
+            environment_type: instance.environment.type,
+            schedule_type: instance.taskSchedule.type,
+          });
+        }
 
         const schedulingDelayMs = effectiveAt.getTime() - Date.now();
         span.setAttribute("scheduling_delay_ms", schedulingDelayMs);
@@ -265,7 +282,7 @@ export class ScheduleEngine {
           candidateDelayMs,
           appliedDelayMs,
           effectiveRangeMs,
-          rangeWasClamped,
+          windowWasCappedToInterval,
           schedulingDelayMs,
           generatorExpression: instance.taskSchedule.generatorExpression,
           timezone: instance.taskSchedule.timezone,

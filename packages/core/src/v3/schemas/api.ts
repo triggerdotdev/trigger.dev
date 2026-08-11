@@ -1047,9 +1047,10 @@ export const CreateScheduleOptions = z.object({
    */
   timezone: z.string().optional(),
   /** Optionally delay each occurrence by a stable amount within this window.
-   * Durations use minutes, hours, or days. Percentages are relative to the next nominal interval.
+   * Absolute windows use whole minutes or hours up to 24 hours and are capped at the next
+   * nominal interval. Percentages are relative to each nominal interval.
    *
-   * @example "30m", "2h", "1d", "30%", "100%"
+   * @example "30m", "2h", "24h", "30%", "100%"
    */
   window: ScheduleWindow.optional(),
 });
