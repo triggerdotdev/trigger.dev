@@ -12,6 +12,7 @@ export function CopyableText({
   asChild,
   variant,
   hideTooltip,
+  ariaLabel,
 }: {
   value: string;
   copyValue?: string;
@@ -24,6 +25,8 @@ export function CopyableText({
    * fire Radix's global "one tooltip open at a time" close and dismiss the parent.
    */
   hideTooltip?: boolean;
+  /** Accessible label for the copy button. Defaults to "Copy". */
+  ariaLabel?: string;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -31,11 +34,18 @@ export function CopyableText({
   const resolvedVariant = variant ?? "icon-right";
 
   if (resolvedVariant === "icon-right") {
+    // Real button semantics so keyboard and touch users can discover and trigger copying.
+    // The affordance is revealed on row hover, keyboard focus, and coarse (touch) pointers.
     const iconButton = (
-      <span
+      <button
+        type="button"
+        onClick={copy}
+        onMouseDown={(e) => e.stopPropagation()}
+        aria-label={copied ? "Copied!" : (ariaLabel ?? "Copy")}
         className={cn(
-          "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
+          "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover font-sans",
           asChild && "p-1",
+          "pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100",
           copied
             ? "text-green-500"
             : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
@@ -46,35 +56,26 @@ export function CopyableText({
         ) : (
           <ClipboardIcon className="size-3.5" />
         )}
-      </span>
+      </button>
     );
 
     return (
-      <span
-        className={cn("group relative inline-flex h-6 items-center", className)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <span onMouseEnter={() => setIsHovered(true)}>{value}</span>
-        <span
-          onClick={copy}
-          onMouseDown={(e) => e.stopPropagation()}
-          className={cn(
-            "absolute -right-6 top-0 z-10 size-6 font-sans",
-            isHovered ? "flex" : "hidden"
-          )}
-        >
-          {hideTooltip ? (
-            iconButton
-          ) : (
-            <SimpleTooltip
-              button={iconButton}
-              content={copied ? "Copied!" : "Copy"}
-              className="font-sans"
-              disableHoverableContent
-              asChild={asChild}
-            />
-          )}
-        </span>
+      <span className={cn("group relative inline-flex h-6 items-center", className)}>
+        <span>{value}</span>
+        {hideTooltip ? (
+          iconButton
+        ) : (
+          // asChild so the Radix trigger merges onto our button instead of nesting a button.
+          // tabbable keeps the button in the tab order (the trigger sets tabIndex -1 otherwise).
+          <SimpleTooltip
+            button={iconButton}
+            content={copied ? "Copied!" : "Copy"}
+            className="font-sans"
+            disableHoverableContent
+            tabbable
+            asChild
+          />
+        )}
       </span>
     );
   }

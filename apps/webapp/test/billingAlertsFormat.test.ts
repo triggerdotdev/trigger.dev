@@ -86,20 +86,22 @@ describe("billingAlertsFormat", () => {
     ).toEqual([10, 50, 80]);
 
     expect(
-      getAlertPreviewLimitCents({ amount: 100, emails: [], alertLevels: [] }, 25_000, 10_000)
+      getAlertPreviewLimitCents({ amount: 100, emails: [], alertLevels: [] }, 25_000, 10_000, true)
     ).toBe(10_000);
   });
 
-  it("previews saved percentage alerts against the current limit after it changes", () => {
+  it("previews saved percentage alerts against the current limit after it is raised", () => {
     // Percentage alerts saved against a $30 custom limit, limit later raised to $300.
+    // In percentage mode the preview must track the current limit (30_000 cents), not the
+    // $30 base snapshotted at the last alert save.
     const alerts = { amount: 30, emails: [], alertLevels: [0.75, 1.0] };
 
-    expect(getAlertPreviewLimitCents(alerts, 30_000, 10_000)).toBe(30_000);
+    expect(getAlertPreviewLimitCents(alerts, 30_000, 10_000, true)).toBe(30_000);
     expect(
-      previewDollarAmountForPercent(100, getAlertPreviewLimitCents(alerts, 30_000, 10_000))
+      previewDollarAmountForPercent(100, getAlertPreviewLimitCents(alerts, 30_000, 10_000, true))
     ).toBe(300);
     expect(
-      previewDollarAmountForPercent(75, getAlertPreviewLimitCents(alerts, 30_000, 10_000))
+      previewDollarAmountForPercent(75, getAlertPreviewLimitCents(alerts, 30_000, 10_000, true))
     ).toBe(225);
   });
 
@@ -157,10 +159,10 @@ describe("billingAlertsFormat", () => {
 
     expect(storedAlertsToThresholds(normalized, "plan", 500, 500)).toEqual([75, 90]);
 
-    expect(getAlertPreviewLimitCents(normalized, 500, 500)).toBe(500);
-    expect(previewDollarAmountForPercent(75, getAlertPreviewLimitCents(normalized, 500, 500))).toBe(
-      3.75
-    );
+    expect(getAlertPreviewLimitCents(normalized, 500, 500, true)).toBe(500);
+    expect(
+      previewDollarAmountForPercent(75, getAlertPreviewLimitCents(normalized, 500, 500, true))
+    ).toBe(3.75);
   });
 
   it("keeps seeded absolute defaults absolute when the plan limit is exactly $100", () => {

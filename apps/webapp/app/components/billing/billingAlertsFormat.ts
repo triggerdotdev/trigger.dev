@@ -313,15 +313,25 @@ function percentageAlertAmountMatches(
   return amountCents === effectiveLimitCents || amountCents === planLimitCents;
 }
 
-/** Cents base for dollar preview when displaying saved percentage alerts. */
+/**
+ * Cents base for dollar preview when displaying saved percentage alerts.
+ * `isPercentageMode` must come from the billing limit mode, not from the alert
+ * levels: absolute dollar alerts (e.g. the seeded defaults) also convert to
+ * non-empty UI thresholds and must not be treated as percentages of the limit.
+ */
 export function getAlertPreviewLimitCents(
   alerts: BillingAlertsFormData,
   effectiveLimitCents: number,
-  planLimitCents: number
+  planLimitCents: number,
+  isPercentageMode: boolean
 ): number {
   const amountCents = getSavedAlertAmountCents(alerts);
   // Percentages always apply to the current limit, not the base stored at last save.
-  if (amountCents > 0 && percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0) {
+  if (
+    isPercentageMode &&
+    amountCents > 0 &&
+    percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0
+  ) {
     return effectiveLimitCents;
   }
   if (percentageAlertAmountMatches(amountCents, effectiveLimitCents, planLimitCents)) {
