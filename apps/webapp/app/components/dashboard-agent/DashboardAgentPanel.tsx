@@ -32,6 +32,7 @@ import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 import { AgentPanelColumn } from "./panel-layout";
+import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
@@ -113,10 +114,13 @@ export function DashboardAgentPanel({
 
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
   const handleActivityChange = useCallback((chatId: string, activity: TurnActivity | null) => {
-    setThinkingChatId((previous) =>
-      activity !== null ? chatId : previous === chatId ? null : previous
-    );
+    setThinkingChatId((previous) => markerAfterActivity(previous, chatId, activity));
   }, []);
+
+  // Ordering-safe: if the new chat has not reported yet, its own report re-sets the marker.
+  useEffect(() => {
+    setThinkingChatId((previous) => markerAfterActiveChat(previous, active?.chatId));
+  }, [active?.chatId]);
 
   const loadHistory = useMemo(
     () =>
