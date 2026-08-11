@@ -239,6 +239,36 @@ describe("an already-open panel when a turn is exhausted", () => {
     expect(reads).toBe(2);
   });
 
+  it("keeps re-reading a stream that died mid-tool with no card open", async () => {
+    // No investigation anywhere: only the dangling `get_report` says the turn is unfinished.
+    const DANGLING = {
+      id: "msg_step",
+      role: "assistant",
+      parts: [{ type: "tool-get_report", toolCallId: "call_1", state: "input-available" }],
+    };
+    const FINISHED = {
+      id: "msg_step",
+      role: "assistant",
+      parts: [
+        { type: "tool-get_report", toolCallId: "call_1", state: "output-available", output: {} },
+      ],
+    };
+
+    const responses = [[DANGLING], [DANGLING], [FINISHED]];
+    let rendered: (typeof DANGLING)[] = [DANGLING];
+    let reads = 0;
+
+    await pollSettledTranscript({
+      fetchTranscript: async () => responses[reads++] ?? null,
+      apply: (merge) => void (rendered = merge(rendered)),
+      wait: async () => {},
+    });
+
+    expect(reads).toBe(3);
+    expect(rendered).toEqual([FINISHED]);
+    expect(transcriptLooksUnfinished(rendered)).toBe(false);
+  });
+
   it("stops on a failed re-read instead of hammering the endpoint", async () => {
     let reads = 0;
     await pollSettledTranscript<typeof OPEN>({
