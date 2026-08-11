@@ -272,6 +272,12 @@ export type { StartedS2Container } from "./s2";
 export interface SessionStreamTestServer extends TestServer {
   s2: StartedS2Container;
   minio: StartedMinIOContainer;
+  /**
+   * Mapped connection for the same Redis the webapp under test uses. Lets a
+   * test assert which backend a stream actually landed on, rather than
+   * inferring it from the absence of records in S2.
+   */
+  redis: { host: string; port: number };
 }
 
 /**
@@ -348,5 +354,13 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
-  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, s2: s2!, minio: minio!, stop };
+  return {
+    webapp,
+    prisma: prisma!,
+    databaseUrl: pgUrl!,
+    s2: s2!,
+    minio: minio!,
+    redis: { host: redisContainer!.getHost(), port: redisContainer!.getPort() },
+    stop,
+  };
 }
