@@ -72,6 +72,7 @@ function createScheduleEngine() {
     distributionWindow: {
       seconds: env.SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS,
     },
+    schedulePhaseSecret: env.ENCRYPTION_KEY,
     tracer,
     meter,
     onTriggerScheduledTask: async ({

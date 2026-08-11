@@ -16,6 +16,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -118,6 +119,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -223,6 +225,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -334,6 +337,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -404,6 +408,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
         tracer: trace.getTracer("test", "0.0.0"),
         onTriggerScheduledTask: async () => ({ success: true }),
@@ -505,6 +510,7 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
         tracer: trace.getTracer("test", "0.0.0"),
         onTriggerScheduledTask: async () => ({ success: true }),

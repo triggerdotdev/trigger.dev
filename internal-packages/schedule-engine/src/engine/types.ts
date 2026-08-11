@@ -50,6 +50,7 @@ export interface ScheduleEngineOptions {
   distributionWindow?: {
     seconds: number;
   };
+  schedulePhaseSecret: string | Buffer;
   tracer?: Tracer;
   meter?: Meter;
   onTriggerScheduledTask: TriggerScheduledTaskCallback;

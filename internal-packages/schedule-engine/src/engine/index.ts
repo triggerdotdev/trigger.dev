@@ -15,6 +15,7 @@ import type {
   TriggerScheduledTaskCallback,
   TriggerScheduleParams,
 } from "./types.js";
+import { calculateSchedulePhase } from "./scheduleTiming.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 
@@ -167,6 +168,32 @@ export class ScheduleEngine {
           "task_schedule_generator_expression",
           instance.taskSchedule.generatorExpression
         );
+
+        const hasScheduleWindow =
+          instance.taskSchedule.windowDurationSeconds !== null ||
+          instance.taskSchedule.windowPercentage !== null;
+        if (hasScheduleWindow && instance.schedulePhase === null) {
+          const schedulePhase = calculateSchedulePhase({
+            secret: this.options.schedulePhaseSecret,
+            environmentId: instance.environmentId,
+            deduplicationKey: instance.taskSchedule.deduplicationKey,
+          });
+          const result = await this.prisma.taskScheduleInstance.updateMany({
+            where: {
+              id: instance.id,
+              schedulePhase: null,
+            },
+            data: {
+              schedulePhase,
+            },
+          });
+
+          span.setAttribute("schedule_phase", schedulePhase);
+          span.setAttribute("schedule_phase_persisted", result.count === 1);
+        } else if (instance.schedulePhase !== null) {
+          span.setAttribute("schedule_phase", instance.schedulePhase);
+          span.setAttribute("schedule_phase_persisted", false);
+        }
 
         const fromTimestamp = params.fromTimestamp ?? new Date();
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());

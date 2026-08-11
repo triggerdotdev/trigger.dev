@@ -2,7 +2,7 @@ import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { describe, expect, vi } from "vitest";
 import type { TriggerScheduledTaskParams } from "../src/engine/types.js";
-import { ScheduleEngine } from "../src/index.js";
+import { calculateSchedulePhase, ScheduleEngine } from "../src/index.js";
 
 describe("ScheduleEngine Integration (part 2)", () => {
   // Deploy-moment backward compatibility. At deploy time, in-flight Redis jobs
@@ -20,6 +20,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
         worker: {
           concurrency: 1,
           disabled: true, // Don't actually run the worker — calling triggerScheduledTask directly
@@ -103,6 +104,119 @@ describe("ScheduleEngine Integration (part 2)", () => {
         // Falls back to instance.lastScheduledTimestamp from the DB rather
         // than reporting undefined for this one transitional fire.
         expect(triggerCalls[0].payload.lastTimestamp).toEqual(preDeployLastFire);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "should assign a stable schedule phase once when a window is configured",
+    { timeout: 30_000 },
+    async ({ prisma, redisOptions }) => {
+      const schedulePhaseSecret = "test-schedule-phase-secret";
+      const engine = new ScheduleEngine({
+        prisma,
+        redis: redisOptions,
+        distributionWindow: { seconds: 10 },
+        schedulePhaseSecret,
+        worker: {
+          concurrency: 1,
+          disabled: true,
+          pollIntervalMs: 1000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        onTriggerScheduledTask: async () => ({ success: true }),
+        isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+      });
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "Schedule Phase Org", slug: "schedule-phase-org" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "Schedule Phase Project",
+            slug: "schedule-phase-project",
+            externalRef: "schedule-phase-ref",
+            organizationId: organization.id,
+          },
+        });
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "schedule-phase-env",
+            type: "PRODUCTION",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "tr_schedule_phase",
+            pkApiKey: "pk_schedule_phase",
+            shortcode: "phase",
+          },
+        });
+        const taskSchedule = await prisma.taskSchedule.create({
+          data: {
+            friendlyId: "sched_phase",
+            taskIdentifier: "schedule-phase-task",
+            projectId: project.id,
+            deduplicationKey: "schedule-phase-dedup",
+            generatorExpression: "*/5 * * * *",
+            generatorDescription: "Every 5 minutes",
+            timezone: "UTC",
+            type: "DECLARATIVE",
+          },
+        });
+        const scheduleInstance = await prisma.taskScheduleInstance.create({
+          data: {
+            taskScheduleId: taskSchedule.id,
+            environmentId: environment.id,
+            projectId: project.id,
+          },
+        });
+
+        await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+
+        const unwindowedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
+          where: { id: scheduleInstance.id },
+          select: { schedulePhase: true },
+        });
+        expect(unwindowedInstance.schedulePhase).toBeNull();
+
+        await prisma.taskSchedule.update({
+          where: { id: taskSchedule.id },
+          data: { windowDurationSeconds: 60 },
+        });
+
+        const expectedPhase = calculateSchedulePhase({
+          secret: schedulePhaseSecret,
+          environmentId: environment.id,
+          deduplicationKey: taskSchedule.deduplicationKey,
+        });
+
+        await Promise.all([
+          engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id }),
+          engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id }),
+          engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id }),
+        ]);
+
+        const assignedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
+          where: { id: scheduleInstance.id },
+          select: { schedulePhase: true },
+        });
+        expect(assignedInstance.schedulePhase).toBe(expectedPhase);
+
+        const pinnedPhase = 1_234_567_890;
+        await prisma.taskScheduleInstance.update({
+          where: { id: scheduleInstance.id },
+          data: { schedulePhase: pinnedPhase },
+        });
+
+        await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+
+        const preservedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
+          where: { id: scheduleInstance.id },
+          select: { schedulePhase: true },
+        });
+        expect(preservedInstance.schedulePhase).toBe(pinnedPhase);
       } finally {
         await engine.quit();
       }
