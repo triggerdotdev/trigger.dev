@@ -577,6 +577,7 @@ export class WebhookDetailPresenter {
     period,
     from,
     to,
+    hasExplicitWindow,
     cursor,
     direction,
   }: {
@@ -587,6 +588,7 @@ export class WebhookDetailPresenter {
     period?: string;
     from?: number;
     to?: number;
+    hasExplicitWindow?: boolean;
     cursor?: string;
     direction?: Direction;
   }): Promise<WebhookDeliveriesList> {
@@ -640,7 +642,7 @@ export class WebhookDetailPresenter {
         previous: pagination.previousCursor ?? undefined,
       },
       filters: { from, to },
-      hasFilters: Boolean(period || from || to),
+      hasFilters: hasExplicitWindow ?? Boolean(from || to),
     };
   }
 }

@@ -178,6 +178,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
+      hasExplicitWindow,
       cursor: deliveriesCursor,
       direction: deliveriesDirection,
     })

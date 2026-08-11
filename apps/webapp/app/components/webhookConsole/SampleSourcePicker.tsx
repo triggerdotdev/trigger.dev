@@ -42,7 +42,7 @@ export function SampleSourcePicker({
   const manifest = listFetcher.data?.kind === "manifest" ? listFetcher.data : undefined;
   const providers = manifest?.providers ?? [];
   const samples = manifest?.samples ?? [];
-  const listLoading = listFetcher.data === undefined && listFetcher.state !== "idle";
+  const listLoading = listFetcher.data === undefined;
 
   useEffect(() => {
     if (providers.length === 0) return;
