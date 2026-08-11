@@ -38,6 +38,8 @@ vi.mock("~/services/rbac.server", () => ({
 vi.mock("~/services/personalAccessToken.server", () => ({
   authenticateApiRequestWithPersonalAccessToken: vi.fn(),
   isPersonalAccessToken: () => false,
+  // Test tokens carry no source PAT, so the liveness recheck always passes.
+  assertSourcePatActive: async () => true,
 }));
 vi.mock("~/services/organizationAccessToken.server", () => ({
   authenticateApiRequestWithOrganizationAccessToken: vi.fn(),
