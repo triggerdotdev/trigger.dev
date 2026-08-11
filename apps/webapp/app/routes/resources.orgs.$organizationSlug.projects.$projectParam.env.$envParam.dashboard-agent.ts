@@ -28,6 +28,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -297,7 +298,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       organizationId: project.organizationId,
     });
     if (quota?.reached) {
-      return json({ error: "message_quota_reached", limit: quota.limit }, { status: 403 });
+      return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
     }
 
     let clientData: Record<string, unknown> | undefined;
