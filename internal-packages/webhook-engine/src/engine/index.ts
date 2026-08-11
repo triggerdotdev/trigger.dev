@@ -132,9 +132,6 @@ export class WebhookEngine {
         concurrency: options.worker.concurrency,
         pollIntervalMs: options.worker.pollIntervalMs,
       });
-      void this.#ensurePartitions("startup").catch((error) => {
-        this.logger.error("webhook ensurePartitions (startup) failed", { error });
-      });
     } else {
       this.logger.info("Webhook engine worker disabled");
     }
@@ -742,15 +739,6 @@ export class WebhookEngine {
   async #handleEnsurePartitionsJob(
     _job: JobHandlerParams<typeof webhookWorkerCatalog, "ensurePartitions">
   ) {
-    return this.#ensurePartitions("cron");
-  }
-
-  /**
-   * Pre-create dated partitions ahead + drop cold ones. Runs on the nightly cron and once at
-   * startup: the cron only fires at its next scheduled tick and the table has no default partition,
-   * so without the startup run a fresh deploy would reject every delivery until the first cron run.
-   */
-  async #ensurePartitions(context: "cron" | "startup") {
     return startSpan(this.tracer, "ensurePartitions", async (span) => {
       this.ensurePartitionsCounter.add(1);
       const result = await ensurePartitions(this.prisma, {
@@ -761,8 +749,7 @@ export class WebhookEngine {
       span.setAttribute("created", result.created.length);
       span.setAttribute("dropped", result.dropped.length);
       span.setAttribute("deferred", result.deferred.length);
-      span.setAttribute("context", context);
-      this.logger.info("webhook ensurePartitions", { ...result, context });
+      this.logger.info("webhook ensurePartitions", result);
     });
   }
 
