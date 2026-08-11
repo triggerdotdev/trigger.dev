@@ -79,6 +79,21 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
     });
   }
 
+  it("acts on the verified claims, not the plugin's narrower copy", async () => {
+    // A plugin predating a claim delivers an incomplete set; scoping on it would widen access.
+    mocks.patFindFirst.mockResolvedValue({ id: "pat_1234" });
+    const bearer = await signUserActorToken(SESSION_SECRET, {
+      userId: "usr_1",
+      client: "cli",
+      pat: "pat_1234",
+      environmentId: "env_1234",
+    });
+
+    const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" }, bearer);
+
+    expect(result).toMatchObject({ userId: "usr_1", environmentId: "env_1234", pat: "pat_1234" });
+  });
+
   it("denies when the source PAT was revoked", async () => {
     mocks.patFindFirst.mockResolvedValue(null);
     const bearer = await tokenWithPat("pat_1234");

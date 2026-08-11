@@ -72,4 +72,29 @@ describe("softDeleteChat tenant isolation", () => {
     },
     30_000
   );
+
+  postgresTest(
+    "deleting twice is a no-op: the retention cutoff doesn't move",
+    async ({ prisma, postgresContainer }) => {
+      const db = await boot(prisma, postgresContainer.getConnectionUri());
+      const deletedAt = async () =>
+        (
+          await prisma.$queryRawUnsafe<{ deleted_at: Date | null }[]>(
+            `select deleted_at from trigger_dashboard_agent.chats where id = 'chat_1'`
+          )
+        )[0]?.deleted_at;
+
+      await createChat(db, { id: "chat_1", organizationId: ORG, userId: USER });
+      const params = { chatId: "chat_1", userId: USER, organizationId: ORG };
+
+      expect((await softDeleteChat(db, params)).deleted).toBe(true);
+      const first = await deletedAt();
+      expect(first).toBeInstanceOf(Date);
+
+      // A retry finds nothing left to delete, so the stamp stands.
+      expect((await softDeleteChat(db, params)).deleted).toBe(false);
+      expect(await deletedAt()).toEqual(first);
+    },
+    30_000
+  );
 });
