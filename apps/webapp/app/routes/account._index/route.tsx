@@ -316,7 +316,7 @@ function CustomizeSidebarButton({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary/medium">Customize</Button>
+        <Button variant="secondary/small">Customize</Button>
       </DialogTrigger>
       {/* Mounted only while open so the modal re-seeds from current preferences each time */}
       {isOpen && (
@@ -514,7 +514,7 @@ export default function Page() {
                           { method: "post" }
                         );
                       }}
-                      variant="secondary/medium"
+                      variant="secondary/small"
                       dropdownIcon
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}
                       text={(value) => (
