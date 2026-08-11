@@ -9,7 +9,7 @@ import {
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
-import { getRealUser, requireUser } from "~/services/session.server";
+import { getRealUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { impersonationDestinationPath } from "~/utils/pathBuilder";
 
