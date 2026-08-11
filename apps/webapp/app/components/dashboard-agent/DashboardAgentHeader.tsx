@@ -28,7 +28,7 @@ export function DashboardAgentHeader({
           onClick={onClose}
           variant="minimal/small"
           TrailingIcon={XMarkIcon}
-          shortcut={{ key: "esc", enabledOnInputElements: true }}
+          shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
           aria-label="Close"

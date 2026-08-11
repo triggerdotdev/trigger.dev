@@ -31,9 +31,9 @@ export function DashboardAgentComposer({
                 e.preventDefault();
                 onSubmit();
               }
-              // Keep an unsent message: Esc blurs first, so only a second Esc closes the panel.
-              if (e.key === "Escape" && value.trim().length > 0) {
-                e.stopPropagation();
+              // Esc leaves the composer, so a second Esc closes the panel and an
+              // unsent message survives the first one.
+              if (e.key === "Escape") {
                 e.currentTarget.blur();
               }
             }}

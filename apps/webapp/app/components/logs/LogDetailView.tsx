@@ -117,7 +117,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
             onClick={onClose}
             variant="minimal/small"
             TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc", enabledOnInputElements: true }}
+            shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"
             className="pl-1"
           />
@@ -138,7 +138,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           onClick={onClose}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc", enabledOnInputElements: true }}
+          shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />

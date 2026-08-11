@@ -127,7 +127,6 @@ export function SearchInput({
             }
             if (e.key === "Escape") {
               if (text.length > 0) {
-                e.stopPropagation();
                 handleClear();
               } else {
                 e.currentTarget.blur();

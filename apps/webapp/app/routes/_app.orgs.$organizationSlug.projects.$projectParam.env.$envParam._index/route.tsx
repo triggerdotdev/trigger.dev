@@ -844,7 +844,7 @@ function NewTaskPromptsPanel({ onClose }: { onClose: () => void }) {
           onClick={onClose}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc", enabledOnInputElements: true }}
+          shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />

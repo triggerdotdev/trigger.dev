@@ -23,6 +23,11 @@ type useShortcutKeysProps = {
   shortcut: ShortcutDefinition | undefined;
   action: (event: KeyboardEvent) => void;
   disabled?: boolean;
+  /**
+   * Shortcuts are registered on `document`, so this fires the shortcut from every
+   * input on the page, not just the ones near it. Don't set it on an Escape
+   * close shortcut: let the focused field handle Escape and close on the second press.
+   */
   enabledOnInputElements?: boolean;
   /**
    * The element this shortcut belongs to. When set, an Escape shortcut is ignored
