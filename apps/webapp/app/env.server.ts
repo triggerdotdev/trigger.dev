@@ -614,6 +614,14 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
+    // Separate budget for deploy-flow endpoints, see deploymentRateLimit.server.ts
+    DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    DEPLOYMENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1500),
+    DEPLOYMENT_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(500),
+    DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+    DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+    DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
+
     // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
     // (/otel/*). Bounds unauthenticated request rates. Opt-in
     // (disabled by default): because it keys on the source IP, it is only
