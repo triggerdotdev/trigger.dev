@@ -1,31 +1,11 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { timingSafeEqual } from "crypto";
 import { uiComponent } from "@team-plain/ui-components";
-import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { generateImpersonationToken } from "~/services/impersonation.server";
-
-// Schema for the request body from Plain
-const PlainCustomerCardRequestSchema = z.object({
-  cardKeys: z.array(z.string()),
-  customer: z
-    .object({
-      id: z.string(),
-      email: z.string().optional(),
-      externalId: z.string().optional(),
-    })
-    .refine((data) => data.email || data.externalId, {
-      message: "Either customer.email or customer.externalId must be provided",
-      path: ["customer"],
-    }),
-  thread: z
-    .object({
-      id: z.string(),
-    })
-    .optional(),
-});
+import { answerAllCardKeys, PlainCustomerCardRequestSchema } from "~/utils/plainCustomerCards";
 
 function sanitizeHeaders(
   request: Request,
@@ -141,14 +121,14 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const user = where ? await prisma.user.findFirst({ where, include: userInclude }) : null;
 
-    // If user not found, return empty cards
+    // No matching user: still answer every requested key, with no data so Plain hides the cards.
     if (!user) {
       logger.info("User not found for Plain customer card request", {
         customerId: customer.id,
         externalId: customer.externalId,
         hasEmail: !!customer.email,
       });
-      return json({ cards: [] });
+      return json({ cards: answerAllCardKeys(cardKeys, []) });
     }
 
     // Build cards based on requested cardKeys
@@ -420,13 +400,13 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         default:
-          // Unknown card key - skip it
+          // Unknown card key - answered with no data by answerAllCardKeys below.
           logger.info("Unknown card key requested", { cardKey });
           break;
       }
     }
 
-    return json({ cards });
+    return json({ cards: answerAllCardKeys(cardKeys, cards) });
   } catch (error) {
     logger.error("Error processing Plain customer card request", {
       error: error instanceof Error ? error.message : String(error),
