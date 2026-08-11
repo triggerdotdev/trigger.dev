@@ -17,8 +17,6 @@ import {
 
 type DeliveryCursorRow = { deliveryId: string; createdAt: number };
 
-const WEBHOOK_DELIVERY_ID_PREFIX = "whd_";
-
 const DELIVERY_DETAIL_SELECT = {
   id: true,
   friendlyId: true,
@@ -306,19 +304,37 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
   /**
    * Hydrate a known set of deliveries by friendlyId. Pure Postgres: the caller (the live poll)
    * already has the ids, so there is nothing for ClickHouse to filter or order.
+   *
+   * The ids are time-encoded (see `WebhookDeliveryId`), so when every id decodes we bound the query
+   * to the span of their mint timestamps, which equal the rows' `createdAt`. That prunes the
+   * RANGE-partitioned table to the visible page's few days instead of probing all of retention on
+   * every poll. A mix that includes a legacy id falls back to the unbounded lookup.
    */
   async getDeliveriesByFriendlyIds(
     options: GetDeliveriesByFriendlyIdsOptions
   ): Promise<ListedWebhookDelivery[]> {
-    const ids = options.friendlyIds.map((friendlyId) =>
-      friendlyId.startsWith(WEBHOOK_DELIVERY_ID_PREFIX)
-        ? friendlyId.slice(WEBHOOK_DELIVERY_ID_PREFIX.length)
-        : friendlyId
-    );
+    const ids = options.friendlyIds.map((friendlyId) => WebhookDeliveryId.toId(friendlyId));
     if (ids.length === 0) return [];
 
+    const timestamps = options.friendlyIds
+      .map((friendlyId) => WebhookDeliveryId.parseTimestamp(friendlyId))
+      .filter((value): value is Date => value != null);
+    const createdAtBound =
+      timestamps.length === options.friendlyIds.length
+        ? {
+            createdAt: {
+              gte: new Date(Math.min(...timestamps.map((value) => value.getTime()))),
+              lte: new Date(Math.max(...timestamps.map((value) => value.getTime()))),
+            },
+          }
+        : {};
+
     return this.options.prisma.webhookDelivery.findMany({
-      where: { id: { in: boundedIn(ids) }, runtimeEnvironmentId: options.environmentId },
+      where: {
+        id: { in: boundedIn(ids) },
+        runtimeEnvironmentId: options.environmentId,
+        ...createdAtBound,
+      },
       select: DELIVERY_LIST_SELECT,
     });
   }
