@@ -538,7 +538,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
-    const environment = await this._prisma.runtimeEnvironment.findFirst({
+    const environmentReader =
+      env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma;
+
+    const environment = await environmentReader.runtimeEnvironment.findFirst({
       where: {
         id: engineResult.execution.environment.id,
       },
