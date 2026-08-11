@@ -339,6 +339,15 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
 
+  try {
+    const result = await apiClient.markProjectInitialized(selectedProject.externalRef);
+    if (!result.success) {
+      logger.debug("Failed to mark project as initialized", { error: result.error });
+    }
+  } catch (error) {
+    logger.debug("Failed to mark project as initialized", { error });
+  }
+
   const projectDashboard = cliLink(
     "project dashboard",
     `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
