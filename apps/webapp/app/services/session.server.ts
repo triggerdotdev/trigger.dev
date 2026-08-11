@@ -141,14 +141,26 @@ export async function getRealUser(
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
   const authUser = await authenticator.isAuthenticated(request);
+
+  // Apply the same session controls `getUserId`/`getUser` apply to the real user, so this helper
+  // can't become a way around them: a session the IdP has revoked throws to /logout here, and one
+  // past its effective duration is caught below. Skipping either would let an admin whose session
+  // should have ended still start impersonation.
+  await revalidateSsoSession(request, authUser);
   if (!authUser?.userId) return null;
 
-  // Narrow select: callers only ever need the id and the admin flag. Takes a client so a caller
-  // already scoped to one reads the admin from the same database it writes to.
-  return prismaClient.user.findFirst({
+  // Narrow select — callers need the id and the admin flag, plus `nextSessionEnd` for the deadline
+  // check. Takes a client so a caller already scoped to one reads the admin from the same database
+  // it writes to.
+  const user = await prismaClient.user.findFirst({
     where: { id: authUser.userId },
-    select: { id: true, admin: true },
+    select: { id: true, admin: true, nextSessionEnd: true },
   });
+  if (!user) return null;
+
+  maybeAutoLogout(request, user);
+
+  return user;
 }
 
 export type UserFromSession = Awaited<ReturnType<typeof requireUser>>;
