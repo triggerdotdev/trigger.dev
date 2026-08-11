@@ -23,9 +23,10 @@ import {
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
-import { planWakeToasts, startWakePolling, wakesToToast } from "./wake-poll";
+import { createWakePendingCount, startWakePolling, wakesToToast } from "./wake-poll";
 import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
 import {
+  dismissWatchWakesSummaryToast,
   showWatchWakesSummaryToast,
   showWatchWakeToast,
   WAKE_TOAST_MAX_INDIVIDUAL,
@@ -101,8 +102,8 @@ export function DashboardAgent({
 
   // The count the still-visible grouped toast claims. Consecutive polls add to it so a
   // later batch grows the summary instead of overwriting it with only its own count;
-  // reset when the user opens the panel from that toast.
-  const summaryPending = useRef(0);
+  // reset when the user opens the panel, whichever route they took.
+  const wakePending = useRef(createWakePendingCount());
 
   // Switching environment re-runs the layout loader but does not remount it, so the seeds
   // above would keep the old environment's counts.
@@ -146,35 +147,58 @@ export function DashboardAgent({
     undefined
   );
 
-  const setPanelOpen = useCallback((next: boolean) => {
-    setOpen(next);
-    // Pending requests must be dropped or a stale one re-applies on the next open.
-    if (!next) {
+  // The single entry point for opening the panel — every open route must go through it.
+  // Opening acknowledges the wakes counted so far, and the visible summary goes with the
+  // count it was claiming.
+  const openPanel = useCallback(() => {
+    wakePending.current.acknowledge();
+    dismissWatchWakesSummaryToast();
+    setOpen(true);
+  }, []);
+
+  const setPanelOpen = useCallback(
+    (next: boolean) => {
+      if (next) {
+        openPanel();
+        return;
+      }
+      setOpen(false);
+      // Pending requests must be dropped or a stale one re-applies on the next open.
       visibleChat.current = null;
       setFullscreen(false);
       writeAgentFullscreen(false);
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
-    }
-  }, []);
+    },
+    [openPanel]
+  );
 
-  const openChat = useCallback((chatId: string) => {
-    setOpen(true);
-    setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
-  }, []);
+  const openChat = useCallback(
+    (chatId: string) => {
+      openPanel();
+      setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
+    },
+    [openPanel]
+  );
 
-  const openWith = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setOpen(true);
-    setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
-  }, []);
+  const openWith = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      openPanel();
+      setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
+    },
+    [openPanel]
+  );
 
-  const openWithWatch = useCallback((spec: WatchSpec) => {
-    setOpen(true);
-    setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
-  }, []);
+  const openWithWatch = useCallback(
+    (spec: WatchSpec) => {
+      openPanel();
+      setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
+    },
+    [openPanel]
+  );
 
   // Nothing to be woken about means nothing to poll for. The page load's unread count and
   // active-watch flag are the ungated signals; the browser's own memory of a watch starts the
@@ -230,17 +254,9 @@ export function DashboardAgent({
         for (const wake of fresh) rememberToasted(wake.watchId);
 
         if (fresh.length > 0) {
-          const { plan, pending } = planWakeToasts(
-            fresh,
-            summaryPending.current,
-            WAKE_TOAST_MAX_INDIVIDUAL
-          );
-          summaryPending.current = pending;
+          const plan = wakePending.current.plan(fresh, WAKE_TOAST_MAX_INDIVIDUAL);
           if (plan.mode === "summary") {
-            showWatchWakesSummaryToast(plan.count, () => {
-              summaryPending.current = 0;
-              setPanelOpen(true);
-            });
+            showWatchWakesSummaryToast(plan.count, () => setPanelOpen(true));
           } else {
             for (const wake of [...plan.wakes].reverse()) {
               showWatchWakeToast(wake, openChat);
