@@ -59,6 +59,9 @@ const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
 // then all messages are routed to this queue for BatchQueue's own consumer loop.
 const BATCH_WORKER_QUEUE_ID = "batch-worker-queue";
 
+/** How long a claimed batch item stays invisible before the reclaim loop takes it back. */
+const BATCH_ITEM_VISIBILITY_TIMEOUT_MS = 60_000;
+
 export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
   private workerQueueManager: WorkerQueueManager;
@@ -67,6 +70,8 @@ export class BatchQueue {
   private tracer?: Tracer;
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
+  private heartbeatIntervalMs: number;
+  private visibilityTimeoutMs: number;
   private maxAttempts: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
@@ -95,6 +100,8 @@ export class BatchQueue {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
+    this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? BATCH_ITEM_VISIBILITY_TIMEOUT_MS;
+    this.heartbeatIntervalMs = Math.max(50, Math.floor(this.visibilityTimeoutMs / 3));
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
@@ -154,7 +161,7 @@ export class BatchQueue {
       shardCount: options.shardCount ?? 1,
       consumerCount: options.consumerCount,
       consumerIntervalMs: options.consumerIntervalMs,
-      visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
+      visibilityTimeoutMs: this.visibilityTimeoutMs,
       startConsumers: false, // We control when to start
       cooloff: {
         enabled: false,
@@ -752,6 +759,29 @@ export class BatchQueue {
   // Private - Message Handling
   // ============================================================================
 
+  /**
+   * Keep extending a message's visibility deadline while its callback runs, and return a
+   * function that stops doing so. Without this an item slower than the visibility timeout
+   * is redelivered while still being processed, and the original consumer's completion
+   * then destroys the redelivery's in-flight record, silently dropping the item and
+   * leaving the batch short of its expected count forever.
+   */
+  #startHeartbeat(messageId: string, queueId: string): () => void {
+    const interval = setInterval(() => {
+      this.fairQueue.heartbeatMessage(messageId, queueId).catch((error) => {
+        this.logger.debug("Batch item heartbeat failed", {
+          messageId,
+          queueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }, this.heartbeatIntervalMs);
+
+    interval.unref?.();
+
+    return () => clearInterval(interval);
+  }
+
   async #handleMessage(consumerId: string, messageId: string, queueId: string): Promise<void> {
     // Get message data from FairQueue's in-flight storage
     const storedMessage = await this.fairQueue.getMessageData(messageId, queueId);
@@ -820,9 +850,10 @@ export class BatchQueue {
       let processedCount: number;
 
       try {
-        const result = await this.#startSpan(
-          "BatchQueue.processItemCallback",
-          async (innerSpan) => {
+        const stopHeartbeat = this.#startHeartbeat(messageId, queueId);
+        let result: Awaited<ReturnType<ProcessBatchItemCallback>>;
+        try {
+          result = await this.#startSpan("BatchQueue.processItemCallback", async (innerSpan) => {
             innerSpan?.setAttributes({
               "batch.id": batchId,
               "batch.itemIndex": itemIndex,
@@ -837,8 +868,10 @@ export class BatchQueue {
               attempt,
               isFinalAttempt,
             });
-          }
-        );
+          });
+        } finally {
+          stopHeartbeat();
+        }
 
         if (result.success) {
           span?.setAttribute("batch.result", "success");

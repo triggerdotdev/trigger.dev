@@ -1498,28 +1498,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       originalTimestamp: storedMessage.timestamp,
     };
 
+    // Complete in visibility manager
+    await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
+
     // Add to DLQ
     const pipeline = this.redis.pipeline();
     pipeline.zadd(dlqKey, dlqMessage.deadLetteredAt, storedMessage.id);
     pipeline.hset(dlqDataKey, storedMessage.id, JSON.stringify(dlqMessage));
-    const dlqResults = await pipeline.exec();
-
-    const dlqErrors = (dlqResults ?? [])
-      .map(([error]) => error)
-      .filter((error): error is Error => Boolean(error));
-
-    if (dlqErrors.length > 0) {
-      this.logger.error("Failed to write message to DLQ, leaving it in-flight to be reclaimed", {
-        messageId: storedMessage.id,
-        queueId: storedMessage.queueId,
-        tenantId: storedMessage.tenantId,
-        errors: dlqErrors.map((error) => error.message),
-      });
-      return;
-    }
-
-    // Complete in visibility manager
-    await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
+    await pipeline.exec();
 
     this.telemetry.recordDLQ();
 
@@ -1559,55 +1545,56 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
-   * Free a reclaimed message's concurrency slot. Runs before the message is put back
-   * on the queue, so another consumer cannot reserve the same messageId and have its
-   * fresh reservation deleted by this release. Failures are logged rather than thrown
-   * so one bad message cannot stop the rest of the shard being reclaimed.
+   * Free every timed-out message's concurrency slot in one pipeline, before any of them
+   * is put back on the queue. Throwing here aborts the requeue for the whole batch, which
+   * leaves the messages in-flight for the next reclaim tick. That is the safe direction:
+   * requeuing a message whose slot is still held is what strands the slot permanently.
    */
-  async #releaseReclaimedConcurrency(message: ReclaimedMessageInfo): Promise<void> {
-    if (!this.concurrencyManager) {
+  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<void> {
+    if (!this.concurrencyManager || messages.length === 0) {
       return;
     }
 
-    try {
-      await this.concurrencyManager.release(
-        {
+    await this.concurrencyManager.releaseBatch(
+      messages.map((message) => ({
+        queue: {
           id: message.queueId,
           tenantId: message.tenantId,
           metadata: message.metadata ?? {},
         },
-        message.messageId
-      );
-    } catch (error) {
-      this.logger.error("Failed to release concurrency for reclaimed message", {
         messageId: message.messageId,
-        queueId: message.queueId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+      }))
+    );
   }
 
   async #reclaimTimedOutMessages(): Promise<void> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(
-        shardId,
-        (queueId) => {
-          const tenantId = this.keys.extractTenantId(queueId);
-          const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
-          return {
-            queueKey: this.keys.queueKey(queueId),
-            queueItemsKey: this.keys.queueItemsKey(queueId),
-            tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
-            dispatchKey: this.keys.dispatchKey(dispatchShardId),
-            tenantId,
-          };
-        },
-        this.#releaseReclaimedConcurrency.bind(this)
-      );
+      try {
+        const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(
+          shardId,
+          (queueId) => {
+            const tenantId = this.keys.extractTenantId(queueId);
+            const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
+            return {
+              queueKey: this.keys.queueKey(queueId),
+              queueItemsKey: this.keys.queueItemsKey(queueId),
+              tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
+              dispatchKey: this.keys.dispatchKey(dispatchShardId),
+              tenantId,
+            };
+          },
+          this.#releaseReclaimedConcurrency.bind(this)
+        );
 
-      totalReclaimed += reclaimedMessages.length;
+        totalReclaimed += reclaimedMessages.length;
+      } catch (error) {
+        this.logger.error("Failed to reclaim shard, leaving messages in-flight for the next tick", {
+          shardId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     if (totalReclaimed > 0) {

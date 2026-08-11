@@ -103,7 +103,31 @@ export class ConcurrencyManager {
       pipeline.srem(key, messageId);
     }
 
-    await pipeline.exec();
+    this.#assertPipelineSucceeded(await pipeline.exec(), 1);
+  }
+
+  /**
+   * Throw if any command in a released pipeline failed. ioredis resolves `exec()` even when
+   * individual commands error, so an unchecked pipeline reports success while leaving the
+   * slot held, which strands it permanently once the caller drops the in-flight record.
+   */
+  #assertPipelineSucceeded(
+    results: Array<[Error | null, unknown]> | null,
+    messageCount: number
+  ): void {
+    const errors = (results ?? [])
+      .map(([error]) => error)
+      .filter((error): error is Error => Boolean(error));
+
+    if (errors.length > 0) {
+      throw new Error(
+        `Failed to release ${errors.length} of ${
+          results?.length ?? 0
+        } concurrency slot commands across ${messageCount} message(s): ${errors
+          .map((error) => error.message)
+          .join("; ")}`
+      );
+    }
   }
 
   /**
@@ -127,7 +151,7 @@ export class ConcurrencyManager {
       }
     }
 
-    await pipeline.exec();
+    this.#assertPipelineSucceeded(await pipeline.exec(), messages.length);
   }
 
   /**
