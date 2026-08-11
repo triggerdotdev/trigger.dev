@@ -100,6 +100,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         // Call triggerScheduledTask directly without lastScheduleTime or an
         // effective time, simulating an in-flight Redis job from the old engine.
         const exactScheduleTime = new Date("2026-04-30T10:05:00.000Z");
+        const beforeTrigger = new Date();
         await engine.triggerScheduledTask({
           instanceId: scheduleInstance.id,
           finalAttempt: false,
@@ -120,15 +121,18 @@ describe("ScheduleEngine Integration (part 2)", () => {
           exactScheduleTime: string;
           effectiveScheduleTime: string;
         };
-        const nextNominalAt = new Date("2026-04-30T10:10:00.000Z");
+        const nextNominalAt = new Date(nextJobPayload.exactScheduleTime);
 
-        // The next job advances from the legacy job's nominal T, not from the
-        // current wall clock. With cron spread disabled, actual eligibility
-        // remains nominal even though registration still calculates candidate E.
-        expect(new Date(nextJobPayload.exactScheduleTime)).toEqual(nextNominalAt);
+        // The legacy occurrence fires once, then expired intermediate ticks are
+        // skipped instead of being replayed. With spread disabled, eligibility
+        // remains nominal and the next job is in the future.
+        expect(nextNominalAt.getTime()).toBeGreaterThan(beforeTrigger.getTime());
         expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextNominalAt);
         expect(nextJob!.timestamp).toEqual(
           calculateDistributedExecutionTime(nextNominalAt, 10, scheduleInstance.id)
+        );
+        expect(new Date((nextJob!.item as { lastScheduleTime: string }).lastScheduleTime)).toEqual(
+          exactScheduleTime
         );
 
         const updatedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
@@ -287,8 +291,9 @@ describe("ScheduleEngine Integration (part 2)", () => {
         });
         expect(preservedInstance.schedulePhase).toBe(pinnedPhase);
 
-        const exactScheduleTime = new Date("2026-04-30T10:00:00.000Z");
-        const effectiveScheduleTime = new Date("2026-04-30T10:00:45.000Z");
+        const intervalMs = 5 * 60_000;
+        const exactScheduleTime = new Date(Math.floor(Date.now() / intervalMs) * intervalMs);
+        const effectiveScheduleTime = new Date(exactScheduleTime.getTime() + 45_000);
         await engine.triggerScheduledTask({
           instanceId: scheduleInstance.id,
           finalAttempt: false,
@@ -306,8 +311,8 @@ describe("ScheduleEngine Integration (part 2)", () => {
           exactScheduleTime: string;
           effectiveScheduleTime: string;
         };
-        const nextNominalAt = new Date("2026-04-30T10:05:00.000Z");
-        const followingNominalAt = new Date("2026-04-30T10:10:00.000Z");
+        const nextNominalAt = new Date(exactScheduleTime.getTime() + intervalMs);
+        const followingNominalAt = new Date(nextNominalAt.getTime() + intervalMs);
         const { effectiveAt: nextEffectiveAt } = calculateEffectiveScheduleTime({
           nominalAt: nextNominalAt,
           nextNominalAt: followingNominalAt,

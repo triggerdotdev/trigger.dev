@@ -84,9 +84,9 @@ export interface TriggerScheduleParams {
 export interface RegisterScheduleInstanceParams {
   instanceId: string;
   /**
-   * Anchor for computing the next cron slot. Defaults to now() when omitted.
-   * This advances on every tick (fired or skipped) so the next slot keeps
-   * marching forward regardless of skip reasons.
+   * Nominal anchor for selecting the next non-expired cron occurrence. Defaults
+   * to now() when omitted. The engine advances from this timestamp when the
+   * next occurrence is still eligible and skips expired intermediate ticks.
    */
   fromTimestamp?: Date;
   /**

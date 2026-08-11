@@ -1,4 +1,9 @@
-import { calculateNextNominalTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
+import {
+  calculateNextNominalTimestamp,
+  calculateNextSchedulableOccurrence,
+  nextScheduledTimestamps,
+} from "./scheduleCalculation.js";
+import { SCHEDULE_PHASE_DENOMINATOR } from "./scheduleTiming.js";
 
 describe("calculateNextNominalTimestamp", () => {
   it("advances from the previous nominal tick instead of wall-clock time", () => {
@@ -35,6 +40,90 @@ describe("calculateNextNominalTimestamp", () => {
     );
 
     expect(next).toEqual(new Date("2027-02-28T23:00:00.000Z"));
+  });
+});
+
+describe("calculateNextSchedulableOccurrence", () => {
+  const hourlySchedule = "0 * * * *";
+  const window = { type: "percentage", percentage: 100 } as const;
+
+  it("restores wall-clock catch-up behavior when spreading is disabled", () => {
+    const occurrence = calculateNextSchedulableOccurrence({
+      schedule: hourlySchedule,
+      timezone: "UTC",
+      afterNominal: new Date("2026-08-11T09:00:00.000Z"),
+      now: new Date("2026-08-11T12:30:00.000Z"),
+      schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
+      window,
+      cronSpreadEnabled: false,
+    });
+
+    expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T13:00:00.000Z"));
+    expect(occurrence.effectiveAt).toEqual(occurrence.nominalAt);
+    expect(occurrence.skippedExpiredOccurrences).toBe(true);
+  });
+
+  it("keeps strict nominal chaining when the next effective time is upcoming", () => {
+    const occurrence = calculateNextSchedulableOccurrence({
+      schedule: hourlySchedule,
+      timezone: "UTC",
+      afterNominal: new Date("2026-08-11T09:00:00.000Z"),
+      now: new Date("2026-08-11T10:00:01.000Z"),
+      schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
+      window,
+      cronSpreadEnabled: true,
+    });
+
+    expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T10:00:00.000Z"));
+    expect(occurrence.effectiveAt).toEqual(new Date("2026-08-11T10:45:00.000Z"));
+    expect(occurrence.skippedExpiredOccurrences).toBe(false);
+  });
+
+  it("keeps the latest nominal occurrence when its effective time is upcoming", () => {
+    const occurrence = calculateNextSchedulableOccurrence({
+      schedule: hourlySchedule,
+      timezone: "UTC",
+      afterNominal: new Date("2026-08-11T09:00:00.000Z"),
+      now: new Date("2026-08-11T12:30:00.000Z"),
+      schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
+      window,
+      cronSpreadEnabled: true,
+    });
+
+    expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T12:00:00.000Z"));
+    expect(occurrence.effectiveAt).toEqual(new Date("2026-08-11T12:45:00.000Z"));
+    expect(occurrence.skippedExpiredOccurrences).toBe(true);
+  });
+
+  it("skips to the next future nominal occurrence when the latest effective time expired", () => {
+    const occurrence = calculateNextSchedulableOccurrence({
+      schedule: hourlySchedule,
+      timezone: "UTC",
+      afterNominal: new Date("2026-08-11T09:00:00.000Z"),
+      now: new Date("2026-08-11T12:30:00.000Z"),
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 4,
+      window,
+      cronSpreadEnabled: true,
+    });
+
+    expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T13:00:00.000Z"));
+    expect(occurrence.effectiveAt).toEqual(new Date("2026-08-11T13:15:00.000Z"));
+    expect(occurrence.skippedExpiredOccurrences).toBe(true);
+  });
+
+  it("includes a nominal occurrence exactly at now when it is still eligible", () => {
+    const occurrence = calculateNextSchedulableOccurrence({
+      schedule: hourlySchedule,
+      timezone: "UTC",
+      afterNominal: new Date("2026-08-11T09:00:00.000Z"),
+      now: new Date("2026-08-11T12:00:00.000Z"),
+      schedulePhase: 0,
+      window,
+      cronSpreadEnabled: true,
+    });
+
+    expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T12:00:00.000Z"));
+    expect(occurrence.effectiveAt).toEqual(new Date("2026-08-11T12:00:00.000Z"));
   });
 });
 

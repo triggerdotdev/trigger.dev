@@ -5,7 +5,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import {
-  calculateNextNominalTimestamp,
+  calculateNextSchedulableOccurrence,
   nextScheduledTimestamps,
   previousScheduledTimestamp,
 } from "./scheduleCalculation.js";
@@ -15,11 +15,7 @@ import type {
   TriggerScheduledTaskCallback,
   TriggerScheduleParams,
 } from "./types.js";
-import {
-  calculateEffectiveScheduleTime,
-  calculateSchedulePhase,
-  type NormalizedScheduleWindow,
-} from "./scheduleTiming.js";
+import { calculateSchedulePhase, type NormalizedScheduleWindow } from "./scheduleTiming.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 
@@ -217,33 +213,29 @@ export class ScheduleEngine {
         );
         span.setAttribute("schedule_phase", schedulePhase);
 
-        const fromTimestamp = params.fromTimestamp ?? new Date();
+        const registrationTime = new Date();
+        const fromTimestamp = params.fromTimestamp ?? registrationTime;
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());
 
-        const nominalAt = calculateNextNominalTimestamp(
-          instance.taskSchedule.generatorExpression,
-          instance.taskSchedule.timezone,
-          fromTimestamp
-        );
-        const nextNominalAt = calculateNextNominalTimestamp(
-          instance.taskSchedule.generatorExpression,
-          instance.taskSchedule.timezone,
-          nominalAt
-        );
         const {
-          effectiveAt: candidateEffectiveAt,
+          nominalAt,
+          candidateEffectiveAt,
+          effectiveAt,
           effectiveRangeMs,
           windowMs,
           offsetMs: candidateDelayMs,
           intervalMs,
           windowWasCappedToInterval,
-        } = calculateEffectiveScheduleTime({
-          nominalAt,
-          nextNominalAt,
+          skippedExpiredOccurrences,
+        } = calculateNextSchedulableOccurrence({
+          schedule: instance.taskSchedule.generatorExpression,
+          timezone: instance.taskSchedule.timezone,
+          afterNominal: fromTimestamp,
+          now: registrationTime,
           schedulePhase,
           window: scheduleWindow,
+          cronSpreadEnabled: this.options.cronSpreadEnabled,
         });
-        const effectiveAt = this.options.cronSpreadEnabled ? candidateEffectiveAt : nominalAt;
         const appliedDelayMs = effectiveAt.getTime() - nominalAt.getTime();
 
         span.setAttribute("cron_spread_enabled", this.options.cronSpreadEnabled);
@@ -256,6 +248,14 @@ export class ScheduleEngine {
         span.setAttribute("schedule_window_ms", windowMs);
         span.setAttribute("effective_range_ms", effectiveRangeMs);
         span.setAttribute("schedule_window_was_capped_to_interval", windowWasCappedToInterval);
+        span.setAttribute("schedule_expired_occurrences_skipped", skippedExpiredOccurrences);
+
+        if (skippedExpiredOccurrences) {
+          span.addEvent("schedule_expired_occurrences_skipped", {
+            from_nominal_time: fromTimestamp.toISOString(),
+            selected_nominal_time: nominalAt.toISOString(),
+          });
+        }
 
         if (windowWasCappedToInterval) {
           span.addEvent("schedule_window_capped_to_interval", {
@@ -268,7 +268,7 @@ export class ScheduleEngine {
           });
         }
 
-        const schedulingDelayMs = effectiveAt.getTime() - Date.now();
+        const schedulingDelayMs = effectiveAt.getTime() - registrationTime.getTime();
         span.setAttribute("scheduling_delay_ms", schedulingDelayMs);
 
         this.logger.debug("Calculated next schedule timestamps", {
@@ -283,6 +283,7 @@ export class ScheduleEngine {
           appliedDelayMs,
           effectiveRangeMs,
           windowWasCappedToInterval,
+          skippedExpiredOccurrences,
           schedulingDelayMs,
           generatorExpression: instance.taskSchedule.generatorExpression,
           timezone: instance.taskSchedule.timezone,
@@ -674,8 +675,9 @@ export class ScheduleEngine {
           });
         }
 
-        // Register the next run. `fromTimestamp` advances on every tick so
-        // the next cron slot keeps marching forward even through skips.
+        // Register the next run. `fromTimestamp` anchors nominal chaining;
+        // registration preserves an upcoming effective occurrence and skips
+        // expired intermediate ticks after downtime.
         // `lastScheduleTime` is the actual previous fire time the next job
         // will report as `payload.lastTimestamp` — only advance it when we
         // actually triggered, otherwise carry forward the existing value so
