@@ -11,6 +11,18 @@ import { validateAndConsumeImpersonationToken } from "~/services/impersonation.s
 import { logger } from "~/services/logger.server";
 import { sanitizeRedirectPath } from "~/utils";
 
+/**
+ * Served at `/admin/impersonate`, but the trailing `_` on `admin_` keeps it out of the `admin.tsx`
+ * layout on purpose.
+ *
+ * That layout's loader is `dashboardLoader({ authorization: { requireSuper: true } })`, which
+ * resolves the user through `getUserId` — the impersonated id while impersonating. So starting on a
+ * second target ran the parent gate against the target, which isn't a super admin, and it answered
+ * with its own `redirect("/")`. Nesting would leave this route's behaviour depending on the router
+ * preferring the deepest redirect; opting out removes the question. Nothing is lost — this route
+ * only ever redirects, so it never rendered inside the layout anyway.
+ */
+
 const FormSchema = z.object({ id: z.string() });
 
 /**
