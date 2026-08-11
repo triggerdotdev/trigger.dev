@@ -107,6 +107,7 @@
                 "group": "Features",
                 "pages": [
                   "ai/prompts",
+                  "ai/observability",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
                   "ai-chat/prompt-caching",
