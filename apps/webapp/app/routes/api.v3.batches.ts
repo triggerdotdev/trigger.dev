@@ -167,7 +167,8 @@ const { action, loader } = createActionApiRoute(
         spanParentAsLink: spanParentAsLink === 1,
         oneTimeUseToken,
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
-          realtimeStreamsVersion ?? undefined
+          realtimeStreamsVersion ?? undefined,
+          authentication.environment.organization.streamBasinName
         ),
         triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
       });

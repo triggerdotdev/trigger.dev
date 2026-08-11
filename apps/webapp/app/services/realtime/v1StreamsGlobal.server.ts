@@ -98,10 +98,10 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
 
 export type RealtimeStreamsVersionConfig = {
   defaultVersion: "v1" | "v2";
+  /** A basin that will actually resolve at read/write time, or undefined if none will. */
   basin?: string;
   accessToken?: string;
   skipAccessTokens: boolean;
-  perOrgBasinsEnabled: boolean;
 };
 
 /**
@@ -113,9 +113,10 @@ export type RealtimeStreamsVersionConfig = {
  * life of the run, and no read or write against its streams can succeed. v1 is
  * a working backend, so an unsatisfiable v2 degrades to it.
  *
- * A basin can come from the global setting or from per-org provisioning, so
- * either satisfies the basin requirement. This mirrors {@link resolveStreamBasin},
- * which resolves run, session and organization basins ahead of the global one.
+ * The basin must be one that will actually resolve later. Enabling per-org
+ * basins is not enough on its own: provisioning is out of band, so an
+ * unprovisioned organization has no basin and a global setting may not exist
+ * to fall back to.
  */
 export function resolveRealtimeStreamsVersion(
   streamVersion: string | undefined,
@@ -128,18 +129,25 @@ export function resolveRealtimeStreamsVersion(
   }
 
   const hasCredentials = Boolean(config.accessToken) || config.skipAccessTokens;
-  const hasBasin = Boolean(config.basin) || config.perOrgBasinsEnabled;
 
-  return hasCredentials && hasBasin ? "v2" : "v1";
+  return hasCredentials && Boolean(config.basin) ? "v2" : "v1";
 }
 
-export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
+/**
+ * Pass `organizationBasinName` wherever the caller has it. It mirrors the
+ * organization step of {@link resolveStreamBasin}, and is what lets a
+ * per-org-basin deployment with no global setting resolve v2 for a
+ * provisioned organization while an unprovisioned one still degrades to v1.
+ */
+export function determineRealtimeStreamsVersion(
+  streamVersion?: string,
+  organizationBasinName?: string | null
+): "v1" | "v2" {
   return resolveRealtimeStreamsVersion(streamVersion, {
     defaultVersion: env.REALTIME_STREAMS_DEFAULT_VERSION,
-    basin: env.REALTIME_STREAMS_S2_BASIN,
+    basin: organizationBasinName ?? env.REALTIME_STREAMS_S2_BASIN,
     accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
     skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
-    perOrgBasinsEnabled: env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true",
   });
 }
 

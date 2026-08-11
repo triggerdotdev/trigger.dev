@@ -9,7 +9,6 @@ const NO_S2: RealtimeStreamsVersionConfig = {
   basin: undefined,
   accessToken: undefined,
   skipAccessTokens: false,
-  perOrgBasinsEnabled: false,
 };
 
 const GLOBAL_BASIN: RealtimeStreamsVersionConfig = {
@@ -18,10 +17,10 @@ const GLOBAL_BASIN: RealtimeStreamsVersionConfig = {
   accessToken: "a-token",
 };
 
-const PER_ORG_BASINS: RealtimeStreamsVersionConfig = {
+const ORG_BASIN: RealtimeStreamsVersionConfig = {
   ...NO_S2,
+  basin: "an-org-basin",
   accessToken: "a-token",
-  perOrgBasinsEnabled: true,
 };
 
 describe("resolveRealtimeStreamsVersion", () => {
@@ -29,8 +28,8 @@ describe("resolveRealtimeStreamsVersion", () => {
     expect(resolveRealtimeStreamsVersion("v2", GLOBAL_BASIN)).toBe("v2");
   });
 
-  it("honours an explicit v2 when only per-org basins are configured", () => {
-    expect(resolveRealtimeStreamsVersion("v2", PER_ORG_BASINS)).toBe("v2");
+  it("honours an explicit v2 when only an org basin is resolvable", () => {
+    expect(resolveRealtimeStreamsVersion("v2", ORG_BASIN)).toBe("v2");
   });
 
   it("accepts a skip-tokens deployment as credentialed", () => {
@@ -57,10 +56,10 @@ describe("resolveRealtimeStreamsVersion", () => {
     expect(resolveRealtimeStreamsVersion(undefined, { ...NO_S2, defaultVersion: "v2" })).toBe("v1");
   });
 
-  it("keeps a v2 default on v2 when only per-org basins are configured", () => {
-    expect(
-      resolveRealtimeStreamsVersion(undefined, { ...PER_ORG_BASINS, defaultVersion: "v2" })
-    ).toBe("v2");
+  it("keeps a v2 default on v2 when only an org basin is resolvable", () => {
+    expect(resolveRealtimeStreamsVersion(undefined, { ...ORG_BASIN, defaultVersion: "v2" })).toBe(
+      "v2"
+    );
   });
 
   it("requires credentials, not just a basin", () => {
