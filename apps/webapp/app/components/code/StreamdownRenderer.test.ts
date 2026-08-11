@@ -20,6 +20,16 @@ describe("restrictModelUrls (image src)", () => {
     expect(restrictModelUrls("//evil.tld/pixel.gif", "src", img)).toBeUndefined();
   });
 
+  it("drops a backslash-authority image, which the browser reads as protocol-relative", () => {
+    expect(restrictModelUrls("\\\\evil.example/pixel.gif", "src", img)).toBeUndefined();
+    expect(restrictModelUrls("/\\evil.example/pixel.gif", "src", img)).toBeUndefined();
+  });
+
+  it("drops an image hidden behind a leading C0 control, which the URL parser discards", () => {
+    expect(restrictModelUrls("\u0001//evil.tld/p.gif", "src", img)).toBeUndefined();
+    expect(restrictModelUrls("\u0000https://evil.tld/p.gif", "src", img)).toBeUndefined();
+  });
+
   it("keeps inline and same-origin images", () => {
     expect(restrictModelUrls("data:image/png;base64,AAAA", "src", img)).toBe(
       "data:image/png;base64,AAAA"

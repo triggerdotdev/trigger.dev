@@ -96,8 +96,14 @@ function cardText(vm: ReportViewModel): string {
       createElement(ShortcutsProvider, null, createElement(ReportView, { vm }))
     )
   );
-  return html
-    .replace(/<[^>]*>/g, "")
+  // Repeat the tag strip until it settles: removing a tag can splice a new one out of the rest.
+  let stripped = html;
+  for (;;) {
+    const next = stripped.replace(/<[^>]*>/g, "");
+    if (next === stripped) break;
+    stripped = next;
+  }
+  return stripped
     .replace(/&#x27;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&");

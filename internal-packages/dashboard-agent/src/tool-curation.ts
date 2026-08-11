@@ -68,7 +68,10 @@ export function curateRun(run: any) {
     attemptCount: run.attemptCount,
     tags: run.tags,
     error: run.error
-      ? { name: run.error.name, message: fenceUntrusted("errorMessage", run.error.message) }
+      ? {
+          name: fenceUntrusted("errorName", run.error.name),
+          message: fenceUntrusted("errorMessage", run.error.message),
+        }
       : undefined,
   };
 }
@@ -136,7 +139,7 @@ export function curateErrors(data: unknown) {
     errors: (Array.isArray(groups) ? groups : []).map((g: any) => ({
       id: g.id,
       taskIdentifier: g.taskIdentifier,
-      errorType: g.errorType,
+      errorType: fenceUntrusted("errorType", g.errorType),
       errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
       status: g.status,
       count: g.count,
@@ -151,7 +154,7 @@ export function curateError(group: any) {
   return {
     id: group.id,
     taskIdentifier: group.taskIdentifier,
-    errorType: group.errorType,
+    errorType: fenceUntrusted("errorType", group.errorType),
     errorMessage: fenceUntrusted("errorMessage", group.errorMessage),
     status: group.status,
     count: group.count,
