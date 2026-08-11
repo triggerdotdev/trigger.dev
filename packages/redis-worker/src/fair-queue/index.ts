@@ -1498,14 +1498,28 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       originalTimestamp: storedMessage.timestamp,
     };
 
-    // Complete in visibility manager
-    await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
-
     // Add to DLQ
     const pipeline = this.redis.pipeline();
     pipeline.zadd(dlqKey, dlqMessage.deadLetteredAt, storedMessage.id);
     pipeline.hset(dlqDataKey, storedMessage.id, JSON.stringify(dlqMessage));
-    await pipeline.exec();
+    const dlqResults = await pipeline.exec();
+
+    const dlqErrors = (dlqResults ?? [])
+      .map(([error]) => error)
+      .filter((error): error is Error => Boolean(error));
+
+    if (dlqErrors.length > 0) {
+      this.logger.error("Failed to write message to DLQ, leaving it in-flight to be reclaimed", {
+        messageId: storedMessage.id,
+        queueId: storedMessage.queueId,
+        tenantId: storedMessage.tenantId,
+        errors: dlqErrors.map((error) => error.message),
+      });
+      return;
+    }
+
+    // Complete in visibility manager
+    await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
 
     this.telemetry.recordDLQ();
 
