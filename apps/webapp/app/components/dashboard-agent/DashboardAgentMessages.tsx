@@ -40,6 +40,8 @@ export type DashboardAgentMessagesProps = {
 
 // Cached so a stripped message keeps its identity across renders and memoization holds:
 // rebuilding it re-renders every tool-calling turn on each streamed token.
+// Relies on @ai-sdk/react cloning a message per update: an SDK mutating one in place would
+// keep serving the cached copy of its earlier state.
 const strippedMessages = new WeakMap<UIMessage, UIMessage>();
 
 export function stripStepParts(message: UIMessage): UIMessage {
