@@ -3,4 +3,4 @@ area: webapp
 type: feature
 ---
 
-Add server support for stable execution windows on scheduled tasks while preserving each occurrence's nominal timestamp.
+Add backend support for delaying cron schedules within a specified window with a minimum of 60 seconds.
