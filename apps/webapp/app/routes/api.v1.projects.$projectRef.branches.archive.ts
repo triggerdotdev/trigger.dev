@@ -78,6 +78,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
+  // API keys can only act on their own project
+  if (
+    authenticationResult.type === "apiKey" &&
+    apiKeyEnvironment?.project.externalRef !== projectRef
+  ) {
+    return json({ error: "Project not found" }, { status: 404 });
+  }
+
   const environmentType = toBranchableEnvironmentType(env);
 
   const organizationFilter =
