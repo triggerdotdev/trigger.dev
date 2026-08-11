@@ -49,6 +49,7 @@ jobs:
       build_packages: ${{ steps.config.outputs.build_packages }}
       suite: ${{ steps.config.outputs.suite }}
       snapshot: ${{ steps.config.outputs.snapshot }}
+      source_date_epoch: ${{ steps.config.outputs.source_date_epoch }}
       push: ${{ steps.config.outputs.push }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -76,6 +77,10 @@ jobs:
           fi
           echo "$SNAPSHOT" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
 
+          # Layer and config timestamps come from the snapshot, so images stay
+          # reproducible while the registry shows a meaningful created date
+          EPOCH="$(date -u -d "${SNAPSHOT:0:4}-${SNAPSHOT:4:2}-${SNAPSHOT:6:2} ${SNAPSHOT:9:2}:${SNAPSHOT:11:2}:${SNAPSHOT:13:2}Z" +%s)"
+
           # Only publish from main; pull requests validate the build without pushing
           if [ "$EVENT_NAME" = "pull_request" ]; then
             PUSH=false
@@ -89,6 +94,7 @@ jobs:
             echo "build_packages=$BUILD_PACKAGES"
             echo "suite=$SUITE"
             echo "snapshot=$SNAPSHOT"
+            echo "source_date_epoch=$EPOCH"
             echo "push=$PUSH"
           } >> "$GITHUB_OUTPUT"
 
@@ -138,13 +144,12 @@ jobs:
           outputs: type=image,push=${{ needs.setup.outputs.push }},rewrite-timestamp=true
           tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
           cache-from: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }}
-          cache-to: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }},mode=max
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
-            SOURCE_DATE_EPOCH=0
+            SOURCE_DATE_EPOCH=${{ needs.setup.outputs.source_date_epoch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -169,7 +174,7 @@ jobs:
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
             BUILD_PACKAGES=${{ needs.setup.outputs.build_packages }}
-            SOURCE_DATE_EPOCH=0
+            SOURCE_DATE_EPOCH=${{ needs.setup.outputs.source_date_epoch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -208,3 +213,16 @@ jobs:
             echo "debian snapshot: $SNAPSHOT"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  results:
+    needs: [publish]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail if any image build failed
+        env:
+          RESULT: ${{ needs.publish.result }}
+        run: |
+          [ "$RESULT" = "success" ] || { echo "one or more image builds failed: $RESULT"; exit 1; }

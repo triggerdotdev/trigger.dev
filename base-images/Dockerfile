@@ -15,7 +15,8 @@ ARG DEBIAN_SNAPSHOT
 ARG DEBIAN_SUITE=bookworm
 ARG PACKAGES
 
-ENV DEBIAN_FRONTEND=noninteractive
+# ARG, not ENV: needed during build only, must not leak into task containers
+ARG DEBIAN_FRONTEND=noninteractive
 
 # http, not https: the slim bases have no ca-certificates yet, and apt
 # integrity comes from GPG-signed Release files rather than TLS.
@@ -28,10 +29,12 @@ RUN . /etc/os-release && [ "$VERSION_CODENAME" = "${DEBIAN_SUITE}" ] || { echo "
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
     > /etc/apt/sources.list && \
+  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
+  apt-get upgrade -y && \
   apt-get install -y --no-install-recommends ${PACKAGES} && \
   apt-get clean && \
-  rm /etc/apt/sources.list && \
+  rm /etc/apt/sources.list /etc/apt/apt.conf.d/99-snapshot-retries && \
   mv /tmp/debian.sources /etc/apt/sources.list.d/debian.sources && \
   rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /var/log/apt /var/log/alternatives.log /var/cache/ldconfig/aux-cache /var/cache/debconf/*-old
 
@@ -40,6 +43,7 @@ FROM runtime AS build
 ARG DEBIAN_SNAPSHOT
 ARG DEBIAN_SUITE=bookworm
 ARG BUILD_PACKAGES
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN [ -n "${DEBIAN_SNAPSHOT}" ] && [ -n "${BUILD_PACKAGES}" ] || { echo "DEBIAN_SNAPSHOT and BUILD_PACKAGES build args are required (see images.json)"; exit 1; } && \
   mv /etc/apt/sources.list.d/debian.sources /tmp/debian.sources && \
@@ -48,9 +52,10 @@ RUN [ -n "${DEBIAN_SNAPSHOT}" ] && [ -n "${BUILD_PACKAGES}" ] || { echo "DEBIAN_
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
     > /etc/apt/sources.list && \
+  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
   apt-get install -y --no-install-recommends ${BUILD_PACKAGES} && \
   apt-get clean && \
-  rm /etc/apt/sources.list && \
+  rm /etc/apt/sources.list /etc/apt/apt.conf.d/99-snapshot-retries && \
   mv /tmp/debian.sources /etc/apt/sources.list.d/debian.sources && \
   rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /var/log/apt /var/log/alternatives.log /var/cache/ldconfig/aux-cache /var/cache/debconf/*-old
