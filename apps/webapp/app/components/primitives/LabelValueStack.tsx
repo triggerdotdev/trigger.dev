@@ -1,8 +1,8 @@
 import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
+import { TextLink } from "./TextLink";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { SimpleTooltip } from "./Tooltip";
-import { Link } from "@remix-run/react";
 
 const variations = {
   primary: {
@@ -69,9 +69,9 @@ function ValueButton({ value, href, variant = "secondary" }: ValueButtonStackPro
   if (!isExternalUrl) {
     return (
       <Paragraph variant={variation.value}>
-        <Link to={href} reloadDocument className="underline underline-offset-2">
+        <TextLink to={href} reloadDocument>
           {value}
-        </Link>
+        </TextLink>
       </Paragraph>
     );
   }
@@ -81,10 +81,14 @@ function ValueButton({ value, href, variant = "secondary" }: ValueButtonStackPro
       side="bottom"
       button={
         <Paragraph variant={variation.value}>
-          <a href={href} className="underline underline-offset-2" target="_blank">
+          <TextLink
+            href={href}
+            target="_blank"
+            trailingIcon={ArrowTopRightOnSquareIcon}
+            trailingIconClassName="text-text-dimmed"
+          >
             {value}
-            <ArrowTopRightOnSquareIcon className="ml-1 inline-block h-4 w-4 text-text-dimmed" />
-          </a>
+          </TextLink>
         </Paragraph>
       }
       content={href}

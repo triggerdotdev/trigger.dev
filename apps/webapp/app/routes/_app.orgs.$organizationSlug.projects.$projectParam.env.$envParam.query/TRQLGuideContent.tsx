@@ -81,19 +81,19 @@ export function TRQLGuideContent({
       </Paragraph>
       {/* Table of contents */}
       <nav className="space-y-1 text-sm">
-        <a href="#basic" className="block text-text-link hover:underline">
+        <a href="#basic" className="inline-text-link block text-text-link hover:underline">
           Basic queries
         </a>
-        <a href="#filtering" className="block text-text-link hover:underline">
+        <a href="#filtering" className="inline-text-link block text-text-link hover:underline">
           Filtering with WHERE
         </a>
-        <a href="#sorting" className="block text-text-link hover:underline">
+        <a href="#sorting" className="inline-text-link block text-text-link hover:underline">
           Sorting &amp; limiting
         </a>
-        <a href="#grouping" className="block text-text-link hover:underline">
+        <a href="#grouping" className="inline-text-link block text-text-link hover:underline">
           Grouping &amp; aggregation
         </a>
-        <a href="#functions" className="block text-text-link hover:underline">
+        <a href="#functions" className="inline-text-link block text-text-link hover:underline">
           Available functions
         </a>
       </nav>

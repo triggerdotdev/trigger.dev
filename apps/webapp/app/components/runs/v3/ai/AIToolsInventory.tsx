@@ -2,6 +2,8 @@ import { useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import type { AISpanData, ToolDefinition } from "./types";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 
 export function AIToolsInventory({ aiData }: { aiData: AISpanData }) {
   const defs = aiData.toolDefinitions ?? [];
@@ -48,7 +50,7 @@ function ToolDefRow({ def, wasCalled }: { def: ToolDefinition; wasCalled: boolea
         <div className="pl-3.5">
           <button
             onClick={() => setShowSchema(!showSchema)}
-            className="text-[10px] text-text-link hover:underline"
+            className={cn(textLinkClassName(), "text-[10px]")}
           >
             {showSchema ? "Hide schema" : "Show schema"}
           </button>

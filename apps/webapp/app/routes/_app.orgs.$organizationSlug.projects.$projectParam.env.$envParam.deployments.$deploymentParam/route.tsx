@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@remix-run/react";
+import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -53,6 +53,7 @@ import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta = pageMeta(({ params }) => [
   params.deploymentParam ?? "Deployment",
@@ -322,12 +323,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Build Server</Property.Label>
                 <Property.Value>
-                  <Link
+                  <TextLink
                     to={`/resources/${deployment.projectId}/deployments/${deployment.id}/logs`}
-                    className="extra-small/bright/mono underline"
+                    className="font-mono text-xs"
                   >
                     {deployment.externalBuildData.buildId}
-                  </Link>
+                  </TextLink>
                 </Property.Value>
               </Property.Item>
             )}

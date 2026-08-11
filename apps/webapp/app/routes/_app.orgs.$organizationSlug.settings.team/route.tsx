@@ -57,6 +57,7 @@ import {
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta = pageMeta("Team");
 
@@ -465,12 +466,9 @@ export default function Page() {
               <div className="mt-4 flex items-baseline justify-between">
                 <Header2>Active team members</Header2>
                 {roles.length > 0 ? (
-                  <a
-                    className="text-xs text-text-link hover:underline"
-                    href={organizationRolesPath(organization)}
-                  >
-                    View all role permissions →
-                  </a>
+                  <TextLink to={organizationRolesPath(organization)} className="text-xs">
+                    View all role permissions
+                  </TextLink>
                 ) : null}
               </div>
               <div className="mb-8 mt-3 grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-y border-grid-bright">

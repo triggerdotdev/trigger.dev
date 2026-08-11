@@ -7,6 +7,7 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 // The "why did this run fail?" failure card — the first block in the dashboard
 // agent's view catalog. Rendered from a `diagnosis` block the agent emits via
@@ -60,7 +61,7 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
   return (
-    <Link to={to} className={cn("text-indigo-400 underline hover:text-indigo-300", className)}>
+    <Link to={to} className={cn(textLinkClassName(), className)}>
       {runId}
     </Link>
   );
@@ -80,7 +81,7 @@ function EvidenceReference({ reference }: { reference: string }) {
         href={safeUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono text-xs text-indigo-400 underline hover:text-indigo-300"
+        className={cn(textLinkClassName(), "font-mono text-xs")}
       >
         {reference}
       </a>

@@ -6,14 +6,26 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
-// inline-text-link: marker for the "Underline links" preference, which underlines
-// these and nothing else (nav items, buttons-as-links and decorative underlines
-// all stay put). See tailwind.css.
-const base = "inline-text-link inline-flex gap-0.5 items-center group focus-visible:focus-custom";
+const colors = {
+  primary: "text-indigo-500 transition hover:text-indigo-400",
+  secondary: "text-text-dimmed transition hover:text-text-bright",
+} as const;
+
+/**
+ * A link's colour plus `inline-text-link`, the marker the "Underline links"
+ * preference targets (see tailwind.css) - without this component's layout.
+ *
+ * For links that can't be a `TextLink`: ones that must stay in the inline flow
+ * (markdown prose, where the component's inline-flex would stop them wrapping),
+ * and triggers that aren't anchors at all.
+ */
+export function textLinkClassName(variant: keyof typeof colors = "primary") {
+  return cn("inline-text-link focus-visible:focus-custom", colors[variant]);
+}
 
 const variations = {
-  primary: `${base} text-indigo-500 transition hover:text-indigo-400`,
-  secondary: `${base} text-text-dimmed transition hover:text-text-bright`,
+  primary: cn(textLinkClassName("primary"), "inline-flex gap-0.5 items-center group"),
+  secondary: cn(textLinkClassName("secondary"), "inline-flex gap-0.5 items-center group"),
 } as const;
 
 type TextLinkProps = {
@@ -27,6 +39,8 @@ type TextLinkProps = {
   shortcut?: ShortcutDefinition;
   hideShortcutKey?: boolean;
   tooltip?: React.ReactNode;
+  /** Forwarded to `Link`: forces a full document load rather than a client nav. */
+  reloadDocument?: boolean;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
 export function TextLink({
@@ -40,6 +54,7 @@ export function TextLink({
   shortcut,
   hideShortcutKey,
   tooltip,
+  reloadDocument,
   ...props
 }: TextLinkProps) {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -69,7 +84,13 @@ export function TextLink({
   );
 
   const linkElement = to ? (
-    <Link ref={innerRef} to={to} className={cn(classes, className)} {...props}>
+    <Link
+      ref={innerRef}
+      to={to}
+      reloadDocument={reloadDocument}
+      className={cn(classes, className)}
+      {...props}
+    >
       {linkContent}
     </Link>
   ) : href ? (

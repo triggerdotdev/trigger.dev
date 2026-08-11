@@ -80,6 +80,7 @@ import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta = pageMeta("Deployments");
 
@@ -377,14 +378,18 @@ export default function Page() {
                         <span className="max-w-28 truncate">{environmentGitHubBranch}</span>
                       </div>{" "}
                       in
-                      <a
+                      <TextLink
                         href={connectedGithubRepository.repository.htmlUrl}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="max-w-52 truncate text-sm text-text-dimmed underline transition-colors hover:text-text-bright"
+                        variant="secondary"
+                        className="text-sm"
                       >
-                        {connectedGithubRepository.repository.fullName}
-                      </a>
+                        {/* truncate needs a block-level child: the link itself is inline-flex */}
+                        <span className="max-w-52 truncate">
+                          {connectedGithubRepository.repository.fullName}
+                        </span>
+                      </TextLink>
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
