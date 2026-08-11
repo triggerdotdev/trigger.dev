@@ -178,6 +178,8 @@ function annotationSegment(metric: Metric, vm: ReportViewModel): string {
 }
 
 function metricValueText(metric: Metric, msg: ReportMessages): string {
+  // No measurement -> say so; `value` is a placeholder, not a real reading.
+  if (metric.availability === "unknown") return "unknown";
   // concurrency etc. carry a limit -> "running/limit".
   if (metric.unit === "count" && metric.breakdown?.limit !== undefined) {
     return `${fmtCount(metric.value)}/${fmtCount(metric.breakdown.limit)}`;
@@ -259,7 +261,9 @@ function compactFact(metric: Metric): string | undefined {
     case "pending":
       return `pending ${fmtCount(metric.value)}${metric.normal !== undefined ? ` (normal ~${fmtCount(metric.normal)})` : ""}`;
     case "start_latency_p95":
-      return `starts p95 ${fmtDuration(metric.value)}`;
+      return metric.availability === "unknown"
+        ? "starts p95 unknown"
+        : `starts p95 ${fmtDuration(metric.value)}`;
     case "failures":
       return `failures ${fmtPct(metric.value)}${metric.normal !== undefined ? ` (normal ~${fmtPct(metric.normal)})` : ""}`;
     case "dur_p95":

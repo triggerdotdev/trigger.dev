@@ -5,7 +5,7 @@ import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
@@ -146,7 +146,7 @@ export const action = dashboardAction(
     await prisma.$transaction([
       ...upsertOps,
       ...(keysToDelete.length > 0
-        ? [prisma.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
+        ? [prisma.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
         : []),
     ]);
 

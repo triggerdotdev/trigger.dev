@@ -238,6 +238,13 @@ const EnvironmentSchema = z
       )
       .optional(),
     CONTROL_PLANE_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA: z.string().default("0"),
+    RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),

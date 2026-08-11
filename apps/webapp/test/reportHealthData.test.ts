@@ -239,4 +239,50 @@ describe("loadHealthInput — orchestration (query seam)", () => {
     expect(input.flowSource).toBe("queue_metrics_v1");
     expect(input.pending.now).toBe(900);
   });
+
+  it("no wait_p95 measurement -> start latency 'unknown', not a confident 0", async () => {
+    const input = await loadHealthInput(
+      fakeEnv,
+      "1h",
+      NOW,
+      makeDeps({
+        runs: RUNS_SCALAR,
+        envSeries: [{ t: "a", queued: 10, running: 5, throttled: 0 }],
+        envScalar: [{ wait_p95: null, avg_queued: 8, env_limit: 100 }],
+      })
+    );
+    expect(input.flowSource).toBe("queue_metrics_v1");
+    expect(input.startLatency.availability).toBe("unknown");
+    expect(input.startLatency.normalP95Ms).toBeUndefined();
+  });
+
+  it("a measured wait_p95 of 0 stays measured", async () => {
+    const input = await loadHealthInput(
+      fakeEnv,
+      "1h",
+      NOW,
+      makeDeps({
+        runs: RUNS_SCALAR,
+        envSeries: [{ t: "a", queued: 10, running: 5, throttled: 0, wait_p95: 0 }],
+        envScalar: [{ wait_p95: 0, avg_queued: 8, env_limit: 100 }],
+      })
+    );
+    expect(input.startLatency.availability).toBe("measured");
+    expect(input.startLatency.p95Ms).toBe(0);
+  });
+
+  it("snapshot path with no start_latency_p95 -> 'unknown'", async () => {
+    const input = await loadHealthInput(
+      fakeEnv,
+      "1h",
+      NOW,
+      makeDeps({
+        runs: [{ ...RUNS_SCALAR[0], start_latency_p95: null }],
+        runsSeries: [{ t: "a", triggered: 10, completed: 8, failures: 0 }],
+        envSeries: [],
+      })
+    );
+    expect(input.flowSource).toBe("snapshot+runs");
+    expect(input.startLatency.availability).toBe("unknown");
+  });
 });

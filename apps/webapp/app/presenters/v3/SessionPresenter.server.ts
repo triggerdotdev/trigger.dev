@@ -1,5 +1,5 @@
 import { type Span } from "@opentelemetry/api";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, boundedIn } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
@@ -90,7 +90,7 @@ export class SessionPresenter {
       return runIds.length > 0
         ? runStore.findRuns(
             {
-              where: { id: { in: runIds } },
+              where: { id: { in: boundedIn(runIds) } },
               select: { id: true, friendlyId: true, status: true },
             },
             this.replica

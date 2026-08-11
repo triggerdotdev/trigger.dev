@@ -1,5 +1,15 @@
 # internal-platform
 
+## 4.5.10
+
+### Patch Changes
+
+- Fix a chunk occasionally dropped when a chat.agent run takes over from the warm first turn. The realtime stream writer now reports the inclusive last-written position as the resume cursor, so the agent's first record after the handover is no longer skipped. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Transient connection errors when a run starts are now retried for longer, so a brief connectivity blip no longer sends the run back through the queue and delays its first attempt. ([#4441](https://github.com/triggerdotdev/trigger.dev/pull/4441))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+
 ## 4.5.9
 
 ### Patch Changes

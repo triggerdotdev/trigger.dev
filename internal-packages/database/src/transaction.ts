@@ -37,12 +37,15 @@ export function isPrismaKnownError(error: unknown): error is PrismaClientKnownRe
 */
 const retryCodes = ["P2024", "P2028", "P2034"];
 
+const ADAPTER_ACQUIRE_TIMEOUT = /timeout exceeded when trying to connect/i;
+
 export function isPrismaRetriableError(error: unknown): boolean {
-  if (!isPrismaKnownError(error)) {
-    return false;
+  if (isPrismaKnownError(error) && retryCodes.includes(error.code)) {
+    return true;
   }
 
-  return retryCodes.includes(error.code);
+  const message = (error as { message?: unknown })?.message;
+  return typeof message === "string" && ADAPTER_ACQUIRE_TIMEOUT.test(message);
 }
 
 /*
@@ -90,15 +93,15 @@ export async function $transaction<R>(
   try {
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
-    if (isPrismaKnownError(error)) {
-      if (
-        retryCodes.includes(error.code) &&
-        typeof options?.maxRetries === "number" &&
-        attempt < options.maxRetries
-      ) {
-        return $transaction(prisma, fn, prismaError, options, attempt + 1);
-      }
+    if (
+      isPrismaRetriableError(error) &&
+      typeof options?.maxRetries === "number" &&
+      attempt < options.maxRetries
+    ) {
+      return $transaction(prisma, fn, prismaError, options, attempt + 1);
+    }
 
+    if (isPrismaKnownError(error)) {
       prismaError(error);
 
       if (options?.swallowPrismaErrors) {

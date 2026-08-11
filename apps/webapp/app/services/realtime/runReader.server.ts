@@ -2,6 +2,7 @@ import {
   type Prisma,
   type PrismaClient,
   type PrismaClientOrTransaction,
+  boundedIn,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
@@ -152,7 +153,7 @@ export class RunHydrator {
       {
         where: {
           runtimeEnvironmentId: environmentId,
-          id: { in: ids },
+          id: { in: boundedIn(ids) },
         },
         select: buildHydratorSelect(skipColumns),
       },

@@ -9,6 +9,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
+import { boundedIn } from "@trigger.dev/database";
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
 // Single-sourced display bound for a waitpoint's connected run friendlyIds.
@@ -70,7 +71,7 @@ export class WaitpointPresenter extends BasePresenter {
       return [];
     }
     const runs = await this.runStore.findRuns({
-      where: { id: { in: runIds } },
+      where: { id: { in: boundedIn(runIds) } },
       select: { friendlyId: true },
       take: CONNECTED_RUNS_DISPLAY_LIMIT,
     });

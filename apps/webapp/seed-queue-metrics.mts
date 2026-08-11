@@ -1,4 +1,5 @@
 import { prisma } from "./app/db.server";
+import { boundedIn } from "@trigger.dev/database";
 import { createOrganization } from "./app/models/organization.server";
 import { createProject } from "./app/models/project.server";
 import { ClickHouse } from "@internal/clickhouse";
@@ -786,7 +787,7 @@ async function ensureTaskQueues(
   const { count: pruned } = await prisma.taskQueue.deleteMany({
     where: {
       runtimeEnvironmentId,
-      name: { notIn: scenario.queues.map((q) => q.name) },
+      name: { notIn: boundedIn(scenario.queues.map((q) => q.name)) },
     },
   });
   console.log(

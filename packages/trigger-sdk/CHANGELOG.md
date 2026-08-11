@@ -1,5 +1,33 @@
 # @trigger.dev/sdk
 
+## 4.5.10
+
+### Patch Changes
+
+- `debounce` now works when you pass an array of items to `batchTrigger` or `batchTriggerAndWait`, and when you trigger from `useTaskTrigger`. Previously the option was accepted by the types and dropped before the request was sent, so every trigger created its own run instead of collapsing onto the debounce key. ([#4520](https://github.com/triggerdotdev/trigger.dev/pull/4520))
+
+  ```ts
+  await myTask.batchTrigger([
+    {
+      payload: { id: "a" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+    {
+      payload: { id: "b" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+  ]);
+  ```
+
+  The streaming (async iterable) forms of the batch calls were already forwarding `debounce` correctly.
+
+- Fix a preloaded `chat.agent` run dropping an in-flight message when it retries after an out-of-memory error. The message being processed when the run hit the OOM is now recovered and re-run on the retry, instead of being skipped while the run waited for a new message. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
 ## 4.5.9
 
 ### Patch Changes

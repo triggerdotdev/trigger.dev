@@ -39,6 +39,12 @@ function num(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Like `num`, but keeps "no measurement" distinct from a measured 0. */
+function optionalNum(value: unknown): number | undefined {
+  const n = num(value, NaN);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function mean(xs: number[]): number {
   return xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 }
@@ -313,7 +319,7 @@ async function tryQuery(
 export type FlowData = {
   flowSource: HealthInput["flowSource"];
   pending: { now: number; normal?: number; series: number[]; estimated: boolean };
-  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
+  startLatency: HealthInput["startLatency"];
   evidence: HealthInput["flowEvidence"];
   /**
    * Epoch ms of the freshest telemetry the source saw (latest env_metrics bucket and/or latest
@@ -432,6 +438,8 @@ function buildQueueMetricsFlow(
   // env_metrics (still a real number) rather than a misleading confident zero (#7).
   const lastMeasuredQueued = num(series[series.length - 1]?.queued);
 
+  const waitP95 = optionalNum(liveScalar.wait_p95);
+
   return {
     flowSource: "queue_metrics_v1",
     pending: {
@@ -441,9 +449,10 @@ function buildQueueMetricsFlow(
       estimated: false, // measured
     },
     startLatency: {
-      p95Ms: num(liveScalar.wait_p95),
-      normalP95Ms: num(baselineScalar.wait_p95),
+      p95Ms: waitP95 ?? 0,
+      normalP95Ms: optionalNum(baselineScalar.wait_p95),
       series: resampleSeries(series.map((r) => num(r.wait_p95))),
+      availability: waitP95 === undefined ? "unknown" : "measured",
     },
     evidence: {
       // native resolution — cause discriminators read shares off this series.
@@ -476,6 +485,7 @@ export const SnapshotFlowSource: FlowSource = {
       return backlog;
     });
     const series = resampleSeries(proxy);
+    const startLatencyP95 = optionalNum(ctx.liveScalar.start_latency_p95);
 
     return {
       flowSource: "snapshot+runs",
@@ -488,9 +498,10 @@ export const SnapshotFlowSource: FlowSource = {
         estimated: true,
       },
       startLatency: {
-        p95Ms: num(ctx.liveScalar.start_latency_p95),
-        normalP95Ms: num(ctx.baselineScalar.start_latency_p95),
+        p95Ms: startLatencyP95 ?? 0,
+        normalP95Ms: optionalNum(ctx.baselineScalar.start_latency_p95),
         series: resampleSeries(ctx.liveSeries.map((r) => num(r.start_latency_p95))),
+        availability: startLatencyP95 === undefined ? "unknown" : "measured",
       },
       // No cause-tree evidence; interpret falls back to v1 symptoms.
       evidence: EMPTY_EVIDENCE,
