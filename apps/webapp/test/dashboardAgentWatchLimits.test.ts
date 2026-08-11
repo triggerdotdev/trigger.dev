@@ -7,6 +7,7 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
+import type * as TriggerSdk from "@trigger.dev/sdk";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { readdirSync, readFileSync } from "node:fs";
@@ -37,7 +38,7 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
 }));
 
 vi.mock("@trigger.dev/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@trigger.dev/sdk")>();
+  const actual = await importOriginal<typeof TriggerSdk>();
   return {
     ...actual,
     TriggerClient: class {
