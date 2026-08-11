@@ -29,8 +29,11 @@ const style = {
       "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
   secondary: {
+    // Hover matches the secondary button: darkens off white on light, and steps
+    // one stop up the charcoal scale on the dark themes, where background-raised
+    // (charcoal-700) sits below bg-secondary (charcoal-650) and read as dimming.
     button:
-      "bg-secondary focus-custom border border-border-bright/50 shadow-xs hover:text-text-bright text-text-bright hover:bg-background-raised",
+      "bg-secondary focus-custom border border-border-bright/50 shadow-xs text-text-bright hover:bg-background-raised dark:hover:bg-surface-control",
   },
 };
 
@@ -356,8 +359,10 @@ export function SelectTrigger({
         </div>
         {dropdownIcon === true ? (
           <ChevronDown
+            // No transition: the trigger's own hover is instant, so a fading
+            // chevron lags behind it
             className={cn(
-              "size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+              "size-4 flex-none text-text-dimmed group-hover:text-text-bright group-focus:text-text-bright"
             )}
           />
         ) : !dropdownIcon ? null : (
