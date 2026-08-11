@@ -1657,6 +1657,49 @@ describe("TriggerChatTransport", () => {
         vi.useRealTimers();
       }
     });
+
+    it("releases the tab claim when the user stops generation (multi-tab)", async () => {
+      vi.useFakeTimers();
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) return openSseResponse(init?.signal);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          multiTab: true,
+          sessions: { "chat-stop-tab": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const drain = drainChunks(
+          await transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-stop-tab",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          })
+        );
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(transport.hasClaim("chat-stop-tab")).toBe(true);
+
+        expect(await transport.stopGeneration("chat-stop-tab")).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // The turn ends here with no successor stream, so the claim must be
+        // freed or other tabs stay read-only until this one closes.
+        expect(transport.hasClaim("chat-stop-tab")).toBe(false);
+
+        transport.dispose();
+        await drain;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("multi-tab coordination", () => {
