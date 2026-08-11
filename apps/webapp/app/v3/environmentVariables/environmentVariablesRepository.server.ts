@@ -689,10 +689,11 @@ export class EnvironmentVariablesRepository implements Repository {
   async #getSecretEnvironmentVariables(
     projectId: string,
     environmentId: string,
-    parentEnvironmentId?: string
+    parentEnvironmentId?: string,
+    readFromReplica?: boolean
   ): Promise<EnvironmentVariable[]> {
     const secretStore = getSecretStore("DATABASE", {
-      prismaClient: this.prismaClient,
+      prismaClient: readFromReplica ? this.replicaClient : this.prismaClient,
     });
 
     const parentSecrets = parentEnvironmentId
@@ -731,9 +732,15 @@ export class EnvironmentVariablesRepository implements Repository {
   async getEnvironmentVariables(
     projectId: string,
     environmentId: string,
-    parentEnvironmentId?: string
+    parentEnvironmentId?: string,
+    options?: { readFromReplica?: boolean }
   ): Promise<EnvironmentVariable[]> {
-    return this.#getSecretEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
+    return this.#getSecretEnvironmentVariables(
+      projectId,
+      environmentId,
+      parentEnvironmentId,
+      options?.readFromReplica
+    );
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
@@ -947,7 +954,8 @@ export async function resolveVariablesForEnvironment(
   let projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id,
-    parentEnvironment?.id
+    parentEnvironment?.id,
+    { readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" }
   );
 
   projectSecrets = renameVariables(projectSecrets, {
