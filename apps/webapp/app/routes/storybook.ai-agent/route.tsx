@@ -11,7 +11,6 @@ import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   AgentDotMatrix,
-  AgentMonoLogo,
   DOT_MATRIX_PALETTES,
   DOT_SHAPES,
   EXTRA_FACE_SHAPES,
@@ -27,7 +26,7 @@ export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex max-w-3xl flex-col gap-1">
-        <Header1>Trigger Agent — Icons & Buttons</Header1>
+        <Header1>AI agent</Header1>
         <Paragraph variant="small">
           A resting logo that animates while the agent thinks. Each tab is a separate experiment.
         </Paragraph>
@@ -60,6 +59,12 @@ export default function Story() {
 
 // --- Dot matrix (5x5) ---------------------------------------------------------
 
+// Dark-ink mono ramp for light surfaces (the built-in mono palette is white-based).
+const LIGHT_MONO = {
+  stops: ["#0d0e12", "#1a1b1f", "#3b3e45"] as [string, string, string],
+  glow: "#1a1b1f",
+};
+
 function DotMatrixTab() {
   return (
     <div className="flex flex-col gap-6 py-6">
@@ -78,8 +83,8 @@ function DotMatrixTab() {
         ))}
       </div>
       <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        The <code className="text-text-bright">ask-trigger</code> Button variant. Mono logo, click
-        to think for 5s.
+        The <code className="text-text-bright">ask-ai</code> Button variant. Mono logo, click to
+        think for 5s.
       </Paragraph>
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {(
@@ -90,7 +95,7 @@ function DotMatrixTab() {
           ] as [ButtonVariant, number, string][]
         ).map(([variant, matrixSize, label]) => (
           <div key={variant} className="flex flex-col items-center gap-2">
-            <AskTriggerButton variant={variant} matrixSize={matrixSize} />
+            <AskAiButton variant={variant} matrixSize={matrixSize} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}</div>
           </div>
         ))}
@@ -101,7 +106,7 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {[14, 15, 16].map((s) => (
           <div key={s} className="flex flex-col items-center gap-2">
-            <AskTriggerButton variant="ask-trigger/small" matrixSize={s} />
+            <AskAiButton variant="ask-trigger/small" matrixSize={s} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{s}px icon</div>
           </div>
         ))}
@@ -128,10 +133,10 @@ function DotMatrixTab() {
           />
         </div>
         <div className="flex items-center gap-8 rounded-md border border-grid-bright bg-charcoal-100 px-6 py-5">
-          <AgentDotMatrix size={40} mode="light" palette="monoLight" restColor="#1a1b1f" />
+          <AgentDotMatrix size={40} mode="light" palette={LIGHT_MONO} restColor="#1a1b1f" />
           <ToggleableMatrix
             size={40}
-            matrix={{ mode: "light", palette: "monoLight", restColor: "#1a1b1f" }}
+            matrix={{ mode: "light", palette: LIGHT_MONO, restColor: "#1a1b1f" }}
           />
         </div>
       </div>
@@ -180,7 +185,7 @@ function DotMatrixTab() {
   );
 }
 
-function AskTriggerButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
+function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
   const [active, setActive] = useState(false);
   const timeout = useRef<ReturnType<typeof setTimeout>>();
 
@@ -197,9 +202,17 @@ function AskTriggerButton({ variant, matrixSize }: { variant: ButtonVariant; mat
     <Button
       variant={variant}
       onClick={trigger}
-      LeadingIcon={<AgentMonoLogo size={matrixSize} active={active} decorative />}
+      LeadingIcon={
+        <AgentDotMatrix
+          size={matrixSize}
+          active={active}
+          palette="mono"
+          restColor="#ffffff"
+          decorative
+        />
+      }
     >
-      Ask Trigger
+      Ask AI
     </Button>
   );
 }
@@ -220,7 +233,16 @@ function FaceButton({ name }: { name: DotShapeName }) {
     <Button
       variant="ask-trigger/small"
       onClick={trigger}
-      LeadingIcon={<AgentMonoLogo size={16} active={active} restShape={name} decorative />}
+      LeadingIcon={
+        <AgentDotMatrix
+          size={16}
+          active={active}
+          restShape={name}
+          palette="mono"
+          restColor="#ffffff"
+          decorative
+        />
+      }
     >
       {name}
     </Button>
