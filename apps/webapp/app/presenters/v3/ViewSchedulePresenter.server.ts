@@ -13,6 +13,7 @@ type ViewScheduleOptions = {
   projectId: string;
   friendlyId: string;
   environmentId: string;
+  includeRunHistory?: boolean;
 };
 
 export class ViewSchedulePresenter {
@@ -22,7 +23,13 @@ export class ViewSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectId, friendlyId, environmentId }: ViewScheduleOptions) {
+  public async call({
+    userId,
+    projectId,
+    friendlyId,
+    environmentId,
+    includeRunHistory = true,
+  }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
@@ -79,17 +86,14 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-      schedule.project.organizationId,
-      "standard"
-    );
-    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
-    const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
-      projectId: schedule.project.id,
-      scheduleId: schedule.id,
-      pageSize: 5,
-      period: "31d",
-    });
+    const runs = includeRunHistory
+      ? await this.#getRunHistory({
+          organizationId: schedule.project.organizationId,
+          environmentId,
+          projectId: schedule.project.id,
+          scheduleId: schedule.id,
+        })
+      : [];
 
     return {
       schedule: {
@@ -108,6 +112,32 @@ export class ViewSchedulePresenter {
         }),
       },
     };
+  }
+
+  async #getRunHistory({
+    organizationId,
+    environmentId,
+    projectId,
+    scheduleId,
+  }: {
+    organizationId: string;
+    environmentId: string;
+    projectId: string;
+    scheduleId: string;
+  }) {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
+    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
+    const { runs } = await runPresenter.call(organizationId, environmentId, {
+      projectId,
+      scheduleId,
+      pageSize: 5,
+      period: "31d",
+    });
+
+    return runs;
   }
 
   public toJSONResponse(result: NonNullable<Awaited<ReturnType<ViewSchedulePresenter["call"]>>>) {

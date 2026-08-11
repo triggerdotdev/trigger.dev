@@ -15,6 +15,9 @@ describe("parseScheduleWindow", () => {
     ["30m", { type: "duration", durationSeconds: 1_800 }],
     ["2h", { type: "duration", durationSeconds: 7_200 }],
     ["1d", { type: "duration", durationSeconds: 86_400 }],
+    ["0m", { type: "duration", durationSeconds: 0 }],
+    ["0h", { type: "duration", durationSeconds: 0 }],
+    ["0d", { type: "duration", durationSeconds: 0 }],
     ["0%", { type: "percentage", percentage: 0 }],
     ["12%", { type: "percentage", percentage: 12 }],
     ["100%", { type: "percentage", percentage: 100 }],
@@ -24,7 +27,7 @@ describe("parseScheduleWindow", () => {
 
   it.each([
     "",
-    "0m",
+    "00m",
     "01m",
     "1.5h",
     "30s",
@@ -51,6 +54,10 @@ describe("schedule window validation", () => {
     expect(() => validateScheduleWindow({ type: "percentage", percentage })).not.toThrow();
   });
 
+  it("allows a zero-duration window", () => {
+    expect(() => validateScheduleWindow({ type: "duration", durationSeconds: 0 })).not.toThrow();
+  });
+
   it("allows an absolute window equal to the nominal interval", () => {
     expect(() =>
       validateScheduleWindowForInterval({ type: "duration", durationSeconds: 300 }, 5 * 60_000)
@@ -64,7 +71,7 @@ describe("schedule window validation", () => {
   });
 
   it.each([
-    { type: "duration", durationSeconds: 0 },
+    { type: "duration", durationSeconds: -1 },
     { type: "duration", durationSeconds: 1.5 },
     { type: "percentage", percentage: -100 },
     { type: "percentage", percentage: 101 },

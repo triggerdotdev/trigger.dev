@@ -54,6 +54,10 @@ export function formatScheduleWindow({
     return undefined;
   }
 
+  if (windowDurationSeconds === 0) {
+    return "0m";
+  }
+
   if (windowDurationSeconds % SECONDS_PER_UNIT.d === 0) {
     return `${windowDurationSeconds / SECONDS_PER_UNIT.d}d`;
   }

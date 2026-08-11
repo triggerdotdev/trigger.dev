@@ -11,6 +11,10 @@ describe("schedule window persistence", () => {
       windowDurationSeconds: 1_800,
       windowPercentage: null,
     });
+    expect(normalizeScheduleWindow("0m")).toEqual({
+      windowDurationSeconds: 0,
+      windowPercentage: null,
+    });
     expect(normalizeScheduleWindow("30%")).toEqual({
       windowDurationSeconds: null,
       windowPercentage: 30,
@@ -22,6 +26,12 @@ describe("schedule window persistence", () => {
   });
 
   it("formats stored windows canonically", () => {
+    expect(
+      formatScheduleWindow({
+        windowDurationSeconds: 0,
+        windowPercentage: null,
+      })
+    ).toBe("0m");
     expect(
       formatScheduleWindow({
         windowDurationSeconds: 86_400,

@@ -31,11 +31,11 @@ export type EffectiveScheduleTime = {
 /**
  * Parses the public schedule-window syntax.
  *
- * Durations are positive whole minutes, hours, or days. Percentages are whole
- * numbers from 0% through 100%.
+ * Durations are non-negative whole minutes, hours, or days. Percentages are
+ * whole numbers from 0% through 100%.
  */
 export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
-  const durationMatch = /^([1-9]\d*)([mhd])$/.exec(value);
+  const durationMatch = /^(0|[1-9]\d*)([mhd])$/.exec(value);
 
   if (durationMatch) {
     const amount = Number(durationMatch[1]);
@@ -57,7 +57,7 @@ export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
   }
 
   throw new TypeError(
-    'Schedule window must be a positive duration such as "30m", "2h", or "1d", or a percentage such as "30%"'
+    'Schedule window must be a whole duration such as "30m", "2h", or "1d", or a percentage such as "30%"'
   );
 }
 
@@ -65,10 +65,12 @@ export function validateScheduleWindow(window: NormalizedScheduleWindow): void {
   if (window.type === "duration") {
     if (
       !Number.isSafeInteger(window.durationSeconds) ||
-      window.durationSeconds <= 0 ||
+      window.durationSeconds < 0 ||
       window.durationSeconds > MAX_POSTGRES_INT
     ) {
-      throw new RangeError("Schedule window duration must be a positive integer number of seconds");
+      throw new RangeError(
+        "Schedule window duration must be a non-negative integer number of seconds"
+      );
     }
 
     return;

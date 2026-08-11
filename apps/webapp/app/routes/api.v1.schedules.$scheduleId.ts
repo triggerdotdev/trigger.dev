@@ -178,6 +178,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     projectId: authenticationResult.environment.projectId,
     friendlyId: parsedParams.data.scheduleId,
     environmentId: authenticationResult.environment.id,
+    includeRunHistory: false,
   });
 
   if (!result) {
