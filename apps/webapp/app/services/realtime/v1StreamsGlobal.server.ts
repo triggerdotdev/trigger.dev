@@ -96,13 +96,20 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
   return segments.join("/");
 }
 
+/**
+ * Resolve the streams version to stamp on a run, falling back to
+ * `REALTIME_STREAMS_DEFAULT_VERSION` when the caller expresses no preference.
+ *
+ * v2 is only ever returned when S2 is actually configured. A run stamped v2 on
+ * a deployment without S2 is unusable: `getRealtimeStreamInstance` throws for
+ * the life of the run, and no read or write against its streams can succeed.
+ * v1 is a working backend, so an unsatisfiable v2 degrades to it.
+ */
 export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
-  if (!streamVersion) {
-    return env.REALTIME_STREAMS_DEFAULT_VERSION;
-  }
+  const requested = streamVersion ?? env.REALTIME_STREAMS_DEFAULT_VERSION;
 
   if (
-    streamVersion === "v2" &&
+    requested === "v2" &&
     env.REALTIME_STREAMS_S2_BASIN &&
     (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
   ) {
