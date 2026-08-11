@@ -11,7 +11,7 @@ import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
-import { env, isCI } from "std-env";
+import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
@@ -270,8 +270,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   verifyDirectory(dir, projectPath);
 
   const authorization = await authenticateForDeploy({
-    secretKey: env.TRIGGER_SECRET_KEY,
-    apiUrl: env.TRIGGER_API_URL ?? options.apiUrl,
+    secretKey: process.env.TRIGGER_SECRET_KEY,
+    apiUrl: process.env.TRIGGER_API_URL ?? options.apiUrl,
     profile: options.profile,
     silent: options.plain,
     login,

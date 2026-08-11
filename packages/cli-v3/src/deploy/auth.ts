@@ -1,6 +1,10 @@
 import { CLOUD_API_URL, CLOUD_WEB_URL } from "../consts.js";
 import type { LoginResult, LoginResultOk } from "../utilities/session.js";
 
+const personalTokenPrefix = "tr_pat_";
+const organizationTokenPrefix = "tr_oat_";
+const apiKeyPrefix = "tr_";
+
 export type DeployAuthorization =
   | LoginResultOk
   | {
@@ -45,6 +49,23 @@ export async function authenticateForDeploy({
     });
   }
 
+  if (secretKey.startsWith(personalTokenPrefix) || secretKey.startsWith(organizationTokenPrefix)) {
+    return {
+      ok: false,
+      error: `TRIGGER_SECRET_KEY is set to a ${
+        secretKey.startsWith(personalTokenPrefix) ? "Personal" : "Organization"
+      } Access Token. Use TRIGGER_ACCESS_TOKEN instead, or remove TRIGGER_SECRET_KEY and use \`trigger login\`.`,
+    };
+  }
+
+  if (!secretKey.startsWith(apiKeyPrefix)) {
+    return {
+      ok: false,
+      error:
+        "TRIGGER_SECRET_KEY does not look like a Trigger.dev API key. API keys start with \`tr_\` (e.g. \`tr_prod_...\`).",
+    };
+  }
+
   return {
     ok: true,
     profile,
@@ -62,10 +83,16 @@ function dashboardUrlForApiUrl(apiUrl: string): string {
     return CLOUD_WEB_URL;
   }
 
-  const url = new URL(apiUrl);
-  if (url.hostname.startsWith("api.") && url.hostname.endsWith(".trigger.dev")) {
-    url.hostname = url.hostname.slice(4);
-    return url.toString().replace(/\/$/, "");
+  try {
+    const url = new URL(apiUrl);
+    if (url.hostname.startsWith("api.") && url.hostname.endsWith(".trigger.dev")) {
+      url.hostname = url.hostname.slice(4);
+      return url.toString().replace(/\/$/, "");
+    }
+  } catch {
+    throw new Error(
+      `Invalid API URL "${apiUrl}". Check your TRIGGER_API_URL environment variable or --api-url flag.`
+    );
   }
 
   return apiUrl;

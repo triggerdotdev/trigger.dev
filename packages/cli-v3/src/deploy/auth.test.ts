@@ -78,6 +78,62 @@ describe("authenticateForDeploy", () => {
     });
     expect(result).toEqual({ ok: false, error: "login result" });
   });
+
+  it("rejects a PAT in TRIGGER_SECRET_KEY with a helpful error", async () => {
+    const result = await authenticateForDeploy({
+      secretKey: "tr_pat_abc123",
+      profile: "default",
+      silent: true,
+      login: async () => ({ ok: false, error: "should not be called" }),
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining("TRIGGER_ACCESS_TOKEN"),
+    });
+  });
+
+  it("rejects an OAT in TRIGGER_SECRET_KEY with a helpful error", async () => {
+    const result = await authenticateForDeploy({
+      secretKey: "tr_oat_abc123",
+      profile: "default",
+      silent: true,
+      login: async () => ({ ok: false, error: "should not be called" }),
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining("TRIGGER_ACCESS_TOKEN"),
+    });
+  });
+
+  it("rejects a secret key that doesn't look like an API key", async () => {
+    const result = await authenticateForDeploy({
+      secretKey: "not-a-valid-key",
+      profile: "default",
+      silent: true,
+      login: async () => ({ ok: false, error: "should not be called" }),
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining("does not look like a Trigger.dev API key"),
+    });
+  });
+
+  it("throws a descriptive error for an invalid API URL", async () => {
+    await expect(
+      authenticateForDeploy({
+        secretKey: "tr_prod_sk_deploy",
+        apiUrl: "not-a-url",
+        profile: "default",
+        silent: true,
+        login: async () => ({ ok: false, error: "should not be called" }),
+      })
+    ).rejects.toThrow(
+      'Invalid API URL "not-a-url". Check your TRIGGER_API_URL environment variable or --api-url flag.'
+    );
+  });
 });
 
 describe("userIdForDeploy", () => {
