@@ -333,7 +333,7 @@ function SpanBody({
               onClick={closePanel}
               variant="minimal/small"
               TrailingIcon={ExitIcon}
-              shortcut={{ key: "esc", enabledOnInputElements: true }}
+              shortcut={{ key: "esc" }}
               shortcutPosition="before-trailing-icon"
               className="pl-1"
             />

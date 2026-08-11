@@ -107,8 +107,14 @@ export function ScheduleInspector({
         isImperative ? "grid-rows-[2.5rem_1fr_auto]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className="whitespace-nowrap">{schedule.friendlyId}</Header2>
+      <div
+        className={cn(
+          "mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed",
+          // Without header actions the sheet's own floating close button sits here.
+          !headerActions && "pr-14"
+        )}
+      >
+        <Header2 className="truncate">{schedule.friendlyId}</Header2>
         {headerActions}
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">

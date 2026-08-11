@@ -25,15 +25,21 @@ type useShortcutKeysProps = {
   disabled?: boolean;
   enabledOnInputElements?: boolean;
   /**
-   * The element this shortcut belongs to. When set, the shortcut is ignored while
-   * the element sits behind an open overlay, so one Escape can't close both a
-   * dialog and the panel behind it.
+   * The element this shortcut belongs to. When set, an Escape shortcut is ignored
+   * while the element sits behind an open overlay, so one Escape can't close both
+   * a dialog and the panel behind it. Other shortcuts are unaffected.
    */
   elementRef?: RefObject<HTMLElement | null>;
 };
 
 /** Layered surfaces that own the keyboard while they're open. */
 const OVERLAY_ROLES = '[role="dialog"],[role="alertdialog"],[role="listbox"],[role="menu"]';
+
+const ESCAPE_KEYS = ["esc", "escape"];
+
+function isEscapeShortcut(shortcut: Shortcut | undefined) {
+  return !!shortcut && ESCAPE_KEYS.includes(shortcut.key.toLowerCase());
+}
 
 function isBlockedByOverlay(event: KeyboardEvent, element: HTMLElement | null) {
   // Radix marks everything outside an open modal `aria-hidden`, which covers
@@ -62,12 +68,15 @@ export function useShortcutKeys({
   const keys = createKeysFromShortcut(relevantShortcut);
 
   const isEnabled = !disabled && areShortcutsEnabled && relevantShortcut?.enabled !== false;
+  const guardAgainstOverlays = isEscapeShortcut(relevantShortcut);
 
   useHotkeys(
     keys,
     (event) => {
       if (event.repeat) return;
-      if (elementRef && isBlockedByOverlay(event, elementRef.current)) return;
+      if (guardAgainstOverlays && elementRef && isBlockedByOverlay(event, elementRef.current)) {
+        return;
+      }
 
       action(event);
     },

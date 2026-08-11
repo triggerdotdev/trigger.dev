@@ -115,7 +115,7 @@ export function ConfigureErrorAlerts({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
-      <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
+      <div className="flex items-center border-b border-grid-bright py-2 pl-3 pr-16">
         <Header2 className="flex items-center gap-2">
           <BellAlertIcon className="size-5 text-alerts" /> Configure alerts
         </Header2>

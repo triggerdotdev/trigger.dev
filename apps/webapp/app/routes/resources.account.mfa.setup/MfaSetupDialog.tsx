@@ -138,8 +138,8 @@ export function MfaSetupDialog({
   if (!setupData) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancel}>
-      <DialogContent>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+      <DialogContent onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>Enable authenticator app</DialogTitle>
         </DialogHeader>

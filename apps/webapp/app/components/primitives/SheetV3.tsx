@@ -98,7 +98,7 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     className={cn(
-      "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pr-12 pt-2",
+      "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pr-16 pt-2",
       className
     )}
     {...props}

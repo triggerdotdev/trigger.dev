@@ -315,7 +315,7 @@ export function CreateBulkActionInspector({
             variant="minimal/small"
             onClick={() => del([...RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS])}
             TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc", enabledOnInputElements: true }}
+            shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"
             className="pl-1"
           />
