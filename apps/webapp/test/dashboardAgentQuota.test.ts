@@ -78,12 +78,21 @@ describe("checkAgentMessageQuota", () => {
 });
 
 describe("agentTurnCountsAgainstQuota", () => {
-  it("counts a user message", () => {
-    expect(agentTurnCountsAgainstQuota({ kind: "message", payload: {} })).toBe(true);
+  it("counts a genuine new user message (submit-message)", () => {
+    expect(
+      agentTurnCountsAgainstQuota({ kind: "message", payload: { trigger: "submit-message" } })
+    ).toBe(true);
+  });
+
+  it("does not count a retry/regenerate", () => {
+    // Control break: a regenerate re-runs from history with no new message, so it must not
+    // burn quota. Widen the rule back to `!== "action"` and this fails.
+    expect(
+      agentTurnCountsAgainstQuota({ kind: "message", payload: { trigger: "regenerate-message" } })
+    ).toBe(false);
   });
 
   it("does not count a wake (action turn)", () => {
-    // Control break: the `!== "action"` guard. Remove it and this fails.
     expect(agentTurnCountsAgainstQuota({ kind: "message", payload: { trigger: "action" } })).toBe(
       false
     );

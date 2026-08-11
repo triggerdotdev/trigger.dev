@@ -89,12 +89,13 @@ export async function recordAgentMessageSent(
 }
 
 /**
- * Whether an agent turn consumes quota. A wake/action turn is server-placed — the user never
- * spent it — so only a `message` turn that is not an action counts. The `.in` proxy already
- * refuses action turns; this keeps the rule explicit and testable.
+ * Whether an agent turn consumes quota. Only a genuine new user message counts: the transport
+ * tags it `trigger: "submit-message"`. A retry/regenerate re-runs the agent from its own history
+ * without a new message (`trigger: "regenerate-message"`), and a wake is `"action"` — neither is
+ * something the user typed, so neither counts.
  */
 export function agentTurnCountsAgainstQuota(
   turn: { kind?: string; payload?: { trigger?: string } } | undefined
 ): boolean {
-  return turn?.kind === "message" && turn.payload?.trigger !== "action";
+  return turn?.kind === "message" && turn.payload?.trigger === "submit-message";
 }
