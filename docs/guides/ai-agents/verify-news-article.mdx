@@ -16,18 +16,18 @@ Our example task uses multiple LLM calls to extract claims from a news article a
 
 **This task:**
 
-- Uses `generateText` from [Vercel's AI SDK](https://sdk.vercel.ai/docs/introduction) to interact with OpenAI models
-- Uses `experimental_telemetry` to provide LLM logs
+- Uses `generateText` from the [AI SDK](https://ai-sdk.dev/) to call Anthropic's Claude models
+- Uses `experimental_telemetry` to surface each LLM call on the Run page in the dashboard
 - Uses [`batch.triggerByTaskAndWait`](/triggering#batch-triggerbytaskandwait) to orchestrate parallel processing of claims
-- Extracts factual claims from news articles using the `o1-mini` model
+- Extracts factual claims from news articles using `claude-sonnet-4-5`
 - Evaluates claims against recent sources and analyzes historical context in parallel
 - Combines results into a structured analysis report
 
 
 ```typescript
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { batch, logger, task } from "@trigger.dev/sdk";
-import { CoreMessage, generateText } from "ai";
+import { ModelMessage, generateText } from "ai";
 
 // Define types for our workers' outputs
 interface Claim {
@@ -53,7 +53,7 @@ export const extractClaims = task({
   id: "extract-claims",
   run: async ({ article }: { article: string }) => {
     try {
-      const messages: CoreMessage[] = [
+      const messages: ModelMessage[] = [
         {
           role: "system",
           content:
@@ -66,8 +66,12 @@ export const extractClaims = task({
       ];
 
       const response = await generateText({
-        model: openai("o1-mini"),
+        model: anthropic("claude-sonnet-4-5"),
         messages,
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: "extract-claims",
+        },
       });
 
       const claims = response.text
@@ -94,7 +98,7 @@ export const verifySource = task({
   id: "verify-source",
   run: async (claim: Claim) => {
     const response = await generateText({
-      model: openai("o1-mini"),
+      model: anthropic("claude-sonnet-4-5"),
       messages: [
         {
           role: "system",
@@ -126,7 +130,7 @@ export const analyzeHistory = task({
   id: "analyze-history",
   run: async (claim: Claim) => {
     const response = await generateText({
-      model: openai("o1-mini"),
+      model: anthropic("claude-sonnet-4-5"),
       messages: [
         {
           role: "system",
