@@ -75,6 +75,9 @@ vi.mock("~/models/project.server", () => ({
 }));
 vi.mock("~/services/personalAccessToken.server", () => ({
   updateLastAccessedAtIfStale: vi.fn(),
+  // The plugin already verified the claims; test tokens carry no source PAT, so the
+  // liveness recheck is a no-op that hands the claims straight back.
+  resolveAndRecheckUserActorClaims: async (claims: unknown) => claims,
 }));
 vi.mock("~/services/authTelemetry.server", () => ({ authenticateBearerWithTelemetry: vi.fn() }));
 vi.mock("~/services/logger.server", () => ({

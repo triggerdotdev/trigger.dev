@@ -26,9 +26,16 @@ vi.mock("~/db.server", () => ({
   $replica: { runtimeEnvironment: { findFirst: mocks.findFirst } },
 }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
-vi.mock("~/services/personalAccessToken.server", () => ({
-  updateLastAccessedAtIfStale: vi.fn(),
-}));
+vi.mock("~/services/personalAccessToken.server", async () => {
+  const { verifyUserActorToken } = await import("@trigger.dev/rbac");
+  return {
+    updateLastAccessedAtIfStale: vi.fn(),
+    // Mirror production: recover the token's own claims from the bearer when the plugin
+    // returned identity only. Test tokens carry no source PAT, so no liveness recheck.
+    resolveAndRecheckUserActorClaims: async (claims: unknown, bearer: string) =>
+      claims ?? (await verifyUserActorToken("test-session-secret", bearer)),
+  };
+});
 vi.mock("~/services/authTelemetry.server", () => ({
   authenticateBearerWithTelemetry: vi.fn(),
 }));
