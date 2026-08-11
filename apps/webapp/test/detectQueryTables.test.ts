@@ -23,6 +23,17 @@ describe("detectQueryTables", () => {
     ).toEqual(["runs", "tasks"]);
   });
 
+  it("detects a table read only inside a JOIN…ON subquery", () => {
+    expect(
+      sorted(
+        detectQueryTables(
+          "SELECT * FROM tasks JOIN tasks AS t2 ON t2.id IN (SELECT run_id FROM runs)",
+          allowed
+        )
+      )
+    ).toEqual(["runs", "tasks"]);
+  });
+
   it("detects tables inside a FROM subquery", () => {
     expect(sorted(detectQueryTables("SELECT * FROM (SELECT * FROM runs) AS r", allowed))).toEqual([
       "runs",

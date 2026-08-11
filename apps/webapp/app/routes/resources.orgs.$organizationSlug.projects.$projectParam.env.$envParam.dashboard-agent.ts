@@ -1,9 +1,11 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   chatExists,
+  countUserMessages,
   createChat,
   getChatMessages,
   getSession,
+  listChatIdsWithOpenInvestigations,
   listChats,
   renameChat,
   setChatPinned,
@@ -12,9 +14,18 @@ import {
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
+import {
+  checkMessageParts,
+  declaredBodyBytes,
+  exceedsMessageBodyBytes,
+  MESSAGE_TOO_LARGE_CODE,
+  MESSAGE_TOO_LARGE_ERROR,
+} from "~/components/dashboard-agent/message-limits";
+import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
   isDashboardAgentConfigured,
@@ -23,23 +34,29 @@ import {
   resolveDashboardAgentRepoSnapshot,
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
+import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
+import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-
-// The agent's tools address the canonical env name, not the dashboard URL slug.
-const ENV_NAME_BY_TYPE: Record<string, string> = {
-  DEVELOPMENT: "dev",
-  STAGING: "staging",
-  PRODUCTION: "prod",
-  PREVIEW: "preview",
-};
+// The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
+// drift apart.
+import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
 
 const ActionBody = z.object({
-  intent: z.enum(["start", "create", "token", "rename", "pin", "delete"]),
+  intent: z.enum([
+    "start",
+    "create",
+    "token",
+    "rename",
+    "pin",
+    "delete",
+    "resolve",
+    "resolve-many",
+  ]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
   // The first user message (JSON UIMessage), for `create`.
@@ -47,9 +64,14 @@ const ActionBody = z.object({
   clientData: z.string().optional(),
   title: z.string().optional(),
   pinned: z.enum(["true", "false"]).optional(),
+  // A `trigger://` URI, for `resolve`.
+  uri: z.string().optional(),
+  // A JSON array of `trigger://` URIs, for `resolve-many`.
+  uris: z.string().optional(),
 });
 
-// History list, or — with ?chatId= — the stored transcript + session for resume.
+// History list by default. `?chatId=` returns the stored transcript plus session,
+// `?quota=1` the message count.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -66,14 +88,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ error: "Not found" }, { status: 404 });
   }
 
+  const searchParams = new URL(request.url).searchParams;
+
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  const chatId = new URL(request.url).searchParams.get("chatId");
+  // The open chat is excluded and counted from the live transcript instead, so an
+  // unpersisted turn still counts against the cap.
+  if (searchParams.get("quota") === "1") {
+    const used = await countUserMessages(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+      excludeChatId: searchParams.get("chatId") ?? undefined,
+    });
+    return json({ used });
+  }
+
+  const chatId = searchParams.get("chatId");
   if (chatId) {
     const [messages, session] = await Promise.all([
-      getChatMessages(dashboardAgentDb, { chatId, userId }),
-      getSession(dashboardAgentDb, { chatId, userId }),
+      getChatMessages(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
+      getSession(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
     ]);
     return json({ messages: messages ?? [], session });
   }
@@ -82,8 +117,38 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationId: project.organizationId,
     userId,
   });
-  return json({ chats });
+
+  // One query for all the listed chats, never one per row.
+  const investigatingChatIds = await listChatIdsWithOpenInvestigations(dashboardAgentDb, {
+    organizationId: project.organizationId,
+    userId,
+  });
+
+  return json({
+    chats: chats.map((chat) => ({
+      ...chat,
+      hasOpenInvestigation: investigatingChatIds.has(chat.id),
+    })),
+  });
 };
+
+/** Only a source URI needs the connected repository, so a batch without one skips the read. */
+async function findRepositoryForSourceUris(projectId: string, uris: string[]) {
+  if (!uris.some((uri) => uri.includes("/source/"))) return null;
+
+  const connected = await $replica.connectedGithubRepository.findFirst({
+    where: {
+      projectId,
+      repository: { installation: { deletedAt: null, suspendedAt: null } },
+    },
+    select: { repository: { select: { fullName: true } } },
+  });
+  return connected?.repository ?? null;
+}
+
+function messageTooLarge() {
+  return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
+}
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
@@ -101,16 +166,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "Not found" }, { status: 404 });
   }
 
+  // A declared oversize is refused here, before any lookup. Without a content-length the
+  // ingress cap has already ended the request mid-stream, so this never sees it.
+  if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
+    return messageTooLarge();
+  }
+
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
   const parsed = ActionBody.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) return json({ error: "Invalid request" }, { status: 400 });
 
-  // Create a new chat: the SERVER generates the id and owns the chat record, so
-  // a client can never name another user's chat. Kicks off the first turn (head
-  // start when configured, else a cold session) and returns the id + token. The
-  // client mounts with that id and resumes the stream.
+  // The server generates the chat id, so a client can never name another user's chat.
   if (parsed.data.intent === "create") {
     if (!isDashboardAgentConfigured()) {
       return json({ error: "The dashboard agent is not configured." }, { status: 501 });
@@ -126,6 +194,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     if (!firstMessage) return json({ error: "message is required" }, { status: 400 });
 
+    // A body under the byte cap can still be one huge part or hundreds of small ones.
+    if (
+      exceedsMessageBodyBytes(Buffer.byteLength(parsed.data.message ?? "", "utf8")) ||
+      checkMessageParts(firstMessage.parts) !== null
+    ) {
+      return messageTooLarge();
+    }
+
     let clientData: Record<string, unknown> | undefined;
     try {
       clientData = parsed.data.clientData
@@ -134,50 +210,108 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     } catch {
       /* invalid JSON — create without context metadata */
     }
+    // Only the whitelisted page context survives; the rest is injected below.
+    const clientContext = pickAgentClientMetadata(clientData);
+
+    // Membership-scoped: dev rows are per-developer, so a token must never be minted for
+    // someone else's environment — or, when nothing resolves, for no environment at all.
+    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+    const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
 
     const chatId = generateFriendlyId("chat");
     try {
+      const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
+      const headStarted = Boolean(env.ANTHROPIC_API_KEY);
+
+      // The lookups and the mint all run before the chat row exists, so a failure here can't
+      // leave an empty chat behind in the user's history.
+      const headStartMetadata = headStarted
+        ? {
+            // The agent validates run metadata against its clientDataSchema, so the
+            // per-turn client context must accompany the injected auth and context fields.
+            ...clientContext,
+            userActorToken: await mintDashboardAgentUserActorToken(userId, {
+              environmentId: runtimeEnv.id,
+            }),
+            apiOrigin: dashboardAgentApiOrigin(),
+            projectRef: project.externalRef,
+            // Server-owned, like the `in` proxy: the eval opt-out and every tenancy check
+            // key on these, so the client can't set them at all.
+            organizationId: project.organizationId,
+            userId,
+            projectId: project.id,
+            // Same environment identity the `in` proxy injects.
+            environmentId: runtimeEnv.id,
+            ...environmentAddress,
+            ...(repoSnapshot ? { repoSnapshot } : {}),
+          }
+        : undefined;
+
       await createChat(dashboardAgentDb, {
         id: chatId,
         organizationId: project.organizationId,
         userId,
-        ...(clientData ? { metadata: { context: clientData } } : {}),
+        ...(clientData ? { metadata: { context: clientContext } } : {}),
       });
 
-      const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
-        where: { projectId: project.id, slug: envParam },
-        select: { type: true },
-      });
-      const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
-      const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
-
-      const headStarted = Boolean(env.ANTHROPIC_API_KEY);
-      if (headStarted) {
-        // Head start runs the warm step-1 with this first message and injects the
-        // delegated token + context into the run's payload server-side.
-        await startDashboardAgentHeadStart({
+      try {
+        if (headStartMetadata) {
+          // Injects the delegated token and context into the run's payload server-side.
+          await startDashboardAgentHeadStart({
+            chatId,
+            messages: [firstMessage],
+            mode: repoSnapshot ? "code" : "assistant",
+            metadata: headStartMetadata,
+          });
+        } else {
+          // Cold start: the client sends the first message through the `in` proxy, which
+          // injects the token.
+          // Same server-owned identity the head-start path injects; the `in` proxy adds the
+          // delegated token on the first turn.
+          await startDashboardAgentSession({
+            chatId,
+            clientData: {
+              ...clientContext,
+              organizationId: project.organizationId,
+              userId,
+              projectId: project.id,
+              environmentId: runtimeEnv.id,
+              ...environmentAddress,
+            },
+          });
+        }
+      } catch (error) {
+        // Both starts are one create-session-and-trigger round trip, so a rejection means no
+        // handover was dispatched and no message was sent: a session the call did create in
+        // spite of the error idles out having done nothing. The empty row is all there is to undo.
+        // Swallowed so the start's own error is what surfaces and gets logged.
+        await softDeleteChat(dashboardAgentDb, {
           chatId,
-          messages: [firstMessage],
-          mode: repoSnapshot ? "code" : "assistant",
-          metadata: {
-            // The agent validates the run metadata against its clientDataSchema
-            // (userId, organizationId, …), so the per-turn clientData has to be
-            // present alongside the injected auth/context fields.
-            ...(clientData ?? {}),
-            userActorToken: await mintDashboardAgentUserActorToken(userId),
-            apiOrigin: dashboardAgentApiOrigin(),
-            projectRef: project.externalRef,
-            environmentName,
-            ...(repoSnapshot ? { repoSnapshot } : {}),
-          },
+          userId,
+          organizationId: project.organizationId,
+        }).catch((cleanupError) => {
+          logger.error("Failed to remove a dashboard agent chat whose start failed", {
+            chatId,
+            error: cleanupError,
+          });
         });
-      } else {
-        // Cold start: create the session (preload); the client sends the first
-        // message through the transport, where the `in` proxy injects the token.
-        await startDashboardAgentSession({ chatId, clientData });
+        throw error;
       }
 
-      const publicAccessToken = await mintDashboardAgentToken(chatId);
+      let publicAccessToken: string;
+      try {
+        publicAccessToken = await mintDashboardAgentToken(chatId);
+      } catch (error) {
+        // The start resolved, so the session is live and a head start is already streaming into
+        // it. Deleting the chat here would hide a running agent; the client can ask for a token
+        // again through the `token` intent.
+        logger.error("Dashboard agent chat started but its token mint failed", { chatId, error });
+        return json(
+          { error: "The dashboard agent started but couldn't be opened. Try opening it again." },
+          { status: 500 }
+        );
+      }
       return json({ chatId, publicAccessToken, headStarted });
     } catch (error) {
       logger.error("Failed to create dashboard agent chat", { chatId, error });
@@ -188,6 +322,64 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  // Scoped by the environment in the URL: the resolver refuses a URI naming a
+  // different project or environment.
+  if (parsed.data.intent === "resolve") {
+    const uri = parsed.data.uri;
+    if (!uri) return json({ error: "uri is required" }, { status: 400 });
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const repository = await findRepositoryForSourceUris(project.id, [uri]);
+
+    const resolved = resolveTriggerUri({ ...environment, repository }, uri);
+    if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
+
+    return json({
+      path: resolved.url,
+      label: resolved.label,
+      external: resolved.external ?? false,
+    });
+  }
+
+  // The card's citations in one request: one environment lookup and one repo lookup for the
+  // whole batch, same environment scope as `resolve`.
+  if (parsed.data.intent === "resolve-many") {
+    let uris: string[];
+    try {
+      const list = JSON.parse(parsed.data.uris ?? "") as unknown;
+      if (!Array.isArray(list) || list.some((uri) => typeof uri !== "string")) {
+        return json({ error: "uris is required" }, { status: 400 });
+      }
+      uris = [...new Set(list as string[])];
+    } catch {
+      return json({ error: "uris is required" }, { status: 400 });
+    }
+
+    if (uris.length === 0) return json({ error: "uris is required" }, { status: 400 });
+    if (uris.length > MAX_URIS_PER_RESOLVE_REQUEST) {
+      return json({ error: "Too many links in one request" }, { status: 400 });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const repository = await findRepositoryForSourceUris(project.id, uris);
+    const scope = { ...environment, repository };
+
+    // A null entry is the definitive "nothing to open": the client caches it.
+    const resolved: Record<string, { path: string; label: string; external: boolean } | null> = {};
+    for (const uri of uris) {
+      const hit = resolveTriggerUri(scope, uri);
+      resolved[uri] = hit
+        ? { path: hit.url, label: hit.label, external: hit.external ?? false }
+        : null;
+    }
+
+    return json({ resolved });
+  }
+
   const { intent, chatId } = parsed.data;
   if (!chatId) return json({ error: "chatId is required" }, { status: 400 });
 
@@ -196,10 +388,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Resume-only: new chats are created via the `create` intent (server-owned
-      // id). The transport falls back here to re-establish a session for an
-      // existing chat (e.g. after its token expired), so verify ownership before
-      // issuing one — a client-supplied chatId must belong to the caller.
+      // Resume only, so a client-supplied chatId is checked against the caller first.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -233,8 +422,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!isDashboardAgentConfigured()) {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
-      // Only mint a session token for a chat the caller owns, so a client-supplied
-      // chatId can't be used to get a token for someone else's session.
+      // Only mint a token for a chat the caller owns.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -249,7 +437,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     case "rename": {
       if (!parsed.data.title) return json({ error: "title is required" }, { status: 400 });
-      await renameChat(dashboardAgentDb, { chatId, userId, title: parsed.data.title });
+      await renameChat(dashboardAgentDb, {
+        chatId,
+        userId,
+        organizationId: project.organizationId,
+        title: parsed.data.title,
+      });
       return json({ ok: true });
     }
 
@@ -257,13 +450,29 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       await setChatPinned(dashboardAgentDb, {
         chatId,
         userId,
+        organizationId: project.organizationId,
         pinned: parsed.data.pinned === "true",
       });
       return json({ ok: true });
     }
 
     case "delete": {
-      await softDeleteChat(dashboardAgentDb, { chatId, userId });
+      // Existence check gives a 404 for a chat this caller can't see; the delete itself
+      // is org- and owner-scoped too.
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found" }, { status: 404 });
+      }
+      await softDeleteChat(dashboardAgentDb, {
+        chatId,
+        userId,
+        organizationId: project.organizationId,
+      });
       return json({ ok: true });
     }
   }

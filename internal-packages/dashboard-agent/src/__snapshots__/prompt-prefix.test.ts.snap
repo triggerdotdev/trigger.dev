@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the prefix stays inside its budget > matches the committed measurement 1`] = `
+{
+  "assistant": {
+    "prompt": {
+      "chars": 19753,
+      "estimatedTokens": 4938,
+    },
+    "tools": {
+      "chars": 39510,
+      "count": 20,
+      "estimatedTokens": 9878,
+    },
+    "total": {
+      "chars": 59264,
+      "estimatedTokens": 14816,
+      "fingerprint": "2461230f",
+    },
+  },
+  "code": {
+    "prompt": {
+      "chars": 22508,
+      "estimatedTokens": 5627,
+    },
+    "tools": {
+      "chars": 42519,
+      "count": 24,
+      "estimatedTokens": 10630,
+    },
+    "total": {
+      "chars": 65028,
+      "estimatedTokens": 16257,
+      "fingerprint": "5c6c97c8",
+    },
+  },
+}
+`;

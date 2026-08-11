@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import plugin from "@trigger.dev/rbac";
+import plugin, { signUserActorToken } from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";
@@ -582,4 +582,95 @@ describe("RBAC fallback — branch header guards", () => {
       expect(result.environment.apiKey).toBe(previewParent.apiKey);
     }
   );
+});
+
+const USER_ACTOR_SECRET = "test-user-actor-secret";
+
+function userActorController(prisma: PrismaClient) {
+  return plugin.create(
+    { primary: prisma, replica: prisma },
+    { forceFallback: true, userActorSecret: USER_ACTOR_SECRET }
+  );
+}
+
+describe("RBAC fallback — user-actor tokens", () => {
+  const stubPrisma = {} as unknown as PrismaClient;
+
+  it("grants a capped token only what its cap says", async () => {
+    const rbac = userActorController(stubPrisma);
+    const token = await signUserActorToken(USER_ACTOR_SECRET, {
+      userId: "usr_1",
+      client: "dashboard-agent",
+      environmentId: "env_1",
+      cap: ["read:runs", "read:apiKeys"],
+    });
+
+    const result = await rbac.authenticateUserActor(bearerRequest(token), {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ability.can("read", { type: "runs" })).toBe(true);
+    expect(result.ability.can("read", { type: "apiKeys" })).toBe(true);
+    expect(result.ability.can("read", { type: "envvars" })).toBe(false);
+    expect(result.ability.can("write", { type: "envvars" })).toBe(false);
+    expect(result.ability.can("write", { type: "runs" })).toBe(false);
+    expect(result.ability.canSuper()).toBe(false);
+  });
+
+  it("gives a token with no cap reads only, never writes", async () => {
+    const rbac = userActorController(stubPrisma);
+    const token = await signUserActorToken(USER_ACTOR_SECRET, {
+      userId: "usr_1",
+      client: "cli",
+    });
+
+    const result = await rbac.authenticateUserActor(bearerRequest(token), {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ability.can("read", { type: "apiKeys" })).toBe(true);
+    expect(result.ability.can("read", { type: "runs" })).toBe(true);
+    expect(result.ability.can("write", { type: "envvars" })).toBe(false);
+    expect(result.ability.can("write", { type: "runs" })).toBe(false);
+    expect(result.ability.can("trigger", { type: "tasks" })).toBe(false);
+    expect(result.ability.canSuper()).toBe(false);
+  });
+
+  it("carries the environment claim on the result and the subject", async () => {
+    const rbac = userActorController(stubPrisma);
+    const token = await signUserActorToken(USER_ACTOR_SECRET, {
+      userId: "usr_1",
+      client: "dashboard-agent",
+      environmentId: "env_1",
+    });
+
+    const result = await rbac.authenticateUserActor(bearerRequest(token), {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.claims?.environmentId).toBe("env_1");
+    expect(result.subject).toMatchObject({ type: "userActor", environmentId: "env_1" });
+  });
+
+  postgresTest("leaves a personal access token permissive", async ({ prisma }) => {
+    const { user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = userActorController(prisma);
+    const pat = `tr_pat_${uniqueId("tok")}`;
+    await prisma.personalAccessToken.create({
+      data: {
+        name: "cli",
+        encryptedToken: {},
+        obfuscatedToken: "tr_pat_****",
+        hashedToken: createHash("sha256").update(pat).digest("hex"),
+        userId: user.id,
+      },
+    });
+
+    const result = await rbac.authenticatePat(bearerRequest(pat), {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ability.can("write", { type: "envvars" })).toBe(true);
+    expect(result.ability.can("trigger", { type: "tasks" })).toBe(true);
+  });
 });

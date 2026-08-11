@@ -154,7 +154,7 @@ PASS: one run, `run_<RID>` (status maps to `FAILED`). Proves `filter[error]` -> 
 ### 6. Attribution — `mint-token` -> JWT exchange records the acting user
 
 ```bash
-TOKEN=$(cli mint-token --profile $PROFILE --client errors-api-e2e 2>/dev/null)            # UAT
+TOKEN=$(cli mint-token --profile $PROFILE --client errors-api-e2e --cap read:errors,write:errors 2>/dev/null)            # UAT
 ENVJWT=$(curl -sS -X POST "$B/api/v1/projects/$REF/dev/jwt" -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"claims":{"scopes":["read:errors","write:errors"]}}' \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")

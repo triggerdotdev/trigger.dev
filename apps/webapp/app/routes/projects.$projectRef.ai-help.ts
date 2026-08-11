@@ -38,14 +38,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const query = url.searchParams.get("q");
 
   if (!query) {
-    return new Response("No query", { status: 404 });
+    return new Response("No query", { status: 400 });
   }
 
   const newUrl = new URL(
     v3EnvironmentPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: "dev" }),
     env.LOGIN_ORIGIN
   );
-  newUrl.searchParams.set("aiHelp", query);
+  // The `ask` param is picked up in the environment layout (`useDashboardAgentOpenRequests`).
+  newUrl.searchParams.set("ask", query);
 
   return redirect(newUrl.toString());
 }

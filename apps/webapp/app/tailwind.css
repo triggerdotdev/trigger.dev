@@ -658,11 +658,8 @@
   --sidebar: var(--color-background-dimmed);
 
   /* Code block styling */
-  & [data-code-block-container] {
+  & [data-streamdown="code-block"] {
     @apply rounded-sm my-2 border-charcoal-700;
-  }
-  & [data-code-block] {
-    border-top: none;
   }
 
   & p {
@@ -701,9 +698,10 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks) */
+  /* Theme-mapped, not raw charcoal: fenced blocks stay dark via shiki. */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    background-color: var(--muted);
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
@@ -725,25 +723,16 @@
   }
   & th,
   & td {
-    @apply border border-charcoal-600 px-2 py-1 text-left;
+    @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply bg-charcoal-700 font-semibold;
+    @apply font-semibold;
+    background-color: var(--muted);
   }
 
-  & [data-code-block-header] {
-    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
-  }
-  /* Override the bg-muted/40 class to let inline styles work */
-  & [data-code-block] pre {
-    background-color: inherit !important;
-    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
-  }
-  & [data-code-block] pre code {
-    @apply bg-transparent;
-  }
-  & [data-code-block] .line {
-    @apply leading-relaxed;
+  /* The body scrolls and sizes the code; streamdown ships it at text-sm. */
+  & [data-streamdown="code-block-body"] {
+    @apply text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
 }
 

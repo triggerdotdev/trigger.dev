@@ -7,6 +7,7 @@ import {
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { resolveUserActorEnvironmentScope } from "~/services/userActorEnvironment.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -39,8 +40,20 @@ export const loader = createLoaderPATApiRoute(
       return json({ error: "Project not found" }, { status: 404 });
     }
 
+    // A delegated token signed for one environment only ever lists that environment's runs, and a
+    // request filter naming another one is refused rather than overridden.
+    const scope = await resolveUserActorEnvironmentScope(authentication.userActor, {
+      projectId: project.id,
+      requestedEnvironmentSlugs: searchParams["filter[env]"],
+    });
+
     const presenter = new ApiRunListPresenter();
-    const result = await presenter.call(project, searchParams, apiVersion);
+    const result = await presenter.call(
+      project,
+      searchParams,
+      apiVersion,
+      scope.scoped ? { id: scope.environmentId, organizationId: scope.organizationId } : undefined
+    );
 
     if (!result) {
       return json({ data: [] });

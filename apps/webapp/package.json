@@ -5,7 +5,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "run-s build:** && pnpm run upload:sourcemaps",
-    "build:remix": "remix vite:build",
+    "build:remix": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" remix vite:build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build --sourcemap",
     "build:otlpworker": "esbuild --platform=node --format=cjs --bundle ./app/v3/otlpTransformWorker.ts --outfile=build/otlpTransformWorker.cjs --sourcemap",
     "build:sentry": "esbuild --platform=node --format=cjs --outbase=. ./sentry.server.ts ./app/utils/sentryTraceContext.server.ts --outdir=build --sourcemap",
@@ -54,6 +54,7 @@
     "@internal/cache": "workspace:*",
     "@internal/compute": "workspace:*",
     "@internal/dashboard-agent": "workspace:*",
+    "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@internal/llm-model-catalog": "workspace:*",
     "@internal/metrics-pipeline": "workspace:*",

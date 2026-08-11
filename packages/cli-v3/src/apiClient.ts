@@ -45,6 +45,11 @@ import {
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
+import {
+  ReportViewModelSchema,
+  type ReportFormat,
+  type ReportViewModel,
+} from "@trigger.dev/core/v3/schemas";
 import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
@@ -392,13 +397,21 @@ export class CliApiClient {
   }
 
   /**
-   * Fetch a server-rendered report (text + sparkline). Thin pass-through. `format`:
-   * "markdown" (agents/chat) or "ansi" (terminal). Uses this client's env API key.
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
+   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
    */
   async getReport(
     key: string,
+    options: { period?: string; format: "json" }
+  ): Promise<ReportViewModel>;
+  async getReport(
+    key: string,
     options?: { period?: string; format?: "markdown" | "ansi" }
-  ): Promise<string> {
+  ): Promise<string>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: ReportFormat }
+  ): Promise<string | ReportViewModel> {
     if (!this.accessToken) {
       throw new Error("getReport: No access token");
     }
@@ -429,6 +442,10 @@ export class CliApiClient {
           bodySnippet ? ` — ${bodySnippet}` : ""
         }`
       );
+    }
+
+    if (options?.format === "json") {
+      return ReportViewModelSchema.parse(await response.json());
     }
 
     return response.text();

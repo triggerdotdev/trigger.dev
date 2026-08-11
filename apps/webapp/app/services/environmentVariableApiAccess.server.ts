@@ -9,7 +9,7 @@ import {
 } from "~/services/apiAuth.server";
 import { rbac } from "~/services/rbac.server";
 
-type EnvironmentScopedResource = "envvars" | "apiKeys";
+type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments";
 
 type EnvironmentScopedAuthentication =
   | { ok: true; authentication: AuthenticationResult }
@@ -78,6 +78,7 @@ export function authenticateEnvVarApiRequest(
 const RESOURCE_LABELS: Record<EnvironmentScopedResource, string> = {
   envvars: "environment variables",
   apiKeys: "API keys",
+  deployments: "deployments",
 };
 
 /**

@@ -392,6 +392,7 @@ export class DeliverAlertService extends BaseService {
         break;
       }
       case "ERROR_GROUP": {
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {
@@ -747,6 +748,7 @@ export class DeliverAlertService extends BaseService {
         break;
       }
       case "ERROR_GROUP": {
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {
@@ -1023,6 +1025,7 @@ export class DeliverAlertService extends BaseService {
         }
       }
       case "ERROR_GROUP": {
+        // Payload-carried alert types create no ProjectAlert row, so never seen here.
         break;
       }
       default: {

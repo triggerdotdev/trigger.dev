@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { rowsToCSV } from "~/utils/dataExport";
 import { detectQueryTables } from "~/v3/detectQueryTables";
 import { querySchemas } from "~/v3/querySchemas";
+import { queryScopeCeilingFor, resolveQueryScope } from "~/v3/queryScope";
 
 const BodySchema = z.object({
   query: z.string(),
@@ -51,11 +52,20 @@ const { action, loader } = createActionApiRoute(
     const { query, scope, period, from, to, format } = body;
     const env = authentication.environment;
 
+    // The credential's own scope is the ceiling, not the body's. See queryScope.ts.
+    const resolvedScope = resolveQueryScope({
+      ceiling: queryScopeCeilingFor(authentication.type),
+      requested: scope as QueryScope,
+    });
+    if (!resolvedScope.ok) {
+      return json({ error: resolvedScope.error }, { status: 403 });
+    }
+
     const queryResult = await executeQuery({
       name: "api-query",
       query,
       userAuthoredQuery: true,
-      scope: scope as QueryScope,
+      scope: resolvedScope.scope,
       organizationId: env.organization.id,
       projectId: env.project.id,
       environmentId: env.id,
