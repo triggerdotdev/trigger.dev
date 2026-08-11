@@ -7,8 +7,9 @@ name: 🐳 Deploy base images
 # until a digest bump ships in a release.
 #
 # Packages install from a Debian snapshot timestamp (recorded in the
-# dev.trigger.debian-snapshot image label and the job summary), so any
-# published digest can be rebuilt and verified from the recorded inputs.
+# dev.trigger.debian-snapshot image label and the job summary), and layers are
+# exported with normalized timestamps, so any published image can be rebuilt
+# from the recorded inputs and verified layer for layer.
 
 on:
   workflow_dispatch:
@@ -34,14 +35,14 @@ concurrency:
   group: base-images-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  id-token: write
-  attestations: write
+permissions: {}
 
 jobs:
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       images: ${{ steps.config.outputs.images }}
       packages: ${{ steps.config.outputs.packages }}
@@ -50,68 +51,100 @@ jobs:
       snapshot: ${{ steps.config.outputs.snapshot }}
       push: ${{ steps.config.outputs.push }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Read image matrix and resolve snapshot
         id: config
+        env:
+          SNAPSHOT_INPUT: ${{ inputs.debian_snapshot }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "images=$(jq -c '.images' base-images/images.json)" >> "$GITHUB_OUTPUT"
-          echo "packages=$(jq -r '.packages' base-images/images.json)" >> "$GITHUB_OUTPUT"
-          echo "build_packages=$(jq -r '.buildPackages' base-images/images.json)" >> "$GITHUB_OUTPUT"
-          echo "suite=$(jq -r '.suite' base-images/images.json)" >> "$GITHUB_OUTPUT"
+          PACKAGES="$(jq -r '.packages' base-images/images.json)"
+          BUILD_PACKAGES="$(jq -r '.buildPackages' base-images/images.json)"
+          SUITE="$(jq -r '.suite' base-images/images.json)"
 
-          SNAPSHOT="${{ inputs.debian_snapshot }}"
+          # Values land in build args and shell lines; keep them boring
+          echo "$PACKAGES" | grep -qE '^[a-z0-9 .+-]+$' || { echo "invalid packages value"; exit 1; }
+          echo "$BUILD_PACKAGES" | grep -qE '^[a-z0-9 .+-]+$' || { echo "invalid buildPackages value"; exit 1; }
+          echo "$SUITE" | grep -qE '^[a-z]+$' || { echo "invalid suite value"; exit 1; }
+
+          SNAPSHOT="$SNAPSHOT_INPUT"
           if [ -z "$SNAPSHOT" ]; then
             SNAPSHOT="$(date -u -d yesterday +%Y%m%dT000000Z)"
           fi
-          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+          echo "$SNAPSHOT" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
 
           # Only publish from main; pull requests validate the build without pushing
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "push=false" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            PUSH=false
           else
-            echo "push=true" >> "$GITHUB_OUTPUT"
+            PUSH=true
           fi
+
+          {
+            echo "images=$(jq -c '.images' base-images/images.json)"
+            echo "packages=$PACKAGES"
+            echo "build_packages=$BUILD_PACKAGES"
+            echo "suite=$SUITE"
+            echo "snapshot=$SNAPSHOT"
+            echo "push=$PUSH"
+          } >> "$GITHUB_OUTPUT"
 
   publish:
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.setup.outputs.images) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: 🐳 Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: 🐳 Login to Docker Hub
         if: needs.setup.outputs.push == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: 🐳 Build and push runtime image
         id: build_runtime
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: base-images
           file: base-images/Dockerfile
           target: runtime
           platforms: linux/amd64,linux/arm64
-          push: ${{ needs.setup.outputs.push == 'true' }}
           provenance: false
+          # rewrite-timestamp + SOURCE_DATE_EPOCH make layer blobs a pure
+          # function of the build inputs, so published layers are verifiable
+          outputs: type=image,push=${{ needs.setup.outputs.push }},rewrite-timestamp=true
           tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+          cache-from: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }}
+          cache-to: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }},mode=max
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
+            SOURCE_DATE_EPOCH=0
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -119,21 +152,24 @@ jobs:
 
       - name: 🐳 Build and push build-variant image
         id: build_toolchain
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: base-images
           file: base-images/Dockerfile
           target: build
           platforms: linux/amd64,linux/arm64
-          push: ${{ needs.setup.outputs.push == 'true' }}
           provenance: false
+          outputs: type=image,push=${{ needs.setup.outputs.push }},rewrite-timestamp=true
           tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+          cache-from: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }}
+          cache-to: type=gha,scope=base-${{ matrix.image.repo }}-${{ matrix.image.tag }},mode=max
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
             BUILD_PACKAGES=${{ needs.setup.outputs.build_packages }}
+            SOURCE_DATE_EPOCH=0
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -141,7 +177,7 @@ jobs:
 
       - name: 🔏 Attest runtime image provenance
         if: needs.setup.outputs.push == 'true'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
           subject-digest: ${{ steps.build_runtime.outputs.digest }}
@@ -149,19 +185,26 @@ jobs:
 
       - name: 🔏 Attest build-variant image provenance
         if: needs.setup.outputs.push == 'true'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
           subject-digest: ${{ steps.build_toolchain.outputs.digest }}
           push-to-registry: false
 
       - name: 📋 Record digests
+        if: needs.setup.outputs.push == 'true'
+        env:
+          IMAGE_REPO: ${{ matrix.image.repo }}
+          IMAGE_TAG: ${{ matrix.image.tag }}
+          RUNTIME_DIGEST: ${{ steps.build_runtime.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.build_toolchain.outputs.digest }}
+          SNAPSHOT: ${{ needs.setup.outputs.snapshot }}
         run: |
           {
-            echo "### triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}"
+            echo "### triggerdotdev/$IMAGE_REPO:$IMAGE_TAG"
             echo '```'
-            echo "runtime: ${{ steps.build_runtime.outputs.digest }}"
-            echo "build:   ${{ steps.build_toolchain.outputs.digest }}"
-            echo "debian snapshot: ${{ needs.setup.outputs.snapshot }}"
+            echo "runtime: $RUNTIME_DIGEST"
+            echo "build:   $BUILD_DIGEST"
+            echo "debian snapshot: $SNAPSHOT"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

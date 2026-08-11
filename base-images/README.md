@@ -21,19 +21,26 @@ and digests only move when a CLI release updates its pins.
 ## Reproducibility and provenance
 
 Packages install from a [Debian snapshot archive](https://snapshot.debian.org)
-timestamp recorded in the `dev.trigger.debian-snapshot` image label, so a
-published image is a pure function of (upstream base digest, snapshot
-timestamp, package list) and can be rebuilt and verified:
+timestamp recorded in the `dev.trigger.debian-snapshot` image label, and the
+workflow exports layers with normalized timestamps (`SOURCE_DATE_EPOCH=0` plus
+`rewrite-timestamp`), so a published image's layers are a pure function of
+(upstream base digest, snapshot timestamp, package list). To verify, rebuild
+with the recorded inputs and compare layer digests (the manifest and config
+digests differ because they carry build metadata labels like the source
+revision):
 
 ```bash
 SNAPSHOT=$(docker inspect triggerdotdev/node:22-bookworm --format '{{index .Config.Labels "dev.trigger.debian-snapshot"}}')
 docker buildx build base-images --target runtime \
-  --build-arg BASE_IMAGE=<base from images.json> \
-  --build-arg DEBIAN_SNAPSHOT=$SNAPSHOT \
+  --build-arg BASE_IMAGE="<base from images.json>" \
+  --build-arg PACKAGES="<packages from images.json>" \
+  --build-arg DEBIAN_SNAPSHOT="$SNAPSHOT" \
+  --build-arg SOURCE_DATE_EPOCH=0 \
   --platform linux/amd64,linux/arm64 \
   --provenance false \
-  --output type=oci,dest=rebuilt.tar,rewrite-timestamp=true \
-  --build-arg SOURCE_DATE_EPOCH=0
+  --output type=oci,dest=rebuilt.tar,rewrite-timestamp=true
+# then compare .layers[].digest of the rebuilt manifests against
+# `docker buildx imagetools inspect triggerdotdev/node:22-bookworm --raw`
 ```
 
 Every published digest also carries a GitHub build provenance attestation:
