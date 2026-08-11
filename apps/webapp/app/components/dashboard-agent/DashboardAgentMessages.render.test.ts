@@ -64,8 +64,13 @@ function markup(parts: unknown[]) {
   );
 }
 
+/** Every needle must be present: a missing one is -1, and -1 comparisons pass vacuously. */
 function order(html: string, ...needles: string[]) {
-  return needles.map((needle) => html.indexOf(needle));
+  return needles.map((needle) => {
+    const at = html.indexOf(needle);
+    expect(at, `missing "${needle}"`).toBeGreaterThan(-1);
+    return at;
+  });
 }
 
 describe("action rows render at the end of the turn", () => {

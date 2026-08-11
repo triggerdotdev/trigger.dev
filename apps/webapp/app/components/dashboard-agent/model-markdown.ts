@@ -13,10 +13,33 @@ function plainAlt(alt: string): string {
   return alt.replace(/[![\]<>`]/g, "").trim();
 }
 
+/**
+ * One pass isn't enough: removing a match can splice the surrounding text into a fresh one
+ * (`<scr<script>ipt>`), so repeat until nothing changes. Nesting deep enough to need more than
+ * `MAX_PASSES` is adversarial, not real model output, and looping it out is quadratic on the
+ * render thread — so past the bound we stop and blunt every character the strips key on. The
+ * result is over-stripped, never half-stripped.
+ */
+const MAX_PASSES = 25;
+const STRIP_CHARS = /[![\]<>]/g;
+
+function replaceUntilStable(
+  text: string,
+  pattern: RegExp,
+  replacer: (whole: string, ...groups: string[]) => string
+): string {
+  let current = text;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const next = current.replace(pattern, replacer);
+    if (next === current) return current;
+    current = next;
+  }
+  return current.replace(STRIP_CHARS, "");
+}
+
 // Strips inside code fences too: a fence-aware pass is bypassable with a half-fence.
 export function stripModelImages(text: string): string {
-  return text
-    .replace(MARKDOWN_IMAGE, (_whole, alt: string) => plainAlt(alt))
-    .replace(MARKDOWN_SHORTCUT_IMAGE, (_whole, alt: string) => plainAlt(alt))
-    .replace(FETCHING_TAG, "");
+  let out = replaceUntilStable(text, MARKDOWN_IMAGE, (_whole, alt: string) => plainAlt(alt));
+  out = replaceUntilStable(out, MARKDOWN_SHORTCUT_IMAGE, (_whole, alt: string) => plainAlt(alt));
+  return replaceUntilStable(out, FETCHING_TAG, () => "");
 }

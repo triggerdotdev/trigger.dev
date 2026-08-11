@@ -284,6 +284,8 @@ export async function markChatRead(
 /**
  * One transaction on purpose: a crash between the two halves would leave live
  * watches ticking against a chat the user can no longer see. Owner-scoped.
+ * Already-deleted rows are skipped, so a retry can't push `deletedAt` forward
+ * and move the retention cutoff.
  */
 export async function softDeleteChat(
   db: DashboardAgentDb,
@@ -301,7 +303,8 @@ export async function softDeleteChat(
         and(
           eq(chats.id, params.chatId),
           eq(chats.userId, params.userId),
-          eq(chats.organizationId, params.organizationId)
+          eq(chats.organizationId, params.organizationId),
+          isNull(chats.deletedAt)
         )
       )
       .returning({ id: chats.id });

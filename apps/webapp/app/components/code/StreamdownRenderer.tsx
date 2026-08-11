@@ -12,18 +12,25 @@ const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 export const restrictModelUrls: UrlTransform = (url, key, node) => {
   const value = url.trim();
   const isImage = node.tagName === "img" || key === "src" || key === "srcset";
+  // What the browser will actually resolve, which is not what `trim()` leaves: the URL parser
+  // drops C0 controls (`trim()` keeps them) and reads `\` as `/` for special schemes, so
+  // a leading-control `//evil.tld` and `\\evil.tld` both name a remote host. Classify on this; return the
+  // original `url` untouched whenever it is allowed.
+  const normalized = value
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/^[/\\]+/, (run) => "/".repeat(run.length));
 
   if (isImage) {
     // Inline images carry their own bytes; a relative path resolves to our own origin.
-    if (/^data:/i.test(value) || /^blob:/i.test(value)) return url;
+    if (/^data:/i.test(normalized) || /^blob:/i.test(normalized)) return url;
     // Absolute or protocol-relative means a remote host — strip it so nothing is fetched.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("//")) return undefined;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("//")) return undefined;
     return url;
   }
 
   // Links: relative and protocol-relative are fine; otherwise require a safe scheme.
-  if (value.startsWith("//")) return url;
-  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(value);
+  if (normalized.startsWith("//")) return url;
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
   if (!schemeMatch) return url;
   return SAFE_LINK_SCHEMES.has(`${schemeMatch[1].toLowerCase()}:`) ? url : undefined;
 };

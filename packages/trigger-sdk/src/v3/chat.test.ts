@@ -132,6 +132,35 @@ function defaultSseResponse(
   });
 }
 
+/**
+ * An SSE response whose body stays open until the request signal aborts.
+ * Models a live subscription sitting on a quiet server.
+ */
+function openSseResponse(signal?: AbortSignal | null): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const onAbort = () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        try {
+          controller.error(err);
+        } catch {
+          /* already errored */
+        }
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "X-Stream-Version": "v2",
+    },
+  });
+}
+
 function authError(status = 401): Response {
   return new Response(JSON.stringify({ error: "Unauthorized", name: "TriggerApiError", status }), {
     status,
@@ -1518,6 +1547,112 @@ describe("TriggerChatTransport", () => {
         await drained;
         await vi.advanceTimersByTimeAsync(1_000);
         expect(appends()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("superseded stream teardown", () => {
+    it("keeps the successor's controller registered when the aborted stream tears down", async () => {
+      vi.useFakeTimers();
+      try {
+        let appendCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) {
+            appendCount++;
+            return defaultAppendResponse();
+          }
+          // Quiet stream: EOF, no records, never settled — watch keeps it open.
+          if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse([]);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          watch: true,
+          sessions: { "chat-race": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const send = () =>
+          transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-race",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          });
+
+        const first = drainChunks(await send());
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // Supersede: the new stream registers its controller synchronously,
+        // the aborted one tears down a microtask later.
+        const second = await send();
+        let secondClosed = false;
+        const secondDrain = drainChunks(second).then(() => {
+          secondClosed = true;
+        });
+        await first;
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // stopGeneration posts the stop chunk either way — only the
+        // closing assertion proves it found the successor to abort.
+        appendCount = 0;
+        expect(await transport.stopGeneration("chat-race")).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appendCount).toBe(1);
+        expect(secondClosed).toBe(true);
+
+        transport.dispose();
+        await secondDrain;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps the tab claim the successor took (multi-tab)", async () => {
+      vi.useFakeTimers();
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          // Open SSE that only ends when the subscription is aborted, so
+          // the superseded stream tears down while the successor is live.
+          if (isSessionOutSubscribeUrl(urlStr)) return openSseResponse(init?.signal);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          multiTab: true,
+          sessions: { "chat-race-tab": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const send = () =>
+          transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-race-tab",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          });
+
+        const first = drainChunks(await send());
+        await vi.advanceTimersByTimeAsync(1_000);
+        const secondDrain = drainChunks(await send());
+        await first;
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // The superseded stream must not release the claim its successor
+        // holds — otherwise this tab flips to read-only mid-turn.
+        expect(transport.hasClaim("chat-race-tab")).toBe(true);
+
+        transport.dispose();
+        await secondDrain;
       } finally {
         vi.useRealTimers();
       }
