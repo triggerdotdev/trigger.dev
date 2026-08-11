@@ -40,6 +40,7 @@ import { explicitPromptTarget } from "./explicit-prompt";
 import { escapeClosesPanel } from "./panel-escape";
 import { markChatListRead, unreadWorkCount } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
+import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
@@ -141,9 +142,7 @@ export function DashboardAgentPanel({
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
   const handleActivityChange = useCallback(
     (chatId: string, activity: TurnActivity | null) => {
-      setThinkingChatId((previous) =>
-        activity !== null ? chatId : previous === chatId ? null : previous
-      );
+      setThinkingChatId((previous) => markerAfterActivity(previous, chatId, activity));
       onTurnActivityChange?.(chatId, activity !== null);
     },
     [onTurnActivityChange]
@@ -151,6 +150,11 @@ export function DashboardAgentPanel({
 
   // The read POST and its reload can land out of order, so mask the next list.
   const justRead = useRef<Set<string>>(new Set());
+
+  // Ordering-safe: if the new chat has not reported yet, its own report re-sets the marker.
+  useEffect(() => {
+    setThinkingChatId((previous) => markerAfterActiveChat(previous, active?.chatId));
+  }, [active?.chatId]);
 
   const loadHistory = useMemo(
     () =>

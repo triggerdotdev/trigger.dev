@@ -7,6 +7,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -143,7 +144,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           organizationId: project.organizationId,
         });
         if (quota?.reached) {
-          return json({ error: "message_quota_reached", limit: quota.limit }, { status: 403 });
+          return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
         }
       }
 
