@@ -208,6 +208,36 @@ export async function updateIconContrastPreference({
   `;
 }
 
+export async function updateUnderlineLinksPreference({
+  user,
+  underlineLinks,
+}: {
+  user: UserFromSession;
+  underlineLinks: boolean;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if ((user.dashboardPreferences.underlineLinks ?? false) === underlineLinks) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{underlineLinks}',
+      to_jsonb(${underlineLinks}::boolean)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
 export async function clearCurrentProject({ user }: { user: UserFromSession }) {
   if (user.isImpersonating) {
     return;

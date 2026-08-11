@@ -48,10 +48,12 @@ import {
   updateContrastPreference,
   updateIconContrastPreference,
   updateThemePreference,
+  updateUnderlineLinksPreference,
 } from "~/services/dashboardPreferences.server";
 import {
   normalizeIconContrast,
   normalizeThemeContrast,
+  normalizeUnderlineLinks,
   normalizeThemePreference,
   type ThemePreference,
 } from "~/utils/themePreference";
@@ -185,6 +187,20 @@ export const action: ActionFunction = async ({ request }) => {
     await updateIconContrastPreference({
       user,
       iconContrast: formData.get("iconContrast") === "true",
+    });
+    return json({ success: true });
+  }
+
+  if (formData.get("action") === "update-underline-links") {
+    const user = await requireUser(request);
+    const showThemeSwitcher =
+      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    await updateUnderlineLinksPreference({
+      user,
+      underlineLinks: formData.get("underlineLinks") === "true",
     });
     return json({ success: true });
   }
@@ -360,6 +376,12 @@ export default function Page() {
     typeof pendingIconContrast === "string"
       ? pendingIconContrast === "true"
       : normalizeIconContrast(user.dashboardPreferences.iconContrast);
+  const underlineLinksFetcher = useFetcher();
+  const pendingUnderlineLinks = underlineLinksFetcher.formData?.get("underlineLinks");
+  const underlineLinks =
+    typeof pendingUnderlineLinks === "string"
+      ? pendingUnderlineLinks === "true"
+      : normalizeUnderlineLinks(user.dashboardPreferences.underlineLinks);
   const pendingTheme = themeFetcher.formData?.get("theme");
   const pendingContrast = contrastFetcher.formData?.get("contrast");
   const contrast =
@@ -609,6 +631,30 @@ export default function Page() {
                         )
                       }
                       className="w-fit"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                    <Label>Underline links</Label>
+                    <SettingsRowDescription>Underline links in body text</SettingsRowDescription>
+                  </div>
+                  <div className="flex flex-none items-center">
+                    <Switch
+                      variant="minimal/medium"
+                      aria-label="Underline links"
+                      checked={underlineLinks}
+                      onCheckedChange={(checked) =>
+                        underlineLinksFetcher.submit(
+                          {
+                            action: "update-underline-links",
+                            underlineLinks: checked ? "true" : "false",
+                          },
+                          { method: "post" }
+                        )
+                      }
                     />
                   </div>
                 </div>

@@ -6,11 +6,14 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
+// inline-text-link: marker for the "Underline links" preference, which underlines
+// these and nothing else (nav items, buttons-as-links and decorative underlines
+// all stay put). See tailwind.css.
+const base = "inline-text-link inline-flex gap-0.5 items-center group focus-visible:focus-custom";
+
 const variations = {
-  primary:
-    "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group focus-visible:focus-custom",
-  secondary:
-    "text-text-dimmed transition hover:text-text-bright inline-flex gap-0.5 items-center group focus-visible:focus-custom",
+  primary: `${base} text-indigo-500 transition hover:text-indigo-400`,
+  secondary: `${base} text-text-dimmed transition hover:text-text-bright`,
 } as const;
 
 type TextLinkProps = {

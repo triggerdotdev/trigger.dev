@@ -54,6 +54,8 @@ const DashboardPreferences = z.object({
   contrast: z.number().int().min(0).max(100).optional().catch(undefined),
   /** Swaps the Classic icon and badge accents for the high-contrast set. */
   iconContrast: z.boolean().optional().catch(undefined),
+  /** Underlines inline links. */
+  underlineLinks: z.boolean().optional().catch(undefined),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),

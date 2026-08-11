@@ -26,6 +26,7 @@ import { getUser } from "./services/session.server";
 import {
   normalizeIconContrast,
   normalizeThemeContrast,
+  normalizeUnderlineLinks,
   normalizeThemePreference,
   type ThemePreference,
 } from "~/utils/themePreference";
@@ -100,6 +101,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const iconContrast = showThemeSwitcher
     ? normalizeIconContrast(user?.dashboardPreferences.iconContrast)
     : false;
+  const underlineLinks = showThemeSwitcher
+    ? normalizeUnderlineLinks(user?.dashboardPreferences.underlineLinks)
+    : false;
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
@@ -130,6 +134,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       timezone,
       showThemeSwitcher,
       iconContrast,
+      underlineLinks,
       themePreference,
       themeContrast,
       // Consumed by ResizablePanel: the browser check must match between SSR
@@ -184,6 +189,7 @@ export default function App() {
     themePreference,
     themeContrast,
     iconContrast,
+    underlineLinks,
   } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
   useSystemThemeSync(themePreference);
@@ -202,6 +208,8 @@ export default function App() {
         data-theme-preference={themePreference}
         // Accent set for icons and badges; the `system:` variant keys off this
         data-icon-contrast={iconContrast ? "true" : "false"}
+        // Underlines links carrying the inline-text-link marker class
+        data-underline-links={underlineLinks ? "true" : "false"}
         // Contrast overlay input for the System themes; Classic never reads it
         style={{ "--theme-contrast": themeContrast / 100 } as CSSProperties}
       >

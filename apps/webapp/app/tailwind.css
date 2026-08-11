@@ -282,6 +282,15 @@
   --color-run-timed-out: #ed5f74;
 }
 
+/* "Underline links" preference: underlines the inline links that carry the
+   marker class from the TextLink component, and only those - hand-rolled link
+   underlines and decorative ones (dashed tooltip terms, tab underlines) are
+   untouched either way. */
+[data-underline-links="true"] .inline-text-link {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
+
 /* Icon contrast drops decorative icon accents to monochrome; with it off,
    the icons stay colored. side-menu-active-icon is set in SideMenuItem for the
    active nav item; system-mono-icon marks section-header icons (e.g. the

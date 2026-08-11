@@ -22,6 +22,11 @@ export function normalizeIconContrast(value: unknown): boolean {
   return value === true;
 }
 
+/** Underlines inline links (the TextLink component). Off is the default. */
+export function normalizeUnderlineLinks(value: unknown): boolean {
+  return value === true;
+}
+
 /** Interface contrast for the System themes, 0 to 100. Missing or invalid
  * values fall back to the default bump. */
 export function normalizeThemeContrast(value: unknown): number {
