@@ -6,6 +6,7 @@ import {
 import { z } from "zod";
 import { redirectWithImpersonation } from "~/models/admin.server";
 import { authenticator } from "~/services/auth.server";
+import { rbac } from "~/services/rbac.server";
 import { getRealUser } from "~/services/session.server";
 import { validateAndConsumeImpersonationToken } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
@@ -45,7 +46,18 @@ async function requireRealAdmin(request: Request) {
   }
 
   const admin = await getRealUser(request);
-  return admin?.admin ? admin : null;
+  if (!admin) return null;
+
+  // Same gate `dashboardLoader({ authorization: { requireSuper: true } })` applies, evaluated
+  // against the real admin. It can't be reached through the builder here, because the builder
+  // resolves its subject with `getUserId` — the impersonated id while impersonating, which is the
+  // bug this route exists to fix. So the ability is built explicitly for `admin.id` instead of
+  // trusting the raw `User.admin` column: `canSuper()` is only equal to that column in the OSS
+  // fallback, and a plugin is free to be stricter. requireSuper needs no org/project scope.
+  const auth = await rbac.authenticateSession(request, { userId: admin.id });
+  if (!auth.ok || !auth.ability.canSuper()) return null;
+
+  return admin;
 }
 
 async function handleImpersonationRequest(request: Request, userId: string): Promise<Response> {
