@@ -68,7 +68,8 @@ export const demoErrorRecurrenceWatch = watch(
   "email-sends",
   {
     kind: "error_recurrence",
-    fingerprint: DEMO_WORLD.errorFingerprint,
+    // The page cites `error_<fingerprint>`, the spec keeps the bare form.
+    fingerprint: DEMO_WORLD.errorFingerprint.replace(/^error_/, ""),
     note: "Tell me if the rate-limit error comes back.",
     maxHours: 12,
     checkEveryMinutes: 15,
