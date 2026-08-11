@@ -75,6 +75,49 @@ describe("merging a re-read transcript", () => {
   });
 });
 
+describe("replacing a stale running step from the re-read", () => {
+  // Same message id, but the stream EOF'd before `get_report` produced an output.
+  const RUNNING_STEP = {
+    id: "msg_step",
+    role: "assistant",
+    parts: [{ type: "tool-get_report", toolCallId: "call_1", state: "input-available" }],
+  };
+
+  const FINISHED_STEP = {
+    id: "msg_step",
+    role: "assistant",
+    parts: [
+      { type: "tool-get_report", toolCallId: "call_1", state: "output-available", output: {} },
+    ],
+  };
+
+  it("swaps the still-running copy for its finished version from the authoritative read", () => {
+    const merged = mergeSettledMessages([RUNNING_STEP], [FINISHED_STEP]);
+    expect(merged).toEqual([FINISHED_STEP]);
+    // The step no longer reads as running, so nothing keeps the panel on Working…
+    expect(transcriptLooksUnfinished(merged)).toBe(false);
+  });
+
+  it("still appends genuinely-new messages while replacing a stale one", () => {
+    const merged = mergeSettledMessages([RUNNING_STEP], [FINISHED_STEP, SETTLED]);
+    expect(merged.map((message) => message.id)).toEqual([FINISHED_STEP.id, SETTLED.id]);
+    expect(merged[0]).toBe(FINISHED_STEP);
+  });
+
+  it("leaves an in-flight message alone when the re-read is itself still running", () => {
+    const merged = mergeSettledMessages([RUNNING_STEP], [RUNNING_STEP]);
+    // Same reference back, no needless render, and the live turn is untouched.
+    expect(merged).toEqual([RUNNING_STEP]);
+    expect(merged[0]).toBe(RUNNING_STEP);
+  });
+
+  it("does not touch a running message the re-read does not mention", () => {
+    const merged = mergeSettledMessages([RUNNING_STEP], [SETTLED]);
+    expect(merged.map((message) => message.id)).toEqual([RUNNING_STEP.id, SETTLED.id]);
+    expect(merged[0]).toBe(RUNNING_STEP);
+  });
+});
+
 describe("reading the transcript endpoint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
