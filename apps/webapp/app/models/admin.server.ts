@@ -1,5 +1,5 @@
 import { redirect } from "@remix-run/server-runtime";
-import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $replica, $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import type { SearchParams } from "~/routes/admin._index";
 import {
@@ -237,32 +237,42 @@ export async function redirectWithImpersonation(
   const ipAddress = extractClientIp(xff);
   const previousTargetId = await getImpersonationId(request);
 
+  // Switching straight from one target to another never passes through `clearImpersonation`, so the
+  // previous session is closed here, or the trail shows two overlapping STARTs.
+  //
+  // Both rows are written in one transaction: as separate statements, a failure between them could
+  // start an impersonation whose only audit row is the STOP for the previous target — an admin
+  // acting as someone with no record of it.
+  //
+  // `createdAt` is stamped explicitly rather than left to `@default(now())`, because Postgres `now()`
+  // is the *transaction* timestamp: inside one transaction both rows would take the same value, and
+  // an audit view ordered by that column couldn't tell which came first.
+  const startedAt = new Date();
+  const closedAt = new Date(startedAt.getTime() - 1);
+
   try {
-    // Switching straight from one target to another never passes through `clearImpersonation`, so
-    // close the previous session here or the trail shows two overlapping STARTs.
-    //
-    // Two statements rather than one `createMany`: `createdAt` defaults to `now()`, which is fixed
-    // for the duration of a statement, so a single insert would stamp both rows identically and an
-    // audit view ordered by `createdAt` couldn't tell which came first — the very ambiguity the
-    // STOP row exists to remove.
-    if (previousTargetId && previousTargetId !== userId) {
-      await prismaClient.impersonationAuditLog.create({
+    await $transaction(prismaClient, "startImpersonationAudit", async (tx) => {
+      if (previousTargetId && previousTargetId !== userId) {
+        await tx.impersonationAuditLog.create({
+          data: {
+            action: "STOP",
+            adminId: admin.id,
+            targetId: previousTargetId,
+            ipAddress,
+            createdAt: closedAt,
+          },
+        });
+      }
+
+      await tx.impersonationAuditLog.create({
         data: {
-          action: "STOP",
+          action: "START",
           adminId: admin.id,
-          targetId: previousTargetId,
+          targetId: userId,
           ipAddress,
+          createdAt: startedAt,
         },
       });
-    }
-
-    await prismaClient.impersonationAuditLog.create({
-      data: {
-        action: "START",
-        adminId: admin.id,
-        targetId: userId,
-        ipAddress,
-      },
     });
   } catch (error) {
     logger.error("Failed to create impersonation audit log", {
