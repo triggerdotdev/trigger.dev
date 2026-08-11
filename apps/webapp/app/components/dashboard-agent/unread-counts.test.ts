@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { markChatListRead, nextVisibleChat, unreadWorkCount } from "./unread-counts";
+import {
+  markChatListRead,
+  nextVisibleChat,
+  settleReadChats,
+  unreadWorkCount,
+} from "./unread-counts";
 
 const list = () => [
   { id: "chat_a", hasUnreadWake: true, hasUnreadWork: true },
@@ -71,6 +76,28 @@ describe("the chat on screen", () => {
   });
 });
 
+/**
+ * The list is refreshed after every turn, and the server's lastReadAt trails the turn that just
+ * landed — so the chat being read has to settle on its own, not wait for the next read to land.
+ */
+describe("settleReadChats", () => {
+  it("settles the chat on screen, however fresh the turn that just landed in it", () => {
+    const settled = settleReadChats(list(), new Set(), "chat_a");
+    expect(settled[0]).toEqual({ id: "chat_a", hasUnreadWake: false, hasUnreadWork: false });
+    expect(settled.slice(1)).toEqual(list().slice(1));
+  });
+
+  it("settles the chats just read", () => {
+    const settled = settleReadChats(list(), new Set(["chat_b"]), null);
+    expect(settled[1]).toEqual({ id: "chat_b", hasUnreadWake: false, hasUnreadWork: false });
+    expect(unreadWorkCount(settled)).toBe(1);
+  });
+
+  it("leaves every other chat exactly as the server reported it", () => {
+    expect(settleReadChats(list(), new Set(), null)).toEqual(list());
+  });
+});
+
 describe("what the panel and the layout actually do with it", () => {
   const panel = readFileSync(new URL("./DashboardAgentPanel.tsx", import.meta.url), "utf8");
   const layout = readFileSync(new URL("./DashboardAgent.tsx", import.meta.url), "utf8");
@@ -85,6 +112,16 @@ describe("what the panel and the layout actually do with it", () => {
     expect(panel).toContain("onChatRead?.(chatId, { leaving: false });");
     expect(panel).toContain("onChatRead?.(chatId, { leaving: true });");
     expect(layout).toContain("visibleChat.current = nextVisibleChat(chatId, options);");
+  });
+
+  /**
+   * Structural: the reload is memoised without `active`, so the chat on screen has to reach the
+   * settle through a ref — the closure's copy is whatever it was when the reload was created.
+   */
+  it("settles the refreshed list against the chat on screen, read from a ref", () => {
+    expect(panel).toContain("settleReadChats(chats, read, visibleChatId.current)");
+    expect(panel).toContain("visibleChatId.current = nextVisibleChat(chatId, { leaving: false });");
+    expect(panel).toContain("visibleChatId.current = nextVisibleChat(chatId, { leaving: true });");
   });
 
   /**
