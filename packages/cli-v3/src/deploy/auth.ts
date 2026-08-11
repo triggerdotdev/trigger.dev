@@ -1,4 +1,5 @@
 import { CLOUD_API_URL, CLOUD_WEB_URL } from "../consts.js";
+import { readAuthConfigProfile } from "../utilities/configFiles.js";
 import type { LoginResult, LoginResultOk } from "../utilities/session.js";
 
 const personalTokenPrefix = "tr_pat_";
@@ -38,7 +39,8 @@ export async function authenticateForDeploy({
   silent: boolean;
   login: LoginForDeploy;
 }): Promise<LoginResult | DeployAuthorization> {
-  const resolvedApiUrl = apiUrl ?? CLOUD_API_URL;
+  const authConfig = readAuthConfigProfile(profile);
+  const resolvedApiUrl = apiUrl ?? authConfig?.apiUrl ?? CLOUD_API_URL;
 
   if (!secretKey) {
     return login({

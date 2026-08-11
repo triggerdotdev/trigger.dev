@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../utilities/configFiles.js", () => ({
+  readAuthConfigProfile: vi.fn(() => undefined),
+}));
+
 import { authenticateForDeploy, userIdForDeploy } from "./auth.js";
+import { readAuthConfigProfile } from "../utilities/configFiles.js";
 
 describe("authenticateForDeploy", () => {
   it("gives TRIGGER_SECRET_KEY precedence without logging in", async () => {
@@ -54,6 +60,42 @@ describe("authenticateForDeploy", () => {
 
     expect(result).toMatchObject({
       dashboardUrl: "https://cloud.trigger.dev",
+      auth: { apiUrl: "https://api.trigger.dev" },
+    });
+  });
+
+  it("falls back to the saved profile's API URL for self-hosted instances", async () => {
+    vi.mocked(readAuthConfigProfile).mockReturnValueOnce({
+      apiUrl: "https://trigger.internal.example.com",
+    });
+
+    const result = await authenticateForDeploy({
+      secretKey: "tr_prod_sk_deploy",
+      profile: "selfhosted",
+      silent: true,
+      login: async () => ({ ok: false, error: "should not be called" }),
+    });
+
+    expect(result).toMatchObject({
+      dashboardUrl: "https://trigger.internal.example.com",
+      auth: { apiUrl: "https://trigger.internal.example.com" },
+    });
+  });
+
+  it("prefers an explicit API URL over the saved profile", async () => {
+    vi.mocked(readAuthConfigProfile).mockReturnValueOnce({
+      apiUrl: "https://trigger.internal.example.com",
+    });
+
+    const result = await authenticateForDeploy({
+      secretKey: "tr_prod_sk_deploy",
+      apiUrl: "https://api.trigger.dev",
+      profile: "selfhosted",
+      silent: true,
+      login: async () => ({ ok: false, error: "should not be called" }),
+    });
+
+    expect(result).toMatchObject({
       auth: { apiUrl: "https://api.trigger.dev" },
     });
   });
