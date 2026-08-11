@@ -64,9 +64,13 @@ import { cn } from "~/utils/cn";
 
 export const meta = pageMeta("Your profile");
 
+/** Floor of the contrast slider. The stored value and the colours it drives are
+ *  unchanged - this only stops the slider offering the bottom of the range. */
+const MIN_CONTRAST = 15;
+
 /** The contrast the slider ticks and labels as "Default". Note this is not the
  *  same as `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
-const DEFAULT_CONTRAST_MARK = 20;
+const DEFAULT_CONTRAST_MARK = 30;
 
 function themeIcon(value: ThemePreference) {
   const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
@@ -558,7 +562,7 @@ export default function Page() {
                         variant="settings"
                         className="w-44"
                         aria-label="Contrast"
-                        min={0}
+                        min={MIN_CONTRAST}
                         max={100}
                         step={1}
                         marks={[
