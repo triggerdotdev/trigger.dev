@@ -38,7 +38,16 @@ export const summarize = task({
 Trigger the task and open the run. The `generateText` call appears as a span in the trace. `streamText` and `generateObject` work the same way: add the same `experimental_telemetry` flag to each call you want captured.
 
 <Note>
-  On AI SDK 7, span emission moved out of the `ai` core into the `@ai-sdk/otel` adapter. Install `@ai-sdk/otel` and Trigger.dev registers it for you at run start. AI SDK 6 emits spans from `ai` directly, so no extra package is needed.
+  **AI SDK 7** moved span emission out of `ai` core into the `@ai-sdk/otel` adapter. In a task, install `@ai-sdk/otel` and register it once yourself, for example at the top of your task file:
+
+  ```ts /trigger/summarize.ts
+  import { registerTelemetry } from "ai";
+  import { OpenTelemetry } from "@ai-sdk/otel";
+
+  registerTelemetry(new OpenTelemetry());
+  ```
+
+  A [`chat.agent()`](/ai-chat/overview) run registers the adapter for you at run start, so chat agents need only the install. On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
 </Note>
 
 ## What each span shows
@@ -101,7 +110,7 @@ const result = await generateText({
 Custom attributes are stored on the span's `metadata`, so you can filter or group by them in TRQL, for example `metadata['task.type']`.
 
 <Note>
-  When you build an agent with `chat.agent()`, `chat.toStreamTextOptions()` already sets `experimental_telemetry` for you, so generations inside a chat are captured without adding the flag by hand. See [Prompts](/ai/prompts#using-with-chatagent).
+  When you build an agent with `chat.agent()` and store a prompt with `chat.prompt.set()`, `chat.toStreamTextOptions()` sets `experimental_telemetry` for you, so those generations are captured without adding the flag by hand. Without a stored prompt, set `experimental_telemetry` on the call yourself. See [Prompts](/ai/prompts#using-with-chatagent).
 </Note>
 
 ## Query usage across runs
