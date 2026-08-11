@@ -227,38 +227,46 @@ describe("the session cursor a refreshed client resumes from", () => {
 
 describe("a failed snapshot write leaves the next boot a clean replay", () => {
   postgresTest(
-    "a persistTurn that throws commits nothing, and the retry replays with no loss",
+    "a persistTurn that throws mid-write rolls back what it already wrote, and the retry replays with no loss",
     async ({ prisma, postgresContainer }) => {
       const chatId = "chat_write_fail";
       await boot(prisma, postgresContainer.getConnectionUri(), chatId);
 
-      // A durable first turn, and the session cursor it left.
+      // A durable first turn, its tool call still mid-flight, and the session cursor it left.
       await persistTurn(agentDb, {
         chatId,
-        messages: [textMessage("u1", "user"), textMessage("a1")],
+        messages: [textMessage("u1", "user"), toolMessage("a1", "input-available")],
         session: { publicAccessToken: "pat1", lastEventId: "1", runId: "run1" },
       });
       const positionBefore = await nextPosition(prisma, chatId);
 
-      // The next turn's write fails partway — a malformed message with no id throws inside the
-      // transaction, after the (would-be) settlement/message work has begun.
+      // The next turn's write fails *after* it has written: a message that carries an id but no
+      // role clears the up-front id check, so the store finalises `a1` in place and reserves the
+      // slots for the new messages before the missing role throws. Everything already written
+      // has to come back out.
       await expect(
         persistTurn(agentDb, {
           chatId,
           messages: [
             textMessage("u1", "user"),
-            textMessage("a1"),
+            toolMessage("a1", "output-available"),
             textMessage("a2"),
-            { role: "assistant", parts: [] } as unknown as { id: string; role: string },
+            { id: "a3", parts: [] } as unknown as { id: string; role: string },
           ],
+          finalizeMessageIds: ["a1"],
           session: { publicAccessToken: "pat_torn", lastEventId: "2", runId: "run_torn" },
         })
-      ).rejects.toThrow(/handed a message with no id/);
+      ).rejects.toThrow(/handed a message with no role/);
 
-      // The whole turn rolled back: no new rows, allocator untouched, and — the version-
-      // mismatch case — the session cursor is still the first turn's, not the torn one's.
+      // The whole turn rolled back. The in-place rewrite the store had already applied is undone:
+      // `a1` is the mid-flight call again, not the finalised body the torn turn wrote.
       expect((await transcript(chatId)).map((m) => m.id)).toEqual(["u1", "a1"]);
+      const tornA1 = (await transcript(chatId))[1] as unknown as { parts: { state: string }[] };
+      expect(tornA1.parts[0]!.state).toBe("input-available");
+      expect(await rowCount(prisma, chatId)).toBe(2);
+      // The slots it reserved for `a2`/`a3` came back too, so the retry doesn't leave a gap.
       expect(await nextPosition(prisma, chatId)).toBe(positionBefore);
+      // The cursor is still the first turn's: the failed turn never got as far as writing one.
       expect(
         await getSession(agentDb, { chatId, organizationId: ORG, userId: USER })
       ).toMatchObject({ publicAccessToken: "pat1", lastEventId: "1" });
@@ -266,10 +274,19 @@ describe("a failed snapshot write leaves the next boot a clean replay", () => {
       // The retry — a clean replay of the same turn — lands everything exactly once.
       await persistTurn(agentDb, {
         chatId,
-        messages: [textMessage("u1", "user"), textMessage("a1"), textMessage("a2")],
+        messages: [
+          textMessage("u1", "user"),
+          toolMessage("a1", "output-available"),
+          textMessage("a2"),
+        ],
+        finalizeMessageIds: ["a1"],
         session: { publicAccessToken: "pat2", lastEventId: "2", runId: "run2" },
       });
       expect((await transcript(chatId)).map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
+      const retriedA1 = (await transcript(chatId))[1] as unknown as { parts: { state: string }[] };
+      expect(retriedA1.parts[0]!.state).toBe("output-available");
+      // One new row, one new slot: the rolled-back reservation was not double-counted.
+      expect(await nextPosition(prisma, chatId)).toBe(positionBefore + 1);
       expect(
         await getSession(agentDb, { chatId, organizationId: ORG, userId: USER })
       ).toMatchObject({ publicAccessToken: "pat2", lastEventId: "2" });
