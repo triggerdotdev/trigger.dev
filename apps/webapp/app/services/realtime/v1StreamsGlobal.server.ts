@@ -96,27 +96,51 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
   return segments.join("/");
 }
 
-/**
- * Resolve the streams version to stamp on a run, falling back to
- * `REALTIME_STREAMS_DEFAULT_VERSION` when the caller expresses no preference.
- *
- * v2 is only ever returned when S2 is actually configured. A run stamped v2 on
- * a deployment without S2 is unusable: `getRealtimeStreamInstance` throws for
- * the life of the run, and no read or write against its streams can succeed.
- * v1 is a working backend, so an unsatisfiable v2 degrades to it.
- */
-export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
-  const requested = streamVersion ?? env.REALTIME_STREAMS_DEFAULT_VERSION;
+export type RealtimeStreamsVersionConfig = {
+  defaultVersion: "v1" | "v2";
+  basin?: string;
+  accessToken?: string;
+  skipAccessTokens: boolean;
+  perOrgBasinsEnabled: boolean;
+};
 
-  if (
-    requested === "v2" &&
-    env.REALTIME_STREAMS_S2_BASIN &&
-    (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
-  ) {
-    return "v2";
+/**
+ * Resolve the streams version to stamp on a run, falling back to the
+ * deployment default when the caller expresses no preference.
+ *
+ * v2 is only ever returned when S2 can actually serve it. A run stamped v2 on a
+ * deployment without S2 is unusable: `getRealtimeStreamInstance` throws for the
+ * life of the run, and no read or write against its streams can succeed. v1 is
+ * a working backend, so an unsatisfiable v2 degrades to it.
+ *
+ * A basin can come from the global setting or from per-org provisioning, so
+ * either satisfies the basin requirement. This mirrors {@link resolveStreamBasin},
+ * which resolves run, session and organization basins ahead of the global one.
+ */
+export function resolveRealtimeStreamsVersion(
+  streamVersion: string | undefined,
+  config: RealtimeStreamsVersionConfig
+): "v1" | "v2" {
+  const requested = streamVersion ?? config.defaultVersion;
+
+  if (requested !== "v2") {
+    return "v1";
   }
 
-  return "v1";
+  const hasCredentials = Boolean(config.accessToken) || config.skipAccessTokens;
+  const hasBasin = Boolean(config.basin) || config.perOrgBasinsEnabled;
+
+  return hasCredentials && hasBasin ? "v2" : "v1";
+}
+
+export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
+  return resolveRealtimeStreamsVersion(streamVersion, {
+    defaultVersion: env.REALTIME_STREAMS_DEFAULT_VERSION,
+    basin: env.REALTIME_STREAMS_S2_BASIN,
+    accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
+    skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
+    perOrgBasinsEnabled: env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true",
+  });
 }
 
 const s2RealtimeStreamsCache = singleton(

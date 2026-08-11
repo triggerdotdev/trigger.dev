@@ -3,4 +3,4 @@ area: webapp
 type: fix
 ---
 
-Stop creating runs against a realtime streams backend the deployment cannot serve.
+Runs no longer end up with realtime streams that cannot be read or written.
