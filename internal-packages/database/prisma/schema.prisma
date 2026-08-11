@@ -469,6 +469,9 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  /// Set the first time the CLI `init` command completes against this project. Drives the dev onboarding progress.
+  initializedAt DateTime?
+
   version ProjectVersion   @default(V2)
   engine  RunEngineVersion @default(V1)
 

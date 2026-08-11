@@ -4,6 +4,7 @@ import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
+import { deploymentApiPaths } from "./deploymentApiPaths.server";
 import type { Duration } from "./rateLimiter.server";
 
 const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
@@ -118,7 +119,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
-    /^\/api\/v\d+\/deployments/, // /api/v{1,2,3,n}/deployments/*
+    ...deploymentApiPaths, // rate limited separately by deploymentRateLimiter
+    /^\/api\/v\d+\/deployments\/current$/, // runtime SDK surface, exempt as before the deploy budget split
     // Internal SDK plumbing — packets are presigned-URL handshakes for
     // payload uploads (v2 PUT) and downloads (v1 GET), authenticated via
     // run-scoped JWT, called once per task/turn boundary by the runtime.
