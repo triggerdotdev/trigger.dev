@@ -231,7 +231,7 @@ export function UpsertScheduleForm({
       {...getFormProps(form)}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
-      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
+      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed pr-10">
         <Header2 className="truncate">
           {schedule?.friendlyId
             ? "Edit schedule"

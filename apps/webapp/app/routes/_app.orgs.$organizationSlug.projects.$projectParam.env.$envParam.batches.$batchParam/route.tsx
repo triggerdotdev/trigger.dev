@@ -96,7 +96,7 @@ export default function Page() {
           to={v3BatchesPath(organization, project, environment)}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
+          shortcut={{ key: "esc", enabledOnInputElements: true }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />

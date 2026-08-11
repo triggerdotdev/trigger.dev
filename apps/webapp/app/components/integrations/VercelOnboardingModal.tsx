@@ -747,7 +747,11 @@ export function VercelOnboardingModal({
           }
         }}
       >
-        <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent
+          className="max-w-lg"
+          onInteractOutside={(e) => e.preventDefault()}
+          showCloseButton={!fromMarketplaceContext}
+        >
           <DialogHeader>
             <div className="flex items-center gap-2">
               <VercelLogo className="size-5" />
@@ -787,7 +791,11 @@ export function VercelOnboardingModal({
         }
       }}
     >
-      <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="max-w-lg"
+        onInteractOutside={(e) => e.preventDefault()}
+        showCloseButton={!fromMarketplaceContext}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2">
             <VercelLogo className="size-5" />

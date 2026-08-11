@@ -1,4 +1,5 @@
 import { ClockIcon, PencilSquareIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
 
 export function DashboardAgentHeader({
@@ -23,7 +24,15 @@ export function DashboardAgentHeader({
           onClick={onToggleHistory}
           active={view === "history"}
         />
-        <IconButton label="Close" icon={XMarkIcon} onClick={onClose} />
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={XMarkIcon}
+          shortcut={{ key: "esc", enabledOnInputElements: true }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
+          aria-label="Close"
+        />
       </div>
     </div>
   );

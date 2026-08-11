@@ -333,7 +333,7 @@ function SpanBody({
               onClick={closePanel}
               variant="minimal/small"
               TrailingIcon={ExitIcon}
-              shortcut={{ key: "esc" }}
+              shortcut={{ key: "esc", enabledOnInputElements: true }}
               shortcutPosition="before-trailing-icon"
               className="pl-1"
             />
@@ -445,7 +445,7 @@ function RunBody({
             onClick={closePanel}
             variant="minimal/small"
             TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
+            shortcut={{ key: "esc", enabledOnInputElements: true }}
             shortcutPosition="before-trailing-icon"
             className="pl-1"
           />

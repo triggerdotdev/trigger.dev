@@ -340,7 +340,7 @@ export default function Page() {
           }`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
+          shortcut={{ key: "esc", enabledOnInputElements: true }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />

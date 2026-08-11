@@ -50,15 +50,28 @@ const sheetVariants = cva(
 interface SheetContentProps
   extends
     React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  showCloseButton?: boolean;
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, showCloseButton = true, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
+      {showCloseButton && (
+        // Zero-height sticky wrapper so the button stays pinned to the top right
+        // even when the sheet itself is the scrolling element.
+        <div className="sticky top-0 z-10 h-0">
+          <SheetPrimitive.Close className="absolute right-2 top-2 flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-background-hover focus-visible:focus-custom disabled:pointer-events-none">
+            <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+            <XMarkIcon className="size-4 text-text-dimmed" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        </div>
+      )}
       {children}
     </SheetPrimitive.Content>
   </SheetPortal>
@@ -85,17 +98,12 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     className={cn(
-      "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pr-1.5 pt-2",
+      "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pr-12 pt-2",
       className
     )}
     {...props}
   >
     {children}
-    <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-background-hover focus-visible:focus-custom disabled:pointer-events-none">
-      <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
-      <XMarkIcon className="size-4 text-text-dimmed" />
-      <span className="sr-only">Close</span>
-    </SheetPrimitive.Close>
   </SheetPrimitive.Title>
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;

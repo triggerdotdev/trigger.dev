@@ -569,6 +569,8 @@ export default function Page() {
         <SheetContent
           side="right"
           className="w-[90vw] max-w-none rounded-l-lg border-l border-grid-dimmed p-0 sm:max-w-none"
+          // The editor's own nav bar already has an Esc-labelled Cancel button there.
+          showCloseButton={false}
         >
           {editorProps && (
             <QueryEditor

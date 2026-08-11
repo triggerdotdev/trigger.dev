@@ -7,7 +7,6 @@ import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
@@ -120,14 +119,6 @@ export function ConfigureErrorAlerts({
         <Header2 className="flex items-center gap-2">
           <BellAlertIcon className="size-5 text-alerts" /> Configure alerts
         </Header2>
-        <LinkButton
-          to={closeHref}
-          variant="minimal/small"
-          TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
-          shortcutPosition="before-trailing-icon"
-          className="pl-1"
-        />
       </div>
 
       <fetcher.Form method="post" action={formAction} {...getFormProps(form)} className="contents">

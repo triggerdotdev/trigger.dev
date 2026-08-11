@@ -208,7 +208,7 @@ export default function Page() {
           to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
+          shortcut={{ key: "esc", enabledOnInputElements: true }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />

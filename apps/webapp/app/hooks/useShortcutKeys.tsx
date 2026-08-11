@@ -1,3 +1,4 @@
+import { type RefObject } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useOperatingSystem } from "~/components/primitives/OperatingSystemProvider";
 import { useShortcuts } from "~/components/primitives/ShortcutsProvider";
@@ -23,13 +24,34 @@ type useShortcutKeysProps = {
   action: (event: KeyboardEvent) => void;
   disabled?: boolean;
   enabledOnInputElements?: boolean;
+  /**
+   * The element this shortcut belongs to. When set, the shortcut is ignored while
+   * the element sits behind an open overlay, so one Escape can't close both a
+   * dialog and the panel behind it.
+   */
+  elementRef?: RefObject<HTMLElement | null>;
 };
+
+/** Layered surfaces that own the keyboard while they're open. */
+const OVERLAY_ROLES = '[role="dialog"],[role="alertdialog"],[role="listbox"],[role="menu"]';
+
+function isBlockedByOverlay(event: KeyboardEvent, element: HTMLElement | null) {
+  // Radix marks everything outside an open modal `aria-hidden`, which covers
+  // modals that don't move focus into themselves.
+  if (element?.closest('[aria-hidden="true"]')) return true;
+
+  const target = event.target instanceof Element ? event.target : null;
+  const overlay = target?.closest(OVERLAY_ROLES);
+
+  return !!overlay && (!element || !overlay.contains(element));
+}
 
 export function useShortcutKeys({
   shortcut,
   action,
   disabled = false,
   enabledOnInputElements,
+  elementRef,
 }: useShortcutKeysProps) {
   const { platform } = useOperatingSystem();
   const { areShortcutsEnabled } = useShortcuts();
@@ -44,9 +66,10 @@ export function useShortcutKeys({
   useHotkeys(
     keys,
     (event) => {
-      if (!event.repeat) {
-        action(event);
-      }
+      if (event.repeat) return;
+      if (elementRef && isBlockedByOverlay(event, elementRef.current)) return;
+
+      action(event);
     },
     {
       enabled: isEnabled,

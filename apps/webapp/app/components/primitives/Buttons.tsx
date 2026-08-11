@@ -397,6 +397,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         }
       },
       disabled: isDisabled || !props.shortcut,
+      elementRef: innerRef,
     });
 
     const buttonElement = (
@@ -467,6 +468,7 @@ export const LinkButton = ({
       }
     },
     disabled: disabled || !props.shortcut,
+    elementRef: innerRef,
   });
 
   if (disabled) {

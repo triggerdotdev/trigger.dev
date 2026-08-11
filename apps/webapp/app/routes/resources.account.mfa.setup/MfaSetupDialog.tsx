@@ -75,6 +75,8 @@ export function MfaSetupDialog({
 
   // Show recovery codes if they exist
   if (recoveryCodes && recoveryCodes.length > 0) {
+    // Deliberately not dismissible: MFA is already enabled at this point and the
+    // codes are shown once, so the only way out is confirming they're saved.
     return (
       <Dialog open={isOpen}>
         <DialogContent showCloseButton={false}>
@@ -136,8 +138,8 @@ export function MfaSetupDialog({
   if (!setupData) return null;
 
   return (
-    <Dialog open={isOpen}>
-      <DialogContent showCloseButton={false}>
+    <Dialog open={isOpen} onOpenChange={handleCancel}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Enable authenticator app</DialogTitle>
         </DialogHeader>
