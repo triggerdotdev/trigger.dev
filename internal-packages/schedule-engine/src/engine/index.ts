@@ -225,18 +225,31 @@ export class ScheduleEngine {
           instance.taskSchedule.timezone,
           nominalAt
         );
-        const { effectiveAt: candidateEffectiveAt } = calculateEffectiveScheduleTime({
+        const {
+          effectiveAt: candidateEffectiveAt,
+          effectiveRangeMs,
+          windowMs,
+          offsetMs: candidateDelayMs,
+          rangeWasClamped,
+        } = calculateEffectiveScheduleTime({
           nominalAt,
           nextNominalAt,
           schedulePhase,
           window: scheduleWindow,
         });
         const effectiveAt = this.options.cronSpreadEnabled ? candidateEffectiveAt : nominalAt;
+        const appliedDelayMs = effectiveAt.getTime() - nominalAt.getTime();
 
         span.setAttribute("cron_spread_enabled", this.options.cronSpreadEnabled);
+        span.setAttribute("schedule_window_type", scheduleWindow?.type ?? "none");
         span.setAttribute("next_scheduled_timestamp", nominalAt.toISOString());
         span.setAttribute("candidate_effective_schedule_time", candidateEffectiveAt.toISOString());
         span.setAttribute("effective_schedule_time", effectiveAt.toISOString());
+        span.setAttribute("candidate_delay_ms", candidateDelayMs);
+        span.setAttribute("applied_delay_ms", appliedDelayMs);
+        span.setAttribute("schedule_window_ms", windowMs);
+        span.setAttribute("effective_range_ms", effectiveRangeMs);
+        span.setAttribute("schedule_range_was_clamped", rangeWasClamped);
 
         const schedulingDelayMs = effectiveAt.getTime() - Date.now();
         span.setAttribute("scheduling_delay_ms", schedulingDelayMs);
@@ -248,6 +261,11 @@ export class ScheduleEngine {
           candidateEffectiveAt: candidateEffectiveAt.toISOString(),
           effectiveAt: effectiveAt.toISOString(),
           cronSpreadEnabled: this.options.cronSpreadEnabled,
+          scheduleWindowType: scheduleWindow?.type ?? "none",
+          candidateDelayMs,
+          appliedDelayMs,
+          effectiveRangeMs,
+          rangeWasClamped,
           schedulingDelayMs,
           generatorExpression: instance.taskSchedule.generatorExpression,
           timezone: instance.taskSchedule.timezone,
