@@ -3,7 +3,6 @@ import { z } from "zod";
 import { webhookPrisma } from "~/db.server";
 import { findWebhookEndpointResource } from "~/presenters/v3/ApiWebhookEndpointPresenter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { webhookEngine } from "~/v3/webhookEngine.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
 
@@ -27,7 +26,6 @@ const { action, loader } = createActionApiRoute(
       where: { id: endpoint.id },
       data: { status: "ACTIVE", manuallyDeactivatedAt: null },
     });
-    webhookEngine.invalidateEndpoint(endpoint.opaqueId);
 
     return json(await findWebhookEndpointResource(authentication, params.endpointId));
   }

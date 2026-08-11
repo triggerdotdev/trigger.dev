@@ -349,12 +349,6 @@ export class WebhookEngine {
     });
   }
 
-  // Drop a cached endpoint+secret entry so a status change / secret rotation takes effect at once on
-  // this instance (other instances pick it up within the cache TTL).
-  invalidateEndpoint(opaqueId: string): void {
-    this.endpointCache.delete(opaqueId);
-  }
-
   // PUBLIC: re-run a past delivery's task from its stored event. We don't keep the raw body, so this
   // re-triggers from the captured parsedEvent + headers (not a re-verify). A NEW delivery row with a
   // fresh idempotency key is created so the run actually executes (not deduped) and the replay is

@@ -31,7 +31,6 @@ import {
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { engine } from "../runEngine.server";
-import { webhookEngine } from "../webhookEngine.server";
 import {
   removeQueueConcurrencyLimits,
   updateEnvConcurrencyLimits,
@@ -759,7 +758,6 @@ export async function syncDeclarativeWebhooks(
           ...filterData,
         },
       });
-      webhookEngine.invalidateEndpoint(found.opaqueId);
     } else {
       const { id, friendlyId } = WebhookEndpointId.generate();
       await webhookPrisma.webhookEndpoint.create({

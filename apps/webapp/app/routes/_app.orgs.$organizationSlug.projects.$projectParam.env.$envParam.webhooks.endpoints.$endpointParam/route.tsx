@@ -46,7 +46,6 @@ import {
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { webhookEngine } from "~/v3/webhookEngine.server";
 import { requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WebhookTaskPath } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
@@ -183,7 +182,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       where: { id: endpoint.id },
       data: { signingSecretKey: secretKey },
     });
-    webhookEngine.invalidateEndpoint(endpoint.opaqueId);
     return { success: true as const, generatedSecret: secret };
   }
 
@@ -197,7 +195,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     where: { id: endpoint.id },
     data: { signingSecretKey: secretKey },
   });
-  webhookEngine.invalidateEndpoint(endpoint.opaqueId);
 
   return { success: true as const };
 };

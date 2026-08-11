@@ -5,7 +5,6 @@ import { z } from "zod";
 import { prisma, webhookPrisma } from "~/db.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { webhookEngine } from "~/v3/webhookEngine.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
 
@@ -43,8 +42,6 @@ const { action, loader } = createActionApiRoute(
       where: { id: endpoint.id },
       data: { signingSecretKey: secretKey },
     });
-    // Drop the cached secret so verification uses the new one immediately on this instance.
-    webhookEngine.invalidateEndpoint(endpoint.opaqueId);
 
     return json({ id: endpoint.friendlyId, secretSet: true as const, secret });
   }
