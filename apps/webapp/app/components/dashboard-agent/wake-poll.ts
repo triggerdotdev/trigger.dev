@@ -45,6 +45,27 @@ export function planWakeToasts<T>(
   return { plan: { mode: "individual", wakes: fresh }, pending: total };
 }
 
+/**
+ * The running pending count, owned by one holder so the poll and the panel cannot drift.
+ * Every wake counts until the user opens the panel — by whichever route, including a single
+ * wake toast — and opening it clears the count so a later grouped toast claims only wakes
+ * still waiting.
+ */
+export function createWakePendingCount() {
+  let pending = 0;
+
+  return {
+    plan<T>(fresh: T[], max: number): WakeToastPlan<T> {
+      const result = planWakeToasts(fresh, pending, max);
+      pending = result.pending;
+      return result.plan;
+    },
+    acknowledge() {
+      pending = 0;
+    },
+  };
+}
+
 export type WakePollOptions = {
   load: () => Promise<void>;
   isHidden: () => boolean;

@@ -174,9 +174,9 @@ const promotedPrompt: SuggestedPrompt = {
   source: "promoted",
 };
 
-// Pinned, not resolved: the fixture's signal has a fixed timestamp, so a live resolve would
-// dismiss a different chip once that timestamp aged out of the freshness window.
-const dismissedPromptIds = demoFixtures.demoDismissedPromptIds;
+// Resolver-minted ids: the panel resolves its own chips, so a demo-namespaced id would
+// match nothing and the state would render undismissed.
+const dismissedPromptIds = demoFixtures.demoResolvedDismissedPromptIds;
 
 function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   return {
