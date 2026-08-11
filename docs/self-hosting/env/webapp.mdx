@@ -77,6 +77,12 @@ mode: "wide"
 | `API_RATE_LIMIT_LIMITER_LOGS_ENABLED`            | No       | 0                     | API rate limit limiter logs.                                                                                       |
 | `API_RATE_LIMIT_JWT_WINDOW`                      | No       | 1m                    | API rate limit JWT window.                                                                                         |
 | `API_RATE_LIMIT_JWT_TOKENS`                      | No       | 60                    | API rate limit JWT tokens.                                                                                         |
+| `DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL`          | No       | 10s                   | Deployment endpoints rate limit refill interval.                                                                   |
+| `DEPLOYMENT_RATE_LIMIT_MAX`                      | No       | 1500                  | Deployment endpoints rate limit max.                                                                               |
+| `DEPLOYMENT_RATE_LIMIT_REFILL_RATE`              | No       | 500                   | Deployment endpoints rate limit refill rate.                                                                       |
+| `DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED`     | No       | 0                     | Deployment endpoints rate limit request logs.                                                                      |
+| `DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED`   | No       | 1                     | Deployment endpoints rate limit rejection logs.                                                                    |
+| `DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED`     | No       | 0                     | Deployment endpoints rate limit limiter logs.                                                                      |
 | **Deploy & Registry**                            |          |                       |                                                                                                                    |
 | `DEPLOY_REGISTRY_HOST`                           | Yes      | —                     | Deploy registry host.                                                                                              |
 | `DEPLOY_REGISTRY_USERNAME`                       | No       | —                     | Deploy registry username.                                                                                          |

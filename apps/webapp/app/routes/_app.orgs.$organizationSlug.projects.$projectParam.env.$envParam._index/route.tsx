@@ -72,6 +72,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -134,7 +135,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
-    return typeddefer({ items, hourlyActivity, runningStates, usefulLinksPreference });
+    const initialized = await prisma.project.findFirst({
+      where: { id: project.id },
+      select: { initializedAt: true },
+    });
+
+    return typeddefer({
+      items,
+      hourlyActivity,
+      runningStates,
+      usefulLinksPreference,
+      projectInitializedAt: initialized?.initializedAt ?? null,
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -201,7 +213,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates, usefulLinksPreference } =
+  const { items, hourlyActivity, runningStates, usefulLinksPreference, projectInitializedAt } =
     useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
@@ -354,7 +366,7 @@ export default function Page() {
                 </div>
               ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev />
+                  <HasNoTasksDev initializedAt={projectInitializedAt} />
                 </MainCenteredContainer>
               ) : (
                 <MainCenteredContainer className="max-w-prose">
