@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveRealtimeStreamsVersion,
   type RealtimeStreamsVersionConfig,
-} from "~/services/realtime/v1StreamsGlobal.server";
+} from "~/services/realtime/realtimeStreamsVersion";
 
 const NO_S2: RealtimeStreamsVersionConfig = {
   defaultVersion: "v1",
