@@ -13,10 +13,11 @@ const variants = {
     root: "h-4 grow",
     track: "h-1 bg-grid-bright",
     range: "bg-transparent",
-    // The secondary-button hairline+shadow keeps the white dot visible on the
-    // light track
+    // The secondary-button hairline+shadow keeps the dot visible on the light
+    // track. Hover moves the handle off its resting tone in whichever direction
+    // reads as more prominent: brighter on the dark themes, dimmer on light.
     thumb:
-      "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
+      "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm hover:bg-charcoal-200 dark:border-transparent dark:bg-charcoal-300 dark:shadow-none dark:hover:bg-charcoal-200",
     thumbSize: 18,
     // Track-coloured line, notched off the track by borders in the colour of
     // the page behind it (settings rows sit on background-dimmed).
