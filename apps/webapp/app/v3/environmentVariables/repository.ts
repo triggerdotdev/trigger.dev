@@ -128,7 +128,12 @@ export interface Repository {
   /**
    * Return all env vars, including secret variables with values. Should only be used for executing tasks.
    */
-  getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
+  getEnvironmentVariables(
+    projectId: string,
+    environmentId: string,
+    parentEnvironmentId?: string,
+    options?: { readFromReplica?: boolean }
+  ): Promise<EnvironmentVariable[]>;
   delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
   deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
 }
