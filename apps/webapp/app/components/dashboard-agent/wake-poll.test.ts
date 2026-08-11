@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createWakePendingCount,
   planWakeToasts,
   startWakePolling,
   UNREAD_POLL_INTERVAL_MS,
@@ -166,5 +167,39 @@ describe("planWakeToasts", () => {
 
     expect(second.plan).toEqual({ mode: "summary", count: 7 });
     expect(second.pending).toBe(7);
+  });
+});
+
+describe("createWakePendingCount", () => {
+  const MAX = 3;
+  const batch = (n: number) => Array.from({ length: n }, (_, i) => i);
+
+  it("carries unacknowledged wakes into the summary", () => {
+    const count = createWakePendingCount();
+
+    expect(count.plan(batch(2), MAX)).toEqual({ mode: "individual", wakes: [0, 1] });
+    expect(count.plan(batch(2), MAX)).toEqual({ mode: "summary", count: 4 });
+  });
+
+  it("does not count wakes the user already opened", () => {
+    const count = createWakePendingCount();
+
+    // Two individual toasts, both opened — from the toast, ⌘J, anywhere.
+    expect(count.plan(batch(2), MAX).mode).toBe("individual");
+    count.acknowledge();
+
+    // Only the two new wakes are waiting, so they toast individually rather than
+    // claiming "4 watch updates".
+    expect(count.plan(batch(2), MAX)).toEqual({ mode: "individual", wakes: [0, 1] });
+  });
+
+  it("starts the next summary from the wakes that arrived after the open", () => {
+    const count = createWakePendingCount();
+
+    expect(count.plan(batch(4), MAX)).toEqual({ mode: "summary", count: 4 });
+    count.acknowledge();
+
+    expect(count.plan(batch(2), MAX).mode).toBe("individual");
+    expect(count.plan(batch(2), MAX)).toEqual({ mode: "summary", count: 4 });
   });
 });

@@ -238,6 +238,12 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
 
 export const demoDismissedPromptIds: string[] = [demoId("prompt-watch-retry")];
 
+/**
+ * Ids the resolver itself emits, for dismissing against a live resolve. Dismissing the
+ * fresh-failure chip on `demoFailedRunPageContext` falls back to `sp:run-investigate`.
+ */
+export const demoResolvedDismissedPromptIds: string[] = ["sp:fresh-failure"];
+
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun
   .filter((p) => !demoDismissedPromptIds.includes(p.id))
   .slice(0, SUGGESTED_PROMPT_CAP);
