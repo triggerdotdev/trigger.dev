@@ -5,20 +5,33 @@ import {
 } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { redirectWithImpersonation } from "~/models/admin.server";
+import { authenticator } from "~/services/auth.server";
 import { getRealUser } from "~/services/session.server";
 import { validateAndConsumeImpersonationToken } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 const FormSchema = z.object({ id: z.string() });
 
 /**
- * The real authenticated user, or null when they aren't an admin.
+ * The real authenticated user, or null when they're signed in but not an admin.
  *
  * Must not use `requireUser`: while impersonating it resolves to the impersonation target, whose
  * `admin` is false, so an admin switching to a second target was bounced to `/` and left on the
  * first one.
+ *
+ * Throws a login redirect when nobody is signed in, keeping this URL as `redirectTo` so the
+ * impersonation survives the round trip — the one-time token is validated after this gate, so it's
+ * still unconsumed when the browser comes back. Collapsing that into the non-admin `/` redirect
+ * would drop the link the agent clicked.
  */
 async function requireRealAdmin(request: Request) {
+  if (!(await authenticator.isAuthenticated(request))) {
+    const url = new URL(request.url);
+    const redirectTo = sanitizeRedirectPath(`${url.pathname}${url.search}`);
+    throw redirect(`/login?${new URLSearchParams([["redirectTo", redirectTo]])}`);
+  }
+
   const admin = await getRealUser(request);
   return admin?.admin ? admin : null;
 }

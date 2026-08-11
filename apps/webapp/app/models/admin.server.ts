@@ -238,27 +238,31 @@ export async function redirectWithImpersonation(
   const previousTargetId = await getImpersonationId(request);
 
   try {
-    await prismaClient.impersonationAuditLog.createMany({
-      data: [
-        // Switching straight from one target to another never passes through `clearImpersonation`,
-        // so close the previous session here or the trail shows two overlapping STARTs.
-        ...(previousTargetId && previousTargetId !== userId
-          ? [
-              {
-                action: "STOP" as const,
-                adminId: admin.id,
-                targetId: previousTargetId,
-                ipAddress,
-              },
-            ]
-          : []),
-        {
-          action: "START" as const,
+    // Switching straight from one target to another never passes through `clearImpersonation`, so
+    // close the previous session here or the trail shows two overlapping STARTs.
+    //
+    // Two statements rather than one `createMany`: `createdAt` defaults to `now()`, which is fixed
+    // for the duration of a statement, so a single insert would stamp both rows identically and an
+    // audit view ordered by `createdAt` couldn't tell which came first — the very ambiguity the
+    // STOP row exists to remove.
+    if (previousTargetId && previousTargetId !== userId) {
+      await prismaClient.impersonationAuditLog.create({
+        data: {
+          action: "STOP",
           adminId: admin.id,
-          targetId: userId,
+          targetId: previousTargetId,
           ipAddress,
         },
-      ],
+      });
+    }
+
+    await prismaClient.impersonationAuditLog.create({
+      data: {
+        action: "START",
+        adminId: admin.id,
+        targetId: userId,
+        ipAddress,
+      },
     });
   } catch (error) {
     logger.error("Failed to create impersonation audit log", {
