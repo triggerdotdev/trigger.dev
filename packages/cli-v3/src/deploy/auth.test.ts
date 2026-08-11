@@ -8,11 +8,11 @@ import { authenticateForDeploy, userIdForDeploy } from "./auth.js";
 import { readAuthConfigProfile } from "../utilities/configFiles.js";
 
 describe("authenticateForDeploy", () => {
-  it("gives TRIGGER_SECRET_KEY precedence without logging in", async () => {
+  it("uses an API key from TRIGGER_ACCESS_TOKEN without logging in", async () => {
     let loginCalled = false;
 
     const result = await authenticateForDeploy({
-      secretKey: "tr_prod_sk_deploy",
+      accessToken: "tr_prod_sk_deploy",
       apiUrl: "https://example.trigger.dev",
       profile: "default",
       silent: true,
@@ -37,7 +37,7 @@ describe("authenticateForDeploy", () => {
 
   it("derives hosted dashboard links without user metadata", async () => {
     const result = await authenticateForDeploy({
-      secretKey: "tr_preview_sk_deploy",
+      accessToken: "tr_preview_sk_deploy",
       apiUrl: "https://api.example.trigger.dev",
       profile: "default",
       silent: true,
@@ -52,7 +52,7 @@ describe("authenticateForDeploy", () => {
 
   it("uses the normal cloud URLs when no API URL is set", async () => {
     const result = await authenticateForDeploy({
-      secretKey: "tr_prod_sk_deploy",
+      accessToken: "tr_prod_sk_deploy",
       profile: "default",
       silent: true,
       login: async () => ({ ok: false, error: "should not be called" }),
@@ -70,7 +70,7 @@ describe("authenticateForDeploy", () => {
     });
 
     const result = await authenticateForDeploy({
-      secretKey: "tr_prod_sk_deploy",
+      accessToken: "tr_prod_sk_deploy",
       profile: "selfhosted",
       silent: true,
       login: async () => ({ ok: false, error: "should not be called" }),
@@ -88,7 +88,7 @@ describe("authenticateForDeploy", () => {
     });
 
     const result = await authenticateForDeploy({
-      secretKey: "tr_prod_sk_deploy",
+      accessToken: "tr_prod_sk_deploy",
       apiUrl: "https://api.trigger.dev",
       profile: "selfhosted",
       silent: true,
@@ -100,7 +100,51 @@ describe("authenticateForDeploy", () => {
     });
   });
 
-  it("keeps login authentication when no secret key is set", async () => {
+  it("passes a PAT through to the login path", async () => {
+    let loginOptions: unknown;
+    const result = await authenticateForDeploy({
+      accessToken: "tr_pat_abc123",
+      apiUrl: "https://example.trigger.dev",
+      profile: "ci",
+      silent: false,
+      login: async (options) => {
+        loginOptions = options;
+        return { ok: false, error: "login result" };
+      },
+    });
+
+    expect(loginOptions).toEqual({
+      embedded: true,
+      defaultApiUrl: "https://example.trigger.dev",
+      profile: "ci",
+      silent: false,
+    });
+    expect(result).toEqual({ ok: false, error: "login result" });
+  });
+
+  it("passes an OAT through to the login path", async () => {
+    let loginOptions: unknown;
+    const result = await authenticateForDeploy({
+      accessToken: "tr_oat_abc123",
+      apiUrl: "https://example.trigger.dev",
+      profile: "ci",
+      silent: false,
+      login: async (options) => {
+        loginOptions = options;
+        return { ok: false, error: "login result" };
+      },
+    });
+
+    expect(loginOptions).toEqual({
+      embedded: true,
+      defaultApiUrl: "https://example.trigger.dev",
+      profile: "ci",
+      silent: false,
+    });
+    expect(result).toEqual({ ok: false, error: "login result" });
+  });
+
+  it("keeps login authentication when no access token is set", async () => {
     let loginOptions: unknown;
     const result = await authenticateForDeploy({
       apiUrl: "https://example.trigger.dev",
@@ -121,52 +165,10 @@ describe("authenticateForDeploy", () => {
     expect(result).toEqual({ ok: false, error: "login result" });
   });
 
-  it("rejects a PAT in TRIGGER_SECRET_KEY with a helpful error", async () => {
-    const result = await authenticateForDeploy({
-      secretKey: "tr_pat_abc123",
-      profile: "default",
-      silent: true,
-      login: async () => ({ ok: false, error: "should not be called" }),
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.stringContaining("TRIGGER_ACCESS_TOKEN"),
-    });
-  });
-
-  it("rejects an OAT in TRIGGER_SECRET_KEY with a helpful error", async () => {
-    const result = await authenticateForDeploy({
-      secretKey: "tr_oat_abc123",
-      profile: "default",
-      silent: true,
-      login: async () => ({ ok: false, error: "should not be called" }),
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.stringContaining("TRIGGER_ACCESS_TOKEN"),
-    });
-  });
-
-  it("rejects a secret key that doesn't look like an API key", async () => {
-    const result = await authenticateForDeploy({
-      secretKey: "not-a-valid-key",
-      profile: "default",
-      silent: true,
-      login: async () => ({ ok: false, error: "should not be called" }),
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.stringContaining("does not look like a Trigger.dev API key"),
-    });
-  });
-
   it("throws a descriptive error for an invalid API URL", async () => {
     await expect(
       authenticateForDeploy({
-        secretKey: "tr_prod_sk_deploy",
+        accessToken: "tr_prod_sk_deploy",
         apiUrl: "not-a-url",
         profile: "default",
         silent: true,

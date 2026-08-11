@@ -270,7 +270,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   verifyDirectory(dir, projectPath);
 
   const authorization = await authenticateForDeploy({
-    secretKey: process.env.TRIGGER_SECRET_KEY,
+    accessToken: process.env.TRIGGER_ACCESS_TOKEN,
     apiUrl: process.env.TRIGGER_API_URL ?? options.apiUrl,
     profile: options.profile,
     silent: options.plain,

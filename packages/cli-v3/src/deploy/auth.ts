@@ -27,13 +27,13 @@ type LoginForDeploy = (options: {
 }) => Promise<LoginResult>;
 
 export async function authenticateForDeploy({
-  secretKey,
+  accessToken,
   apiUrl,
   profile,
   silent,
   login,
 }: {
-  secretKey?: string;
+  accessToken?: string;
   apiUrl?: string;
   profile: string;
   silent: boolean;
@@ -42,7 +42,13 @@ export async function authenticateForDeploy({
   const authConfig = readAuthConfigProfile(profile);
   const resolvedApiUrl = apiUrl ?? authConfig?.apiUrl ?? CLOUD_API_URL;
 
-  if (!secretKey) {
+  const isApiKey =
+    !!accessToken &&
+    accessToken.startsWith(apiKeyPrefix) &&
+    !accessToken.startsWith(personalTokenPrefix) &&
+    !accessToken.startsWith(organizationTokenPrefix);
+
+  if (!isApiKey) {
     return login({
       embedded: true,
       defaultApiUrl: resolvedApiUrl,
@@ -51,30 +57,13 @@ export async function authenticateForDeploy({
     });
   }
 
-  if (secretKey.startsWith(personalTokenPrefix) || secretKey.startsWith(organizationTokenPrefix)) {
-    return {
-      ok: false,
-      error: `TRIGGER_SECRET_KEY is set to a ${
-        secretKey.startsWith(personalTokenPrefix) ? "Personal" : "Organization"
-      } Access Token. Use TRIGGER_ACCESS_TOKEN instead, or remove TRIGGER_SECRET_KEY and use \`trigger login\`.`,
-    };
-  }
-
-  if (!secretKey.startsWith(apiKeyPrefix)) {
-    return {
-      ok: false,
-      error:
-        "TRIGGER_SECRET_KEY does not look like a Trigger.dev API key. API keys start with \`tr_\` (e.g. \`tr_prod_...\`).",
-    };
-  }
-
   return {
     ok: true,
     profile,
     dashboardUrl: dashboardUrlForApiUrl(resolvedApiUrl),
     auth: {
       apiUrl: resolvedApiUrl,
-      accessToken: secretKey,
+      accessToken,
       tokenType: "apiKey",
     },
   };
