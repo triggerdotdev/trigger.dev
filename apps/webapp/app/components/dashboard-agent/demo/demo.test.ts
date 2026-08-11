@@ -14,6 +14,7 @@ import {
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveSuggestedPrompts } from "../suggested-prompts";
 import * as fixtures from "./fixtures";
 import { DEMO_ID_PREFIX, DEMO_MARKER } from "./ids";
 
@@ -255,6 +256,15 @@ describe("page context and prompt fixtures", () => {
     for (const id of fixtures.demoDismissedPromptIds) {
       expect(fixtures.demoPromptsAfterDismissal.some((prompt) => prompt.id === id)).toBe(false);
     }
+  });
+
+  it("dismisses a chip the resolver actually emits", () => {
+    const full = resolveSuggestedPrompts(fixtures.demoFailedRunPageContext);
+    const after = resolveSuggestedPrompts(fixtures.demoFailedRunPageContext, {
+      dismissedIds: fixtures.demoResolvedDismissedPromptIds,
+    });
+    expect(full.map((prompt) => prompt.id)).toContain(fixtures.demoResolvedDismissedPromptIds[0]);
+    expect(after.map((prompt) => prompt.id)).not.toEqual(full.map((prompt) => prompt.id));
   });
 });
 

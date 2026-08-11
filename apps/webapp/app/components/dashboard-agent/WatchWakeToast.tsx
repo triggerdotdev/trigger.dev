@@ -115,6 +115,10 @@ export function showWatchWakeToast(wake: WatchWake, onOpenChat: (chatId: string)
   );
 }
 
+// One id for all summaries: a later poll rewrites the count in place instead of stacking a
+// second never-expiring toast on top of the first.
+const WAKES_SUMMARY_TOAST_ID = "watch-wakes-summary";
+
 /** One persistent toast standing in for a batch too large to narrate one by one. */
 export function showWatchWakesSummaryToast(count: number, onOpenChat: () => void) {
   show(
@@ -126,8 +130,14 @@ export function showWatchWakesSummaryToast(count: number, onOpenChat: () => void
         onOpenChat={onOpenChat}
       />
     ),
-    // One id for all summaries: a later poll rewrites the count in place instead
-    // of stacking a second never-expiring toast on top of the first.
-    "watch-wakes-summary"
+    WAKES_SUMMARY_TOAST_ID
   );
+}
+
+/**
+ * Takes the summary off screen. Its count only means anything until the user opens the
+ * panel; left up, a later poll would rewrite it to a smaller number.
+ */
+export function dismissWatchWakesSummaryToast() {
+  toast.dismiss(WAKES_SUMMARY_TOAST_ID);
 }
