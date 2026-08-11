@@ -10,6 +10,7 @@ import {
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
+import { ScheduleWindow } from "./schemas.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -1045,6 +1046,12 @@ export const CreateScheduleOptions = z.object({
    *
    */
   timezone: z.string().optional(),
+  /** Optionally delay each occurrence by a stable amount within this window.
+   * Durations use minutes, hours, or days. Percentages are relative to the next nominal interval.
+   *
+   * @example "30m", "2h", "1d", "30%", "100%"
+   */
+  window: ScheduleWindow.optional(),
 });
 
 export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
@@ -1070,6 +1077,7 @@ export const ScheduleObject = z.object({
   externalId: z.string().nullish(),
   generator: ScheduleGenerator,
   timezone: z.string(),
+  window: ScheduleWindow.optional(),
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({

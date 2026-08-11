@@ -29,6 +29,7 @@ import {
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import { normalizeScheduleWindow } from "../scheduleWindow.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -710,6 +711,7 @@ export async function syncDeclarativeSchedules(
         timezone: task.schedule.timezone,
         taskIdentifier: task.id,
         friendlyId: existingSchedule?.friendlyId,
+        window: task.schedule.window,
       },
       [environment.id]
     );
@@ -723,6 +725,7 @@ export async function syncDeclarativeSchedules(
           generatorExpression: task.schedule.cron,
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
+          ...normalizeScheduleWindow(task.schedule.window),
         },
         include: {
           instances: true,
@@ -748,6 +751,7 @@ export async function syncDeclarativeSchedules(
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
           type: "DECLARATIVE",
+          ...normalizeScheduleWindow(task.schedule.window),
           instances: {
             create: [
               {

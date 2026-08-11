@@ -6,6 +6,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
+import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
 
 type ViewScheduleOptions = {
   userId?: string;
@@ -30,6 +31,8 @@ export class ViewSchedulePresenter {
         generatorExpression: true,
         generatorDescription: true,
         timezone: true,
+        windowDurationSeconds: true,
+        windowPercentage: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -120,6 +123,7 @@ export class ViewSchedulePresenter {
         description: result.schedule.cronDescription,
       },
       timezone: result.schedule.timezone,
+      window: formatScheduleWindow(result.schedule),
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? (result.schedule.deduplicationKey ?? undefined)

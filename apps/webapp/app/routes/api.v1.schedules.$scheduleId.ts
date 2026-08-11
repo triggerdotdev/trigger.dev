@@ -107,6 +107,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           taskIdentifier: body.data.task,
           cron: body.data.cron,
           timezone: body.data.timezone,
+          window: body.data.window,
           environments: [authenticationResult.environment.id],
           externalId: body.data.externalId,
         };
@@ -124,6 +125,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             description: schedule.cronDescription,
           },
           timezone: schedule.timezone,
+          window: schedule.window,
           externalId: schedule.externalId ?? undefined,
           deduplicationKey: schedule.deduplicationKey,
           environments: schedule.environments,
