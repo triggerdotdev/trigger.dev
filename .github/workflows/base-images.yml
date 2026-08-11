@@ -1,0 +1,167 @@
+name: 🐳 Deploy base images
+
+# Publishes the base images that deployed task containers build on
+# (triggerdotdev/node:<major>-bookworm and triggerdotdev/bun:<line>-bookworm,
+# each with a -build toolchain variant) to Docker Hub. Tags are mutable and
+# rebuilt in place; the CLI pins images by digest, so consumers are unaffected
+# until a digest bump ships in a release.
+#
+# Packages install from a Debian snapshot timestamp (recorded in the
+# dev.trigger.debian-snapshot image label and the job summary), so any
+# published digest can be rebuilt and verified from the recorded inputs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      debian_snapshot:
+        description: "Debian snapshot timestamp (YYYYMMDDTHHMMSSZ). Defaults to yesterday 00:00 UTC."
+        required: false
+        type: string
+  schedule:
+    # Weekly rebuild so packages pick up Debian security updates
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "base-images/**"
+      - ".github/workflows/base-images.yml"
+  pull_request:
+    paths:
+      - "base-images/**"
+      - ".github/workflows/base-images.yml"
+
+concurrency:
+  group: base-images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.config.outputs.images }}
+      packages: ${{ steps.config.outputs.packages }}
+      build_packages: ${{ steps.config.outputs.build_packages }}
+      suite: ${{ steps.config.outputs.suite }}
+      snapshot: ${{ steps.config.outputs.snapshot }}
+      push: ${{ steps.config.outputs.push }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read image matrix and resolve snapshot
+        id: config
+        run: |
+          echo "images=$(jq -c '.images' base-images/images.json)" >> "$GITHUB_OUTPUT"
+          echo "packages=$(jq -r '.packages' base-images/images.json)" >> "$GITHUB_OUTPUT"
+          echo "build_packages=$(jq -r '.buildPackages' base-images/images.json)" >> "$GITHUB_OUTPUT"
+          echo "suite=$(jq -r '.suite' base-images/images.json)" >> "$GITHUB_OUTPUT"
+
+          SNAPSHOT="${{ inputs.debian_snapshot }}"
+          if [ -z "$SNAPSHOT" ]; then
+            SNAPSHOT="$(date -u -d yesterday +%Y%m%dT000000Z)"
+          fi
+          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+
+          # Only publish from main; pull requests validate the build without pushing
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.setup.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐳 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🐳 Login to Docker Hub
+        if: needs.setup.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🐳 Build and push runtime image
+        id: build_runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: base-images
+          file: base-images/Dockerfile
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.setup.outputs.push == 'true' }}
+          provenance: false
+          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.image.base }}
+            DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
+            DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
+            PACKAGES=${{ needs.setup.outputs.packages }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
+
+      - name: 🐳 Build and push build-variant image
+        id: build_toolchain
+        uses: docker/build-push-action@v6
+        with:
+          context: base-images
+          file: base-images/Dockerfile
+          target: build
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.setup.outputs.push == 'true' }}
+          provenance: false
+          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+          build-args: |
+            BASE_IMAGE=${{ matrix.image.base }}
+            DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
+            DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
+            PACKAGES=${{ needs.setup.outputs.packages }}
+            BUILD_PACKAGES=${{ needs.setup.outputs.build_packages }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
+
+      - name: 🔏 Attest runtime image provenance
+        if: needs.setup.outputs.push == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
+          subject-digest: ${{ steps.build_runtime.outputs.digest }}
+          push-to-registry: false
+
+      - name: 🔏 Attest build-variant image provenance
+        if: needs.setup.outputs.push == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
+          subject-digest: ${{ steps.build_toolchain.outputs.digest }}
+          push-to-registry: false
+
+      - name: 📋 Record digests
+        run: |
+          {
+            echo "### triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}"
+            echo '```'
+            echo "runtime: ${{ steps.build_runtime.outputs.digest }}"
+            echo "build:   ${{ steps.build_toolchain.outputs.digest }}"
+            echo "debian snapshot: ${{ needs.setup.outputs.snapshot }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
