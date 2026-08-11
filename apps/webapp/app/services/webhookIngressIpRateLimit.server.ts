@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { Ratelimit } from "@upstash/ratelimit";
 import { env } from "~/env.server";
+import { logger } from "./logger.server";
 import { RateLimiter, type Duration } from "./rateLimiter.server";
 
 const ipLimiter = new RateLimiter({
@@ -17,10 +18,14 @@ export const webhookIngressIpRateLimiter: RequestHandler = async (req, res, next
   if (!req.path.startsWith("/webhooks/v1/ingest/")) return next();
   const ip =
     (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
-  const { success } = await ipLimiter.limit(ip);
-  if (!success) {
-    res.status(429).json({ error: "Too many requests" });
-    return;
+  try {
+    const { success } = await ipLimiter.limit(ip);
+    if (!success) {
+      res.status(429).json({ error: "Too many requests" });
+      return;
+    }
+  } catch (error) {
+    logger.warn("webhookIngressIpRateLimiter: limiter error, allowing request", { error });
   }
   next();
 };
