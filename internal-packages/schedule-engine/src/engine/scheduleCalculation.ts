@@ -4,6 +4,14 @@ export function calculateNextScheduledTimestampFromNow(schedule: string, timezon
   return calculateNextScheduledTimestamp(schedule, timezone, new Date());
 }
 
+export function calculateNextNominalTimestamp(
+  schedule: string,
+  timezone: string | null,
+  nominalTimestamp: Date
+) {
+  return calculateNextStep(schedule, timezone, nominalTimestamp);
+}
+
 export function calculateNextScheduledTimestamp(
   schedule: string,
   timezone: string | null,
