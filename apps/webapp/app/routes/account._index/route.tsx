@@ -461,9 +461,8 @@ export default function Page() {
                   <Switch
                     id={marketingEmails.id}
                     name={marketingEmails.name}
-                    variant="medium"
+                    variant="minimal/medium"
                     defaultChecked={user.marketingEmails}
-                    className="w-fit pr-3"
                   />
                 </div>
               </div>
