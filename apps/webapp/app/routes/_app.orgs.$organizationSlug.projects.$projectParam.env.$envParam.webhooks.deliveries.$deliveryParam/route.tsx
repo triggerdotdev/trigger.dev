@@ -160,6 +160,7 @@ export default function Page() {
   });
 
   const deliveriesPath = v3WebhooksPath(organization, project, environment);
+  const [tab, setTab] = useState<"event" | "headers">("event");
 
   if (!delivery) {
     return (
@@ -199,8 +200,6 @@ export default function Page() {
       ? JSON.stringify(delivery.headers, null, 2)
       : null;
   const duration = formatDuration(delivery.createdAt, delivery.processedAt);
-
-  const [tab, setTab] = useState<"event" | "headers">("event");
 
   return (
     <>

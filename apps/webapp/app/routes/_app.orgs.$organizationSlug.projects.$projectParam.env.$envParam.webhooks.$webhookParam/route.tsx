@@ -102,9 +102,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const url = new URL(request.url);
-  const period = url.searchParams.get("period") ?? undefined;
+  const periodParam = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
+  const hasExplicitWindow = Boolean(periodParam || from || to);
+  const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
   const deliveriesCursor = url.searchParams.get("deliveriesCursor") ?? undefined;
   const deliveriesDirectionRaw = url.searchParams.get("deliveriesDirection") ?? undefined;
   const deliveriesDirection = deliveriesDirectionRaw

@@ -114,9 +114,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
 
   const url = new URL(request.url);
-  const period = url.searchParams.get("period") ?? undefined;
+  const periodParam = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
+  const hasExplicitWindow = Boolean(periodParam || from || to);
+  const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
