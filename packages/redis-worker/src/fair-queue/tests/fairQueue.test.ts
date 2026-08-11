@@ -1580,6 +1580,16 @@ describe("FairQueue", () => {
 
           expect(await redis.zcard(keys.inflightKey(0))).toBe(1);
           expect(await redis.zcard(keys.queueKey(queueId))).toBe(0);
+
+          await redis.del(concurrencyKey);
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.queueKey(queueId))).toBe(1);
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+            },
+            { timeout: 8000 }
+          );
         } finally {
           await redis.del(concurrencyKey);
           await redis.quit();

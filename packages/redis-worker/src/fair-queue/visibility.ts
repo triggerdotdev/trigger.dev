@@ -399,7 +399,7 @@ export class VisibilityManager {
       dispatchKey: string;
       tenantId: string;
     },
-    onBeforeRequeue?: (messages: ReclaimedMessageInfo[]) => Promise<void>
+    onBeforeRequeue?: (messages: ReclaimedMessageInfo[]) => Promise<string[] | void>
   ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
@@ -465,14 +465,24 @@ export class VisibilityManager {
       return [];
     }
 
-    if (onBeforeRequeue) {
-      await onBeforeRequeue(candidates.map((candidate) => candidate.info));
-    }
+    const notReleased = new Set(
+      (onBeforeRequeue
+        ? await onBeforeRequeue(candidates.map((candidate) => candidate.info))
+        : undefined) ?? []
+    );
 
     const reclaimedMessages: ReclaimedMessageInfo[] = [];
 
     for (const { member, deadlineScore, storedMessage, info } of candidates) {
       const { messageId, queueId } = info;
+
+      if (notReleased.has(messageId)) {
+        this.logger.error("Skipping requeue, concurrency slot was not released", {
+          messageId,
+          queueId,
+        });
+        continue;
+      }
       const { queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, tenantId } =
         getQueueKeys(queueId);
 

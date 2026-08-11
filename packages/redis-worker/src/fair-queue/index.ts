@@ -1550,21 +1550,45 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
    * leaves the messages in-flight for the next reclaim tick. That is the safe direction:
    * requeuing a message whose slot is still held is what strands the slot permanently.
    */
-  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<void> {
+  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<string[]> {
     if (!this.concurrencyManager || messages.length === 0) {
-      return;
+      return [];
     }
 
-    await this.concurrencyManager.releaseBatch(
-      messages.map((message) => ({
-        queue: {
-          id: message.queueId,
-          tenantId: message.tenantId,
-          metadata: message.metadata ?? {},
-        },
-        messageId: message.messageId,
-      }))
-    );
+    const descriptorFor = (message: ReclaimedMessageInfo) => ({
+      id: message.queueId,
+      tenantId: message.tenantId,
+      metadata: message.metadata ?? {},
+    });
+
+    try {
+      await this.concurrencyManager.releaseBatch(
+        messages.map((message) => ({ queue: descriptorFor(message), messageId: message.messageId }))
+      );
+      return [];
+    } catch (error) {
+      this.logger.error("Batch concurrency release failed, retrying message by message", {
+        count: messages.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const failed: string[] = [];
+
+    for (const message of messages) {
+      try {
+        await this.concurrencyManager.release(descriptorFor(message), message.messageId);
+      } catch (error) {
+        failed.push(message.messageId);
+        this.logger.error("Failed to release concurrency for reclaimed message", {
+          messageId: message.messageId,
+          queueId: message.queueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return failed;
   }
 
   async #reclaimTimedOutMessages(): Promise<void> {

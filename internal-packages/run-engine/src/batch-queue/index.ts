@@ -162,6 +162,7 @@ export class BatchQueue {
       consumerCount: options.consumerCount,
       consumerIntervalMs: options.consumerIntervalMs,
       visibilityTimeoutMs: this.visibilityTimeoutMs,
+      heartbeatIntervalMs: this.visibilityTimeoutMs,
       startConsumers: false, // We control when to start
       cooloff: {
         enabled: false,
