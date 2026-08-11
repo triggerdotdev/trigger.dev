@@ -30,6 +30,13 @@ export interface WebhookEngineOptions {
   logLevel?: string;
   prisma: WebhookDatabase;
   redis: RedisOptions;
+  /**
+   * When true the feature is fully off: the engine skips opening its Redis clients and building the
+   * worker, so a deployment with webhooks disabled holds no connections and does no queue polling.
+   * Distinct from `worker.disabled`, which keeps the engine (and its front-gate Redis) for ingress
+   * but does not start the worker loop.
+   */
+  disabled?: boolean;
   worker: {
     concurrency: number;
     workers?: number;

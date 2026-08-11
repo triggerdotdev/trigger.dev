@@ -34,7 +34,7 @@ import { evaluateSessionKeyTemplate, walkPath as resolveBodyPath } from "./sessi
 const WEBHOOK_DELIVER_MAX_ATTEMPTS = webhookWorkerCatalog["webhook.deliver"].retry.maxAttempts;
 
 export class WebhookEngine {
-  private worker: Worker<typeof webhookWorkerCatalog>;
+  private worker!: Worker<typeof webhookWorkerCatalog>;
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
@@ -50,7 +50,7 @@ export class WebhookEngine {
   prisma: WebhookDatabase;
 
   private triggerTask: TriggerWebhookTaskCallback;
-  private frontGate: Redis;
+  private frontGate!: Redis;
   // Caches the endpoint + resolved signing secret per opaqueId so the ingest hot path skips two
   // Postgres reads (endpoint lookup + secret decrypt). Both are immutable per endpoint within the
   // TTL; a status change or secret rotation takes effect after at most the TTL.
@@ -61,7 +61,6 @@ export class WebhookEngine {
       options.logger ?? new Logger("WebhookEngine", (this.options.logLevel ?? "info") as any);
     this.prisma = options.prisma;
     this.triggerTask = options.triggerTask;
-    this.frontGate = createRedisClient(options.redis);
 
     this.tracer = options.tracer ?? getTracer("webhook-engine");
     this.meter = options.meter ?? getMeter("webhook-engine");
@@ -95,6 +94,13 @@ export class WebhookEngine {
       options.endpointCache?.ttlMs ?? 30_000,
       options.endpointCache?.maxSize ?? 10_000
     );
+
+    if (options.disabled) {
+      this.logger.info("Webhook engine disabled; skipping Redis and worker setup");
+      return;
+    }
+
+    this.frontGate = createRedisClient(options.redis);
 
     this.worker = new Worker({
       name: "webhook-engine-worker",
@@ -137,8 +143,15 @@ export class WebhookEngine {
     }
   }
 
+  #assertEnabled(): void {
+    if (this.options.disabled) {
+      throw new Error('WebhookEngine is disabled: WEBHOOK_ENABLED is not "1"');
+    }
+  }
+
   // PUBLIC ENTRY: verify inline, append-only delivery write, enqueue routing, ack.
   async ingest(input: IngestInput): Promise<IngestResult> {
+    this.#assertEnabled();
     return startSpan(this.tracer, "webhook.ingest", async (span) => {
       span.setAttribute("opaqueId", input.opaqueId);
 
@@ -317,6 +330,7 @@ export class WebhookEngine {
    * downstream (filter, startOn, routing, run/session) runs for real.
    */
   async simulateInject(input: IngestInput): Promise<IngestResult> {
+    this.#assertEnabled();
     return startSpan(this.tracer, "webhook.simulate", async (span) => {
       span.setAttribute("opaqueId", input.opaqueId);
 
@@ -354,6 +368,7 @@ export class WebhookEngine {
   // fresh idempotency key is created so the run actually executes (not deduped) and the replay is
   // auditable; it shares the original externalDeliveryId so the two group together.
   async replayDelivery(input: { id: string; createdAt: Date }): Promise<ReplayResult> {
+    this.#assertEnabled();
     return startSpan(this.tracer, "webhook.replay", async (span) => {
       span.setAttribute("deliveryId", input.id);
 
@@ -748,10 +763,12 @@ export class WebhookEngine {
   }
 
   async getJob(id: string) {
+    this.#assertEnabled();
     return this.worker.getJob(id);
   }
 
   async quit() {
+    if (this.options.disabled) return;
     this.logger.info("Shutting down webhook engine");
 
     try {

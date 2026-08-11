@@ -41,6 +41,7 @@ function createWebhookEngine() {
   const engine = new WebhookEngine({
     prisma: webhookPrisma,
     logLevel: env.WEBHOOK_ENGINE_LOG_LEVEL,
+    disabled: env.WEBHOOK_ENABLED !== "1",
     redis: {
       host: env.WEBHOOK_WORKER_REDIS_HOST ?? "localhost",
       port: env.WEBHOOK_WORKER_REDIS_PORT ?? 6379,
