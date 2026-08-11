@@ -331,7 +331,10 @@ describe("realtime-svc — replica-lag guards", () => {
 
       const result = await ensureRunForSession({
         session,
-        environment: { id: seed.environment.id } as unknown as AuthenticatedEnvironment,
+        environment: {
+          id: seed.environment.id,
+          organization: { streamBasinName: null },
+        } as unknown as AuthenticatedEnvironment,
         reason: "manual",
       });
 
@@ -401,7 +404,10 @@ describe("realtime-svc — replica-lag guards", () => {
       const result = await swapSessionRun({
         session: sessionRow,
         callingRunId,
-        environment: { id: seed.environment.id } as unknown as AuthenticatedEnvironment,
+        environment: {
+          id: seed.environment.id,
+          organization: { streamBasinName: null },
+        } as unknown as AuthenticatedEnvironment,
         reason: "upgrade",
       });
 
