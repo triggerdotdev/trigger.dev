@@ -37,7 +37,12 @@ import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 import { explicitPromptTarget } from "./explicit-prompt";
 import { escapeClosesPanel } from "./panel-escape";
-import { markChatListRead, unreadWorkCount } from "./unread-counts";
+import {
+  markChatListRead,
+  nextVisibleChat,
+  settleReadChats,
+  unreadWorkCount,
+} from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
@@ -148,6 +153,10 @@ export function DashboardAgentPanel({
   // The read POST and its reload can land out of order, so mask the next list.
   const justRead = useRef<Set<string>>(new Set());
 
+  // Read when the response lands, not when it was requested, so a chat switched to mid-flight
+  // is the one the list settles against.
+  const visibleChatId = useRef<string | null>(null);
+
   // Ordering-safe: if the new chat has not reported yet, its own report re-sets the marker.
   useEffect(() => {
     setThinkingChatId((previous) => markerAfterActiveChat(previous, active?.chatId));
@@ -168,9 +177,7 @@ export function DashboardAgentPanel({
           const pending = chats.some((chat) => chat.hasActiveWatch || chat.hasUnreadWake);
           if (pending) rememberWatchActivity(organization.id);
           else forgetWatchActivity(organization.id);
-          const settled = chats.map((chat) =>
-            read.has(chat.id) ? { ...chat, hasUnreadWake: false, hasUnreadWork: false } : chat
-          );
+          const settled = settleReadChats(chats, read, visibleChatId.current);
           setChats(settled);
           setChatsLoaded(true);
         } catch (error) {
@@ -320,11 +327,13 @@ export function DashboardAgentPanel({
     if (!active?.chatId) return;
     const chatId = active.chatId;
     onChatRead?.(chatId, { leaving: false });
+    visibleChatId.current = nextVisibleChat(chatId, { leaving: false });
     justRead.current.add(chatId);
     setChats((previous) => markChatListRead(previous, chatId));
     // Read again on the way out: a wake can land while the chat is open.
     return () => {
       onChatRead?.(chatId, { leaving: true });
+      visibleChatId.current = nextVisibleChat(chatId, { leaving: true });
       justRead.current.add(chatId);
       setChats((previous) => markChatListRead(previous, chatId));
     };
