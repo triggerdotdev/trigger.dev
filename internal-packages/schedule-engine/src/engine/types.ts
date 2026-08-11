@@ -96,4 +96,9 @@ export interface RegisterScheduleInstanceParams {
    * disconnected, etc.) do NOT advance this — only real fires do.
    */
   lastScheduleTime?: Date;
+  /**
+   * Keep an existing stable-ID Redis job unchanged, while still creating it
+   * when missing. Intended for no-op reconciliation of unchanged schedules.
+   */
+  preserveExistingJob?: boolean;
 }

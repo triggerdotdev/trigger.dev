@@ -717,6 +717,12 @@ export async function syncDeclarativeSchedules(
     );
 
     if (existingSchedule) {
+      const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+      const timingChanged =
+        existingSchedule.generatorExpression !== task.schedule.cron ||
+        existingSchedule.timezone !== task.schedule.timezone ||
+        existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
+        existingSchedule.windowPercentage !== normalizedWindow.windowPercentage;
       const schedule = await prisma.taskSchedule.update({
         where: {
           id: existingSchedule.id,
@@ -725,7 +731,7 @@ export async function syncDeclarativeSchedules(
           generatorExpression: task.schedule.cron,
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
-          ...normalizeScheduleWindow(task.schedule.window),
+          ...normalizedWindow,
         },
         include: {
           instances: true,
@@ -735,7 +741,10 @@ export async function syncDeclarativeSchedules(
       missingSchedules.delete(existingSchedule.id);
       const instance = schedule.instances.at(0);
       if (instance) {
-        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+        await scheduleEngine.registerNextTaskScheduleInstance({
+          instanceId: instance.id,
+          preserveExistingJob: !timingChanged,
+        });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${schedule.id}`

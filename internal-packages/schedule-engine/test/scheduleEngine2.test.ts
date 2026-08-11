@@ -220,7 +220,11 @@ describe("ScheduleEngine Integration (part 2)", () => {
           },
         });
 
-        await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+        // Atomic preserve mode still creates the stable-ID job when it is missing.
+        await engine.registerNextTaskScheduleInstance({
+          instanceId: scheduleInstance.id,
+          preserveExistingJob: true,
+        });
 
         const unwindowedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
           where: { id: scheduleInstance.id },
@@ -291,6 +295,32 @@ describe("ScheduleEngine Integration (part 2)", () => {
         });
         expect(preservedInstance.schedulePhase).toBe(pinnedPhase);
 
+        const pendingBeforeNoop = await engine.getJob(
+          `scheduled-task-instance:${scheduleInstance.id}`
+        );
+
+        // No-op reconciliation preserves the existing payload and score atomically.
+        await engine.registerNextTaskScheduleInstance({
+          instanceId: scheduleInstance.id,
+          preserveExistingJob: true,
+        });
+        const pendingAfterNoop = await engine.getJob(
+          `scheduled-task-instance:${scheduleInstance.id}`
+        );
+        expect(pendingAfterNoop).toEqual(pendingBeforeNoop);
+
+        await prisma.taskSchedule.update({
+          where: { id: taskSchedule.id },
+          data: { windowDurationSeconds: 120 },
+        });
+
+        // Normal registration still replaces the job when timing changed.
+        await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+        const pendingAfterTimingChange = await engine.getJob(
+          `scheduled-task-instance:${scheduleInstance.id}`
+        );
+        expect(pendingAfterTimingChange).not.toEqual(pendingBeforeNoop);
+
         const intervalMs = 5 * 60_000;
         const exactScheduleTime = new Date(Math.floor(Date.now() / intervalMs) * intervalMs);
         const effectiveScheduleTime = new Date(exactScheduleTime.getTime() + 45_000);
@@ -317,7 +347,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
           nominalAt: nextNominalAt,
           nextNominalAt: followingNominalAt,
           schedulePhase: pinnedPhase,
-          window: { type: "duration", durationSeconds: 60 },
+          window: { type: "duration", durationSeconds: 120 },
         });
 
         expect(new Date(nextJobPayload.exactScheduleTime)).toEqual(nextNominalAt);

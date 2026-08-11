@@ -327,6 +327,7 @@ export class ScheduleEngine {
           exactScheduleTime: nominalAt,
           effectiveScheduleTime: effectiveAt,
           lastScheduleTime,
+          preserveExistingJob: params.preserveExistingJob,
         });
 
         // Record metrics
@@ -752,16 +753,19 @@ export class ScheduleEngine {
     exactScheduleTime,
     effectiveScheduleTime,
     lastScheduleTime,
+    preserveExistingJob = false,
   }: {
     instanceId: string;
     exactScheduleTime: Date;
     effectiveScheduleTime: Date;
     lastScheduleTime?: Date;
+    preserveExistingJob?: boolean;
   }) {
     return startSpan(this.tracer, "enqueueScheduledTask", async (span) => {
       span.setAttribute("instanceId", instanceId);
       span.setAttribute("exactScheduleTime", exactScheduleTime.toISOString());
       span.setAttribute("effectiveScheduleTime", effectiveScheduleTime.toISOString());
+      span.setAttribute("preserveExistingJob", preserveExistingJob);
       if (lastScheduleTime) {
         span.setAttribute("lastScheduleTime", lastScheduleTime.toISOString());
       }
@@ -790,12 +794,13 @@ export class ScheduleEngine {
         distributedExecutionTime: distributedExecutionTime.toISOString(),
         distributionOffsetMs,
         distributionWindowSeconds: this.distributionWindowSeconds,
+        preserveExistingJob,
       });
 
       try {
-        await this.worker.enqueue({
+        const job = {
           id: `scheduled-task-instance:${instanceId}`,
-          job: "schedule.triggerScheduledTask",
+          job: "schedule.triggerScheduledTask" as const,
           payload: {
             instanceId,
             exactScheduleTime,
@@ -803,14 +808,24 @@ export class ScheduleEngine {
             lastScheduleTime,
           },
           availableAt: distributedExecutionTime,
-        });
+        };
+        let enqueued = true;
+        if (preserveExistingJob) {
+          enqueued = await this.worker.enqueueOnce(job);
+        } else {
+          await this.worker.enqueue(job);
+        }
 
         span.setAttribute("enqueue_success", true);
+        span.setAttribute("existing_job_preserved", !enqueued);
 
-        this.logger.debug("Successfully enqueued scheduled task", {
-          instanceId,
-          jobId: `scheduled-task-instance:${instanceId}`,
-        });
+        this.logger.debug(
+          enqueued ? "Successfully enqueued scheduled task" : "Preserved existing scheduled task",
+          {
+            instanceId,
+            jobId: job.id,
+          }
+        );
       } catch (error) {
         this.logger.error("Failed to enqueue scheduled task", {
           instanceId,
