@@ -472,6 +472,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+                  "guides/ai-agents/chat-agent",
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
