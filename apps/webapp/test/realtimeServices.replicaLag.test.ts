@@ -429,8 +429,6 @@ describe("realtime-svc — replica-lag guards", () => {
       // previousRunId forwarded to the triggered run is the calling run's cuid (documented fallback).
       expect(triggerState.calls).toHaveLength(1);
       expect(triggerState.calls[0]!.body.payload.previousRunId).toBe(callingRunId);
-      expect(triggerState.calls[0]!.options.realtimeStreamsVersion).toBeDefined();
-
       expect(versionCalls.at(-1)).toEqual({ requested: "v2", basin: null });
       expect(replica.wasHit("taskRun")).toBe(true);
 

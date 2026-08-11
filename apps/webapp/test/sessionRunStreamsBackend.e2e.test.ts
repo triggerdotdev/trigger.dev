@@ -101,7 +101,7 @@ describe("session runs and the realtime streams backend", () => {
 
     const run = await server.prisma.taskRun.findFirstOrThrow({
       where: { friendlyId: created.runId },
-      select: { friendlyId: true, realtimeStreamsVersion: true, streamBasinName: true },
+      select: { realtimeStreamsVersion: true },
     });
 
     const appendStatuses: number[] = [];

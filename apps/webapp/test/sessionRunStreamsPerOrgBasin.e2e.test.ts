@@ -10,11 +10,15 @@
  * are asserted: a provisioned organization reaches S2, and an unprovisioned one
  * degrades to v1 and keeps working on Redis.
  *
- * The unprovisioned case asserts the run carries a null basin and still serves
- * its streams. Which basin the trigger path reads is pinned separately, by the
- * swap case in `realtimeServices.replicaLag.test.ts`, which asserts the
- * organization's basin reaches the resolver even when the session row has one
- * of its own.
+ * Scope: both cases assert run-scoped streams only. Neither drives a session
+ * channel, so neither says anything about `.in`/`.out`. That matters for the
+ * unprovisioned case, where the session's own channels cannot resolve a basin
+ * at all and fail: the run degrading to v1 is what keeps working there, not the
+ * session. Do not read these as evidence that a session is healthy.
+ *
+ * Which basin the trigger path reads is pinned separately, by the swap case in
+ * `realtimeServices.replicaLag.test.ts`, which asserts the organization's basin
+ * reaches the resolver even when the session row carries one of its own.
  *
  * Requires a pre-built webapp: pnpm run build --filter webapp
  */
@@ -139,7 +143,7 @@ describe("session runs with per-org basins and no global basin", () => {
     expect(observed).toEqual({ version: "v2", runBasin: basin, inS2: true, keyInRedis: false });
   });
 
-  it("degrades to v1 for an unprovisioned organization and still serves its streams", async () => {
+  it("degrades to v1 for an unprovisioned organization, keeping its run-scoped streams usable", async () => {
     const { organization, apiKey } = await seedTestEnvironment(server.prisma);
 
     await server.prisma.organization.update({

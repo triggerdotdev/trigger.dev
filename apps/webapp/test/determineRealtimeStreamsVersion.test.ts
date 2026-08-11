@@ -86,13 +86,13 @@ describe("resolveRealtimeStreamsVersion", () => {
 });
 
 describe("resolveRealtimeStreamsVersion invariant", () => {
-  const BASINS = [undefined, "a-basin"];
+  const BASINS = [undefined, "", "a-basin"];
   const TOKENS = [undefined, "a-token"];
   const SKIPS = [false, true];
   const DEFAULTS: Array<"v1" | "v2"> = ["v1", "v2"];
   const REQUESTED = [undefined, "v1", "v2", "v3"];
 
-  it("only returns v2 when a basin is present, for every configuration", () => {
+  it("only returns v2 when a basin and credentials are both present, for every configuration", () => {
     const counterexamples: string[] = [];
 
     for (const basin of BASINS) {
@@ -101,7 +101,8 @@ describe("resolveRealtimeStreamsVersion invariant", () => {
           for (const defaultVersion of DEFAULTS) {
             for (const requested of REQUESTED) {
               const config = { defaultVersion, basin, accessToken, skipAccessTokens };
-              if (resolveRealtimeStreamsVersion(requested, config) === "v2" && !basin) {
+              const usable = Boolean(basin) && (Boolean(accessToken) || skipAccessTokens);
+              if (resolveRealtimeStreamsVersion(requested, config) === "v2" && !usable) {
                 counterexamples.push(JSON.stringify({ requested, ...config }));
               }
             }
