@@ -639,7 +639,9 @@ export default function Page() {
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                     <Label>Underline links</Label>
-                    <SettingsRowDescription>Underline links in body text</SettingsRowDescription>
+                    <SettingsRowDescription>
+                      Always underline links in body text
+                    </SettingsRowDescription>
                   </div>
                   <div className="flex flex-none items-center">
                     <Switch
