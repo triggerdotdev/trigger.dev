@@ -84,3 +84,32 @@ describe("resolveRealtimeStreamsVersion", () => {
     expect(resolveRealtimeStreamsVersion("v3", GLOBAL_BASIN)).toBe("v1");
   });
 });
+
+describe("resolveRealtimeStreamsVersion invariant", () => {
+  const BASINS = [undefined, "a-basin"];
+  const TOKENS = [undefined, "a-token"];
+  const SKIPS = [false, true];
+  const DEFAULTS: Array<"v1" | "v2"> = ["v1", "v2"];
+  const REQUESTED = [undefined, "v1", "v2", "v3"];
+
+  it("only returns v2 when a basin is present, for every configuration", () => {
+    const counterexamples: string[] = [];
+
+    for (const basin of BASINS) {
+      for (const accessToken of TOKENS) {
+        for (const skipAccessTokens of SKIPS) {
+          for (const defaultVersion of DEFAULTS) {
+            for (const requested of REQUESTED) {
+              const config = { defaultVersion, basin, accessToken, skipAccessTokens };
+              if (resolveRealtimeStreamsVersion(requested, config) === "v2" && !basin) {
+                counterexamples.push(JSON.stringify({ requested, ...config }));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(counterexamples).toEqual([]);
+  });
+});
