@@ -164,7 +164,7 @@ for await (const s of sessions.list({
 | Filter | Type | Notes |
 |---|---|---|
 | `type` | `string \| string[]` | e.g. `"chat.agent"` |
-| `tag` | `string \| string[]` | Matches `triggerConfig.tags` |
+| `tag` | `string \| string[]` | Matches the session's own `tags` (the top-level `tags` on `sessions.start`), not `triggerConfig.tags` |
 | `taskIdentifier` | `string \| string[]` | Filter by task |
 | `externalId` | `string` | Exact match |
 | `status` | `"ACTIVE" \| "CLOSED" \| "EXPIRED"` | Lifecycle state |
