@@ -31,6 +31,29 @@ describe("stripModelImages", () => {
     expect(html).not.toContain("attacker.example");
   });
 
+  it("strips a nested tag, which one pass would splice back into a whole one", () => {
+    expect(stripModelImages(`<im<img src="${BEACON}">g src="${BEACON}">`)).not.toContain(
+      "attacker.example"
+    );
+    expect(stripModelImages("<scr<script>ipt>")).toBe("");
+  });
+
+  it("bails out safely on nesting too deep to unwrap, instead of looping on it", () => {
+    // Each layer needs one more pass, so this is the shape that makes the strip quadratic.
+    let nested = `<script src="${BEACON}">`;
+    for (let i = 0; i < 20_000; i++) nested = `<scr${nested}ipt>`;
+
+    const started = performance.now();
+    const stripped = stripModelImages(nested);
+    const elapsed = performance.now() - started;
+
+    // No bracket survives, so nothing can parse as an element — the URL is left as inert prose.
+    expect(stripped).not.toContain("<script");
+    expect(stripped).not.toContain("<");
+    expect(render(stripped)).not.toMatch(/<script\b/i);
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
   it("strips an image hidden inside a code fence", () => {
     const stripped = stripModelImages(`\`\`\`\n![](${BEACON})\n\`\`\``);
     expect(stripped).not.toContain("attacker.example");
