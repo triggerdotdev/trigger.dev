@@ -1,7 +1,7 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
-import { deliveryIdsCreatedAtBounds } from "./deliveryIdBounds";
+import { createdAtMsBounds, deliveryIdsCreatedAtBounds } from "./deliveryIdBounds";
 import { decodeRunsCursor, encodeRunsCursor } from "../runsRepository/runsCursor.server";
 import {
   type CountDeliveriesByEndpointOptions,
@@ -195,18 +195,13 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
     // `id IN (...)` query without a createdAt predicate scans every child
     // partition, so derive a [min, max] range from the CH page and pass it
     // through. This is the one place webhook hydration diverges from runs.
-    const createdAtMsValues = pageRows.map((row) => row.createdAt);
-    const minCreatedAtMs = Math.min(...createdAtMsValues);
-    const maxCreatedAtMs = Math.max(...createdAtMsValues);
+    const bounds = createdAtMsBounds(pageRows.map((row) => row.createdAt));
 
     // CH gives the ordered id list; Postgres hydrates the full lean rows by PK id.
     const deliveries = await this.options.prisma.webhookDelivery.findMany({
       where: {
         id: { in: boundedIn(deliveryIds) },
-        createdAt: {
-          gte: new Date(minCreatedAtMs),
-          lte: new Date(maxCreatedAtMs),
-        },
+        ...(bounds ? { createdAt: bounds } : {}),
       },
       select: DELIVERY_LIST_SELECT,
     });
@@ -285,8 +280,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * `WebhookDelivery` is RANGE-partitioned on `createdAt`, so a bare `id` predicate can't prune and
    * probes every partition. The delivery id is time-encoded (see `WebhookDeliveryId`) with the same
    * timestamp the engine stores as `createdAt`, so we recover it from the id and add it as an exact
-   * predicate to prune to the row's partition. A legacy id that doesn't decode falls back to the
-   * unpruned lookup.
+   * predicate to prune to the row's partition.
    */
   async getDelivery(options: GetWebhookDeliveryOptions): Promise<DetailedWebhookDelivery | null> {
     const id = WebhookDeliveryId.toId(options.friendlyId);
@@ -306,10 +300,9 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * Hydrate a known set of deliveries by friendlyId. Pure Postgres: the caller (the live poll)
    * already has the ids, so there is nothing for ClickHouse to filter or order.
    *
-   * The ids are time-encoded (see `WebhookDeliveryId`), so when every id decodes we bound the query
-   * to the span of their mint timestamps, which equal the rows' `createdAt`. That prunes the
-   * RANGE-partitioned table to the visible page's few days instead of probing all of retention on
-   * every poll. A mix that includes a legacy id falls back to the unbounded lookup.
+   * The ids are time-encoded (see `WebhookDeliveryId`), so we bound the query to the span of their
+   * mint timestamps, which equal the rows' `createdAt`. That prunes the RANGE-partitioned table to
+   * the visible page's few days instead of probing all of retention on every poll.
    */
   async getDeliveriesByFriendlyIds(
     options: GetDeliveriesByFriendlyIdsOptions
