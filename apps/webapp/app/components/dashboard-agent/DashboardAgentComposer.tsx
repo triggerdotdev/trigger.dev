@@ -2,7 +2,7 @@ import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
-import { composerKeepsEscape } from "./composer-escape";
+import { composerEscapeAction } from "./composer-escape";
 import {
   MAX_MESSAGE_CHARS,
   MESSAGE_CHARS_WARN_AT,
@@ -38,6 +38,8 @@ export function DashboardAgentComposer({
   placeholderSuggestion?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Armed = the next Escape is taken by the draft guard; anything else re-arms it.
+  const escapeGuardArmed = useRef(true);
 
   useEffect(() => {
     const el = ref.current;
@@ -90,15 +92,35 @@ export function DashboardAgentComposer({
             value={value}
             // Clamped as well as `maxLength`, so a programmatic paste can't exceed the cap.
             maxLength={MAX_MESSAGE_CHARS}
-            onChange={(e) => onChange(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
+            onChange={(e) => {
+              escapeGuardArmed.current = true;
+              onChange(e.target.value.slice(0, MAX_MESSAGE_CHARS));
+            }}
+            onBlur={() => {
+              escapeGuardArmed.current = true;
+            }}
             onKeyDown={(e) => {
+              if (e.key !== "Escape") {
+                escapeGuardArmed.current = true;
+              }
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 onSubmit();
               }
-              // Keeping Escape from the panel's close handler, which skips a prevented event.
-              if (e.key === "Escape" && composerKeepsEscape(value)) {
+              // An Escape that cancels an IME composition is the user's, not the panel's: keep it
+              // from the close handler without spending the draft guard's one step.
+              if (e.key === "Escape" && e.nativeEvent.isComposing) {
                 e.preventDefault();
+                return;
+              }
+              // The first Escape on a draft is kept from the panel's close handler, which skips a
+              // prevented event; a second one passes through unprevented and closes the panel.
+              if (
+                e.key === "Escape" &&
+                composerEscapeAction(value, escapeGuardArmed.current) === "swallow"
+              ) {
+                e.preventDefault();
+                escapeGuardArmed.current = false;
               }
               // Only while empty, so with text present Tab keeps its normal focus behavior.
               if (e.key === "Tab" && !e.shiftKey && placeholderSuggestion && value === "") {
