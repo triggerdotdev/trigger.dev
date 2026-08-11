@@ -593,7 +593,7 @@ export default function Page() {
                   </div>
                   <div className="flex flex-none items-center">
                     <Switch
-                      variant="medium"
+                      variant="minimal/medium"
                       aria-label="Icon contrast"
                       checked={iconContrast}
                       onCheckedChange={(checked) =>

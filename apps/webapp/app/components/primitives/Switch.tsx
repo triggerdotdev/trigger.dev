@@ -52,6 +52,14 @@ const variations = {
     thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
     text: "text-sm text-text-dimmed",
   },
+  /* Like medium, minus the hover box: the toggle is the whole target, for rows
+     that already carry their own affordance. */
+  "minimal/medium": {
+    container: "flex items-center gap-x-2 rounded-md focus-custom",
+    root: "h-4 w-8",
+    thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    text: "text-sm text-text-dimmed",
+  },
 };
 
 type SwitchProps = React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> & {
@@ -91,7 +99,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-indigo-500 group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
           root
         )}
       >
