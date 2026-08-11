@@ -2054,8 +2054,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           controller.error(error);
         } finally {
           teardownWakeListeners();
-          this.activeStreams.delete(chatId);
-          this.coordinator?.release(chatId);
+          // Only clear the entry (and drop the tab claim) if it is still
+          // ours — a superseding send registers its controller before this
+          // teardown runs, and owns the claim from then on.
+          if (this.activeStreams.get(chatId) === internalAbort) {
+            this.activeStreams.delete(chatId);
+            this.coordinator?.release(chatId);
+          }
         }
       },
       // A consumer that stops reading without aborting (drops the reader)
