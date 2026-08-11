@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { useSheetHasCloseButton } from "~/components/primitives/SheetV3";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -156,6 +157,7 @@ export function UpsertScheduleForm({
   /** Submits via this fetcher with `_format=json` so the host can toast/close itself. */
   submitFetcher?: FetcherWithComponents<unknown>;
 }) {
+  const hasSheetCloseButton = useSheetHasCloseButton();
   const actionData = useActionData();
   // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
   // envelopes lack it and crash conform.
@@ -231,7 +233,12 @@ export function UpsertScheduleForm({
       {...getFormProps(form)}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
-      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed pr-14">
+      <div
+        className={cn(
+          "mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed",
+          hasSheetCloseButton && "pr-14"
+        )}
+      >
         <Header2 className="truncate">
           {schedule?.friendlyId
             ? "Edit schedule"

@@ -23,6 +23,7 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { useSheetHasCloseButton } from "~/components/primitives/SheetV3";
 import {
   Table,
   TableBlankRow,
@@ -96,6 +97,7 @@ export function ScheduleInspector({
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const hasSheetCloseButton = useSheetHasCloseButton();
 
   const isUtc = schedule.timezone === "UTC";
   const isImperative = schedule.type === "IMPERATIVE";
@@ -110,8 +112,7 @@ export function ScheduleInspector({
       <div
         className={cn(
           "mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed",
-          // Without header actions the sheet's own floating close button sits here.
-          !headerActions && "pr-14"
+          hasSheetCloseButton && "pr-14"
         )}
       >
         <Header2 className="truncate">{schedule.friendlyId}</Header2>

@@ -54,6 +54,17 @@ interface SheetContentProps
   showCloseButton?: boolean;
 }
 
+const SheetCloseButtonContext = React.createContext(false);
+
+/**
+ * True when an enclosing sheet renders its own floating close button, so a header
+ * rendered inside it has to leave room for it. False outside a sheet, which is why
+ * components used both in a sheet and as a full page can rely on it.
+ */
+export function useSheetHasCloseButton() {
+  return React.useContext(SheetCloseButtonContext);
+}
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -72,7 +83,9 @@ const SheetContent = React.forwardRef<
           </SheetPrimitive.Close>
         </div>
       )}
-      {children}
+      <SheetCloseButtonContext.Provider value={showCloseButton}>
+        {children}
+      </SheetCloseButtonContext.Provider>
     </SheetPrimitive.Content>
   </SheetPortal>
 ));
@@ -94,18 +107,23 @@ SheetFooter.displayName = "SheetFooter";
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
->(({ className, children, ...props }, ref) => (
-  <SheetPrimitive.Title
-    ref={ref}
-    className={cn(
-      "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pr-16 pt-2",
-      className
-    )}
-    {...props}
-  >
-    {children}
-  </SheetPrimitive.Title>
-));
+>(({ className, children, ...props }, ref) => {
+  const hasCloseButton = useSheetHasCloseButton();
+
+  return (
+    <SheetPrimitive.Title
+      ref={ref}
+      className={cn(
+        "sticky top-0 flex items-center justify-between border-b border-grid-bright bg-background-dimmed pb-1.5 pl-3 pt-2",
+        hasCloseButton ? "pr-16" : "pr-1.5",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </SheetPrimitive.Title>
+  );
+});
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
 const SheetDescription = React.forwardRef<
