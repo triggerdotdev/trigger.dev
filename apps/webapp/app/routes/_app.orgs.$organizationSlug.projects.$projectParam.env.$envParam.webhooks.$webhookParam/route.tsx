@@ -302,7 +302,16 @@ export default function Page() {
                 </TabContainer>
                 {tab !== "endpoints" && tab !== "console" && (
                   <div className="ml-auto flex items-center gap-2 self-center">
-                    <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
+                    <TimeFilter
+                      defaultPeriod="7d"
+                      labelName={tabLabel}
+                      clearParams={[
+                        "deliveriesCursor",
+                        "deliveriesDirection",
+                        "runsCursor",
+                        "runsDirection",
+                      ]}
+                    />
                     {tab === "deliveries" ? (
                       <Suspense fallback={null}>
                         <TypedAwait resolve={deliveriesList} errorElement={null}>
