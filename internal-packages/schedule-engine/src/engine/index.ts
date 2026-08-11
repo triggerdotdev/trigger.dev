@@ -174,18 +174,7 @@ export class ScheduleEngine {
           instance.taskSchedule.generatorExpression
         );
 
-        const scheduleWindow: NormalizedScheduleWindow | undefined =
-          instance.taskSchedule.windowPercentage !== null
-            ? {
-                type: "percentage",
-                percentage: instance.taskSchedule.windowPercentage,
-              }
-            : instance.taskSchedule.windowDurationSeconds !== null
-              ? {
-                  type: "duration",
-                  durationSeconds: instance.taskSchedule.windowDurationSeconds,
-                }
-              : undefined;
+        const scheduleWindow = normalizedScheduleWindow(instance.taskSchedule);
         const schedulePhase =
           instance.schedulePhase ??
           calculateSchedulePhase({
@@ -528,6 +517,33 @@ export class ScheduleEngine {
           //   3. undefined — first-ever fire (no previous fire to point at).
           const lastTimestamp =
             params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined;
+          const actualExecutionTime = new Date();
+          const scheduleWindow = normalizedScheduleWindow(instance.taskSchedule);
+          const schedulePhase =
+            instance.schedulePhase ??
+            calculateSchedulePhase({
+              secret: this.options.schedulePhaseSecret,
+              environmentId: instance.environmentId,
+              deduplicationKey: instance.taskSchedule.deduplicationKey,
+            });
+          const nextOccurrence = calculateNextSchedulableOccurrence({
+            schedule: instance.taskSchedule.generatorExpression,
+            timezone: instance.taskSchedule.timezone,
+            afterNominal: exactScheduleTime,
+            now: actualExecutionTime,
+            schedulePhase,
+            window: scheduleWindow,
+            cronSpreadEnabled: this.options.cronSpreadEnabled,
+          });
+          const upcoming = [
+            nextOccurrence.nominalAt,
+            ...nextScheduledTimestamps(
+              instance.taskSchedule.generatorExpression,
+              instance.taskSchedule.timezone,
+              nextOccurrence.nominalAt,
+              9
+            ),
+          ];
 
           const payload = {
             scheduleId: instance.taskSchedule.friendlyId,
@@ -536,16 +552,10 @@ export class ScheduleEngine {
             lastTimestamp,
             externalId: instance.taskSchedule.externalId ?? undefined,
             timezone: instance.taskSchedule.timezone,
-            upcoming: nextScheduledTimestamps(
-              instance.taskSchedule.generatorExpression,
-              instance.taskSchedule.timezone,
-              exactScheduleTime,
-              10
-            ),
+            upcoming,
           };
 
           // Calculate execution timing metrics
-          const actualExecutionTime = new Date();
           const schedulingAccuracyMs = actualExecutionTime.getTime() - exactScheduleTime.getTime();
 
           span.setAttribute("scheduling_accuracy_ms", schedulingAccuracyMs);
@@ -992,4 +1002,22 @@ export class ScheduleEngine {
       throw error;
     }
   }
+}
+
+function normalizedScheduleWindow({
+  windowDurationSeconds,
+  windowPercentage,
+}: {
+  windowDurationSeconds: number | null;
+  windowPercentage: number | null;
+}): NormalizedScheduleWindow | undefined {
+  if (windowPercentage !== null) {
+    return { type: "percentage", percentage: windowPercentage };
+  }
+
+  if (windowDurationSeconds !== null) {
+    return { type: "duration", durationSeconds: windowDurationSeconds };
+  }
+
+  return undefined;
 }

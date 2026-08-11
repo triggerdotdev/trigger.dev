@@ -115,6 +115,12 @@ describe("ScheduleEngine Integration (part 2)", () => {
         // Falls back to instance.lastScheduledTimestamp from the DB rather
         // than reporting undefined for this one transitional fire.
         expect(triggerCalls[0].payload.lastTimestamp).toEqual(preDeployLastFire);
+        expect(triggerCalls[0].payload.upcoming).toHaveLength(10);
+        expect(
+          triggerCalls[0].payload.upcoming.every(
+            (timestamp) => timestamp.getTime() > beforeTrigger.getTime()
+          )
+        ).toBe(true);
 
         const nextJob = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
         const nextJobPayload = nextJob!.item as unknown as {
