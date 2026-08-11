@@ -35,6 +35,7 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
+import { getUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
@@ -53,11 +54,14 @@ export const meta = pageMeta("SSO & Directory Sync");
 
 const Params = z.object({ organizationSlug: z.string() });
 
-async function resolveOrg(slug: string) {
+async function resolveOrg(slug: string, userId: string) {
+  // Scoped to membership: ability.can is not a tenant floor (the cloud RBAC
+  // plugin returns a permissive ability for a non-member), so without the
+  // members filter a non-member reaches the handler for any org slug.
   // Primary (not replica): this scopes the RBAC/entitlement checks, so lag
   // could run them against a stale/missing org.
   return prisma.organization.findFirst({
-    where: { slug },
+    where: { slug, members: { some: { userId } } },
     select: { id: true, title: true },
   });
 }
@@ -117,8 +121,10 @@ const EMPTY_SSO_STATUS = {
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const org = await resolveOrg(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const org = await resolveOrg(params.organizationSlug, userId);
       return org ? { organizationId: org.id, orgTitle: org.title } : {};
     },
     // Plan-gated before role-gated: non-Enterprise orgs render the upsell for
@@ -211,8 +217,10 @@ const ActionSchema = z.discriminatedUnion("action", [
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const org = await resolveOrg(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const org = await resolveOrg(params.organizationSlug, userId);
       return org ? { organizationId: org.id } : {};
     },
     authorization: { action: "manage", resource: { type: "sso" } },

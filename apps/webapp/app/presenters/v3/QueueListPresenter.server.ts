@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import type { Prisma } from "@trigger.dev/database";
-import { TaskQueueType } from "@trigger.dev/database";
+import { TaskQueueType, boundedIn } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -289,7 +289,7 @@ export class QueueListPresenter extends BasePresenter {
       // AND keeps the search's name filter intact alongside the exclusion (a spread
       // would overwrite one name condition with the other).
       tailQueues = await this._replica.taskQueue.findMany({
-        where: { AND: [where, { name: { notIn: excludedNames } }] },
+        where: { AND: [where, { name: { notIn: boundedIn(excludedNames) } }] },
         select: queueListSelect,
         orderBy: {
           orderableName: "asc",
@@ -321,7 +321,7 @@ export class QueueListPresenter extends BasePresenter {
       return [];
     }
     const queues = await this._replica.taskQueue.findMany({
-      where: { AND: [where, { name: { in: names } }] },
+      where: { AND: [where, { name: { in: boundedIn(names) } }] },
       select: queueListSelect,
     });
     const byName = new Map(queues.map((queue) => [queue.name, queue]));
@@ -401,7 +401,7 @@ export class QueueListPresenter extends BasePresenter {
     const overriddenByIds = queues.map((q) => q.concurrencyLimitOverriddenBy).filter(Boolean);
     const overriddenByUsers = await this._replica.user.findMany({
       where: {
-        id: { in: overriddenByIds },
+        id: { in: boundedIn(overriddenByIds) },
       },
     });
 

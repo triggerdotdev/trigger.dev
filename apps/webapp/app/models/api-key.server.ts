@@ -2,7 +2,7 @@ import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
 import type { HostRbacController } from "@trigger.dev/rbac";
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
@@ -165,7 +165,7 @@ export async function createEnvironmentApiKey(
     const matchingTasks = await prismaClient.taskIdentifier.count({
       where: {
         runtimeEnvironmentId: taskEnvironmentId,
-        slug: { in: selectedTasks },
+        slug: { in: boundedIn(selectedTasks) },
         runtimeEnvironment: {
           OR: [{ id: environment.id }, { parentEnvironmentId: environment.id }],
         },

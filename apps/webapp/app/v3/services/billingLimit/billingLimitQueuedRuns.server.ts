@@ -5,6 +5,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { BILLABLE_ENVIRONMENT_TYPES } from "./billingLimitConstants";
 
+import { boundedIn } from "@trigger.dev/database";
 export type BillableEnvironmentRef = {
   id: string;
   projectId: string;
@@ -17,7 +18,7 @@ export async function getBillableEnvironmentsForBillingLimit(
   return prismaClient.runtimeEnvironment.findMany({
     where: {
       organizationId,
-      type: { in: [...BILLABLE_ENVIRONMENT_TYPES] },
+      type: { in: boundedIn([...BILLABLE_ENVIRONMENT_TYPES]) },
     },
     select: {
       id: true,

@@ -7,7 +7,7 @@ import type {
   TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, boundedIn } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
@@ -929,7 +929,7 @@ export class WaitpointSystem {
         await this.$.runStore.deleteManyTaskRunWaitpoints({
           where: {
             taskRunId: runId,
-            id: { in: blockingWaitpoints.map((b) => b.id) },
+            id: { in: boundedIn(blockingWaitpoints.map((b) => b.id)) },
           },
         });
 

@@ -8,7 +8,7 @@ generator client {
   provider        = "prisma-client-js"
   output          = "../generated/prisma"
   binaryTargets   = ["native", "debian-openssl-1.1.x"]
-  previewFeatures = ["metrics"]
+  previewFeatures = ["metrics", "driverAdapters"]
 }
 
 model User {
@@ -469,6 +469,9 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  /// Set the first time the CLI `init` command completes against this project. Drives the dev onboarding progress.
+  initializedAt DateTime?
+
   version ProjectVersion   @default(V2)
   engine  RunEngineVersion @default(V1)
 
@@ -752,6 +755,7 @@ model BackgroundWorkerTask {
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
+  @@index([projectId, slug, createdAt])
   @@index([runtimeEnvironmentId, projectId])
   @@index([runtimeEnvironmentId, slug, triggerSource])
 }
@@ -2066,6 +2070,7 @@ model EnvironmentVariableValue {
 
   @@unique([variableId, environmentId])
   @@index([environmentId])
+  @@index([valueReferenceId])
 }
 
 model Checkpoint {
@@ -2411,6 +2416,8 @@ model ProjectAlert {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([channelId])
 }
 
 enum ProjectAlertType {

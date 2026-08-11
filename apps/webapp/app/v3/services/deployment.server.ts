@@ -1,7 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
-import { type WorkerDeployment, type Project } from "@trigger.dev/database";
+import { type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
   logger,
@@ -220,7 +220,7 @@ export class DeploymentService extends BaseService {
           where: {
             id: deployment.id,
             status: {
-              notIn: FINAL_DEPLOYMENT_STATUSES, // status could've changed in the meantime, we're not locking the row
+              notIn: boundedIn(FINAL_DEPLOYMENT_STATUSES), // status could've changed in the meantime, we're not locking the row
             },
           },
           data: {
