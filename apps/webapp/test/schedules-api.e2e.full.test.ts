@@ -29,15 +29,26 @@ describe("Schedules API windows", () => {
       timezone: "UTC",
       window: "30%",
     });
+    expectAssignedTime(created, 18 * 60_000);
 
     const retrieveResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       headers: authHeaders(apiKey),
     });
     expect(retrieveResponse.status).toBe(200);
-    await expect(retrieveResponse.json()).resolves.toMatchObject({
+    const retrieved = await retrieveResponse.json();
+    expect(retrieved).toMatchObject({
       id: created.id,
       window: "30%",
     });
+    expectAssignedTime(retrieved, 18 * 60_000);
+
+    const listResponse = await server.webapp.fetch("/api/v1/schedules", {
+      headers: authHeaders(apiKey),
+    });
+    expect(listResponse.status).toBe(200);
+    const listed = await listResponse.json();
+    expect(listed.data[0]).toMatchObject({ id: created.id });
+    expectAssignedTime(listed.data[0], 18 * 60_000);
 
     const updateResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       method: "PUT",
@@ -49,10 +60,12 @@ describe("Schedules API windows", () => {
       }),
     });
     expect(updateResponse.status).toBe(200);
-    await expect(updateResponse.json()).resolves.toMatchObject({
+    const updated = await updateResponse.json();
+    expect(updated).toMatchObject({
       id: created.id,
       window: "2h",
     });
+    expectAssignedTime(updated, 2 * 60 * 60_000);
 
     const clearResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       method: "PUT",
@@ -66,6 +79,26 @@ describe("Schedules API windows", () => {
     const cleared = await clearResponse.json();
     expect(cleared.id).toBe(created.id);
     expect(cleared).not.toHaveProperty("window");
+
+    const deactivateResponse = await server.webapp.fetch(
+      `/api/v1/schedules/${created.id}/deactivate`,
+      { method: "POST", headers: authHeaders(apiKey) }
+    );
+    expect(deactivateResponse.status).toBe(200);
+    await expect(deactivateResponse.json()).resolves.toMatchObject({
+      active: false,
+      nextRun: null,
+      nextRunEffectiveAt: null,
+    });
+
+    const activateResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}/activate`, {
+      method: "POST",
+      headers: authHeaders(apiKey),
+    });
+    expect(activateResponse.status).toBe(200);
+    const activated = await activateResponse.json();
+    expect(activated.active).toBe(true);
+    expectAssignedTime(activated, 60_000);
 
     const stored = await server.prisma.taskSchedule.findUniqueOrThrow({
       where: { friendlyId: created.id },
@@ -106,6 +139,38 @@ describe("Schedules API windows", () => {
     }
   });
 
+  it("returns declarative schedule summaries with deployments", async () => {
+    const server = getTestServer();
+    const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
+    const worker = await seedScheduledTask(server.prisma, project.id, environment.id);
+    const deployment = await server.prisma.workerDeployment.create({
+      data: {
+        friendlyId: `deployment_${environment.id}`,
+        shortCode: environment.shortcode,
+        version: "20260811.1",
+        contentHash: `hash_${environment.id}`,
+        status: "DEPLOYED",
+        projectId: project.id,
+        environmentId: environment.id,
+        workerId: worker.id,
+      },
+    });
+    const response = await server.webapp.fetch(`/api/v1/deployments/${deployment.friendlyId}`, {
+      headers: authHeaders(apiKey),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.worker.declarativeSchedules).toHaveLength(1);
+    expect(body.worker.declarativeSchedules[0]).toMatchObject({
+      task: TASK_IDENTIFIER,
+      cron: "0 9 * * *",
+      timezone: "UTC",
+      window: "30m",
+    });
+    expectAssignedTime(body.worker.declarativeSchedules[0], 30 * 60_000);
+  });
+
   it("returns safe errors for invalid windows", async () => {
     const server = getTestServer();
     const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
@@ -136,6 +201,17 @@ describe("Schedules API windows", () => {
   });
 });
 
+function expectAssignedTime(
+  schedule: { nextRun: string; nextRunEffectiveAt: string },
+  maximumDelayMs: number
+) {
+  const nominalAt = new Date(schedule.nextRun).getTime();
+  const effectiveAt = new Date(schedule.nextRunEffectiveAt).getTime();
+
+  expect(effectiveAt).toBeGreaterThanOrEqual(nominalAt);
+  expect(effectiveAt).toBeLessThan(nominalAt + maximumDelayMs);
+}
+
 function authHeaders(apiKey: string) {
   return {
     Authorization: `Bearer ${apiKey}`,
@@ -153,7 +229,21 @@ async function seedScheduledTask(
       friendlyId: `worker_${runtimeEnvironmentId}`,
       contentHash: `hash_${runtimeEnvironmentId}`,
       version: "20260811.1",
-      metadata: {},
+      metadata: {
+        packageVersion: "4.5.10",
+        contentHash: `hash_${runtimeEnvironmentId}`,
+        tasks: [
+          {
+            id: TASK_IDENTIFIER,
+            filePath: "src/trigger/scheduled-task.ts",
+            schedule: {
+              cron: "0 9 * * *",
+              timezone: "UTC",
+              window: "30m",
+            },
+          },
+        ],
+      },
       projectId,
       runtimeEnvironmentId,
     },
@@ -170,4 +260,6 @@ async function seedScheduledTask(
       triggerSource: "SCHEDULED",
     },
   });
+
+  return worker;
 }

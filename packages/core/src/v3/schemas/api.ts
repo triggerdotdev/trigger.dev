@@ -819,6 +819,18 @@ export const GetDeploymentResponseBody = z.object({
           exportName: z.string().optional(),
         })
       ),
+      declarativeSchedules: z
+        .array(
+          z.object({
+            task: z.string(),
+            cron: z.string(),
+            timezone: z.string(),
+            window: ScheduleWindow.optional(),
+            nextRun: z.coerce.date(),
+            nextRunEffectiveAt: z.coerce.date(),
+          })
+        )
+        .optional(),
     })
     .optional(),
   integrationDeployments: z
@@ -1079,7 +1091,10 @@ export const ScheduleObject = z.object({
   generator: ScheduleGenerator,
   timezone: z.string(),
   window: ScheduleWindow.optional(),
+  /** The next nominal CRON time. */
   nextRun: z.coerce.date().nullish(),
+  /** The stable assigned time for the next nominal CRON time. */
+  nextRunEffectiveAt: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
       id: z.string(),

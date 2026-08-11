@@ -5,6 +5,7 @@ import type {
   InitOutput,
   OffsetLimitPagePromise,
   ScheduleObject,
+  ScheduleWindow,
 } from "@trigger.dev/core/v3";
 import {
   TimezonesResult,
@@ -31,11 +32,12 @@ export type ScheduleOptions<
    * "0 0 * * *"
    * ```
    *
-   * 2. Or an object with a pattern, optional timezone, and optional environments
+   * 2. Or an object with a pattern, optional timezone, window, and environments
    * ```ts
    * {
    *   pattern: "0 0 * * *",
    *   timezone: "America/Los_Angeles",
+   *   window: "30m",
    *   environments: ["PRODUCTION", "STAGING"]
    * }
    * ```
@@ -47,6 +49,10 @@ export type ScheduleOptions<
     | {
         pattern: string;
         timezone?: string;
+        /** Optionally assign each run a stable time after its CRON time.
+         * Use a whole duration such as `"30m"` or `"2h"`, or a percentage such as `"30%"`.
+         */
+        window?: ScheduleWindow;
         /** You can optionally specify which environments this schedule should run in.
          * When not specified, the schedule will run in all environments.
          *
@@ -78,6 +84,7 @@ export function task<TIdentifier extends string, TOutput, TInitOutput extends In
     (params.cron && typeof params.cron !== "string" ? params.cron.timezone : "UTC") ?? "UTC";
   const environments =
     params.cron && typeof params.cron !== "string" ? params.cron.environments : undefined;
+  const window = params.cron && typeof params.cron !== "string" ? params.cron.window : undefined;
 
   resourceCatalog.updateTaskMetadata(task.id, {
     triggerSource: "schedule",
@@ -86,6 +93,7 @@ export function task<TIdentifier extends string, TOutput, TInitOutput extends In
           cron: cron,
           timezone,
           environments,
+          window,
         }
       : undefined,
   });

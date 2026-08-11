@@ -130,6 +130,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           deduplicationKey: schedule.deduplicationKey,
           environments: schedule.environments,
           nextRun: schedule.nextRun,
+          nextRunEffectiveAt: schedule.nextRunEffectiveAt,
         };
 
         return json(responseObject, { status: 200 });

@@ -972,8 +972,10 @@ type ScheduleRow = {
   type: "DECLARATIVE" | "IMPERATIVE";
   cron: string;
   cronDescription: string;
+  window?: string;
   externalId: string | null;
   nextRun: Date;
+  nextRunEffectiveAt: Date;
   lastRun: Date | undefined;
   active: boolean;
 };
@@ -993,7 +995,7 @@ function SchedulesMiniTable({
     return (
       <Table variant={variant} showTopBorder={showTopBorder}>
         <TableBody>
-          <TableBlankRow colSpan={6}>
+          <TableBlankRow colSpan={9}>
             <Paragraph variant="small" className="flex items-center justify-center">
               No schedules attached to this task yet.
             </Paragraph>
@@ -1009,9 +1011,11 @@ function SchedulesMiniTable({
         <TableRow>
           <TableHeaderCell>Schedule ID</TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
-          <TableHeaderCell>Cron</TableHeaderCell>
+          <TableHeaderCell>CRON</TableHeaderCell>
+          <TableHeaderCell>Window</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
-          <TableHeaderCell>Next run</TableHeaderCell>
+          <TableHeaderCell>Next CRON time</TableHeaderCell>
+          <TableHeaderCell>Next assigned time</TableHeaderCell>
           <TableHeaderCell>Last run</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
         </TableRow>
@@ -1037,6 +1041,9 @@ function SchedulesMiniTable({
                 <span className="font-mono text-xs">{schedule.cron}</span>
               </TableCell>
               <TableCell onClick={open}>
+                <span className="text-xs">{schedule.window ?? "Default (60s)"}</span>
+              </TableCell>
+              <TableCell onClick={open}>
                 {schedule.externalId ? (
                   <span className="font-mono text-xs">{schedule.externalId}</span>
                 ) : (
@@ -1045,6 +1052,9 @@ function SchedulesMiniTable({
               </TableCell>
               <TableCell onClick={open}>
                 <RelativeDateTime date={schedule.nextRun} />
+              </TableCell>
+              <TableCell onClick={open}>
+                <RelativeDateTime date={schedule.nextRunEffectiveAt} />
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.lastRun ? (

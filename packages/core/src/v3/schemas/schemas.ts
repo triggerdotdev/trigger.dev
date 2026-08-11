@@ -181,7 +181,7 @@ export type QueueManifest = z.infer<typeof QueueManifest>;
  */
 export const ScheduleWindow = z.string().min(1);
 
-export type ScheduleWindow = z.infer<typeof ScheduleWindow>;
+export type ScheduleWindow = `${bigint}${"m" | "h" | "%"}`;
 
 export const ScheduleMetadata = z.object({
   cron: z.string(),

@@ -55,13 +55,14 @@ export type ScheduleInspectorData = {
   cron: string;
   cronDescription: string;
   timezone: string;
+  window?: string;
   externalId: string | null;
   deduplicationKey: string | null;
   userProvidedDeduplicationKey: boolean;
   active: boolean;
   environments: EnvironmentRow[];
   runs: RunRow[];
-  nextRuns: Date[];
+  nextRuns: Array<{ nominalAt: Date; effectiveAt: Date }>;
 };
 
 type Props = {
@@ -142,6 +143,10 @@ export function ScheduleInspector({
                 <Property.Label>Timezone</Property.Label>
                 <Property.Value>{schedule.timezone}</Property.Value>
               </Property.Item>
+              <Property.Item>
+                <Property.Label>Window</Property.Label>
+                <Property.Value>{schedule.window ?? "Default (60 seconds)"}</Property.Value>
+              </Property.Item>
               <Property.Item className="gap-1">
                 <Property.Label>Environment</Property.Label>
                 <Property.Value>
@@ -195,12 +200,13 @@ export function ScheduleInspector({
             />
           </div>
           <div className="flex flex-col gap-1 pt-2">
-            <Header3 className="pb-1 pl-3">Next 5 runs</Header3>
+            <Header3 className="pb-1 pl-3">Next 5 scheduled runs</Header3>
             <Table variant="bright">
               <TableHeader>
                 <TableRow>
-                  {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
-                  <TableHeaderCell>UTC</TableHeaderCell>
+                  {!isUtc && <TableHeaderCell>CRON ({schedule.timezone})</TableHeaderCell>}
+                  <TableHeaderCell>CRON (UTC)</TableHeaderCell>
+                  <TableHeaderCell>Assigned (UTC)</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -210,21 +216,24 @@ export function ScheduleInspector({
                       <TableRow key={index}>
                         {!isUtc && (
                           <TableCell>
-                            <DateTime date={run} timeZone={schedule.timezone} />
+                            <DateTime date={run.nominalAt} timeZone={schedule.timezone} />
                           </TableCell>
                         )}
                         <TableCell>
-                          <DateTime date={run} timeZone="UTC" />
+                          <DateTime date={run.nominalAt} timeZone="UTC" />
+                        </TableCell>
+                        <TableCell>
+                          <DateTime date={run.effectiveAt} timeZone="UTC" />
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
-                    <TableBlankRow colSpan={isUtc ? 1 : 2}>
+                    <TableBlankRow colSpan={isUtc ? 2 : 3}>
                       <PlaceholderText title="You found a bug" />
                     </TableBlankRow>
                   )
                 ) : (
-                  <TableBlankRow colSpan={isUtc ? 1 : 2}>
+                  <TableBlankRow colSpan={isUtc ? 2 : 3}>
                     <PlaceholderText title="Schedule disabled" />
                   </TableBlankRow>
                 )}
@@ -249,8 +258,8 @@ export function ScheduleInspector({
                 }
                 panelClassName="max-w-full"
               >
-                You can only edit a declarative schedule by updating your schedules.task and then
-                running the CLI dev and deploy commands.
+                You can only edit a declarative schedule, including its window, by updating your
+                schedules.task and then running the CLI dev and deploy commands.
               </InfoPanel>
             </div>
           )}

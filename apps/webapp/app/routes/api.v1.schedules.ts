@@ -72,6 +72,7 @@ export async function action({ request }: ActionFunctionArgs) {
       deduplicationKey: schedule.deduplicationKey,
       environments: schedule.environments,
       nextRun: schedule.nextRun,
+      nextRunEffectiveAt: schedule.nextRunEffectiveAt,
     };
 
     return json(responseObject, { status: 200 });
@@ -130,6 +131,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       externalId: schedule.externalId,
       active: schedule.active,
       nextRun: schedule.nextRun,
+      nextRunEffectiveAt: schedule.nextRunEffectiveAt,
       environments: schedule.environments,
     })),
     pagination: {

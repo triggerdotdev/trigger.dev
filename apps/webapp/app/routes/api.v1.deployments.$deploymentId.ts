@@ -1,9 +1,11 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
+import { BackgroundWorkerMetadata, type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { env } from "~/env.server";
+import { calculateNextScheduleRunTimes, normalizeScheduleWindow } from "~/v3/scheduleWindow.server";
 
 const ParamsSchema = z.object({
   deploymentId: z.string(),
@@ -53,6 +55,43 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       return json({ error: "Deployment not found" }, { status: 404 });
     }
 
+    const workerMetadata = deployment.worker
+      ? BackgroundWorkerMetadata.safeParse(deployment.worker.metadata)
+      : undefined;
+    const declarativeSchedules = workerMetadata?.success
+      ? workerMetadata.data.tasks.flatMap((task) => {
+          if (
+            !task.schedule ||
+            (task.schedule.environments &&
+              !task.schedule.environments.includes(authenticatedEnv.type))
+          ) {
+            return [];
+          }
+
+          const windowFields = normalizeScheduleWindow(task.schedule.window);
+          const [nextRun] = calculateNextScheduleRunTimes({
+            cron: task.schedule.cron,
+            timezone: task.schedule.timezone,
+            deduplicationKey: task.id,
+            environmentId: authenticatedEnv.id,
+            schedulePhase: null,
+            phaseSecret: env.ENCRYPTION_KEY,
+            ...windowFields,
+          });
+
+          return [
+            {
+              task: task.id,
+              cron: task.schedule.cron,
+              timezone: task.schedule.timezone,
+              window: task.schedule.window,
+              nextRun: nextRun.nominalAt,
+              nextRunEffectiveAt: nextRun.effectiveAt,
+            },
+          ];
+        })
+      : [];
+
     return json({
       id: deployment.friendlyId,
       status: deployment.status,
@@ -75,6 +114,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
               filePath: task.filePath,
               exportName: task.exportName ?? "@deprecated",
             })),
+            declarativeSchedules,
           }
         : undefined,
       integrationDeployments:

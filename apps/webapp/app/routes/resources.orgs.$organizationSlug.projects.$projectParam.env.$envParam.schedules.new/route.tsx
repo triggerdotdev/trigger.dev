@@ -52,6 +52,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
@@ -114,10 +115,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       message
     );
   } catch (error: any) {
-    logger.error("Failed to create schedule", error);
+    if (!(error instanceof ServiceValidationError)) {
+      logger.error("Failed to create schedule", error);
+    }
 
-    const errorMessage = `Something went wrong. Please try again.`;
+    const errorMessage =
+      error instanceof ServiceValidationError
+        ? error.message
+        : `Something went wrong. Please try again.`;
     if (wantsJson) {
+      if (error instanceof ServiceValidationError) {
+        return json(submission.reply({ formErrors: [error.message] }), {
+          status: error.status ?? 422,
+        });
+      }
+
       return json({ ok: false as const, message: errorMessage }, { status: 500 });
     }
     return redirectWithErrorMessage(
@@ -174,18 +186,28 @@ export function UpsertScheduleForm({
   const environment = useEnvironment();
   const location = useLocation();
 
-  const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
-    useForm({
-      // Disambiguate per-schedule so both sheets (create + edit) can
-      // coexist without duplicate DOM ids breaking `htmlFor` / conform.
-      id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
-      // TODO: type this
-      lastResult: lastSubmission as any,
-      shouldRevalidate: "onSubmit",
-      onValidate({ formData }) {
-        return parseWithZod(formData, { schema: UpsertSchedule });
-      },
-    });
+  const [
+    form,
+    {
+      taskIdentifier,
+      cron,
+      timezone,
+      window: scheduleWindow,
+      externalId,
+      environments,
+      deduplicationKey,
+    },
+  ] = useForm({
+    // Disambiguate per-schedule so both sheets (create + edit) can
+    // coexist without duplicate DOM ids breaking `htmlFor` / conform.
+    id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
+    // TODO: type this
+    lastResult: lastSubmission as any,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: UpsertSchedule });
+    },
+  });
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
@@ -335,9 +357,26 @@ export function UpsertScheduleForm({
               </Hint>
               <FormError id={timezone.errorId}>{timezone.errors}</FormError>
             </InputGroup>
+            <InputGroup>
+              <Label required={false} htmlFor={scheduleWindow.id}>
+                Window
+              </Label>
+              <Input
+                {...getInputProps(scheduleWindow, { type: "text" })}
+                placeholder="30m or 25%"
+                defaultValue={schedule?.window}
+              />
+              <Hint>
+                Assigns each run a stable time after its CRON time. Use minutes, hours, days, or a
+                percentage of the interval. Schedules always use at least a 60-second placement
+                range.
+              </Hint>
+              <FormError id={scheduleWindow.errorId}>{scheduleWindow.errors}</FormError>
+            </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
-                <Header3>Next 5 runs</Header3>
+                <Header3>Next 5 CRON times</Header3>
+                <Hint>Assigned times are calculated after the schedule is saved.</Hint>
                 <Table>
                   <TableHeader>
                     <TableRow>

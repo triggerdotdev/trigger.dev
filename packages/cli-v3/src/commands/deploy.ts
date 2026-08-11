@@ -19,6 +19,10 @@ import type { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
+import {
+  formatDeclarativeScheduleOutput,
+  type DeclarativeScheduleSummary,
+} from "../deploy/schedules.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -719,6 +723,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
   }
 
+  printDeclarativeSchedules(deploymentWithWorker.worker.declarativeSchedules ?? []);
+
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
   if (options.plain) {
@@ -1328,6 +1334,8 @@ async function handleNativeBuildServerDeploy({
         );
       }
 
+      await printDeclarativeSchedulesForDeployment(apiClient, deployment.id);
+
       if (!isLinksSupported) {
         log.info(`Test tasks: ${rawTestLink}`);
       }
@@ -1431,6 +1439,34 @@ async function handleNativeBuildServerDeploy({
       return process.exit(0);
     }
   }
+}
+
+function printDeclarativeSchedules(schedules: DeclarativeScheduleSummary[]) {
+  const lines = formatDeclarativeScheduleOutput(schedules);
+  if (lines.length === 0) {
+    return;
+  }
+
+  console.log();
+  console.log(lines.join("\n"));
+  console.log();
+}
+
+async function printDeclarativeSchedulesForDeployment(
+  apiClient: CliApiClient,
+  deploymentId: string
+) {
+  const [error, result] = await tryCatch(apiClient.getDeployment(deploymentId));
+  if (error) {
+    logger.debug("Failed to load declarative schedules after deployment", { error });
+    return;
+  }
+  if (!result.success) {
+    logger.debug("Failed to load declarative schedules after deployment", { result });
+    return;
+  }
+
+  printDeclarativeSchedules(result.data.worker?.declarativeSchedules ?? []);
 }
 
 export function verifyDirectory(dir: string, projectPath: string) {
