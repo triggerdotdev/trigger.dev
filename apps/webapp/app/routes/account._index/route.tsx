@@ -39,6 +39,7 @@ import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOpt
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
+import { applyThemePreference } from "~/hooks/useSystemThemeSync";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -505,12 +506,15 @@ export default function Page() {
                     <Select<ThemePreference, ThemePreference>
                       aria-label="Interface theme"
                       value={theme}
-                      setValue={(value) =>
+                      setValue={(value) => {
+                        // Applied here so the theme lands immediately rather than
+                        // on the root loader's next pass (see applyThemePreference).
+                        applyThemePreference(normalizeThemePreference(value));
                         themeFetcher.submit(
                           { action: "update-theme", theme: value },
                           { method: "post" }
-                        )
-                      }
+                        );
+                      }}
                       variant="secondary/medium"
                       dropdownIcon
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}

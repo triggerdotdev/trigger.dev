@@ -1,12 +1,14 @@
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
+import { useEffect } from "react";
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import { ToggleSwitchIcon } from "~/assets/icons/ToggleSwitchIcon";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { THEME_OPTIONS } from "~/components/themeOptions";
+import { applyThemePreference } from "~/hooks/useSystemThemeSync";
 import { type loader as rootLoader } from "~/root";
 import { accountPath } from "~/utils/pathBuilder";
-import { normalizeThemePreference } from "~/utils/themePreference";
+import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SIDE_MENU_POPOVER_ITEM_ICON, SIDE_MENU_POPOVER_ITEM_LABEL } from "./sideMenuTypes";
 
@@ -20,19 +22,35 @@ const THEME_ACTION_PATH = "/resources/preferences/theme";
  */
 export function AppearanceMenuItem() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<{ success?: boolean }>();
+  const savedTheme = rootData?.themePreference;
+
+  // A failed write would otherwise leave the optimistic theme on screen, since
+  // the loader data never changes and so `useSystemThemeSync` never re-runs.
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data || fetcher.data.success || !savedTheme) return;
+    applyThemePreference(savedTheme);
+  }, [fetcher.state, fetcher.data, savedTheme]);
 
   if (!rootData?.showThemeSwitcher) {
     return null;
   }
 
-  // Move the check as soon as a theme is clicked; the theme itself follows once
-  // the write lands and the root loader revalidates.
+  // Move the check as soon as a theme is clicked; the write follows.
   const pendingTheme = fetcher.formData?.get("theme");
   const theme =
     typeof pendingTheme === "string"
       ? normalizeThemePreference(pendingTheme)
       : rootData.themePreference;
+
+  const pickTheme = (value: ThemePreference) => {
+    // Applied here rather than waiting for the write to come back through the
+    // root loader: dismissing the popover unmounts this row, and an unmounted
+    // fetcher's revalidation is dropped, which left the theme untouched even
+    // though the preference had saved.
+    applyThemePreference(value);
+    fetcher.submit({ theme: value }, { method: "post", action: THEME_ACTION_PATH });
+  };
 
   return (
     // Much narrower than the standard submenu: these labels don't need the room.
@@ -46,9 +64,7 @@ export function AppearanceMenuItem() {
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
             isSelected={theme === option.value}
-            onClick={() =>
-              fetcher.submit({ theme: option.value }, { method: "post", action: THEME_ACTION_PATH })
-            }
+            onClick={() => pickTheme(option.value)}
           />
         ))}
       </div>
