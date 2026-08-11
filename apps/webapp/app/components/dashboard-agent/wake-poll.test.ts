@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { startWakePolling, UNREAD_POLL_INTERVAL_MS, wakesToToast } from "./wake-poll";
+import {
+  planWakeToasts,
+  startWakePolling,
+  UNREAD_POLL_INTERVAL_MS,
+  wakesToToast,
+} from "./wake-poll";
 
 function harness() {
   let hidden = false;
@@ -122,5 +127,44 @@ describe("wakesToToast", () => {
   it("treats a wake with no unread flag as already seen rather than guessing", () => {
     expect(wakesToToast([{ watchId: "watch_old" }], new Set())).toEqual([]);
     expect(wakesToToast(undefined, new Set())).toEqual([]);
+  });
+});
+
+describe("planWakeToasts", () => {
+  const MAX = 3;
+  const batch = (n: number) => Array.from({ length: n }, (_, i) => i);
+
+  it("toasts a small batch individually but still counts it toward the running total", () => {
+    const { plan, pending } = planWakeToasts(batch(2), 0, MAX);
+
+    expect(plan).toEqual({ mode: "individual", wakes: [0, 1] });
+    expect(pending).toBe(2);
+  });
+
+  it("summarizes when a single batch is over the max", () => {
+    const { plan, pending } = planWakeToasts(batch(4), 0, MAX);
+
+    expect(plan).toEqual({ mode: "summary", count: 4 });
+    expect(pending).toBe(4);
+  });
+
+  it("accumulates across consecutive polls instead of showing only the latest", () => {
+    // First batch of 2 is below the max: individual toasts, nothing pending yet.
+    const first = planWakeToasts(batch(2), 0, MAX);
+    expect(first.plan.mode).toBe("individual");
+
+    // A second batch of 3 pushes the running total to 5, so the grouped toast claims
+    // the cumulative count, not just this batch's 3.
+    const second = planWakeToasts(batch(3), first.pending, MAX);
+    expect(second.plan).toEqual({ mode: "summary", count: 5 });
+    expect(second.pending).toBe(5);
+  });
+
+  it("grows the visible summary as later batches arrive", () => {
+    const first = planWakeToasts(batch(4), 0, MAX);
+    const second = planWakeToasts(batch(3), first.pending, MAX);
+
+    expect(second.plan).toEqual({ mode: "summary", count: 7 });
+    expect(second.pending).toBe(7);
   });
 });
