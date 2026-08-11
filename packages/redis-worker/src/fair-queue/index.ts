@@ -25,6 +25,7 @@ import type {
   FairScheduler,
   QueueCooloffState,
   QueueDescriptor,
+  ReclaimedMessageInfo,
   SchedulerContext,
   StoredMessage,
   TenantQueues,
@@ -1332,6 +1333,26 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
+   * Release a concurrency slot for a message we can no longer describe, deriving the
+   * group from the queue id alone. Used on paths that bail out before the stored
+   * message is available, where the slot would otherwise be held with nothing left
+   * to reclaim it.
+   */
+  async #releaseOrphanedConcurrency(messageId: string, queueId: string): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: this.keys.extractTenantId(queueId),
+      metadata: {},
+    };
+
+    await this.concurrencyManager.release(descriptor, messageId);
+  }
+
+  /**
    * Mark a message as failed. This will trigger retry logic if configured,
    * or move the message to the dead letter queue.
    *
@@ -1349,6 +1370,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
     if (!dataJson) {
       this.logger.error("Cannot fail message: not found in in-flight data", { messageId, queueId });
+      await this.#releaseOrphanedConcurrency(messageId, queueId);
       return;
     }
 
@@ -1360,6 +1382,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         messageId,
         queueId,
       });
+      await this.#releaseOrphanedConcurrency(messageId, queueId);
       return;
     }
 
@@ -1441,13 +1464,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    // Move to DLQ
-    await this.#moveToDeadLetterQueue(storedMessage, error?.message);
-
     // Release concurrency
     if (this.concurrencyManager) {
       await this.concurrencyManager.release(descriptor, storedMessage.id);
     }
+
+    // Move to DLQ
+    await this.#moveToDeadLetterQueue(storedMessage, error?.message);
   }
 
   async #moveToDeadLetterQueue(
@@ -1521,49 +1544,54 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
   }
 
+  /**
+   * Free a reclaimed message's concurrency slot. Runs before the message is put back
+   * on the queue, so another consumer cannot reserve the same messageId and have its
+   * fresh reservation deleted by this release. Failures are logged rather than thrown
+   * so one bad message cannot stop the rest of the shard being reclaimed.
+   */
+  async #releaseReclaimedConcurrency(message: ReclaimedMessageInfo): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    try {
+      await this.concurrencyManager.release(
+        {
+          id: message.queueId,
+          tenantId: message.tenantId,
+          metadata: message.metadata ?? {},
+        },
+        message.messageId
+      );
+    } catch (error) {
+      this.logger.error("Failed to release concurrency for reclaimed message", {
+        messageId: message.messageId,
+        queueId: message.queueId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async #reclaimTimedOutMessages(): Promise<void> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => {
-        const tenantId = this.keys.extractTenantId(queueId);
-        const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
-        return {
-          queueKey: this.keys.queueKey(queueId),
-          queueItemsKey: this.keys.queueItemsKey(queueId),
-          tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
-          dispatchKey: this.keys.dispatchKey(dispatchShardId),
-          tenantId,
-        };
-      });
-
-      if (reclaimedMessages.length > 0) {
-        // Release concurrency for all reclaimed messages in a single batch
-        // This is critical: when a message times out, its concurrency slot must be freed
-        // so the message can be processed again when it's re-claimed from the queue
-        if (this.concurrencyManager) {
-          try {
-            await this.concurrencyManager.releaseBatch(
-              reclaimedMessages.map((msg) => ({
-                queue: {
-                  id: msg.queueId,
-                  tenantId: msg.tenantId,
-                  metadata: msg.metadata ?? {},
-                },
-                messageId: msg.messageId,
-              }))
-            );
-          } catch (error) {
-            this.logger.error("Failed to release concurrency for reclaimed messages", {
-              count: reclaimedMessages.length,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-
-        // Dispatch indexes are updated atomically by the releaseMessage Lua script
-        // inside reclaimTimedOut, so no separate index update needed here.
-      }
+      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(
+        shardId,
+        (queueId) => {
+          const tenantId = this.keys.extractTenantId(queueId);
+          const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
+          return {
+            queueKey: this.keys.queueKey(queueId),
+            queueItemsKey: this.keys.queueItemsKey(queueId),
+            tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
+            dispatchKey: this.keys.dispatchKey(dispatchShardId),
+            tenantId,
+          };
+        },
+        this.#releaseReclaimedConcurrency.bind(this)
+      );
 
       totalReclaimed += reclaimedMessages.length;
     }

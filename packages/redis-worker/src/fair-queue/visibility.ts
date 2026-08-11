@@ -398,7 +398,8 @@ export class VisibilityManager {
       tenantQueueIndexKey: string;
       dispatchKey: string;
       tenantId: string;
-    }
+    },
+    onBeforeRequeue?: (message: ReclaimedMessageInfo) => Promise<void>
   ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
@@ -437,6 +438,15 @@ export class VisibilityManager {
           } catch {
             // Ignore parse error, proceed with reclaim
           }
+        }
+
+        if (onBeforeRequeue) {
+          await onBeforeRequeue({
+            messageId,
+            queueId,
+            tenantId: storedMessage?.tenantId ?? tenantId,
+            metadata: storedMessage?.metadata,
+          });
         }
 
         // Re-add to queue with original timestamp to preserve priority
@@ -707,7 +717,9 @@ local tenantId = ARGV[6]
 -- Get message data from in-flight
 local payload = redis.call('HGET', inflightDataKey, messageId)
 if not payload then
-  -- Message not in in-flight or already released
+  -- Message not in in-flight or already released. Drop the dangling in-flight
+  -- entry so it stops consuming a slot in every future reclaim scan.
+  redis.call('ZREM', inflightKey, member)
   return 0
 end
 
@@ -780,6 +792,10 @@ for i = 0, numMessages - 1 do
     redis.call('HSET', queueItemsKey, messageId, payload)
 
     releasedCount = releasedCount + 1
+  else
+    -- Dangling in-flight entry with no payload: drop it so it stops consuming
+    -- a slot in every future reclaim scan.
+    redis.call('ZREM', inflightKey, member)
   end
 end
 

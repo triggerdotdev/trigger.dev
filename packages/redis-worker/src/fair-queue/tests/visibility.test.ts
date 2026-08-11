@@ -912,5 +912,70 @@ describe("VisibilityManager", () => {
         await redis.quit();
       }
     );
+
+    redisTest(
+      "should drop a dangling in-flight entry whose payload is gone",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 100,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:dangling";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const dispatchKey = keys.dispatchKey(0);
+        const inflightKey = keys.inflightKey(0);
+        const inflightDataKey = keys.inflightDataKey(0);
+
+        try {
+          const messageId = "dangling-msg";
+          const storedMessage = {
+            id: messageId,
+            queueId,
+            tenantId: "t1",
+            payload: { id: 1, value: "test" },
+            timestamp: Date.now() - 1000,
+            attempt: 1,
+          };
+
+          await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+          await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+          const claimResult = await manager.claim(
+            queueId,
+            queueKey,
+            queueItemsKey,
+            "consumer-1",
+            100
+          );
+          expect(claimResult.claimed).toBe(true);
+
+          await redis.hdel(inflightDataKey, messageId);
+          expect(await redis.zcard(inflightKey)).toBe(1);
+
+          await new Promise((resolve) => setTimeout(resolve, 150));
+
+          await manager.reclaimTimedOut(0, (qId) => ({
+            queueKey: keys.queueKey(qId),
+            queueItemsKey: keys.queueItemsKey(qId),
+            tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+            dispatchKey,
+            tenantId: keys.extractTenantId(qId),
+          }));
+
+          expect(await redis.zcard(inflightKey)).toBe(0);
+        } finally {
+          await manager.close();
+          await redis.quit();
+        }
+      }
+    );
   });
 });

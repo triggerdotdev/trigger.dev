@@ -1516,5 +1516,146 @@ describe("FairQueue", () => {
         }
       }
     );
+
+    redisTest(
+      "should release the concurrency slot even when the reclaim requeue fails",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 200,
+          reclaimIntervalMs: 100,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:reclaim-fail";
+
+        try {
+          queue.onMessage(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+
+          await redis.del(keys.queueKey(queueId));
+          await redis.set(keys.queueKey(queueId), "not-a-zset");
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(0);
+            },
+            { timeout: 8000 }
+          );
+        } finally {
+          await redis.del(keys.queueKey(queueId));
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should release the concurrency slot when failMessage cannot read the message",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const started: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        try {
+          queue.onMessage(async (ctx) => {
+            started.push(ctx.message.payload.value);
+            await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            await ctx.fail(new Error("boom"));
+          });
+
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(started).toHaveLength(1);
+            },
+            { timeout: 10000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+        } finally {
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
   });
 });
