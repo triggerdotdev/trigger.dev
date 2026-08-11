@@ -761,11 +761,14 @@ export class BatchQueue {
   // ============================================================================
 
   /**
-   * Keep extending a message's visibility deadline while its callback runs, and return a
-   * function that stops doing so. Without this an item slower than the visibility timeout
-   * is redelivered while still being processed, and the original consumer's completion
-   * then destroys the redelivery's in-flight record, silently dropping the item and
-   * leaving the batch short of its expected count forever.
+   * Keep extending a message's visibility deadline while its callback runs, so an item
+   * slower than the visibility timeout is not redelivered and executed a second time.
+   *
+   * `lostLease` reports that an extend found no in-flight entry, which means the item was
+   * reclaimed and is now back on the queue. It is a best-effort signal, not a fence: the
+   * in-flight member is keyed only by message and queue id, so once another consumer
+   * re-claims the item the member exists again and an extend from this consumer succeeds.
+   * Distinguishing owners would need a per-claim token in the member.
    */
   #startHeartbeat(
     messageId: string,
