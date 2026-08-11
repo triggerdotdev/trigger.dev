@@ -1,4 +1,4 @@
-import { inFlightToolName, liveInvestigation } from "./progress-line";
+import { IN_FLIGHT_TOOL_STATES, inFlightToolName, liveInvestigation } from "./progress-line";
 
 /**
  * Re-reading the stored transcript once a turn settles.
@@ -11,17 +11,47 @@ import { inFlightToolName, liveInvestigation } from "./progress-line";
 
 type Identified = { id: string };
 
+/** A message whose stream died mid-tool: a `tool-*` part still reads as running. */
+function stillRunning(message: unknown): boolean {
+  const parts = (message as { parts?: ReadonlyArray<{ type?: string; state?: string }> })?.parts;
+  if (!Array.isArray(parts)) return false;
+  return parts.some(
+    (part) =>
+      typeof part?.type === "string" &&
+      part.type.startsWith("tool-") &&
+      IN_FLIGHT_TOOL_STATES.has(part.state ?? "")
+  );
+}
+
 /**
- * Append-only, keyed on the message id. Ids are stable (a settlement card is
- * `investigation-settlement:{id}:{revision}`), so re-reading the same transcript any
- * number of times can never produce a second copy of a card, and nothing already
- * rendered is reordered or replaced.
+ * Merge the authoritative re-read into what the panel holds, keyed on the message id.
+ *
+ * Genuinely-new messages (a settlement card is `investigation-settlement:{id}:{revision}`)
+ * are appended, so re-reading the same transcript any number of times never produces a
+ * second copy. A message whose in-memory copy died mid-tool — a stream that EOF'd before
+ * the part settled — is replaced by its finished version from the re-read; otherwise it
+ * would show that step running forever. We only replace a still-running copy with a copy
+ * that has itself settled, so a live turn streaming under the same id is left alone and
+ * ordering is preserved.
  */
 export function mergeSettledMessages<T extends Identified>(current: T[], fetched: T[]): T[] {
+  const byId = new Map(fetched.map((message) => [message.id, message]));
+
+  let replaced = false;
+  const next = current.map((existing) => {
+    const settled = byId.get(existing.id);
+    if (settled && settled !== existing && stillRunning(existing) && !stillRunning(settled)) {
+      replaced = true;
+      return settled;
+    }
+    return existing;
+  });
+
   const missing = fetched.filter(
     (message) => !current.some((existing) => existing.id === message.id)
   );
-  return missing.length === 0 ? current : [...current, ...missing];
+  if (missing.length === 0) return replaced ? next : current;
+  return [...next, ...missing];
 }
 
 /** Whether the transcript still resolves to a card mid-investigation. */
