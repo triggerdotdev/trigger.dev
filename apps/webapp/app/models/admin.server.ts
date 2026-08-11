@@ -1,5 +1,5 @@
 import { redirect } from "@remix-run/server-runtime";
-import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $replica, $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import type { SearchParams } from "~/routes/admin._index";
 import {
@@ -9,7 +9,7 @@ import {
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
-import { requireUser } from "~/services/session.server";
+import { getRealUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { impersonationDestinationPath } from "~/utils/pathBuilder";
 
@@ -210,35 +210,76 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   };
 }
 
+/**
+ * Starts (or switches) impersonation.
+ *
+ * The admin gate resolves the *real* authenticated user itself. `requireUser` returns the
+ * impersonation target while impersonating, so callers that gated on it refused an admin who was
+ * already impersonating someone — they had to stop first — and would have attributed the audit row
+ * to the target rather than the admin.
+ *
+ * `verifiedAdmin` exists only so tests can supply an admin without a session cookie. Production
+ * callers must not pass it: passing a `requireUser` result is exactly the bug described above.
+ */
 export async function redirectWithImpersonation(
   request: Request,
   userId: string,
   path: string,
-  currentUser?: { id: string; admin: boolean },
+  verifiedAdmin?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
-  const user = currentUser ?? (await requireUser(request));
-  if (!user.admin) {
+  const admin = verifiedAdmin ?? (await getRealUser(request, prismaClient));
+  if (!admin?.admin) {
     throw new Error("Unauthorized");
   }
 
   const xff = request.headers.get("x-forwarded-for");
   const ipAddress = extractClientIp(xff);
+  const previousTargetId = await getImpersonationId(request);
+
+  // Switching straight from one target to another never passes through `clearImpersonation`, so the
+  // previous session is closed here, or the trail shows two overlapping STARTs.
+  //
+  // Both rows are written in one transaction: as separate statements, a failure between them could
+  // start an impersonation whose only audit row is the STOP for the previous target — an admin
+  // acting as someone with no record of it.
+  //
+  // `createdAt` is stamped explicitly rather than left to `@default(now())`, because Postgres `now()`
+  // is the *transaction* timestamp: inside one transaction both rows would take the same value, and
+  // an audit view ordered by that column couldn't tell which came first.
+  const startedAt = new Date();
+  const closedAt = new Date(startedAt.getTime() - 1);
 
   try {
-    await prismaClient.impersonationAuditLog.create({
-      data: {
-        action: "START",
-        adminId: user.id,
-        targetId: userId,
-        ipAddress,
-      },
+    await $transaction(prismaClient, "startImpersonationAudit", async (tx) => {
+      if (previousTargetId && previousTargetId !== userId) {
+        await tx.impersonationAuditLog.create({
+          data: {
+            action: "STOP",
+            adminId: admin.id,
+            targetId: previousTargetId,
+            ipAddress,
+            createdAt: closedAt,
+          },
+        });
+      }
+
+      await tx.impersonationAuditLog.create({
+        data: {
+          action: "START",
+          adminId: admin.id,
+          targetId: userId,
+          ipAddress,
+          createdAt: startedAt,
+        },
+      });
     });
   } catch (error) {
     logger.error("Failed to create impersonation audit log", {
       error,
-      adminId: user.id,
+      adminId: admin.id,
       targetId: userId,
+      previousTargetId,
     });
   }
 
@@ -308,7 +349,8 @@ export async function startImpersonation(
   request: Request,
   organizationSlug: string,
   path: string,
-  currentUser: { id: string; admin: boolean },
+  // Test-only, forwarded to `redirectWithImpersonation` — see its docstring.
+  verifiedAdmin?: { id: string; admin: boolean },
   clients: { read: PrismaClientOrTransaction; write: PrismaClientOrTransaction } = {
     read: $replica,
     write: prisma,
@@ -325,7 +367,7 @@ export async function startImpersonation(
     request,
     target.userId,
     impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
-    currentUser,
+    verifiedAdmin,
     clients.write
   );
 }

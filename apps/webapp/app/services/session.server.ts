@@ -1,4 +1,5 @@
 import { redirect } from "@remix-run/node";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
@@ -122,6 +123,44 @@ export async function requireUserId(request: Request, redirectTo?: string) {
     throw redirect(`/login?${searchParams}`);
   }
   return userId;
+}
+
+/**
+ * The user the request actually authenticated as, ignoring any impersonation cookie.
+ *
+ * `getUserId` deliberately resolves to the *impersonated* id while impersonating, so `getUser` /
+ * `requireUser` answer "who is this request acting as". That is the wrong question for anything
+ * gating on admin rights or attributing an admin action: while impersonating a customer,
+ * `requireUser().admin` is that customer's flag, so an admin check silently fails and an audit
+ * record would name the customer as the actor.
+ *
+ * Returns null when unauthenticated or the row is gone.
+ */
+export async function getRealUser(
+  request: Request,
+  prismaClient: PrismaClientOrTransaction = prisma
+) {
+  const authUser = await authenticator.isAuthenticated(request);
+
+  // Apply the same session controls `getUserId`/`getUser` apply to the real user, so this helper
+  // can't become a way around them: a session the IdP has revoked throws to /logout here, and one
+  // past its effective duration is caught below. Skipping either would let an admin whose session
+  // should have ended still start impersonation.
+  await revalidateSsoSession(request, authUser);
+  if (!authUser?.userId) return null;
+
+  // Narrow select — callers need the id and the admin flag, plus `nextSessionEnd` for the deadline
+  // check. Takes a client so a caller already scoped to one reads the admin from the same database
+  // it writes to.
+  const user = await prismaClient.user.findFirst({
+    where: { id: authUser.userId },
+    select: { id: true, admin: true, nextSessionEnd: true },
+  });
+  if (!user) return null;
+
+  maybeAutoLogout(request, user);
+
+  return user;
 }
 
 export type UserFromSession = Awaited<ReturnType<typeof requireUser>>;

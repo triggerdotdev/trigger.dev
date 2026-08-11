@@ -45,6 +45,14 @@ export async function getImpersonationId(request: Request) {
 export async function setImpersonationId(userId: string, request: Request) {
   const session = await getImpersonationSession(request);
 
+  // Switching straight to a different target begins a new impersonation session, so the view-as-user
+  // flag must not carry over from the previous one — it's scoped to a single impersonation, which is
+  // why `clearImpersonationId` drops it too. Reachable only since switching stopped requiring a stop
+  // first; before that, every second target arrived via `clearImpersonationId`.
+  if (session.get(IMPERSONATED_USER_ID_KEY) !== userId) {
+    session.unset(VIEWING_AS_USER_KEY);
+  }
+
   session.set(IMPERSONATED_USER_ID_KEY, userId);
 
   return session;
