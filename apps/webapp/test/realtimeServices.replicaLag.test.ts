@@ -412,6 +412,7 @@ describe("realtime-svc — replica-lag guards", () => {
       // previousRunId forwarded to the triggered run is the calling run's cuid (documented fallback).
       expect(triggerState.calls).toHaveLength(1);
       expect(triggerState.calls[0]!.body.payload.previousRunId).toBe(callingRunId);
+      expect(triggerState.calls[0]!.options.realtimeStreamsVersion).toBeDefined();
       expect(replica.wasHit("taskRun")).toBe(true);
 
       // Proof the null was lag-induced: the primary holds the resolvable friendlyId (≠ the cuid).
