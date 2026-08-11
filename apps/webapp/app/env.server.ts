@@ -1684,6 +1684,7 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
     SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
+    SCHEDULE_WORKER_CRON_SPREAD_ENABLED: BoolEnv.default(false),
 
     SCHEDULE_WORKER_REDIS_HOST: z
       .string()

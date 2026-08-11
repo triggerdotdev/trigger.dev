@@ -225,14 +225,17 @@ export class ScheduleEngine {
           instance.taskSchedule.timezone,
           nominalAt
         );
-        const { effectiveAt } = calculateEffectiveScheduleTime({
+        const { effectiveAt: candidateEffectiveAt } = calculateEffectiveScheduleTime({
           nominalAt,
           nextNominalAt,
           schedulePhase,
           window: scheduleWindow,
         });
+        const effectiveAt = this.options.cronSpreadEnabled ? candidateEffectiveAt : nominalAt;
 
+        span.setAttribute("cron_spread_enabled", this.options.cronSpreadEnabled);
         span.setAttribute("next_scheduled_timestamp", nominalAt.toISOString());
+        span.setAttribute("candidate_effective_schedule_time", candidateEffectiveAt.toISOString());
         span.setAttribute("effective_schedule_time", effectiveAt.toISOString());
 
         const schedulingDelayMs = effectiveAt.getTime() - Date.now();
@@ -242,7 +245,9 @@ export class ScheduleEngine {
           instanceId: params.instanceId,
           taskIdentifier: instance.taskSchedule.taskIdentifier,
           nominalAt: nominalAt.toISOString(),
+          candidateEffectiveAt: candidateEffectiveAt.toISOString(),
           effectiveAt: effectiveAt.toISOString(),
+          cronSpreadEnabled: this.options.cronSpreadEnabled,
           schedulingDelayMs,
           generatorExpression: instance.taskSchedule.generatorExpression,
           timezone: instance.taskSchedule.timezone,

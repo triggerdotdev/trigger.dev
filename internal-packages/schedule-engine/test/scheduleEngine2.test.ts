@@ -27,6 +27,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadEnabled: false,
         worker: {
           concurrency: 1,
           disabled: true, // Don't actually run the worker — calling triggerScheduledTask directly
@@ -79,6 +80,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
             type: "DECLARATIVE",
             active: true,
             externalId: "legacy-ext",
+            windowDurationSeconds: 60,
           },
         });
 
@@ -119,22 +121,27 @@ describe("ScheduleEngine Integration (part 2)", () => {
           effectiveScheduleTime: string;
         };
         const nextNominalAt = new Date("2026-04-30T10:10:00.000Z");
-        const followingNominalAt = new Date("2026-04-30T10:15:00.000Z");
-        const schedulePhase = calculateSchedulePhase({
-          secret: "test-schedule-phase-secret",
-          environmentId: environment.id,
-          deduplicationKey: taskSchedule.deduplicationKey,
-        });
-        const { effectiveAt: nextEffectiveAt } = calculateEffectiveScheduleTime({
-          nominalAt: nextNominalAt,
-          nextNominalAt: followingNominalAt,
-          schedulePhase,
-        });
 
-        // The next job advances from the legacy job's nominal T, not from E
-        // or the current wall clock, and newly enqueued jobs carry both times.
+        // The next job advances from the legacy job's nominal T, not from the
+        // current wall clock. With cron spread disabled, actual eligibility
+        // remains nominal even though registration still calculates candidate E.
         expect(new Date(nextJobPayload.exactScheduleTime)).toEqual(nextNominalAt);
-        expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextEffectiveAt);
+        expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextNominalAt);
+        expect(nextJob!.timestamp).toEqual(
+          calculateDistributedExecutionTime(nextNominalAt, 10, scheduleInstance.id)
+        );
+
+        const updatedInstance = await prisma.taskScheduleInstance.findUniqueOrThrow({
+          where: { id: scheduleInstance.id },
+          select: { schedulePhase: true },
+        });
+        expect(updatedInstance.schedulePhase).toBe(
+          calculateSchedulePhase({
+            secret: "test-schedule-phase-secret",
+            environmentId: environment.id,
+            deduplicationKey: taskSchedule.deduplicationKey,
+          })
+        );
       } finally {
         await engine.quit();
       }
@@ -152,6 +159,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret,
+        cronSpreadEnabled: true,
         worker: {
           concurrency: 1,
           disabled: true,

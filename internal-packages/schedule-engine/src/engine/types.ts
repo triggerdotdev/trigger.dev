@@ -52,6 +52,7 @@ export interface ScheduleEngineOptions {
     seconds: number;
   };
   schedulePhaseSecret: string | Buffer;
+  cronSpreadEnabled: boolean;
   tracer?: Tracer;
   meter?: Meter;
   onTriggerScheduledTask: TriggerScheduledTaskCallback;
