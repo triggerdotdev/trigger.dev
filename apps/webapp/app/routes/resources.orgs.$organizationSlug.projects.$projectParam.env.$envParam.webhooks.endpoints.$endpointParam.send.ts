@@ -194,7 +194,7 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
       return { success: true, httpStatus: 200, handshake: true, responseBody: result.body };
     case "duplicate": {
       const friendlyId = result.deliveryId;
-      if (shouldRedirect) throw redirect(deliveryPathFor(friendlyId));
+      if (shouldRedirect && friendlyId) throw redirect(deliveryPathFor(friendlyId));
       return {
         success: true,
         httpStatus: 200,

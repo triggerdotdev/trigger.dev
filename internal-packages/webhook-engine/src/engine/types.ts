@@ -102,7 +102,7 @@ export type ReplayResult =
 export type IngestResult =
   | { outcome: "accepted"; deliveryId: string; deliveryFriendlyId: string }
   | { outcome: "handshake"; body: string } // provider handshake (Slack url_verification) -> 200 echo
-  | { outcome: "duplicate"; deliveryId: string } // front-gate hit -> 200
+  | { outcome: "duplicate"; deliveryId?: string } // front-gate hit -> 200
   | { outcome: "endpoint_not_found" } // -> 404
   | { outcome: "endpoint_inactive" } // -> 404
   | { outcome: "secret_missing" } // -> 400 (fail-closed)

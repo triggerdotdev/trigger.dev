@@ -240,7 +240,7 @@ export class WebhookEngine {
     );
     if (claimed !== "OK") {
       const existing = await this.frontGate.get(gateKey);
-      return { outcome: "duplicate", deliveryId: existing ?? friendlyId };
+      return { outcome: "duplicate", deliveryId: existing ?? undefined };
     }
 
     const { filtered, reason } = this.#evaluateFilter(
