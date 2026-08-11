@@ -25,6 +25,15 @@ export const SessionStatus = z.enum(["ACTIVE", "CLOSED", "EXPIRED"]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
 /**
+ * Display-only status. The list also distinguishes an open session with no
+ * live run (`IDLE`) from one that's genuinely executing (`ACTIVE`). `IDLE` is
+ * derived from the current run's liveness and is **not** filterable — the
+ * filter surface (ClickHouse) only knows `closedAt`/`expiresAt`, so it keeps
+ * the three-value `SessionStatus`. See `deriveSessionStatus`.
+ */
+export type SessionDisplayStatus = SessionStatus | "IDLE";
+
+/**
  * Legacy marker tag for sessions created from the Test/playground before the
  * `Session.isTest` boolean existed. New sessions set `isTest` instead; this tag
  * is hidden from the Tags display so it doesn't surface on pre-isTest rows.

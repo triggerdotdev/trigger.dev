@@ -1,26 +1,34 @@
 import { CheckCircleIcon, ClockIcon } from "@heroicons/react/20/solid";
 import assertNever from "assert-never";
-import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
+import {
+  type SessionDisplayStatus,
+  type SessionStatus,
+} from "~/services/sessionsRepository/sessionsRepository.server";
 import { cn } from "~/utils/cn";
 
+// Filterable statuses only — `IDLE` is display-only and derived from run
+// liveness, so it never appears in the filter surface.
 export const allSessionStatuses = ["ACTIVE", "CLOSED", "EXPIRED"] as const satisfies Readonly<
   Array<SessionStatus>
 >;
 
-const descriptions: Record<SessionStatus, string> = {
-  ACTIVE: "The session is open and can receive input or schedule new runs.",
+const descriptions: Record<SessionDisplayStatus, string> = {
+  ACTIVE: "The session has a run currently executing.",
+  IDLE: "The session is open but has no run currently executing.",
   CLOSED: "The session was closed; no further input or runs can be triggered against it.",
   EXPIRED: "The session passed its expiry time without being closed explicitly.",
 };
 
-export function descriptionForSessionStatus(status: SessionStatus): string {
+export function descriptionForSessionStatus(status: SessionDisplayStatus): string {
   return descriptions[status];
 }
 
-export function sessionStatusTitle(status: SessionStatus): string {
+export function sessionStatusTitle(status: SessionDisplayStatus): string {
   switch (status) {
     case "ACTIVE":
       return "Active";
+    case "IDLE":
+      return "Idle";
     case "CLOSED":
       return "Closed";
     case "EXPIRED":
@@ -30,10 +38,12 @@ export function sessionStatusTitle(status: SessionStatus): string {
   }
 }
 
-export function sessionStatusColor(status: SessionStatus): string {
+export function sessionStatusColor(status: SessionDisplayStatus): string {
   switch (status) {
     case "ACTIVE":
       return "text-pending";
+    case "IDLE":
+      return "text-text-dimmed";
     case "CLOSED":
       return "text-success";
     case "EXPIRED":
@@ -48,7 +58,7 @@ export function SessionStatusIcon({
   className,
   pulse = true,
 }: {
-  status: SessionStatus;
+  status: SessionDisplayStatus;
   className: string;
   pulse?: boolean;
 }) {
@@ -64,6 +74,14 @@ export function SessionStatusIcon({
           </span>
         </span>
       );
+    case "IDLE":
+      // Open but not live: a static, dimmed dot (no pulse) — distinct from
+      // ACTIVE's pulsing dot and EXPIRED's clock.
+      return (
+        <span className={cn("inline-flex items-center justify-center", className)}>
+          <span className="size-2 rounded-full bg-text-dimmed" />
+        </span>
+      );
     case "CLOSED":
       return <CheckCircleIcon className={cn(sessionStatusColor(status), className)} />;
     case "EXPIRED":
@@ -73,7 +91,7 @@ export function SessionStatusIcon({
   }
 }
 
-export function SessionStatusLabel({ status }: { status: SessionStatus }) {
+export function SessionStatusLabel({ status }: { status: SessionDisplayStatus }) {
   // system-mono-label: System themes uncolor the label (see tailwind.css)
   return (
     <span className={cn("system-mono-label", sessionStatusColor(status))}>
@@ -88,7 +106,7 @@ export function SessionStatusCombo({
   iconClassName,
   pulse = true,
 }: {
-  status: SessionStatus;
+  status: SessionDisplayStatus;
   className?: string;
   iconClassName?: string;
   pulse?: boolean;

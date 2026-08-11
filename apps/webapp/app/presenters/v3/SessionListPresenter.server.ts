@@ -10,6 +10,7 @@ import {
   LEGACY_PLAYGROUND_TAG,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { deriveSessionStatus } from "./deriveSessionStatus";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { runStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
@@ -192,7 +193,7 @@ export class SessionListPresenter {
                   projectId,
                   runtimeEnvironmentId: environmentId,
                 },
-                select: { id: true, friendlyId: true },
+                select: { id: true, friendlyId: true, status: true, completedAt: true },
               },
               this.replica
             )
@@ -205,14 +206,18 @@ export class SessionListPresenter {
 
     return {
       sessions: sessions.map((session) => {
-        const status: SessionStatus =
-          session.closedAt != null
-            ? "CLOSED"
-            : session.expiresAt != null && session.expiresAt.getTime() < now
-              ? "EXPIRED"
-              : "ACTIVE";
-
         const currentRun = session.currentRunId ? runById.get(session.currentRunId) : undefined;
+
+        // A session is only ACTIVE while its current run is genuinely live.
+        // Open sessions whose run has terminated (or that have no run) read
+        // IDLE rather than ticking ACTIVE forever.
+        const status = deriveSessionStatus({
+          closedAt: session.closedAt,
+          expiresAt: session.expiresAt,
+          currentRunId: session.currentRunId,
+          currentRunStatus: currentRun?.status,
+          now,
+        });
 
         return {
           id: session.id,
@@ -235,6 +240,11 @@ export class SessionListPresenter {
           updatedAt: session.updatedAt.toISOString(),
           environment: displayableEnvironment,
           currentRunFriendlyId: currentRun?.friendlyId,
+          // Freeze point for an IDLE session's duration — when its current run
+          // finished. Undefined when the session never ran (renders as a dash).
+          currentRunCompletedAt: currentRun?.completedAt
+            ? currentRun.completedAt.toISOString()
+            : undefined,
         };
       }),
       pagination: {

@@ -195,15 +195,20 @@ export function SessionsTable({
 }
 
 function SessionDuration({ session }: { session: SessionListItem }) {
-  // Active sessions tick live; closed/expired sessions freeze at the
-  // moment they ended (closedAt for explicit closes, expiresAt when the
-  // TTL ran out without a close call).
+  // Only a genuinely live session ticks. Everything else freezes at the moment
+  // it stopped being live: closedAt for explicit closes, expiresAt when the TTL
+  // ran out, or the current run's completedAt for an idle (open, not-running)
+  // session — so an abandoned session doesn't count up forever.
+  if (session.status === "ACTIVE") {
+    return <LiveTimer startTime={new Date(session.createdAt)} />;
+  }
+
   const endedAt =
     session.status === "CLOSED"
       ? session.closedAt
       : session.status === "EXPIRED"
         ? session.expiresAt
-        : undefined;
+        : session.currentRunCompletedAt;
 
   if (endedAt) {
     return (
@@ -211,7 +216,8 @@ function SessionDuration({ session }: { session: SessionListItem }) {
     );
   }
 
-  return <LiveTimer startTime={new Date(session.createdAt)} />;
+  // Idle session that never ran — nothing to measure.
+  return <span className="text-text-dimmed">–</span>;
 }
 
 function SessionActionsCell({ runPath, allRunsPath }: { runPath?: string; allRunsPath: string }) {
