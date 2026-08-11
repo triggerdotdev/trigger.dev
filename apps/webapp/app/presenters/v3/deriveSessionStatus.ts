@@ -7,11 +7,11 @@ export type DeriveSessionStatusInput = {
   closedAt: Date | null;
   /** `Session.expiresAt` — retention deadline, if any. */
   expiresAt: Date | null;
-  /** `Session.currentRunId` — pointer to the current run (no FK). */
-  currentRunId: string | null;
+  /** Whether the session points at a current run at all. */
+  hasCurrentRun: boolean;
   /**
-   * Status of the run named by `currentRunId`. `undefined` when there is no
-   * current run, or the pointer couldn't be resolved (stale / cross-env).
+   * Status of the current run. `undefined` when there is no current run, or the
+   * pointer couldn't be resolved (stale / cross-env).
    */
   currentRunStatus: TaskRunStatus | undefined;
   /** `Date.now()` at the time of derivation. */
@@ -38,7 +38,7 @@ export function deriveSessionStatus(input: DeriveSessionStatusInput): SessionDis
   }
 
   const hasLiveRun =
-    input.currentRunId != null &&
+    input.hasCurrentRun &&
     input.currentRunStatus !== undefined &&
     !isFinalRunStatus(input.currentRunStatus);
 

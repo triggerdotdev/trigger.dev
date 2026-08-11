@@ -11,7 +11,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: PAST,
         expiresAt: null,
-        currentRunId: "run_1",
+        hasCurrentRun: true,
         currentRunStatus: "EXECUTING",
         now: NOW,
       })
@@ -23,7 +23,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: PAST,
         expiresAt: PAST,
-        currentRunId: null,
+        hasCurrentRun: false,
         currentRunStatus: undefined,
         now: NOW,
       })
@@ -35,7 +35,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: null,
         expiresAt: PAST,
-        currentRunId: "run_1",
+        hasCurrentRun: true,
         currentRunStatus: "EXECUTING",
         now: NOW,
       })
@@ -47,7 +47,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: null,
         expiresAt: FUTURE,
-        currentRunId: "run_1",
+        hasCurrentRun: true,
         currentRunStatus: "EXECUTING",
         now: NOW,
       })
@@ -59,7 +59,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: null,
         expiresAt: null,
-        currentRunId: "run_1",
+        hasCurrentRun: true,
         currentRunStatus: "EXPIRED",
         now: NOW,
       })
@@ -71,7 +71,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: null,
         expiresAt: null,
-        currentRunId: null,
+        hasCurrentRun: false,
         currentRunStatus: undefined,
         now: NOW,
       })
@@ -83,7 +83,7 @@ describe("deriveSessionStatus", () => {
       deriveSessionStatus({
         closedAt: null,
         expiresAt: null,
-        currentRunId: "run_missing",
+        hasCurrentRun: true,
         currentRunStatus: undefined,
         now: NOW,
       })

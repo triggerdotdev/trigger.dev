@@ -214,7 +214,7 @@ export class SessionListPresenter {
         const status = deriveSessionStatus({
           closedAt: session.closedAt,
           expiresAt: session.expiresAt,
-          currentRunId: session.currentRunId,
+          hasCurrentRun: session.currentRunId != null,
           currentRunStatus: currentRun?.status,
           now,
         });

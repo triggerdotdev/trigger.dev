@@ -99,7 +99,10 @@ const { id, runId, publicAccessToken, isCached } = await sessions.start({
   type: "chat.agent",
   externalId: chatId,
   taskIdentifier: "my-chat",
+  // Top-level tags live on the Session row and are what `sessions.list({ tag })` filters on.
+  tags: [`chat:${chatId}`],
   triggerConfig: {
+    // triggerConfig.tags tag each run the session schedules, not the session row.
     tags: [`chat:${chatId}`],
     basePayload: { /* whatever your task's payload shape is */ },
   },
@@ -153,7 +156,7 @@ Cursor-paginated list of Sessions in the current environment. Returns a `CursorP
 ```ts
 for await (const s of sessions.list({
   type: "chat.agent",
-  tag: `user:${userId}`,
+  tag: `chat:${chatId}`,
   status: "ACTIVE",
   limit: 50,
 })) {

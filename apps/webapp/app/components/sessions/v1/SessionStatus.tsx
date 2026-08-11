@@ -13,7 +13,7 @@ export const allSessionStatuses = ["ACTIVE", "CLOSED", "EXPIRED"] as const satis
 >;
 
 const descriptions: Record<SessionDisplayStatus, string> = {
-  ACTIVE: "The session has a run currently executing.",
+  ACTIVE: "The session is open and can receive input or schedule new runs.",
   IDLE: "The session is open but has no run currently executing.",
   CLOSED: "The session was closed; no further input or runs can be triggered against it.",
   EXPIRED: "The session passed its expiry time without being closed explicitly.",

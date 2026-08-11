@@ -119,7 +119,7 @@ export default function Page() {
   const status = deriveSessionStatus({
     closedAt: session.closedAt ? new Date(session.closedAt) : null,
     expiresAt: session.expiresAt ? new Date(session.expiresAt) : null,
-    currentRunId: session.currentRun?.friendlyId ?? null,
+    hasCurrentRun: session.currentRun != null,
     currentRunStatus: session.currentRun?.status,
     now: Date.now(),
   });
@@ -791,7 +791,7 @@ function OverviewTab({
               <SessionStatusCombo status={status} />
             </Property.Value>
           </Property.Item>
-          {status === "ACTIVE" && (
+          {(status === "ACTIVE" || status === "IDLE") && (
             <Dialog key={`close-${session.friendlyId}`}>
               <DialogTrigger asChild>
                 <Button variant="danger/small">Close session…</Button>
