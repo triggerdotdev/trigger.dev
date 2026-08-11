@@ -25,6 +25,23 @@ export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: strin
 }
 
 /**
+ * The list as the panel renders it. The chat on screen settles alongside the ones just read:
+ * the server's lastReadAt still trails the turn that just landed in it, so a refresh would
+ * otherwise mark the chat its owner is reading right now as unread.
+ */
+export function settleReadChats<T extends UnreadChat>(
+  chats: T[],
+  read: Set<string>,
+  visibleChatId: string | null
+): T[] {
+  return chats.map((chat) =>
+    read.has(chat.id) || chat.id === visibleChatId
+      ? { ...chat, hasUnreadWake: false, hasUnreadWork: false }
+      : chat
+  );
+}
+
+/**
  * How many chats still hold work their owner hasn't seen. The chat on screen is being read
  * right now, so a turn landing in it is not work anyone is waiting on — every count of this,
  * here and on the server, leaves it out, so none of them has to be corrected afterwards.
