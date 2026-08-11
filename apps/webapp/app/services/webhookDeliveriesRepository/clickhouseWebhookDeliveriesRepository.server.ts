@@ -1,6 +1,7 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
+import { deliveryIdsCreatedAtBounds } from "./deliveryIdBounds";
 import { decodeRunsCursor, encodeRunsCursor } from "../runsRepository/runsCursor.server";
 import {
   type CountDeliveriesByEndpointOptions,
@@ -316,24 +317,13 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
     const ids = options.friendlyIds.map((friendlyId) => WebhookDeliveryId.toId(friendlyId));
     if (ids.length === 0) return [];
 
-    const timestamps = options.friendlyIds
-      .map((friendlyId) => WebhookDeliveryId.parseTimestamp(friendlyId))
-      .filter((value): value is Date => value != null);
-    const createdAtBound =
-      timestamps.length === options.friendlyIds.length
-        ? {
-            createdAt: {
-              gte: new Date(Math.min(...timestamps.map((value) => value.getTime()))),
-              lte: new Date(Math.max(...timestamps.map((value) => value.getTime()))),
-            },
-          }
-        : {};
+    const bounds = deliveryIdsCreatedAtBounds(options.friendlyIds);
 
     return this.options.prisma.webhookDelivery.findMany({
       where: {
         id: { in: boundedIn(ids) },
         runtimeEnvironmentId: options.environmentId,
-        ...createdAtBound,
+        ...(bounds ? { createdAt: bounds } : {}),
       },
       select: DELIVERY_LIST_SELECT,
     });
