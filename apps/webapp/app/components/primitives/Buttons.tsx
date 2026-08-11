@@ -69,7 +69,10 @@ const theme = {
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      // On light, hover darkens off white. On the dark themes bg-secondary is
+      // charcoal-650, so hover steps one stop up the scale to charcoal-600
+      // (surface-control) - background-raised is charcoal-700, i.e. darker.
+      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised dark:group-hover/button:bg-surface-control group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
