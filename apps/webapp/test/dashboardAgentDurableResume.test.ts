@@ -240,10 +240,19 @@ describe("a failed snapshot write leaves the next boot a clean replay", () => {
       });
       const positionBefore = await nextPosition(prisma, chatId);
 
-      // The next turn's write fails *after* it has written: a message that carries an id but no
-      // role clears the up-front id check, so the store finalises `a1` in place and reserves the
-      // slots for the new messages before the missing role throws. Everything already written
-      // has to come back out.
+      // Tear the next turn at the INSERT itself, so the failure lands after `a1` is finalised
+      // in place and after the slots are reserved no matter how the store orders its up-front
+      // validation. A row planted directly at the position the allocator is about to hand out
+      // makes that insert violate `chat_messages_chat_position_key`. Scaffolding, not part of
+      // the transcript under test — removed once the tear has fired.
+      await prisma.$executeRawUnsafe(
+        `insert into trigger_dashboard_agent.chat_messages (chat_id, message_id, position, role, message)
+         values ($1, 'planted_collision', $2, 'assistant', '{}'::jsonb)`,
+        chatId,
+        positionBefore
+      );
+
+      // The driver names the failing statement, so the rejection itself pins where the tear fired.
       await expect(
         persistTurn(agentDb, {
           chatId,
@@ -251,12 +260,16 @@ describe("a failed snapshot write leaves the next boot a clean replay", () => {
             textMessage("u1", "user"),
             toolMessage("a1", "output-available"),
             textMessage("a2"),
-            { id: "a3", parts: [] } as unknown as { id: string; role: string },
           ],
           finalizeMessageIds: ["a1"],
           session: { publicAccessToken: "pat_torn", lastEventId: "2", runId: "run_torn" },
         })
-      ).rejects.toThrow(/handed a message with no role/);
+      ).rejects.toThrow(/Failed query: insert into .*chat_messages/);
+
+      await prisma.$executeRawUnsafe(
+        `delete from trigger_dashboard_agent.chat_messages where chat_id = $1 and message_id = 'planted_collision'`,
+        chatId
+      );
 
       // The whole turn rolled back. The in-place rewrite the store had already applied is undone:
       // `a1` is the mid-flight call again, not the finalised body the torn turn wrote.
@@ -264,7 +277,7 @@ describe("a failed snapshot write leaves the next boot a clean replay", () => {
       const tornA1 = (await transcript(chatId))[1] as unknown as { parts: { state: string }[] };
       expect(tornA1.parts[0]!.state).toBe("input-available");
       expect(await rowCount(prisma, chatId)).toBe(2);
-      // The slots it reserved for `a2`/`a3` came back too, so the retry doesn't leave a gap.
+      // The slot it reserved for `a2` came back too, so the retry doesn't leave a gap.
       expect(await nextPosition(prisma, chatId)).toBe(positionBefore);
       // The cursor is still the first turn's: the failed turn never got as far as writing one.
       expect(

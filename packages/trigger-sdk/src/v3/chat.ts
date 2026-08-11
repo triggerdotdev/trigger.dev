@@ -1218,6 +1218,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       activeStream.abort();
       this.activeStreams.delete(chatId);
     }
+    // Release here, not in the stream teardown: that only releases while it
+    // still owns the map entry, and we just deleted it. Unlike a supersede,
+    // no successor stream follows a stop, so the claim would never be freed
+    // and other tabs would stay read-only until this one closes.
+    this.coordinator?.release(chatId);
 
     // The turn won't reach its turn-complete on this client (we just
     // aborted the reader), so clear the streaming flag here and persist —
