@@ -9,7 +9,7 @@ import {
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
-import { requireUser } from "~/services/session.server";
+import { getRealUser, requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { impersonationDestinationPath } from "~/utils/pathBuilder";
 
@@ -210,35 +210,62 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   };
 }
 
+/**
+ * Starts (or switches) impersonation.
+ *
+ * The admin gate resolves the *real* authenticated user itself. `requireUser` returns the
+ * impersonation target while impersonating, so callers that gated on it refused an admin who was
+ * already impersonating someone — they had to stop first — and would have attributed the audit row
+ * to the target rather than the admin.
+ *
+ * `verifiedAdmin` exists only so tests can supply an admin without a session cookie. Production
+ * callers must not pass it: passing a `requireUser` result is exactly the bug described above.
+ */
 export async function redirectWithImpersonation(
   request: Request,
   userId: string,
   path: string,
-  currentUser?: { id: string; admin: boolean },
+  verifiedAdmin?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
-  const user = currentUser ?? (await requireUser(request));
-  if (!user.admin) {
+  const admin = verifiedAdmin ?? (await getRealUser(request, prismaClient));
+  if (!admin?.admin) {
     throw new Error("Unauthorized");
   }
 
   const xff = request.headers.get("x-forwarded-for");
   const ipAddress = extractClientIp(xff);
+  const previousTargetId = await getImpersonationId(request);
 
   try {
-    await prismaClient.impersonationAuditLog.create({
-      data: {
-        action: "START",
-        adminId: user.id,
-        targetId: userId,
-        ipAddress,
-      },
+    await prismaClient.impersonationAuditLog.createMany({
+      data: [
+        // Switching straight from one target to another never passes through `clearImpersonation`,
+        // so close the previous session here or the trail shows two overlapping STARTs.
+        ...(previousTargetId && previousTargetId !== userId
+          ? [
+              {
+                action: "STOP" as const,
+                adminId: admin.id,
+                targetId: previousTargetId,
+                ipAddress,
+              },
+            ]
+          : []),
+        {
+          action: "START" as const,
+          adminId: admin.id,
+          targetId: userId,
+          ipAddress,
+        },
+      ],
     });
   } catch (error) {
     logger.error("Failed to create impersonation audit log", {
       error,
-      adminId: user.id,
+      adminId: admin.id,
       targetId: userId,
+      previousTargetId,
     });
   }
 
@@ -308,7 +335,8 @@ export async function startImpersonation(
   request: Request,
   organizationSlug: string,
   path: string,
-  currentUser: { id: string; admin: boolean },
+  // Test-only, forwarded to `redirectWithImpersonation` — see its docstring.
+  verifiedAdmin?: { id: string; admin: boolean },
   clients: { read: PrismaClientOrTransaction; write: PrismaClientOrTransaction } = {
     read: $replica,
     write: prisma,
@@ -325,7 +353,7 @@ export async function startImpersonation(
     request,
     target.userId,
     impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
-    currentUser,
+    verifiedAdmin,
     clients.write
   );
 }

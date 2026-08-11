@@ -1,4 +1,5 @@
 import { redirect } from "@remix-run/node";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
@@ -122,6 +123,32 @@ export async function requireUserId(request: Request, redirectTo?: string) {
     throw redirect(`/login?${searchParams}`);
   }
   return userId;
+}
+
+/**
+ * The user the request actually authenticated as, ignoring any impersonation cookie.
+ *
+ * `getUserId` deliberately resolves to the *impersonated* id while impersonating, so `getUser` /
+ * `requireUser` answer "who is this request acting as". That is the wrong question for anything
+ * gating on admin rights or attributing an admin action: while impersonating a customer,
+ * `requireUser().admin` is that customer's flag, so an admin check silently fails and an audit
+ * record would name the customer as the actor.
+ *
+ * Returns null when unauthenticated or the row is gone.
+ */
+export async function getRealUser(
+  request: Request,
+  prismaClient: PrismaClientOrTransaction = prisma
+) {
+  const authUser = await authenticator.isAuthenticated(request);
+  if (!authUser?.userId) return null;
+
+  // Narrow select: callers only ever need the id and the admin flag. Takes a client so a caller
+  // already scoped to one reads the admin from the same database it writes to.
+  return prismaClient.user.findFirst({
+    where: { id: authUser.userId },
+    select: { id: true, admin: true },
+  });
 }
 
 export type UserFromSession = Awaited<ReturnType<typeof requireUser>>;
