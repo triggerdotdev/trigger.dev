@@ -100,6 +100,11 @@ const CliPlatformNotificationResponseSchema = z.object({
     .nullable(),
 });
 
+const MarkProjectInitializedResponseBody = z.object({
+  id: z.string(),
+  initializedAt: z.string().nullable(),
+});
+
 export class CliApiClient {
   private engineURL: string;
   private source: "cli" | "mcp";
@@ -177,6 +182,24 @@ export class CliApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async markProjectInitialized(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("markProjectInitialized: No access token");
+    }
+
+    return wrapZodFetch(
+      MarkProjectInitializedResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/init`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 
   async getProjects() {
