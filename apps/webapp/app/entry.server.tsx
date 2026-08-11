@@ -333,6 +333,7 @@ singleton("SentryTenantContextProcessor", () => {
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { otlpRateLimiter } from "./services/otlpRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
