@@ -87,7 +87,7 @@ curl -s http://localhost:3030/healthcheck   # verify
 The dashboard is gated by a feature flag, `hasWebhooksAccess` (default off).
 
 - The seeded dev user `local@trigger.dev` is an **admin**, and admins bypass the flag, so on a fresh seed the Webhooks nav section is already visible to you. Nothing to do.
-- If you use a non-admin user, flip the flag on the org: set `featureFlags.hasWebhooksAccess = true` on the `Organization` row, or add a global `FeatureFlag` row with key `hasWebhooksAccess`.
+- If you use a non-admin user, set `featureFlags.hasWebhooksAccess = true` on the `Organization` row to reveal the nav section. (A global `FeatureFlag` row with key `hasWebhooksAccess` makes the pages reachable by URL, but the left nav reads only org-level flags, so the section stays hidden for non-admins.)
 
 If the "Webhooks" section is missing from the left nav, this flag is why.
 
