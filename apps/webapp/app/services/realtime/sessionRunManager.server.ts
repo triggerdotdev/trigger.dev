@@ -317,7 +317,10 @@ async function triggerSessionRun(params: {
   const result = await service.call(session.taskIdentifier, environment, body, {
     triggerSource: "session",
     triggerAction: "trigger",
-    realtimeStreamsVersion: determineRealtimeStreamsVersion("v2"),
+    realtimeStreamsVersion: determineRealtimeStreamsVersion(
+      "v2",
+      environment.organization.streamBasinName
+    ),
   });
 
   if (!result) {

@@ -33,8 +33,10 @@ afterAll(async () => {
   await server?.stop();
 }, 120_000);
 
-const STREAM_ID = "browserPreview";
-const PART_ID = "part-1";
+const STREAM_ID = "frames";
+const PART_ID = "part";
+const FRAME_BYTES = 250 * 1024;
+const FRAME_COUNT = 8;
 
 /** Mirrors `S2RealtimeStreams.toStreamName` on the shared-basin prefix. */
 function runStreamName(p: {
@@ -50,6 +52,12 @@ function runStreamName(p: {
 /** Mirrors the `keyPrefix` + key shape in `v1StreamsGlobal` / `RedisRealtimeStreams`. */
 function redisStreamKey(runId: string, streamId: string): string {
   return `tr:realtime:streams:stream:${runId}:${streamId}`;
+}
+
+function framesFound(body: string): number {
+  return Array.from({ length: FRAME_COUNT }, (_, i) => `${PART_ID}-${i}`).filter((id) =>
+    body.includes(id)
+  ).length;
 }
 
 async function s2Body(streamName: string): Promise<string> {
@@ -96,20 +104,24 @@ describe("session runs and the realtime streams backend", () => {
       select: { friendlyId: true, realtimeStreamsVersion: true, streamBasinName: true },
     });
 
-    const appendRes = await fetch(
-      `${server.webapp.baseUrl}/realtime/v1/streams/${created.runId}/self/${STREAM_ID}/append`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "text/plain",
-          "X-Part-Id": PART_ID,
-        },
-        body: JSON.stringify({ frame: "a".repeat(1024) }),
-      }
-    );
+    const appendStatuses: number[] = [];
+    for (let i = 0; i < FRAME_COUNT; i++) {
+      const res = await fetch(
+        `${server.webapp.baseUrl}/realtime/v1/streams/${created.runId}/self/${STREAM_ID}/append`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "text/plain",
+            "X-Part-Id": `${PART_ID}-${i}`,
+          },
+          body: JSON.stringify({ i, frame: "a".repeat(FRAME_BYTES) }),
+        }
+      );
+      appendStatuses.push(res.status);
+    }
 
-    expect(appendRes.status).toBe(200);
+    expect(appendStatuses).toEqual(Array.from({ length: FRAME_COUNT }, () => 200));
 
     const streamName = runStreamName({
       orgId: organization.id,
@@ -119,17 +131,17 @@ describe("session runs and the realtime streams backend", () => {
       streamId: STREAM_ID,
     });
     const redis = new Redis({ host: server.redis.host, port: server.redis.port });
-    let observed: { version: string; recordsInS2: boolean; keyInRedis: boolean };
+    let observed: { version: string; framesInS2: number; keyInRedis: boolean };
     try {
       observed = {
         version: run.realtimeStreamsVersion,
-        recordsInS2: (await s2Body(streamName)).includes(PART_ID),
+        framesInS2: framesFound(await s2Body(streamName)),
         keyInRedis: (await redis.exists(redisStreamKey(created.runId, STREAM_ID))) === 1,
       };
     } finally {
       redis.disconnect();
     }
 
-    expect(observed).toEqual({ version: "v2", recordsInS2: true, keyInRedis: false });
+    expect(observed).toEqual({ version: "v2", framesInS2: FRAME_COUNT, keyInRedis: false });
   });
 });

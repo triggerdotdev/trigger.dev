@@ -3,4 +3,4 @@ area: webapp
 type: fix
 ---
 
-Runs no longer end up with realtime streams that cannot be read or written.
+Realtime streams written inside a chat session run now use the same backend as the session itself, and runs are no longer created against a backend that cannot serve them.
