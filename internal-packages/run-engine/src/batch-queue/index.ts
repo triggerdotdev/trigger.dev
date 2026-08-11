@@ -767,20 +767,32 @@ export class BatchQueue {
    * then destroys the redelivery's in-flight record, silently dropping the item and
    * leaving the batch short of its expected count forever.
    */
-  #startHeartbeat(messageId: string, queueId: string): () => void {
+  #startHeartbeat(
+    messageId: string,
+    queueId: string
+  ): { stop: () => void; lostLease: () => boolean } {
+    let lostLease = false;
+
     const interval = setInterval(() => {
-      this.fairQueue.heartbeatMessage(messageId, queueId).catch((error) => {
-        this.logger.debug("Batch item heartbeat failed", {
-          messageId,
-          queueId,
-          error: error instanceof Error ? error.message : String(error),
+      this.fairQueue
+        .heartbeatMessage(messageId, queueId)
+        .then((stillOwned) => {
+          if (!stillOwned) {
+            lostLease = true;
+          }
+        })
+        .catch((error) => {
+          this.logger.debug("Batch item heartbeat failed", {
+            messageId,
+            queueId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
     }, this.heartbeatIntervalMs);
 
     interval.unref?.();
 
-    return () => clearInterval(interval);
+    return { stop: () => clearInterval(interval), lostLease: () => lostLease };
   }
 
   async #handleMessage(consumerId: string, messageId: string, queueId: string): Promise<void> {
@@ -851,7 +863,7 @@ export class BatchQueue {
       let processedCount: number;
 
       try {
-        const stopHeartbeat = this.#startHeartbeat(messageId, queueId);
+        const heartbeat = this.#startHeartbeat(messageId, queueId);
         let result: Awaited<ReturnType<ProcessBatchItemCallback>>;
         try {
           result = await this.#startSpan("BatchQueue.processItemCallback", async (innerSpan) => {
@@ -871,7 +883,17 @@ export class BatchQueue {
             });
           });
         } finally {
-          stopHeartbeat();
+          heartbeat.stop();
+        }
+
+        if (heartbeat.lostLease()) {
+          this.logger.warn("Discarding batch item result, another consumer now owns it", {
+            batchId,
+            itemIndex,
+            messageId,
+            attempt,
+          });
+          return;
         }
 
         if (result.success) {

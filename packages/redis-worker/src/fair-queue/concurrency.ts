@@ -115,7 +115,13 @@ export class ConcurrencyManager {
     results: Array<[Error | null, unknown]> | null,
     messageCount: number
   ): void {
-    const errors = (results ?? [])
+    if (results === null) {
+      throw new Error(
+        `Concurrency release pipeline for ${messageCount} message(s) was discarded without executing`
+      );
+    }
+
+    const errors = results
       .map(([error]) => error)
       .filter((error): error is Error => Boolean(error));
 
