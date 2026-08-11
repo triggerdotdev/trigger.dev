@@ -709,6 +709,16 @@ export async function syncDeclarativeWebhooks(
 
     missing.delete(wh.id);
 
+    if (
+      "config" in wh.verifierArtifact &&
+      wh.verifierArtifact.config.scheme === "url-secret" &&
+      wh.verifierArtifact.config.placement === "path"
+    ) {
+      throw new ServiceValidationError(
+        `Webhook "${wh.id}" uses url-secret verification with path placement, which cannot be verified on the hosted ingress URL. Use query placement or a header-based scheme.`
+      );
+    }
+
     // Compile `filter` into a FilterAst, once here at sync. A bad filter fails the deploy with a clear
     // message rather than surfacing at ingest. Re-deploying without a filter nulls the columns.
     let filterNode: FilterAst | undefined;

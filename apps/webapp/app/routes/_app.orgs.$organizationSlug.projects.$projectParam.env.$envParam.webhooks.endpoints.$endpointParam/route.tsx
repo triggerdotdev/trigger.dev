@@ -176,6 +176,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // Generate (integrator-supplied secret): mint a strong secret, store it, and return it so the
   // UI can reveal it ONCE for the integrator to paste into their provider.
   if (intent === "generate-secret") {
+    const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+    if (
+      verifier.success &&
+      "config" in verifier.data &&
+      verifier.data.config.scheme === "asymmetric"
+    ) {
+      return {
+        success: false as const,
+        error: "Cannot generate a secret for an asymmetric endpoint; set its public key instead.",
+      };
+    }
     const secret = `whsec_${randomBytes(32).toString("hex")}`;
     await secretStore.setSecret(secretKey, { secret });
     await webhookPrisma.webhookEndpoint.update({
