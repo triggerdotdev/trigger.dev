@@ -86,8 +86,9 @@ export async function pollSettledTranscript<T extends Identified>(deps: {
     const fetched = await deps.fetchTranscript();
     if (!fetched) return;
     deps.apply((current) => mergeSettledMessages(current, fetched));
-    // The stored transcript is the authority on whether anything is still open.
-    if (!hasOpenInvestigation(fetched)) return;
+    // The stored transcript is the authority on whether anything is still open. Same test that
+    // starts the poll, so a stream that died mid-tool is followed until it settles too.
+    if (!transcriptLooksUnfinished(fetched)) return;
   }
 }
 

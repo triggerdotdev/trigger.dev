@@ -2,6 +2,7 @@ import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
+import { composerKeepsEscape } from "./composer-escape";
 import {
   MAX_MESSAGE_CHARS,
   MESSAGE_CHARS_WARN_AT,
@@ -94,6 +95,10 @@ export function DashboardAgentComposer({
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 onSubmit();
+              }
+              // Keeping Escape from the panel's close handler, which skips a prevented event.
+              if (e.key === "Escape" && composerKeepsEscape(value)) {
+                e.preventDefault();
               }
               // Only while empty, so with text present Tab keeps its normal focus behavior.
               if (e.key === "Tab" && !e.shiftKey && placeholderSuggestion && value === "") {
