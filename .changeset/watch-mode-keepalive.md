@@ -2,6 +2,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Watch-mode chat subscriptions now stay connected across quiet periods.
-
-Read-only chat subscriptions no longer stop a turn when they disconnect.
+Watch-mode chat streams now survive quiet windows and keep delivering later turns, and a reply cut off by a lost connection now shows an error instead of appearing finished.
