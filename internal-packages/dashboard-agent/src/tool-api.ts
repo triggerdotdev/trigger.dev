@@ -360,7 +360,8 @@ export function buildApiTools(args: {
         const result = await postQuery(query, period);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
         if (!result.ok) {
-          // Only SQL errors count toward the cap; transport errors are transient.
+          // Only SQL errors count toward the cap; transport and busy errors are transient,
+          // and the same query may work on a retry.
           if (result.kind === "query") {
             consecutiveQueryFailures++;
             if (consecutiveQueryFailures >= MAX_CONSECUTIVE_QUERY_FAILURES) {
