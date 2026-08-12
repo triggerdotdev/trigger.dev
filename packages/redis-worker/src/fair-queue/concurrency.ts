@@ -8,8 +8,10 @@ import type {
 } from "./types.js";
 
 /**
- * Caps how many set members a single sweep script invocation checks, bounding the time the
- * atomic Lua script can hold up Redis when a set has accumulated many leaked members.
+ * Page size for iterating a concurrency set's members (SSCAN COUNT) and cap on how many
+ * members one sweep script invocation checks, bounding both the snapshot reads and the
+ * time the atomic Lua script can hold up Redis when a set has accumulated many leaked
+ * members.
  */
 const SWEEP_MEMBER_CHUNK_SIZE = 500;
 
@@ -184,12 +186,21 @@ export class ConcurrencyManager {
    * record can only be a leak; if the message is about to be re-claimed, reserve simply
    * re-adds the member.
    *
-   * @param inflightDataKeys - The in-flight data hash keys for every shard
+   * @param inflightDataKeys - The in-flight data hash keys for every shard. The sweep
+   *   refuses to run when this is empty, since with nowhere to look for running messages
+   *   every member would look orphaned and all concurrency accounting would be erased.
    * @returns The message ids that were removed, and how many sets were checked
    */
   async sweepOrphanedSlots(
     inflightDataKeys: string[]
   ): Promise<{ scannedSets: number; removed: string[] }> {
+    if (inflightDataKeys.length === 0) {
+      this.logger.error(
+        "Refusing to sweep concurrency slots without any in-flight data keys: every member would look orphaned and all concurrency accounting would be erased"
+      );
+      return { scannedSets: 0, removed: [] };
+    }
+
     const keyPrefix = this.options.redis.keyPrefix ?? "";
     let scannedSets = 0;
     const removed: string[] = [];
@@ -213,20 +224,36 @@ export class ConcurrencyManager {
             keyPrefix && fullKey.startsWith(keyPrefix) ? fullKey.slice(keyPrefix.length) : fullKey;
 
           try {
-            const members = await this.redis.smembers(key);
-            if (members.length === 0) {
-              continue;
-            }
-            scannedSets++;
+            let sawMembers = false;
+            let memberCursor = "0";
 
-            for (let i = 0; i < members.length; i += SWEEP_MEMBER_CHUNK_SIZE) {
-              const chunk = members.slice(i, i + SWEEP_MEMBER_CHUNK_SIZE);
-              const removedIds = await this.redis.removeOrphanedConcurrencySlots(
-                1 + inflightDataKeys.length,
-                [key, ...inflightDataKeys],
-                ...chunk
+            do {
+              const [nextMemberCursor, page] = await this.redis.sscan(
+                key,
+                memberCursor,
+                "COUNT",
+                SWEEP_MEMBER_CHUNK_SIZE
               );
-              removed.push(...removedIds);
+              memberCursor = nextMemberCursor;
+
+              if (page.length === 0) {
+                continue;
+              }
+              sawMembers = true;
+
+              for (let i = 0; i < page.length; i += SWEEP_MEMBER_CHUNK_SIZE) {
+                const chunk = page.slice(i, i + SWEEP_MEMBER_CHUNK_SIZE);
+                const removedIds = await this.redis.removeOrphanedConcurrencySlots(
+                  1 + inflightDataKeys.length,
+                  [key, ...inflightDataKeys],
+                  ...chunk
+                );
+                removed.push(...removedIds);
+              }
+            } while (memberCursor !== "0");
+
+            if (sawMembers) {
+              scannedSets++;
             }
           } catch (error) {
             this.logger.error("Failed to sweep concurrency set, skipping it", {

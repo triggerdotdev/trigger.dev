@@ -820,5 +820,42 @@ describe("ConcurrencyManager", () => {
         }
       }
     );
+
+    redisTest(
+      "should refuse to sweep when given no in-flight data keys",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+
+        try {
+          await redis.sadd(concurrencyKey, "active-1", "active-2");
+
+          const result = await manager.sweepOrphanedSlots([]);
+
+          expect(result.removed).toEqual([]);
+          expect((await redis.smembers(concurrencyKey)).sort()).toEqual(["active-1", "active-2"]);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await manager.close();
+        }
+      }
+    );
   });
 });
