@@ -242,8 +242,16 @@ export const watchStatuses = ["active", "fired", "expired", "cancelled"] as cons
 export const watchStatusSchema = z.enum(watchStatuses);
 export type WatchStatus = z.infer<typeof watchStatusSchema>;
 
-/** Whether the user still needs to be told this watch fired. */
-export const watchDeliveryStatuses = ["not_required", "pending", "delivered"] as const;
+/**
+ * Whether the user still needs to be told this watch fired. `delivering` is the in-flight
+ * claim one deliverer holds, so it is a status the store writes and reads back.
+ */
+export const watchDeliveryStatuses = [
+  "not_required",
+  "pending",
+  "delivering",
+  "delivered",
+] as const;
 export const watchDeliveryStatusSchema = z.enum(watchDeliveryStatuses);
 export type WatchDeliveryStatus = z.infer<typeof watchDeliveryStatusSchema>;
 

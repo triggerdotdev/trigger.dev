@@ -156,6 +156,20 @@ export async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promis
 
   const { watch: claimed, claimId } = claim;
   const facts = (claimed.lastResult ?? {}) as Record<string, unknown>;
+
+  // The release is the recovery, not the failure: its own rejection must never replace
+  // the delivery error the caller has to see. The stale claim is swept either way.
+  const releaseClaim = async () => {
+    try {
+      await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
+    } catch (error) {
+      logger.warn("dashboard-agent watch: releasing the delivery claim failed", {
+        watchId: claimed.id,
+        error: (error as Error).message,
+      });
+    }
+  };
+
   let ack: void | WatchWakeAck;
   try {
     ack = await deps.deliver({
@@ -164,12 +178,12 @@ export async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promis
       watch: claimed,
     });
   } catch (error) {
-    await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
+    await releaseClaim();
     throw error;
   }
 
   if (ack && ack.appended === false) {
-    await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
+    await releaseClaim();
     throw new Error(`the wake for watch ${claimed.id} wasn't appended`);
   }
 
