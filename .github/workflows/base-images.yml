@@ -1,15 +1,8 @@
 name: 🐳 Deploy base images
 
-# Publishes the base images that deployed task containers build on
-# (triggerdotdev/node:<major>-bookworm and triggerdotdev/bun:<line>-node<major>-bookworm,
-# each with a -build toolchain variant) to Docker Hub. Tags are mutable and
-# rebuilt in place; the CLI pins images by digest, so consumers are unaffected
-# until a digest bump ships in a release.
-#
-# Packages install from a Debian snapshot timestamp (recorded in the
-# dev.trigger.debian-snapshot image label and the job summary), and layers are
-# exported with normalized timestamps, so any published image can be rebuilt
-# from the recorded inputs and verified layer for layer.
+# Publishes the deploy base images (see base-images/README.md) to Docker Hub.
+# Tags are mutable and rebuilt in place; the CLI pins digests, so consumers
+# only move when a release bumps its pins.
 
 on:
   workflow_dispatch:
@@ -77,15 +70,12 @@ jobs:
           fi
           echo "$SNAPSHOT" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
 
-          # Layer and config timestamps come from the snapshot, so images stay
-          # reproducible while the registry shows a meaningful created date
+          # Snapshot-derived timestamps: reproducible, with a real created date
           EPOCH="$(date -u -d "${SNAPSHOT:0:4}-${SNAPSHOT:4:2}-${SNAPSHOT:6:2} ${SNAPSHOT:9:2}:${SNAPSHOT:11:2}:${SNAPSHOT:13:2}Z" +%s)"
-          # A future snapshot resolves to "latest" server-side and a future
-          # epoch stops rewrite-timestamp normalizing mtimes; reject both
+          # Future snapshots resolve to "latest" and break mtime normalization
           [ "$EPOCH" -le "$(date -u +%s)" ] || { echo "debian_snapshot is in the future: $SNAPSHOT"; exit 1; }
 
-          # Only publish from main; pull requests and branch dispatches
-          # validate the build without pushing
+          # Pull requests and branch dispatches build without pushing
           if [ "$EVENT_NAME" = "pull_request" ] || [ "$REF" != "refs/heads/main" ]; then
             PUSH=false
           else
@@ -121,8 +111,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before any image pull so tooling and base pulls count against the
-      # authenticated rate limit; skipped on fork PRs, which have no secrets
+      # Before any pull so rate limits are authenticated; fork PRs skip (no secrets)
       - name: 🐳 Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
@@ -138,8 +127,7 @@ jobs:
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      # Build everything before pushing anything so a build failure can't
-      # leave the runtime and -build tags pointing at different snapshots
+      # Build both targets before pushing either so the tag pair can't skew
       - name: 🐳 Build both targets (no push)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -162,8 +150,6 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
 
-      # rewrite-timestamp + SOURCE_DATE_EPOCH make layer blobs a pure
-      # function of the build inputs, so published layers are verifiable
       - name: 🐳 Push runtime image
         id: build_runtime
         if: needs.setup.outputs.push == 'true'
@@ -211,8 +197,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
 
-      # A repo auto-created private would let the publish go green while every
-      # customer pull fails; require anonymous pullability before declaring success
+      # An auto-created private repo would publish green while customer pulls fail
       - name: 🔎 Verify anonymous pullability
         if: needs.setup.outputs.push == 'true'
         env:

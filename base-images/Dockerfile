@@ -1,11 +1,8 @@
 # syntax=docker/dockerfile:1
 # check=skip=InvalidDefaultArgInFrom
 
-# Base images for deployed task containers. Packages install from a pinned
-# Debian snapshot so any published digest can be rebuilt and verified from
-# (upstream base digest, snapshot timestamp, package list); apt is restored to
-# the upstream live-archive configuration afterwards so derived images behave
-# like their upstream bases.
+# Base images for deployed task containers; see README.md. Packages install
+# from a pinned Debian snapshot, then apt is restored to the live archive.
 
 ARG BASE_IMAGE
 
