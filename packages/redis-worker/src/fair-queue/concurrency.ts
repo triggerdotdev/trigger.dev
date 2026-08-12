@@ -11,6 +11,10 @@ export interface ConcurrencyManagerOptions {
   redis: RedisOptions;
   keys: FairQueueKeyProducer;
   groups: ConcurrencyGroupConfig[];
+  logger?: {
+    debug: (message: string, context?: Record<string, unknown>) => void;
+    error: (message: string, context?: Record<string, unknown>) => void;
+  };
 }
 
 /**
@@ -26,12 +30,17 @@ export class ConcurrencyManager {
   private keys: FairQueueKeyProducer;
   private groups: ConcurrencyGroupConfig[];
   private groupsByName: Map<string, ConcurrencyGroupConfig>;
+  private logger: NonNullable<ConcurrencyManagerOptions["logger"]>;
 
   constructor(private options: ConcurrencyManagerOptions) {
     this.redis = createRedisClient(options.redis);
     this.keys = options.keys;
     this.groups = options.groups;
     this.groupsByName = new Map(options.groups.map((g) => [g.name, g]));
+    this.logger = options.logger ?? {
+      debug: () => {},
+      error: () => {},
+    };
 
     this.#registerCommands();
   }
@@ -158,6 +167,69 @@ export class ConcurrencyManager {
     }
 
     this.#assertPipelineSucceeded(await pipeline.exec(), messages.length);
+  }
+
+  /**
+   * Remove concurrency set members that no longer correspond to an in-flight message,
+   * healing slots leaked by failed releases. Scans every set of every group and, per
+   * member, atomically removes it unless the message id appears in one of the given
+   * in-flight data hashes. Sound because a message is registered in-flight before its
+   * slot is reserved, so at the moment of the atomic check a member with no in-flight
+   * record can only be a leak; if the message is about to be re-claimed, reserve simply
+   * re-adds the member.
+   *
+   * @param inflightDataKeys - The in-flight data hash keys for every shard
+   * @returns The message ids that were removed, and how many sets were checked
+   */
+  async sweepOrphanedSlots(
+    inflightDataKeys: string[]
+  ): Promise<{ scannedSets: number; removed: string[] }> {
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    let scannedSets = 0;
+    const removed: string[] = [];
+
+    for (const group of this.groups) {
+      const pattern = `${keyPrefix}${this.keys.concurrencyKey(group.name, "*")}`;
+      let cursor = "0";
+
+      do {
+        const [nextCursor, foundKeys] = await this.redis.scan(
+          cursor,
+          "MATCH",
+          pattern,
+          "COUNT",
+          100
+        );
+        cursor = nextCursor;
+
+        for (const fullKey of foundKeys) {
+          const key =
+            keyPrefix && fullKey.startsWith(keyPrefix) ? fullKey.slice(keyPrefix.length) : fullKey;
+
+          try {
+            const members = await this.redis.smembers(key);
+            if (members.length === 0) {
+              continue;
+            }
+            scannedSets++;
+
+            const removedIds = await this.redis.removeOrphanedConcurrencySlots(
+              1 + inflightDataKeys.length,
+              [key, ...inflightDataKeys],
+              ...members
+            );
+            removed.push(...removedIds);
+          } catch (error) {
+            this.logger.error("Failed to sweep concurrency set, skipping it", {
+              key,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      } while (cursor !== "0");
+    }
+
+    return { scannedSets, removed };
   }
 
   /**
@@ -298,14 +370,20 @@ export class ConcurrencyManager {
 local numGroups = #KEYS
 local messageId = ARGV[1]
 
--- Check all groups first
+-- Check all groups first. A message that is already a member of a group's set passes
+-- that group's check: re-admitting it does not increase concurrency (SADD is a no-op),
+-- and counting its own leftover slot against it would let a message whose earlier
+-- release failed block its own retry forever.
 for i = 1, numGroups do
   local key = KEYS[i]
   local limit = tonumber(ARGV[1 + i])  -- Limits start at ARGV[2]
-  local current = redis.call('SCARD', key)
-  
-  if current >= limit then
-    return 0  -- At capacity
+
+  if redis.call('SISMEMBER', key, messageId) == 0 then
+    local current = redis.call('SCARD', key)
+
+    if current >= limit then
+      return 0  -- At capacity
+    end
   end
 end
 
@@ -316,6 +394,37 @@ for i = 1, numGroups do
 end
 
 return 1
+      `,
+    });
+
+    // Atomic orphan sweep for one concurrency set
+    // KEYS[1]: concurrency set key
+    // KEYS[2..n]: in-flight data hash keys for every shard
+    // ARGV: candidate messageIds (a snapshot of the set's members)
+    this.redis.defineCommand("removeOrphanedConcurrencySlots", {
+      lua: `
+local concurrencyKey = KEYS[1]
+local removedIds = {}
+
+for i = 1, #ARGV do
+  local messageId = ARGV[i]
+  local inflight = false
+
+  for j = 2, #KEYS do
+    if redis.call('HEXISTS', KEYS[j], messageId) == 1 then
+      inflight = true
+      break
+    end
+  end
+
+  if not inflight then
+    if redis.call('SREM', concurrencyKey, messageId) == 1 then
+      table.insert(removedIds, messageId)
+    end
+  end
+end
+
+return removedIds
       `,
     });
   }
@@ -330,5 +439,11 @@ declare module "@internal/redis" {
       messageId: string,
       ...limits: string[]
     ): Promise<number>;
+
+    removeOrphanedConcurrencySlots(
+      numKeys: number,
+      keys: string[],
+      ...messageIds: string[]
+    ): Promise<string[]>;
   }
 }

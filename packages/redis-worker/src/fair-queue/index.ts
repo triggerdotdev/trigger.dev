@@ -86,6 +86,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private visibilityTimeoutMs: number;
   private heartbeatIntervalMs: number;
   private reclaimIntervalMs: number;
+  private reconcileIntervalMs: number;
   private workerQueueResolver: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
   private batchClaimSize: number;
 
@@ -110,6 +111,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private abortController: AbortController;
   private masterQueueConsumerLoops: Promise<void>[] = [];
   private reclaimLoop?: Promise<void>;
+  private reconcileLoop?: Promise<void>;
 
   // Queue descriptor cache for message processing
   private queueDescriptorCache = new Map<string, QueueDescriptor>();
@@ -139,6 +141,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? 30_000;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? this.visibilityTimeoutMs / 3;
     this.reclaimIntervalMs = options.reclaimIntervalMs ?? 5_000;
+    this.reconcileIntervalMs = options.reconcileIntervalMs ?? 60_000;
 
     // Worker queue resolver (required)
     this.workerQueueResolver = options.workerQueue.resolveWorkerQueue;
@@ -197,6 +200,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         redis: options.redis,
         keys: options.keys,
         groups: options.concurrencyGroups,
+        logger: {
+          debug: (msg, ctx) => this.logger.debug(msg, ctx),
+          error: (msg, ctx) => this.logger.error(msg, ctx),
+        },
       });
     }
 
@@ -658,6 +665,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Start reclaim loop for handling timed-out messages
     this.reclaimLoop = this.#runReclaimLoop();
 
+    if (this.concurrencyManager) {
+      this.reconcileLoop = this.#runReconcileLoop();
+    }
+
     this.logger.info("FairQueue started", {
       consumerCount: this.consumerCount,
       shardCount: this.shardCount,
@@ -676,10 +687,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.isRunning = false;
     this.abortController.abort();
 
-    await Promise.allSettled([...this.masterQueueConsumerLoops, this.reclaimLoop]);
+    await Promise.allSettled([
+      ...this.masterQueueConsumerLoops,
+      this.reclaimLoop,
+      this.reconcileLoop,
+    ]);
 
     this.masterQueueConsumerLoops = [];
     this.reclaimLoop = undefined;
+    this.reconcileLoop = undefined;
 
     this.logger.info("FairQueue stopped");
   }
@@ -1252,10 +1268,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: storedMessage?.metadata ?? {},
     };
 
-    // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, messageId);
-    }
+    await this.#releaseConcurrencySafely(descriptor, messageId, "completeMessage");
 
     // Complete in visibility manager
     await this.visibilityManager.complete(messageId, queueId);
@@ -1306,9 +1319,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     };
 
     // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, messageId);
-    }
+    await this.#releaseConcurrencySafely(descriptor, messageId, "releaseMessage");
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)
     // Dispatch shard is tenant-based, not queue-based
@@ -1333,6 +1344,36 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
+   * Release a message's concurrency slots without letting a failure escape. Release is
+   * best-effort cleanup: the primary state transition (complete, retry, DLQ, requeue)
+   * must proceed even when the slot cannot be freed, because aborting the transition
+   * re-delivers or strands the message, while a leaked slot is recoverable — reserve()
+   * re-admits a message that already holds its own slot, and the reconcile loop removes
+   * members that are no longer in flight.
+   */
+  async #releaseConcurrencySafely(
+    descriptor: QueueDescriptor,
+    messageId: string,
+    context: string
+  ): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    try {
+      await this.concurrencyManager.release(descriptor, messageId);
+    } catch (error) {
+      this.logger.error("Failed to release concurrency slot, leaving it for the reconciler", {
+        context,
+        messageId,
+        queueId: descriptor.id,
+        tenantId: descriptor.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Release a concurrency slot for a message we can no longer describe, deriving the
    * group from the queue id alone. Used on paths that bail out before the stored
    * message is available, where the slot would otherwise be held with nothing left
@@ -1349,7 +1390,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: {},
     };
 
-    await this.concurrencyManager.release(descriptor, messageId);
+    await this.#releaseConcurrencySafely(descriptor, messageId, "failMessage:missing-record");
   }
 
   /**
@@ -1430,10 +1471,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
-        // Release concurrency
-        if (this.concurrencyManager) {
-          await this.concurrencyManager.release(descriptor, storedMessage.id);
-        }
+        await this.#releaseConcurrencySafely(descriptor, storedMessage.id, "retry");
 
         // Release with delay, passing the updated message data so the Lua script
         // atomically writes the incremented attempt count when re-queuing.
@@ -1465,9 +1503,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, storedMessage.id);
-    }
+    await this.#releaseConcurrencySafely(descriptor, storedMessage.id, "deadLetter");
 
     // Move to DLQ
     await this.#moveToDeadLetterQueue(storedMessage, error?.message);
@@ -1545,17 +1581,18 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
-   * Free every timed-out message's concurrency slot in one pipeline, before any of them
-   * is put back on the queue. Throwing here aborts the requeue for the whole batch, which
-   * leaves the messages in-flight for the next reclaim tick. That is the safe direction:
-   * requeuing a message whose slot is still held is what strands the slot permanently.
+   * Free every timed-out message's concurrency slot in one pipeline before the batch is
+   * requeued. A failed release never blocks the requeue: holding the message in-flight
+   * would stall it behind a persistent release failure, while the leaked slot self-heals
+   * when the message is re-admitted (reserve is idempotent for a message that already
+   * holds its own slot) or via the reconcile loop.
    */
-  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<string[]> {
+  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<void> {
     if (!this.concurrencyManager || messages.length === 0) {
-      return [];
+      return;
     }
 
-    const descriptorFor = (message: ReclaimedMessageInfo) => ({
+    const descriptorFor = (message: ReclaimedMessageInfo): QueueDescriptor => ({
       id: message.queueId,
       tenantId: message.tenantId,
       metadata: message.metadata ?? {},
@@ -1565,7 +1602,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       await this.concurrencyManager.releaseBatch(
         messages.map((message) => ({ queue: descriptorFor(message), messageId: message.messageId }))
       );
-      return [];
+      return;
     } catch (error) {
       this.logger.error("Batch concurrency release failed, retrying message by message", {
         count: messages.length,
@@ -1573,22 +1610,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       });
     }
 
-    const failed: string[] = [];
-
     for (const message of messages) {
-      try {
-        await this.concurrencyManager.release(descriptorFor(message), message.messageId);
-      } catch (error) {
-        failed.push(message.messageId);
-        this.logger.error("Failed to release concurrency for reclaimed message", {
-          messageId: message.messageId,
-          queueId: message.queueId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      await this.#releaseConcurrencySafely(descriptorFor(message), message.messageId, "reclaim");
     }
-
-    return failed;
   }
 
   async #reclaimTimedOutMessages(): Promise<void> {
@@ -1623,6 +1647,55 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     if (totalReclaimed > 0) {
       this.logger.info("Reclaimed timed-out messages", { count: totalReclaimed });
+    }
+  }
+
+  async #runReconcileLoop(): Promise<void> {
+    try {
+      for await (const _ of setInterval(this.reconcileIntervalMs, null, {
+        signal: this.abortController.signal,
+      })) {
+        try {
+          await this.#reconcileConcurrency();
+        } catch (error) {
+          this.logger.error("Concurrency reconcile loop error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    } catch (error) {
+      if (isAbortError(error)) {
+        this.logger.debug("Concurrency reconcile loop aborted");
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Heal orphaned concurrency slots: remove any concurrency set member whose message is
+   * not registered in-flight on any shard. This is the recovery path for slots leaked by
+   * failed releases, which otherwise count against a tenant's limit forever and can
+   * wedge every queue the tenant owns.
+   */
+  async #reconcileConcurrency(): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    const inflightDataKeys = Array.from({ length: this.shardCount }, (_, shardId) =>
+      this.keys.inflightDataKey(shardId)
+    );
+
+    const { scannedSets, removed } =
+      await this.concurrencyManager.sweepOrphanedSlots(inflightDataKeys);
+
+    if (removed.length > 0) {
+      this.logger.info("Reconciled orphaned concurrency slots", {
+        count: removed.length,
+        scannedSets,
+        messageIds: removed.slice(0, 50),
+      });
     }
   }
 

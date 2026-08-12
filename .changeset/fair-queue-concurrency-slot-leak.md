@@ -2,6 +2,4 @@
 "@trigger.dev/redis-worker": patch
 ---
 
-Fair queue consumers no longer leak the concurrency slots that gate a tenant's throughput. Slots were held by messages that had already finished, were never reclaimed, and once enough of them accumulated every queue belonging to that tenant stopped being served. Slots are now freed on the paths that previously skipped them, freed before the record needed to recover them is discarded, and released before a reclaimed message goes back on the queue. A failed release is now surfaced instead of being silently treated as success.
-
-Concurrency groups keyed on queue metadata rather than the tenant can still resolve to the wrong group when a consumer completes a message it did not enqueue, so this does not yet cover that case.
+Fair queue consumers no longer leak the concurrency slots that gate a tenant's throughput, and leaked slots now heal themselves. Slots are freed on the completion, retry, dead-letter, and reclaim paths that previously skipped them, and a failed release never blocks the message's own state transition, so a Redis error can no longer turn into a duplicate execution or a lost retry. A periodic reconcile loop removes any slot whose message is no longer in flight, and a message that still holds its own slot from an earlier failed release is re-admitted instead of being blocked by it.

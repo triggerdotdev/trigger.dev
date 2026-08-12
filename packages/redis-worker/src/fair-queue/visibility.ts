@@ -388,7 +388,10 @@ export class VisibilityManager {
    *
    * @param shardId - The shard to check
    * @param getQueueKeys - Function to get queue keys for a queue ID
-   * @returns Array of reclaimed message info for concurrency release
+   * @param onBeforeRequeue - Hook invoked with the batch before any message is requeued,
+   *   used to free concurrency slots. A throw aborts the whole batch, leaving the
+   *   messages in-flight for the next reclaim tick.
+   * @returns Array of reclaimed message info
    */
   async reclaimTimedOut(
     shardId: number,
@@ -399,7 +402,7 @@ export class VisibilityManager {
       dispatchKey: string;
       tenantId: string;
     },
-    onBeforeRequeue?: (messages: ReclaimedMessageInfo[]) => Promise<string[] | void>
+    onBeforeRequeue?: (messages: ReclaimedMessageInfo[]) => Promise<void>
   ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
@@ -465,24 +468,15 @@ export class VisibilityManager {
       return [];
     }
 
-    const notReleased = new Set(
-      (onBeforeRequeue
-        ? await onBeforeRequeue(candidates.map((candidate) => candidate.info))
-        : undefined) ?? []
-    );
+    if (onBeforeRequeue) {
+      await onBeforeRequeue(candidates.map((candidate) => candidate.info));
+    }
 
     const reclaimedMessages: ReclaimedMessageInfo[] = [];
 
     for (const { member, deadlineScore, storedMessage, info } of candidates) {
       const { messageId, queueId } = info;
 
-      if (notReleased.has(messageId)) {
-        this.logger.error("Skipping requeue, concurrency slot was not released", {
-          messageId,
-          queueId,
-        });
-        continue;
-      }
       const { queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, tenantId } =
         getQueueKeys(queueId);
 
