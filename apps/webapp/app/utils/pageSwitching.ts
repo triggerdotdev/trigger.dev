@@ -11,6 +11,7 @@ const NESTED_PORTABLE_PAGES = [
   "alerts/new",
   "dashboards/llm",
   "dashboards/overview",
+  "dashboards/queues",
   "environment-variables/new",
   "models/compare",
   "schedules/new",
@@ -22,8 +23,8 @@ const NESTED_PORTABLE_PAGES = [
 /** The branch lists render under any environment of their project, but not in every project. */
 export const PROJECT_SPECIFIC_PAGES = ["branches", "dev-branches"];
 
-/** Gated by an organization feature flag, so their loaders send you home from an organization without it. */
-export const ORGANIZATION_SPECIFIC_PAGES = ["logs", "query"];
+/** Gated by an organization feature flag, so their loaders turn you away in an organization without it. */
+export const ORGANIZATION_SPECIFIC_PAGES = ["logs", "query", "dashboards/queues"];
 
 /** Every page below an environment that names no resource, so any environment can render it. */
 export const ENVIRONMENT_PORTABLE_PAGES: ReadonlySet<string> = new Set(

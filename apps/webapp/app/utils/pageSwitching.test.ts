@@ -44,17 +44,44 @@ function rendersAPage(file: string): boolean {
   return /^export default/m.test(readFileSync(join(APP_DIR, file), "utf8"));
 }
 
-function sendsYouHome(file: string): boolean {
-  return /redirect\("\/"\)/.test(readFileSync(join(APP_DIR, file), "utf8"));
+const ORGANIZATION_GATE = String.raw`(?:can|has)[A-Z]\w*\([^)]*\borganizationSlug\b[^)]*\)`;
+
+const GATE_REJECTS = new RegExp(
+  String.raw`if \(\s*(?:(\w+) === "([^"]+)" &&\s*)?!\(await ${ORGANIZATION_GATE}\)\s*\)\s*\{\s*throw`
+);
+
+const GATE_REJECTS_VIA_FLAG = new RegExp(
+  String.raw`const canAccess = await ${ORGANIZATION_GATE};\s*if \(!canAccess\) \{\s*throw`
+);
+
+/**
+ * The page a loader turns you away from when an organization-scoped check says no, whether it
+ * sends you home or 404s. A gate that only covers one value of a route param names that page; an
+ * unconditional gate on a route that takes a resource id names nothing, since a page with an id in
+ * it is never portable anyway.
+ */
+function organizationGatedPage(suffix: string, file: string): string | undefined {
+  const source = readFileSync(join(APP_DIR, file), "utf8");
+  const guarded = GATE_REJECTS.exec(source);
+
+  if (guarded === null) return GATE_REJECTS_VIA_FLAG.test(source) ? suffix : undefined;
+
+  const [, param, key] = guarded;
+  if (param === undefined) return suffix.includes(":") ? undefined : suffix;
+
+  return suffix.includes(`:${param}`) ? suffix.replace(`:${param}`, key) : undefined;
 }
 
 const belowEnvironment = Object.values(compiledRoutes)
   .filter((route) => compiledUrl(route.id).startsWith(ENVIRONMENT_URL))
-  .map((route) => ({
-    suffix: compiledUrl(route.id).slice(ENVIRONMENT_URL.length).replace(/^\//, ""),
-    rendersAPage: rendersAPage(route.file),
-    sendsYouHome: sendsYouHome(route.file),
-  }));
+  .map((route) => {
+    const suffix = compiledUrl(route.id).slice(ENVIRONMENT_URL.length).replace(/^\//, "");
+    return {
+      suffix,
+      rendersAPage: rendersAPage(route.file),
+      organizationGatedPage: organizationGatedPage(suffix, route.file),
+    };
+  });
 
 const environmentRoutes = [...new Set(belowEnvironment.map((route) => route.suffix))];
 
@@ -197,14 +224,26 @@ describe("pages a project switch cannot carry", () => {
 });
 
 describe("pages an organization switch cannot carry", () => {
-  it("are the ones whose loaders send you home when the organization is not allowed in", () => {
-    const sendHome = [
+  it("are the ones whose loaders turn you away when the organization is not allowed in", () => {
+    const gated = [
       ...new Set(
-        belowEnvironment.filter((route) => route.sendsYouHome).map((route) => route.suffix)
+        belowEnvironment
+          .map((route) => route.organizationGatedPage)
+          .filter((page): page is string => page !== undefined)
       ),
     ].sort();
 
-    expect(sendHome).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
+    expect(gated).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
+  });
+
+  it("are read from both ways a loader turns you away, so neither stops being noticed", () => {
+    const gatedPage = (suffix: string) =>
+      belowEnvironment.find((route) => route.suffix === suffix)?.organizationGatedPage;
+
+    expect(gatedPage("logs")).toBe("logs");
+    expect(gatedPage("dashboards/:dashboardKey")).toBe("dashboards/queues");
+    expect(gatedPage("queues/:queueParam")).toBeUndefined();
+    expect(gatedPage("apikeys")).toBeUndefined();
   });
 
   it("still travel with an environment or project switch, which stay in the same organization", () => {
@@ -214,8 +253,25 @@ describe("pages an organization switch cannot carry", () => {
       expect(ORGANIZATION_PORTABLE_PAGES.has(page)).toBe(false);
       expect(environmentPortablePage(page)).toBe(page);
       expect(projectPortablePage(page)).toBe(page);
-      expect(organizationPortablePage(page)).toBe("");
     }
+  });
+
+  it("stay put when only the environment changes", () => {
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("dashboards/queues", "?period=1d"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "preview",
+      })
+    ).toBe("/orgs/acme/projects/api/env/preview/dashboards/queues?period=1d");
+
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("logs"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "prod",
+      })
+    ).toBe("/orgs/acme/projects/api/env/prod/logs");
   });
 
   it("are otherwise the same list, so nothing else is quietly dropped", () => {
@@ -226,13 +282,14 @@ describe("pages an organization switch cannot carry", () => {
     expect(dropped).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
   });
 
-  it("fall back to the tasks page when the organization changes", () => {
+  it("fall back to the nearest page the organization switched into can open", () => {
     const read = (search: string) =>
       requestedOrganizationPortablePage(new Request(`http://localhost/orgs/acme${search}`));
 
     expect(portablePageSearch(organizationPortablePage("logs"))).toBe("");
     expect(read("?page=logs")).toBe("");
     expect(read("?page=query")).toBe("");
+    expect(read("?page=dashboards/queues")).toBe("dashboards");
     expect(read("?page=apikeys")).toBe("apikeys");
   });
 });
@@ -278,10 +335,10 @@ describe("pages named after a resource", () => {
     expect(projectPortablePage("tasks/scheduled/my-task")).toBe("");
   });
 
-  it("keep the built-in metric dashboards but not the one gated per organization", () => {
+  it("keep the built-in metric dashboards, which are pages rather than saved dashboards", () => {
     expect(projectPortablePage("dashboards/overview")).toBe("dashboards/overview");
     expect(projectPortablePage("dashboards/llm")).toBe("dashboards/llm");
-    expect(projectPortablePage("dashboards/queues")).toBe("dashboards");
+    expect(projectPortablePage("dashboards/queues")).toBe("dashboards/queues");
   });
 });
 
