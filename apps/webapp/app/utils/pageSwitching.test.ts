@@ -5,13 +5,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ENVIRONMENT_MATCH_ID,
-  ENVIRONMENT_SPECIFIC_PAGES,
+  ENVIRONMENT_PORTABLE_PAGES,
+  environmentPortablePage,
   pageBelowEnvironment,
   pagePath,
   pathForEnvironmentSwitch,
-  portablePage,
   portablePageSearch,
-  PORTABLE_PAGES,
+  PROJECT_PORTABLE_PAGES,
+  PROJECT_SPECIFIC_PAGES,
+  projectPortablePage,
   requestedPortablePage,
 } from "./pageSwitching";
 
@@ -96,109 +98,155 @@ describe("the environment routes the portable page list is drawn from", () => {
 
 describe("portable pages", () => {
   it("cover every environment page that names no resource", () => {
-    const missing = idFreePages
-      .filter((page) => !PORTABLE_PAGES.has(page))
-      .filter((page) => !ENVIRONMENT_SPECIFIC_PAGES.includes(page))
-      .sort();
+    const missing = idFreePages.filter((page) => !ENVIRONMENT_PORTABLE_PAGES.has(page)).sort();
 
     expect(missing).toEqual([]);
   });
 
   it("all point at a real page", () => {
-    const phantom = [...PORTABLE_PAGES].filter((page) => !matchesARoute(page)).sort();
+    const phantom = [...ENVIRONMENT_PORTABLE_PAGES].filter((page) => !matchesARoute(page)).sort();
 
     expect(phantom).toEqual([]);
   });
 
   it("are all plain relative paths, which is what makes a redirect safe to build from one", () => {
-    for (const page of PORTABLE_PAGES) {
+    for (const page of ENVIRONMENT_PORTABLE_PAGES) {
       expect(page).toMatch(/^[a-z0-9-]+(\/[a-z0-9-]+)*$/);
     }
   });
 
   it("each resolve to themselves, so switching twice lands in the same place", () => {
-    for (const page of PORTABLE_PAGES) {
-      expect(portablePage(page)).toBe(page);
+    for (const page of ENVIRONMENT_PORTABLE_PAGES) {
+      expect(environmentPortablePage(page)).toBe(page);
     }
-    expect(portablePage("")).toBe("");
+    for (const page of PROJECT_PORTABLE_PAGES) {
+      expect(projectPortablePage(page)).toBe(page);
+    }
+    expect(environmentPortablePage("")).toBe("");
+    expect(projectPortablePage("")).toBe("");
   });
 
   it("include the pages named in the request", () => {
-    expect(portablePage("apikeys")).toBe("apikeys");
-    expect(portablePage("settings/general")).toBe("settings/general");
-    expect(portablePage("waitpoints/tokens")).toBe("waitpoints/tokens");
+    expect(projectPortablePage("apikeys")).toBe("apikeys");
+    expect(projectPortablePage("settings/general")).toBe("settings/general");
+    expect(projectPortablePage("waitpoints/tokens")).toBe("waitpoints/tokens");
+  });
+});
+
+describe("pages a project or organization switch cannot carry", () => {
+  it("are the branch lists, which not every project has", () => {
+    expect([...PROJECT_SPECIFIC_PAGES].sort()).toEqual(["branches", "dev-branches"]);
+
+    for (const page of PROJECT_SPECIFIC_PAGES) {
+      expect(ENVIRONMENT_PORTABLE_PAGES.has(page)).toBe(true);
+      expect(PROJECT_PORTABLE_PAGES.has(page)).toBe(false);
+      expect(projectPortablePage(page)).toBe("");
+      expect(environmentPortablePage(page)).toBe(page);
+    }
+  });
+
+  it("are otherwise the same list, so nothing else is quietly dropped", () => {
+    const dropped = [...ENVIRONMENT_PORTABLE_PAGES]
+      .filter((page) => !PROJECT_PORTABLE_PAGES.has(page))
+      .sort();
+
+    expect(dropped).toEqual([...PROJECT_SPECIFIC_PAGES].sort());
+  });
+
+  it("stay put when only the environment changes", () => {
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("branches", "?search=feat"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "preview",
+      })
+    ).toBe("/orgs/acme/projects/api/env/preview/branches?search=feat");
+
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("dev-branches"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "prod",
+      })
+    ).toBe("/orgs/acme/projects/api/env/prod/dev-branches");
+  });
+
+  it("fall back to the tasks page when the project changes", () => {
+    expect(portablePageSearch(projectPortablePage("branches"))).toBe("");
+    expect(portablePageSearch(projectPortablePage("dev-branches"))).toBe("");
+    expect(requestedPortablePage(new Request("http://localhost/orgs/acme?page=branches"))).toBe("");
+    expect(requestedPortablePage(new Request("http://localhost/orgs/acme?page=dev-branches"))).toBe(
+      ""
+    );
   });
 });
 
 describe("pages named after a resource", () => {
   it("truncate to a list page, id and all, for every one of them", () => {
-    const leaked = idPages
-      .map((page) => page.replace(/:[^/]+/g, PROBE))
-      .filter((page) => {
-        const resolved = portablePage(page);
-        return resolved.includes(PROBE) || !(resolved === "" || PORTABLE_PAGES.has(resolved));
-      })
-      .sort();
+    const leaks = (resolve: (page: string) => string, pages: ReadonlySet<string>) =>
+      idPages
+        .map((page) => page.replace(/:[^/]+/g, PROBE))
+        .filter((page) => {
+          const resolved = resolve(page);
+          return resolved.includes(PROBE) || !(resolved === "" || pages.has(resolved));
+        })
+        .sort();
 
-    expect(leaked).toEqual([]);
+    expect(leaks(environmentPortablePage, ENVIRONMENT_PORTABLE_PAGES)).toEqual([]);
+    expect(leaks(projectPortablePage, PROJECT_PORTABLE_PAGES)).toEqual([]);
   });
 
   it("truncate to the list they were reached from", () => {
-    expect(portablePage("runs/run_123")).toBe("runs");
-    expect(portablePage("batches/batch_123")).toBe("batches");
-    expect(portablePage("queues/my-queue")).toBe("queues");
-    expect(portablePage("schedules/sched_123")).toBe("schedules");
-    expect(portablePage("schedules/edit/sched_123")).toBe("schedules");
-    expect(portablePage("deployments/deploy_123")).toBe("deployments");
-    expect(portablePage("sessions/session_123")).toBe("sessions");
-    expect(portablePage("errors/fingerprint_123")).toBe("errors");
-    expect(portablePage("bulk-actions/bulk_123")).toBe("bulk-actions");
-    expect(portablePage("waitpoints/tokens/waitpoint_123")).toBe("waitpoints/tokens");
-    expect(portablePage("dashboards/custom/dashboard_123")).toBe("dashboards");
-    expect(portablePage("models/gpt-5")).toBe("models");
-    expect(portablePage("prompts/my-prompt")).toBe("prompts");
-    expect(portablePage("agents/my-agent")).toBe("agents");
-    expect(portablePage("playground/my-agent")).toBe("playground");
-    expect(portablePage("test/tasks/my-task")).toBe("test");
-    expect(portablePage("runs/run_123/stream")).toBe("runs");
+    expect(projectPortablePage("runs/run_123")).toBe("runs");
+    expect(projectPortablePage("batches/batch_123")).toBe("batches");
+    expect(projectPortablePage("queues/my-queue")).toBe("queues");
+    expect(projectPortablePage("schedules/sched_123")).toBe("schedules");
+    expect(projectPortablePage("schedules/edit/sched_123")).toBe("schedules");
+    expect(projectPortablePage("deployments/deploy_123")).toBe("deployments");
+    expect(projectPortablePage("sessions/session_123")).toBe("sessions");
+    expect(projectPortablePage("errors/fingerprint_123")).toBe("errors");
+    expect(projectPortablePage("bulk-actions/bulk_123")).toBe("bulk-actions");
+    expect(projectPortablePage("waitpoints/tokens/waitpoint_123")).toBe("waitpoints/tokens");
+    expect(projectPortablePage("dashboards/custom/dashboard_123")).toBe("dashboards");
+    expect(projectPortablePage("models/gpt-5")).toBe("models");
+    expect(projectPortablePage("prompts/my-prompt")).toBe("prompts");
+    expect(projectPortablePage("agents/my-agent")).toBe("agents");
+    expect(projectPortablePage("playground/my-agent")).toBe("playground");
+    expect(projectPortablePage("test/tasks/my-task")).toBe("test");
+    expect(projectPortablePage("runs/run_123/stream")).toBe("runs");
   });
 
   it("send a task page back to the task list, which is the environment root", () => {
-    expect(portablePage("tasks/standard/my-task")).toBe("");
-    expect(portablePage("tasks/scheduled/my-task")).toBe("");
+    expect(projectPortablePage("tasks/standard/my-task")).toBe("");
+    expect(projectPortablePage("tasks/scheduled/my-task")).toBe("");
   });
 
   it("keep the built-in metric dashboards but not the one gated per organization", () => {
-    expect(portablePage("dashboards/overview")).toBe("dashboards/overview");
-    expect(portablePage("dashboards/llm")).toBe("dashboards/llm");
-    expect(portablePage("dashboards/queues")).toBe("dashboards");
-  });
-
-  it("send the branch lists to the environment root, since the environment type may change", () => {
-    expect(portablePage("branches")).toBe("");
-    expect(portablePage("dev-branches")).toBe("");
+    expect(projectPortablePage("dashboards/overview")).toBe("dashboards/overview");
+    expect(projectPortablePage("dashboards/llm")).toBe("dashboards/llm");
+    expect(projectPortablePage("dashboards/queues")).toBe("dashboards");
   });
 });
 
 describe("a page suffix that is not a plain relative page", () => {
   it("falls back to the environment root rather than being sanitised into one", () => {
-    expect(portablePage("/apikeys")).toBe("");
-    expect(portablePage("//evil.example.com")).toBe("");
-    expect(portablePage("//evil.example.com/apikeys")).toBe("");
-    expect(portablePage("https://evil.example.com")).toBe("");
-    expect(portablePage("http://evil.example.com/apikeys")).toBe("");
-    expect(portablePage("//")).toBe("");
-    expect(portablePage("../../login")).toBe("");
-    expect(portablePage("..")).toBe("");
-    expect(portablePage(".")).toBe("");
-    expect(portablePage("%2e%2e/%2e%2e/login")).toBe("");
-    expect(portablePage("..%2f..%2flogin")).toBe("");
-    expect(portablePage("\\\\evil.example.com")).toBe("");
-    expect(portablePage("javascript:alert(1)")).toBe("");
-    expect(portablePage("apikeys?next=//evil.example.com")).toBe("");
-    expect(portablePage("apikeys#/../..")).toBe("");
-    expect(portablePage("nonsense")).toBe("");
-    expect(portablePage("")).toBe("");
+    expect(projectPortablePage("/apikeys")).toBe("");
+    expect(projectPortablePage("//evil.example.com")).toBe("");
+    expect(projectPortablePage("//evil.example.com/apikeys")).toBe("");
+    expect(projectPortablePage("https://evil.example.com")).toBe("");
+    expect(projectPortablePage("http://evil.example.com/apikeys")).toBe("");
+    expect(projectPortablePage("//")).toBe("");
+    expect(projectPortablePage("../../login")).toBe("");
+    expect(projectPortablePage("..")).toBe("");
+    expect(projectPortablePage(".")).toBe("");
+    expect(projectPortablePage("%2e%2e/%2e%2e/login")).toBe("");
+    expect(projectPortablePage("..%2f..%2flogin")).toBe("");
+    expect(projectPortablePage("\\\\evil.example.com")).toBe("");
+    expect(projectPortablePage("javascript:alert(1)")).toBe("");
+    expect(projectPortablePage("apikeys?next=//evil.example.com")).toBe("");
+    expect(projectPortablePage("apikeys#/../..")).toBe("");
+    expect(projectPortablePage("nonsense")).toBe("");
+    expect(projectPortablePage("")).toBe("");
   });
 
   it("only ever answers with a page it knows, whatever it is handed", () => {
@@ -211,17 +259,25 @@ describe("a page suffix that is not a plain relative page", () => {
       "runs/../../../etc/passwd",
       "%2e%2e/apikeys",
       "settings/general/../../..",
+      "/branches",
+      "..%2fbranches",
     ];
 
     for (const attempt of attempts) {
-      const resolved = portablePage(attempt);
-      expect(resolved === "" || PORTABLE_PAGES.has(resolved)).toBe(true);
+      expect(
+        projectPortablePage(attempt) === "" ||
+          PROJECT_PORTABLE_PAGES.has(projectPortablePage(attempt))
+      ).toBe(true);
+      expect(
+        environmentPortablePage(attempt) === "" ||
+          ENVIRONMENT_PORTABLE_PAGES.has(environmentPortablePage(attempt))
+      ).toBe(true);
     }
   });
 
   it("does not let a trailing traversal segment change which page is chosen", () => {
-    expect(portablePage("apikeys/../../login")).toBe("apikeys");
-    expect(portablePage("settings/general/../../..")).toBe("settings/general");
+    expect(projectPortablePage("apikeys/../../login")).toBe("apikeys");
+    expect(projectPortablePage("settings/general/../../..")).toBe("settings/general");
   });
 });
 
@@ -255,6 +311,21 @@ describe("pageBelowEnvironment", () => {
 });
 
 describe("pathForEnvironmentSwitch", () => {
+  it("keeps every page that only swapping the environment slug used to keep", () => {
+    const lost = idFreePages
+      .filter(
+        (page) =>
+          pathForEnvironmentSwitch({
+            location: locationOn(page),
+            environmentPathname: environmentLocation.pathname,
+            environmentSlug: "prod",
+          }) !== `/orgs/acme/projects/api/env/prod/${page}`
+      )
+      .sort();
+
+    expect(lost).toEqual([]);
+  });
+
   it("keeps a portable page, and its filters with it", () => {
     expect(
       pathForEnvironmentSwitch({

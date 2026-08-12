@@ -4,8 +4,8 @@ import {
   ENVIRONMENT_MATCH_ID,
   pageBelowEnvironment,
   pathForEnvironmentSwitch,
-  portablePage,
   portablePageSearch,
+  projectPortablePage,
 } from "~/utils/pageSwitching";
 import {
   organizationPath,
@@ -43,7 +43,7 @@ export function useEnvironmentSwitcher() {
 export function usePageSwitcher() {
   const location = useOptimisticLocation();
   const environmentPathname = useEnvironmentPathname();
-  const page = portablePage(pageBelowEnvironment(location.pathname, environmentPathname));
+  const page = projectPortablePage(pageBelowEnvironment(location.pathname, environmentPathname));
   const search = portablePageSearch(page);
 
   return {
