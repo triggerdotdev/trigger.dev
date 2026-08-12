@@ -4,6 +4,27 @@ import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
 // would reset.
 export const FREE_PLAN_MESSAGE_LIMIT = 20;
 
+/**
+ * The cap to show: the plan limit the server resolved, when it resolved a finite one. The
+ * server sends null while no plan limit exists (self-hosted, or before billing carries one),
+ * and then the free-plan nudge is the cap — dropping it would remove the nudge entirely.
+ */
+export function resolveMessageLimit(serverLimit: number | null | undefined): number {
+  return typeof serverLimit === "number" ? serverLimit : FREE_PLAN_MESSAGE_LIMIT;
+}
+
+/**
+ * What a `?quota=1` body should change, or null for a degraded one. Both fields move together:
+ * applying a `{}` on top of a good read would keep the count and drop back to the nudge limit,
+ * which reads as "reached" against a cap the server never set.
+ */
+export function quotaResponseUpdate(
+  data: { used?: number; limit?: number | null } | null | undefined
+): { used: number; limit: number | null } | null {
+  if (typeof data?.used !== "number") return null;
+  return { used: data.used, limit: typeof data.limit === "number" ? data.limit : null };
+}
+
 export type MessageQuota =
   | { kind: "unlimited" }
   | { kind: "within"; used: number; limit: number; remaining: number }

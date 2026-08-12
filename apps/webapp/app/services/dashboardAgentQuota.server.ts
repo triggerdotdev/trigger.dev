@@ -4,7 +4,7 @@ import {
   incrementAgentMessageUsage,
   type DashboardAgentDb,
 } from "@internal/dashboard-agent-db";
-import { getCachedLimit } from "./platform.v3.server";
+import { getCachedLimitAllowingZero } from "./platform.v3.server";
 import { logger } from "./logger.server";
 
 // The repo's unlimited sentinel. Never Infinity: it serializes to null in the limit cache.
@@ -44,7 +44,10 @@ export async function resolveAgentMessageQuota(
   const readLimit =
     params.readLimit ??
     (async (organizationId: string) => {
-      const cached = await getCachedLimit(
+      // Allowing zero: a plan that includes no messages must cap at 0, not read as absent.
+      // This call isn't covered directly; the limitValueAllowingZero cases in
+      // dashboardAgentQuota.test.ts guard the rule it depends on.
+      const cached = await getCachedLimitAllowingZero(
         organizationId,
         AGENT_MESSAGE_LIMIT_KEY,
         UNLIMITED_AGENT_MESSAGES

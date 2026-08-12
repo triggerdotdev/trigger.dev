@@ -3,7 +3,6 @@ import {
   chatExists,
   countUnreadWatchWakes,
   countChatsWithUnreadWork,
-  getAgentMessageUsage,
   createChat,
   getChatMessages,
   getSession,
@@ -55,9 +54,9 @@ import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.serv
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import {
-  currentAgentMessagePeriod,
   recordAgentMessageSent,
   resolveAgentMessageQuota,
+  UNLIMITED_AGENT_MESSAGES,
 } from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
@@ -159,11 +158,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // The per-period counter, org-wide: a deleted chat can't lower it within the period.
   if (searchParams.get("quota") === "1") {
-    const used = await getAgentMessageUsage(dashboardAgentDb, {
+    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
       organizationId: project.organizationId,
-      period: currentAgentMessagePeriod(),
     });
-    return json({ used });
+    if (!quota) return json({});
+    // The sentinel is "no plan limit" — send null so the client keeps its own free-plan nudge
+    // instead of showing a number nobody would ever reach.
+    return json({
+      used: quota.used,
+      limit: quota.limit < UNLIMITED_AGENT_MESSAGES ? quota.limit : null,
+    });
   }
 
   const chatId = searchParams.get("chatId");

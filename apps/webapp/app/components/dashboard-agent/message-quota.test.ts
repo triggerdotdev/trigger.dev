@@ -5,8 +5,50 @@ import {
   MESSAGE_QUOTA_REACHED_ERROR,
   messageQuotaReachedCopy,
   parseQuotaReachedResponse,
+  quotaResponseUpdate,
+  resolveMessageLimit,
   resolveMessageQuota,
 } from "./message-quota";
+
+describe("quotaResponseUpdate", () => {
+  it("takes both fields from a coherent body", () => {
+    expect(quotaResponseUpdate({ used: 30, limit: 50 })).toEqual({ used: 30, limit: 50 });
+    expect(quotaResponseUpdate({ used: 30, limit: null })).toEqual({ used: 30, limit: null });
+    expect(quotaResponseUpdate({ used: 0, limit: 0 })).toEqual({ used: 0, limit: 0 });
+  });
+
+  it("changes nothing on a degraded body", () => {
+    // Control break: apply `{}` field-by-field and a good {used:30, limit:50} read decays to
+    // used 30 against the client's 20 — "reached" against a cap the server never set.
+    expect(quotaResponseUpdate({})).toBeNull();
+    expect(quotaResponseUpdate(null)).toBeNull();
+    expect(quotaResponseUpdate({ limit: 50 })).toBeNull();
+  });
+});
+
+describe("resolveMessageLimit", () => {
+  it("prefers a finite server-resolved limit over the client constant", () => {
+    expect(resolveMessageLimit(5)).toBe(5);
+    expect(resolveMessageLimit(0)).toBe(0);
+    expect(resolveMessageLimit(500)).toBe(500);
+  });
+
+  it("keeps the free-plan nudge when the server has no finite limit", () => {
+    // Pre-P0 the server limit is the unlimited sentinel and is sent as null: the client's
+    // own 20 IS the nudge. Control break: thread the server number here and it disappears.
+    expect(resolveMessageLimit(null)).toBe(FREE_PLAN_MESSAGE_LIMIT);
+    expect(resolveMessageLimit(undefined)).toBe(FREE_PLAN_MESSAGE_LIMIT);
+  });
+
+  it("caps against the server limit once it is known", () => {
+    expect(
+      resolveMessageQuota({ isFreePlan: true, used: 5, limit: resolveMessageLimit(5) })
+    ).toMatchObject({ kind: "reached", limit: 5 });
+    expect(
+      resolveMessageQuota({ isFreePlan: true, used: 5, limit: resolveMessageLimit(null) })
+    ).toMatchObject({ kind: "within", limit: FREE_PLAN_MESSAGE_LIMIT, remaining: 15 });
+  });
+});
 
 describe("resolveMessageQuota", () => {
   it("caps a Free plan at the limit", () => {

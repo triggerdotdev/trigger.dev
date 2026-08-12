@@ -19,6 +19,7 @@ import {
   resolveAgentMessageQuota,
   UNLIMITED_AGENT_MESSAGES,
 } from "~/services/dashboardAgentQuota.server";
+import { limitValueAllowingZero } from "~/services/platform.v3.server";
 
 /**
  * Server-side agent message quota (TRI-12863): a per-(org, period) counter that a deleted chat
@@ -165,6 +166,31 @@ describe("resolveAgentMessageQuota", () => {
         readLimit: async () => UNLIMITED_AGENT_MESSAGES,
       });
       expect(selfHosted?.reached).toBe(false);
+    }
+  );
+
+  postgresTest(
+    "a plan allowance of zero caps immediately, it is not read as unlimited",
+    async ({ prisma, postgresContainer }) => {
+      const db = await boot(prisma, postgresContainer.getConnectionUri());
+      const now = new Date();
+
+      expect(
+        await resolveAgentMessageQuota(db, { organizationId: ORG, now, readLimit: async () => 0 })
+      ).toEqual({ reached: true, used: 0, limit: 0 });
+
+      // The read the default limit path performs. Control break: with the `!result` fallback
+      // of `getCachedLimit`, a plan value of 0 comes back as the unlimited sentinel.
+      expect(
+        limitValueAllowingZero(
+          { agentMessages: 0 } as never,
+          "agentMessages" as never,
+          UNLIMITED_AGENT_MESSAGES
+        )
+      ).toBe(0);
+      expect(
+        limitValueAllowingZero(undefined, "agentMessages" as never, UNLIMITED_AGENT_MESSAGES)
+      ).toBe(UNLIMITED_AGENT_MESSAGES);
     }
   );
 

@@ -206,7 +206,7 @@ export function DashboardAgentChat({
   // Either the poll saw the cap, or a send was just refused over it.
   const atMessageCap = quota.kind === "reached" || quotaReached !== null;
   const messageCapLimit =
-    quotaReached?.limit ?? (quota.kind === "reached" ? quota.limit : FREE_PLAN_MESSAGE_LIMIT);
+    quotaReached?.limit ?? (quota.kind === "unlimited" ? FREE_PLAN_MESSAGE_LIMIT : quota.limit);
 
   const isStreaming = status === "streaming";
   // From status, not the last part: the indicator must stay up through silent tool calls.

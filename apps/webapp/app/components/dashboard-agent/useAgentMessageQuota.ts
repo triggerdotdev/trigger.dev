@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { resolveMessageQuota, type MessageQuota } from "./message-quota";
+import {
+  quotaResponseUpdate,
+  resolveMessageLimit,
+  resolveMessageQuota,
+  type MessageQuota,
+} from "./message-quota";
 
 // Gated on billing PRESENCE, not the plan value: no subscription means billing isn't wired
 // up (self-hosted), so there is no cap and no upgrade UI. A wired-up, non-paying plan is free.
@@ -24,6 +29,7 @@ export function useAgentMessageQuota({
 }): MessageQuota {
   const isFreePlan = useIsFreePlan();
   const [used, setUsed] = useState<number | undefined>(undefined);
+  const [serverLimit, setServerLimit] = useState<number | null>(null);
 
   // Bumped each time the status leaves streaming/submitted, which drives the re-read.
   const [settleTick, setSettleTick] = useState(0);
@@ -42,8 +48,12 @@ export function useAgentMessageQuota({
       try {
         const res = await fetch(`${actionPath}?quota=1`, { signal: controller.signal });
         if (!res.ok) return;
-        const data = (await res.json()) as { used?: number };
-        if (typeof data.used === "number") setUsed(data.used);
+        const update = quotaResponseUpdate(
+          (await res.json()) as { used?: number; limit?: number | null }
+        );
+        if (!update) return;
+        setUsed(update.used);
+        setServerLimit(update.limit);
       } catch {
         // Leave the count unknown, which means no cap. See `resolveMessageQuota`.
       }
@@ -51,5 +61,5 @@ export function useAgentMessageQuota({
     return () => controller.abort();
   }, [isFreePlan, actionPath, chatId, settleTick]);
 
-  return resolveMessageQuota({ isFreePlan, used });
+  return resolveMessageQuota({ isFreePlan, used, limit: resolveMessageLimit(serverLimit) });
 }
