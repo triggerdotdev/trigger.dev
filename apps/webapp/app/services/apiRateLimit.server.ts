@@ -4,9 +4,77 @@ import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
+import { deploymentApiPaths } from "./deploymentApiPaths.server";
 import type { Duration } from "./rateLimiter.server";
 
 const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
+
+// Rate-limit key for a delegated (agent/PAT-minted) JWT. Its token value rotates every
+// turn, so keying on the token would hand each turn a fresh bucket. Key on env+acting-user
+// so the agent's traffic shares one bucket across turns. The `jwt-actor:` prefix keeps it
+// off PRIVATE-key buckets, which key on the bare environment id.
+export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: string): string {
+  return `jwt-actor:${environmentId}:${actorSub}`;
+}
+
+// The per-request bucket decision for the API limiter. Exported so the branch below
+// (a delegated JWT keys on env+acting-user, everything else keeps its prior key) is
+// testable without standing up the middleware and its Redis.
+export async function resolveApiRateLimitOverride(
+  authorizationValue: string
+): Promise<{ config?: unknown; identifier?: string } | undefined> {
+  const rawApiKey = authorizationValue.replace(/^Bearer /, "");
+
+  if (rawApiKey.startsWith("tr_")) {
+    const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
+
+    if (!scope) {
+      return;
+    }
+
+    return {
+      config: scope.apiRateLimiterConfig,
+      identifier: scope.environmentId,
+    };
+  }
+
+  const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
+    allowPublicKey: true,
+    allowJWT: true,
+  });
+
+  if (!authenticatedEnv || !authenticatedEnv.ok) {
+    return;
+  }
+
+  if (authenticatedEnv.type === "PUBLIC_JWT") {
+    const config = {
+      type: "fixedWindow",
+      window: env.API_RATE_LIMIT_JWT_WINDOW,
+      tokens: env.API_RATE_LIMIT_JWT_TOKENS,
+    } as const;
+
+    // A delegated JWT (agent/PAT-minted) shares one bucket per env+acting-user across turns.
+    // A browser realtime JWT carries no `act`, so it keeps the hashed-token fallback.
+    if (authenticatedEnv.actor?.sub) {
+      return {
+        config,
+        identifier: jwtActorRateLimitIdentifier(
+          authenticatedEnv.environment.id,
+          authenticatedEnv.actor.sub
+        ),
+      };
+    }
+
+    return { config };
+  }
+
+  return {
+    config: authenticatedEnv.environment.organization.apiRateLimiterConfig,
+    // Public keys are browser-distributed, so keep them on per-key buckets.
+    identifier: authenticatedEnv.type === "PRIVATE" ? authenticatedEnv.environment.id : undefined,
+  };
+}
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
@@ -29,47 +97,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     stale: 60_000 * 20, // Date is stale after 20 minutes
     maxItems: 1000,
   },
-  limiterConfigOverride: async (authorizationValue) => {
-    const rawApiKey = authorizationValue.replace(/^Bearer /, "");
-
-    if (rawApiKey.startsWith("tr_")) {
-      const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
-
-      if (!scope) {
-        return;
-      }
-
-      return {
-        config: scope.apiRateLimiterConfig,
-        identifier: scope.environmentId,
-      };
-    }
-
-    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
-      allowPublicKey: true,
-      allowJWT: true,
-    });
-
-    if (!authenticatedEnv || !authenticatedEnv.ok) {
-      return;
-    }
-
-    if (authenticatedEnv.type === "PUBLIC_JWT") {
-      return {
-        config: {
-          type: "fixedWindow",
-          window: env.API_RATE_LIMIT_JWT_WINDOW,
-          tokens: env.API_RATE_LIMIT_JWT_TOKENS,
-        },
-      };
-    }
-
-    return {
-      config: authenticatedEnv.environment.organization.apiRateLimiterConfig,
-      // Public keys are browser-distributed, so keep them on per-key buckets.
-      identifier: authenticatedEnv.type === "PRIVATE" ? authenticatedEnv.environment.id : undefined,
-    };
-  },
+  limiterConfigOverride: resolveApiRateLimitOverride,
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
@@ -91,7 +119,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
-    /^\/api\/v\d+\/deployments/, // /api/v{1,2,3,n}/deployments/*
+    ...deploymentApiPaths, // rate limited separately by deploymentRateLimiter
+    /^\/api\/v\d+\/deployments\/current$/, // runtime SDK surface, exempt as before the deploy budget split
     // Internal SDK plumbing — packets are presigned-URL handshakes for
     // payload uploads (v2 PUT) and downloads (v1 GET), authenticated via
     // run-scoped JWT, called once per task/turn boundary by the runtime.

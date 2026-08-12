@@ -1,5 +1,6 @@
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
+
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
@@ -71,6 +72,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -90,7 +92,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3PlaygroundAgentPath,
@@ -100,6 +101,12 @@ import {
   v3TasksStreamingPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Tasks");
@@ -128,7 +135,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
-    return typeddefer({ items, hourlyActivity, runningStates, usefulLinksPreference });
+    const initialized = await prisma.project.findFirst({
+      where: { id: project.id },
+      select: { initializedAt: true },
+    });
+
+    return typeddefer({
+      items,
+      hourlyActivity,
+      runningStates,
+      usefulLinksPreference,
+      projectInitializedAt: initialized?.initializedAt ?? null,
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -195,7 +213,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates, usefulLinksPreference } =
+  const { items, hourlyActivity, runningStates, usefulLinksPreference, projectInitializedAt } =
     useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
@@ -268,13 +286,6 @@ export default function Page() {
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/tasks/overview")}
-          >
-            Task docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -355,7 +366,7 @@ export default function Page() {
                 </div>
               ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev />
+                  <HasNoTasksDev initializedAt={projectInitializedAt} />
                 </MainCenteredContainer>
               ) : (
                 <MainCenteredContainer className="max-w-prose">

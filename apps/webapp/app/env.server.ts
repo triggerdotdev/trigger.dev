@@ -240,6 +240,7 @@ const EnvironmentSchema = z
     CONTROL_PLANE_DATABASE_READ_REPLICA_URL: z.string().optional(),
     CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA: z.string().default("0"),
     RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
@@ -268,6 +269,9 @@ const EnvironmentSchema = z
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
+    // Extra exact origins (comma separated) added to the document `img-src` CSP,
+    // e.g. an SSO host serving profile images. Wildcards are refused.
+    CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
     API_ORIGIN: z.string().optional(),
     // Alternative API origin for deployed runs whose org has the
     // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
@@ -612,6 +616,14 @@ const EnvironmentSchema = z
 
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
+
+    // Separate budget for deploy-flow endpoints, see deploymentRateLimit.server.ts
+    DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    DEPLOYMENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1500),
+    DEPLOYMENT_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(500),
+    DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+    DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+    DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
     // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
     // (/otel/*). Bounds unauthenticated request rates. Opt-in
@@ -1717,7 +1729,8 @@ const EnvironmentSchema = z
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
 
-    // kapa.ai
+    // kapa.ai — read by the root loader; unset turns Ask AI off, and ⌘I then opens the agent
+    // for users who have agent access, or does nothing for everyone else.
     KAPA_AI_WEBSITE_ID: z.string().optional(),
 
     // BetterStack

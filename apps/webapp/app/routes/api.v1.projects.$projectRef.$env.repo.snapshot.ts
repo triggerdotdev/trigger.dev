@@ -1,24 +1,20 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
-import { env as $env } from "~/env.server";
-import {
-  type AuthenticationResult,
-  authenticatedEnvironmentForAuthentication,
-  authenticateRequest,
-} from "~/services/apiAuth.server";
+import { authenticatedEnvironmentForAuthentication } from "~/services/apiAuth.server";
 import {
   resolveDashboardAgentRepoSnapshot,
   resolveRunCommit,
 } from "~/services/dashboardAgent.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
+import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 // Resolve a signed source-archive pointer for the project's connected repo, used
 // by the dashboard agent's code tools. With `?runId=run_...` it pins to the
 // commit that run's deployed version came from (run-SHA pinning); without it,
 // the tracked branch head. The GitHub token never leaves the server, only the
-// short-lived signed URL is returned. Auth mirrors the worker-by-tag route: a
-// delegated user-actor token authenticates as its user (identity-only).
+// short-lived signed URL is returned. A delegated user-actor token authenticates as its user and
+// is gated on that user's env-tier role, like the JWT exchange.
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -27,23 +23,8 @@ const ParamsSchema = z.object({
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    const bearer = request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim();
-    let authenticationResult: AuthenticationResult | undefined;
-    if (bearer && isUserActorToken(bearer)) {
-      const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);
-      if (!claims) return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-      authenticationResult = { type: "personalAccessToken", result: { userId: claims.userId } };
-    } else {
-      authenticationResult = await authenticateRequest(request, {
-        personalAccessToken: true,
-        organizationAccessToken: true,
-        apiKey: false,
-      });
-    }
-    if (!authenticationResult) {
+    const authentication = await authenticateUatOrApiRequest(request);
+    if (!authentication) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
@@ -53,11 +34,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
-      authenticationResult,
+      authentication.authenticationResult,
       projectRef,
       env,
       triggerBranch
     );
+
+    // The signed URL exposes the project's whole source tree, so gate it like the environment's
+    // other secrets: env-tier `read:apiKeys`, the same check the JWT exchange applies.
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authentication.authenticationResult.type,
+      organizationId: runtimeEnv.organizationId,
+      projectId: runtimeEnv.project.id,
+      envType: runtimeEnv.type,
+      resource: "apiKeys",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const runId = new URL(request.url).searchParams.get("runId") ?? undefined;
 

@@ -31,6 +31,10 @@ export default defineConfig({
   },
   server: {
     cors: false,
+    watch: {
+      // Seeder scripts are not app code; running them must not full-reload the dashboard.
+      ignored: ["**/seed-*.mts"],
+    },
     warmup: {
       clientFiles: ["./app/entry.client.tsx", "./app/root.tsx", "./app/components/**/*.tsx"],
       ssrFiles: ["./app/entry.server.tsx", "./app/root.tsx"],
@@ -55,8 +59,8 @@ export default defineConfig({
       /^@radix-ui\//,
       "react-use",
       "cron-parser",
-      "@fingerprintjs/fingerprintjs-pro-react",
       "@kapaai/react-sdk",
+      "@fingerprintjs/fingerprintjs-pro-react",
       "@fingerprintjs/fingerprintjs-pro",
       "@fingerprintjs/fingerprintjs-pro-spa",
       "recharts",

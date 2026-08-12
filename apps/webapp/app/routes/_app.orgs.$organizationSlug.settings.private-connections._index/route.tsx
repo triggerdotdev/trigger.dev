@@ -189,6 +189,11 @@ export default function Page() {
           >
             Private connection docs
           </LinkButton>
+          {hasPrivateNetworking && canAdd && (
+            <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
+              Add Connection
+            </LinkButton>
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>

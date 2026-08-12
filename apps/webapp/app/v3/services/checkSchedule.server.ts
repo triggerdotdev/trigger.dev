@@ -131,12 +131,14 @@ export class CheckScheduleService extends BaseService {
         projectId,
         active: true,
         environment: {
+          projectId,
           type: {
             not: "DEVELOPMENT",
           },
           archivedAt: null,
         },
         taskSchedule: {
+          projectId,
           active: true,
         },
       },

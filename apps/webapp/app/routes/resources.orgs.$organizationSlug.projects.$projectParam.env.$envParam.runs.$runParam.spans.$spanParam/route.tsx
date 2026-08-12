@@ -32,6 +32,15 @@ import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { isFinalRunStatus } from "~/v3/taskStatus";
+import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import {
+  failedRunPrompt,
+  isFailedRunStatus,
+  waitingRunPrompt,
+} from "~/components/dashboard-agent/investigate-prompts";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CopyTextLink } from "~/components/primitives/CopyTextLink";
@@ -1138,11 +1147,32 @@ function RunBody({
                   waiting={queueMetrics.waiting}
                   status={run.status}
                   createdAt={run.createdAt}
+                  runFriendlyId={run.friendlyId}
                 />
               ) : null}
+              {/* The universal `Watch…` entry (§2.1), pre-filled with this run's
+                  recommendation: tell me when it finishes. Only while the run can
+                  still change — a finished run has nothing left to wait for. */}
+              {isFinalRunStatus(run.status) ? null : (
+                <WatchButton
+                  spec={runWatchRecommendation(run.friendlyId)}
+                  variant="primary"
+                  className="self-start"
+                />
+              )}
               <RunTimeline run={run} />
 
-              {run.error && <RunError error={run.error} />}
+              {run.error && (
+                <div className="flex flex-col gap-2">
+                  <RunError error={run.error} />
+                  {isFailedRunStatus(run.status) ? (
+                    <InvestigateButton
+                      prompt={failedRunPrompt(run.friendlyId)}
+                      className="self-start"
+                    />
+                  ) : null}
+                </div>
+              )}
 
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
@@ -1252,6 +1282,7 @@ function WaitingInQueueBlock({
   waiting,
   status,
   createdAt,
+  runFriendlyId,
 }: {
   queueName: string;
   queuePath: string | undefined;
@@ -1259,6 +1290,7 @@ function WaitingInQueueBlock({
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
   createdAt: Date;
+  runFriendlyId: string;
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
@@ -1373,6 +1405,13 @@ function WaitingInQueueBlock({
           />
         </div>
       </div>
+
+      {/* This block only exists while the run is still waiting, so the ask is always apt: hand the
+          stuck run to the agent. Hidden when the agent isn't available. */}
+      <InvestigateButton
+        prompt={waitingRunPrompt(runFriendlyId, queueName)}
+        className="self-start"
+      />
     </div>
   );
 }

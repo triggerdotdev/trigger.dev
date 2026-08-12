@@ -9,7 +9,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tool
 const colors = {
   primary: "text-indigo-500 transition hover:text-indigo-400",
   secondary: "text-text-dimmed transition hover:text-text-bright",
+  // The theme-remapped link token, for links inside themed surfaces where the
+  // raw indigo of `primary` is dark-theme only.
+  token: "text-text-link transition hover:underline",
 } as const;
+
+const layout = "inline-flex gap-0.5 items-center group";
 
 /**
  * A link's colour plus `inline-text-link`, the marker the "Underline links"
@@ -24,8 +29,9 @@ export function textLinkClassName(variant: keyof typeof colors = "primary") {
 }
 
 const variations = {
-  primary: cn(textLinkClassName("primary"), "inline-flex gap-0.5 items-center group"),
-  secondary: cn(textLinkClassName("secondary"), "inline-flex gap-0.5 items-center group"),
+  primary: cn(textLinkClassName("primary"), layout),
+  secondary: cn(textLinkClassName("secondary"), layout),
+  token: cn(textLinkClassName("token"), layout),
 } as const;
 
 type TextLinkProps = {

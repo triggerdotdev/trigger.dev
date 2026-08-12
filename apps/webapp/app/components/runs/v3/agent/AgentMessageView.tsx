@@ -164,6 +164,8 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
       resultOutput = lastText?.text ?? undefined;
     } else if (p.output != null) {
       resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+    } else if (p.state === "output-error" && p.errorText) {
+      resultOutput = p.errorText;
     }
 
     // Status label for the tool row. AI SDK 7 HITL adds the
@@ -179,7 +181,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
     } else if (p.state === "output-error") {
-      resultSummary = `error: ${p.errorText ?? "unknown"}`;
+      const errorText = p.errorText ?? "unknown";
+      resultSummary =
+        errorText.length > 160 ? `error: ${errorText.slice(0, 160)}…` : `error: ${errorText}`;
     }
 
     return (

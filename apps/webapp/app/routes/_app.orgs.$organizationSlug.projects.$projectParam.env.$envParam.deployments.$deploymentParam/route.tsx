@@ -52,6 +52,12 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => deploymentAgentPageContext(data),
+};
 import { pageMeta } from "~/utils/pageTitle";
 import { TextLink } from "~/components/primitives/TextLink";
 

@@ -19,8 +19,11 @@ import {
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
-import { buildFallbackAbility, permissiveAbility } from "./ability.js";
+import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 import { BearerCredentialResolver } from "./bearerCredentials.js";
+
+// Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
+export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
 
 export type FallbackPrismaClients = {
   // Used for writes (setUserRole, mutateRole, etc.) and any reads that
@@ -259,15 +262,17 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return {
       ok: true,
       userId: claims.userId,
+      claims,
       subject: {
         type: "userActor",
         userId: claims.userId,
         client: claims.client,
+        environmentId: claims.environmentId,
         organizationId: context.organizationId ?? "",
         projectId: context.projectId,
       },
-      // No plugin → permissive, matching the fallback's PAT behaviour.
-      ability: permissiveAbility,
+      // A delegated token is a downgrade of the user: never the blanket ability a PAT gets here.
+      ability: buildJwtAbility(claims.cap ?? CAPLESS_USER_ACTOR_SCOPES),
     };
   }
 

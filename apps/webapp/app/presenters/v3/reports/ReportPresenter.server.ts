@@ -1,27 +1,54 @@
-/**
- * Thin orchestrator: load -> interpret -> return the generic ReportViewModel. No SQL or render
- * here — data access lives in each report's `load`, meaning in `interpret`, presentation in the
- * renderers, and the catalog of reports in `report-registry.ts`.
- *
- * `call` takes a resolved AuthenticatedEnvironment and is transport-independent (Seam B, §7):
- * any future surface (MCP Resource, etc.) is just another caller of this same method.
- */
-
+import {
+  createCache,
+  createLRUMemoryStore,
+  DefaultStatefulContext,
+  Namespace,
+  type UnkeyCache,
+} from "@internal/cache";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { REPORT_REGISTRY } from "./report-registry";
+import { HEALTH_THRESHOLDS } from "./health/health-core";
+import { REPORT_REGISTRY, type ReportLoader } from "./report-registry";
 import { type ReportViewModel } from "./report-view-model";
 
 const DEFAULT_PERIOD = "1h";
 
 /**
- * Single-flight: collapse concurrent identical requests (same report/env/period) into one
- * computation. A report fires up to ~9 ClickHouse queries and MCP/CLI clients easily call it
- * several times at once — without this, N callers each launch the full query set and pile onto
- * the per-project query-concurrency limit. Keyed per (key, env, period); entry drops on settle.
+ * How long a finished report stays reusable. Capped at the liveness fresh window so a
+ * cached report can never render "fresh" while its telemetry is already stale, and it
+ * stays under the watch tick cadence.
+ */
+export const REPORT_CACHE_TTL_MS = HEALTH_THRESHOLDS.liveness.freshMs;
+
+/** How many report, environment and period triples one instance keeps. */
+const REPORT_CACHE_MAX_ENTRIES = 500;
+
+export type ReportCache = UnkeyCache<{ report: ReportViewModel }>;
+
+/** In-process only: an entry is a whole report. `stale` equals `fresh`, so nothing stale is served. */
+export function createReportCache(ttlMs: number = REPORT_CACHE_TTL_MS): ReportCache {
+  return createCache({
+    report: new Namespace<ReportViewModel>(new DefaultStatefulContext(), {
+      stores: [createLRUMemoryStore(REPORT_CACHE_MAX_ENTRIES)],
+      fresh: ttlMs,
+      stale: ttlMs,
+    }),
+  });
+}
+
+const defaultReportCache = createReportCache();
+
+/**
+ * Collapses concurrent identical requests into one computation: the cache only helps once a load has
+ * finished, so all callers of a cold key would otherwise hit the query-concurrency limit at once.
  */
 const inFlight = new Map<string, Promise<ReportViewModel | undefined>>();
 
 export class ReportPresenter {
+  constructor(
+    private readonly registry: Record<string, ReportLoader<unknown>> = REPORT_REGISTRY,
+    private readonly cache: ReportCache = defaultReportCache
+  ) {}
+
   async call({
     environment,
     key,
@@ -31,16 +58,23 @@ export class ReportPresenter {
     key: string;
     period?: string;
   }): Promise<ReportViewModel | undefined> {
-    const loader = REPORT_REGISTRY[key];
-    if (!loader) return undefined;
+    if (!Object.hasOwn(this.registry, key)) return undefined;
+    const loader = this.registry[key];
 
+    // The environment id is part of the key, so one environment can never read another's report.
     const flightKey = `${key} ${environment.id} ${period}`;
+
+    const cached = await this.cache.report.get(flightKey);
+    if (cached.val) return cached.val;
+
     const existing = inFlight.get(flightKey);
     if (existing) return existing;
 
     const promise = (async () => {
       const input = await loader.load(environment, period);
-      return loader.interpret(input);
+      const report = loader.interpret(input);
+      await this.cache.report.set(flightKey, report);
+      return report;
     })().finally(() => inFlight.delete(flightKey));
 
     inFlight.set(flightKey, promise);

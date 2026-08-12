@@ -1,3 +1,9 @@
+/**
+ * Mostly superseded by the dashboard agent (`components/dashboard-agent`), which owns every
+ * entry point except two: ⌘I and the CLI's `?aiHelp=` link still open Ask AI. `AskAIRoot` is
+ * mounted by the `_app` layout for those; the `AskAI` button below is mounted nowhere.
+ */
+
 import {
   ArrowPathIcon,
   ArrowUpIcon,
@@ -11,13 +17,17 @@ import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { useTypedRouteLoaderData } from "remix-typedjson";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
-import { useFeatures } from "~/hooks/useFeatures";
+import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { type loader } from "~/root";
+import {
+  ASK_AI_DEEP_LINK_PARAM,
+  ASK_AI_SHORTCUT,
+  askAiCanOpen,
+} from "./dashboard-agent/ask-ai-channels";
+import { useAskAiHost } from "./dashboard-agent/askAiOpenRequest";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
@@ -33,11 +43,6 @@ import {
   TooltipTrigger,
 } from "./primitives/Tooltip";
 import { ClientOnly } from "remix-utils/client-only";
-
-function useKapaWebsiteId() {
-  const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
-  return routeMatch?.kapa.websiteId;
-}
 
 /** Open/close state for the Ask AI dialog, including the `?aiHelp=` deep-link handling. */
 function useAskAIState() {
@@ -61,14 +66,14 @@ function useAskAIState() {
 
   // Handle URL param functionality
   useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
+    const aiHelp = searchParams.get(ASK_AI_DEEP_LINK_PARAM);
     if (aiHelp) {
       // Delay to avoid hCaptcha bot detection
       window.setTimeout(() => openAskAI(aiHelp), 1000);
 
       // Clone instead of mutating in place
       const next = new URLSearchParams(searchParams);
-      next.delete("aiHelp");
+      next.delete(ASK_AI_DEEP_LINK_PARAM);
       setSearchParams(next);
     }
   }, [searchParams, openAskAI]);
@@ -77,43 +82,30 @@ function useAskAIState() {
 }
 
 /**
- * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog) for a menu that renders its own trigger. Wrap
- * it around the popover, not inside, so the dialog and shortcut survive the popover closing.
- * `children` receives the open function, or undefined when Ask AI is unavailable (self-hosted, no
- * Kapa website id, or SSR).
+ * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog). It renders no page content and wraps
+ * nothing: entry points reach it through `requestAskAi`, so the Kapa provider mounting after
+ * hydration can never remount the app around it.
  */
-export function AskAIRoot({
-  children,
-}: {
-  children: (openAskAI: (() => void) | undefined) => ReactNode;
-}) {
-  const { isManagedCloud } = useFeatures();
-  const websiteId = useKapaWebsiteId();
+export function AskAIRoot() {
+  const availability = useAskAiAvailability();
 
-  if (!isManagedCloud || !websiteId) {
-    return <>{children(undefined)}</>;
+  if (!askAiCanOpen(availability)) {
+    return null;
   }
 
-  return (
-    <ClientOnly fallback={<>{children(undefined)}</>}>
-      {() => <AskAIRootProvider websiteId={websiteId}>{children}</AskAIRootProvider>}
-    </ClientOnly>
-  );
+  const websiteId = availability.kapaWebsiteId!;
+
+  return <ClientOnly>{() => <AskAIRootProvider websiteId={websiteId} />}</ClientOnly>;
 }
 
-function AskAIRootProvider({
-  websiteId,
-  children,
-}: {
-  websiteId: string;
-  children: (openAskAI: () => void) => ReactNode;
-}) {
+function AskAIRootProvider({ websiteId }: { websiteId: string }) {
   const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
 
   useShortcutKeys({
-    shortcut: { modifiers: ["mod"], key: "i", enabledOnInputElements: true },
+    shortcut: ASK_AI_SHORTCUT,
     action: () => openAskAI(),
   });
+  useAskAiHost(openAskAI);
 
   return (
     <KapaProvider
@@ -126,7 +118,6 @@ function AskAIRootProvider({
       }}
       botProtectionMechanism="hcaptcha"
     >
-      {children(() => openAskAI())}
       <AskAIDialog
         initialQuery={initialQuery}
         isOpen={isOpen}
@@ -137,13 +128,15 @@ function AskAIRootProvider({
   );
 }
 
+/** @deprecated Mounted nowhere: the sidebar's AI entry point is the dashboard agent. */
 export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
-  const { isManagedCloud } = useFeatures();
-  const websiteId = useKapaWebsiteId();
+  const availability = useAskAiAvailability();
 
-  if (!isManagedCloud || !websiteId) {
+  if (!askAiCanOpen(availability)) {
     return null;
   }
+
+  const websiteId = availability.kapaWebsiteId!;
 
   return (
     <ClientOnly

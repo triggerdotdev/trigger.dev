@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useRef } from "react";
+import { useThemeMode } from "~/hooks/useThemeMode";
 
 // Our own 5x5 dot-matrix system, reverse-engineered from dotmatrix
 // (github.com/zzzzshawn/matrix) but written from scratch on canvas.
@@ -117,6 +118,8 @@ export type DotMatrixPalette = {
 
 export const DOT_MATRIX_PALETTES = {
   mono: { stops: ["#e2e8f0", "#ffffff", "#94a3b8"], glow: "#ffffff" },
+  /** `mono` mirrored for light surfaces, where the white ramp would vanish. */
+  monoLight: { stops: ["#2b2c2f", "#1a1b1f", "#585c64"], glow: "#1a1b1f" },
   trigger: { stops: ["#41ff54", "#a4ff53", "#e7ff52"], glow: "#86ff53" },
   aurora: { stops: ["#ff3cac", "#784ba0", "#2b86c5"], glow: "#9c64bf" },
   ocean: { stops: ["#00c6ff", "#0072ff", "#4facfe"], glow: "#2f8fff" },
@@ -628,6 +631,20 @@ export function AgentDotMatrix({
         : { role: "img", "aria-label": ariaLabel ?? (active ? "Agent thinking" : "Agent") })}
       className={className}
       style={{ width: size, height: size, display: "block", ...style }}
+    />
+  );
+}
+
+/** The agent's monochrome logo. Use this rather than `palette="mono"`, which is invisible on light. */
+export function AgentMonoLogo(props: Omit<AgentDotMatrixProps, "palette" | "restColor" | "mode">) {
+  const mode = useThemeMode();
+  const light = mode === "light";
+  return (
+    <AgentDotMatrix
+      {...props}
+      mode={mode}
+      palette={light ? "monoLight" : "mono"}
+      restColor={light ? "#1a1b1f" : "#d7d9dd"}
     />
   );
 }

@@ -77,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
 
+  // Deprecated with `AskAI.tsx`: kept so the widget still has its config if it is ever remounted.
   const kapa = {
     websiteId: env.KAPA_AI_WEBSITE_ID,
   };
@@ -185,7 +186,6 @@ export default function App() {
   const {
     posthogProjectKey,
     posthogUiHost,
-    kapa: _kapa,
     themePreference,
     themeContrast,
     iconContrast,

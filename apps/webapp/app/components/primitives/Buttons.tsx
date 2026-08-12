@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { AgentDotMatrix } from "./AgentDotMatrix";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -109,23 +109,22 @@ const theme = {
   },
   docs: {
     textColor:
-      // System themes: monochrome label, the book icon keeps the blue
-      "text-callout-docs-text/70 system:text-text-bright transition group-disabled/button:text-text-dimmed/80",
+      "text-callout-docs-text/70 dark:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
       "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
   },
-  // Reserved for the AI agent's "Ask AI" affordance: secondary styling with a
-  // softened trigger-green border.
-  "ask-ai": {
-    textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
+  // The AI agent's "Ask Trigger" affordance.
+  "ask-trigger": {
+    textColor:
+      "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
-    icon: "text-text-bright",
+      "border-text-dimmed/40 text-text-dimmed dark:group-hover/button:text-text-bright dark:group-hover/button:border-text-dimmed light:group-hover/button:text-charcoal-800 light:group-hover/button:border-charcoal-800/60",
+    icon: "text-text-bright light:group-hover/button:text-charcoal-800",
   },
 };
 
@@ -144,19 +143,14 @@ function createVariant(sizeName: Size, themeName: Theme) {
   };
 }
 
-// The ask-ai button always leads with the square agent logo, so it supplies its
-// own leading icon and its padding is tuned around it: small = 16px logo, 4px
-// left / 6px right; medium 32/16 -> 8px; large 40/20 -> 10px. Pass an explicit
-// `LeadingIcon` (e.g. an <AgentDotMatrix active />) to animate it.
-function createAskAiVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
-  const base = createVariant(sizeName, "ask-ai");
+// ask-trigger supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
+function createAskTriggerVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
+  const base = createVariant(sizeName, "ask-trigger");
   return {
     ...base,
     button: cn(base.button, opticalPadding),
     iconSpacing: "gap-x-1.5",
-    defaultLeadingIcon: (
-      <AgentDotMatrix size={logoSize} palette="mono" restColor="#ffffff" decorative />
-    ),
+    defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
   };
 }
 
@@ -190,9 +184,9 @@ const variant = {
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
   "docs/extra-large": createVariant("extra-large", "docs"),
-  "ask-ai/small": createAskAiVariant("small", "px-1 pr-1.5", 16),
-  "ask-ai/medium": createAskAiVariant("medium", "px-2", 16),
-  "ask-ai/large": createAskAiVariant("large", "px-2.5", 20),
+  "ask-trigger/small": createAskTriggerVariant("small", "px-1 pr-1.5", 16),
+  "ask-trigger/medium": createAskTriggerVariant("medium", "px-2", 16),
+  "ask-trigger/large": createAskTriggerVariant("large", "px-2.5", 20),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
@@ -278,7 +272,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   }, [isLoading]);
 
   const variation = allVariants.variant[props.variant];
-  // Some variants (ask-ai) always lead with their own glyph unless overridden.
+  // Some variants (ask-trigger) always lead with their own glyph unless overridden.
   const leadingIcon = LeadingIcon ?? variation.defaultLeadingIcon;
 
   const btnClassName = cn(allVariants.$all, variation.button);
@@ -447,7 +441,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 type LinkPropsType = Pick<
   LinkProps,
-  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
+  | "to"
+  | "target"
+  | "onClick"
+  | "onMouseDown"
+  | "onMouseEnter"
+  | "onMouseLeave"
+  | "download"
+  | "aria-label"
 > & { disabled?: boolean; replace?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
@@ -458,6 +459,7 @@ export const LinkButton = ({
   download,
   disabled = false,
   replace,
+  "aria-label": ariaLabel,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -496,6 +498,7 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -512,6 +515,7 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </Link>
