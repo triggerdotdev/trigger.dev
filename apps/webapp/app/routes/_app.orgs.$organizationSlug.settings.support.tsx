@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -14,8 +14,10 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { requireOrganization } from "~/services/org.server";
+import { logger } from "~/services/logger.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { getUserId } from "~/services/session.server";
 import {
   enqueueProvisionSupportChannel,
   hasPrivateSlackSupport,
@@ -26,59 +28,97 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
-  const { organization } = await requireOrganization(request, organizationSlug);
-
-  const supportChannel = await prisma.organizationSupportChannel.findFirst({
-    where: { organizationId: organization.id },
+async function resolveOrg(slug: string, userId: string) {
+  // Scoped to membership: ability.can is not a tenant floor (the cloud RBAC
+  // plugin returns a permissive ability for a non-member), so without the
+  // members filter a non-member reaches the handler for any org slug.
+  return prisma.organization.findFirst({
+    where: { slug, members: { some: { userId } }, deletedAt: null },
+    select: { id: true },
   });
+}
 
-  const plan = await getCurrentPlan(organization.id);
+async function orgScope(params: { organizationSlug: string }, request: Request) {
+  const userId = await getUserId(request);
+  if (!userId) return {};
+  const org = await resolveOrg(params.organizationSlug, userId);
+  return org ? { organizationId: org.id } : {};
+}
 
-  return typedjson({
-    organization,
-    supportChannel,
-    hasSupportAccess: hasPrivateSlackSupport(plan),
-  });
-};
+export const loader = dashboardLoader(
+  {
+    params: OrganizationParamsSchema,
+    context: orgScope,
+    // Plan-gated before role-gated: unentitled orgs render the upsell whatever
+    // their role, so manage:billing is enforced on the action (and mirrored as
+    // a disabled button here) rather than on the whole route.
+  },
+  async ({ context, ability }) => {
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const supportChannel = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId },
+    });
+
+    const plan = await getCurrentPlan(organizationId);
+
+    return typedjson({
+      supportChannel,
+      hasSupportAccess: hasPrivateSlackSupport(plan),
+      canManage: ability.can("manage", { type: "billing" }),
+    });
+  }
+);
 
 const ActionSchema = z.object({
   intent: z.literal("connect"),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
-  const { organization } = await requireOrganization(request, organizationSlug);
+export const action = dashboardAction(
+  {
+    params: OrganizationParamsSchema,
+    context: orgScope,
+    authorization: { action: "manage", resource: { type: "billing" } },
+  },
+  async ({ request, params, context }) => {
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const formData = await request.formData();
-  const result = ActionSchema.safeParse({ intent: formData.get("intent") });
-  if (!result.success) {
-    return json({ error: "Invalid action" }, { status: 400 });
+    const formData = await request.formData();
+    const result = ActionSchema.safeParse({ intent: formData.get("intent") });
+    if (!result.success) {
+      return json({ error: "Invalid action" }, { status: 400 });
+    }
+
+    const plan = await getCurrentPlan(organizationId);
+    if (!hasPrivateSlackSupport(plan)) {
+      return json({ error: "Upgrade required" }, { status: 403 });
+    }
+
+    try {
+      await enqueueProvisionSupportChannel({ organizationId });
+    } catch (error) {
+      logger.error("Failed to enqueue support channel provisioning", { organizationId, error });
+      return json({ error: "Failed to start Slack channel provisioning" }, { status: 500 });
+    }
+
+    await prisma.organizationSupportChannel.upsert({
+      where: { organizationId },
+      create: { organizationId, status: "PROVISIONING" },
+      update: { status: "PROVISIONING" },
+    });
+
+    return redirect(organizationSupportPath({ slug: params.organizationSlug }));
   }
-
-  const plan = await getCurrentPlan(organization.id);
-  if (!hasPrivateSlackSupport(plan)) {
-    return json({ error: "Upgrade required" }, { status: 403 });
-  }
-
-  try {
-    await enqueueProvisionSupportChannel({ organizationId: organization.id });
-  } catch (error) {
-    return json({ error: "Failed to start Slack channel provisioning" }, { status: 500 });
-  }
-
-  await prisma.organizationSupportChannel.upsert({
-    where: { organizationId: organization.id },
-    create: { organizationId: organization.id, status: "PROVISIONING" },
-    update: { status: "PROVISIONING" },
-  });
-
-  return redirect(organizationSupportPath(organization));
-};
+);
 
 export default function Page() {
-  const { supportChannel, hasSupportAccess } = useTypedLoaderData<typeof loader>();
+  const { supportChannel, hasSupportAccess, canManage } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
   const navigation = useNavigation();
@@ -155,7 +195,12 @@ export default function Page() {
                 name="intent"
                 value="connect"
                 variant="primary/medium"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !canManage}
+                tooltip={
+                  canManage
+                    ? undefined
+                    : "You don't have permission to connect a Slack support channel"
+                }
               >
                 Connect to Slack
               </Button>
