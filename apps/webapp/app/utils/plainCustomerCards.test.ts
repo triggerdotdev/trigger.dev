@@ -44,12 +44,14 @@ describe("PlainCustomerCardRequestSchema", () => {
     expect(PlainCustomerCardRequestSchema.safeParse(request()).success).toBe(true);
   });
 
-  it("still requires one of email or externalId", () => {
+  // A contact created by an integration can have neither identifier. There's nothing to look up,
+  // but rejecting it would make Plain record an integration error rather than hide the card.
+  it("accepts a customer with neither email nor externalId", () => {
     const result = PlainCustomerCardRequestSchema.safeParse(
       request({ customer: { id: "c_1", email: null, externalId: null } })
     );
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("rejects a body with no card keys field", () => {

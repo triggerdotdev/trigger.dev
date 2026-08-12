@@ -11,16 +11,15 @@ import { z } from "zod";
  */
 export const PlainCustomerCardRequestSchema = z.object({
   cardKeys: z.array(z.string()),
-  customer: z
-    .object({
-      id: z.string(),
-      email: z.string().nullish(),
-      externalId: z.string().nullish(),
-    })
-    .refine((data) => data.email || data.externalId, {
-      message: "Either customer.email or customer.externalId must be provided",
-      path: ["customer"],
-    }),
+  // A customer with neither an email nor an external id is valid input, not a malformed request:
+  // a contact created by an integration can legitimately have neither. There's nothing to look up,
+  // so the route answers every key with no data — rejecting it would make Plain record an
+  // integration error, which is the failure this schema change exists to remove.
+  customer: z.object({
+    id: z.string(),
+    email: z.string().nullish(),
+    externalId: z.string().nullish(),
+  }),
   thread: z
     .object({
       id: z.string(),
