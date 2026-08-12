@@ -59,6 +59,7 @@ export default defineConfig({
       /^@radix-ui\//,
       "react-use",
       "cron-parser",
+      "@kapaai/react-sdk",
       "@fingerprintjs/fingerprintjs-pro-react",
       "@fingerprintjs/fingerprintjs-pro",
       "@fingerprintjs/fingerprintjs-pro-spa",
