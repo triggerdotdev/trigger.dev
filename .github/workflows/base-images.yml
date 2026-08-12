@@ -57,10 +57,11 @@ jobs:
           BUILD_PACKAGES="$(jq -er '.buildPackages' base-images/images.json)"
           SUITE="$(jq -er '.suite' base-images/images.json)"
 
-          # Values land in build args and shell lines; keep them boring
-          echo "$PACKAGES" | grep -qE '^[a-z0-9][a-z0-9 .+:=~-]*$' || { echo "invalid packages value"; exit 1; }
-          echo "$BUILD_PACKAGES" | grep -qE '^[a-z0-9][a-z0-9 .+:=~-]*$' || { echo "invalid buildPackages value"; exit 1; }
-          echo "$SUITE" | grep -qE '^[a-z]+$' || { echo "invalid suite value"; exit 1; }
+          # Values land in build args and shell lines; keep them boring.
+          # NUL-delimited whole-record match so multi-line values can't sneak through
+          printf '%s\0' "$PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid packages value"; exit 1; }
+          printf '%s\0' "$BUILD_PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid buildPackages value"; exit 1; }
+          printf '%s\0' "$SUITE" | grep -zqxE '[a-z]+' || { echo "invalid suite value"; exit 1; }
           jq -e '.images | length > 0 and all((.repo | test("^[a-z0-9-]+$")) and (.tag | test("^[a-z0-9.-]+$")) and (.base | test("^[a-zA-Z0-9./:@-]+$")))' base-images/images.json > /dev/null \
             || { echo "invalid images entries"; exit 1; }
 
@@ -68,7 +69,7 @@ jobs:
           if [ -z "$SNAPSHOT" ]; then
             SNAPSHOT="$(date -u -d yesterday +%Y%m%dT000000Z)"
           fi
-          echo "$SNAPSHOT" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
+          printf '%s\0' "$SNAPSHOT" | grep -zqxE '[0-9]{8}T[0-9]{6}Z' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
 
           # Snapshot-derived timestamps: reproducible, with a real created date
           EPOCH="$(date -u -d "${SNAPSHOT:0:4}-${SNAPSHOT:4:2}-${SNAPSHOT:6:2} ${SNAPSHOT:9:2}:${SNAPSHOT:11:2}:${SNAPSHOT:13:2}Z" +%s)"

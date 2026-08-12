@@ -55,10 +55,13 @@ docker buildx build base-images --target runtime \
 # digests are stable for a given BuildKit version and compression settings.
 ```
 
-Every published digest also carries a GitHub build provenance attestation:
+Publishes also attest build provenance (best effort: a Sigstore outage does
+not block a publish, so a digest can occasionally lack its attestation):
 
 ```bash
-gh attestation verify oci://index.docker.io/triggerdotdev/node:22-bookworm --owner triggerdotdev
+gh attestation verify oci://index.docker.io/triggerdotdev/node:22-bookworm \
+  --repo triggerdotdev/trigger.dev \
+  --signer-workflow triggerdotdev/trigger.dev/.github/workflows/base-images.yml
 ```
 
 ## Publishing
