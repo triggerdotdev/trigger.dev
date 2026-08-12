@@ -94,8 +94,9 @@ describe("every chat change goes through one door", () => {
   it("bumps the open sequence in exactly one place, next to the card reset", () => {
     const bumps = panel.match(/openChatRequestSeq\.current\s*(\+\+|\+=)|\+\+openChatRequestSeq/g);
     expect(bumps).toHaveLength(1);
-    expect(panel).toContain(
-      'dispatchWatchCard({ type: "chat-changed" });\n    return ++openChatRequestSeq.current;'
+    // Whitespace-tolerant: the formatter is free to reindent or rewrap these two lines.
+    expect(panel).toMatch(
+      /dispatchWatchCard\(\{\s*type:\s*"chat-changed",?\s*\}\);\s*return \+\+openChatRequestSeq\.current;/
     );
   });
 

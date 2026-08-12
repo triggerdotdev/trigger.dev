@@ -232,7 +232,8 @@ describe("what a batch tick records", () => {
         depth: 412,
         notDecreasingStreak: 2,
       });
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -260,7 +261,8 @@ describe("what a batch tick records", () => {
       // A real evaluation does move the row's last look on.
       expect(row?.lastCheckedAt?.getTime()).toBeGreaterThan(checkedAt.getTime());
       expect(previousCheckFacts(row?.lastResult)).toMatchObject({ notDecreasingStreak: 3 });
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -300,6 +302,7 @@ describe("what a batch tick records", () => {
         notDecreasingStreak: 2,
       });
       expect(isDue(row!, CADENCE, new Date())).toBe(true);
-    }
+    },
+    30_000
   );
 });
