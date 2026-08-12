@@ -162,7 +162,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const latestVersions = backgroundWorkers.map((v) => v.version);
   const disableVersionSelection = environment.type === "DEVELOPMENT";
-  const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
   const [payload, regionsResult] = await Promise.all([
     prettyPrintPacket(run.payload, run.payloadType),
@@ -207,7 +206,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       : undefined,
     latestVersions,
     disableVersionSelection,
-    allowArbitraryQueues,
     environment: {
       ...displayableEnvironment(environment, userId),
       branchName: environment.branchName ?? undefined,
@@ -555,7 +553,6 @@ function listLatestBackgroundWorkers(environment: { id: string }, limit = 20) {
     },
     select: {
       version: true,
-      engine: true,
     },
     orderBy: {
       createdAt: "desc",

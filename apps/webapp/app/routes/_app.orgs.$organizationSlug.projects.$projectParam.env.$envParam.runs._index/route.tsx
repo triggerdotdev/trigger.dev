@@ -165,16 +165,13 @@ export default function Page() {
   const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
     useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
-  const project = useProject();
   const environment = useEnvironment();
 
   return (
     <>
       <NavBar>
         <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
-        {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-          <DevDisconnectedBanner isConnected={isConnected} />
-        )}
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip />
         </PageAccessories>

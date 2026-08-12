@@ -63,7 +63,6 @@ import {
   TriggerDevStepV3,
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { V4Badge } from "./V4Badge";
 
 /**
  * What the agent is asked when it's opened from a deployment setup panel. The panel is the docs
@@ -567,13 +566,9 @@ export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfSer
         )
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Preview branches in Trigger.dev create isolated environments for testing new features before
         production.
-      </Paragraph>
-      <Paragraph variant="small">
-        You must be on <V4Badge inline /> to access preview branches. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>upgrade to v4 guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );
@@ -648,13 +643,9 @@ export function BranchesNoBranches({
         />
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Branches are a way to test new features in isolation before merging them into the main
         environment.
-      </Paragraph>
-      <Paragraph spacing variant="small">
-        Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );

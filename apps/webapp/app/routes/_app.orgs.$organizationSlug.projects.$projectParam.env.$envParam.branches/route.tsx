@@ -13,7 +13,6 @@ import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -228,7 +227,7 @@ export default function Page() {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title={<V4Title>Preview branches</V4Title>} />
+          <PageTitle title="Preview branches" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
@@ -242,7 +241,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Preview branches</V4Title>} />
+        <PageTitle title="Preview branches" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

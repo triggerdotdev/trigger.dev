@@ -39,11 +39,7 @@ export const loader = createLoaderApiRoute(
     });
 
     if (!result.success) {
-      if (result.code === "queue-not-found") {
-        return json({ error: result.code }, { status: 404 });
-      }
-
-      return json({ error: result.code }, { status: 400 });
+      return json({ error: result.code }, { status: 404 });
     }
 
     const q: QueueItem = result.queue;

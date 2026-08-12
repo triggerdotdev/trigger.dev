@@ -5,7 +5,6 @@ import { useCallback } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -96,7 +95,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Dev branches</V4Title>} />
+        <PageTitle title="Dev branches" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

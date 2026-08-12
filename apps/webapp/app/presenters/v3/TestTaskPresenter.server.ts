@@ -93,7 +93,6 @@ export type TestTaskResult =
       runs: StandardRun[];
       latestVersions: string[];
       disableVersionSelection: boolean;
-      allowArbitraryQueues: boolean;
       taskRunTemplates: TaskRunTemplate[];
     }
   | {
@@ -105,7 +104,6 @@ export type TestTaskResult =
       runs: ScheduledRun[];
       latestVersions: string[];
       disableVersionSelection: boolean;
-      allowArbitraryQueues: boolean;
       taskRunTemplates: TaskRunTemplate[];
     }
   | {
@@ -212,7 +210,6 @@ export class TestTaskPresenter {
       },
       select: {
         version: true,
-        engine: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -235,7 +232,6 @@ export class TestTaskPresenter {
     const latestVersions = backgroundWorkers.map((v) => v.version);
 
     const disableVersionSelection = environment.type === "DEVELOPMENT";
-    const allowArbitraryQueues = backgroundWorkers[0]?.engine === "V1";
 
     // Get the latest runs, for the payloads
     const runsRepository = new RunsRepository({
@@ -317,7 +313,6 @@ export class TestTaskPresenter {
           ),
           latestVersions,
           disableVersionSelection,
-          allowArbitraryQueues,
           taskRunTemplates: await Promise.all(
             taskRunTemplates.map(async (t) => ({
               ...t,
@@ -364,7 +359,6 @@ export class TestTaskPresenter {
           ).filter(Boolean),
           latestVersions,
           disableVersionSelection,
-          allowArbitraryQueues,
           taskRunTemplates: await Promise.all(
             taskRunTemplates.map(async (t) => {
               const scheduledTaskPayload = t.payload

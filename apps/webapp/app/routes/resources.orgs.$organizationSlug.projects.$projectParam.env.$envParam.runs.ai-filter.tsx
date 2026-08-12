@@ -88,7 +88,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         type,
       });
       return {
-        queues: queues.success ? queues.queues.map((q) => q.name) : [],
+        queues: queues.queues.map((q) => q.name),
       };
     },
   };

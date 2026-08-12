@@ -35,10 +35,6 @@ export const loader = createLoaderApiRoute(
         page: searchParams.page ?? 1,
       });
 
-      if (!result.success) {
-        return json({ error: result.code }, { status: 400 });
-      }
-
       const queues: QueueItem[] = result.queues;
       return json(
         {
