@@ -5,7 +5,7 @@
  * preview the agent honours has to be read off the user row.
  */
 
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 const ctx = vi.hoisted(() => ({ admin: false }));
 
@@ -18,10 +18,10 @@ vi.mock("~/db.server", () => {
   return { prisma: db, $replica: db, sqlDatabaseSchema: undefined };
 });
 
-process.env.SESSION_SECRET = "test-session-secret-for-alert-admin-preview";
+vi.stubEnv("SESSION_SECRET", "test-session-secret-for-alert-admin-preview");
 // The install this is previewed on: the flag is off for everyone else.
-process.env.DASHBOARD_AGENT_ADMIN_PREVIEW = "1";
-delete process.env.DASHBOARD_AGENT_ENABLED;
+vi.stubEnv("DASHBOARD_AGENT_ADMIN_PREVIEW", "1");
+vi.stubEnv("DASHBOARD_AGENT_ENABLED", undefined);
 
 const { canUseDashboardAgentAlerts } = await import("~/services/dashboardAgentWatchAlerts.server");
 
@@ -29,6 +29,10 @@ const params = { userId: "user_1", organizationId: "org_1", organizationSlug: "a
 
 beforeEach(() => {
   ctx.admin = false;
+});
+
+afterAll(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("watch alerts during the admin preview", () => {

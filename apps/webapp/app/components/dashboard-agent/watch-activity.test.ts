@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** The key the module under test writes; kept here so a rename fails loudly in one place. */
+const STORAGE_KEY = "tdev:dashboard-agent:watching";
+
 type StorageListener = (event: { key: string | null }) => void;
 
 const store = new Map<string, string>();
@@ -27,8 +30,8 @@ const {
 
 /** What another tab writing the key looks like here. */
 function otherTabWrote(organizationId: string) {
-  store.set("tdev:dashboard-agent:watching", JSON.stringify([organizationId]));
-  for (const listener of storageListeners) listener({ key: "tdev:dashboard-agent:watching" });
+  store.set(STORAGE_KEY, JSON.stringify([organizationId]));
+  for (const listener of storageListeners) listener({ key: STORAGE_KEY });
 }
 
 describe("watch activity", () => {
@@ -98,20 +101,20 @@ describe("watch activity", () => {
 
   describe("a corrupt key", () => {
     it("reads as nothing known when the value is not an array", () => {
-      store.set("tdev:dashboard-agent:watching", JSON.stringify({ org_1: true }));
+      store.set(STORAGE_KEY, JSON.stringify({ org_1: true }));
 
       expect(hasWatchActivity("org_1")).toBe(false);
       expect(shouldPollWakeFeed({ serverUnreadWakes: 0, organizationId: "org_1" })).toBe(false);
     });
 
     it("keeps the ids out of an array holding other things", () => {
-      store.set("tdev:dashboard-agent:watching", JSON.stringify([{ id: "org_1" }, "org_2", 7]));
+      store.set(STORAGE_KEY, JSON.stringify([{ id: "org_1" }, "org_2", 7]));
 
       expect(hasWatchActivity("org_1")).toBe(false);
       expect(hasWatchActivity("org_2")).toBe(true);
 
       rememberWatchActivity("org_3");
-      expect(store.get("tdev:dashboard-agent:watching")).toBe(JSON.stringify(["org_2", "org_3"]));
+      expect(store.get(STORAGE_KEY)).toBe(JSON.stringify(["org_2", "org_3"]));
     });
   });
 
