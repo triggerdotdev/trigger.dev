@@ -1,4 +1,4 @@
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { EnvironmentPauseSource } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -20,7 +20,7 @@ export async function getBillingLimitQueuedRunCount(organizationId: string): Pro
     return 0;
   }
 
-  return count;
+  return count ?? 0;
 }
 
 export async function countBillingLimitPausedEnvironments(organizationId: string): Promise<number> {

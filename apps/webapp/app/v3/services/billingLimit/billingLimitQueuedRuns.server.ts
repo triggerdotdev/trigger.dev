@@ -15,6 +15,11 @@ export type BillableEnvironmentRef = {
   projectId: string;
 };
 
+/**
+ * Environments whose runs a billing limit must act on. Archived branches stay included:
+ * archiving is a soft update that cancels nothing, so an archived branch can still hold
+ * executing runs that enforcement has to cancel.
+ */
 export async function getBillableEnvironmentsForBillingLimit(
   organizationId: string,
   prismaClient: PrismaClient = prisma
@@ -23,7 +28,6 @@ export async function getBillableEnvironmentsForBillingLimit(
     where: {
       organizationId,
       type: { in: boundedIn([...BILLABLE_ENVIRONMENT_TYPES]) },
-      archivedAt: null,
     },
     select: {
       id: true,

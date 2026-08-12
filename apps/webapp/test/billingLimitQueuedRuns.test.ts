@@ -236,7 +236,7 @@ describe("billingLimitQueuedRuns", () => {
   );
 
   replicationContainerTest(
-    "excludes archived environments from the billable environment list",
+    "keeps archived environments in the billable environment list so enforcement can cancel their runs",
     async ({ prisma }) => {
       const organization = await prisma.organization.create({
         data: { title: "billing-limit-archived", slug: "billing-limit-archived" },
@@ -253,17 +253,18 @@ describe("billingLimitQueuedRuns", () => {
 
       const activeEnv = await prisma.runtimeEnvironment.create({
         data: {
-          slug: "prod",
-          type: "PRODUCTION",
+          slug: "preview-active",
+          type: "PREVIEW",
           projectId: project.id,
           organizationId: organization.id,
-          apiKey: "prod-archived-test",
-          pkApiKey: "prod-archived-test",
-          shortcode: "prod-archived-test",
+          apiKey: "preview-active-test",
+          pkApiKey: "preview-active-test",
+          shortcode: "preview-active-test",
+          branchName: "live-branch",
         },
       });
 
-      await prisma.runtimeEnvironment.create({
+      const archivedEnv = await prisma.runtimeEnvironment.create({
         data: {
           slug: "preview-archived",
           type: "PREVIEW",
@@ -277,9 +278,23 @@ describe("billingLimitQueuedRuns", () => {
         },
       });
 
-      const environments = await getBillableEnvironmentsForBillingLimit(organization.id, prisma);
+      const developmentEnv = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "dev",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "dev-archived-test",
+          pkApiKey: "dev-archived-test",
+          shortcode: "dev-archived-test",
+        },
+      });
 
-      expect(environments).toEqual([{ id: activeEnv.id, projectId: project.id }]);
+      const environments = await getBillableEnvironmentsForBillingLimit(organization.id, prisma);
+      const environmentIds = environments.map((environment) => environment.id).sort();
+
+      expect(environmentIds).toEqual([activeEnv.id, archivedEnv.id].sort());
+      expect(environmentIds).not.toContain(developmentEnv.id);
     }
   );
 });
