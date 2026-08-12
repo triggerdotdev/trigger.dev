@@ -26,7 +26,7 @@ export function DashboardAgentDraft({
   pageContext?: AgentPageContext;
   promotedPrompt?: SuggestedPrompt;
   watchCard?: React.ReactNode;
-  capReached?: { limit: number } | null;
+  capReached?: { limit: number; planResolved: boolean } | null;
 }) {
   const [input, setInput] = useState("");
 
@@ -67,6 +67,7 @@ export function DashboardAgentDraft({
             {watchCard}
             <AgentUpgradeBlock
               limit={capReached.limit}
+              planResolved={capReached.planResolved}
               context={
                 <DashboardAgentContextBanner
                   projectSlug={projectSlug}

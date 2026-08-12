@@ -116,7 +116,9 @@ export function DashboardAgentPanel({
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
   // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
-  const [capReached, setCapReached] = useState<{ limit: number } | null>(null);
+  const [capReached, setCapReached] = useState<{ limit: number; planResolved: boolean } | null>(
+    null
+  );
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname

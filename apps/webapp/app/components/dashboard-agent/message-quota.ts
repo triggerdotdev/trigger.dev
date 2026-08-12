@@ -57,17 +57,24 @@ export const MESSAGE_QUOTA_REACHED_ERROR = "message_quota_reached";
 export function parseQuotaReachedResponse(
   status: number,
   data: { error?: string; limit?: number } | null | undefined
-): { limit: number } | null {
+): { limit: number; planResolved: boolean } | null {
   if (status === 403 && data?.error === MESSAGE_QUOTA_REACHED_ERROR) {
-    return { limit: data.limit ?? FREE_PLAN_MESSAGE_LIMIT };
+    return typeof data.limit === "number"
+      ? { limit: data.limit, planResolved: true }
+      : { limit: FREE_PLAN_MESSAGE_LIMIT, planResolved: false };
   }
   return null;
 }
 
-// The upgrade block's sentence. Pure so the copy is asserted directly, and so the raw
-// server code can never be what the user reads.
-export function messageQuotaReachedCopy(limit: number): string {
-  return `You've used all ${limit} messages included on the Free plan. Your chats stay here to read.`;
+/**
+ * The upgrade block's sentence. Pure so the copy is asserted directly, and so the raw
+ * server code can never be what the user reads. Only the client's free-plan nudge may name
+ * the Free plan — a server-resolved cap also lands on paying orgs, whose allowance isn't it.
+ */
+export function messageQuotaReachedCopy(limit: number, planResolved: boolean): string {
+  return planResolved
+    ? `You've used all ${limit} messages included in your plan this month. Your chats stay here to read.`
+    : `You've used all ${limit} messages included on the Free plan. Your chats stay here to read.`;
 }
 
 // A watch's consent record is a user message the person never typed, so it is

@@ -105,7 +105,9 @@ export function DashboardAgentChat({
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
   // waiting for the next quota poll.
-  const [quotaReached, setQuotaReached] = useState<{ limit: number } | null>(null);
+  const [quotaReached, setQuotaReached] = useState<{ limit: number; planResolved: boolean } | null>(
+    null
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -207,6 +209,9 @@ export function DashboardAgentChat({
   const atMessageCap = quota.kind === "reached" || quotaReached !== null;
   const messageCapLimit =
     quotaReached?.limit ?? (quota.kind === "unlimited" ? FREE_PLAN_MESSAGE_LIMIT : quota.limit);
+  // The poll only runs on the free plan, so its cap is the free-plan nudge; a refusal
+  // carries the plan limit the server resolved.
+  const messageCapPlanResolved = quotaReached?.planResolved ?? false;
 
   const isStreaming = status === "streaming";
   // From status, not the last part: the indicator must stay up through silent tool calls.
@@ -438,6 +443,7 @@ export function DashboardAgentChat({
       {atMessageCap ? (
         <AgentUpgradeBlock
           limit={messageCapLimit}
+          planResolved={messageCapPlanResolved}
           context={
             <DashboardAgentContextBanner
               projectSlug={projectSlug}

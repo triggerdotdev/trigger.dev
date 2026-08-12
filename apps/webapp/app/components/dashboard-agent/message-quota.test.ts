@@ -96,12 +96,13 @@ describe("parseQuotaReachedResponse", () => {
     // Both the create path and the `in` transport refuse with this exact body.
     expect(
       parseQuotaReachedResponse(403, { error: MESSAGE_QUOTA_REACHED_ERROR, limit: 20 })
-    ).toEqual({ limit: 20 });
+    ).toEqual({ limit: 20, planResolved: true });
   });
 
   it("falls back to the free limit when the body omits it", () => {
     expect(parseQuotaReachedResponse(403, { error: MESSAGE_QUOTA_REACHED_ERROR })).toEqual({
       limit: FREE_PLAN_MESSAGE_LIMIT,
+      planResolved: false,
     });
   });
 
@@ -113,11 +114,19 @@ describe("parseQuotaReachedResponse", () => {
 });
 
 describe("messageQuotaReachedCopy", () => {
-  it("is a friendly sentence naming the limit, never the raw code", () => {
-    const copy = messageQuotaReachedCopy(20);
-    expect(copy).toContain("all 20 messages");
+  it("names the Free plan only for the client nudge", () => {
+    const copy = messageQuotaReachedCopy(FREE_PLAN_MESSAGE_LIMIT, false);
+    expect(copy).toContain(`all ${FREE_PLAN_MESSAGE_LIMIT} messages`);
     expect(copy).toContain("Free plan");
     // Control break: if the mapping leaked the server code, this fails.
+    expect(copy).not.toContain(MESSAGE_QUOTA_REACHED_ERROR);
+  });
+
+  it("stays plan-agnostic for a server-resolved limit, which paying orgs also hit", () => {
+    const copy = messageQuotaReachedCopy(500, true);
+    expect(copy).toContain("all 500 messages");
+    expect(copy).toContain("your plan");
+    expect(copy).not.toContain("Free plan");
     expect(copy).not.toContain(MESSAGE_QUOTA_REACHED_ERROR);
   });
 });

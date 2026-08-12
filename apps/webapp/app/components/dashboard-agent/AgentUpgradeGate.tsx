@@ -11,9 +11,11 @@ const SLOT = "flex shrink-0 flex-col bg-background-bright px-3 pb-3 pt-1";
 
 export function AgentUpgradeBlock({
   limit,
+  planResolved,
   context,
 }: {
   limit: number;
+  planResolved: boolean;
   context?: React.ReactNode;
 }) {
   const organization = useOrganization();
@@ -28,7 +30,7 @@ export function AgentUpgradeBlock({
             Upgrade to unlock {ASK_AGENT_LABEL}
           </span>
         </div>
-        <p className="text-xs text-text-dimmed">{messageQuotaReachedCopy(limit)}</p>
+        <p className="text-xs text-text-dimmed">{messageQuotaReachedCopy(limit, planResolved)}</p>
         <LinkButton variant="primary/small" to={v3BillingPath(organization)} fullWidth>
           Upgrade
         </LinkButton>
