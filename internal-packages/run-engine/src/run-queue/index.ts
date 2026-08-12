@@ -2133,8 +2133,10 @@ export class RunQueue {
     const messageId = message.runId;
     const messageData = JSON.stringify(message);
     const messageScore = String(message.timestamp);
-    const currentTime = String(Date.now());
-    const enableFastPathArg = enableFastPath ? "1" : "0";
+    const currentTimeMs = Date.now();
+    const shouldEnableFastPath = enableFastPath && message.timestamp <= currentTimeMs;
+    const currentTime = String(currentTimeMs);
+    const enableFastPathArg = shouldEnableFastPath ? "1" : "0";
     const metricsGaugeArg = this.#queueMetricsGaugeArg();
     const defaultEnvConcurrencyLimit = String(this.options.defaultEnvConcurrency);
     const defaultEnvConcurrencyBurstFactor = String(
@@ -2155,6 +2157,7 @@ export class RunQueue {
       messageScore,
       masterQueueKey,
       enableFastPath,
+      shouldEnableFastPath,
       ttlInfo,
       service: this.name,
     });

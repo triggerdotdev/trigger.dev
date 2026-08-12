@@ -29,6 +29,7 @@ import {
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import { normalizeScheduleWindow } from "../scheduleWindow.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -655,9 +656,25 @@ export async function syncDeclarativeSchedules(
     where: {
       type: "DECLARATIVE",
       projectId: environment.projectId,
+      instances: {
+        some: {
+          environmentId: environment.id,
+        },
+      },
     },
-    include: {
-      instances: true,
+    select: {
+      id: true,
+      friendlyId: true,
+      taskIdentifier: true,
+      generatorExpression: true,
+      timezone: true,
+      windowDurationSeconds: true,
+      windowPercentage: true,
+      instances: {
+        select: {
+          environmentId: true,
+        },
+      },
     },
   });
 
@@ -698,11 +715,18 @@ export async function syncDeclarativeSchedules(
         timezone: task.schedule.timezone,
         taskIdentifier: task.id,
         friendlyId: existingSchedule?.friendlyId,
+        window: task.schedule.window,
       },
       [environment.id]
     );
 
     if (existingSchedule) {
+      const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+      const timingChanged =
+        existingSchedule.generatorExpression !== task.schedule.cron ||
+        existingSchedule.timezone !== task.schedule.timezone ||
+        existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
+        existingSchedule.windowPercentage !== normalizedWindow.windowPercentage;
       const schedule = await prisma.taskSchedule.update({
         where: {
           id: existingSchedule.id,
@@ -711,6 +735,7 @@ export async function syncDeclarativeSchedules(
           generatorExpression: task.schedule.cron,
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
+          ...normalizedWindow,
         },
         include: {
           instances: true,
@@ -720,7 +745,10 @@ export async function syncDeclarativeSchedules(
       missingSchedules.delete(existingSchedule.id);
       const instance = schedule.instances.at(0);
       if (instance) {
-        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+        await scheduleEngine.registerNextTaskScheduleInstance({
+          instanceId: instance.id,
+          preserveExistingJob: !timingChanged,
+        });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${schedule.id}`
@@ -736,6 +764,7 @@ export async function syncDeclarativeSchedules(
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
           type: "DECLARATIVE",
+          ...normalizeScheduleWindow(task.schedule.window),
           instances: {
             create: [
               {
@@ -764,16 +793,9 @@ export async function syncDeclarativeSchedules(
 
   //Delete instances for this environment
   //Delete schedules that have no instances left
-  const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
-    where: {
-      id: {
-        in: boundedIn(Array.from(missingSchedules)),
-      },
-    },
-    include: {
-      instances: true,
-    },
-  });
+  const potentiallyDeletableSchedules = existingDeclarativeSchedules.filter((schedule) =>
+    missingSchedules.has(schedule.id)
+  );
 
   const scheduleIdsToDelete: string[] = [];
   const scheduleIdsToDetachFromEnvironment: string[] = [];

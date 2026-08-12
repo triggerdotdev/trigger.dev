@@ -1,5 +1,10 @@
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
-import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
+import {
+  boundedIn,
+  Prisma,
+  type PrismaClient,
+  type RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $replica, $transaction, prisma, type PrismaReplicaClient } from "~/db.server";
@@ -66,9 +71,15 @@ export class EnvironmentVariablesRepository implements Repository {
           },
         },
         environmentVariables: {
+          where: {
+            key: { in: boundedIn(options.variables.map((v) => v.key)) },
+          },
           select: {
             key: true,
             values: {
+              where: {
+                environmentId: { in: boundedIn(options.environmentIds) },
+              },
               select: {
                 environment: {
                   select: { id: true, type: true },

@@ -1,4 +1,5 @@
 import type { JSONValue } from "@ai-sdk/provider";
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 
 /**
  * Everything that trims an API payload down to what a tool returns, plus the two
@@ -18,7 +19,7 @@ export function fenceUntrusted(label: string, text: unknown): string | undefined
   const raw = String(text).replaceAll("«", "<").replaceAll("»", ">");
   const capped =
     raw.length > MAX_UNTRUSTED_FIELD_CHARS
-      ? `${raw.slice(0, MAX_UNTRUSTED_FIELD_CHARS)}…[truncated ${
+      ? `${sliceWellFormed(raw, MAX_UNTRUSTED_FIELD_CHARS)}…[truncated ${
           raw.length - MAX_UNTRUSTED_FIELD_CHARS
         } chars]`
       : raw;
@@ -68,7 +69,10 @@ export function curateRun(run: any) {
     attemptCount: run.attemptCount,
     tags: run.tags,
     error: run.error
-      ? { name: run.error.name, message: fenceUntrusted("errorMessage", run.error.message) }
+      ? {
+          name: fenceUntrusted("errorName", run.error.name),
+          message: fenceUntrusted("errorMessage", run.error.message),
+        }
       : undefined,
   };
 }
@@ -136,7 +140,7 @@ export function curateErrors(data: unknown) {
     errors: (Array.isArray(groups) ? groups : []).map((g: any) => ({
       id: g.id,
       taskIdentifier: g.taskIdentifier,
-      errorType: g.errorType,
+      errorType: fenceUntrusted("errorType", g.errorType),
       errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
       status: g.status,
       count: g.count,
@@ -151,7 +155,7 @@ export function curateError(group: any) {
   return {
     id: group.id,
     taskIdentifier: group.taskIdentifier,
-    errorType: group.errorType,
+    errorType: fenceUntrusted("errorType", group.errorType),
     errorMessage: fenceUntrusted("errorMessage", group.errorMessage),
     status: group.status,
     count: group.count,

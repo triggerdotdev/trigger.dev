@@ -9,8 +9,22 @@ describe("the query scope ceiling", () => {
     expect(queryScopeCeilingFor("PUBLIC_JWT")).toBe("environment");
   });
 
-  it("leaves every other bearer credential uncapped", () => {
+  // `PUBLIC` is the deprecated `pk_*` key: browser-shipped and environment-bound, the same
+  // shape of credential a public access token is. Nothing routes it here today, so this is
+  // the helper refusing to hand it the organization if anything ever does.
+  it("caps a public API key at its own environment", () => {
+    expect(queryScopeCeilingFor("PUBLIC")).toBe("environment");
+  });
+
+  it("leaves the secret key uncapped", () => {
     expect(queryScopeCeilingFor("PRIVATE")).toBe("unbounded");
+  });
+
+  // Compile-time: the fallback is the cap, but a misspelled credential kind must still not
+  // be able to name itself into the uncapped branch.
+  it("takes only the credential kinds that exist", () => {
+    // @ts-expect-error not an authentication type
+    expect(() => queryScopeCeilingFor("private")).not.toThrow();
   });
 });
 

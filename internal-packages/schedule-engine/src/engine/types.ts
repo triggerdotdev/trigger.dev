@@ -21,7 +21,8 @@ export type TriggerScheduledTaskParams = {
   };
   scheduleInstanceId: string;
   scheduleId: string;
-  exactScheduleTime?: Date;
+  exactScheduleTime: Date;
+  effectiveScheduleTime: Date;
 };
 
 export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "OUT_OF_ENTITLEMENTS" | "SYSTEM_ERROR";
@@ -50,6 +51,14 @@ export interface ScheduleEngineOptions {
   distributionWindow?: {
     seconds: number;
   };
+  schedulePhaseSecret: string | Buffer;
+  /**
+   * Fraction of schedules (0 to 1) with cron spread active, gated on each
+   * schedule's deterministic phase. 0 disables spreading entirely; 1 enables
+   * it for every schedule. Raising the fraction is strictly additive — phases
+   * are stable, so a schedule never leaves the rollout once included.
+   */
+  cronSpreadFraction: number;
   tracer?: Tracer;
   meter?: Meter;
   onTriggerScheduledTask: TriggerScheduledTaskCallback;
@@ -74,15 +83,16 @@ export interface TriggerScheduleParams {
   instanceId: string;
   finalAttempt: boolean;
   exactScheduleTime?: Date;
+  effectiveScheduleTime?: Date;
   lastScheduleTime?: Date;
 }
 
 export interface RegisterScheduleInstanceParams {
   instanceId: string;
   /**
-   * Anchor for computing the next cron slot. Defaults to now() when omitted.
-   * This advances on every tick (fired or skipped) so the next slot keeps
-   * marching forward regardless of skip reasons.
+   * Nominal anchor for selecting the next non-expired cron occurrence. Defaults
+   * to now() when omitted. The engine advances from this timestamp when the
+   * next occurrence is still eligible and skips expired intermediate ticks.
    */
   fromTimestamp?: Date;
   /**
@@ -92,4 +102,9 @@ export interface RegisterScheduleInstanceParams {
    * disconnected, etc.) do NOT advance this — only real fires do.
    */
   lastScheduleTime?: Date;
+  /**
+   * Keep an existing stable-ID Redis job unchanged, while still creating it
+   * when missing. Intended for no-op reconciliation of unchanged schedules.
+   */
+  preserveExistingJob?: boolean;
 }

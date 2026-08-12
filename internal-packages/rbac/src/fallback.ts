@@ -4,6 +4,7 @@ import type {
   RbacUser,
   RbacSubject,
   RbacResource,
+  BearerAuthOptions,
   BearerAuthResult,
   PatAuthResult,
   SessionAuthResult,
@@ -87,7 +88,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateBearer(
     request: Request,
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult> {
     return this.bearer.authenticate(request, options);
   }
@@ -174,7 +175,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   async authenticateAuthorizeBearer(
     request: Request,
     check: { action: string; resource: RbacResource | RbacResource[] },
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult> {
     const auth = await this.authenticateBearer(request, options);
     if (!auth.ok) return auth;

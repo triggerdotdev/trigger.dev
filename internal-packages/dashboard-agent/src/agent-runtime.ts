@@ -3,17 +3,18 @@ import {
   appendChatMessageOnce,
   createDashboardAgentDb,
   ensureChat,
-  findOpenInvestigationForChat,
   investigationSettlementMessage,
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
+  seedInvestigation,
   settleInvestigationStateAndCloseCard,
   upsertInvestigationRevision,
   type ClosedInvestigationCard,
   type DashboardAgentDbClient,
   type PendingInvestigationSettlement,
   type PersistTurnResult,
+  type SeedInvestigationResult,
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { locals, logger } from "@trigger.dev/sdk";
@@ -39,8 +40,8 @@ import { buildDashboardAgentTools } from "./tools";
  * The agent's runtime: its datastore, the investigation bookkeeping every lane
  * shares, and the model, prompt and tool plumbing a turn is assembled from.
  *
- * Split out of `dashboard-agent.ts` so the turn lanes that are not the agent's own
- * hooks can reach it without importing the agent back.
+ * Split out of `dashboard-agent.ts` so the turn lanes that are not the agent's
+ * own hooks — the watch actions — can reach it without importing the agent back.
  */
 
 // One connection pool per worker process, established in onBoot (which fires on
@@ -71,9 +72,9 @@ export interface DashboardAgentStore {
   ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
   persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
   /**
-   * Id-deduped single-message append, for a lane that runs without a client: the
-   * session's view can miss host-appended blocks, and a wholesale write would drop
-   * them.
+   * Id-deduped single-message append. The wake narration writes through this
+   * rather than `persistMessages`: a wake runs without a client, so the session's
+   * view can miss host-appended blocks and a wholesale write would drop them.
    */
   appendMessage(args: Parameters<typeof appendChatMessageOnce>[1]): Promise<unknown>;
   /**
@@ -96,12 +97,13 @@ export interface DashboardAgentStore {
     args: Parameters<typeof settleInvestigationStateAndCloseCard>[1]
   ): Promise<ClosedInvestigationCard>;
   /**
-   * The freshest card this chat still has open, so a turn that continues an
-   * investigation revises that row instead of opening a second one.
+   * Open an investigation under a caller-chosen id, or report it already open. A
+   * consented watch's two lanes both name the row this way, so the second one revises
+   * what the first opened instead of looking for the freshest open card.
    */
-  findOpenInvestigation(
-    args: Parameters<typeof findOpenInvestigationForChat>[1]
-  ): Promise<{ id: string; projectRef: string; environmentRef: string } | null>;
+  seedInvestigation(
+    args: Parameters<typeof seedInvestigation>[1]
+  ): Promise<SeedInvestigationResult>;
 }
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
@@ -259,7 +261,7 @@ export function getStore(): DashboardAgentStore {
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
     settleInvestigationCard: (args) => settleInvestigationStateAndCloseCard(db, args),
-    findOpenInvestigation: (args) => findOpenInvestigationForChat(db, args),
+    seedInvestigation: (args) => seedInvestigation(db, args),
   });
 }
 

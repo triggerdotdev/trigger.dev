@@ -9,6 +9,7 @@ export const TaskRunV2 = z.object({
   run_id: z.string(),
   updated_at: z.number().int(),
   created_at: z.number().int(),
+  queue_timestamp: z.number().int().nullish(),
   status: z.string(),
   environment_type: z.string(),
   friendly_id: z.string(),
@@ -69,6 +70,7 @@ export const TASK_RUN_COLUMNS = [
   "run_id",
   "updated_at",
   "created_at",
+  "queue_timestamp",
   "status",
   "environment_type",
   "friendly_id",
@@ -138,6 +140,7 @@ export type TaskRunFieldTypes = {
   run_id: string;
   updated_at: number;
   created_at: number;
+  queue_timestamp: number | null;
   status: string;
   environment_type: string;
   friendly_id: string;
@@ -306,6 +309,7 @@ export type TaskRunInsertArray = [
   run_id: string,
   updated_at: number,
   created_at: number,
+  queue_timestamp: number | null,
   status: string,
   environment_type: string,
   friendly_id: string,

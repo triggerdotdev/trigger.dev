@@ -92,6 +92,8 @@ import {
   v3QueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import type { Handle } from "~/utils/handle";
+import { queuesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
 import {
@@ -112,6 +114,7 @@ import {
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
+import { isQueueAtCapacity } from "~/components/queues/queue-thresholds";
 import { pageMeta } from "~/utils/pageTitle";
 
 const SearchParamsSchema = z.object({
@@ -134,6 +137,10 @@ const QUEUE_LIVE_BLOCKS_QUERY =
 // the loader's Redis-exact live values (matches LIVE_GAUGE_FRESH_MS on the queue detail page / run
 // inspector).
 const LIVE_GAUGE_FRESH_MS = 90_000;
+
+export const handle: Handle = {
+  agentPageContext: (data) => queuesAgentPageContext(data),
+};
 
 export const meta = pageMeta("Queues");
 
@@ -470,13 +477,6 @@ function QueuesWithMetricsView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/queue-concurrency")}
-          >
-            Queues docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
@@ -1608,7 +1608,7 @@ type QueueHealthLabel = "Paused" | "At capacity" | "Backlogged" | "Active" | "Id
 // health-column sort so the sorted order always matches the labels shown.
 function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): QueueHealthLabel {
   if (paused) return "Paused";
-  if (running >= limit && queued > 0) return "At capacity";
+  if (isQueueAtCapacity({ running, queued, limit })) return "At capacity";
   if (queued > 0) return "Backlogged";
   if (running > 0) return "Active";
   return "Idle";
@@ -1683,13 +1683,6 @@ function ClassicQueuesView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/queue-concurrency")}
-          >
-            Queues docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

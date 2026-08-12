@@ -9,6 +9,12 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type {
+  WatchExternalNotificationStatus,
+  WatchObservedOutcome,
+  WatchResolution,
+  WatchSpec,
+} from "@internal/dashboard-agent-contracts";
 import { dashboardAgentSchema } from "./schema-base.js";
 
 // The watch tables. Re-exported by `schema.ts`, which is what drizzle-kit reads.
@@ -30,7 +36,7 @@ export type WatchCancelReason =
   | "superseded";
 
 /** `since` is server-set at creation, so `error_recurrence` can't match older errors. */
-export type PersistedWatchSpec = Record<string, unknown> & { since?: string };
+export type PersistedWatchSpec = WatchSpec & { since?: string };
 
 /**
  * The initiating identity is snapshotted at creation, so a membership change can only
@@ -53,9 +59,9 @@ export const watches = dashboardAgentSchema.table(
      * The meaning; `status` above stays the two-value transport encoding so persisted
      * wake ids and dedup keys remain valid. NULL while active and on cancellation.
      */
-    resolution: text("resolution").$type<string>(),
+    resolution: text("resolution").$type<WatchResolution>(),
     /** Written in the same statement as `resolution` and `lastResult`. */
-    observedOutcome: jsonb("observed_outcome").$type<Record<string, unknown>>(),
+    observedOutcome: jsonb("observed_outcome").$type<WatchObservedOutcome>(),
     /** Consent given at creation. Never part of `identity`. */
     investigateOnAttention: boolean("investigate_on_attention").notNull().default(false),
     // Immutable initiating identity, snapshotted at creation.
@@ -223,7 +229,7 @@ export const watchSubmissions = dashboardAgentSchema.table(
      * is kept so a replay reproduces the same confirmation instead of guessing again.
      */
     externalNotificationStatus: text("external_notification_status")
-      .$type<string>()
+      .$type<WatchExternalNotificationStatus>()
       .notNull()
       .default("not_requested"),
     externalNotificationReason: text("external_notification_reason"),

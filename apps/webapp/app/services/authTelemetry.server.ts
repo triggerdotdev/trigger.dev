@@ -1,6 +1,7 @@
 import { getMeter } from "@internal/tracing";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
+import type { BearerAuthOptions } from "@trigger.dev/plugins";
 import type {
   BearerCredentialKind,
   BearerLookupPath,
@@ -39,10 +40,10 @@ const telemetry = singleton("apiAuthTelemetry", () => {
 
 export async function authenticateBearerWithTelemetry(
   request: Request,
-  options: { allowJWT: boolean }
+  options: BearerAuthOptions
 ): Promise<HostBearerAuthResult> {
   const startedAt = performance.now();
-  const classified = classifyCredential(request, options.allowJWT);
+  const classified = classifyCredential(request, options.allowJWT ?? false);
   let final = { ...classified, result: "error" as ApiAuthResult };
 
   try {
@@ -79,7 +80,7 @@ export async function authenticateBearerWithTelemetry(
 export async function authenticateAuthorizeBearerWithTelemetry(
   request: Request,
   check: { action: string; resource: RbacResource },
-  options: { allowJWT: boolean }
+  options: BearerAuthOptions
 ) {
   // Keep authentication telemetry consistent with apiBuilder: a valid
   // credential records a successful authentication even when the subsequent

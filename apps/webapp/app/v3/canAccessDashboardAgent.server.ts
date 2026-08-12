@@ -10,7 +10,9 @@ import { makeFlag } from "~/v3/featureFlags.server";
  */
 export async function canAccessDashboardAgent(options: {
   userId: string;
-  isAdmin: boolean;
+  // Omitted by a caller with no session (a background job, a token-authenticated route),
+  // which is read off the user row instead so both answer the preview the same way.
+  isAdmin?: boolean;
   isImpersonating: boolean;
   organizationSlug: string;
   // The org's already-loaded `featureFlags`. Omitted means we query the org ourselves.
@@ -18,8 +20,11 @@ export async function canAccessDashboardAgent(options: {
 }): Promise<boolean> {
   const { userId, isAdmin, isImpersonating, organizationSlug, orgFeatureFlags } = options;
 
-  if ((isAdmin || isImpersonating) && env.DASHBOARD_AGENT_ADMIN_PREVIEW === "1") {
-    return true;
+  if (env.DASHBOARD_AGENT_ADMIN_PREVIEW === "1") {
+    const admin =
+      isAdmin ??
+      (await prisma.user.findFirst({ where: { id: userId }, select: { admin: true } }))?.admin;
+    if (admin || isImpersonating) return true;
   }
 
   let overrides = orgFeatureFlags;

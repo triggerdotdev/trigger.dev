@@ -4,7 +4,6 @@ import { parseWithZod } from "@conform-to/zod";
 import {
   BellAlertIcon,
   BellSlashIcon,
-  BookOpenIcon,
   EnvelopeIcon,
   LockClosedIcon,
   PlusIcon,
@@ -25,7 +24,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -60,12 +59,17 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  docsPath,
   v3BillingPath,
   v3NewProjectAlertPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
 import { alertsWorker } from "~/v3/alertsWorker.server";
+import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => alertsAgentPageContext(data),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Alerts");
@@ -186,15 +190,6 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Alerts" />
-        <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/troubleshooting-alerts")}
-            variant="docs/small"
-          >
-            Alerts docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         {alertChannels.length > 0 ? (
@@ -575,6 +570,8 @@ export function alertTypeTitle(alertType: ProjectAlertType): string {
       return "Deployment success";
     case "ERROR_GROUP":
       return "Error group";
+    case "DASHBOARD_AGENT_WATCH":
+      return "Dashboard agent watches";
     default: {
       throw new Error(`Unknown alertType: ${alertType}`);
     }

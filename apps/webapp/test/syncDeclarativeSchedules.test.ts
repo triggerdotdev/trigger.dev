@@ -4,8 +4,17 @@ import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { syncDeclarativeSchedules } from "~/v3/services/createBackgroundWorker.server";
 
+const { registerNextTaskScheduleInstance } = vi.hoisted(() => ({
+  registerNextTaskScheduleInstance: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("~/v3/scheduleEngine.server", () => ({
+  scheduleEngine: { registerNextTaskScheduleInstance },
+}));
+
 vi.setConfig({ testTimeout: 60_000 });
 
+type TasksArg = Parameters<typeof syncDeclarativeSchedules>[0];
 type WorkerArg = Parameters<typeof syncDeclarativeSchedules>[1];
 const noWorker = {} as unknown as WorkerArg;
 
@@ -81,6 +90,82 @@ function countingPrisma(prisma: PrismaClient) {
 
 const asEnv = (env: { id: string; projectId: string; type: string }) =>
   env as unknown as AuthenticatedEnvironment;
+
+function declarativeTasks(schedule: { cron: string; timezone: string; window?: string }): TasksArg {
+  return [{ id: "my-task", schedule }] as TasksArg;
+}
+
+async function seedScheduledTask(
+  prisma: PrismaClient,
+  projectId: string,
+  runtimeEnvironmentId: string
+) {
+  const worker = await prisma.backgroundWorker.create({
+    data: {
+      friendlyId: `worker_${runtimeEnvironmentId}`,
+      contentHash: `hash_${runtimeEnvironmentId}`,
+      version: "20260811.1",
+      metadata: {},
+      projectId,
+      runtimeEnvironmentId,
+    },
+  });
+
+  await prisma.backgroundWorkerTask.create({
+    data: {
+      friendlyId: `task_${runtimeEnvironmentId}`,
+      slug: "my-task",
+      filePath: "src/trigger/my-task.ts",
+      workerId: worker.id,
+      projectId,
+      runtimeEnvironmentId,
+      triggerSource: "SCHEDULED",
+    },
+  });
+}
+
+describe("syncDeclarativeSchedules registration", () => {
+  containerTest(
+    "preserves an existing Redis job when declarative timing is unchanged",
+    async ({ prisma }) => {
+      registerNextTaskScheduleInstance.mockClear();
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      const schedule = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id]);
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+
+      await syncDeclarativeSchedules(
+        declarativeTasks({ cron: "0 * * * *", timezone: "UTC" }),
+        noWorker,
+        asEnv(prodEnv),
+        prisma
+      );
+
+      expect(registerNextTaskScheduleInstance).toHaveBeenCalledWith({
+        instanceId: schedule.instances[0].id,
+        preserveExistingJob: true,
+      });
+    }
+  );
+
+  containerTest("replaces the Redis job when declarative timing changes", async ({ prisma }) => {
+    registerNextTaskScheduleInstance.mockClear();
+    const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+    const schedule = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id]);
+    await seedScheduledTask(prisma, project.id, prodEnv.id);
+
+    await syncDeclarativeSchedules(
+      declarativeTasks({ cron: "30 * * * *", timezone: "UTC", window: "30m" }),
+      noWorker,
+      asEnv(prodEnv),
+      prisma
+    );
+
+    expect(registerNextTaskScheduleInstance).toHaveBeenCalledWith({
+      instanceId: schedule.instances[0].id,
+      preserveExistingJob: false,
+    });
+  });
+});
 
 describe("syncDeclarativeSchedules deletion path", () => {
   containerTest(

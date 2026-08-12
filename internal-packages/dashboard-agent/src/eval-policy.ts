@@ -1,3 +1,4 @@
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { logger } from "@trigger.dev/sdk";
 
 /**
@@ -78,6 +79,7 @@ export function turnReadSource(toolActivity: Array<{ toolName: string }>): boole
  */
 const STRUCTURAL_KEYS = new Set([
   // Containers the walk descends into.
+  "alerts",
   "data",
   "deploys",
   "environments",
@@ -90,6 +92,7 @@ const STRUCTURAL_KEYS = new Set([
   "runs",
   "schedules",
   "tasks",
+  "watches",
   // Identity.
   "batchId",
   "deployId",
@@ -106,6 +109,7 @@ const STRUCTURAL_KEYS = new Set([
   "taskId",
   "taskIdentifier",
   "traceId",
+  "watchId",
   "friendlyId",
   // Names and kinds — a task, queue, error class or environment name is a fact.
   "environment",
@@ -170,6 +174,7 @@ const TOOL_STRUCTURAL_KEYS: Record<string, readonly string[]> = {
   run_query: ["columns"],
   get_query_schema: ["columns", "tables", "table", "column"],
   get_report: ["sections", "section", "title", "metric", "metrics"],
+  list_alerts: ["channel", "enabled"],
   get_queue: ["concurrencyLimit", "paused"],
   correlate_version: ["versions", "before", "after"],
 };
@@ -349,7 +354,7 @@ const APPLICATION_ERROR = /\b[A-Z][A-Za-z0-9]*(Error|Exception)\b|\b(Error|Excep
  * recognises is `unknown` rather than guessed into a bucket.
  */
 export function classifyEvalError(output: unknown): EvalErrorCategory {
-  const signal = errorSignalText(output).slice(0, MAX_CLASSIFY_CHARS);
+  const signal = sliceWellFormed(errorSignalText(output), MAX_CLASSIFY_CHARS);
   const haystack = signal.toLowerCase();
 
   for (const [category, pattern] of CATEGORY_RULES) {

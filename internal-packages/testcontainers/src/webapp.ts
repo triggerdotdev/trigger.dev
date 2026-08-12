@@ -272,6 +272,12 @@ export type { StartedS2Container } from "./s2";
 export interface SessionStreamTestServer extends TestServer {
   s2: StartedS2Container;
   minio: StartedMinIOContainer;
+  /**
+   * Mapped connection for the same Redis the webapp under test uses. Lets a
+   * test assert which backend a stream actually landed on, rather than
+   * inferring it from the absence of records in S2.
+   */
+  redis: { host: string; port: number };
 }
 
 /**
@@ -280,7 +286,9 @@ export interface SessionStreamTestServer extends TestServer {
  * process reaching every container over its mapped port, so the S2 endpoint is
  * the mapped localhost URL (the docker-network alias is unusable from the host).
  */
-export async function startSessionStreamTestServer(): Promise<SessionStreamTestServer> {
+export async function startSessionStreamTestServer(
+  options: StartWebappOptions = {}
+): Promise<SessionStreamTestServer> {
   const network = await new Network().start();
 
   let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
@@ -322,6 +330,7 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
           OBJECT_STORE_ACCESS_KEY_ID: minioConfig.accessKeyId,
           OBJECT_STORE_SECRET_ACCESS_KEY: minioConfig.secretAccessKey,
           OBJECT_STORE_REGION: minioConfig.region,
+          ...(options.extraEnv ?? {}),
         },
       }
     );
@@ -348,5 +357,13 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
-  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, s2: s2!, minio: minio!, stop };
+  return {
+    webapp,
+    prisma: prisma!,
+    databaseUrl: pgUrl!,
+    s2: s2!,
+    minio: minio!,
+    redis: { host: redisContainer!.getHost(), port: redisContainer!.getPort() },
+    stop,
+  };
 }
