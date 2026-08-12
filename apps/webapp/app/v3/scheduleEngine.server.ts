@@ -73,7 +73,7 @@ function createScheduleEngine() {
       seconds: env.SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS,
     },
     schedulePhaseSecret: env.ENCRYPTION_KEY,
-    cronSpreadEnabled: env.SCHEDULE_WORKER_CRON_SPREAD_ENABLED,
+    cronSpreadFraction: env.SCHEDULE_WORKER_CRON_SPREAD_FRACTION,
     tracer,
     meter,
     onTriggerScheduledTask: async ({

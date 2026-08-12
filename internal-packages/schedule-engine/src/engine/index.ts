@@ -15,7 +15,11 @@ import type {
   TriggerScheduledTaskCallback,
   TriggerScheduleParams,
 } from "./types.js";
-import { calculateSchedulePhase, type NormalizedScheduleWindow } from "./scheduleTiming.js";
+import {
+  calculateSchedulePhase,
+  SCHEDULE_PHASE_DENOMINATOR,
+  type NormalizedScheduleWindow,
+} from "./scheduleTiming.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 
@@ -208,6 +212,8 @@ export class ScheduleEngine {
         const fromTimestamp = params.fromTimestamp ?? registrationTime;
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());
 
+        const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
+
         const {
           nominalAt,
           candidateEffectiveAt,
@@ -225,11 +231,12 @@ export class ScheduleEngine {
           now: registrationTime,
           schedulePhase,
           window: scheduleWindow,
-          cronSpreadEnabled: this.options.cronSpreadEnabled,
+          cronSpreadEnabled: cronSpreadActive,
         });
         const appliedDelayMs = effectiveAt.getTime() - nominalAt.getTime();
 
-        span.setAttribute("cron_spread_enabled", this.options.cronSpreadEnabled);
+        span.setAttribute("cron_spread_fraction", this.options.cronSpreadFraction);
+        span.setAttribute("cron_spread_active", cronSpreadActive);
         span.setAttribute("schedule_window_type", scheduleWindow?.type ?? "none");
         span.setAttribute("next_scheduled_timestamp", nominalAt.toISOString());
         span.setAttribute("candidate_effective_schedule_time", candidateEffectiveAt.toISOString());
@@ -268,7 +275,7 @@ export class ScheduleEngine {
           nominalAt: nominalAt.toISOString(),
           candidateEffectiveAt: candidateEffectiveAt.toISOString(),
           effectiveAt: effectiveAt.toISOString(),
-          cronSpreadEnabled: this.options.cronSpreadEnabled,
+          cronSpreadActive,
           scheduleWindowType: scheduleWindow?.type ?? "none",
           candidateDelayMs,
           appliedDelayMs,
@@ -528,6 +535,8 @@ export class ScheduleEngine {
               environmentId: instance.environmentId,
               deduplicationKey: instance.taskSchedule.deduplicationKey,
             });
+          const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
+          span.setAttribute("cron_spread_active", cronSpreadActive);
           const nextOccurrence = calculateNextSchedulableOccurrence({
             schedule: instance.taskSchedule.generatorExpression,
             timezone: instance.taskSchedule.timezone,
@@ -535,7 +544,7 @@ export class ScheduleEngine {
             now: actualExecutionTime,
             schedulePhase,
             window: scheduleWindow,
-            cronSpreadEnabled: this.options.cronSpreadEnabled,
+            cronSpreadEnabled: cronSpreadActive,
           });
           const upcoming = [
             nextOccurrence.nominalAt,
@@ -755,6 +764,16 @@ export class ScheduleEngine {
         throw error;
       }
     });
+  }
+
+  /**
+   * Per-schedule rollout gate for cron spread. The schedule's deterministic
+   * phase doubles as a stable sampling key: raising the fraction is strictly
+   * additive (a schedule never leaves the rollout once included), and 0/1 map
+   * to fully off/on.
+   */
+  #isCronSpreadActive(schedulePhase: number): boolean {
+    return schedulePhase < this.options.cronSpreadFraction * SCHEDULE_PHASE_DENOMINATOR;
   }
 
   /**

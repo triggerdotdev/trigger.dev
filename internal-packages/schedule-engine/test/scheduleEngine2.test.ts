@@ -6,6 +6,7 @@ import {
   calculateEffectiveScheduleTime,
   calculateNextNominalTimestamp,
   calculateSchedulePhase,
+  SCHEDULE_PHASE_DENOMINATOR,
   ScheduleEngine,
 } from "../src/index.js";
 import { calculateDistributedExecutionTime } from "../src/engine/distributedScheduling.js";
@@ -27,7 +28,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret: "test-schedule-phase-secret",
-        cronSpreadEnabled: false,
+        cronSpreadFraction: 0,
         worker: {
           concurrency: 1,
           disabled: true, // Don't actually run the worker — calling triggerScheduledTask directly
@@ -169,7 +170,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret,
-        cronSpreadEnabled: true,
+        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true,
@@ -363,6 +364,128 @@ describe("ScheduleEngine Integration (part 2)", () => {
         );
       } finally {
         await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "gates cron spread per schedule via the rollout fraction",
+    { timeout: 30_000 },
+    async ({ prisma, redisOptions }) => {
+      const schedulePhaseSecret = "test-schedule-phase-secret";
+
+      const organization = await prisma.organization.create({
+        data: { title: "Spread Fraction Org", slug: "spread-fraction-org" },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "Spread Fraction Project",
+          slug: "spread-fraction-project",
+          externalRef: "spread-fraction-ref",
+          organizationId: organization.id,
+        },
+      });
+      const environment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "spread-fraction-env",
+          type: "PRODUCTION",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_spread_fraction",
+          pkApiKey: "pk_spread_fraction",
+          shortcode: "spread",
+        },
+      });
+      const taskSchedule = await prisma.taskSchedule.create({
+        data: {
+          friendlyId: "sched_spread_fraction",
+          taskIdentifier: "spread-fraction-task",
+          projectId: project.id,
+          deduplicationKey: "spread-fraction-dedup",
+          generatorExpression: "*/5 * * * *",
+          generatorDescription: "Every 5 minutes",
+          timezone: "UTC",
+          type: "DECLARATIVE",
+        },
+      });
+      const scheduleInstance = await prisma.taskScheduleInstance.create({
+        data: {
+          taskScheduleId: taskSchedule.id,
+          environmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const phase = calculateSchedulePhase({
+        secret: schedulePhaseSecret,
+        environmentId: environment.id,
+        deduplicationKey: taskSchedule.deduplicationKey,
+      });
+
+      // The gate is `phase < fraction * DENOMINATOR`. Dividing and multiplying
+      // by 2^31 is exact in floating point, so `phase / DENOMINATOR` excludes
+      // this schedule and `(phase + 1) / DENOMINATOR` includes it.
+      const excludingFraction = phase / SCHEDULE_PHASE_DENOMINATOR;
+      const includingFraction = (phase + 1) / SCHEDULE_PHASE_DENOMINATOR;
+
+      const createEngine = (cronSpreadFraction: number) =>
+        new ScheduleEngine({
+          prisma,
+          redis: redisOptions,
+          distributionWindow: { seconds: 10 },
+          schedulePhaseSecret,
+          cronSpreadFraction,
+          worker: {
+            concurrency: 1,
+            disabled: true,
+            pollIntervalMs: 1000,
+          },
+          tracer: trace.getTracer("test", "0.0.0"),
+          onTriggerScheduledTask: async () => ({ success: true }),
+          isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+        });
+
+      const jobId = `scheduled-task-instance:${scheduleInstance.id}`;
+
+      const excludedEngine = createEngine(excludingFraction);
+      try {
+        await excludedEngine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+        const job = await excludedEngine.getJob(jobId);
+        const payload = job!.item as unknown as {
+          exactScheduleTime: string;
+          effectiveScheduleTime: string;
+        };
+        // Spread inactive: the effective time is the nominal tick.
+        expect(new Date(payload.effectiveScheduleTime)).toEqual(
+          new Date(payload.exactScheduleTime)
+        );
+      } finally {
+        await excludedEngine.quit();
+      }
+
+      const includedEngine = createEngine(includingFraction);
+      try {
+        await includedEngine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+        const job = await includedEngine.getJob(jobId);
+        const payload = job!.item as unknown as {
+          exactScheduleTime: string;
+          effectiveScheduleTime: string;
+        };
+        const nominalAt = new Date(payload.exactScheduleTime);
+        const nextNominalAt = calculateNextNominalTimestamp(
+          taskSchedule.generatorExpression,
+          taskSchedule.timezone,
+          nominalAt
+        );
+        // Spread active with no window configured: the 60s baseline applies.
+        const { effectiveAt } = calculateEffectiveScheduleTime({
+          nominalAt,
+          nextNominalAt,
+          schedulePhase: phase,
+        });
+        expect(new Date(payload.effectiveScheduleTime)).toEqual(effectiveAt);
+      } finally {
+        await includedEngine.quit();
       }
     }
   );
