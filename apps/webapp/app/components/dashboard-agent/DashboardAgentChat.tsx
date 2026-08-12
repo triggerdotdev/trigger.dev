@@ -17,7 +17,11 @@ import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
-import { FREE_PLAN_MESSAGE_LIMIT, parseQuotaReachedResponse } from "./message-quota";
+import {
+  FREE_PLAN_MESSAGE_LIMIT,
+  MESSAGE_QUOTA_REACHED_REASON,
+  parseQuotaReachedResponse,
+} from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
@@ -425,6 +429,7 @@ export function DashboardAgentChat({
           onSelect={submit}
           pageContext={clientData.pageContext}
           promoted={promotedPrompt}
+          promptsDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
         />
       ) : (
         <DashboardAgentMessages

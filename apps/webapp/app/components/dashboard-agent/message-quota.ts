@@ -77,6 +77,9 @@ export function messageQuotaReachedCopy(limit: number, planResolved: boolean): s
     : `You've used all ${limit} messages included on the Free plan. Your chats stay here to read.`;
 }
 
+/** Why a suggestion chip is disabled: the upgrade block carries the full sentence. */
+export const MESSAGE_QUOTA_REACHED_REASON = "You've used your message allowance";
+
 // A watch's consent record is a user message the person never typed, so it is
 // excluded here exactly as the stored count excludes it.
 export function countUserMessages(messages: { role: string; id?: string }[]): number {

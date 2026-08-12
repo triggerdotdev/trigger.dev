@@ -4,6 +4,7 @@ import { AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
+import { MESSAGE_QUOTA_REACHED_REASON } from "./message-quota";
 import type { AgentPageContext } from "./page-context-types";
 import { readDismissedPromptIds, resolveSuggestedPromptsBySlot } from "./suggested-prompts";
 
@@ -61,6 +62,7 @@ export function DashboardAgentDraft({
       onSelect={submit}
       pageContext={pageContext}
       promoted={promotedPrompt}
+      promptsDisabledReason={capReached ? MESSAGE_QUOTA_REACHED_REASON : undefined}
       composer={
         capReached ? (
           <div className="flex w-full flex-col gap-3">
