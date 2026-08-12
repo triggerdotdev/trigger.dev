@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   runtimeEnvironmentFindFirst: vi.fn(),
   queryWithStats: vi.fn(),
   customerQueryCreate: vi.fn(),
+  concurrencyAcquire: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => {
@@ -67,7 +68,7 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
 vi.mock("~/services/platform.v3.server", () => ({ getLimit: async () => 30 }));
 vi.mock("~/services/queryConcurrencyLimiter.server", () => ({
   queryConcurrencyLimiter: {
-    acquire: async () => ({ success: true }),
+    acquire: mocks.concurrencyAcquire,
     release: async () => {},
   },
   DEFAULT_ORG_CONCURRENCY_LIMIT: 10,
@@ -118,6 +119,7 @@ describe("the query API route", () => {
     vi.clearAllMocks();
     mocks.runtimeEnvironmentFindFirst.mockResolvedValue(environment);
     mocks.customerQueryCreate.mockResolvedValue({ id: "cq_1" });
+    mocks.concurrencyAcquire.mockResolvedValue({ success: true });
     mocks.queryWithStats.mockReturnValue(async () => [null, { rows: [], stats: {} }]);
   });
 
@@ -143,11 +145,22 @@ describe("the query API route", () => {
     expect(result.status).toBe(400);
     expect(mocks.queryWithStats).not.toHaveBeenCalled();
   });
+
+  // A busy service is not a bad query: 400 would tell a caller to rewrite a query that was fine.
+  it("answers a concurrency rejection with 429", async () => {
+    mocks.concurrencyAcquire.mockResolvedValue({ success: false, reason: "key_limit" });
+
+    const result = await runQuery("SELECT count() FROM runs");
+
+    expect(result.status).toBe(429);
+    expect(result.body.error).toContain("try again later");
+  });
 });
 
 describe("the query service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.concurrencyAcquire.mockResolvedValue({ success: true });
     mocks.queryWithStats.mockReturnValue(async () => [null, { rows: [], stats: {} }]);
   });
 

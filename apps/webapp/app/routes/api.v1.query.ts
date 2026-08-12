@@ -2,7 +2,11 @@ import { json } from "@remix-run/server-runtime";
 import { QueryError } from "@internal/clickhouse";
 import { z } from "zod";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
-import { executeQuery, type QueryScope } from "~/services/queryService.server";
+import {
+  executeQuery,
+  isQueryConcurrencyRejection,
+  type QueryScope,
+} from "~/services/queryService.server";
 import { logger } from "~/services/logger.server";
 import { rowsToCSV } from "~/utils/dataExport";
 import { detectQueryTables } from "~/v3/detectQueryTables";
@@ -78,6 +82,12 @@ const { action, loader } = createActionApiRoute(
     });
 
     if (!queryResult.success) {
+      // A concurrency rejection is "too busy", not a bad query: 429 so callers retry it
+      // instead of rewriting a query that was fine.
+      if (isQueryConcurrencyRejection(queryResult.error)) {
+        return json({ error: queryResult.error.message }, { status: 429 });
+      }
+
       // QueryError surfaces customer SQL problems (invalid syntax,
       // unsupported construct). Returned to the caller as 400; system
       // handles it gracefully, no alert needed.
