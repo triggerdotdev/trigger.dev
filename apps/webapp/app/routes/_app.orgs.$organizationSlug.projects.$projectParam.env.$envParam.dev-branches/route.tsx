@@ -1,4 +1,5 @@
 import { CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback } from "react";
@@ -39,13 +40,14 @@ import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { branchesDevPath, ProjectParamSchema } from "~/utils/pathBuilder";
+import { branchesDevPath, docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
 import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -110,6 +112,17 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("deployment/dev-branches")}
+            >
+              Dev branches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+
           {limits.isAtLimit ? (
             <BranchLimitReachedDialog limits={limits} />
           ) : (

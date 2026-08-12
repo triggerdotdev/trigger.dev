@@ -1,4 +1,4 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
@@ -44,10 +44,12 @@ import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
   concurrencyPath,
+  docsPath,
   EnvironmentParamSchema,
   organizationBillingPath,
 } from "~/utils/pathBuilder";
 import { limitsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -130,6 +132,11 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <WhenAgentUnavailable>
+            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/limits")}>
+              Limits docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
