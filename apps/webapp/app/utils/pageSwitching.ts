@@ -26,6 +26,21 @@ export const PROJECT_SPECIFIC_PAGES = ["branches", "dev-branches"];
 /** Gated by an organization feature flag, so their loaders turn you away in an organization without it. */
 export const ORGANIZATION_SPECIFIC_PAGES = ["logs", "query", "dashboards/queues"];
 
+/**
+ * Pages whose last segment is a name the user's code or the model catalog decides, rather than an
+ * id one environment issued, so the same address names the same thing in every environment of the
+ * project. Another project need not have that name, so only an environment switch carries it.
+ */
+export const SLUG_ADDRESSED_PAGES = [
+  "agents",
+  "models",
+  "playground",
+  "prompts",
+  "tasks/scheduled",
+  "tasks/standard",
+  "test/tasks",
+];
+
 /** Every page below an environment that names no resource, so any environment can render it. */
 export const ENVIRONMENT_PORTABLE_PAGES: ReadonlySet<string> = new Set(
   [
@@ -60,9 +75,27 @@ function nearestPage(suffix: string, pages: ReadonlySet<string>): string {
   return "";
 }
 
+/**
+ * `suffix` itself when it is a slug-addressed page, as long as the slug is a single plain segment —
+ * a traversal or an encoded path in its place falls through to the list page above it.
+ */
+function slugAddressedPage(suffix: string): string | undefined {
+  const boundary = suffix.lastIndexOf("/");
+  if (boundary < 1 || !SLUG_ADDRESSED_PAGES.includes(suffix.slice(0, boundary))) return undefined;
+
+  let slug: string;
+  try {
+    slug = decodeURIComponent(suffix.slice(boundary + 1));
+  } catch {
+    return undefined;
+  }
+
+  return slug !== "" && !/^\.+$/.test(slug) && !/[/\\]/.test(slug) ? suffix : undefined;
+}
+
 /** The page to keep when only the environment changes. */
 export function environmentPortablePage(suffix: string): string {
-  return nearestPage(suffix, ENVIRONMENT_PORTABLE_PAGES);
+  return slugAddressedPage(suffix) ?? nearestPage(suffix, ENVIRONMENT_PORTABLE_PAGES);
 }
 
 /** The page to keep when the project changes. */

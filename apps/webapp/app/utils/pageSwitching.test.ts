@@ -20,6 +20,7 @@ import {
   projectPortablePage,
   requestedOrganizationPortablePage,
   requestedProjectPortablePage,
+  SLUG_ADDRESSED_PAGES,
 } from "./pageSwitching";
 
 const APP_DIR = join(__dirname, "..");
@@ -93,6 +94,15 @@ const environmentPages = [
 
 const idFreePages = environmentPages.filter((page) => !page.includes(":") && page !== "");
 const idPages = environmentPages.filter((page) => page.includes(":"));
+
+const probes = idPages.map((page) => page.replace(/:[^/]+/g, PROBE));
+
+function listAbove(page: string): string {
+  return page.slice(0, page.lastIndexOf("/"));
+}
+
+const slugAddressedProbes = probes.filter((page) => SLUG_ADDRESSED_PAGES.includes(listAbove(page)));
+const idAddressedProbes = probes.filter((page) => !SLUG_ADDRESSED_PAGES.includes(listAbove(page)));
 
 function matchesARoute(page: string): boolean {
   const wanted = page === "" ? [] : page.split("/");
@@ -307,18 +317,19 @@ describe("pages an organization switch cannot carry", () => {
 
 describe("pages named after a resource", () => {
   it("truncate to a list page, id and all, for every one of them", () => {
-    const leaks = (resolve: (page: string) => string, pages: ReadonlySet<string>) =>
-      idPages
-        .map((page) => page.replace(/:[^/]+/g, PROBE))
+    const leaks = (resolve: (page: string) => string, pages: ReadonlySet<string>, from: string[]) =>
+      from
         .filter((page) => {
           const resolved = resolve(page);
           return resolved.includes(PROBE) || !(resolved === "" || pages.has(resolved));
         })
         .sort();
 
-    expect(leaks(environmentPortablePage, ENVIRONMENT_PORTABLE_PAGES)).toEqual([]);
-    expect(leaks(projectPortablePage, PROJECT_PORTABLE_PAGES)).toEqual([]);
-    expect(leaks(organizationPortablePage, ORGANIZATION_PORTABLE_PAGES)).toEqual([]);
+    expect(leaks(environmentPortablePage, ENVIRONMENT_PORTABLE_PAGES, idAddressedProbes)).toEqual(
+      []
+    );
+    expect(leaks(projectPortablePage, PROJECT_PORTABLE_PAGES, probes)).toEqual([]);
+    expect(leaks(organizationPortablePage, ORGANIZATION_PORTABLE_PAGES, probes)).toEqual([]);
   });
 
   it("truncate to the list they were reached from", () => {
@@ -350,6 +361,64 @@ describe("pages named after a resource", () => {
     expect(projectPortablePage("dashboards/overview")).toBe("dashboards/overview");
     expect(projectPortablePage("dashboards/llm")).toBe("dashboards/llm");
     expect(projectPortablePage("dashboards/queues")).toBe("dashboards/queues");
+  });
+});
+
+describe("pages named after something the environment did not issue", () => {
+  it("are the ones a route below them takes a code or catalog name for", () => {
+    expect([...new Set(slugAddressedProbes.map(listAbove))].sort()).toEqual(
+      [...SLUG_ADDRESSED_PAGES].sort()
+    );
+
+    for (const page of slugAddressedProbes) {
+      expect(environmentPortablePage(page)).toBe(page);
+    }
+  });
+
+  it("keep their name when only the environment changes, since it names the same thing there", () => {
+    const switched = (page: string, search = "") =>
+      pathForEnvironmentSwitch({
+        location: locationOn(page, search),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "prod",
+      });
+
+    expect(switched("tasks/standard/my-task", "?period=1d")).toBe(
+      "/orgs/acme/projects/api/env/prod/tasks/standard/my-task?period=1d"
+    );
+    expect(switched("tasks/scheduled/my-task")).toBe(
+      "/orgs/acme/projects/api/env/prod/tasks/scheduled/my-task"
+    );
+    expect(switched("test/tasks/my-task")).toBe(
+      "/orgs/acme/projects/api/env/prod/test/tasks/my-task"
+    );
+    expect(switched("agents/my-agent")).toBe("/orgs/acme/projects/api/env/prod/agents/my-agent");
+    expect(switched("playground/my-agent")).toBe(
+      "/orgs/acme/projects/api/env/prod/playground/my-agent"
+    );
+    expect(switched("prompts/my-prompt")).toBe(
+      "/orgs/acme/projects/api/env/prod/prompts/my-prompt"
+    );
+    expect(switched("models/gpt-5")).toBe("/orgs/acme/projects/api/env/prod/models/gpt-5");
+  });
+
+  it("fall back to their list page when the project or organization changes, which may not have the name", () => {
+    expect(projectPortablePage("tasks/standard/my-task")).toBe("");
+    expect(projectPortablePage("test/tasks/my-task")).toBe("test");
+    expect(projectPortablePage("agents/my-agent")).toBe("agents");
+    expect(organizationPortablePage("prompts/my-prompt")).toBe("prompts");
+    expect(organizationPortablePage("models/gpt-5")).toBe("models");
+  });
+
+  it("keep nothing but a single plain name in that last segment", () => {
+    expect(environmentPortablePage("tasks/standard/..%2f..%2flogin")).toBe("");
+    expect(environmentPortablePage("tasks/standard/../../login")).toBe("");
+    expect(environmentPortablePage("agents/%2e%2e")).toBe("agents");
+    expect(environmentPortablePage("agents/..")).toBe("agents");
+    expect(environmentPortablePage("agents/%zz")).toBe("agents");
+    expect(environmentPortablePage("agents/")).toBe("agents");
+    expect(environmentPortablePage("models/my%2Fmodel")).toBe("models");
+    expect(environmentPortablePage("prompts/my-prompt/extra")).toBe("prompts");
   });
 });
 
@@ -386,6 +455,9 @@ describe("a page suffix that is not a plain relative page", () => {
       "settings/general/../../..",
       "/branches",
       "..%2fbranches",
+      "tasks/standard/../../login",
+      "agents/..%2f..%2flogin",
+      "models/%2f%2fevil.example.com",
     ];
 
     for (const attempt of attempts) {
