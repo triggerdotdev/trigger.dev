@@ -1056,6 +1056,37 @@ describe("TriggerChatTransport", () => {
       expect(result).toBeNull();
     });
 
+    it("resumes in watch mode when the session is hydrated with isStreaming=false", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          const response = defaultSseResponse([{ type: "text-delta", id: "p1", delta: "turn2" }]);
+          const headers = new Headers(response.headers);
+          headers.set("X-Session-Settled", "true");
+          return new Response(response.body, { status: 200, headers });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: {
+          "chat-rc-watch": { publicAccessToken: "p", isStreaming: false },
+        },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-rc-watch" });
+      expect(stream).not.toBeNull();
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeCount).toBe(1);
+      expect(chunks).toEqual([{ type: "text-delta", id: "p1", delta: "turn2" }]);
+    });
+
     it("opens an SSE subscription with the X-Peek-Settled header set", async () => {
       let subscribeHeaders: Headers | undefined;
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {

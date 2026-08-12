@@ -1162,7 +1162,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = this.sessions.get(options.chatId);
     if (!state) return null;
 
-    if (state.isStreaming === false) return null;
+    // Watch is a standing subscription: a settled session is exactly the
+    // state it waits in, so a completed last turn must not block the resume.
+    if (state.isStreaming === false && !this.watchMode) return null;
     if (this.activeStreams.has(options.chatId)) return null;
 
     const abortController = new AbortController();
