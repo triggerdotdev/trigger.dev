@@ -1,3 +1,4 @@
+import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { createContext, useContext } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -21,6 +22,12 @@ type DashboardAgentContextValue = {
   setOpen: (open: boolean) => void;
   /** Sent as the first message of a new chat; with a chat open it only fills the composer. */
   openWith: (text: string) => void;
+  /** Nothing is posted or persisted until the card is submitted. */
+  openWithWatch: (spec: WatchSpec) => void;
+  /** Polled only while the panel is closed; 0 while it is open. */
+  unreadWakes: number;
+  /** Chats that answered, settled or woke while the panel was closed. */
+  unreadWork: number;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -38,10 +45,12 @@ export function DashboardAgentLauncher() {
     return null;
   }
 
-  const { open, setOpen } = agent;
+  const { open, setOpen, unreadWakes, unreadWork } = agent;
   if (open) {
     return null;
   }
+
+  const hasUnread = unreadWakes > 0 || unreadWork > 0;
 
   return (
     <SimpleTooltip
@@ -58,11 +67,15 @@ export function DashboardAgentLauncher() {
         <span className="relative inline-flex shrink-0">
           <Button
             variant="ask-trigger/small"
-            aria-label={ASK_AGENT_LABEL}
+            aria-label={hasUnread ? `${ASK_AGENT_LABEL}, unread updates` : ASK_AGENT_LABEL}
             onClick={() => setOpen(true)}
           >
             {ASK_AGENT_LABEL}
           </Button>
+          {hasUnread && (
+            // The ring matches the `NavBar` surface the launcher sits on.
+            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-bright" />
+          )}
         </span>
       }
     />

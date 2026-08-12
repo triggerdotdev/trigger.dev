@@ -125,17 +125,17 @@ describe("the dashboard agent's ingress cap", () => {
     const { url } = await listen();
 
     const response = await postChunked(
-      `${url}/api/v1/Dashboard-Agent/eval-policy`,
+      `${url}/api/v1/Dashboard-Agent/watches/batch-check`,
       DASHBOARD_AGENT_MAX_INGRESS_BYTES * 4
     );
 
     expect(response.status).toBe(413);
   });
 
-  it("caps a DELETE, which can read a body too", async () => {
+  it("caps a DELETE, which reads a body on the alerts route", async () => {
     const { url } = await listen();
 
-    const response = await fetch(`${url}/api/v1/dashboard-agent/eval-policy`, {
+    const response = await fetch(`${url}/api/v1/dashboard-agent/alerts/ch_1`, {
       method: "DELETE",
       body: "x".repeat(DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024),
     });

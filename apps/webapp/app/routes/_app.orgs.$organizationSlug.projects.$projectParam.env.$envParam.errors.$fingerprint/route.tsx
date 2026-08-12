@@ -24,6 +24,8 @@ import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { errorWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
@@ -586,7 +588,7 @@ function ErrorDetailSidebar({
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
-        {/* Self-hides when the agent isn't available. */}
+        {/* Both buttons self-hide when the agent isn't available. */}
         <div className="flex shrink-0 items-center gap-1">
           <InvestigateButton
             prompt={errorGroupPrompt(
@@ -594,6 +596,9 @@ function ErrorDetailSidebar({
               errorGroup.taskIdentifier
             )}
             label="Investigate this error"
+          />
+          <WatchButton
+            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
           />
         </div>
       </div>

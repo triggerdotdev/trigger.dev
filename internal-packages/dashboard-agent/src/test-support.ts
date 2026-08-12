@@ -85,14 +85,25 @@ export type StoreCalls = {
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
   settleInvestigationCard: unknown[];
-  findOpenInvestigation: unknown[];
+  seedInvestigation: unknown[];
   /** Every write in the order it happened, for the tests that assert ordering. */
   order: (keyof Omit<StoreCalls, "order">)[];
 };
 
-export function fakeStore(
-  options: { openInvestigation?: { id: string; projectRef: string; environmentRef: string } } = {}
-): { store: DashboardAgentStore; calls: StoreCalls } {
+/** An investigation as the fake store holds it: enough to tell whose card it is. */
+export type FakeInvestigation = {
+  chatId: string;
+  projectRef: string;
+  environmentRef: string;
+  state: { outcome?: string } & Record<string, unknown>;
+};
+
+export function fakeStore(options: { investigations?: Map<string, FakeInvestigation> } = {}): {
+  store: DashboardAgentStore;
+  calls: StoreCalls;
+  /** The rows, so a test can assert which cards a lane touched and which it left alone. */
+  investigations: Map<string, FakeInvestigation>;
+} {
   const calls: StoreCalls = {
     ensureChat: [],
     persistMessages: [],
@@ -101,7 +112,7 @@ export function fakeStore(
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
     settleInvestigationCard: [],
-    findOpenInvestigation: [],
+    seedInvestigation: [],
     order: [],
   };
   const record = <K extends keyof Omit<StoreCalls, "order">>(kind: K, args: unknown) => {
@@ -112,6 +123,11 @@ export function fakeStore(
   // testable if a later revision is actually a higher number.
   const revisions = new Map<string, number>();
   const closedCards = new Set<string>();
+  const investigations = options.investigations ?? new Map<string, FakeInvestigation>();
+  const writeState = (id: string, state: unknown) => {
+    const row = investigations.get(id);
+    if (row) row.state = state as FakeInvestigation["state"];
+  };
   const store: DashboardAgentStore = {
     ensureChat: async (args) => record("ensureChat", args),
     persistMessages: async (args) => record("persistMessages", args),
@@ -147,6 +163,7 @@ export function fakeStore(
       const id = args.id ?? "inv_fake";
       const revision = args.id ? (revisions.get(id) ?? 0) + 1 : 0;
       revisions.set(id, revision);
+      writeState(id, args.state);
       return { ok: true, id, revision, created: !args.id };
     },
     // Mirrors the real query: the terminal revision and its closing card are one
@@ -162,16 +179,37 @@ export function fakeStore(
       });
       if (!card) throw new Error(`${args.id} settled to a state that isn't renderable`);
       revisions.set(args.id, revision);
+      writeState(args.id, args.state);
       const closed = !closedCards.has(args.messageId);
       closedCards.add(args.messageId);
       return { ok: true, id: args.id, revision, card, closed };
     },
-    findOpenInvestigation: async (args) => {
-      record("findOpenInvestigation", args);
-      return options.openInvestigation ?? null;
+    // Mirrors the real query: insert under the caller's id, or hand back the row that
+    // is already there — unless it belongs to another chat or environment.
+    seedInvestigation: async (args) => {
+      record("seedInvestigation", args);
+      const existing = investigations.get(args.id);
+      if (existing) {
+        if (
+          existing.chatId !== args.chatId ||
+          existing.projectRef !== args.projectRef ||
+          existing.environmentRef !== args.environmentRef
+        ) {
+          return { ok: false, error: "context_mismatch" };
+        }
+        return { ok: true, id: args.id, created: false };
+      }
+      investigations.set(args.id, {
+        chatId: args.chatId,
+        projectRef: args.projectRef,
+        environmentRef: args.environmentRef,
+        state: args.state as FakeInvestigation["state"],
+      });
+      revisions.set(args.id, 0);
+      return { ok: true, id: args.id, created: true };
     },
   };
-  return { store, calls };
+  return { store, calls, investigations };
 }
 
 // Records the eval enqueues, in place of tasks.trigger.

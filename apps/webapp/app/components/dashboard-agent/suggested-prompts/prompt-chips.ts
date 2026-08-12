@@ -25,12 +25,13 @@ export const ctx = (id: string, label: string, prompt: string) =>
   make(id, label, prompt, "contextual");
 
 /** The slots after the promoted one, in display order. */
-export const PROMPT_SLOTS = ["investigate", "status", "explain", "docs"] as const;
+export const PROMPT_SLOTS = ["investigate", "watch", "status", "explain", "docs"] as const;
 
 export type PromptSlot = (typeof PROMPT_SLOTS)[number];
 
 export type PageSlotPrompts = {
   investigate?: SuggestedPrompt;
+  watch?: SuggestedPrompt;
   status?: SuggestedPrompt;
   explain: SuggestedPrompt;
   docs: SuggestedPrompt;

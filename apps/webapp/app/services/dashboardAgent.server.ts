@@ -1,25 +1,44 @@
 import { signUserActorToken } from "@trigger.dev/rbac";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
+import { Counter } from "prom-client";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { metricsRegister } from "~/metrics.server";
+import { singleton } from "~/utils/singleton";
 import { runStore } from "~/v3/runStore.server";
 import { githubApp } from "./gitHub.server";
 import { logger } from "./logger.server";
 
 const TASK_ID = "dashboard-agent";
 
+// The wake poll runs once a minute per visible tab. That trade-off is only defensible while it
+// stays measurable, so count the requests. singleton: module-scope registration double-registers
+// under dev HMR.
+export const dashboardAgentWakeFeedCounter = singleton(
+  "dashboardAgentWakeFeedCounter",
+  () =>
+    new Counter({
+      name: "dashboard_agent_wake_feed_requests_total",
+      help: "Requests to the dashboard agent's wake feed",
+      registers: [metricsRegister],
+    })
+);
+
 // Read-only cap on the agent's delegated user-actor token. `read:apiKeys` is
 // what lets it exchange the token for an env JWT (the gate on the exchange
 // route); the rest scope the actual reads. No write/admin scopes, so even a
 // leaked token can't mutate anything.
-const DASHBOARD_AGENT_UAT_CAP = [
+export const DASHBOARD_AGENT_UAT_CAP = [
   "read:apiKeys",
   "read:runs",
   "read:deployments",
   "read:environments",
   "read:errors",
   "read:query",
+  // Queue metrics ride on `read:query`, but a queue's own row — paused, depth, limit —
+  // is a `queues` read, and without it the agent can only see the metrics window.
+  "read:queues",
 ];
 
 // Minted fresh on every turn (the `in` proxy injects it), so the lifetime only

@@ -31,7 +31,7 @@ export const demoConcurrencySaturationSignal: AgentPageSignal = {
   severity: "crit",
 };
 
-// Priority order.
+// Priority order. `SIGNAL_PRIORITY` in the registry mirrors this.
 export const demoSignalsByPriority: AgentPageSignal[] = [
   demoFreshFailureSignal,
   demoWaitingRunSignal,
@@ -141,6 +141,12 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
       "How many other runs failed with this error in the last hour?",
       "contextual"
     ),
+    prompt(
+      "watch-retry",
+      "Tell me when it retries",
+      `Watch ${DEMO_WORLD.failedRunId} and tell me when it finishes.`,
+      "contextual"
+    ),
     DEFAULT_PROMPTS[1]!,
   ],
   waitingRun: [
@@ -195,6 +201,12 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
       "Explain this error and what usually causes it.",
       "promoted"
     ),
+    prompt(
+      "watch-recurrence",
+      "Tell me if it comes back",
+      "Watch this error and tell me if it happens again.",
+      "contextual"
+    ),
     DEFAULT_PROMPTS[1]!,
   ],
   queue: [
@@ -224,7 +236,7 @@ export const demoPromptSets: Record<DemoPageContextKey, SuggestedPrompt[]> = {
   other: DEFAULT_PROMPTS,
 };
 
-export const demoDismissedPromptIds: string[] = [];
+export const demoDismissedPromptIds: string[] = [demoId("prompt-watch-retry")];
 
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun
   .filter((p) => !demoDismissedPromptIds.includes(p.id))

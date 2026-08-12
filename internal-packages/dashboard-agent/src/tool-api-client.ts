@@ -1,4 +1,5 @@
 import { logger } from "@trigger.dev/sdk";
+import { DASHBOARD_AGENT_ENV_JWT_SCOPES } from "./tool-schemas.js";
 
 /**
  * The agent's HTTP surface: the delegated-token GET, the env-JWT exchange and its
@@ -95,9 +96,7 @@ async function exchangeEnvJwt(
     res = await fetch(`${origin}/api/v1/projects/${projectRef}/${environmentName}/jwt`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        claims: { scopes: ["read:runs", "read:deployments", "read:errors", "read:query"] },
-      }),
+      body: JSON.stringify({ claims: { scopes: [...DASHBOARD_AGENT_ENV_JWT_SCOPES] } }),
       signal: AbortSignal.timeout(JWT_TIMEOUT_MS),
     });
   } catch {

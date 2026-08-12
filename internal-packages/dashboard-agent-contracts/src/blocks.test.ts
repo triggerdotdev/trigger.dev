@@ -14,6 +14,7 @@ import {
   type EnvelopedViewBlock,
   type ViewBlock,
 } from "./blocks.js";
+import { SIMPLE_EVIDENCE_KINDS } from "./evidence.js";
 
 const legacyDiagnosis = {
   type: "diagnosis",
@@ -232,9 +233,18 @@ describe("chart actions", () => {
 });
 
 describe("actions block", () => {
-  const navigateAction = {
-    label: "See its failed runs",
-    intent: { kind: "navigate", target: "trigger://runs?status=FAILED" },
+  const watchAction = {
+    label: "Set up a watch",
+    intent: {
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "a1b2c3",
+        checkEveryMinutes: 15,
+        maxHours: 6,
+        note: "the TypeError in send-order-receipt",
+      },
+    },
   };
 
   const askAction = {
@@ -243,11 +253,11 @@ describe("actions block", () => {
   };
 
   it("round-trips through both schemas", () => {
-    const body = { type: "actions", actions: [navigateAction, askAction] };
+    const body = { type: "actions", actions: [watchAction, askAction] };
     const input = viewBlockInputSchema.parse(body);
     expect(input.type === "actions" && input.actions).toHaveLength(2);
     const strict = viewBlockSchema.parse({ ...body, ...envelope });
-    expect(strict.type === "actions" && strict.actions[0].intent.kind).toBe("navigate");
+    expect(strict.type === "actions" && strict.actions[0].intent.kind).toBe("watch");
     expect(parseStoredViewBlock(body).type).toBe("actions");
   });
 
@@ -521,10 +531,50 @@ describe("investigation evidence refs (the model-facing boundary)", () => {
   });
 
   it("still takes one bare id for the simple kinds", () => {
-    expect(withEvidence({ kind: "error", uri: "error_c4b4a797", label: "the group" }).success).toBe(
-      true
-    );
-    expect(withEvidence({ kind: "run", uri: "", label: "a run" }).success).toBe(false);
+    for (const kind of SIMPLE_EVIDENCE_KINDS) {
+      expect(withEvidence({ kind, uri: "abc123", label: "a thing" }).success, kind).toBe(true);
+      expect(withEvidence({ kind, label: "a thing" }).success, `${kind} with no uri`).toBe(false);
+      expect(withEvidence({ kind, uri: "", label: "a thing" }).success, `${kind} empty`).toBe(
+        false
+      );
+    }
+  });
+
+  // The seven simple kinds share one member, so `kind` must still be closed and the
+  // two shaped kinds must still be unreachable through it.
+  it("refuses a kind outside the catalog, and the shaped kinds' fields as a bare id", () => {
+    expect(withEvidence({ kind: "trace", uri: "trace_1", label: "a trace" }).success).toBe(false);
+    expect(withEvidence({ kind: "span", uri: "span_1", label: "a span" }).success).toBe(false);
+    expect(withEvidence({ kind: "source", uri: "src/a.ts", label: "a file" }).success).toBe(false);
+    expect(
+      withEvidence({ kind: "run", runId: "run_abc123", spanId: "span_1", label: "x" }).success
+    ).toBe(false);
+    expect(withEvidence({ uri: "run_abc123", label: "a run" }).success).toBe(false);
+  });
+});
+
+describe("host-emitted blocks are not model-facing", () => {
+  it("refuses a block the model may not produce, and one that is not in the catalog", () => {
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "watch_result",
+        outcome: "watching",
+        headline: "Watching the email-sends queue.",
+      }).success
+    ).toBe(false);
+    expect(
+      viewBlockInputSchema.safeParse({ type: "report", vm: reportVm, asOf: "x" }).success
+    ).toBe(false);
+    expect(viewBlockInputSchema.safeParse({ type: "timeline", items: [] }).success).toBe(false);
+    // …while the host's own union still takes them.
+    expect(
+      viewBlockSchema.safeParse({
+        type: "watch_result",
+        outcome: "watching",
+        headline: "Watching the email-sends queue.",
+        ...envelope,
+      }).success
+    ).toBe(true);
   });
 });
 

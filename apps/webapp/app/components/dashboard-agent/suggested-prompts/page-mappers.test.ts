@@ -206,10 +206,16 @@ describe("queueAgentPageContext", () => {
     const context = queueAgentPageContext(queueLoaderData());
 
     expect(context).toEqual({
-      page: { kind: "queue", name: "black-friday", health: "ok" },
+      page: { kind: "queue", name: "black-friday", health: "ok", paused: false },
       signals: [],
     });
     expect(agentPageContextSchema.safeParse(context).success).toBe(true);
+  });
+
+  // A watch the agent proposes off this context is validated against the stored name.
+  it("names a task queue by its stored name, prefix and all", () => {
+    const context = queueAgentPageContext(queueLoaderData({ type: "task", name: "send-receipt" }));
+    expect(context?.page).toMatchObject({ kind: "queue", name: "task/send-receipt" });
   });
 
   it("emits no saturation signal when the queue is idle under its limit", () => {
@@ -241,6 +247,16 @@ describe("queueAgentPageContext", () => {
     const context = queueAgentPageContext(queueLoaderData({ paused: true, running: 0, queued: 5 }));
 
     expect(context?.page).toMatchObject({ health: "warn" });
+    expect(context?.signals).toEqual([]);
+  });
+
+  it("offers no watch on a paused queue, even when it is at capacity", () => {
+    // Paused and saturated at once: nothing will drain or grow until it is resumed, so a
+    // watch would promise an answer that can't come.
+    const context = queueAgentPageContext(
+      queueLoaderData({ paused: true, running: 10, queued: 40, concurrencyLimit: 10 })
+    );
+
     expect(context?.signals).toEqual([]);
   });
 

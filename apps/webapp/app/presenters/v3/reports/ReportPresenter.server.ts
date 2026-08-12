@@ -14,7 +14,8 @@ const DEFAULT_PERIOD = "1h";
 
 /**
  * How long a finished report stays reusable. Capped at the liveness fresh window so a
- * cached report can never render "fresh" while its telemetry is already stale.
+ * cached report can never render "fresh" while its telemetry is already stale, and it
+ * stays under the watch tick cadence.
  */
 export const REPORT_CACHE_TTL_MS = HEALTH_THRESHOLDS.liveness.freshMs;
 
