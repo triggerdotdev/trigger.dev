@@ -37,6 +37,7 @@ export class ScheduleEngine {
   private scheduleExecutionFailureCounter: Counter;
   private distributionOffsetHistogram: Histogram;
   private scheduleWindowCappedCounter: Counter;
+  private schedulePhasePersistedCounter: Counter;
   private devEnvironmentCheckCounter: Counter;
 
   prisma: PrismaClient;
@@ -84,6 +85,10 @@ export class ScheduleEngine {
 
     this.scheduleWindowCappedCounter = this.meter.createCounter("schedule_windows_capped_total", {
       description: "Total number of absolute schedule windows capped at the next nominal interval",
+    });
+
+    this.schedulePhasePersistedCounter = this.meter.createCounter("schedule_phase_persisted_total", {
+      description: "Total number of schedule phases persisted during registration",
     });
 
     this.devEnvironmentCheckCounter = this.meter.createCounter("dev_environment_checks_total", {
@@ -187,9 +192,10 @@ export class ScheduleEngine {
             deduplicationKey: instance.taskSchedule.deduplicationKey,
           });
 
-        let persisted = false;
+        const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
 
-        if (scheduleWindow && instance.schedulePhase === null) {
+        let persisted = false;
+        if (cronSpreadActive && instance.schedulePhase === null) {
           await this.prisma.taskScheduleInstance.updateMany({
             where: {
               id: instance.id,
@@ -200,6 +206,10 @@ export class ScheduleEngine {
             },
           });
           persisted = true;
+          this.schedulePhasePersistedCounter.add(1, {
+            environment_type: instance.environment.type,
+            schedule_type: instance.taskSchedule.type,
+          });
         }
 
         span.setAttribute(
@@ -212,7 +222,6 @@ export class ScheduleEngine {
         const fromTimestamp = params.fromTimestamp ?? registrationTime;
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());
 
-        const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
 
         const {
           nominalAt,

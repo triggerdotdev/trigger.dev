@@ -160,7 +160,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
   );
 
   containerTest(
-    "should assign a stable schedule phase once when a window is configured",
+    "should assign a stable schedule phase once when spreading is active",
     { timeout: 30_000 },
     async ({ prisma, redisOptions }) => {
       const schedulePhaseSecret = "test-schedule-phase-secret";
@@ -237,7 +237,13 @@ describe("ScheduleEngine Integration (part 2)", () => {
           where: { id: scheduleInstance.id },
           select: { schedulePhase: true },
         });
-        expect(unwindowedInstance.schedulePhase).toBeNull();
+        expect(unwindowedInstance.schedulePhase).toBe(
+          calculateSchedulePhase({
+            secret: schedulePhaseSecret,
+            environmentId: environment.id,
+            deduplicationKey: taskSchedule.deduplicationKey,
+          })
+        );
 
         const unwindowedJob = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
         const unwindowedPayload = unwindowedJob!.item as unknown as {
