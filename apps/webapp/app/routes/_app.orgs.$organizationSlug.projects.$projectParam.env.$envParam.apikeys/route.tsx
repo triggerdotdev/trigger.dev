@@ -1146,7 +1146,18 @@ function ApiKeyScopeUpgradeCta({ show }: { show: boolean }) {
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
 
-  if (!show || !isManagedCloud) return null;
+  if (!show) return null;
+
+  if (!isManagedCloud) {
+    return (
+      <div className="text-right">
+        <Paragraph variant="small">
+          Restricted API keys aren't available on your current plan. Contact your administrator to
+          enable them.
+        </Paragraph>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-end text-right">
