@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
@@ -9,7 +9,7 @@ import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -46,8 +46,9 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
-import { personalAccessTokensPath } from "~/utils/pathBuilder";
+import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Personal Access Tokens");
@@ -247,6 +248,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Personal Access Tokens" />
         <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("management/overview#personal-access-token-pat")}
+              variant="docs/small"
+            >
+              Personal Access Token docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="primary/small">Create new token…</Button>
