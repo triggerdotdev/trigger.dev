@@ -1,4 +1,5 @@
 import { useFetcher } from "@remix-run/react";
+import { useState } from "react";
 import type { OrganizationSupportChannelStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -30,6 +31,10 @@ import {
   type MatchProposal,
   type OrgCandidate,
 } from "~/services/supportSlackChannel.server";
+
+// No-proposal rows default to this rather than the first org in the list, so
+// approving always needs a deliberate pick. Rejected server-side too.
+const UNSET_ORGANIZATION_ID = "__unset__";
 
 type LinkedChannelInfo = {
   organizationId: string;
@@ -152,7 +157,9 @@ const LinkActionBody = z.object({
   _action: z.enum(["link", "reassign"]),
   channelId: z.string(),
   channelName: z.string(),
-  organizationId: z.string(),
+  organizationId: z.string().refine((value) => value !== UNSET_ORGANIZATION_ID, {
+    message: "Select an organization",
+  }),
 });
 
 const UnlinkActionBody = z.object({
@@ -281,9 +288,12 @@ function ChannelRow({
 }) {
   const fetcher = useFetcher<{ error?: string; success?: boolean }>();
   const unlinkFetcher = useFetcher<{ error?: string; success?: boolean }>();
-  const defaultOrganizationId = proposal?.organizationId ?? orgs[0]?.organizationId ?? "";
+  const [organizationId, setOrganizationId] = useState(
+    proposal?.organizationId ?? UNSET_ORGANIZATION_ID
+  );
   const isBusy = fetcher.state !== "idle";
   const isUnlinking = unlinkFetcher.state !== "idle";
+  const hasNoOrgPicked = organizationId === UNSET_ORGANIZATION_ID;
 
   return (
     <TableRow>
@@ -312,9 +322,11 @@ function ChannelRow({
           <input type="hidden" name="channelName" value={channel.channelName} />
           <select
             name="organizationId"
-            defaultValue={defaultOrganizationId}
+            value={organizationId}
+            onChange={(event) => setOrganizationId(event.target.value)}
             className="h-8 rounded border border-charcoal-700 bg-background-hover px-2 text-xs text-text-bright"
           >
+            <option value={UNSET_ORGANIZATION_ID}>Select an organization…</option>
             {orgs.map((org) => (
               <option key={org.organizationId} value={org.organizationId}>
                 {org.title} ({org.slug})
@@ -326,7 +338,7 @@ function ChannelRow({
             name="_action"
             value="link"
             variant="secondary/small"
-            disabled={isBusy}
+            disabled={isBusy || hasNoOrgPicked}
           >
             Approve
           </Button>
@@ -335,7 +347,7 @@ function ChannelRow({
             name="_action"
             value="reassign"
             variant="tertiary/small"
-            disabled={isBusy}
+            disabled={isBusy || hasNoOrgPicked}
           >
             Reassign
           </Button>
