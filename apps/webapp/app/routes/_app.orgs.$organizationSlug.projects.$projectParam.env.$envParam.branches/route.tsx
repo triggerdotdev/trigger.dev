@@ -798,7 +798,7 @@ function PurchaseBranchesModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -812,7 +812,7 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "need_to_archive"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraBranches - amountValue
                     )} ${extraBranches - amountValue === 1 ? "branch" : "branches"}`}</span>
                   </Button>
@@ -826,7 +826,7 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraBranches
                     )} ${amountValue - extraBranches === 1 ? "branch" : "branches"}`}</span>
                   </Button>

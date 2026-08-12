@@ -1150,7 +1150,7 @@ export function PurchaseSeatsModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -1164,7 +1164,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "need_to_remove_members"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraSeats - amountValue
                     )} ${extraSeats - amountValue === 1 ? "seat" : "seats"}`}</span>
                   </Button>
@@ -1178,7 +1178,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraSeats
                     )} ${amountValue - extraSeats === 1 ? "seat" : "seats"}`}</span>
                   </Button>

@@ -313,11 +313,9 @@ export default function LoginPage() {
                           {isEmailLoading ? (
                             <Spinner className="mr-2 size-5" color="white" />
                           ) : (
-                            <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
+                            <EnvelopeIcon className="mr-2 size-5" />
                           )}
-                          <span className="text-text-bright">
-                            {isEmailLoading ? "Sending…" : "Continue with Email"}
-                          </span>
+                          <span>{isEmailLoading ? "Sending…" : "Continue with Email"}</span>
                         </Button>
                       </div>
                     </div>

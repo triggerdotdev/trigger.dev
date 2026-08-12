@@ -298,6 +298,12 @@ export function ButtonContent(props: ButtonContentPropsType) {
           className={cn(
             textAlignLeft ? "text-left" : "justify-center",
             "flex w-full items-center",
+            // The label row owns the variant's text color so children inherit it
+            // whatever shape they are. Setting it only on the string branch below
+            // left element children (a fragment, a span, text mixed with a value)
+            // inheriting the page color instead - near-white on the dark themes,
+            // which read as roughly right, but near-black on Light and White.
+            textColorClassName,
             iconSpacingClassName,
             iconSpacing,
             showSpinner && "invisible"
@@ -317,9 +323,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
           {text &&
             (typeof text === "string" ? (
-              <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
-                {text}
-              </span>
+              <span className="mx-auto grow self-center truncate">{text}</span>
             ) : (
               <>{text}</>
             ))}
