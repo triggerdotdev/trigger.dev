@@ -23,12 +23,12 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { value: "dark", label: "Dark", icon: MoonIcon },
 ];
 
-/** Dark and Light with their surfaces pinned flat, so grid lines carry the
+/** Light and Dark with their surfaces pinned flat, so grid lines carry the
  *  layout. Account page only, alongside Classic. The icons here are the
  *  dark-theme pair; `themeOptionIcon` swaps them per active theme. */
 const FLAT_OPTIONS: ThemeOption[] = [
-  { value: "black", label: "Black", icon: CircleOutlineIcon },
   { value: "white", label: "White", icon: CircleFilledIcon },
+  { value: "black", label: "Black", icon: CircleOutlineIcon },
 ];
 
 /** Legacy theme, offered on the account page only. */
