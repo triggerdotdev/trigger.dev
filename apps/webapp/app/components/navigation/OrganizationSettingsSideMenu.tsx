@@ -50,11 +50,13 @@ export function OrganizationSettingsSideMenu({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
+  supportChannelEnabled,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
+  supportChannelEnabled: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -136,7 +138,7 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          {isManagedCloud && (
+          {isManagedCloud && supportChannelEnabled && (
             <SideMenuItem
               name="Support"
               icon={SlackIcon}
