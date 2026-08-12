@@ -44,7 +44,13 @@ export function demoReportUri(key: string): TriggerUri {
 }
 
 export function demoSourceUri(sha: string, path: string, line?: number): TriggerUri {
-  return formatTriggerUri({ kind: "source", ...scope, sha, path, ...(line ? { line } : {}) });
+  return formatTriggerUri({
+    kind: "source",
+    ...scope,
+    sha,
+    path,
+    ...(line !== undefined ? { line } : {}),
+  });
 }
 
 export function demoInvestigationUri(investigationId: string): TriggerUri {
