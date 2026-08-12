@@ -155,6 +155,8 @@ model PersonalAccessToken {
   updatedAt DateTime @updatedAt
 
   authorizationCodes AuthorizationCode[]
+
+  @@index([userId])
 }
 
 enum OrganizationAccessTokenType {
@@ -2214,6 +2216,7 @@ model WorkerDeployment {
   @@unique([environmentId, version])
   @@index([commitSHA])
   @@index([environmentId, createdAt])
+  @@index([environmentId, status, id])
 }
 
 enum WorkerDeploymentStatus {

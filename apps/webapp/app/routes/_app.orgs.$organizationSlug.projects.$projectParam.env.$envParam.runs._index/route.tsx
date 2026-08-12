@@ -79,6 +79,7 @@ import {
   shouldRevalidateRunsList,
 } from "./shouldRevalidateRunsList";
 import { useRunsLiveReload } from "./useRunsLiveReload";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
@@ -174,6 +175,15 @@ export default function Page() {
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/runs-and-attempts")}
+            >
+              Runs docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

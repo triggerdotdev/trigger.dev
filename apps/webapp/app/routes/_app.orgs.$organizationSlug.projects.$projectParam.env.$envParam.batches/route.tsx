@@ -1,4 +1,5 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -55,9 +56,15 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { EnvironmentParamSchema, v3BatchPath, v3BatchRunsPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3BatchPath,
+  v3BatchRunsPath,
+} from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
 import { batchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -122,6 +129,15 @@ export default function Page() {
         <PageTitle title="Batches" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/triggering")}
+            >
+              Batches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

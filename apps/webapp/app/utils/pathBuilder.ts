@@ -838,7 +838,7 @@ export function docsRoot() {
 }
 
 export function docsPath(path: string) {
-  return `${docsRoot()}/${path}`;
+  return `${docsRoot()}/${path.replace(/^\//, "")}`;
 }
 
 export function docsTroubleshootingPath(path: string) {
