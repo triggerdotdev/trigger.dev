@@ -6,9 +6,9 @@ import {
 } from "@internal/dashboard-agent-db";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 /**
  * `chats.last_read_at` is nullable and every reader treats NULL as unread, so without a
@@ -81,6 +81,16 @@ async function readLastReadAt(prisma: PrismaClient): Promise<Record<string, Date
   );
   return Object.fromEntries(rows.map((row) => [row.id, row.last_read_at]));
 }
+
+describe("the replayed migration list", () => {
+  it("is the first migrations on disk, so a renamed or inserted one fails here", () => {
+    const onDisk = readdirSync(DRIZZLE)
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+
+    expect(onDisk.slice(0, MIGRATIONS.length)).toEqual(MIGRATIONS);
+  });
+});
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 

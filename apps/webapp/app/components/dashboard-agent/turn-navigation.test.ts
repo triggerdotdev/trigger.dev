@@ -127,6 +127,6 @@ describe("the chat scopes a turn's navigation to the page it started on", () => 
   });
 
   it("hands the persistent handled-set in, so drops are recorded across commits", () => {
-    expect(chat).toContain("handled: navigatedRef.current!");
+    expect(chat).toMatch(/handled:\s*navigatedRef\.current!/);
   });
 });
