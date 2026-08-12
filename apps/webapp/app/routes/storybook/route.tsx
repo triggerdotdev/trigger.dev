@@ -156,11 +156,6 @@ const stories: Story[] = [
     slug: "typography",
   },
   {
-    // TEMPORARY - remove with storybook.underline-audit
-    name: "Underline audit",
-    slug: "underline-audit",
-  },
-  {
     name: "Unordered list",
     slug: "unordered-list",
   },
