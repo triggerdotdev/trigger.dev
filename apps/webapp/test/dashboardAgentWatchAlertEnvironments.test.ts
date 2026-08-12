@@ -214,8 +214,8 @@ describe("subscribing to watch alerts in a second environment", () => {
         select: { environmentTypes: true, alertTypes: true, enabled: true },
       });
       expect(channels).toHaveLength(1);
-      expect([...channels[0].environmentTypes].sort()).toEqual(["PRODUCTION", "STAGING"]);
-      expect(channels[0].alertTypes).toEqual([DASHBOARD_AGENT_WATCH_ALERT_TYPE]);
+      expect([...channels[0]!.environmentTypes].sort()).toEqual(["PRODUCTION", "STAGING"]);
+      expect(channels[0]!.alertTypes).toEqual([DASHBOARD_AGENT_WATCH_ALERT_TYPE]);
     },
     60_000
   );
