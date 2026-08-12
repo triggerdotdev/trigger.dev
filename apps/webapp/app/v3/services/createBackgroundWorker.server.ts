@@ -666,6 +666,10 @@ export async function syncDeclarativeSchedules(
       id: true,
       friendlyId: true,
       taskIdentifier: true,
+      generatorExpression: true,
+      timezone: true,
+      windowDurationSeconds: true,
+      windowPercentage: true,
       instances: {
         select: {
           environmentId: true,
