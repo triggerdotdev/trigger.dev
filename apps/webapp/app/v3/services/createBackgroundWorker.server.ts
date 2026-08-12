@@ -655,9 +655,21 @@ export async function syncDeclarativeSchedules(
     where: {
       type: "DECLARATIVE",
       projectId: environment.projectId,
+      instances: {
+        some: {
+          environmentId: environment.id,
+        },
+      },
     },
-    include: {
-      instances: true,
+    select: {
+      id: true,
+      friendlyId: true,
+      taskIdentifier: true,
+      instances: {
+        select: {
+          environmentId: true,
+        },
+      },
     },
   });
 
@@ -764,16 +776,9 @@ export async function syncDeclarativeSchedules(
 
   //Delete instances for this environment
   //Delete schedules that have no instances left
-  const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
-    where: {
-      id: {
-        in: boundedIn(Array.from(missingSchedules)),
-      },
-    },
-    include: {
-      instances: true,
-    },
-  });
+  const potentiallyDeletableSchedules = existingDeclarativeSchedules.filter((schedule) =>
+    missingSchedules.has(schedule.id)
+  );
 
   const scheduleIdsToDelete: string[] = [];
   const scheduleIdsToDetachFromEnvironment: string[] = [];
