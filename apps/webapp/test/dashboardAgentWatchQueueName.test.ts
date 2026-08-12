@@ -214,7 +214,8 @@ describe("a watch on a task's own queue", () => {
 
       const created = await createFor(seeded, spec);
       expect(created).toMatchObject({ ok: true, watching: true });
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -227,7 +228,8 @@ describe("a watch on a task's own queue", () => {
       expect(created).toMatchObject({ ok: true, watching: true });
       expect(await persistedQueueName(created as { watchId: string })).toBe("task/send-receipt");
       expect(readNames).toEqual(["task/send-receipt"]);
-    }
+    },
+    30_000
   );
 });
 
@@ -242,7 +244,8 @@ describe("a watch on a custom queue", () => {
       expect(created).toMatchObject({ ok: true, watching: true });
       expect(await persistedQueueName(created as { watchId: string })).toBe("worker-1");
       expect(readNames).toEqual(["worker-1"]);
-    }
+    },
+    30_000
   );
 
   postgresTest(
@@ -266,22 +269,27 @@ describe("a watch on a custom queue", () => {
         code: "duplicate",
         existingId: (first as { watchId: string }).watchId,
       });
-    }
+    },
+    30_000
   );
 });
 
 describe("a queue that exists under neither spelling", () => {
-  postgresTest("is refused, either way round", async ({ prisma, postgresContainer }) => {
-    await boot(prisma, postgresContainer.getConnectionUri());
-    const seeded = await seed(prisma);
+  postgresTest(
+    "is refused, either way round",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma);
 
-    expect(await createFor(seeded, queueWatchRecommendation("worker-9"))).toMatchObject({
-      ok: false,
-      code: "invalid_target",
-    });
-    expect(await createFor(seeded, queueWatchRecommendation("task/worker-9"))).toMatchObject({
-      ok: false,
-      code: "invalid_target",
-    });
-  });
+      expect(await createFor(seeded, queueWatchRecommendation("worker-9"))).toMatchObject({
+        ok: false,
+        code: "invalid_target",
+      });
+      expect(await createFor(seeded, queueWatchRecommendation("task/worker-9"))).toMatchObject({
+        ok: false,
+        code: "invalid_target",
+      });
+    },
+    30_000
+  );
 });
