@@ -81,8 +81,8 @@ describe("normalizeEmail", () => {
 describe("answerAllCardKeys", () => {
   it("adds a no-data card for every unanswered key", () => {
     expect(answerAllCardKeys(["a", "b"], [])).toEqual([
-      { key: "a", components: null },
-      { key: "b", components: null },
+      { key: "a", components: null, timeToLiveSeconds: 60 },
+      { key: "b", components: null, timeToLiveSeconds: 60 },
     ]);
   });
 
@@ -97,9 +97,17 @@ describe("answerAllCardKeys", () => {
 
     expect(answerAllCardKeys(["a", "b", "c"], [answered])).toEqual([
       answered,
-      { key: "a", components: null },
-      { key: "c", components: null },
+      { key: "a", components: null, timeToLiveSeconds: 60 },
+      { key: "c", components: null, timeToLiveSeconds: 60 },
     ]);
+  });
+
+  // Omitting the TTL would fall back to the card's configured default, keeping an empty card in
+  // Plain's cache after the customer becomes resolvable.
+  it("caps how long an empty card is cached", () => {
+    const [filler] = answerAllCardKeys(["a"], []);
+
+    expect(filler).toMatchObject({ timeToLiveSeconds: 60 });
   });
 
   it("ignores extra cards that were not requested", () => {

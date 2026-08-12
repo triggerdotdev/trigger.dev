@@ -129,6 +129,14 @@ export async function action({ request }: ActionFunctionArgs) {
       byExternalId ??
       (email ? await prisma.user.findFirst({ where: { email }, include: userInclude }) : null);
 
+    // An external id we set ourselves that no longer resolves is an anomaly worth seeing, even
+    // though the email match keeps the card useful — otherwise the stale link stays invisible.
+    if (customer.externalId && !byExternalId) {
+      logger.warn("Plain customer card external id did not resolve", {
+        resolvedByEmail: !!user,
+      });
+    }
+
     /**
      * Impersonation is offered only when the customer matched on `externalId` — a value we set
      * ourselves from `User.id`.

@@ -44,7 +44,17 @@ export function normalizeEmail(email: string | null | undefined): string | null 
   return email?.toLowerCase().trim() || null;
 }
 
-type NoDataCard = { key: string; components: null };
+type NoDataCard = { key: string; components: null; timeToLiveSeconds: number };
+
+/**
+ * How long Plain may cache a card we had no data for.
+ *
+ * Explicit rather than omitted: omitting the field falls back to the TTL configured for that card
+ * in Plain's settings, so a customer who becomes resolvable — an external id gets set, or someone
+ * signs up with that address — would keep showing an empty card for however long that default is.
+ * Short enough to recover promptly, long enough not to re-ask on every glance at a thread.
+ */
+const NO_DATA_TTL_SECONDS = 60;
 
 /**
  * Fills in a `components: null` card for every requested key that wasn't answered.
@@ -67,6 +77,7 @@ export function answerAllCardKeys<TCard extends { key: string }>(
         (key): NoDataCard => ({
           key,
           components: null,
+          timeToLiveSeconds: NO_DATA_TTL_SECONDS,
         })
       ),
   ];
