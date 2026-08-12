@@ -222,7 +222,10 @@ export async function setChatPinned(
     );
 }
 
-/** Owner-scoped: a client chatId can only delete the caller's own chat. */
+/**
+ * Owner-scoped: a client chatId can only delete the caller's own chat. Already-deleted rows are
+ * skipped, so a retry can't push `deletedAt` forward and move the retention cutoff.
+ */
 export async function softDeleteChat(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string }
@@ -234,7 +237,8 @@ export async function softDeleteChat(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
-        eq(chats.organizationId, params.organizationId)
+        eq(chats.organizationId, params.organizationId),
+        isNull(chats.deletedAt)
       )
     )
     .returning({ id: chats.id });

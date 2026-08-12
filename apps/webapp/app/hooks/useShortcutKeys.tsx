@@ -9,6 +9,8 @@ export type Shortcut = {
   modifiers?: Modifier[];
   enabledOnInputElements?: boolean;
   enabled?: boolean;
+  /** Set when the browser binds the same keystroke to something of its own. */
+  preventDefault?: boolean;
 };
 
 export type ShortcutDefinition =
@@ -48,14 +50,36 @@ export function useShortcutKeys({
         action(event);
       }
     },
-    {
-      enabled: isEnabled,
-      enableOnFormTags:
-        isEnabled && (enabledOnInputElements ?? relevantShortcut?.enabledOnInputElements),
-      enableOnContentEditable:
-        isEnabled && (enabledOnInputElements ?? relevantShortcut?.enabledOnInputElements),
-    }
+    hotkeyOptions({ shortcut: relevantShortcut, isEnabled, enabledOnInputElements })
   );
+}
+
+export type HotkeyOptions = {
+  enabled: boolean;
+  enableOnFormTags: boolean;
+  enableOnContentEditable: boolean;
+  preventDefault: boolean;
+};
+
+// react-hotkeys-hook runs `preventDefault` before it checks `enabled`, so a
+// disabled shortcut must not ask for it.
+export function hotkeyOptions({
+  shortcut,
+  isEnabled,
+  enabledOnInputElements,
+}: {
+  shortcut: Shortcut | undefined;
+  isEnabled: boolean;
+  enabledOnInputElements?: boolean;
+}): HotkeyOptions {
+  const onInputElements = enabledOnInputElements ?? shortcut?.enabledOnInputElements ?? false;
+
+  return {
+    enabled: isEnabled,
+    enableOnFormTags: isEnabled && onInputElements,
+    enableOnContentEditable: isEnabled && onInputElements,
+    preventDefault: isEnabled && (shortcut?.preventDefault ?? false),
+  };
 }
 
 function createKeysFromShortcut(shortcut: Shortcut | undefined) {

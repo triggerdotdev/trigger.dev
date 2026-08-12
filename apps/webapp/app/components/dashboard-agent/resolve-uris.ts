@@ -11,6 +11,21 @@ export const MAX_RESOLVE_ATTEMPTS = 3;
 
 export const RESOLVE_RETRY_DELAY_MS = 1_000;
 
+/**
+ * A request in flight at unmount rejects afterwards. Its retry must not be scheduled: the
+ * callback would fetch again for a component that is gone, and record the answer into state.
+ * One timer serves every batch, so a pending one is not replaced either.
+ */
+export function shouldScheduleRetry({
+  mounted,
+  timerPending,
+}: {
+  mounted: boolean;
+  timerPending: boolean;
+}): boolean {
+  return mounted && !timerPending;
+}
+
 /** Deduplicates, then splits into requests no bigger than the cap. */
 export function planUriBatches(
   uris: readonly string[],

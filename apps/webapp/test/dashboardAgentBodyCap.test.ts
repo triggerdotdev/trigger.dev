@@ -72,9 +72,10 @@ describe("the dashboard agent's ingress cap", () => {
 
     // A client still uploading may see the reset rather than read the 413; either way the
     // request is over long before the body is.
-    const response = await postChunked(`${url}/env/dev/dashboard-agent/in/append`, oversized).catch(
-      () => undefined
-    );
+    const response = await postChunked(
+      `${url}/resources/orgs/acme/projects/site/env/dev/dashboard-agent/in/append`,
+      oversized
+    ).catch(() => undefined);
 
     if (response) expect(response.status).toBe(413);
     expect(buffered()).toBeLessThan(oversized / 2);
@@ -84,7 +85,7 @@ describe("the dashboard agent's ingress cap", () => {
     const { url } = await listen();
 
     const response = await postChunked(
-      `${url}/env/dev/dashboard-agent/in/append`,
+      `${url}/resources/orgs/acme/projects/site/env/dev/dashboard-agent/in/append`,
       DASHBOARD_AGENT_MAX_INGRESS_BYTES + 32 * 1024
     );
 
@@ -94,11 +95,14 @@ describe("the dashboard agent's ingress cap", () => {
 
   it("refuses a declared oversized body before reading anything", async () => {
     const { url, buffered } = await listen();
-    const response = await fetch(`${url}/env/dev/dashboard-agent`, {
-      method: "POST",
-      headers: { "content-type": "text/plain" },
-      body: "x".repeat(DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1),
-    });
+    const response = await fetch(
+      `${url}/resources/orgs/acme/projects/site/env/dev/dashboard-agent`,
+      {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: "x".repeat(DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1),
+      }
+    );
 
     expect(response.status).toBe(413);
     expect(buffered()).toBe(0);
@@ -108,7 +112,10 @@ describe("the dashboard agent's ingress cap", () => {
     const { url } = await listen();
     const size = 32 * 1024;
 
-    const response = await postChunked(`${url}/env/dev/dashboard-agent`, size);
+    const response = await postChunked(
+      `${url}/resources/orgs/acme/projects/site/env/dev/dashboard-agent`,
+      size
+    );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ bytes: size });
@@ -141,6 +148,19 @@ describe("the dashboard agent's ingress cap", () => {
     const size = DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024;
 
     const response = await fetch(`${url}/api/v1/artifacts`, {
+      method: "POST",
+      body: "x".repeat(size),
+    });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(size);
+  });
+
+  it("does not cap a lookalike that only carries the chat segment mid-path", async () => {
+    const { url, buffered } = await listen();
+    const size = DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024;
+
+    const response = await fetch(`${url}/api/v1/runs/env/dev/dashboard-agent`, {
       method: "POST",
       body: "x".repeat(size),
     });
