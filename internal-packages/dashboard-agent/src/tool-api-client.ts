@@ -42,11 +42,12 @@ const GET_TIMEOUT_MS = 10_000;
 const JWT_TIMEOUT_MS = 10_000;
 const QUERY_TIMEOUT_MS = 30_000;
 
-// "query" is the server rejecting the TRQL, "transport" is the request breaking. Chart
+// "query" is the server rejecting the TRQL, "transport" is the request breaking, "busy" is
+// the server too loaded or rate limited to answer — the same query may work shortly. Chart
 // validation only fails a render on "query".
 export type QueryPostResult =
   | { ok: true; rows: Array<Record<string, unknown>> }
-  | { ok: false; kind: "query" | "transport"; error: string };
+  | { ok: false; kind: "query" | "transport" | "busy"; error: string };
 
 export const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
@@ -215,6 +216,15 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     // The route returns 400 with { error } for invalid TRQL.
     const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
     if (!res.ok) {
+      // 429 is the concurrency rejection and the rate limiter: nothing is wrong with the
+      // query, so it is not a query error.
+      if (res.status === 429) {
+        return {
+          ok: false,
+          kind: "busy",
+          error: `${data.error ?? "The query service is busy right now."} You can retry the same query shortly.`,
+        };
+      }
       return {
         ok: false,
         kind: res.status >= 500 ? "transport" : "query",
@@ -234,7 +244,7 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   ): Promise<string | null> {
     const result = await postQuery(query, period);
     if (isEnvUnavailable(result) || result.ok) return null;
-    if (result.kind === "transport") {
+    if (result.kind === "transport" || result.kind === "busy") {
       logger.warn("Skipped chart query validation", { error: result.error });
       return null;
     }

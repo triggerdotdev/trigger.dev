@@ -1,46 +1,55 @@
-import type { UIMessage } from "@ai-sdk/react";
-import { useEffect, useState } from "react";
-import { countUserMessages, resolveMessageQuota, type MessageQuota } from "./message-quota";
+import { useEffect, useRef, useState } from "react";
+import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { resolveMessageQuota, type MessageQuota } from "./message-quota";
 
-// Always undefined until billing supplies plan detection, which means no cap.
+// Gated on billing PRESENCE, not the plan value: no subscription means billing isn't wired
+// up (self-hosted), so there is no cap and no upgrade UI. A wired-up, non-paying plan is free.
 function useIsFreePlan(): boolean | undefined {
-  return undefined;
+  const subscription = useCurrentPlan()?.v3Subscription;
+  if (!subscription) return undefined;
+  return subscription.isPaying === false;
 }
 
-// Counted in two halves: the server aggregates other chats, this chat's own count
-// comes from the live transcript so the message just sent counts immediately.
+// `used` is the server's per-period count for the org. Re-read once a turn settles — the
+// server increment happens mid-turn in the `.in` proxy, so reading on optimistic append
+// would lag the count by one message and show the cap a message late.
 export function useAgentMessageQuota({
   actionPath,
   chatId,
-  messages,
+  status,
 }: {
   actionPath: string;
   chatId: string;
-  messages: UIMessage[];
+  status: string;
 }): MessageQuota {
   const isFreePlan = useIsFreePlan();
-  const [usedElsewhere, setUsedElsewhere] = useState<number | undefined>(undefined);
+  const [used, setUsed] = useState<number | undefined>(undefined);
+
+  // Bumped each time the status leaves streaming/submitted, which drives the re-read.
+  const [settleTick, setSettleTick] = useState(0);
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
+    const nowSettled = status === "ready" || status === "error";
+    prevStatus.current = status;
+    if (wasInFlight && nowSettled) setSettleTick((tick) => tick + 1);
+  }, [status]);
 
   useEffect(() => {
     if (isFreePlan !== true) return;
     const controller = new AbortController();
     void (async () => {
       try {
-        const res = await fetch(`${actionPath}?quota=1&chatId=${encodeURIComponent(chatId)}`, {
-          signal: controller.signal,
-        });
+        const res = await fetch(`${actionPath}?quota=1`, { signal: controller.signal });
         if (!res.ok) return;
         const data = (await res.json()) as { used?: number };
-        if (typeof data.used === "number") setUsedElsewhere(data.used);
+        if (typeof data.used === "number") setUsed(data.used);
       } catch {
         // Leave the count unknown, which means no cap. See `resolveMessageQuota`.
       }
     })();
     return () => controller.abort();
-  }, [isFreePlan, actionPath, chatId]);
+  }, [isFreePlan, actionPath, chatId, settleTick]);
 
-  return resolveMessageQuota({
-    isFreePlan,
-    used: usedElsewhere === undefined ? undefined : usedElsewhere + countUserMessages(messages),
-  });
+  return resolveMessageQuota({ isFreePlan, used });
 }

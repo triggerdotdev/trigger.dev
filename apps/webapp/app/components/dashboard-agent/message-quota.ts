@@ -27,6 +27,28 @@ export function resolveMessageQuota({
     : { kind: "within", used, limit, remaining };
 }
 
+// The server code both the create and `in` paths refuse with. The client owns the copy,
+// so this code must never reach the UI as text.
+export const MESSAGE_QUOTA_REACHED_ERROR = "message_quota_reached";
+
+// Maps a 403 refusal body to the cap signal, or null for any other error. Both paths use
+// this so a `message_quota_reached` code routes to the upgrade block, never a raw toast.
+export function parseQuotaReachedResponse(
+  status: number,
+  data: { error?: string; limit?: number } | null | undefined
+): { limit: number } | null {
+  if (status === 403 && data?.error === MESSAGE_QUOTA_REACHED_ERROR) {
+    return { limit: data.limit ?? FREE_PLAN_MESSAGE_LIMIT };
+  }
+  return null;
+}
+
+// The upgrade block's sentence. Pure so the copy is asserted directly, and so the raw
+// server code can never be what the user reads.
+export function messageQuotaReachedCopy(limit: number): string {
+  return `You've used all ${limit} messages included on the Free plan. Your chats stay here to read.`;
+}
+
 // A watch's consent record is a user message the person never typed, so it is
 // excluded here exactly as the stored count excludes it.
 export function countUserMessages(messages: { role: string; id?: string }[]): number {

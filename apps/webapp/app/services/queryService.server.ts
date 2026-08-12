@@ -397,6 +397,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         ...getDefaultClickhouseSettings(),
         ...queryCacheSettings,
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
+        readonly: "1", // Not overridable: every query through here is read-only.
       },
       querySettings: {
         maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
