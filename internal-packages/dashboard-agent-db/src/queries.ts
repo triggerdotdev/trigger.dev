@@ -1,5 +1,6 @@
 import {
   investigationBlockSchema,
+  toWellFormedDeep,
   VIEW_BLOCK_VERSION,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
@@ -256,7 +257,7 @@ export async function createChat(
       organizationId: params.organizationId,
       userId: params.userId,
       title: params.title ?? DEFAULT_CHAT_TITLE,
-      metadata: params.metadata ?? {},
+      metadata: toWellFormedDeep(params.metadata ?? {}),
     })
     .onConflictDoNothing();
 }
@@ -446,8 +447,9 @@ async function storeChatMessages(
   tx: DashboardAgentDbOrTx,
   params: { chatId: string; messages: unknown[]; finalizable?: ReadonlySet<string> }
 ): Promise<void> {
+  // Every batch write lands here, so this is where a lone surrogate stops before jsonb.
   const deduped = new Map<string, unknown>();
-  for (const message of params.messages) {
+  for (const message of toWellFormedDeep(params.messages)) {
     const id = messageIdOf(params.chatId, message);
     if (deduped.has(id)) {
       throw new Error(`Chat ${params.chatId} was handed message id ${id} twice in one batch`);
@@ -568,7 +570,9 @@ async function appendOneMessage(
   db: DashboardAgentDbOrTx,
   params: { chatId: string; message: unknown; scope: SQL[] }
 ): Promise<boolean> {
-  const messageId = messageIdOf(params.chatId, params.message);
+  // Single-message appends land here — normalize like storeChatMessages.
+  const message = toWellFormedDeep(params.message);
+  const messageId = messageIdOf(params.chatId, message);
   const rows = await db.execute<{ message_id: string }>(sql`
     with reserved as (
       update ${chats}
@@ -585,8 +589,8 @@ async function appendOneMessage(
       returning "next_message_position" - 1 as "position"
     )
     insert into ${chatMessages} ("chat_id", "message_id", "position", "role", "message")
-    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.chatId, params.message)},
-           ${JSON.stringify(params.message)}::jsonb
+    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.chatId, message)},
+           ${JSON.stringify(message)}::jsonb
     from reserved
     on conflict ("chat_id", "message_id") do nothing
     returning "message_id"
@@ -740,7 +744,7 @@ export async function persistTurn(
 
 /** Idempotent on `(chatId, turn)`: a retried eval task can't write a second row. */
 export async function insertTurnEval(db: DashboardAgentDb, row: NewChatTurnEval): Promise<void> {
-  await db.insert(chatTurnEvals).values(row).onConflictDoNothing();
+  await db.insert(chatTurnEvals).values(toWellFormedDeep(row)).onConflictDoNothing();
 }
 
 /**
@@ -864,6 +868,7 @@ export async function upsertInvestigationRevision(
     state: unknown;
   }
 ): Promise<UpsertInvestigationResult> {
+  const state = toWellFormedDeep(params.state);
   if (!params.id) {
     const id = generateInvestigationId();
     await db.insert(investigations).values({
@@ -872,7 +877,7 @@ export async function upsertInvestigationRevision(
       projectRef: params.projectRef,
       environmentRef: params.environmentRef,
       revision: 0,
-      state: params.state,
+      state,
     });
     return { ok: true, id, revision: 0, created: true };
   }
@@ -880,7 +885,7 @@ export async function upsertInvestigationRevision(
   const rows = await db
     .update(investigations)
     .set({
-      state: params.state,
+      state,
       revision: sql`${investigations.revision} + 1`,
       updatedAt: sql`now()`,
     })
@@ -938,7 +943,7 @@ export async function seedInvestigation(
       projectRef: params.projectRef,
       environmentRef: params.environmentRef,
       revision: 0,
-      state: params.state,
+      state: toWellFormedDeep(params.state),
     })
     .onConflictDoNothing({ target: investigations.id })
     .returning({ id: investigations.id });
