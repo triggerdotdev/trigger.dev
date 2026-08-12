@@ -17,6 +17,7 @@ import {
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import {
   agentTurnCountsAgainstQuota,
   recordAgentMessageSent,
@@ -136,6 +137,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (checkMessageParts(parsed.payload.message?.parts) !== null) {
         return tooLarge();
       }
+
+      wellFormMessageText(parsed.payload.message?.parts);
 
       // Only a real user message consumes quota; action turns were refused above.
       countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);

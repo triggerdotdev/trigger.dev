@@ -50,6 +50,7 @@ import {
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -298,6 +299,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     ) {
       return messageTooLarge();
     }
+
+    wellFormMessageText(firstMessage.parts);
 
     const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
       organizationId: project.organizationId,
