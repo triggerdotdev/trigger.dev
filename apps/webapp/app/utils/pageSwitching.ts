@@ -23,8 +23,16 @@ const NESTED_PORTABLE_PAGES = [
 /** The branch lists render under any environment of their project, but not in every project. */
 export const PROJECT_SPECIFIC_PAGES = ["branches", "dev-branches"];
 
-/** Gated by an organization feature flag, so their loaders turn you away in an organization without it. */
-export const ORGANIZATION_SPECIFIC_PAGES = ["logs", "query", "dashboards/queues"];
+/**
+ * Gated on the organization — by a feature flag, or by the role the caller holds there — so their
+ * loaders turn you away in an organization that answers differently.
+ */
+export const ORGANIZATION_SPECIFIC_PAGES = [
+  "logs",
+  "query",
+  "dashboards/queues",
+  "settings/integrations",
+];
 
 /**
  * Pages whose last segment is a name the user's code or the model catalog decides, rather than an
@@ -40,6 +48,13 @@ export const SLUG_ADDRESSED_PAGES = [
   "tasks/standard",
   "test/tasks",
 ];
+
+/**
+ * Pages whose last segment is an id the organization issued rather than one environment, so the
+ * same address names the same resource in every environment of the project. Another organization
+ * never issued that id, so only an environment switch carries it.
+ */
+export const ORGANIZATION_ADDRESSED_PAGES = ["dashboards/custom"];
 
 /** Every page below an environment that names no resource, so any environment can render it. */
 export const ENVIRONMENT_PORTABLE_PAGES: ReadonlySet<string> = new Set(
@@ -76,12 +91,18 @@ function nearestPage(suffix: string, pages: ReadonlySet<string>): string {
 }
 
 /**
- * `suffix` itself when it is a slug-addressed page, as long as the slug is a single plain segment —
- * a traversal or an encoded path in its place falls through to the list page above it.
+ * `suffix` itself when its last segment names the same thing in every environment, as long as that
+ * segment is a single plain one — a traversal or an encoded path in its place falls through to the
+ * list page above it.
  */
-function slugAddressedPage(suffix: string): string | undefined {
+function environmentNeutralPage(suffix: string): string | undefined {
   const boundary = suffix.lastIndexOf("/");
-  if (boundary < 1 || !SLUG_ADDRESSED_PAGES.includes(suffix.slice(0, boundary))) return undefined;
+  if (boundary < 1) return undefined;
+
+  const list = suffix.slice(0, boundary);
+  if (!SLUG_ADDRESSED_PAGES.includes(list) && !ORGANIZATION_ADDRESSED_PAGES.includes(list)) {
+    return undefined;
+  }
 
   let slug: string;
   try {
@@ -95,7 +116,7 @@ function slugAddressedPage(suffix: string): string | undefined {
 
 /** The page to keep when only the environment changes. */
 export function environmentPortablePage(suffix: string): string {
-  return slugAddressedPage(suffix) ?? nearestPage(suffix, ENVIRONMENT_PORTABLE_PAGES);
+  return environmentNeutralPage(suffix) ?? nearestPage(suffix, ENVIRONMENT_PORTABLE_PAGES);
 }
 
 /** The page to keep when the project changes. */

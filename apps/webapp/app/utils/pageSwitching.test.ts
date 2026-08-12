@@ -8,6 +8,7 @@ import {
   ENVIRONMENT_MATCH_ID,
   ENVIRONMENT_PORTABLE_PAGES,
   environmentPortablePage,
+  ORGANIZATION_ADDRESSED_PAGES,
   ORGANIZATION_PORTABLE_PAGES,
   ORGANIZATION_SPECIFIC_PAGES,
   organizationPortablePage,
@@ -56,17 +57,38 @@ const GATE_REJECTS_VIA_FLAG = new RegExp(
   String.raw`const canAccess = await ${ORGANIZATION_GATE};\s*if \(!canAccess\) \{\s*throw`
 );
 
+// A role the caller holds in one organization but not the next: an `authorization` block on the
+// loader, or the denial thrown directly for a check the block cannot express.
+const GATE_REJECTS_ON_ROLE = /throwPermissionDenied\(|authorization: \{/;
+
+/** The loader's half of a route module, so a gate on its action is not read as a gate on landing. */
+function loaderSource(source: string): string {
+  const start = source.search(/^export (?:const|async function) loader\b/m);
+  if (start < 0) return "";
+
+  const loaderOnwards = source.slice(start);
+  const next = loaderOnwards.slice(1).search(/^export (?:const|async function|default)/m);
+
+  return next < 0 ? loaderOnwards : loaderOnwards.slice(0, next + 1);
+}
+
 /**
- * The page a loader turns you away from when an organization-scoped check says no, whether it
- * sends you home or 404s. A gate that only covers one value of a route param names that page; an
- * unconditional gate on a route that takes a resource id names nothing, since a page with an id in
- * it is never portable anyway.
+ * The page a loader turns you away from when a check the organization answers says no, whether it
+ * sends you home, 404s or renders the permission panel. A gate that only covers one value of a
+ * route param names that page; a gate on a route that takes a resource id names nothing, since a
+ * page with an id in it is never portable anyway.
  */
 function organizationGatedPage(suffix: string, file: string): string | undefined {
   const source = readFileSync(join(APP_DIR, file), "utf8");
   const guarded = GATE_REJECTS.exec(source);
 
-  if (guarded === null) return GATE_REJECTS_VIA_FLAG.test(source) ? suffix : undefined;
+  if (guarded === null) {
+    if (GATE_REJECTS_VIA_FLAG.test(source)) return suffix;
+
+    return GATE_REJECTS_ON_ROLE.test(loaderSource(source)) && !suffix.includes(":")
+      ? suffix
+      : undefined;
+  }
 
   const [, param, key] = guarded;
   if (param === undefined) return suffix.includes(":") ? undefined : suffix;
@@ -80,10 +102,18 @@ const belowEnvironment = Object.values(compiledRoutes)
     const suffix = compiledUrl(route.id).slice(ENVIRONMENT_URL.length).replace(/^\//, "");
     return {
       suffix,
+      file: route.file,
       rendersAPage: rendersAPage(route.file),
       organizationGatedPage: organizationGatedPage(suffix, route.file),
     };
   });
+
+function sourceOf(suffix: string): string {
+  const route = belowEnvironment.find((route) => route.suffix === suffix);
+  if (!route) throw new Error(`no route below the environment at ${suffix}`);
+
+  return readFileSync(join(APP_DIR, route.file), "utf8");
+}
 
 const environmentRoutes = [...new Set(belowEnvironment.map((route) => route.suffix))];
 
@@ -102,7 +132,11 @@ function listAbove(page: string): string {
 }
 
 const slugAddressedProbes = probes.filter((page) => SLUG_ADDRESSED_PAGES.includes(listAbove(page)));
-const idAddressedProbes = probes.filter((page) => !SLUG_ADDRESSED_PAGES.includes(listAbove(page)));
+const organizationAddressedProbes = probes.filter((page) =>
+  ORGANIZATION_ADDRESSED_PAGES.includes(listAbove(page))
+);
+const environmentKeptProbes = [...slugAddressedProbes, ...organizationAddressedProbes];
+const idAddressedProbes = probes.filter((page) => !environmentKeptProbes.includes(page));
 
 function matchesARoute(page: string): boolean {
   const wanted = page === "" ? [] : page.split("/");
@@ -257,14 +291,28 @@ describe("pages an organization switch cannot carry", () => {
     expect(gated).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
   });
 
-  it("are read from both ways a loader turns you away, so neither stops being noticed", () => {
+  it("are read from every way a loader turns you away, so none stops being noticed", () => {
     const gatedPage = (suffix: string) =>
       belowEnvironment.find((route) => route.suffix === suffix)?.organizationGatedPage;
 
     expect(gatedPage("logs")).toBe("logs");
     expect(gatedPage("dashboards/:dashboardKey")).toBe("dashboards/queues");
+    expect(gatedPage("settings/integrations")).toBe("settings/integrations");
+    expect(gatedPage("bulk-actions/:bulkActionParam")).toBeUndefined();
     expect(gatedPage("queues/:queueParam")).toBeUndefined();
     expect(gatedPage("apikeys")).toBeUndefined();
+  });
+
+  it("read a role gate off the loader, not off an action the page never runs on landing", () => {
+    const gatedAction = [
+      "export const loader = dashboardLoader({ params: Schema }, async () => {});",
+      "",
+      'export const action = dashboardAction({ authorization: { action: "write" } }, async () => {});',
+    ].join("\n");
+
+    expect(GATE_REJECTS_ON_ROLE.test(gatedAction)).toBe(true);
+    expect(GATE_REJECTS_ON_ROLE.test(loaderSource(gatedAction))).toBe(false);
+    expect(GATE_REJECTS_ON_ROLE.test(loaderSource(sourceOf("settings/integrations")))).toBe(true);
   });
 
   it("still travel with an environment or project switch, which stay in the same organization", () => {
@@ -277,7 +325,16 @@ describe("pages an organization switch cannot carry", () => {
     }
   });
 
-  it("stay put when only the environment changes", () => {
+  it("stay put when only the environment or project changes", () => {
+    expect(projectPortablePage("settings/integrations")).toBe("settings/integrations");
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("settings/integrations"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "prod",
+      })
+    ).toBe("/orgs/acme/projects/api/env/prod/settings/integrations");
+
     expect(
       pathForEnvironmentSwitch({
         location: locationOn("dashboards/queues", "?period=1d"),
@@ -311,6 +368,7 @@ describe("pages an organization switch cannot carry", () => {
     expect(read("?page=logs")).toBe("");
     expect(read("?page=query")).toBe("");
     expect(read("?page=dashboards/queues")).toBe("dashboards");
+    expect(read("?page=settings/integrations")).toBe("settings");
     expect(read("?page=apikeys")).toBe("apikeys");
   });
 });
@@ -422,6 +480,43 @@ describe("pages named after something the environment did not issue", () => {
   });
 });
 
+describe("pages named after an id the organization issued", () => {
+  it("are the ones a route below them takes an id its organization, not its environment, holds", () => {
+    expect(organizationAddressedProbes.length).toBeGreaterThan(0);
+    expect([...new Set(organizationAddressedProbes.map(listAbove))].sort()).toEqual(
+      [...ORGANIZATION_ADDRESSED_PAGES].sort()
+    );
+
+    for (const page of organizationAddressedProbes) {
+      expect(environmentPortablePage(page)).toBe(page);
+    }
+  });
+
+  it("stay open when only the environment changes, since the same id opens them there", () => {
+    expect(
+      pathForEnvironmentSwitch({
+        location: locationOn("dashboards/custom/dashboard_123", "?period=1d"),
+        environmentPathname: environmentLocation.pathname,
+        environmentSlug: "prod",
+      })
+    ).toBe("/orgs/acme/projects/api/env/prod/dashboards/custom/dashboard_123?period=1d");
+  });
+
+  it("fall back to the dashboard list when the project or organization changes", () => {
+    expect(projectPortablePage("dashboards/custom/dashboard_123")).toBe("dashboards");
+    expect(organizationPortablePage("dashboards/custom/dashboard_123")).toBe("dashboards");
+  });
+
+  it("keep nothing but a single plain id in that last segment", () => {
+    expect(environmentPortablePage("dashboards/custom/..%2f..%2flogin")).toBe("dashboards");
+    expect(environmentPortablePage("dashboards/custom/../../login")).toBe("dashboards");
+    expect(environmentPortablePage("dashboards/custom/%2e%2e")).toBe("dashboards");
+    expect(environmentPortablePage("dashboards/custom/..")).toBe("dashboards");
+    expect(environmentPortablePage("dashboards/custom/")).toBe("dashboards");
+    expect(environmentPortablePage("dashboards/custom/dashboard_123/extra")).toBe("dashboards");
+  });
+});
+
 describe("a page suffix that is not a plain relative page", () => {
   it("falls back to the environment root rather than being sanitised into one", () => {
     expect(projectPortablePage("/apikeys")).toBe("");
@@ -458,6 +553,7 @@ describe("a page suffix that is not a plain relative page", () => {
       "tasks/standard/../../login",
       "agents/..%2f..%2flogin",
       "models/%2f%2fevil.example.com",
+      "dashboards/custom/..%2f..%2flogin",
     ];
 
     for (const attempt of attempts) {
