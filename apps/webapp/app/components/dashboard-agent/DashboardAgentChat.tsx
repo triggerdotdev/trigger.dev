@@ -17,6 +17,7 @@ import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
+import { FREE_PLAN_MESSAGE_LIMIT, parseQuotaReachedResponse } from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
@@ -102,6 +103,9 @@ export function DashboardAgentChat({
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
+  // Set when the server refuses a send over the cap, so the block shows at once rather than
+  // waiting for the next quota poll.
+  const [quotaReached, setQuotaReached] = useState<{ limit: number } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -127,6 +131,18 @@ export function DashboardAgentChat({
           .json()
           .catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? MESSAGE_TOO_LARGE_ERROR);
+      }
+      // Over the message cap: show the upgrade block instead of a generic turn error.
+      if (res.status === 403) {
+        const data = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as { error?: string; limit?: number } | null;
+        const reached = parseQuotaReachedResponse(res.status, data);
+        if (reached) {
+          setQuotaReached(reached);
+          throw new Error("You've reached your message limit.");
+        }
       }
       return res;
     },
@@ -185,9 +201,12 @@ export function DashboardAgentChat({
   const orderRef = useRef(createTranscriptOrder(initialMessages));
   const messages = orderTranscript(rawMessages, orderRef.current);
 
-  // Counted here, not in the panel, so it includes the turn just sent.
-  const quota = useAgentMessageQuota({ actionPath, chatId, messages });
-  const atMessageCap = quota.kind === "reached";
+  // Read here, not in the panel, so it re-reads as each turn settles.
+  const quota = useAgentMessageQuota({ actionPath, chatId, status });
+  // Either the poll saw the cap, or a send was just refused over it.
+  const atMessageCap = quota.kind === "reached" || quotaReached !== null;
+  const messageCapLimit =
+    quotaReached?.limit ?? (quota.kind === "reached" ? quota.limit : FREE_PLAN_MESSAGE_LIMIT);
 
   const isStreaming = status === "streaming";
   // From status, not the last part: the indicator must stay up through silent tool calls.
@@ -252,6 +271,8 @@ export function DashboardAgentChat({
   }, [sendRequest, submit, canSend]);
 
   const retry = useCallback(() => {
+    // Over the cap, a retry only earns another 403 — same guard as `submit`.
+    if (atMessageCap) return;
     // A watch's consent record is a user message nobody typed, so retry never treats it as one.
     const action = retryAction(
       messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
@@ -264,7 +285,7 @@ export function DashboardAgentChat({
       return;
     }
     void sendMessage({ text: action.text, messageId: action.messageId });
-  }, [messages, sendMessage, regenerate, clearError]);
+  }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
@@ -414,9 +435,9 @@ export function DashboardAgentChat({
         />
       )}
       {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
-      {quota.kind === "reached" ? (
+      {atMessageCap ? (
         <AgentUpgradeBlock
-          limit={quota.limit}
+          limit={messageCapLimit}
           context={
             <DashboardAgentContextBanner
               projectSlug={projectSlug}
