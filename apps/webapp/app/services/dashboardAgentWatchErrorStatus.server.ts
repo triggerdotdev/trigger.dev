@@ -6,6 +6,7 @@ import type { SubmitWatchErrorCode } from "./dashboardAgentWatches.server";
  */
 const STATUS_BY_CODE: Record<SubmitWatchErrorCode, number> = {
   limit_reached: 409,
+  watch_limit_reached: 409,
   duplicate: 409,
   request_conflict: 409,
   invalid_target: 404,

@@ -8,6 +8,7 @@ import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
+  agentMessageUsage,
   chatMessages,
   chats,
   chatSessions,
@@ -124,6 +125,45 @@ export async function countUserMessages(
       )
     );
   return rows[0]?.count ?? 0;
+}
+
+/**
+ * The message count for one org in one billing period. Reads the standalone counter,
+ * never the chat rows, so a deleted chat can't lower it within the period. `period` is
+ * a UTC calendar month, "YYYY-MM"; the caller chooses it.
+ */
+export async function getAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: agentMessageUsage.count })
+    .from(agentMessageUsage)
+    .where(
+      and(
+        eq(agentMessageUsage.organizationId, params.organizationId),
+        eq(agentMessageUsage.period, params.period)
+      )
+    )
+    .limit(1);
+  return rows[0]?.count ?? 0;
+}
+
+/** Bump the counter by one, creating the period row on first use. Returns the new count. */
+export async function incrementAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string; by?: number }
+): Promise<number> {
+  const by = params.by ?? 1;
+  const rows = await db
+    .insert(agentMessageUsage)
+    .values({ organizationId: params.organizationId, period: params.period, count: by })
+    .onConflictDoUpdate({
+      target: [agentMessageUsage.organizationId, agentMessageUsage.period],
+      set: { count: sql`${agentMessageUsage.count} + ${by}`, updatedAt: sql`now()` },
+    })
+    .returning({ count: agentMessageUsage.count });
+  return rows[0]?.count ?? by;
 }
 
 /**
@@ -1045,6 +1085,10 @@ export async function listChatIdsWithOpenInvestigations(
 /**
  * Sweep for investigations nothing else settles. `olderThan` is on `updated_at`,
  * which every revision bumps, so a card a live turn is writing to stays out.
+ *
+ * Order is `last_sweep_attempt_at` nulls first, then `updated_at`: a never-attempted
+ * row is always seen before one a prior sweep already failed on, so a row that can't
+ * settle rotates to the back instead of pinning the head and starving newer rows.
  */
 export async function listStaleOpenInvestigations(
   db: DashboardAgentDb,
@@ -1062,10 +1106,37 @@ export async function listStaleOpenInvestigations(
         sql`${investigations.updatedAt} <= ${params.olderThan.toISOString()}::timestamptz`
       )
     )
-    .orderBy(investigations.updatedAt)
+    .orderBy(sql`${investigations.lastSweepAttemptAt} asc nulls first`, investigations.updatedAt)
     .limit(params.limit ?? 100);
 
   return rows.map((row) => row.investigation);
+}
+
+/**
+ * Record a failed stale-sweep settle on its own, committed outside the settle tx that
+ * rolled back. Bumps the attempt count and stamps `last_sweep_attempt_at` — which does
+ * NOT touch `updated_at`, so the row still reads as stale, only later in the order.
+ * Returns the new count, or null when the row is no longer `in_progress`.
+ */
+export async function recordInvestigationSweepAttempt(
+  db: DashboardAgentDbOrTx,
+  params: { id: string }
+): Promise<number | null> {
+  const rows = await db
+    .update(investigations)
+    .set({
+      sweepAttempts: sql`${investigations.sweepAttempts} + 1`,
+      lastSweepAttemptAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(investigations.id, params.id),
+        sql`${investigations.state}->>'outcome' = 'in_progress'`
+      )
+    )
+    .returning({ sweepAttempts: investigations.sweepAttempts });
+
+  return rows[0]?.sweepAttempts ?? null;
 }
 
 /** What the settle wrote, which is what the closing card has to render. */
