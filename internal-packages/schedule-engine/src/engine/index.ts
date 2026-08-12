@@ -87,9 +87,12 @@ export class ScheduleEngine {
       description: "Total number of absolute schedule windows capped at the next nominal interval",
     });
 
-    this.schedulePhasePersistedCounter = this.meter.createCounter("schedule_phase_persisted_total", {
-      description: "Total number of schedule phases persisted during registration",
-    });
+    this.schedulePhasePersistedCounter = this.meter.createCounter(
+      "schedule_phase_persisted_total",
+      {
+        description: "Total number of schedule phases persisted during registration",
+      }
+    );
 
     this.devEnvironmentCheckCounter = this.meter.createCounter("dev_environment_checks_total", {
       description: "Total number of development environment connectivity checks",
@@ -221,7 +224,6 @@ export class ScheduleEngine {
         const registrationTime = new Date();
         const fromTimestamp = params.fromTimestamp ?? registrationTime;
         span.setAttribute("from_timestamp", fromTimestamp.toISOString());
-
 
         const {
           nominalAt,

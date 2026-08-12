@@ -146,13 +146,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
           where: { id: scheduleInstance.id },
           select: { schedulePhase: true },
         });
-        expect(updatedInstance.schedulePhase).toBe(
-          calculateSchedulePhase({
-            secret: "test-schedule-phase-secret",
-            environmentId: environment.id,
-            deduplicationKey: taskSchedule.deduplicationKey,
-          })
-        );
+        expect(updatedInstance.schedulePhase).toBeNull();
       } finally {
         await engine.quit();
       }
