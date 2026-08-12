@@ -437,6 +437,7 @@ export function DashboardAgentChat({
           activity={activity}
           error={error}
           onRetry={retry}
+          retryDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
           onDismissError={clearError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
