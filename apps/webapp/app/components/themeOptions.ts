@@ -1,7 +1,8 @@
-import { ComputerDesktopIcon, SwatchIcon } from "@heroicons/react/24/outline";
+import { SwatchIcon } from "@heroicons/react/24/outline";
 import { type FunctionComponent } from "react";
 import { CircleFilledIcon } from "~/assets/icons/CircleFilledIcon";
 import { CircleOutlineIcon } from "~/assets/icons/CircleOutlineIcon";
+import { MonitorIcon } from "~/assets/icons/MonitorIcon";
 import { MoonIcon } from "~/assets/icons/MoonIcon";
 import { SunIcon } from "~/assets/icons/SunIcon";
 import { type ThemeAppearance } from "~/hooks/useSystemThemeSync";
@@ -17,7 +18,7 @@ export type ThemeOption = {
  *  popover's submenu. Shared by every theme picker so the labels and icons
  *  can't drift apart. */
 export const THEME_OPTIONS: ThemeOption[] = [
-  { value: "system", label: "System", icon: ComputerDesktopIcon },
+  { value: "system", label: "System", icon: MonitorIcon },
   { value: "light", label: "Light", icon: SunIcon },
   { value: "dark", label: "Dark", icon: MoonIcon },
 ];
