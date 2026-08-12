@@ -101,7 +101,10 @@ export function pageBelowEnvironment(
 ): string {
   if (environmentPathname === undefined || !pathname.startsWith(environmentPathname)) return "";
 
-  return pathname.slice(environmentPathname.length).replace(/^\/+/, "");
+  const below = pathname.slice(environmentPathname.length);
+  if (below !== "" && !below.startsWith("/")) return "";
+
+  return below.replace(/^\/+/, "");
 }
 
 /** The current page in another environment of the same project, keeping filters where they apply. */

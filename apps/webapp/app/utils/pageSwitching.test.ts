@@ -437,6 +437,14 @@ describe("pageBelowEnvironment", () => {
     expect(pageBelowEnvironment("/account/tokens", environmentLocation.pathname)).toBe("");
     expect(pageBelowEnvironment("/orgs/acme/settings/team", environmentLocation.pathname)).toBe("");
   });
+
+  it("gives nothing when the environment path only prefixes the one in the page path", () => {
+    const branch = "/orgs/acme/projects/api/env/preview-feat";
+
+    expect(pageBelowEnvironment(`${branch}-2/runs`, branch)).toBe("");
+    expect(pageBelowEnvironment(`${branch}-2`, branch)).toBe("");
+    expect(pageBelowEnvironment(`${branch}/runs`, branch)).toBe("runs");
+  });
 });
 
 describe("pathForEnvironmentSwitch", () => {
