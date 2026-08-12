@@ -527,7 +527,8 @@ export function TierHobby({
                 <Button
                   variant="secondary/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  // A white spinner would vanish on this button's light surface
+                  LeadingIcon={isLoading ? () => <Spinner color="inherit" /> : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}

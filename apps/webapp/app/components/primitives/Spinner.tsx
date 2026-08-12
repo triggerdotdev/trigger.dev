@@ -11,7 +11,7 @@ export function Spinner({
   color = "blue",
 }: {
   className?: string;
-  color?: "blue" | "white" | "muted" | "dark" | CustomColor;
+  color?: "blue" | "white" | "muted" | "dark" | "inherit" | CustomColor;
 }) {
   const colors = {
     blue: {
@@ -22,13 +22,22 @@ export function Spinner({
       background: "rgba(255, 255, 255, 0.4)",
       foreground: "rgba(255, 255, 255)",
     },
+    /* Theme tokens rather than fixed values, so a muted spinner stays muted
+       against a light surface instead of staying dark-theme navy. */
     muted: {
-      background: "#1C2433",
-      foreground: "#3C4B62",
+      background: "var(--color-grid-bright)",
+      foreground: "var(--color-text-dimmed)",
     },
     dark: {
-      background: "rgba(18, 19, 23, 0.35)",
-      foreground: "#1A1B1F",
+      background: "color-mix(in srgb, var(--color-charcoal-900) 35%, transparent)",
+      foreground: "var(--color-charcoal-900)",
+    },
+    /* Takes the surrounding text color, so it follows both the theme and
+       whatever it sits on - white on a primary button, dark ink on a
+       secondary one once the theme is light. */
+    inherit: {
+      background: "color-mix(in srgb, currentColor 40%, transparent)",
+      foreground: "currentColor",
     },
   };
 

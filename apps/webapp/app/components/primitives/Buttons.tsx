@@ -351,8 +351,13 @@ export function ButtonContent(props: ButtonContentPropsType) {
             renderShortcutKey()}
         </div>
         {showSpinner && (
-          <span className="absolute inset-0 flex items-center justify-center">
-            <Spinner className="size-3.5" color="white" />
+          // Wears the variant's text color so the spinner tracks the button it's
+          // on: white on primary and danger, and dark ink on the neutral
+          // variants once the theme is light rather than white on near-white.
+          <span
+            className={cn("absolute inset-0 flex items-center justify-center", textColorClassName)}
+          >
+            <Spinner className="size-3.5" color="inherit" />
           </span>
         )}
       </div>
