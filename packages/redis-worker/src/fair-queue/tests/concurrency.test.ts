@@ -803,13 +803,15 @@ describe("ConcurrencyManager", () => {
         const inflightDataKey = keys.inflightDataKey(0);
 
         try {
-          await redis.sadd(concurrencyKey, "orphan-1", "orphan-2", "active-1");
+          const orphans = Array.from({ length: 1200 }, (_, i) => `orphan-${i}`);
+          await redis.sadd(concurrencyKey, ...orphans, "active-1", "active-2");
           await redis.hset(inflightDataKey, "active-1", "{}");
+          await redis.hset(inflightDataKey, "active-2", "{}");
 
           const result = await manager.sweepOrphanedSlots([inflightDataKey]);
 
-          expect(result.removed.sort()).toEqual(["orphan-1", "orphan-2"]);
-          expect(await redis.smembers(concurrencyKey)).toEqual(["active-1"]);
+          expect(result.removed.sort()).toEqual(orphans.sort());
+          expect((await redis.smembers(concurrencyKey)).sort()).toEqual(["active-1", "active-2"]);
         } finally {
           await redis.del(concurrencyKey);
           await redis.del(inflightDataKey);

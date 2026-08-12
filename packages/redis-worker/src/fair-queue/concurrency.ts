@@ -7,6 +7,12 @@ import type {
   QueueDescriptor,
 } from "./types.js";
 
+/**
+ * Caps how many set members a single sweep script invocation checks, bounding the time the
+ * atomic Lua script can hold up Redis when a set has accumulated many leaked members.
+ */
+const SWEEP_MEMBER_CHUNK_SIZE = 500;
+
 export interface ConcurrencyManagerOptions {
   redis: RedisOptions;
   keys: FairQueueKeyProducer;
@@ -198,7 +204,7 @@ export class ConcurrencyManager {
           "MATCH",
           pattern,
           "COUNT",
-          100
+          1000
         );
         cursor = nextCursor;
 
@@ -213,12 +219,15 @@ export class ConcurrencyManager {
             }
             scannedSets++;
 
-            const removedIds = await this.redis.removeOrphanedConcurrencySlots(
-              1 + inflightDataKeys.length,
-              [key, ...inflightDataKeys],
-              ...members
-            );
-            removed.push(...removedIds);
+            for (let i = 0; i < members.length; i += SWEEP_MEMBER_CHUNK_SIZE) {
+              const chunk = members.slice(i, i + SWEEP_MEMBER_CHUNK_SIZE);
+              const removedIds = await this.redis.removeOrphanedConcurrencySlots(
+                1 + inflightDataKeys.length,
+                [key, ...inflightDataKeys],
+                ...chunk
+              );
+              removed.push(...removedIds);
+            }
           } catch (error) {
             this.logger.error("Failed to sweep concurrency set, skipping it", {
               key,

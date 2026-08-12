@@ -2,7 +2,7 @@ import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
-import { setInterval } from "node:timers/promises";
+import { setInterval, setTimeout as delay } from "node:timers/promises";
 import { type z } from "zod";
 import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
@@ -665,7 +665,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Start reclaim loop for handling timed-out messages
     this.reclaimLoop = this.#runReclaimLoop();
 
-    if (this.concurrencyManager) {
+    if (this.concurrencyManager && this.reconcileIntervalMs > 0) {
       this.reconcileLoop = this.#runReconcileLoop();
     }
 
@@ -1650,8 +1650,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
   }
 
+  /**
+   * The initial delay is jittered so instances sharing a Redis do not all sweep at once.
+   */
   async #runReconcileLoop(): Promise<void> {
     try {
+      await delay(Math.random() * this.reconcileIntervalMs, null, {
+        signal: this.abortController.signal,
+      });
+
       for await (const _ of setInterval(this.reconcileIntervalMs, null, {
         signal: this.abortController.signal,
       })) {

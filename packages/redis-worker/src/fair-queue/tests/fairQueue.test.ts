@@ -2118,5 +2118,77 @@ describe("FairQueue", () => {
         }
       }
     );
+
+    redisTest(
+      "should not sweep when the reconcile interval is zero",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 0,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:sweep-disabled";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        const processed: string[] = [];
+
+        try {
+          await redis.sadd(concurrencyKey, "ghost-message");
+
+          queue.onMessage(async (ctx) => {
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toEqual(["msg-0"]);
+            },
+            { timeout: 5000 }
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          expect(await redis.sismember(concurrencyKey, "ghost-message")).toBe(1);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
   });
 });
