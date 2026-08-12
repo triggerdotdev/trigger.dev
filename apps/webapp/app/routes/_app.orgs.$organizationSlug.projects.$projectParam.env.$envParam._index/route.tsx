@@ -1,4 +1,4 @@
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
 
 import { useFetcher, useRevalidator } from "@remix-run/react";
@@ -92,6 +92,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
+  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3PlaygroundAgentPath,
@@ -102,6 +103,7 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -286,6 +288,15 @@ export default function Page() {
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/tasks/overview")}
+            >
+              Task docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

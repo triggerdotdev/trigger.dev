@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +17,7 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -42,12 +43,14 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUser } from "~/services/session.server";
 import {
+  docsPath,
   EnvironmentParamSchema,
   v3EnvironmentPath,
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -227,6 +230,17 @@ export default function Page() {
             </span>
           }
         />
+        <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("ai-chat/overview")}
+            >
+              Agents docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+        </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
         <MetricsLayout.Filters>

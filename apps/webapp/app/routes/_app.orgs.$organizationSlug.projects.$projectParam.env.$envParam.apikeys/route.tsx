@@ -1,4 +1,5 @@
 import {
+  BookOpenIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   KeyIcon,
@@ -74,8 +75,9 @@ import {
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -340,6 +342,16 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/v3/apikeys")}
+            >
+              API keys docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

@@ -1,4 +1,4 @@
-import { PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -49,11 +49,13 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
+  docsPath,
   EnvironmentParamSchema,
   v3BulkActionPath,
   v3CreateBulkActionPath,
 } from "~/utils/pathBuilder";
 import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -140,6 +142,15 @@ export default function Page() {
         <PageTitle title="Bulk actions" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/bulk-actions")}
+            >
+              Bulk actions docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <LinkButton
             variant="primary/small"
             LeadingIcon={PlusIcon}
