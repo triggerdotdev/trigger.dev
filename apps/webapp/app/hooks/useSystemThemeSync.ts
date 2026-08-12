@@ -1,5 +1,38 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { type ThemePreference } from "~/utils/themePreference";
+
+/** Which end of the scale a theme sits on. Classic and Black are dark; White is
+ *  light; `system` follows the OS. */
+export type ThemeAppearance = "dark" | "light";
+
+export function themeAppearance(
+  preference: ThemePreference,
+  prefersDark: boolean
+): ThemeAppearance {
+  if (preference === "system") return prefersDark ? "dark" : "light";
+  return preference === "light" || preference === "white" ? "light" : "dark";
+}
+
+/**
+ * The resolved appearance, tracking OS changes while the preference is `system`.
+ *
+ * Defaults to dark before the effect runs, matching the SSR fallback in root.tsx,
+ * so the first client render agrees with the server's.
+ */
+export function useThemeAppearance(preference: ThemePreference): ThemeAppearance {
+  const [prefersDark, setPrefersDark] = useState(true);
+
+  useEffect(() => {
+    if (preference !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => setPrefersDark(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [preference]);
+
+  return themeAppearance(preference, prefersDark);
+}
 
 /**
  * Puts a preference on <html> now, resolving `system` against the OS once. Use

@@ -1,4 +1,5 @@
-/** Solid circle — the Black theme, whose surfaces are filled flat. */
+/** Solid circle. Paired with {@link CircleOutlineIcon} by the Black and White
+ *  theme options — the filled disc reads as the opposite of the active theme. */
 export function CircleFilledIcon({ className }: { className?: string }) {
   return (
     <svg

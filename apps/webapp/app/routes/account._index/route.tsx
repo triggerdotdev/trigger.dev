@@ -35,11 +35,19 @@ import {
   useFavorites,
 } from "~/components/navigation/favoritePages";
 import { buildSideMenuSections } from "~/components/navigation/sideMenuSections";
-import { ALL_THEME_OPTIONS, THEME_OPTIONS_BY_VALUE } from "~/components/themeOptions";
+import {
+  ALL_THEME_OPTIONS,
+  THEME_OPTIONS_BY_VALUE,
+  themeOptionIcon,
+} from "~/components/themeOptions";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
-import { applyThemePreference } from "~/hooks/useSystemThemeSync";
+import {
+  applyThemePreference,
+  type ThemeAppearance,
+  useThemeAppearance,
+} from "~/hooks/useSystemThemeSync";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -74,8 +82,8 @@ const MIN_CONTRAST = 15;
  *  same as `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
 const DEFAULT_CONTRAST_MARK = 30;
 
-function themeIcon(value: ThemePreference) {
-  const Icon = THEME_OPTIONS_BY_VALUE[value].icon;
+function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
+  const Icon = themeOptionIcon(THEME_OPTIONS_BY_VALUE[value], appearance);
   // shrink-0: without it the icon is the flex item that gives way to a long
   // label, and "System"/"Classic" squash it to a sliver.
   return <Icon className="size-4 shrink-0 text-text-bright" />;
@@ -392,6 +400,9 @@ export default function Page() {
     typeof pendingTheme === "string"
       ? normalizeThemePreference(pendingTheme)
       : normalizeThemePreference(user.dashboardPreferences.theme);
+  // Black and White draw themselves against the active theme, so the icons
+  // follow the optimistic pick rather than waiting for the write to land.
+  const appearance = useThemeAppearance(theme);
 
   // Dragging previews the contrast via the CSS var before it persists; once the
   // save settles, resnap the page and the thumb to the stored value so a failed
@@ -545,7 +556,7 @@ export default function Page() {
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}
                       text={(value) => (
                         <span className="flex items-center gap-1.5">
-                          {themeIcon(value)}
+                          {themeIcon(value, appearance)}
                           {THEME_OPTIONS_BY_VALUE[value].label}
                         </span>
                       )}
@@ -561,7 +572,7 @@ export default function Page() {
                           <SelectItem
                             key={item}
                             value={item}
-                            icon={themeIcon(item)}
+                            icon={themeIcon(item, appearance)}
                             className="text-text-bright"
                           >
                             {THEME_OPTIONS_BY_VALUE[item].label}
