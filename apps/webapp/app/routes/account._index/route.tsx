@@ -679,8 +679,26 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-              {theme === "system" && (
-                <>
+              {/*
+                Which theme each end of the OS setting resolves to — only meaningful on
+                `system`, so the two rows slide and fade open when it's picked. Animating the
+                grid row track rather than a height keeps the rows at their natural size, and
+                the `visibility` transition holds them on screen while they collapse but
+                takes them out of the tab order once shut.
+              */}
+              <div
+                className="grid w-full transition-[grid-template-rows,opacity,visibility] duration-200 ease-in-out"
+                style={{
+                  gridTemplateRows: theme === "system" ? "1fr" : "0fr",
+                  opacity: theme === "system" ? 1 : 0,
+                  visibility: theme === "system" ? "visible" : "hidden",
+                }}
+              >
+                {/* Clips the rows as the track shrinks, and lets them shrink at all: a grid
+                    item only drops below its content height once its overflow isn't visible.
+                    Left unpositioned on purpose, so the theme selects' popovers — absolute,
+                    against a containing block further up — still escape it when open. */}
+                <div className="overflow-hidden">
                   <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                     <div className="flex w-full items-center justify-between gap-4">
                       <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
@@ -719,8 +737,8 @@ export default function Page() {
                       </div>
                     </div>
                   </div>
-                </>
-              )}
+                </div>
+              </div>
               {theme !== "classic" && (
                 <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                   <div className="flex w-full items-center justify-between gap-4">
