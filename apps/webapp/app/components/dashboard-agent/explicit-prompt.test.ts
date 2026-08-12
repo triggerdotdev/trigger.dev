@@ -55,6 +55,22 @@ describe("the panel sends every explicit prompt", () => {
     expect(chat).not.toMatch(/prefill/i);
   });
 
+  it("carries a first prompt on the new chat itself, not on a request that a switch clears", () => {
+    const effect = panel.slice(panel.indexOf("const target = explicitPromptTarget({"));
+    expect(effect.indexOf("void createChat(requestedMessage.text);")).toBeLessThan(
+      effect.indexOf("setSendRequest({ ...requestedMessage")
+    );
+    expect(panel).toContain("pendingFirstMessage: data.headStarted ? undefined : text,");
+  });
+
+  it("drops the request when the chat slot changes, so switching back cannot re-send it", () => {
+    const claim = panel.slice(
+      panel.indexOf("const claimChatSlot = useCallback(() => {"),
+      panel.indexOf("const openChat = useCallback(")
+    );
+    expect(claim).toContain("setSendRequest(undefined);");
+  });
+
   it("submits the request in the chat rather than typing it into the composer", () => {
     expect(chat).toContain("submit(sendRequest.text);");
     expect(chat).not.toContain("setInput(sendRequest.text)");
