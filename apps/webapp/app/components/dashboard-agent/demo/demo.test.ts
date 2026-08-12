@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveSuggestedPrompts } from "../suggested-prompts";
 import * as fixtures from "./fixtures";
-import { DEMO_ID_PREFIX, DEMO_MARKER } from "./ids";
+import { DEMO_ID_PREFIX, DEMO_MARKER, demoSourceUri } from "./ids";
 
 const DEMO_DIR = __dirname;
 
@@ -69,6 +69,12 @@ describe("demo ids", () => {
     })) {
       expect(id).toContain(DEMO_MARKER);
     }
+  });
+
+  it("rejects a zero source line instead of dropping it", () => {
+    expect(() => demoSourceUri("abc", "src/a.ts", 0)).toThrow(/positive integer/);
+    expect(demoSourceUri("abc", "src/a.ts", 42)).toContain("?line=42");
+    expect(demoSourceUri("abc", "src/a.ts")).not.toContain("line=");
   });
 });
 
