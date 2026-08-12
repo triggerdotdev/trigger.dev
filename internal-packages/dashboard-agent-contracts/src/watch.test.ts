@@ -261,7 +261,12 @@ describe("enums", () => {
 
   it("statuses", () => {
     expect(watchStatusSchema.options).toEqual(["active", "fired", "expired", "cancelled"]);
-    expect(watchDeliveryStatusSchema.options).toEqual(["not_required", "pending", "delivered"]);
+    expect(watchDeliveryStatusSchema.options).toEqual([
+      "not_required",
+      "pending",
+      "delivering",
+      "delivered",
+    ]);
   });
 });
 

@@ -469,6 +469,47 @@ describe("runWatchTick", () => {
     expect(row.deliveryStatus).toBe("delivered");
   });
 
+  it("a release that fails too still surfaces the append error, not its own", async () => {
+    const { store } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 0 } } }));
+    const { deliver } = fakeDeliver({ throwOnce: true });
+    const { reschedule } = fakeReschedule();
+    const brokenRelease: WatchTickStore = {
+      ...store,
+      releaseWatchDelivery: async () => {
+        throw new Error("the claim release failed");
+      },
+    };
+
+    await expect(
+      runWatchTick(PAYLOAD, deps({ store: brokenRelease, fetch, deliver, reschedule }))
+    ).rejects.toThrow("session append failed");
+  });
+
+  it("a release that fails after a refused append still surfaces the refusal", async () => {
+    const { store } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 0 } } }));
+    const { reschedule } = fakeReschedule();
+    const brokenRelease: WatchTickStore = {
+      ...store,
+      releaseWatchDelivery: async () => {
+        throw new Error("the claim release failed");
+      },
+    };
+
+    await expect(
+      runWatchTick(
+        PAYLOAD,
+        deps({
+          store: brokenRelease,
+          fetch,
+          deliver: async () => ({ appended: false }),
+          reschedule,
+        })
+      )
+    ).rejects.toThrow("wasn't appended");
+  });
+
   it("two concurrent invocations of the same generation wake the chat exactly once", async () => {
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
     const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 1 } } }));
