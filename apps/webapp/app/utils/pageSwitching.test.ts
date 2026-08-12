@@ -3,6 +3,7 @@ import type { RouteManifest } from "@remix-run/dev/dist/config/routes.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { builtInDashboardList } from "../presenters/v3/BuiltInDashboards.server";
 import {
   ENVIRONMENT_MATCH_ID,
   ENVIRONMENT_PORTABLE_PAGES,
@@ -143,6 +144,16 @@ describe("portable pages", () => {
     const phantom = [...ENVIRONMENT_PORTABLE_PAGES].filter((page) => !matchesARoute(page)).sort();
 
     expect(phantom).toEqual([]);
+  });
+
+  it("name every built-in metric dashboard, which the routes cannot tell us since they share one", () => {
+    expect(
+      [...ENVIRONMENT_PORTABLE_PAGES].filter((page) => page.startsWith("dashboards/")).sort()
+    ).toEqual(
+      builtInDashboardList()
+        .map((dashboard) => `dashboards/${dashboard.key}`)
+        .sort()
+    );
   });
 
   it("are all plain relative paths, which is what makes a redirect safe to build from one", () => {
