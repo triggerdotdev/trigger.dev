@@ -30,6 +30,7 @@ export class ProjectPresenter {
         version: true,
         externalRef: true,
         environments: {
+          where: { archivedAt: null },
           select: {
             id: true,
             slug: true,
