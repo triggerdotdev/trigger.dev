@@ -97,7 +97,8 @@ const { action } = createActionApiRoute(
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
-          realtimeStreamsVersion ?? undefined
+          realtimeStreamsVersion ?? undefined,
+          authentication.environment.organization.streamBasinName
         ),
       });
 

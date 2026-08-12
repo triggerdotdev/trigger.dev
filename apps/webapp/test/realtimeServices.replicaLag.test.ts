@@ -39,6 +39,15 @@ const replicaHolder = vi.hoisted(() => ({ client: undefined as any }));
 const storeHolder = vi.hoisted(() => ({ store: undefined as any }));
 // Records every TriggerTaskService.call so read 3 can assert NO double-trigger and read 4 can assert
 // which previousRunId the resolveRunFriendlyId fallback forwarded.
+const versionCalls = vi.hoisted(() => [] as Array<{ requested?: string; basin?: string | null }>);
+
+vi.mock("~/services/realtime/v1StreamsGlobal.server", () => ({
+  determineRealtimeStreamsVersion: (requested?: string, basin?: string | null) => {
+    versionCalls.push({ requested, basin });
+    return "v2";
+  },
+}));
+
 const triggerState = vi.hoisted(() => ({
   calls: [] as Array<{ taskIdentifier: string; body: any; options: any }>,
   result: { run: { id: "", friendlyId: "" } } as { run: { id: string; friendlyId: string } },
@@ -331,7 +340,10 @@ describe("realtime-svc — replica-lag guards", () => {
 
       const result = await ensureRunForSession({
         session,
-        environment: { id: seed.environment.id } as unknown as AuthenticatedEnvironment,
+        environment: {
+          id: seed.environment.id,
+          organization: { streamBasinName: null },
+        } as unknown as AuthenticatedEnvironment,
         reason: "manual",
       });
 
@@ -386,6 +398,7 @@ describe("realtime-svc — replica-lag guards", () => {
           triggerConfig: { basePayload: {} },
           currentRunId: callingRunId,
           currentRunVersion: 0,
+          streamBasinName: "session-pinned-basin",
         },
       });
 
@@ -394,6 +407,7 @@ describe("realtime-svc — replica-lag guards", () => {
       replicaHolder.client = replica.client;
       storeHolder.store = writerStore;
       triggerState.calls.length = 0;
+      versionCalls.length = 0;
       const newRunId = cuidRunId(`sn${seq}`);
       const newFriendlyId = `run_${suffix}_new`;
       triggerState.result = { run: { id: newRunId, friendlyId: newFriendlyId } };
@@ -401,7 +415,10 @@ describe("realtime-svc — replica-lag guards", () => {
       const result = await swapSessionRun({
         session: sessionRow,
         callingRunId,
-        environment: { id: seed.environment.id } as unknown as AuthenticatedEnvironment,
+        environment: {
+          id: seed.environment.id,
+          organization: { streamBasinName: null },
+        } as unknown as AuthenticatedEnvironment,
         reason: "upgrade",
       });
 
@@ -412,6 +429,7 @@ describe("realtime-svc — replica-lag guards", () => {
       // previousRunId forwarded to the triggered run is the calling run's cuid (documented fallback).
       expect(triggerState.calls).toHaveLength(1);
       expect(triggerState.calls[0]!.body.payload.previousRunId).toBe(callingRunId);
+      expect(versionCalls.at(-1)).toEqual({ requested: "v2", basin: null });
       expect(replica.wasHit("taskRun")).toBe(true);
 
       // Proof the null was lag-induced: the primary holds the resolvable friendlyId (≠ the cuid).
