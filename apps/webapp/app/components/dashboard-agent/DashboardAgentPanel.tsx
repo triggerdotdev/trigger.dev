@@ -194,10 +194,18 @@ export function DashboardAgentPanel({
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
   const openChatRequestSeq = useRef(0);
 
+  // Bound to its chat, which remounts with a fresh guard ref on every switch.
+  const [sendRequest, setSendRequest] = useState<
+    { text: string; seq: number; chatId: string } | undefined
+  >(undefined);
+
   // The one way the panel changes chat: it invalidates any in-flight open and abandons a
   // half-configured watch card, which would otherwise be submitted against the new chat.
   const claimChatSlot = useCallback(() => {
     dispatchWatchCard({ type: "chat-changed" });
+    // A request belongs to the chat it was made in: the remounting chat has a fresh guard ref,
+    // so a kept request would be sent a second time.
+    setSendRequest(undefined);
     return ++openChatRequestSeq.current;
   }, []);
 
@@ -357,10 +365,6 @@ export function DashboardAgentPanel({
     onUnreadWorkChange?.(unreadWorkCount(chats, active?.chatId));
   }, [chats, chatsLoaded, active?.chatId, onUnreadWorkChange]);
 
-  // Bound to its chat, which remounts with a fresh guard ref on every switch.
-  const [sendRequest, setSendRequest] = useState<
-    { text: string; seq: number; chatId: string } | undefined
-  >(undefined);
   const handledRequestSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!requestedMessage || handledRequestSeq.current === requestedMessage.seq) return;
