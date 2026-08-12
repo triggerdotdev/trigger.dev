@@ -239,9 +239,13 @@ async function getOrganizationOwnerEmail(
   prisma: PrismaClientOrTransaction,
   organizationId: string
 ): Promise<string | null> {
-  // First ADMIN member is treated as the org owner.
+  // Longest-standing ADMIN member is treated as the org owner. Ordering is
+  // load-bearing: without it the invite recipient varies between runs, so a
+  // retry can email a different person than the first attempt. Matches the
+  // admin page's owner lookup.
   const adminMember = await prisma.orgMember.findFirst({
     where: { organizationId, role: "ADMIN" },
+    orderBy: { createdAt: "asc" },
     include: { user: { select: { email: true } } },
   });
   return adminMember?.user.email ?? null;

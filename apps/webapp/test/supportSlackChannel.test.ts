@@ -151,6 +151,51 @@ describe("provisionOrganizationSupportChannel", () => {
     15000
   );
 
+  postgresTest(
+    "invites the longest-standing admin when an org has several",
+    async ({ prisma }) => {
+      const org = await prisma.organization.create({ data: { title: "Acme", slug: "acme" } });
+
+      // Insertion order is deliberately the opposite of createdAt order: the
+      // newer admin goes in first, so an unordered findFirst returns it. Seeding
+      // them in the natural order would let the test pass without the orderBy.
+      const newer = await prisma.user.create({
+        data: { email: "newer@acme.com", name: "Newer", authenticationMethod: "MAGIC_LINK" },
+      });
+      await prisma.orgMember.create({
+        data: {
+          organizationId: org.id,
+          userId: newer.id,
+          role: "ADMIN",
+          createdAt: new Date("2026-02-01T00:00:00Z"),
+        },
+      });
+
+      const founder = await prisma.user.create({
+        data: { email: "owner@acme.com", name: "Owner", authenticationMethod: "MAGIC_LINK" },
+      });
+      await prisma.orgMember.create({
+        data: {
+          organizationId: org.id,
+          userId: founder.id,
+          role: "ADMIN",
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      });
+
+      const client = new FakeSupportSlackClient();
+      const result = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(result.status).toBe("invited");
+      expect(client.invited).toEqual([{ channelId: "C123", email: "owner@acme.com" }]);
+    },
+    15000
+  );
+
   postgresTest("is idempotent — existing channel makes no Slack calls", async ({ prisma }) => {
     const { org } = await seedOrg(prisma);
     await prisma.organizationSupportChannel.create({
