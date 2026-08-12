@@ -624,7 +624,7 @@ export default function Page() {
           {showThemeSwitcher && (
             <>
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
-                <Header2>Theme</Header2>
+                <Header2>Appearance</Header2>
               </div>
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
