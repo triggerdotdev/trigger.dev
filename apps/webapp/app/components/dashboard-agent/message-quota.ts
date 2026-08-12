@@ -48,6 +48,15 @@ export function resolveMessageQuota({
     : { kind: "within", used, limit, remaining };
 }
 
+/**
+ * Whether a refusal-set cap can be released: only a read that proves capacity is back. An
+ * unknown quota (degraded read, plan not resolved) keeps the block, so the composer never
+ * flashes back for someone the server is about to refuse again.
+ */
+export function shouldClearCapReached(quota: MessageQuota): boolean {
+  return quota.kind === "within";
+}
+
 // The server code both the create and `in` paths refuse with. The client owns the copy,
 // so this code must never reach the UI as text.
 export const MESSAGE_QUOTA_REACHED_ERROR = "message_quota_reached";

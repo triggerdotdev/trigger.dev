@@ -8,6 +8,7 @@ import {
   quotaResponseUpdate,
   resolveMessageLimit,
   resolveMessageQuota,
+  shouldClearCapReached,
 } from "./message-quota";
 
 describe("quotaResponseUpdate", () => {
@@ -110,6 +111,36 @@ describe("parseQuotaReachedResponse", () => {
     expect(parseQuotaReachedResponse(403, { error: "something_else" })).toBeNull();
     expect(parseQuotaReachedResponse(500, { error: MESSAGE_QUOTA_REACHED_ERROR })).toBeNull();
     expect(parseQuotaReachedResponse(403, null)).toBeNull();
+  });
+});
+
+describe("shouldClearCapReached", () => {
+  const readQuota = (data: { used?: number; limit?: number | null } | null) => {
+    const update = quotaResponseUpdate(data);
+    return resolveMessageQuota({
+      isFreePlan: true,
+      used: update?.used,
+      limit: resolveMessageLimit(update?.limit),
+    });
+  };
+
+  it("releases the block once a read shows capacity", () => {
+    // Refused at 20/20, then the allowance resets or the plan's cap grows.
+    expect(shouldClearCapReached(readQuota({ used: 20, limit: 20 }))).toBe(false);
+    expect(shouldClearCapReached(readQuota({ used: 0, limit: 20 }))).toBe(true);
+    expect(shouldClearCapReached(readQuota({ used: 20, limit: 500 }))).toBe(true);
+  });
+
+  it("keeps the block when the read is degraded, so the composer can't flash", () => {
+    expect(shouldClearCapReached(readQuota({ used: 20, limit: 20 }))).toBe(false);
+    expect(shouldClearCapReached(readQuota(null))).toBe(false);
+    expect(shouldClearCapReached(readQuota({ limit: 20 }))).toBe(false);
+  });
+
+  it("keeps the block while the plan hasn't resolved", () => {
+    expect(shouldClearCapReached(resolveMessageQuota({ isFreePlan: undefined, used: 0 }))).toBe(
+      false
+    );
   });
 });
 

@@ -21,6 +21,7 @@ import {
   FREE_PLAN_MESSAGE_LIMIT,
   MESSAGE_QUOTA_REACHED_REASON,
   parseQuotaReachedResponse,
+  type MessageQuota,
 } from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
@@ -78,6 +79,7 @@ export function DashboardAgentChat({
   onCancelWatch,
   onTurnSettled,
   onActivityChange,
+  onQuotaChange,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -105,6 +107,8 @@ export function DashboardAgentChat({
   onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
+  /** The poll lives here, so this is where the panel learns the cap has lifted. */
+  onQuotaChange?: (quota: MessageQuota) => void;
 }) {
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
@@ -209,6 +213,11 @@ export function DashboardAgentChat({
 
   // Read here, not in the panel, so it re-reads as each turn settles.
   const quota = useAgentMessageQuota({ actionPath, chatId, status });
+  useEffect(() => {
+    onQuotaChange?.(quota);
+    // The quota object is rebuilt every render; only its kind is acted on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quota.kind, onQuotaChange]);
   // Either the poll saw the cap, or a send was just refused over it.
   const atMessageCap = quota.kind === "reached" || quotaReached !== null;
   const messageCapLimit =

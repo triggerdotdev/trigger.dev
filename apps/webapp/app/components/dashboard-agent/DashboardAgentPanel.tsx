@@ -24,7 +24,11 @@ import {
   writeLastChat,
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
-import { parseQuotaReachedResponse } from "./message-quota";
+import {
+  parseQuotaReachedResponse,
+  shouldClearCapReached,
+  type MessageQuota,
+} from "./message-quota";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
 import { NO_WATCH_CARD, watchCardReducer } from "./watch-card-state";
@@ -205,6 +209,8 @@ export function DashboardAgentPanel({
   // half-configured watch card, which would otherwise be submitted against the new chat.
   const claimChatSlot = useCallback(() => {
     dispatchWatchCard({ type: "chat-changed" });
+    // A new attempt goes back to the server, which re-refuses if the cap still stands.
+    setCapReached(null);
     // A request belongs to the chat it was made in: the remounting chat has a fresh guard ref,
     // so a kept request would be sent a second time.
     setSendRequest(undefined);
@@ -491,6 +497,11 @@ export function DashboardAgentPanel({
     setActive(null);
   }, [claimChatSlot]);
 
+  // Released only by a read that proves capacity: an unknown quota keeps the block.
+  const handleQuotaChange = useCallback((quota: MessageQuota) => {
+    if (shouldClearCapReached(quota)) setCapReached(null);
+  }, []);
+
   const switchChat = useCallback(
     (id: string) => {
       void openChat(id);
@@ -638,6 +649,7 @@ export function DashboardAgentPanel({
             // The generated chat name is written before the turn-complete chunk lands.
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
+            onQuotaChange={handleQuotaChange}
           />
         ) : (
           <DashboardAgentDraft
