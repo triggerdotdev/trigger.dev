@@ -477,6 +477,10 @@ export function getDefaultEnvironmentLimitFromPlan(
 }
 
 export async function getCachedLimit(orgId: string, limit: keyof Limits, fallback: number) {
+  // No billing client means there is no plan limit to read, so don't touch the cache:
+  // an unreachable cache Redis would stall the caller for its whole reconnect cycle.
+  if (!client) return { val: fallback };
+
   return platformCache.limits.swr(`${orgId}:${limit}`, async () => {
     return getLimit(orgId, limit, fallback);
   });
@@ -508,6 +512,8 @@ export async function getCachedLimitAllowingZero(
   limit: keyof Limits,
   fallback: number
 ) {
+  if (!client) return { val: fallback };
+
   return platformCache.limits.swr(`${orgId}:${limit}:allow-zero`, async () =>
     limitValueAllowingZero(await getLimits(orgId), limit, fallback)
   );
