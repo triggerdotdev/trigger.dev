@@ -24,6 +24,11 @@ import {
   writeLastChat,
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import {
+  parseQuotaReachedResponse,
+  shouldClearCapReached,
+  type MessageQuota,
+} from "./message-quota";
 import { WatchCard } from "./WatchCard";
 import { watchDraftFor } from "./watch-card";
 import { NO_WATCH_CARD, watchCardReducer } from "./watch-card-state";
@@ -114,6 +119,10 @@ export function DashboardAgentPanel({
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
+  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
+  const [capReached, setCapReached] = useState<{ limit: number; planResolved: boolean } | null>(
+    null
+  );
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
@@ -200,6 +209,8 @@ export function DashboardAgentPanel({
   // half-configured watch card, which would otherwise be submitted against the new chat.
   const claimChatSlot = useCallback(() => {
     dispatchWatchCard({ type: "chat-changed" });
+    // A new attempt goes back to the server, which re-refuses if the cap still stands.
+    setCapReached(null);
     // A request belongs to the chat it was made in: the remounting chat has a fresh guard ref,
     // so a kept request would be sent a second time.
     setSendRequest(undefined);
@@ -260,14 +271,22 @@ export function DashboardAgentPanel({
           publicAccessToken?: string;
           headStarted?: boolean;
           error?: string;
+          limit?: number;
         };
         if (seq !== openChatRequestSeq.current) return;
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
+          const reached = parseQuotaReachedResponse(res.status, data);
+          if (reached) {
+            setCapReached(reached);
+            setActive(null);
+            return;
+          }
           console.error(`Dashboard agent: failed to create chat (${res.status})`, data.error);
           toast.error(data.error ?? "We couldn't start that chat. Try again in a moment.");
           setActive(null);
           return;
         }
+        setCapReached(null);
         setActive({
           chatId: data.chatId,
           organizationId: organization.id,
@@ -309,6 +328,7 @@ export function DashboardAgentPanel({
     panelOrg.current = organization.id;
     claimChatSlot();
     setActive(null);
+    setCapReached(null);
     setLoading(false);
     setChats([]);
     setChatsLoaded(false);
@@ -477,6 +497,11 @@ export function DashboardAgentPanel({
     setActive(null);
   }, [claimChatSlot]);
 
+  // Released only by a read that proves capacity: an unknown quota keeps the block.
+  const handleQuotaChange = useCallback((quota: MessageQuota) => {
+    if (shouldClearCapReached(quota)) setCapReached(null);
+  }, []);
+
   const switchChat = useCallback(
     (id: string) => {
       void openChat(id);
@@ -624,6 +649,7 @@ export function DashboardAgentPanel({
             // The generated chat name is written before the turn-complete chunk lands.
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
+            onQuotaChange={handleQuotaChange}
           />
         ) : (
           <DashboardAgentDraft
@@ -634,6 +660,7 @@ export function DashboardAgentPanel({
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
             watchCard={watchCardElement}
+            capReached={capReached}
           />
         )}
       </AgentPanelColumn>

@@ -1,4 +1,4 @@
-import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
+import { isWatchRequestMessageId, sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
@@ -181,7 +181,7 @@ export function truncateEvalToolValue(value: unknown, limit: number): unknown {
   if (serialized === undefined || serialized.length <= limit) return value;
   return {
     truncated: true,
-    outputPrefix: serialized.slice(0, limit),
+    outputPrefix: sliceWellFormed(serialized, limit),
     note: `[truncated: the first ${limit} of ${serialized.length} characters of this value]`,
   };
 }
@@ -267,12 +267,11 @@ export function extractToolActivity(
 }
 
 function cleanTitle(raw: string): string {
-  return raw
+  const normalized = raw
     .trim()
     .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 80)
-    .trim();
+    .replace(/\s+/g, " ");
+  return sliceWellFormed(normalized, 80).trim();
 }
 
 /**

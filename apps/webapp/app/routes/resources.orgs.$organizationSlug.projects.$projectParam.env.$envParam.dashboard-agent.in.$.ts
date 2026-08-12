@@ -7,6 +7,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -15,6 +16,13 @@ import {
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
+import {
+  agentTurnCountsAgainstQuota,
+  recordAgentMessageSent,
+  resolveAgentMessageQuota,
+} from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
@@ -115,6 +123,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     parsed = undefined;
   }
 
+  // Hoisted so it is visible after the fetch: quota is charged only once the send succeeds.
+  let countsAgainstQuota = false;
+
   if (parsed) {
     // Actions are placed by the server only, and this proxy is the one path a browser
     // can reach `.in` through.
@@ -125,6 +136,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       // A body under the byte cap can still be one huge part or hundreds of small ones.
       if (checkMessageParts(parsed.payload.message?.parts) !== null) {
         return tooLarge();
+      }
+
+      wellFormMessageText(parsed.payload.message?.parts);
+
+      // Only a real user message consumes quota; action turns were refused above.
+      countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
+      if (countsAgainstQuota) {
+        const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
+        if (quota?.reached) {
+          return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
+        }
       }
 
       let userActorToken: string;
@@ -165,6 +189,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const upstream = await fetch(upstreamUrl, { method: "POST", headers, body });
     const text = await upstream.text();
+    // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
+    // must not burn a send that never reached the agent.
+    if (countsAgainstQuota && upstream.ok) {
+      await recordAgentMessageSent(dashboardAgentDb, {
+        organizationId: project.organizationId,
+      });
+    }
     return new Response(text, {
       status: upstream.status,
       headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },

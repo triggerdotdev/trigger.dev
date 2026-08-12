@@ -35,6 +35,8 @@ export type DashboardAgentMessagesProps = {
   activity: TurnActivity | null;
   error?: Error;
   onRetry?: () => void;
+  /** Set to disable the retry button and say why, e.g. over the message cap. */
+  retryDisabledReason?: string;
   onDismissError?: () => void;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
@@ -356,6 +358,7 @@ export function DashboardAgentTurns({
   activity,
   error,
   onRetry,
+  retryDisabledReason,
   onDismissError,
   onIntent,
   resolveUri,
@@ -402,7 +405,16 @@ export function DashboardAgentTurns({
                 (onRetry || onDismissError) && (
                   <ChatActionsRow>
                     {onRetry && (
-                      <Button variant="primary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
+                      <Button
+                        variant="primary/small"
+                        LeadingIcon={ArrowPathIcon}
+                        onClick={onRetry}
+                        disabled={!!retryDisabledReason}
+                        tooltip={retryDisabledReason}
+                        aria-label={
+                          retryDisabledReason ? `Try again — ${retryDisabledReason}` : undefined
+                        }
+                      >
                         Try again
                       </Button>
                     )}

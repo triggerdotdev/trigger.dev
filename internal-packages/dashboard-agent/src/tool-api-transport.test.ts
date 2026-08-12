@@ -88,6 +88,45 @@ describe("a broken request reads as a broken request, never as an answer", () =>
     expect(JSON.stringify(result)).not.toContain("isn't locked to a deployed version");
   });
 
+  it("classifies a busy query route as busy, not as a bad query", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/jwt")
+          ? Response.json({ token: "jwt" })
+          : Response.json(
+              { error: "We're experiencing a lot of queries at the moment." },
+              { status: 429 }
+            )
+      )
+    );
+
+    const result = await createApiClient(CTX).postQuery("SELECT 1", undefined);
+
+    expect(result).toMatchObject({ ok: false, kind: "busy" });
+    expect((result as { error: string }).error).toContain("retry the same query shortly");
+  });
+
+  // The other half of the same invariant: only 429 is busy, so a rejected query still counts.
+  it("classifies a rejected query as a query error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/jwt")
+          ? Response.json({ token: "jwt" })
+          : Response.json({ error: "Unknown expression identifier 'createdAt'." }, { status: 400 })
+      )
+    );
+
+    const result = await createApiClient(CTX).postQuery("SELECT createdAt FROM runs", undefined);
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: "query",
+      error: "Unknown expression identifier 'createdAt'.",
+    });
+  });
+
   it("still reports a real 404 as the answer it is", async () => {
     vi.stubGlobal(
       "fetch",

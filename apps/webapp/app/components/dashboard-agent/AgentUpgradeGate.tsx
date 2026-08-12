@@ -1,18 +1,21 @@
 import { Link } from "@remix-run/react";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
-import { AgentIcon, AGENT_ICON_ACCENT_CLASS, ASK_AGENT_LABEL } from "./agent-identity";
+import { ASK_AGENT_LABEL } from "./agent-identity";
+import { messageQuotaReachedCopy } from "./message-quota";
 
 // Matches the composer's outer geometry so the replacement lands in the same place.
 const SLOT = "flex shrink-0 flex-col bg-background-bright px-3 pb-3 pt-1";
 
 export function AgentUpgradeBlock({
   limit,
+  planResolved,
   context,
 }: {
   limit: number;
+  planResolved: boolean;
   context?: React.ReactNode;
 }) {
   const organization = useOrganization();
@@ -22,14 +25,12 @@ export function AgentUpgradeBlock({
       {context}
       <div className="mt-1.5 flex flex-col gap-2 rounded-md border border-border-bright bg-background-dimmed p-3">
         <div className="flex items-center gap-1.5">
-          <AgentIcon className={cn("size-4 shrink-0", AGENT_ICON_ACCENT_CLASS)} />
+          <AgentMonoLogo size={16} decorative className="shrink-0" />
           <span className="text-sm font-medium text-text-bright">
             Upgrade to unlock {ASK_AGENT_LABEL}
           </span>
         </div>
-        <p className="text-xs text-text-dimmed">
-          You've used all {limit} messages included on the Free plan. Your chats stay here to read.
-        </p>
+        <p className="text-xs text-text-dimmed">{messageQuotaReachedCopy(limit, planResolved)}</p>
         <LinkButton variant="primary/small" to={v3BillingPath(organization)} fullWidth>
           Upgrade
         </LinkButton>

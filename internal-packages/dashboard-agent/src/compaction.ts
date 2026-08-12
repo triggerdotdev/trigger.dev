@@ -1,3 +1,4 @@
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { locals, logger } from "@trigger.dev/sdk";
 import type { ChatAgentCompactionOptions, SummarizeEvent } from "@trigger.dev/sdk/ai";
 import { generateText, type ModelMessage, type UIMessage } from "ai";
@@ -263,7 +264,7 @@ export function renderTranscriptForSummary(messages: ModelMessage[]): string {
     .map((message) => {
       const content =
         typeof message.content === "string" ? message.content : JSON.stringify(message.content);
-      return `${message.role}: ${(content ?? "").slice(0, SUMMARY_INPUT_MESSAGE_CHARS)}`;
+      return `${message.role}: ${sliceWellFormed(content ?? "", SUMMARY_INPUT_MESSAGE_CHARS)}`;
     })
     .join("\n\n");
 }

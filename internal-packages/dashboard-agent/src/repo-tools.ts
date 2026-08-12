@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import {
   getRepoInfoSchema,
@@ -313,7 +314,7 @@ export function buildRepoTools(
             .map((line) => {
               const m = line.match(/^([^:]+):(\d+):(.*)$/);
               return m
-                ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 300) }
+                ? { file: m[1], line: Number(m[2]), text: sliceWellFormed(m[3], 300) }
                 : { text: line };
             });
           return { matches, truncated: matches.length >= cap };

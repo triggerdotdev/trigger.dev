@@ -211,11 +211,20 @@ describe("transport stream events", () => {
       ``,
     ].join("\n");
 
+    let subscribes = 0;
     const { transport, events } = makeTransport({
       watch: true,
       sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
-      fetch: async (_url, _init, ctx) =>
-        ctx.endpoint === "in" ? jsonOk() : sseResponse(TWO_TURNS),
+      fetch: async (_url, _init, ctx) => {
+        if (ctx.endpoint === "in") return jsonOk();
+        if (subscribes++ > 0) {
+          // Watch mode reconnects past the body EOF; settle so the read ends.
+          const settled = sseResponse("");
+          settled.headers.set("X-Session-Settled", "true");
+          return settled;
+        }
+        return sseResponse(TWO_TURNS);
+      },
     });
 
     const stream = await transport.reconnectToStream({ chatId: "c1" });

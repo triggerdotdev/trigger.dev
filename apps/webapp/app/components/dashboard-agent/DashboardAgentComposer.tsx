@@ -1,4 +1,5 @@
 import { ArrowUpIcon, StopIcon } from "@heroicons/react/20/solid";
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
@@ -94,7 +95,7 @@ export function DashboardAgentComposer({
             maxLength={MAX_MESSAGE_CHARS}
             onChange={(e) => {
               escapeGuardArmed.current = true;
-              onChange(e.target.value.slice(0, MAX_MESSAGE_CHARS));
+              onChange(sliceWellFormed(e.target.value, MAX_MESSAGE_CHARS));
             }}
             onBlur={() => {
               escapeGuardArmed.current = true;
