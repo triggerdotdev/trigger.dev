@@ -94,10 +94,13 @@ describe("every chat change goes through one door", () => {
   it("bumps the open sequence in exactly one place, next to the card reset", () => {
     const bumps = panel.match(/openChatRequestSeq\.current\s*(\+\+|\+=)|\+\+openChatRequestSeq/g);
     expect(bumps).toHaveLength(1);
-    // Whitespace-tolerant: the formatter is free to reindent or rewrap these two lines.
-    expect(panel).toMatch(
-      /dispatchWatchCard\(\{\s*type:\s*"chat-changed",?\s*\}\);\s*return \+\+openChatRequestSeq\.current;/
+    const claim = panel.slice(
+      panel.indexOf("const claimChatSlot = useCallback(() => {"),
+      panel.indexOf("const openChat = useCallback(")
     );
+    // Whitespace-tolerant: the formatter is free to reindent or rewrap the call.
+    expect(claim).toMatch(/dispatchWatchCard\(\{\s*type:\s*"chat-changed",?\s*\}\);/);
+    expect(claim).toContain("return ++openChatRequestSeq.current;");
   });
 
   it("claims a slot before every setActive that lands in a different chat", () => {
