@@ -64,6 +64,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       projectId: authenticationResult.environment.projectId,
       friendlyId: parsedParams.data.scheduleId,
       environmentId: authenticationResult.environment.id,
+      includeRunHistory: false,
     });
 
     if (!result) {

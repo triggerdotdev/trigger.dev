@@ -1,5 +1,6 @@
 import {
   investigationBlockSchema,
+  toWellFormedDeep,
   VIEW_BLOCK_VERSION,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
@@ -8,6 +9,7 @@ import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
 import {
+  agentMessageUsage,
   chatMessages,
   chats,
   chatSessions,
@@ -127,6 +129,45 @@ export async function countUserMessages(
 }
 
 /**
+ * The message count for one org in one billing period. Reads the standalone counter,
+ * never the chat rows, so a deleted chat can't lower it within the period. `period` is
+ * a UTC calendar month, "YYYY-MM"; the caller chooses it.
+ */
+export async function getAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: agentMessageUsage.count })
+    .from(agentMessageUsage)
+    .where(
+      and(
+        eq(agentMessageUsage.organizationId, params.organizationId),
+        eq(agentMessageUsage.period, params.period)
+      )
+    )
+    .limit(1);
+  return rows[0]?.count ?? 0;
+}
+
+/** Bump the counter by one, creating the period row on first use. Returns the new count. */
+export async function incrementAgentMessageUsage(
+  db: DashboardAgentDb,
+  params: { organizationId: string; period: string; by?: number }
+): Promise<number> {
+  const by = params.by ?? 1;
+  const rows = await db
+    .insert(agentMessageUsage)
+    .values({ organizationId: params.organizationId, period: params.period, count: by })
+    .onConflictDoUpdate({
+      target: [agentMessageUsage.organizationId, agentMessageUsage.period],
+      set: { count: sql`${agentMessageUsage.count} + ${by}`, updatedAt: sql`now()` },
+    })
+    .returning({ count: agentMessageUsage.count });
+  return rows[0]?.count ?? by;
+}
+
+/**
  * Chats whose transcript moved on after their owner last looked. A watch wake is one way
  * that happens; an answer that landed while the panel was closed is another, and the panel
  * shows them the same way — a dot on the launcher, the chat lifted and highlighted.
@@ -216,7 +257,7 @@ export async function createChat(
       organizationId: params.organizationId,
       userId: params.userId,
       title: params.title ?? DEFAULT_CHAT_TITLE,
-      metadata: params.metadata ?? {},
+      metadata: toWellFormedDeep(params.metadata ?? {}),
     })
     .onConflictDoNothing();
 }
@@ -406,8 +447,9 @@ async function storeChatMessages(
   tx: DashboardAgentDbOrTx,
   params: { chatId: string; messages: unknown[]; finalizable?: ReadonlySet<string> }
 ): Promise<void> {
+  // Every batch write lands here, so this is where a lone surrogate stops before jsonb.
   const deduped = new Map<string, unknown>();
-  for (const message of params.messages) {
+  for (const message of toWellFormedDeep(params.messages)) {
     const id = messageIdOf(params.chatId, message);
     if (deduped.has(id)) {
       throw new Error(`Chat ${params.chatId} was handed message id ${id} twice in one batch`);
@@ -528,7 +570,9 @@ async function appendOneMessage(
   db: DashboardAgentDbOrTx,
   params: { chatId: string; message: unknown; scope: SQL[] }
 ): Promise<boolean> {
-  const messageId = messageIdOf(params.chatId, params.message);
+  // Single-message appends land here — normalize like storeChatMessages.
+  const message = toWellFormedDeep(params.message);
+  const messageId = messageIdOf(params.chatId, message);
   const rows = await db.execute<{ message_id: string }>(sql`
     with reserved as (
       update ${chats}
@@ -545,8 +589,8 @@ async function appendOneMessage(
       returning "next_message_position" - 1 as "position"
     )
     insert into ${chatMessages} ("chat_id", "message_id", "position", "role", "message")
-    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.chatId, params.message)},
-           ${JSON.stringify(params.message)}::jsonb
+    select ${params.chatId}, ${messageId}, reserved."position", ${messageRoleOf(params.chatId, message)},
+           ${JSON.stringify(message)}::jsonb
     from reserved
     on conflict ("chat_id", "message_id") do nothing
     returning "message_id"
@@ -700,7 +744,7 @@ export async function persistTurn(
 
 /** Idempotent on `(chatId, turn)`: a retried eval task can't write a second row. */
 export async function insertTurnEval(db: DashboardAgentDb, row: NewChatTurnEval): Promise<void> {
-  await db.insert(chatTurnEvals).values(row).onConflictDoNothing();
+  await db.insert(chatTurnEvals).values(toWellFormedDeep(row)).onConflictDoNothing();
 }
 
 /**
@@ -824,6 +868,7 @@ export async function upsertInvestigationRevision(
     state: unknown;
   }
 ): Promise<UpsertInvestigationResult> {
+  const state = toWellFormedDeep(params.state);
   if (!params.id) {
     const id = generateInvestigationId();
     await db.insert(investigations).values({
@@ -832,7 +877,7 @@ export async function upsertInvestigationRevision(
       projectRef: params.projectRef,
       environmentRef: params.environmentRef,
       revision: 0,
-      state: params.state,
+      state,
     });
     return { ok: true, id, revision: 0, created: true };
   }
@@ -840,7 +885,7 @@ export async function upsertInvestigationRevision(
   const rows = await db
     .update(investigations)
     .set({
-      state: params.state,
+      state,
       revision: sql`${investigations.revision} + 1`,
       updatedAt: sql`now()`,
     })
@@ -898,7 +943,7 @@ export async function seedInvestigation(
       projectRef: params.projectRef,
       environmentRef: params.environmentRef,
       revision: 0,
-      state: params.state,
+      state: toWellFormedDeep(params.state),
     })
     .onConflictDoNothing({ target: investigations.id })
     .returning({ id: investigations.id });
@@ -1045,6 +1090,10 @@ export async function listChatIdsWithOpenInvestigations(
 /**
  * Sweep for investigations nothing else settles. `olderThan` is on `updated_at`,
  * which every revision bumps, so a card a live turn is writing to stays out.
+ *
+ * Order is `last_sweep_attempt_at` nulls first, then `updated_at`: a never-attempted
+ * row is always seen before one a prior sweep already failed on, so a row that can't
+ * settle rotates to the back instead of pinning the head and starving newer rows.
  */
 export async function listStaleOpenInvestigations(
   db: DashboardAgentDb,
@@ -1062,10 +1111,37 @@ export async function listStaleOpenInvestigations(
         sql`${investigations.updatedAt} <= ${params.olderThan.toISOString()}::timestamptz`
       )
     )
-    .orderBy(investigations.updatedAt)
+    .orderBy(sql`${investigations.lastSweepAttemptAt} asc nulls first`, investigations.updatedAt)
     .limit(params.limit ?? 100);
 
   return rows.map((row) => row.investigation);
+}
+
+/**
+ * Record a failed stale-sweep settle on its own, committed outside the settle tx that
+ * rolled back. Bumps the attempt count and stamps `last_sweep_attempt_at` — which does
+ * NOT touch `updated_at`, so the row still reads as stale, only later in the order.
+ * Returns the new count, or null when the row is no longer `in_progress`.
+ */
+export async function recordInvestigationSweepAttempt(
+  db: DashboardAgentDbOrTx,
+  params: { id: string }
+): Promise<number | null> {
+  const rows = await db
+    .update(investigations)
+    .set({
+      sweepAttempts: sql`${investigations.sweepAttempts} + 1`,
+      lastSweepAttemptAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(investigations.id, params.id),
+        sql`${investigations.state}->>'outcome' = 'in_progress'`
+      )
+    )
+    .returning({ sweepAttempts: investigations.sweepAttempts });
+
+  return rows[0]?.sweepAttempts ?? null;
 }
 
 /** What the settle wrote, which is what the closing card has to render. */

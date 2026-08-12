@@ -35,6 +35,7 @@ export function DashboardAgentSuggestedPrompts({
   pageContext,
   promoted,
   dismissedIds,
+  disabledReason,
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
@@ -43,6 +44,8 @@ export function DashboardAgentSuggestedPrompts({
   promoted?: SuggestedPrompt;
   /** Omitted means the component reads its own localStorage. */
   dismissedIds?: string[];
+  /** Set to disable every chip and say why, e.g. over the message cap. */
+  disabledReason?: string;
 }) {
   // Read once on mount: re-reading per render churns the resolved set.
   const [storedDismissedIds] = useState<string[]>(() =>
@@ -70,6 +73,9 @@ export function DashboardAgentSuggestedPrompts({
             variant={style.variant}
             LeadingIcon={style.icon}
             onClick={() => onSelect(prompt.prompt)}
+            disabled={!!disabledReason}
+            tooltip={disabledReason}
+            aria-label={disabledReason ? `${prompt.label} — ${disabledReason}` : undefined}
           >
             {prompt.label}
           </Button>

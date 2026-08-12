@@ -1,4 +1,5 @@
 import { EnvironmentPauseSource } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import pMap from "p-map";
 import { prisma } from "~/db.server";
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
@@ -47,15 +48,14 @@ export function resolveReconcileTargetFromBillingLimit(
   return resolveConvergeTargetFromBillingLimit(billingLimit);
 }
 
-export async function getOrgIdsWithBillingPauseSource(): Promise<string[]> {
-  const rows = await prisma.runtimeEnvironment.findMany({
+export async function getOrgIdsWithBillingPauseSource(
+  db: PrismaClient = prisma
+): Promise<string[]> {
+  const rows = await db.runtimeEnvironment.groupBy({
+    by: ["organizationId"],
     where: {
       pauseSource: EnvironmentPauseSource.BILLING_LIMIT,
     },
-    select: {
-      organizationId: true,
-    },
-    distinct: ["organizationId"],
   });
 
   return rows.map((row) => row.organizationId);

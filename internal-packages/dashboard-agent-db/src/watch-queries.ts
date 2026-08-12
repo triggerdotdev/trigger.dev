@@ -495,6 +495,22 @@ export async function countUnreadWatchWakes(
 }
 
 /**
+ * How many active watches an org has, across all its chats and users. The plan-limit floor
+ * is org-wide, so this is org-scoped only; a chat deletion cancels its watches, so `active`
+ * is the whole count.
+ */
+export async function countActiveWatchesForOrg(
+  db: DashboardAgentDb,
+  params: { organizationId: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(watches)
+    .where(and(eq(watches.status, "active"), eq(watches.organizationId, params.organizationId)));
+  return rows[0]?.count ?? 0;
+}
+
+/**
  * Whether this user has a watch that can still wake them here. Covered by
  * `watches_org_user_active_idx`; a chat deletion cancels its watches, so `active` is enough.
  */

@@ -51,6 +51,7 @@ import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { usePageSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -75,7 +76,6 @@ import {
   logoutPath,
   newOrganizationPath,
   newProjectPath,
-  organizationPath,
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
@@ -86,7 +86,6 @@ import {
   v3BillingPath,
   v3PrivateConnectionsPath,
   v3EnvironmentPath,
-  v3ProjectPath,
   v3ProjectSettingsGeneralPath,
   v3RunsPath,
   v3SessionsPath,
@@ -1759,6 +1758,7 @@ function ProjectSelector({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const { urlForProject } = usePageSwitcher();
 
   useEffect(() => {
     setIsMenuOpen(false);
@@ -1835,7 +1835,7 @@ function ProjectSelector({
             return (
               <PopoverMenuItem
                 key={p.id}
-                to={v3ProjectPath(organization, p)}
+                to={urlForProject(organization, p)}
                 title={
                   <div className="flex w-full items-center justify-between text-text-bright">
                     <SideMenuLabel className="min-w-0 grow text-left">{p.name}</SideMenuLabel>
@@ -1861,6 +1861,8 @@ function SwitchOrganizations({
   organizations: MatchedOrganization[];
   organization: MatchedOrganization;
 }) {
+  const { urlForOrganization } = usePageSwitcher();
+
   return (
     <SideMenuPopoverSubMenu title="Switch organization" icon={ArrowLeftRightIcon}>
       <div className="flex flex-col gap-1 p-1">
@@ -1876,7 +1878,7 @@ function SwitchOrganizations({
         {organizations.map((org) => (
           <PopoverMenuItem
             key={org.id}
-            to={organizationPath(org)}
+            to={urlForOrganization(org)}
             title={org.title}
             icon={<Avatar size={1.25} avatar={org.avatar} orgName={org.title} />}
             leadingIconClassName="text-text-dimmed"

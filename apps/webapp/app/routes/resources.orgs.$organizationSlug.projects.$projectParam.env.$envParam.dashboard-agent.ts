@@ -3,7 +3,6 @@ import {
   chatExists,
   countUnreadWatchWakes,
   countChatsWithUnreadWork,
-  countUserMessages,
   createChat,
   getChatMessages,
   getSession,
@@ -28,6 +27,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -50,9 +50,15 @@ import {
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import {
+  recordAgentMessageSent,
+  resolveAgentMessageQuota,
+  UNLIMITED_AGENT_MESSAGES,
+} from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
@@ -151,15 +157,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  // The open chat is excluded and counted from the live transcript instead, so an
-  // unpersisted turn still counts against the cap.
+  // The per-period counter, org-wide: a deleted chat can't lower it within the period.
   if (searchParams.get("quota") === "1") {
-    const used = await countUserMessages(dashboardAgentDb, {
+    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
       organizationId: project.organizationId,
-      userId,
-      excludeChatId: searchParams.get("chatId") ?? undefined,
     });
-    return json({ used });
+    if (!quota) return json({});
+    // The sentinel is "no plan limit" — send null so the client keeps its own free-plan nudge
+    // instead of showing a number nobody would ever reach.
+    return json({
+      used: quota.used,
+      limit: quota.limit < UNLIMITED_AGENT_MESSAGES ? quota.limit : null,
+    });
   }
 
   const chatId = searchParams.get("chatId");
@@ -291,6 +300,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return messageTooLarge();
     }
 
+    wellFormMessageText(firstMessage.parts);
+
+    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+      organizationId: project.organizationId,
+    });
+    if (quota?.reached) {
+      return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
+    }
+
     let clientData: Record<string, unknown> | undefined;
     try {
       clientData = parsed.data.clientData
@@ -386,6 +404,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           });
         });
         throw error;
+      }
+
+      // Only the head start dispatches the first message here; a cold start sends it through
+      // the `in` proxy, which counts it there. Counting both would double-count.
+      if (headStarted) {
+        await recordAgentMessageSent(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
       }
 
       let publicAccessToken: string;

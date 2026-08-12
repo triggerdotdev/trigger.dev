@@ -195,6 +195,49 @@ describe("RBAC fallback — additional keys", () => {
     expect(apiKeyFind).not.toHaveBeenCalled();
   });
 
+  postgresTest("rejects revoked and expired additional keys", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const revoked = generateAdditionalApiKey("PRODUCTION").apiKey;
+    const expired = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.createMany({
+      data: [
+        {
+          name: "Revoked deploy key",
+          keyHash: createHash("sha256").update(revoked).digest("hex"),
+          lastFour: revoked.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          scopes: ["admin"],
+          revokedAt: new Date(),
+        },
+        {
+          name: "Expired deploy key",
+          keyHash: createHash("sha256").update(expired).digest("hex"),
+          lastFour: expired.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          scopes: ["admin"],
+          expiresAt: new Date(Date.now() - 1_000),
+        },
+      ],
+    });
+
+    await expect(rbac.authenticateBearer(bearerRequest(revoked))).resolves.toMatchObject({
+      ok: false,
+      status: 401,
+    });
+    await expect(rbac.authenticateBearer(bearerRequest(expired))).resolves.toMatchObject({
+      ok: false,
+      status: 401,
+    });
+  });
+
   postgresTest("authenticates an additional key and records its use", async ({ prisma }) => {
     const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
     const rbac = makeController(prisma);
@@ -550,6 +593,41 @@ describe("RBAC fallback — branch header guards", () => {
       },
     });
   });
+
+  postgresTest(
+    "allows branch management to authenticate against the preview parent",
+    async ({ prisma }) => {
+      const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
+      const previewParent = await createEnv(prisma, project.id, organization.id, {
+        type: "PREVIEW",
+        isBranchableEnvironment: true,
+      });
+      const additional = generateAdditionalApiKey("PREVIEW").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "Deploy key",
+          keyHash: createHash("sha256").update(additional).digest("hex"),
+          lastFour: additional.slice(-4),
+          runtimeEnvironmentId: previewParent.id,
+          createdByUserId: user.id,
+          presetId: "DEPLOY_ONLY",
+          scopes: ["write:branches"],
+        },
+      });
+
+      const result = await rbac.authenticateBearer(bearerRequest(additional), {
+        allowPreviewParent: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.environment.id).toBe(previewParent.id);
+      expect(result.ability.can("write", { type: "branches" })).toBe(true);
+      expect(result.ability.can("write", { type: "deployments" })).toBe(false);
+    }
+  );
 
   // The "default" sentinel is DEVELOPMENT-only: it maps the dev root env to its
   // (branchless) self. For PREVIEW, "default" is an ordinary branch name, so a

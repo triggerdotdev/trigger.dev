@@ -11,6 +11,7 @@ export function DashboardAgentHero({
   promoted,
   dismissedIds,
   composer,
+  promptsDisabledReason,
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
@@ -18,6 +19,8 @@ export function DashboardAgentHero({
   promoted?: SuggestedPrompt;
   dismissedIds?: string[];
   composer?: React.ReactNode;
+  /** Set to disable the suggestion chips and say why. */
+  promptsDisabledReason?: string;
 }) {
   // Centred by the child's `m-auto`, not by `justify-center`: auto margins give up their space
   // once the content outgrows the panel, so the heading stays scrollable to.
@@ -40,6 +43,7 @@ export function DashboardAgentHero({
           pageContext={pageContext}
           promoted={promoted}
           dismissedIds={dismissedIds}
+          disabledReason={promptsDisabledReason}
         />
       </div>
     </div>

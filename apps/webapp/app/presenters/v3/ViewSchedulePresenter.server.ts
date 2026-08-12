@@ -6,12 +6,14 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
+import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
 
 type ViewScheduleOptions = {
   userId?: string;
   projectId: string;
   friendlyId: string;
   environmentId: string;
+  includeRunHistory?: boolean;
 };
 
 export class ViewSchedulePresenter {
@@ -21,7 +23,13 @@ export class ViewSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectId, friendlyId, environmentId }: ViewScheduleOptions) {
+  public async call({
+    userId,
+    projectId,
+    friendlyId,
+    environmentId,
+    includeRunHistory = true,
+  }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
@@ -30,6 +38,8 @@ export class ViewSchedulePresenter {
         generatorExpression: true,
         generatorDescription: true,
         timezone: true,
+        windowDurationSeconds: true,
+        windowPercentage: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -76,17 +86,14 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-      schedule.project.organizationId,
-      "standard"
-    );
-    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
-    const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
-      projectId: schedule.project.id,
-      scheduleId: schedule.id,
-      pageSize: 5,
-      period: "31d",
-    });
+    const runs = includeRunHistory
+      ? await this.#getRunHistory({
+          organizationId: schedule.project.organizationId,
+          environmentId,
+          projectId: schedule.project.id,
+          scheduleId: schedule.id,
+        })
+      : [];
 
     return {
       schedule: {
@@ -107,6 +114,32 @@ export class ViewSchedulePresenter {
     };
   }
 
+  async #getRunHistory({
+    organizationId,
+    environmentId,
+    projectId,
+    scheduleId,
+  }: {
+    organizationId: string;
+    environmentId: string;
+    projectId: string;
+    scheduleId: string;
+  }) {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
+    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
+    const { runs } = await runPresenter.call(organizationId, environmentId, {
+      projectId,
+      scheduleId,
+      pageSize: 5,
+      period: "31d",
+    });
+
+    return runs;
+  }
+
   public toJSONResponse(result: NonNullable<Awaited<ReturnType<ViewSchedulePresenter["call"]>>>) {
     const response: ScheduleObject = {
       id: result.schedule.friendlyId,
@@ -120,6 +153,7 @@ export class ViewSchedulePresenter {
         description: result.schedule.cronDescription,
       },
       timezone: result.schedule.timezone,
+      window: formatScheduleWindow(result.schedule),
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? (result.schedule.deduplicationKey ?? undefined)

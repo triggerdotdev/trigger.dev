@@ -125,6 +125,78 @@ describe("RunEngineTriggerTaskService", () => {
   });
 
   containerTest(
+    "persists distinct nominal and effective schedule times",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      onTestFinished(() => engine.quit());
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "scheduled-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const traceEventConcern = new MockTraceEventConcern();
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, traceEventConcern),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern,
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+      });
+
+      const nominalAt = new Date(Date.now() - 30_000);
+      const effectiveAt = new Date(Date.now() + 60_000);
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { timestamp: nominalAt } },
+        options: {
+          overrideCreatedAt: nominalAt,
+          queueTimestamp: effectiveAt,
+          triggerSource: "schedule",
+          triggerAction: "trigger",
+        },
+      });
+
+      const run = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: result!.run.id },
+      });
+      expect(run.createdAt).toEqual(nominalAt);
+      expect(run.queueTimestamp).toEqual(effectiveAt);
+    }
+  );
+
+  containerTest(
     "routes scheduled-lineage runs to a separate worker queue that dequeues independently",
     async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({

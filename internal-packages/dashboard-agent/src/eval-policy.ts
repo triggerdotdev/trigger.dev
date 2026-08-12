@@ -1,3 +1,4 @@
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { logger } from "@trigger.dev/sdk";
 
 /**
@@ -353,7 +354,7 @@ const APPLICATION_ERROR = /\b[A-Z][A-Za-z0-9]*(Error|Exception)\b|\b(Error|Excep
  * recognises is `unknown` rather than guessed into a bucket.
  */
 export function classifyEvalError(output: unknown): EvalErrorCategory {
-  const signal = errorSignalText(output).slice(0, MAX_CLASSIFY_CHARS);
+  const signal = sliceWellFormed(errorSignalText(output), MAX_CLASSIFY_CHARS);
   const haystack = signal.toLowerCase();
 
   for (const [category, pattern] of CATEGORY_RULES) {
