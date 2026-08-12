@@ -183,8 +183,10 @@ export class ScheduleEngine {
             deduplicationKey: instance.taskSchedule.deduplicationKey,
           });
 
+        let persisted = false;
+
         if (scheduleWindow && instance.schedulePhase === null) {
-          const result = await this.prisma.taskScheduleInstance.updateMany({
+          await this.prisma.taskScheduleInstance.updateMany({
             where: {
               id: instance.id,
               schedulePhase: null,
@@ -193,12 +195,12 @@ export class ScheduleEngine {
               schedulePhase,
             },
           });
-          span.setAttribute("schedule_phase_persisted_during_registration", result.count === 1);
+          persisted = true;
         }
 
         span.setAttribute(
           "schedule_phase_source",
-          instance.schedulePhase === null ? "derived" : "persisted"
+          instance.schedulePhase !== null ? "db" : persisted ? "persisted" : "ephemeral"
         );
         span.setAttribute("schedule_phase", schedulePhase);
 
