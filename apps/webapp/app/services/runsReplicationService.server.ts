@@ -1307,6 +1307,7 @@ export class RunsReplicationService {
       run.id, // run_id
       run.updatedAt.getTime(), // updated_at
       run.createdAt.getTime(), // created_at
+      run.queueTimestamp?.getTime() ?? null, // queue_timestamp
       run.status, // status
       environmentType, // environment_type
       run.friendlyId, // friendly_id

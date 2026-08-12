@@ -5,8 +5,11 @@
 
 import {
   listStaleOpenInvestigations,
+  recordInvestigationSweepAttempt,
   settleInvestigationAndCloseCard,
+  settleInvestigationAsInconclusive,
   type Investigation,
+  type SettledInvestigation,
   type SettledInvestigationCard,
 } from "@internal/dashboard-agent-db";
 import { UNSETTLED_INVESTIGATION_NOTE } from "@internal/dashboard-agent-contracts";
@@ -22,6 +25,13 @@ export const INVESTIGATION_STALE_MS = 30 * 60 * 1000;
 /** Per-run cap. Oldest first, so the rest land next run. */
 const SWEEP_BATCH_LIMIT = 100;
 
+/**
+ * After this many failed settle attempts a row is force-abandoned: settled `inconclusive`
+ * WITHOUT the closing card, so a card that never renders leaves the queue instead of
+ * looping forever. The rare stuck spinner is the price of not starving every other row.
+ */
+export const MAX_SWEEP_ATTEMPTS = 5;
+
 export type InvestigationSweepResult = {
   /** Stale `in_progress` rows seen. */
   stale: number;
@@ -30,6 +40,8 @@ export type InvestigationSweepResult = {
   closed: number;
   /** A turn (or another sweep) settled it first. */
   alreadySettled: number;
+  /** Rows past the attempt cap, force-settled without a card so they leave the queue. */
+  abandoned: number;
   failed: number;
 };
 
@@ -46,6 +58,10 @@ export type InvestigationSweepDeps = {
     chatId: string;
     note: string;
   }) => Promise<SettledInvestigationCard | null>;
+  /** Record a failed settle out-of-band; returns the new attempt count, or null if gone. */
+  recordAttempt?: (params: { id: string }) => Promise<number | null>;
+  /** Force a poison row terminal without the failing render path. */
+  forceAbandon?: (params: { id: string; note: string }) => Promise<SettledInvestigation | null>;
 };
 
 /**
@@ -61,12 +77,17 @@ export async function sweepDashboardAgentInvestigations(
     deps.listStale ?? ((params) => listStaleOpenInvestigations(dashboardAgentDb, params));
   const settleAndClose =
     deps.settleAndClose ?? ((params) => settleInvestigationAndCloseCard(dashboardAgentDb, params));
+  const recordAttempt =
+    deps.recordAttempt ?? ((params) => recordInvestigationSweepAttempt(dashboardAgentDb, params));
+  const forceAbandon =
+    deps.forceAbandon ?? ((params) => settleInvestigationAsInconclusive(dashboardAgentDb, params));
 
   const result: InvestigationSweepResult = {
     stale: 0,
     settled: 0,
     closed: 0,
     alreadySettled: 0,
+    abandoned: 0,
     failed: 0,
   };
 
@@ -93,10 +114,49 @@ export async function sweepDashboardAgentInvestigations(
       result.settled++;
       if (outcome.closed) result.closed++;
     } catch (error) {
+      // The settle rolled back, so the row is still `in_progress`. Record the attempt in
+      // its own write — this rotates the row to the back of the sweep order (see
+      // `listStaleOpenInvestigations`) so it can't pin the head and starve newer rows.
+      let attempts: number | null = null;
+      try {
+        attempts = await recordAttempt({ id: investigation.id });
+      } catch (recordError) {
+        logger.error("Dashboard agent investigation sweep: failed to record a sweep attempt", {
+          investigationId: investigation.id,
+          chatId: investigation.chatId,
+          error: recordError,
+        });
+      }
+
+      // Past the cap the card will never render; force it terminal without the render
+      // path so it leaves the queue instead of looping forever.
+      if (attempts !== null && attempts >= MAX_SWEEP_ATTEMPTS) {
+        try {
+          await forceAbandon({ id: investigation.id, note: UNSETTLED_INVESTIGATION_NOTE });
+          result.abandoned++;
+          logger.warn(
+            "Dashboard agent investigation sweep: abandoned a card past the attempt cap",
+            {
+              investigationId: investigation.id,
+              chatId: investigation.chatId,
+              attempts,
+            }
+          );
+          continue;
+        } catch (abandonError) {
+          logger.error("Dashboard agent investigation sweep: failed to abandon a poison card", {
+            investigationId: investigation.id,
+            chatId: investigation.chatId,
+            error: abandonError,
+          });
+        }
+      }
+
       result.failed++;
       logger.error("Dashboard agent investigation sweep: failed to settle an investigation", {
         investigationId: investigation.id,
         chatId: investigation.chatId,
+        attempts,
         error,
       });
     }

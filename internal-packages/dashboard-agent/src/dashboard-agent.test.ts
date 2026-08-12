@@ -119,6 +119,10 @@ describe("dashboardAgent (mock harness)", () => {
     it("does not rename on a later exchange", () => {
       expect(isFirstUserExchange([user("u1"), assistant("a1"), user("u2")])).toBe(false);
     });
+
+    it("ignores a watch consent record, which the user never typed", () => {
+      expect(isFirstUserExchange([user("watch-request:watch_1"), user("u1")])).toBe(true);
+    });
   });
 
   it("names the chat once, not on every turn", async () => {
@@ -1020,7 +1024,7 @@ describe("a turn that ends in an error", () => {
         card: { id: args.messageId, role: "assistant", parts: [] },
         closed: true,
       }),
-      findOpenInvestigation: async () => null,
+      seedInvestigation: async (args) => ({ ok: true, id: args.id, created: true }),
     };
     return { store, history: () => [...rows.values()] };
   }
@@ -1131,6 +1135,8 @@ describe("buildDashboardAgentTools", () => {
       [
         "ask_support",
         "correlate_version",
+        "create_alert",
+        "delete_alert",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -1139,6 +1145,7 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
+        "list_alerts",
         "list_deploys",
         "list_environments",
         "list_errors",
@@ -1148,6 +1155,7 @@ describe("buildDashboardAgentTools", () => {
         "navigate_to",
         "run_query",
         "render_view",
+        "schedule_watch",
         "search_docs",
       ].sort()
     );
@@ -1544,7 +1552,11 @@ describe("buildDashboardAgentTools", () => {
 
     const grounded = await renderInvestigation(tools, concludedWithSource);
     const actions = grounded.blocks[0].capabilities.actions;
-    expect(actions.map((a: { kind: string }) => a.kind)).toEqual(["show_code", "view_similar"]);
+    expect(actions.map((a: { kind: string }) => a.kind)).toEqual([
+      "show_code",
+      "watch_recurrence",
+      "view_similar",
+    ]);
     expect(actions[0].intent.kind).toBe("ask");
     // The ask proposes a change rather than another explanation.
     const prompt: string = actions[0].intent.prompt;
@@ -1554,10 +1566,36 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
 
+    // "Watch for a repeat" carries the kind and the subject, so the Watch card is
+    // pre-filled without another model turn.
     expect(actions[1].intent).toEqual({
+      kind: "watch",
+      spec: {
+        kind: "error_recurrence",
+        fingerprint: "c4b4a797397a9c43",
+        checkEveryMinutes: 15,
+        maxHours: 24,
+        note: `A repeat of: ${concludedWithSource.title}`,
+      },
+    });
+
+    expect(actions[2].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     });
+  });
+
+  // A concluded card citing no error group has no subject to pre-fill from, so the
+  // button is left off rather than offered empty.
+  it("offers no repeat watch when the card cites no error group", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, concludedState);
+    const kinds = (output.blocks[0].capabilities?.actions ?? []).map(
+      (a: { kind: string }) => a.kind
+    );
+    expect(kinds).not.toContain("watch_recurrence");
   });
 
   it("offers no actions while an investigation is still in progress", async () => {
@@ -1567,7 +1605,9 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].capabilities).toBeUndefined();
   });
 
-  it("offers a keep-digging follow-up, and never Show code, on an inconclusive card", async () => {
+  // An inconclusive card has no cause to watch for a repeat of, so the handoff stays
+  // off it.
+  it("offers a keep-digging follow-up, and never Show code or a repeat watch, on an inconclusive card", async () => {
     await seedWorkspace();
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({
@@ -1661,6 +1701,35 @@ describe("buildDashboardAgentTools", () => {
     expect(upserts[1]).toMatchObject({ id: first.investigationId });
   });
 
+  it("render_view refuses two investigations in one view and writes neither", async () => {
+    const { capability, rows, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+    const renderView = tools.render_view as {
+      inputSchema: { parse: (input: unknown) => unknown };
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+
+    const output = await renderView.execute(
+      renderView.inputSchema.parse({
+        blocks: [
+          { type: "investigation", investigation: investigationState },
+          {
+            type: "investigation",
+            investigation: { ...concludedState, title: "A different question entirely" },
+          },
+        ],
+      }),
+      {}
+    );
+
+    // One id is assigned per call, so committing both would file the second subject as
+    // the first's next revision.
+    expect(typeof output.error).toBe("string");
+    expect(output.blocks).toBeUndefined();
+    expect(upserts).toEqual([]);
+    expect(rows.size).toBe(0);
+  });
+
   it("render_view errors on an unknown investigationId and writes nothing", async () => {
     const { capability, rows } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
@@ -1752,6 +1821,82 @@ describe("buildDashboardAgentTools", () => {
       yAxisColumns: ["runs"],
     };
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
+  });
+
+  const WATCH_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    chatId: "chat_1",
+  };
+
+  const RUN_WATCH = {
+    kind: "run_finished" as const,
+    runId: "run_a1",
+    checkEveryMinutes: 1 as const,
+    maxHours: 2,
+    note: "tell me when the receipt run finishes",
+  };
+
+  // Records any request schedule_watch would have made. It must make none: the card
+  // the intent opens is the only thing that creates a watch.
+  async function scheduleWatch(
+    input: unknown = { watch: RUN_WATCH },
+    ctx: Record<string, unknown> = WATCH_CTX
+  ) {
+    const requests: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]) => {
+      requests.push(String(url));
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const scheduleTool = tools.schedule_watch as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await scheduleTool.execute(input, {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("schedule_watch returns a watch intent and creates nothing", async () => {
+    const { result, requests } = await scheduleWatch();
+
+    expect(result).toEqual({ intent: { kind: "watch", spec: RUN_WATCH } });
+    expect(requests).toEqual([]);
+  });
+
+  it("schedule_watch has no consent parameter — the card owns the opt-ins", () => {
+    const tools = buildDashboardAgentTools(WATCH_CTX);
+    const scheduleTool = tools.schedule_watch as {
+      inputSchema: { parse: (input: unknown) => unknown };
+    };
+    const parsed = scheduleTool.inputSchema.parse({
+      watch: RUN_WATCH,
+      investigateOnAttention: true,
+    });
+    expect(parsed).toEqual({ watch: RUN_WATCH });
+  });
+
+  it("schedule_watch rejects a spec the contract won't accept", async () => {
+    // Aggregate conditions are floored at 5 minutes by the contract's schema.
+    const floored = await scheduleWatch({
+      watch: {
+        kind: "backlog_drain",
+        queue: "task/x",
+        checkEveryMinutes: 1,
+        maxHours: 1,
+        note: "n",
+      },
+    });
+    expect(typeof floored.result.error).toBe("string");
+    expect(floored.requests).toEqual([]);
+
+    const nonsense = await scheduleWatch({ watch: { kind: "run_finished" } });
+    expect(typeof nonsense.result.error).toBe("string");
   });
 
   // The env-JWT exchange is a webapp request plus DB work, so it is paid for once per
@@ -1926,19 +2071,21 @@ describe("buildDashboardAgentTools", () => {
   });
 
   it("render_view commits the chart when its query runs, validating it once", async () => {
+    // Collected, never asserted here: render_view swallows a throw out of the stub, as
+    // the sibling test below relies on.
+    const queryBodies: unknown[] = [];
     const fetchStub = stubFetch((url, init) => {
       if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
-      // The validation runs the same window the panel will render.
-      expect(JSON.parse(String(init?.body))).toMatchObject({
-        scope: "environment",
-        period: "24h",
-      });
+      queryBodies.push(JSON.parse(String(init?.body)));
       return { body: { results: [{ bucket: "2026-01-01T00:00:00Z", runs: 1 }] } };
     });
     try {
       // The rows aren't embedded in the block — the panel stays the runner.
       await expect(renderView(ENV_CTX, CHART_SPEC)).resolves.toEqual({ blocks: CHART_SPEC.blocks });
       expect(queryRequests(fetchStub.requests)).toHaveLength(1);
+      // The validation runs the same window the panel will render.
+      expect(queryBodies).toHaveLength(1);
+      expect(queryBodies[0]).toMatchObject({ scope: "environment", period: "24h" });
     } finally {
       fetchStub.restore();
     }
@@ -2034,6 +2181,157 @@ describe("buildDashboardAgentTools", () => {
 
     expect(first.page).toEqual({ kind: "queue", name: "email" });
     expect(second.page).toEqual({ kind: "run", runId: "run_2" });
+  });
+});
+
+describe("watch alert tools", () => {
+  const ALERT_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    projectRef: "proj_abc",
+    environmentName: "prod",
+    chatId: "chat_alerts",
+  };
+
+  // Hands back the tool's result and the request the webapp would have received.
+  async function callAlertTool(
+    name: string,
+    input: unknown,
+    response: { status?: number; body: unknown },
+    ctx: Record<string, unknown> = ALERT_CTX
+  ) {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(response.body), {
+        status: response.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const tool = tools[name] as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await tool.execute(tool.inputSchema.parse(input), {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("list_alerts reads the project's subscriptions as the user", async () => {
+    const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
+    const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(
+      "http://localhost:3030/api/v1/dashboard-agent/alerts?chatId=chat_alerts"
+    );
+    expect(requests[0]?.init?.method).toBe("GET");
+    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer uat_token"
+    );
+    expect(result).toEqual({ alerts });
+  });
+
+  // The body below is exactly what `api.v1.dashboard-agent.alerts.ts` returns on success:
+  // the channel flat, with no envelope around it.
+  const CREATED_CHANNEL = {
+    id: "alert_2",
+    type: "EMAIL",
+    target: "so…@example.com",
+    enabled: true,
+  };
+
+  it("create_alert posts the email channel and reports the created alert", async () => {
+    const { result, requests } = await callAlertTool(
+      "create_alert",
+      { email: "someone@example.com" },
+      { body: CREATED_CHANNEL }
+    );
+
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
+    expect(requests[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
+      channel: "email",
+      email: "someone@example.com",
+    });
+    expect(result).toEqual({ created: true, alert: CREATED_CHANNEL });
+
+    // With no email the host defaults to the user's account email, so the body carries
+    // only the chat scope and the channel.
+    const noEmail = await callAlertTool("create_alert", {}, { body: CREATED_CHANNEL });
+    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
+      channel: "email",
+    });
+  });
+
+  // `code` is the key both alert routes send a 403 refusal under.
+  it("create_alert relays a 403 with the reason the host gave", async () => {
+    const noEmailSetup = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", code: "email_alerts_not_configured" } }
+    );
+    expect(noEmailSetup.result.error).toContain("isn't set up on this instance");
+    expect(noEmailSetup.result.error).toContain("dashboard");
+
+    const flag = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", code: "dashboard_agent_disabled" } }
+    );
+    expect(flag.result.error).toContain("aren't enabled here");
+  });
+
+  it("create_alert relays the address refusal verbatim", async () => {
+    const refused = await callAlertTool(
+      "create_alert",
+      { email: "someone@else.com" },
+      {
+        status: 400,
+        body: {
+          code: "email_not_allowed",
+          error: "Alerts can only be sent to your own account email.",
+        },
+      }
+    );
+    expect(refused.result.error).toBe("Alerts can only be sent to your own account email.");
+  });
+
+  it("delete_alert deletes by id and surfaces a failure as text", async () => {
+    const { result, requests } = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_1" },
+      { body: { ok: true } }
+    );
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts/alert_1");
+    expect(requests[0]?.init?.method).toBe("DELETE");
+    expect(result).toEqual({ deleted: true, alertId: "alert_1" });
+
+    const missing = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_gone" },
+      { status: 404, body: { error: "No such alert." } }
+    );
+    expect(missing.result.error).toBe("No such alert.");
+  });
+
+  it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
+    for (const [name, input] of [
+      ["list_alerts", {}],
+      ["create_alert", {}],
+      ["delete_alert", { alertId: "alert_1" }],
+    ] as const) {
+      const { result, requests } = await callAlertTool(name, input, { body: {} }, {});
+      expect(typeof result.error).toBe("string");
+      expect(requests).toHaveLength(0);
+    }
   });
 });
 

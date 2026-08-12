@@ -1,3 +1,4 @@
+import { isWatchRequestMessageId, sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
@@ -26,10 +27,11 @@ import {
 import { titlePrompt } from "./prompts";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
+import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
 
-// The runtime lives in its own module; re-exported here so every existing import
-// path still resolves.
+// The runtime and the watch lanes live in their own modules; re-exported here so
+// every existing import path still resolves.
 export {
   clientDataSchema,
   dashboardAgentModelKey,
@@ -50,8 +52,8 @@ export {
   shouldEvalTurn,
   turnReadSource,
 } from "./eval-policy";
-// The rolling step cache lives in `step-cache.ts`; re-exported so every existing
-// import path still resolves.
+// The rolling step cache lives in `step-cache.ts`, shared with the watch lane;
+// re-exported so every existing import path still resolves.
 export {
   markStepCacheBreakpoint,
   MIN_STEP_CACHE_CHARS,
@@ -59,6 +61,15 @@ export {
   STEP_CACHE_CONTROL,
   withStepCacheBreakpoint,
 } from "./step-cache";
+export {
+  dashboardAgentActionSchema,
+  wakeStartsInvestigation,
+  watchInvestigateActionSchema,
+  watchWakeActionSchema,
+  type DashboardAgentAction,
+  type WatchInvestigateAction,
+  type WatchWakeAction,
+} from "./watch-actions";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
@@ -170,7 +181,7 @@ export function truncateEvalToolValue(value: unknown, limit: number): unknown {
   if (serialized === undefined || serialized.length <= limit) return value;
   return {
     truncated: true,
-    outputPrefix: serialized.slice(0, limit),
+    outputPrefix: sliceWellFormed(serialized, limit),
     note: `[truncated: the first ${limit} of ${serialized.length} characters of this value]`,
   };
 }
@@ -256,12 +267,11 @@ export function extractToolActivity(
 }
 
 function cleanTitle(raw: string): string {
-  return raw
+  const normalized = raw
     .trim()
     .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 80)
-    .trim();
+    .replace(/\s+/g, " ");
+  return sliceWellFormed(normalized, 80).trim();
 }
 
 /**
@@ -276,10 +286,13 @@ const pendingTitles = new Map<string, Promise<void>>();
  * Whether this turn is the one that names the chat. Counted in user messages, not in
  * transcript length: a head-started turn arrives with the warm first step already in
  * `uiMessages`, so a length gate would see two messages on the very first exchange and
- * never name the chat at all.
+ * never name the chat at all. A watch's consent record is a user message the user did
+ * not type, so it doesn't count as an exchange either.
  */
 export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
-  const typed = uiMessages.filter((message) => message.role === "user");
+  const typed = uiMessages.filter(
+    (message) => message.role === "user" && !isWatchRequestMessageId(message.id)
+  );
   return typed.length <= 1;
 }
 
@@ -322,8 +335,8 @@ export type {
  * message so the growing conversation prefix is read back cheaply.
  *
  * The between-steps compaction path rebuilds history as the summary alone and never
- * reaches `compactModelMessages`, so the live investigation state is pinned back
- * here instead.
+ * reaches `compactModelMessages`, so the live investigation and watch state is pinned
+ * back here instead.
  */
 export function prepareTurnMessages(args: {
   messages: ModelMessage[];
@@ -340,6 +353,8 @@ export function prepareTurnMessages(args: {
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
+  // Actions are not turns — see `narrateWatchWake`.
+  actionSchema: dashboardAgentActionSchema,
   // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
 
@@ -383,6 +398,11 @@ export const dashboardAgent = chat.agent({
       },
     });
   },
+
+  // Every action is a watch action, handled in `watch-actions.ts`: one message
+  // deduped on the action id, piped inside so it reaches the history and read-model.
+  onAction: async ({ action, chatId, clientData, uiMessages, messages }) =>
+    handleWatchAction({ action, chatId, clientData, uiMessages, messages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     locals.set(turnErroredKey, false);

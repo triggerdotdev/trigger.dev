@@ -17,6 +17,10 @@ import {
 } from "~/services/dashboardAgentChatRetention.server";
 import { sweepDashboardAgentTurnEvals } from "~/services/dashboardAgentEvalRetention.server";
 import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
+import {
+  rearmDashboardAgentWatchBatches,
+  sweepDashboardAgentWatches,
+} from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
 import {
   MembershipDevEnvironmentsSchema,
@@ -166,6 +170,15 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
+      // The watch backstops: expiry, wake redelivery, retention and dead batch chains.
+      "dashboardAgent.watchMaintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
       // Soft-deletes a deleted organization's chats; the maintenance sweep purges them.
       "dashboardAgent.purgeOrganization": {
         schema: z.object({
@@ -262,6 +275,30 @@ function initializeWorker() {
           const chats = await sweepDashboardAgentSoftDeletedChats();
           if (chats.purged > 0) {
             logger.debug("Dashboard agent chat retention", chats);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        if (failure) throw failure;
+      },
+      "dashboardAgent.watchMaintenance": async () => {
+        // Each backstop runs independently; the first failure is rethrown at the end.
+        let failure: unknown;
+
+        try {
+          const watches = await sweepDashboardAgentWatches();
+          if (watches.overdue > 0 || watches.undelivered > 0 || watches.purged > 0) {
+            logger.debug("Dashboard agent watch sweep", watches);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        try {
+          const batches = await rearmDashboardAgentWatchBatches();
+          if (batches.stale > 0) {
+            logger.debug("Dashboard agent watch batch re-arm", batches);
           }
         } catch (error) {
           failure ??= error;

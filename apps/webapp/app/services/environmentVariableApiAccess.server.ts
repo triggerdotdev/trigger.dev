@@ -3,9 +3,11 @@ import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import {
-  authenticateApiKeyWithScope,
+  authenticateApiKeyRequest,
   authenticateRequest,
+  authenticateRequestWithScopedApiKey,
   type AuthenticationResult,
+  type ScopedApiKeyAuthenticationDependencies,
 } from "~/services/apiAuth.server";
 import { rbac } from "~/services/rbac.server";
 
@@ -28,20 +30,52 @@ export function presentedApiKeyFromAuthentication(
     : undefined;
 }
 
+export function apiKeyForProjectEnvironmentBootstrap(
+  authentication: AuthenticationResult,
+  rootApiKey: string
+): string {
+  return presentedApiKeyFromAuthentication(authentication) ?? rootApiKey;
+}
+
 /**
  * Keep PAT/OAT authentication on the legacy path while routing machine API
  * keys through the RBAC controller, where plugin grants are applied.
  */
-type AuthenticationDependencies = {
+type AuthenticationDependencies = ScopedApiKeyAuthenticationDependencies;
+
+type BootstrapAuthenticationDependencies = {
   authenticateRequest: typeof authenticateRequest;
-  authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
+  authenticateApiKeyRequest: typeof authenticateApiKeyRequest;
 };
 
 export async function authenticateEnvironmentScopedApiRequest(
   request: Request,
   action: "read" | "write",
   resource: EnvironmentScopedResource,
-  dependencies: AuthenticationDependencies = { authenticateRequest, authenticateApiKeyWithScope }
+  dependencies?: AuthenticationDependencies
+): Promise<EnvironmentScopedAuthentication> {
+  return authenticateRequestWithScopedApiKey(
+    request,
+    {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: { action, resource: { type: resource } },
+    },
+    dependencies
+  );
+}
+
+/**
+ * Bootstrap accepts any valid private environment key. Unlike env-var routes,
+ * it intentionally does not require a resource scope because it only echoes
+ * the credential the caller already presented.
+ */
+export async function authenticateEnvironmentBootstrapRequest(
+  request: Request,
+  dependencies: BootstrapAuthenticationDependencies = {
+    authenticateRequest,
+    authenticateApiKeyRequest,
+  }
 ): Promise<EnvironmentScopedAuthentication> {
   const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
     personalAccessToken: true,
@@ -52,9 +86,8 @@ export async function authenticateEnvironmentScopedApiRequest(
     return { ok: true, authentication: userOrOrganizationAuthentication };
   }
 
-  const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, {
-    action,
-    resource: { type: resource },
+  const apiKeyAuthentication = await dependencies.authenticateApiKeyRequest(request, {
+    allowPreviewParent: true,
   });
   if (!apiKeyAuthentication.ok) {
     return apiKeyAuthentication;

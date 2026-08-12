@@ -10,6 +10,30 @@ export const MAX_MESSAGE_CHARS = 8_000;
 /** The counter only shows near the limit, so a normal message never sees it. */
 export const MESSAGE_CHARS_WARN_AT = Math.floor(MAX_MESSAGE_CHARS * 0.9);
 
+/** The live region rounds the remaining characters up to this, so it speaks in steps. */
+export const MESSAGE_ANNOUNCE_STEP = 200;
+
+export const MESSAGE_LIMIT_REACHED_ANNOUNCEMENT = "Message limit reached";
+
+/**
+ * What the composer's live region says at this length: empty until the counter is worth
+ * showing. The region itself stays mounted whatever this returns — several screen readers only
+ * announce changes to a region that was already in the DOM.
+ *
+ * A live count would be read out once per keystroke, so this steps instead: four announcements
+ * between the warning point and the limit, and one more on reaching it. The exact count stays in
+ * the visible counter.
+ */
+export function messageCountAnnouncement(length: number): string {
+  if (length < MESSAGE_CHARS_WARN_AT) return "";
+
+  const remaining = Math.max(MAX_MESSAGE_CHARS - length, 0);
+  if (remaining === 0) return MESSAGE_LIMIT_REACHED_ANNOUNCEMENT;
+
+  const step = Math.ceil(remaining / MESSAGE_ANNOUNCE_STEP) * MESSAGE_ANNOUNCE_STEP;
+  return `${step} characters left`;
+}
+
 /** A composed message is a handful of parts; dozens means something is wrong. */
 export const MAX_MESSAGE_PARTS = 20;
 

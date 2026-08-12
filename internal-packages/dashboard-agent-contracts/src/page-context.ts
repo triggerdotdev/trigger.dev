@@ -20,6 +20,8 @@ export const agentPageSchema = z.discriminatedUnion("kind", [
     kind: z.literal("queue"),
     name: z.string(),
     health: z.enum(["ok", "warn", "crit"]).optional(),
+    /** A paused queue can neither drain nor grow, so it earns no watch and no backlog ask. */
+    paused: z.boolean().optional(),
   }),
   z.object({ kind: z.literal("deployments") }),
   z.object({

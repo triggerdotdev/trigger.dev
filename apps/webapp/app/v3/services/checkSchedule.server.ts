@@ -5,13 +5,16 @@ import { resolveProjectScopedEnvironments } from "./resolveProjectScopedEnvironm
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
+import type { ScheduleWindow } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { validateScheduleWindowSyntax } from "../scheduleWindow.server";
 
 type Schedule = {
   cron: string;
   timezone?: string;
   taskIdentifier: string;
   friendlyId?: string;
+  window?: ScheduleWindow;
 };
 
 export class CheckScheduleService extends BaseService {
@@ -37,6 +40,11 @@ export class CheckScheduleService extends BaseService {
           `Invalid IANA timezone: '${schedule.timezone}'. View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
         );
       }
+    }
+
+    const windowValidation = validateScheduleWindowSyntax(schedule.window);
+    if (!windowValidation.valid) {
+      throw new ServiceValidationError(windowValidation.message);
     }
 
     //check the task exists
@@ -131,12 +139,14 @@ export class CheckScheduleService extends BaseService {
         projectId,
         active: true,
         environment: {
+          projectId,
           type: {
             not: "DEVELOPMENT",
           },
           archivedAt: null,
         },
         taskSchedule: {
+          projectId,
           active: true,
         },
       },

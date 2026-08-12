@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  authenticateEnvironmentScopedApiRequest: vi.fn<(...args: any[]) => Promise<any>>(),
+  authenticateEnvironmentBootstrapRequest: vi.fn<(...args: any[]) => Promise<any>>(),
   authorizePatEnvironmentAccess: vi.fn<(...args: any[]) => Promise<any>>(),
   authenticatedEnvironmentForAuthentication: vi.fn<(...args: any[]) => Promise<any>>(),
 }));
 
 vi.mock("~/services/environmentVariableApiAccess.server", () => ({
-  authenticateEnvironmentScopedApiRequest: mocks.authenticateEnvironmentScopedApiRequest,
+  authenticateEnvironmentBootstrapRequest: mocks.authenticateEnvironmentBootstrapRequest,
   authorizePatEnvironmentAccess: mocks.authorizePatEnvironmentAccess,
-  presentedApiKeyFromAuthentication: (authentication: any) =>
+  apiKeyForProjectEnvironmentBootstrap: (authentication: any, rootApiKey: string) =>
     authentication.type === "apiKey" && authentication.result.ok
       ? authentication.result.apiKey
-      : undefined,
+      : rootApiKey,
 }));
 vi.mock("~/services/apiAuth.server", () => ({
   authenticatedEnvironmentForAuthentication: mocks.authenticatedEnvironmentForAuthentication,
@@ -54,7 +54,7 @@ async function responseJson(response: Response) {
 
 describe("project environment credential response", () => {
   beforeEach(() => {
-    mocks.authenticateEnvironmentScopedApiRequest.mockReset();
+    mocks.authenticateEnvironmentBootstrapRequest.mockReset();
     mocks.authorizePatEnvironmentAccess.mockReset();
     mocks.authenticatedEnvironmentForAuthentication.mockReset();
 
@@ -63,7 +63,7 @@ describe("project environment credential response", () => {
   });
 
   it("returns the presented API key", async () => {
-    mocks.authenticateEnvironmentScopedApiRequest.mockResolvedValue({
+    mocks.authenticateEnvironmentBootstrapRequest.mockResolvedValue({
       ok: true,
       authentication: {
         type: "apiKey",
@@ -83,10 +83,11 @@ describe("project environment credential response", () => {
       apiKey: "tr_prod_sk_presented",
       projectId: "proj_123",
     });
+    expect(mocks.authorizePatEnvironmentAccess).not.toHaveBeenCalled();
   });
 
   it("does not exchange a grace-window root key for the current root key", async () => {
-    mocks.authenticateEnvironmentScopedApiRequest.mockResolvedValue({
+    mocks.authenticateEnvironmentBootstrapRequest.mockResolvedValue({
       ok: true,
       authentication: {
         type: "apiKey",
@@ -109,7 +110,7 @@ describe("project environment credential response", () => {
   });
 
   it("returns the root key to an authorized user token", async () => {
-    mocks.authenticateEnvironmentScopedApiRequest.mockResolvedValue({
+    mocks.authenticateEnvironmentBootstrapRequest.mockResolvedValue({
       ok: true,
       authentication: {
         type: "personalAccessToken",
@@ -123,5 +124,6 @@ describe("project environment credential response", () => {
     await expect(responseJson(response)).resolves.toMatchObject({
       apiKey: "tr_prod_root_secret",
     });
+    expect(mocks.authorizePatEnvironmentAccess).toHaveBeenCalledOnce();
   });
 });

@@ -7,6 +7,7 @@ import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSc
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import { formatScheduleWindow, normalizeScheduleWindow } from "../scheduleWindow.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
@@ -100,6 +101,7 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
+        ...normalizeScheduleWindow(options.window),
       },
     });
 
@@ -161,12 +163,15 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : null,
+        ...normalizeScheduleWindow(options.window),
       },
     });
 
     const scheduleHasChanged =
       scheduleRecord.generatorExpression !== existingSchedule.generatorExpression ||
-      scheduleRecord.timezone !== existingSchedule.timezone;
+      scheduleRecord.timezone !== existingSchedule.timezone ||
+      scheduleRecord.windowDurationSeconds !== existingSchedule.windowDurationSeconds ||
+      scheduleRecord.windowPercentage !== existingSchedule.windowPercentage;
 
     // create the new instances
     const newInstances: InstanceWithEnvironment[] = [];
@@ -245,6 +250,7 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
+      window: formatScheduleWindow(taskSchedule),
       nextRun: calculateNextScheduledTimestampFromNow(
         taskSchedule.generatorExpression,
         taskSchedule.timezone

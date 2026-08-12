@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  apiKeyForProjectEnvironmentBootstrap,
+  authenticateEnvironmentBootstrapRequest,
   authenticateEnvVarApiRequest,
   presentedApiKeyFromAuthentication,
 } from "~/services/environmentVariableApiAccess.server";
 
 const authenticateRequest = vi.fn();
+const authenticateApiKeyRequest = vi.fn();
 const authenticateApiKeyWithScope = vi.fn();
 const dependencies = { authenticateRequest, authenticateApiKeyWithScope };
 
@@ -30,6 +33,61 @@ describe("presentedApiKeyFromAuthentication", () => {
         result: { userId: "user_123" },
       })
     ).toBeUndefined();
+  });
+
+  it("echoes only the presented API key during bootstrap", () => {
+    expect(
+      apiKeyForProjectEnvironmentBootstrap(
+        {
+          type: "apiKey",
+          result: {
+            ok: true,
+            apiKey: "tr_prod_sk_presented",
+            type: "PRIVATE",
+            environment: {},
+          },
+        },
+        "tr_prod_root"
+      )
+    ).toBe("tr_prod_sk_presented");
+  });
+
+  it("returns the root key to an authorized user token", () => {
+    expect(
+      apiKeyForProjectEnvironmentBootstrap(
+        {
+          type: "personalAccessToken",
+          result: { userId: "user_123" },
+        },
+        "tr_prod_root"
+      )
+    ).toBe("tr_prod_root");
+  });
+});
+
+describe("authenticateEnvironmentBootstrapRequest", () => {
+  it("authenticates API keys without requiring an API-key scope", async () => {
+    authenticateRequest.mockResolvedValueOnce(undefined);
+    const authentication = {
+      ok: true,
+      apiKey: "tr_preview_sk_presented",
+      type: "PRIVATE",
+      environment: {},
+    };
+    authenticateApiKeyRequest.mockResolvedValueOnce({ ok: true, authentication });
+
+    await expect(
+      authenticateEnvironmentBootstrapRequest(new Request("https://example.com"), {
+        authenticateRequest,
+        authenticateApiKeyRequest,
+      })
+    ).resolves.toEqual({
+      ok: true,
+      authentication: { type: "apiKey", result: authentication },
+    });
+    expect(authenticateApiKeyRequest).toHaveBeenCalledWith(expect.any(Request), {
+      allowPreviewParent: true,
+    });
   });
 });
 

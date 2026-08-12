@@ -214,7 +214,7 @@ describe("liveness trust guard (telemetry freshness)", () => {
   });
 
   it("no freshness signal is never TRUSTWORTHY, even though the human verdict stays neutral", () => {
-    // The machine field must not claim trust it lacks.
+    // The machine field must not claim trust it lacks: a health-recovery watch would fire off silence.
     const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
     expect(vm.summary.severity).toBe("ok");
     expect(vm.facts).toMatchObject({

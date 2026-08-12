@@ -10,8 +10,9 @@ import {
  * The rolling within-turn cache breakpoint, and the per-step telemetry that shows
  * whether the provider honoured it.
  *
- * Shared by every multi-step `streamText` the agent runs, so a ten-step
- * investigation doesn't re-send its accumulated tool outputs uncached on every step.
+ * Shared by every multi-step `streamText` the agent runs — the user's own turn and
+ * the consented watch investigation — so a ten-step investigation doesn't re-send
+ * its accumulated tool outputs uncached on every step.
  */
 
 export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;

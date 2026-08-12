@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import {
   getRepoInfoSchema,
@@ -268,11 +269,14 @@ export function buildRepoTools(
           const from = Math.max(1, startLine ?? 1);
           const to = Math.min(lines.length, endLine ?? lines.length);
           const range = capRead(lines.slice(from - 1, to).join("\n"));
+          // The cap can cut the range short, and a line number that outruns the
+          // content is a citation anchored to a line the model never saw.
+          const served = Math.min(to, from + range.content.split("\n").length - 1);
           return {
             path,
             content: range.content,
             startLine: from,
-            endLine: to,
+            endLine: served,
             ...(range.truncated ? { truncated: true, notice: READ_TRUNCATION_NOTICE } : {}),
           };
         }
@@ -310,7 +314,7 @@ export function buildRepoTools(
             .map((line) => {
               const m = line.match(/^([^:]+):(\d+):(.*)$/);
               return m
-                ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 300) }
+                ? { file: m[1], line: Number(m[2]), text: sliceWellFormed(m[3], 300) }
                 : { text: line };
             });
           return { matches, truncated: matches.length >= cap };

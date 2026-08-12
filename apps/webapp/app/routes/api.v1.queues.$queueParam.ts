@@ -14,6 +14,9 @@ export const loader = createLoaderApiRoute(
       queueParam: z.string().transform((val) => val.replace(/%2F/g, "/")),
     }),
     searchParams: SearchParamsSchema,
+    // The agent's environment JWT reads a queue's own row — name, depth, limit, paused —
+    // the way it already reads that queue's metrics. The `queues` scope still gates it.
+    allowJWT: true,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
     authorization: {
       action: "read",

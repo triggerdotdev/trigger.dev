@@ -27,6 +27,12 @@ import {
   v3EnvironmentPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
+};
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Tasks");

@@ -70,6 +70,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         triggerSource: true,
         createdAt: true,
         payloadSchema: true,
+        queueConfig: true,
       },
       orderBy: {
         slug: "asc",
@@ -100,6 +101,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           triggerSource: task.triggerSource,
           createdAt: task.createdAt,
           payloadSchema: task.payloadSchema,
+          queueConfig: task.queueConfig,
         })),
       },
       urls,
