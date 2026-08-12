@@ -4,6 +4,7 @@ import {
   consumerTasksForQueue,
   pickQueueLiveState,
   queueMetricsAreEmpty,
+  queueNameForKind,
   readQueueLiveState,
   withLiveState,
 } from "./tool-api";
@@ -120,6 +121,93 @@ describe("the queue's live row has three answers, not two", () => {
     expect(pickQueueLiveState(missing, unknown)).toEqual(unknown);
     expect(pickQueueLiveState(unknown, missing)).toEqual(unknown);
     expect(pickQueueLiveState(missing, missing)).toEqual(missing);
+  });
+});
+
+/**
+ * A queue the dashboard shows as `task/worker-1` is stored as `worker-1` when it is a custom
+ * queue, so asking for it under the spelling the user copied has to lose the prefix.
+ */
+describe("queueNameForKind", () => {
+  it("strips the task/ prefix for a custom queue only", () => {
+    expect(queueNameForKind("task/worker-1", "custom")).toBe("worker-1");
+    expect(queueNameForKind("task/worker-1", "task")).toBe("task/worker-1");
+    expect(queueNameForKind("email-sends", "custom")).toBe("email-sends");
+  });
+
+  it("only strips a leading prefix", () => {
+    expect(queueNameForKind("billing/task/retries", "custom")).toBe("billing/task/retries");
+  });
+});
+
+describe("get_queue asks for a custom queue under its stored name", () => {
+  const ORIGIN = "https://api.example.com";
+  const WORKERS = {
+    worker: { tasks: [{ slug: "process-order", queueConfig: { name: "worker-1" } }] },
+  };
+
+  function stubFetch(urls: string[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: any) => {
+        const url = typeof input === "string" ? input : input.url;
+        if (url.endsWith("/jwt")) {
+          return new Response(JSON.stringify({ token: "env-jwt" }), { status: 200 });
+        }
+        urls.push(url);
+        if (url.includes("/workers/current")) {
+          return new Response(JSON.stringify(WORKERS), { status: 200 });
+        }
+        if (url.includes("/metrics")) {
+          return new Response(JSON.stringify({ peakQueued: 12, startedCount: 4 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ type: "custom", paused: false, queued: 3 }), {
+          status: 200,
+        });
+      })
+    );
+  }
+
+  function getQueue() {
+    const ctx = {
+      userActorToken: "uat",
+      apiOrigin: ORIGIN,
+      projectRef: "proj_ref",
+      environmentName: "dev",
+    };
+    const tools = buildApiTools({
+      ctx,
+      client: createApiClient(ctx),
+      renderInvestigations: (() => []) as any,
+    });
+    return (input: any) => (tools.get_queue as any).execute(input, {} as any);
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("drops the task/ prefix from the metrics, live and consumer reads", async () => {
+    const urls: string[] = [];
+    stubFetch(urls);
+
+    const answer = await getQueue()({ queue: "task/worker-1", type: "custom" });
+
+    expect(urls.some((url) => url.includes("/api/v1/queues/worker-1/metrics?type=custom"))).toBe(
+      true
+    );
+    expect(urls.some((url) => url.includes("/api/v1/queues/worker-1?type=custom"))).toBe(true);
+    expect(urls.some((url) => url.includes("task%2Fworker-1"))).toBe(false);
+    expect(answer).toMatchObject({ exists: true, consumerTasks: ["process-order"] });
+  });
+
+  it("leaves a task queue's own name alone", async () => {
+    const urls: string[] = [];
+    stubFetch(urls);
+
+    await getQueue()({ queue: "task/worker-1", type: "task" });
+
+    expect(
+      urls.some((url) => url.includes("/api/v1/queues/task%2Fworker-1/metrics?type=task"))
+    ).toBe(true);
   });
 });
 

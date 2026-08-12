@@ -242,8 +242,16 @@ export const watchStatuses = ["active", "fired", "expired", "cancelled"] as cons
 export const watchStatusSchema = z.enum(watchStatuses);
 export type WatchStatus = z.infer<typeof watchStatusSchema>;
 
-/** Whether the user still needs to be told this watch fired. */
-export const watchDeliveryStatuses = ["not_required", "pending", "delivered"] as const;
+/**
+ * Whether the user still needs to be told this watch fired. `delivering` is the in-flight
+ * claim one deliverer holds, so it is a status the store writes and reads back.
+ */
+export const watchDeliveryStatuses = [
+  "not_required",
+  "pending",
+  "delivering",
+  "delivered",
+] as const;
 export const watchDeliveryStatusSchema = z.enum(watchDeliveryStatuses);
 export type WatchDeliveryStatus = z.infer<typeof watchDeliveryStatusSchema>;
 
@@ -588,20 +596,28 @@ export type WatchExternalNotificationStatus = WatchExternalNotification["status"
 /** The window lengths the card offers, in hours. Capped by {@link WATCH_MAX_HOURS}. */
 export const WATCH_WINDOW_HOURS_OPTIONS = [0.5, 1, 2, 6, 12, 24] as const;
 
-const RUN_STATE_KINDS = ["run_start", "run_finished", "run_failed"] as const;
+/** Lifecycle order: the three questions anyone can ask about one run. */
+const RUN_STATE_KINDS = watchSpecSchema.options[0].shape.kind.options;
 
 export function isRunStateWatchKind(kind: WatchKind): boolean {
   return (RUN_STATE_KINDS as readonly string[]).includes(kind);
 }
 
-/** Must stay in step with the cadence schemas, or the picker offers invalid options. */
+function cadenceOptionsOf(
+  schema: typeof runStateCadenceSchema | typeof standardCadenceSchema
+): readonly number[] {
+  return schema.shape.checkEveryMinutes.options.map((option) => option.value);
+}
+
+const RUN_STATE_CADENCE_OPTIONS = cadenceOptionsOf(runStateCadenceSchema);
+const STANDARD_CADENCE_OPTIONS = cadenceOptionsOf(standardCadenceSchema);
+
+/** Read off the cadence schemas, so the picker can never offer an option they reject. */
 export function watchCadenceOptions(kind: WatchKind): readonly number[] {
-  return isRunStateWatchKind(kind) ? [1, 5, 15, 60] : [5, 15, 60];
+  return isRunStateWatchKind(kind) ? RUN_STATE_CADENCE_OPTIONS : STANDARD_CADENCE_OPTIONS;
 }
 
 // One family per array, in the order the picker lists them.
-// Lifecycle order: the three questions anyone can ask about one run.
-const RUN_CONDITION_VARIANTS = ["run_start", "run_finished", "run_failed"] as const;
 const QUEUE_CONDITION_VARIANTS = [
   "backlog_drain",
   "queue_depth_above",
@@ -611,7 +627,7 @@ const QUEUE_CONDITION_VARIANTS = [
 ] as const;
 
 export function watchConditionVariants(kind: WatchKind): readonly WatchKind[] {
-  if ((RUN_CONDITION_VARIANTS as readonly string[]).includes(kind)) return RUN_CONDITION_VARIANTS;
+  if ((RUN_STATE_KINDS as readonly string[]).includes(kind)) return RUN_STATE_KINDS;
   if ((QUEUE_CONDITION_VARIANTS as readonly string[]).includes(kind)) {
     return QUEUE_CONDITION_VARIANTS;
   }

@@ -3,6 +3,7 @@ import { watchSpecSchema } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { resolveWatchEmailAlertsState } from "~/services/dashboardAgentWatchAlerts.server";
+import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import {
   authorizeWatchEnvironmentById,
   createDashboardAgentWatch,
@@ -110,24 +111,13 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!result.ok) {
-      const status =
-        result.code === "limit_reached" || result.code === "duplicate"
-          ? 409
-          : result.code === "invalid_target"
-            ? 404
-            : // The chat was deleted while the create was in flight.
-              result.code === "chat_not_found"
-              ? 404
-              : result.code === "not_configured"
-                ? 501
-                : 500;
       return json(
         {
           error: result.error,
           code: result.code,
           ...(result.existingId ? { existingId: result.existingId } : {}),
         },
-        { status }
+        { status: watchErrorStatus(result.code) }
       );
     }
 
