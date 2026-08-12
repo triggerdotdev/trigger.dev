@@ -209,8 +209,8 @@ jobs:
           BUILD_DIGEST: ${{ steps.build_toolchain.outputs.digest }}
         run: |
           for digest in "$RUNTIME_DIGEST" "$BUILD_DIGEST"; do
-            TOKEN="$(curl -fsS "https://auth.docker.io/token?service=registry.docker.io&scope=repository:triggerdotdev/$IMAGE_REPO:pull" | jq -r .token)"
-            curl -fsS -o /dev/null               -H "Authorization: Bearer $TOKEN"               -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"               "https://registry-1.docker.io/v2/triggerdotdev/$IMAGE_REPO/manifests/$digest"               || { echo "triggerdotdev/$IMAGE_REPO@$digest is not anonymously pullable; is the repo private?"; exit 1; }
+            TOKEN="$(curl -fsS --connect-timeout 10 --max-time 60 "https://auth.docker.io/token?service=registry.docker.io&scope=repository:triggerdotdev/$IMAGE_REPO:pull" | jq -r .token)"
+            curl -fsS --connect-timeout 10 --max-time 60 -o /dev/null               -H "Authorization: Bearer $TOKEN"               -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"               "https://registry-1.docker.io/v2/triggerdotdev/$IMAGE_REPO/manifests/$digest"               || { echo "triggerdotdev/$IMAGE_REPO@$digest is not anonymously pullable; is the repo private?"; exit 1; }
           done
 
       # Image is already pushed by this point; don't fail publishes on a Sigstore hiccup
