@@ -16,6 +16,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { logger } from "~/services/logger.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
+import { isSupportChannelEnabled } from "~/services/supportChannelFlag.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { getUserId } from "~/services/session.server";
 import {
@@ -59,6 +60,12 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
+    // Flag off means the feature does not exist yet, so 404 rather than render
+    // an upsell for something nobody can buy.
+    if (!(await isSupportChannelEnabled(organizationId))) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
     const supportChannel = await prisma.organizationSupportChannel.findFirst({
       where: { organizationId },
     });
@@ -89,6 +96,10 @@ export const action = dashboardAction(
       throw new Response("Not Found", { status: 404 });
     }
 
+    if (!(await isSupportChannelEnabled(organizationId))) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
     const formData = await request.formData();
     const result = ActionSchema.safeParse({ intent: formData.get("intent") });
     if (!result.success) {
@@ -98,6 +109,16 @@ export const action = dashboardAction(
     const plan = await getCurrentPlan(organizationId);
     if (!hasPrivateSlackSupport(plan)) {
       return json({ error: "Upgrade required" }, { status: 403 });
+    }
+
+    // A live channel already covers this org. Without this an out-of-band POST
+    // would flip the row back to PROVISIONING and re-send the Slack invite.
+    const existing = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId },
+      select: { status: true },
+    });
+    if (existing?.status === "INVITED" || existing?.status === "LINKED") {
+      return redirect(organizationSupportPath({ slug: params.organizationSlug }));
     }
 
     try {

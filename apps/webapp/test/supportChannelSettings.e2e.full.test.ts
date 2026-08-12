@@ -44,6 +44,9 @@ async function seedConfirmedOrgWithAdmin(prisma: PrismaClient) {
       title: `Free Org ${suffix}`,
       slug: `free-org-${suffix}`,
       isActivated: true,
+      // Per-org opt-in: the feature flag is off globally, so without this the
+      // route 404s and the upsell branch below is never reached.
+      featureFlags: { supportChannelEnabled: true },
     },
   });
   await prisma.orgMember.create({
@@ -92,6 +95,22 @@ describe("Support channel settings page", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("Upgrade to unlock");
+  });
+
+  it("404s when the feature flag is off", async () => {
+    const server = getTestServer();
+    const { user, organization } = await seedConfirmedOrgWithAdmin(server.prisma);
+    await server.prisma.organization.update({
+      where: { id: organization.id },
+      data: { featureFlags: { supportChannelEnabled: false } },
+    });
+    const cookie = await seedTestSession({ userId: user.id });
+
+    const res = await server.webapp.fetch(`/orgs/${organization.slug}/settings/support`, {
+      headers: { Cookie: cookie },
+    });
+
+    expect(res.status).toBe(404);
   });
 
   it("POST intent=connect is rejected for a free org", async () => {
