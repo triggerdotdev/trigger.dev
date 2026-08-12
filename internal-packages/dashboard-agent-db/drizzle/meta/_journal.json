@@ -15,6 +15,34 @@
       "when": 1781990914081,
       "tag": "0001_slimy_living_tribunal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782600000000,
+      "tag": "0002_watches_and_chat_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786264383741,
+      "tag": "0003_backfill_chat_last_read_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786359241538,
+      "tag": "0004_stale_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786376934874,
+      "tag": "0005_ambitious_mordo",
+      "breakpoints": true
     }
   ]
 }

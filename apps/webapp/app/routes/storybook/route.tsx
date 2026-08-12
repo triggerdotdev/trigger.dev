@@ -72,6 +72,10 @@ const stories: Story[] = [
     slug: "inline-code",
   },
   {
+    name: "Layout",
+    slug: "layout",
+  },
+  {
     name: "Loading bar divider",
     slug: "loading-bar-divider",
   },
@@ -155,11 +159,30 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
-  // Dashboard agent section
   {
-    sectionTitle: "Dashboard agent",
-    name: "Agent UI",
+    sectionTitle: "Trigger Agent",
+    name: "Chat UI",
     slug: "agent-ui",
+  },
+  {
+    name: "View blocks",
+    slug: "agent-view-blocks",
+  },
+  {
+    name: "Report view",
+    slug: "agent-report",
+  },
+  {
+    name: "Investigation card",
+    slug: "agent-investigation",
+  },
+  {
+    name: "Watch card",
+    slug: "agent-watch",
+  },
+  {
+    name: "Icons & Buttons",
+    slug: "ai-agent",
   },
   // Forms section
   {

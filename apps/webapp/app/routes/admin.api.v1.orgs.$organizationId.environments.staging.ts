@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
+  Prisma,
   type RuntimeEnvironment,
   type Organization,
   type Project,
@@ -61,9 +62,16 @@ async function upsertEnvironment(
   type: RuntimeEnvironmentType,
   isBranchableEnvironment: boolean
 ) {
-  const existingEnvironment = project.environments.find((env) => env.type === type);
+  const existingEnvironment = project.environments.find(
+    (env) => env.type === type && env.parentEnvironmentId === null
+  );
 
-  if (!existingEnvironment) {
+  if (existingEnvironment) {
+    await updateEnvConcurrencyLimits({ ...existingEnvironment, organization, project });
+    return { status: "updated", environment: existingEnvironment };
+  }
+
+  try {
     const newEnvironment = await createEnvironment({
       organization,
       project,
@@ -72,8 +80,23 @@ async function upsertEnvironment(
     });
     await updateEnvConcurrencyLimits({ ...newEnvironment, organization, project });
     return { status: "created", environment: newEnvironment };
-  } else {
-    await updateEnvConcurrencyLimits({ ...existingEnvironment, organization, project });
-    return { status: "updated", environment: existingEnvironment };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const existingAfterConflict = await prisma.runtimeEnvironment.findFirst({
+        where: {
+          organizationId: organization.id,
+          projectId: project.id,
+          type,
+          parentEnvironmentId: null,
+        },
+      });
+
+      if (existingAfterConflict) {
+        await updateEnvConcurrencyLimits({ ...existingAfterConflict, organization, project });
+        return { status: "updated", environment: existingAfterConflict };
+      }
+    }
+
+    throw error;
   }
 }

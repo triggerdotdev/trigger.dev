@@ -3,7 +3,11 @@ import {
   ApiRunListPresenter,
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
-import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(
   {
@@ -18,17 +22,18 @@ export const loader = createLoaderApiRoute(
         // and the legacy `checkAuthorization` iterated `Object.keys` — so a
         // JWT with type-level `read:tasks` (no id) granted access to the
         // unfiltered runs list. The new ability model only matches against
-        // resources we list, so the type-level `{ type: "tasks" }` element
-        // (alongside `{ type: "runs" }` and the per-id task elements)
-        // preserves that semantic — `read:tasks` JWTs in the wild still
-        // list unfiltered runs without needing a separate `read:runs`
-        // scope. Per-id `read:tasks:foo` still grants only when the
-        // filter includes `foo`.
-        return anyResource([
-          { type: "runs" },
-          { type: "tasks" },
-          ...taskFilter.map((id) => ({ type: "tasks", id })),
-        ]);
+        // resources we list. Keep type-level runs/tasks as alternatives so
+        // broad scopes retain that behavior. ID-scoped keys, however, must
+        // match every task in a multi-task filter; matching one item must not
+        // expose the others.
+        if (taskFilter.length === 0) {
+          return anyResource([{ type: "runs" }, { type: "tasks" }]);
+        }
+
+        return everyResource(
+          taskFilter.map((id) => ({ type: "tasks", id })),
+          [{ type: "runs" }, { type: "tasks" }]
+        );
       },
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource

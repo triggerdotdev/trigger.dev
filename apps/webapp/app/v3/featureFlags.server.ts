@@ -25,21 +25,25 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   async function flag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T>
   ): Promise<z.infer<(typeof FeatureFlagCatalog)[T]> | undefined> {
+    const flagSchema = FeatureFlagCatalog[opts.key];
+
+    const override = opts.overrides?.[opts.key];
+
+    if (override !== undefined) {
+      const parsed = flagSchema.safeParse(override);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      // an override that fails the schema is ignored: the global value still wins
+    }
+
     const value = await _prisma.featureFlag.findFirst({
       where: {
         key: opts.key,
       },
     });
-
-    const flagSchema = FeatureFlagCatalog[opts.key];
-
-    if (opts.overrides?.[opts.key] !== undefined) {
-      const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
-
-      if (parsed.success) {
-        return parsed.data;
-      }
-    }
 
     if (value !== null) {
       const parsed = flagSchema.safeParse(value.value);
@@ -53,6 +57,32 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   }
 
   return flag;
+}
+
+const cachedFlagStore = new Map<string, { value: unknown; expiresAt: number }>();
+
+/**
+ * flag() behind a short process-level TTL cache, for global flags read on hot
+ * paths (e.g. the root loader) where a database round-trip per request is too
+ * expensive. Flips propagate within ttlMs per process. Overrides are rejected
+ * by the type: a scoped resolution must never be reused across scopes.
+ */
+export async function cachedFlag<T extends FeatureFlagKey>(
+  opts: Omit<FlagsOptions<T>, "overrides"> & {
+    defaultValue: z.infer<(typeof FeatureFlagCatalog)[T]>;
+  },
+  ttlMs = 30_000
+): Promise<z.infer<(typeof FeatureFlagCatalog)[T]>> {
+  // defaultValue resolves the flag when the row is absent, so it's part of the key
+  const cacheKey = `${opts.key}:${JSON.stringify(opts.defaultValue)}`;
+  const hit = cachedFlagStore.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    return hit.value as z.infer<(typeof FeatureFlagCatalog)[T]>;
+  }
+
+  const value = await flag(opts);
+  cachedFlagStore.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
+  return value;
 }
 
 export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {

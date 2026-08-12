@@ -81,6 +81,7 @@ import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 import { KeyboardWindowsIcon } from "~/assets/icons/KeyboardWindowsIcon";
 import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { KeyValueIcon } from "~/assets/icons/KeyValueIcon";
+import { LeftSideMenuIcon } from "~/assets/icons/LeftSideMenuIcon";
 import { ListBulletIcon } from "~/assets/icons/ListBulletIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
@@ -92,6 +93,7 @@ import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import { NodejsLogoIcon } from "~/assets/icons/NodejsLogoIcon";
 import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { PadlockRoundedIcon } from "~/assets/icons/PadlockRoundedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
@@ -217,6 +219,7 @@ const icons: IconEntry[] = [
   { name: "KeyboardWindowsIcon", render: simple(KeyboardWindowsIcon) },
   { name: "KeyIcon", render: simple(KeyIcon) },
   { name: "KeyValueIcon", render: simple(KeyValueIcon) },
+  { name: "LeftSideMenuIcon", render: simple(LeftSideMenuIcon) },
   { name: "ListBulletIcon", render: simple(ListBulletIcon) },
   { name: "ListCheckedIcon", render: simple(ListCheckedIcon) },
   { name: "LlamaIcon", render: simple(LlamaIcon) },
@@ -231,6 +234,7 @@ const icons: IconEntry[] = [
   { name: "OneTreeIcon", render: simple(OneTreeIcon) },
   { name: "OpenAIIcon", render: simple(OpenAIIcon) },
   { name: "PadlockIcon", render: simple(PadlockIcon) },
+  { name: "PadlockRoundedIcon", render: simple(PadlockRoundedIcon) },
   { name: "PauseIcon", render: simple(PauseIcon) },
   { name: "PerplexityIcon", render: simple(PerplexityIcon) },
   { name: "PlaygroundIcon", render: simple(PlaygroundIcon) },

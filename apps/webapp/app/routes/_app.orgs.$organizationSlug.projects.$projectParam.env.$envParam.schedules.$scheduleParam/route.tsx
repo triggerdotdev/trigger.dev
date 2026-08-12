@@ -6,7 +6,6 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
-import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -18,6 +17,11 @@ import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath, v3ScheduleParams, v3SchedulePath } from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
+import { scheduleAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.scheduleParam ?? "Schedule", "Schedules"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -78,11 +82,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // `_format=json` → return JSON instead of redirecting; caller stays put.
   const wantsJson = formData.get("_format") === "json";
 
-  const project = await prisma.project.findFirst({
-    where: {
-      slug: projectParam,
-    },
-  });
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
     const message = `No project found with slug ${projectParam}`;
@@ -179,6 +179,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
     }
   }
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => scheduleAgentPageContext(data),
 };
 
 export default function Page() {

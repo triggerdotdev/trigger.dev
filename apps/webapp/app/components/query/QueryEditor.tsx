@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -72,7 +73,8 @@ import type { action as titleAction } from "~/routes/resources.orgs.$organizatio
 import type { QueryScope } from "~/services/queryService.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { organizationBillingPath } from "~/utils/pathBuilder";
-import { querySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
+import { useFeatures } from "~/hooks/useFeatures";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -187,6 +189,11 @@ const QueryEditorForm = forwardRef<
   ref
 ) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
+  const { queueMetricsQueryTables } = useFeatures();
+  const schemas = useMemo(
+    () => listableQuerySchemas({ includeQueueMetrics: queueMetricsQueryTables }),
+    [queueMetricsQueryTables]
+  );
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
@@ -241,11 +248,11 @@ const QueryEditorForm = forwardRef<
   );
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-background-deep pb-2">
+    <div className="flex h-full flex-col gap-2 bg-white pb-2 dark:bg-background-deep">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
-        schema={querySchemas}
+        schema={schemas}
         linterEnabled={true}
         showCopyButton={true}
         showClearButton={true}

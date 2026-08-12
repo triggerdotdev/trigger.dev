@@ -1,10 +1,10 @@
-import { Outlet, type MetaFunction } from "@remix-run/react";
+import { Outlet, useMatches } from "@remix-run/react";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { useProject } from "~/hooks/useProject";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -12,14 +12,15 @@ import {
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Project settings | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("settings"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Project settings");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   await requireUserId(request);
@@ -42,27 +43,40 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return null;
 };
 
+const DEFAULT_PAGE_TITLE = "Project settings";
+
+function usePageTitle() {
+  const matches = useMatches();
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const pageTitle = (matches[i].handle as { pageTitle?: string } | undefined)?.pageTitle;
+    if (pageTitle) return pageTitle;
+  }
+  return DEFAULT_PAGE_TITLE;
+}
+
 export default function SettingsLayout() {
   const project = useProject();
+  const pageTitle = usePageTitle();
 
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Project settings" />
+        <PageTitle title={pageTitle} />
 
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
               <Property.Item>
                 <Property.Label>ID</Property.Label>
-                <Property.Value>{project.id}</Property.Value>
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{project.id}</Paragraph>
-                </div>
+                <Property.Value>
+                  <CopyableText value={project.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
-                <Property.Value>{project.organizationId}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={project.organizationId} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>

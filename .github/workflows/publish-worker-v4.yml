@@ -13,6 +13,13 @@ on:
         type: string
         required: false
         default: ""
+    outputs:
+      version:
+        description: The published image tag
+        value: ${{ jobs.build.outputs.version }}
+      image_repo:
+        description: The image repository the build was published to (without tag)
+        value: ${{ jobs.build.outputs.image_repo }}
   push:
     tags:
       - "re2-test-*"
@@ -38,6 +45,11 @@ jobs:
       matrix:
         package: [supervisor]
     runs-on: warp-ubuntu-latest-x64-2x
+    # Single-entry matrix, so these job outputs are unambiguous (consumed by the
+    # scan-supervisor job in publish.yml).
+    outputs:
+      version: ${{ steps.get_tag.outputs.tag }}
+      image_repo: ${{ steps.set_tags.outputs.image_repo }}
     env:
       DOCKER_BUILDKIT: "1"
     steps:
@@ -81,6 +93,7 @@ jobs:
           fi
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+          echo "image_repo=${ref_without_tag}" >> "$GITHUB_OUTPUT"
         env:
           IMAGE_REGISTRY: ${{ inputs.image_registry || vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
           STEPS_GET_REPOSITORY_OUTPUTS_REPO: ${{ steps.get_repository.outputs.repo }}

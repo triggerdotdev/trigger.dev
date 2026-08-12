@@ -6,15 +6,28 @@ import type {
   RuntimeEnvironment,
   User,
 } from "@trigger.dev/database";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { customAlphabet } from "nanoid";
 import { generate } from "random-words";
 import slug from "slug";
-import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import {
+  $replica,
+  Prisma as PrismaNamespace,
+  prisma,
+  type PrismaClientOrTransaction,
+  type PrismaReplicaClient,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
-import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
+import {
+  getDefaultEnvironmentConcurrencyLimit,
+  isBillingConfigured,
+  setBillingAlert,
+} from "~/services/platform.v3.server";
+import { buildDefaultBillingAlerts } from "~/services/billingAlertsDefaults.server";
 import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
+import { logger } from "~/services/logger.server";
 import {
   applyBillingLimitPauseAfterEnvCreate,
   getInitialEnvPauseStateForBillingLimit,
@@ -29,8 +42,12 @@ const nanoid = customAlphabet("1234567890abcdef", 4);
  * miss, so replica lag never leaves a real org unresolved, which the dashboard
  * route builder treats as an unauthorized request.
  */
-export async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const fromReplica = await $replica.organization.findFirst({
+export async function resolveOrgIdFromSlug(
+  slug: string,
+  replicaClient: PrismaReplicaClient = $replica,
+  prismaClient: PrismaClientOrTransaction = prisma
+): Promise<string | null> {
+  const fromReplica = await replicaClient.organization.findFirst({
     where: { slug },
     select: { id: true },
   });
@@ -38,10 +55,33 @@ export async function resolveOrgIdFromSlug(slug: string): Promise<string | null>
     return fromReplica.id;
   }
 
-  const fromPrimary = await prisma.organization.findFirst({
+  const fromPrimary = await prismaClient.organization.findFirst({
     where: { slug },
     select: { id: true },
   });
+  return fromPrimary?.id ?? null;
+}
+
+/**
+ * Like `resolveOrgIdFromSlug`, but only resolves an org the user is a member of. `ability.can` is not
+ * a tenant floor (the OSS fallback and the cloud plugin both return a permissive ability for a
+ * non-member), so a route that scopes only by slug lets a non-member reach the handler; the
+ * membership filter here is the tenant floor. Returns null for a non-member, which the dashboard
+ * route builder treats as no scope and fails closed.
+ */
+export async function resolveOrgIdFromSlugForUser(
+  slug: string,
+  userId: string,
+  replicaClient: PrismaReplicaClient = $replica,
+  prismaClient: PrismaClientOrTransaction = prisma
+): Promise<string | null> {
+  const where = { slug, members: { some: { userId } } };
+  const fromReplica = await replicaClient.organization.findFirst({ where, select: { id: true } });
+  if (fromReplica) {
+    return fromReplica.id;
+  }
+
+  const fromPrimary = await prismaClient.organization.findFirst({ where, select: { id: true } });
   return fromPrimary?.id ?? null;
 }
 
@@ -122,7 +162,37 @@ export async function createOrganization(
     adminUserId: userId,
   });
 
+  // Awaited so the seed can't land after the user's first alert edit.
+  await seedDefaultBillingAlerts(organization.id);
+
   return { ...organization };
+}
+
+// The platform client has no request timeout; don't let a slow billing backend stall org creation.
+const SEED_ALERTS_TIMEOUT_MS = 5_000;
+
+/** Seed default billing alerts for a new org. Never fails org creation. */
+async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
+  if (!isBillingConfigured()) {
+    return;
+  }
+
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Timed out")), SEED_ALERTS_TIMEOUT_MS);
+  });
+
+  const [error] = await tryCatch(
+    Promise.race([setBillingAlert(organizationId, buildDefaultBillingAlerts()), timeout]).finally(
+      () => clearTimeout(timer)
+    )
+  );
+  if (error) {
+    logger.warn("Failed to seed default billing alerts for new org", {
+      organizationId,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
 }
 
 export async function createEnvironment({
@@ -185,6 +255,83 @@ export async function createEnvironment({
   await applyBillingLimitPauseAfterEnvCreate(environment);
 
   return environment;
+}
+
+/**
+ * A member's root development environment for a project, never a branch under
+ * it. Not keyed on slug, so a legacy root with another slug still matches.
+ */
+export function memberDevelopmentEnvironmentWhere({
+  projectId,
+  orgMemberId,
+}: {
+  projectId?: string | { in: string[] };
+  orgMemberId: string;
+}): Prisma.RuntimeEnvironmentWhereInput {
+  return {
+    ...(projectId === undefined ? {} : { projectId }),
+    orgMemberId,
+    type: "DEVELOPMENT",
+    parentEnvironmentId: null,
+  };
+}
+
+/**
+ * Create a member's development environment, reporting `created: false` when a
+ * concurrent writer already made it. Any other conflict still throws.
+ *
+ * Not transaction-aware: a unique violation aborts an enclosing transaction, so
+ * the read that confirms the concurrent row has to run outside one.
+ */
+export async function createDevelopmentEnvironmentForMember({
+  organization,
+  project,
+  member,
+  maximumConcurrencyLimit,
+}: {
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  project: Pick<Project, "id">;
+  member: OrgMember;
+  maximumConcurrencyLimit?: number;
+}): Promise<{ created: boolean }> {
+  try {
+    await createEnvironment({
+      organization,
+      project,
+      type: "DEVELOPMENT",
+      isBranchableEnvironment: true,
+      member,
+      maximumConcurrencyLimit,
+    });
+    return { created: true };
+  } catch (error) {
+    if (
+      !(error instanceof PrismaNamespace.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      throw error;
+    }
+
+    const existing = await prisma.runtimeEnvironment.findFirst({
+      where: memberDevelopmentEnvironmentWhere({
+        projectId: project.id,
+        orgMemberId: member.id,
+      }),
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw error;
+    }
+
+    logger.debug("Development environment already created by a concurrent writer", {
+      organizationId: organization.id,
+      projectId: project.id,
+      orgMemberId: member.id,
+    });
+
+    return { created: false };
+  }
 }
 
 function createShortcode() {

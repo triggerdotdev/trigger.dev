@@ -6,6 +6,7 @@ import {
 } from "~/assets/icons/EnvironmentIcons";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
+import { labelOverflowFadeStyle } from "~/components/primitives/labelOverflowFade";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEffect, useRef, useState } from "react";
 
@@ -81,12 +82,15 @@ export function EnvironmentLabel({
   tooltipSideOffset = 34,
   tooltipSide = "right",
   disableTooltip = false,
+  truncate = true,
 }: {
   environment: Environment;
   className?: string;
   tooltipSideOffset?: number;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   disableTooltip?: boolean;
+  /** When false, an overflowing label fades at its right edge instead of ending in an ellipsis. */
+  truncate?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -113,7 +117,14 @@ export function EnvironmentLabel({
   const content = (
     <span
       ref={spanRef}
-      className={cn("truncate text-left", environmentTextClassName(environment), className)}
+      className={cn(
+        truncate ? "truncate" : "overflow-hidden whitespace-nowrap",
+        // system-mono-label: System themes uncolor the name, only the icon stays tinted
+        "text-left system-mono-label",
+        environmentTextClassName(environment),
+        className
+      )}
+      style={labelOverflowFadeStyle(!truncate && isTruncated)}
     >
       {text}
     </span>
@@ -125,7 +136,10 @@ export function EnvironmentLabel({
         asChild
         button={content}
         content={
-          <span ref={spanRef} className={cn("text-left", environmentTextClassName(environment))}>
+          <span
+            ref={spanRef}
+            className={cn("text-left system-mono-label", environmentTextClassName(environment))}
+          >
             {text}
           </span>
         }
@@ -141,7 +155,11 @@ export function EnvironmentLabel({
 }
 
 export function EnvironmentSlug({ environment }: { environment: Environment & { slug: string } }) {
-  return <span className={environmentTextClassName(environment)}>{environment.slug}</span>;
+  return (
+    <span className={cn("system-mono-label", environmentTextClassName(environment))}>
+      {environment.slug}
+    </span>
+  );
 }
 
 export function environmentTitle(environment: Environment, username?: string) {

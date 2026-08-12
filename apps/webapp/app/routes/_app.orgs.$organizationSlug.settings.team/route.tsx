@@ -2,13 +2,7 @@ import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useFetcher,
-  useNavigation,
-} from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { cloneElement, useEffect, useRef, useState } from "react";
@@ -18,17 +12,8 @@ import { z } from "zod";
 import { Feedback } from "~/components/Feedback";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import {
-  Alert,
-  AlertCancel,
-  AlertContent,
-  AlertDescription,
-  AlertFooter,
-  AlertHeader,
-  AlertTitle,
-  AlertTrigger,
-} from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -52,7 +37,8 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -70,14 +56,9 @@ import {
 } from "~/utils/pathBuilder";
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Team | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Team");
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -86,8 +67,10 @@ const Params = z.object({
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     authorization: { action: "read", resource: { type: "members" } },
@@ -147,8 +130,10 @@ const SetRoleSchema = z.object({
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     // No top-level authorization — different intents have different
@@ -372,7 +357,9 @@ export default function Page() {
             <Property.Table>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
-                <Property.Value>{organization.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={organization.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
 
               {members.map((member) => (
@@ -496,7 +483,8 @@ export default function Page() {
                       <UserAvatar
                         avatarUrl={member.user.avatarUrl}
                         name={member.user.name}
-                        className="size-10"
+                        className="size-9"
+                        strokeWidth={1.25}
                       />
                       <div className="flex flex-col gap-0.5">
                         <Header3>
@@ -655,8 +643,14 @@ function LeaveRemoveButton({
       <LeaveTeamModal
         member={member}
         buttonText="Leave team"
-        title="Are you sure you want to leave the team?"
-        description={`You will no longer have access to ${organization.title}. To regain access, you will need to be invited again.`}
+        title="Leave team"
+        description={
+          <>
+            Are you sure you want to leave the team? You will no longer have access to{" "}
+            <span className="text-text-bright">{organization.title}</span>. To regain access, you
+            will need to be invited again.
+          </>
+        }
         actionText="Leave team"
       />
     );
@@ -680,8 +674,16 @@ function LeaveRemoveButton({
     <LeaveTeamModal
       member={member}
       buttonText="Remove from team"
-      title={`Are you sure you want to remove ${member.user.name ?? "them"} from the team?`}
-      description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
+      title="Remove team member"
+      description={
+        <>
+          Are you sure you want to remove{" "}
+          <span className="text-text-bright">{member.user.name ?? member.user.email}</span> from the
+          team? They will no longer have access to{" "}
+          <span className="text-text-bright">{organization.title}</span>. To regain access, you will
+          need to invite them again.
+        </>
+      }
       actionText="Remove from team"
     />
   );
@@ -791,7 +793,7 @@ function LeaveTeamModal({
   member: Member;
   buttonText: string;
   title: string;
-  description: string;
+  description: React.ReactNode;
   actionText: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -807,28 +809,32 @@ function LeaveTeamModal({
   });
 
   return (
-    <Alert open={open} onOpenChange={(o) => setOpen(o)}>
-      <AlertTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button variant="secondary/small">{buttonText}</Button>
-      </AlertTrigger>
-      <AlertContent>
-        <AlertHeader>
-          <AlertTitle>{title}</AlertTitle>
-          <AlertDescription>{description}</AlertDescription>
-        </AlertHeader>
-        <AlertFooter>
-          <AlertCancel asChild>
-            <Button variant="secondary/small">Cancel</Button>
-          </AlertCancel>
-          <Form method="post" {...getFormProps(form)} onSubmit={() => setOpen(false)}>
-            <input type="hidden" value={member.id} name="memberId" />
-            <Button type="submit" variant="danger/small" form={form.id}>
-              {actionText}
-            </Button>
-          </Form>
-        </AlertFooter>
-      </AlertContent>
-    </Alert>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>{title}</DialogHeader>
+        <Form method="post" {...getFormProps(form)} onSubmit={() => setOpen(false)}>
+          <input type="hidden" value={member.id} name="memberId" />
+          <Paragraph variant="small" className="pb-4 pt-2">
+            {description}
+          </Paragraph>
+          <FormButtons
+            confirmButton={
+              <Button type="submit" variant="danger/medium">
+                {actionText}
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

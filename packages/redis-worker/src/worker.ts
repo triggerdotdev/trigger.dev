@@ -19,7 +19,7 @@ import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
 import { type AnyQueueItem, SimpleQueue } from "./queue.js";
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
 
 export const CronSchema = z.object({
   cron: z.string(),
@@ -140,7 +140,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   > = new Map();
 
   constructor(private options: WorkerOptions<TCatalog>) {
-    this.logger = options.logger ?? new Logger("Worker", "debug");
+    this.logger = options.logger ?? new Logger("Worker", "debug", ["item"]);
     this.tracer = options.tracer ?? trace.getTracer(options.name);
     this.meter = options.meter ?? metrics.getMeter(options.name);
 
@@ -608,7 +608,8 @@ class Worker<TCatalog extends WorkerCatalog> {
                 this.logger.error("Unhandled error in processItem:", {
                   error: err,
                   workerId,
-                  item,
+                  id: queueItem.id,
+                  job: queueItem.job,
                 });
               }
             );
@@ -933,11 +934,12 @@ class Worker<TCatalog extends WorkerCatalog> {
       const errorLogLevel =
         error && typeof error === "object" && "logLevel" in error ? error.logLevel : undefined;
 
+      // Never include the raw item/payload here: it is job data that may be
+      // customer-controlled. It is retrievable via `getJob(id)` if needed for triage.
       const logAttributes = {
         name: this.options.name,
         id,
         job,
-        item,
         visibilityTimeoutMs,
         error,
         errorMessage,
@@ -994,7 +996,6 @@ class Worker<TCatalog extends WorkerCatalog> {
           name: this.options.name,
           id,
           job,
-          item,
           retryDate,
           retryDelay,
           visibilityTimeoutMs,
@@ -1015,7 +1016,6 @@ class Worker<TCatalog extends WorkerCatalog> {
             name: this.options.name,
             id,
             job,
-            item,
             visibilityTimeoutMs,
             error: requeueError,
           }
@@ -1130,9 +1130,10 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private calculateNextScheduledAt(cron: string, lastTimestamp?: Date): Date {
-    const scheduledAt = parseExpression(cron, {
-      currentDate: lastTimestamp,
-    })
+    const scheduledAt = cronParser
+      .parseExpression(cron, {
+        currentDate: lastTimestamp,
+      })
       .next()
       .toDate();
 

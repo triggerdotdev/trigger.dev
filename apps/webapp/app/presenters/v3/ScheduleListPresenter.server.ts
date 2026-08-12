@@ -1,10 +1,11 @@
-import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType, type ScheduleType, boundedIn } from "@trigger.dev/database";
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import {
   calculateNextScheduledTimestampFromNow,
@@ -31,6 +32,7 @@ export type ScheduleListItem = {
   cron: string;
   cronDescription: string;
   timezone: string;
+  window?: string;
   externalId: string | null;
   nextRun: Date;
   lastRun: Date | undefined;
@@ -164,7 +166,7 @@ export class ScheduleListPresenter extends BasePresenter {
     const totalCount = await this._replica.taskSchedule.count({
       where: {
         projectId: project.id,
-        taskIdentifier: tasks ? { in: tasks } : undefined,
+        taskIdentifier: tasks ? { in: boundedIn(tasks) } : undefined,
         instances: {
           some: {
             environmentId,
@@ -215,6 +217,8 @@ export class ScheduleListPresenter extends BasePresenter {
         generatorExpression: true,
         generatorDescription: true,
         timezone: true,
+        windowDurationSeconds: true,
+        windowPercentage: true,
         externalId: true,
         instances: {
           select: {
@@ -227,7 +231,7 @@ export class ScheduleListPresenter extends BasePresenter {
       },
       where: {
         projectId: project.id,
-        taskIdentifier: tasks ? { in: tasks } : undefined,
+        taskIdentifier: tasks ? { in: boundedIn(tasks) } : undefined,
         instances: {
           some: {
             environmentId,
@@ -306,6 +310,7 @@ export class ScheduleListPresenter extends BasePresenter {
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
         timezone: schedule.timezone,
+        window: formatScheduleWindow(schedule),
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun,

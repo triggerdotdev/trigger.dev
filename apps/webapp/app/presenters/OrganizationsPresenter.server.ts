@@ -152,11 +152,6 @@ export class OrganizationsPresenter {
           },
           orderBy: { name: "asc" },
         },
-        _count: {
-          select: {
-            members: true,
-          },
-        },
       },
     });
 
@@ -191,7 +186,6 @@ export class OrganizationsPresenter {
           updatedAt: project.updatedAt,
           externalRef: project.externalRef,
         })),
-        membersCount: org._count.members,
       };
     });
   }
@@ -235,7 +229,7 @@ export class OrganizationsPresenter {
       if (!env) {
         logger.info("Not Found: environment", {
           environmentSlug,
-          environments,
+          environmentCount: environments.length,
         });
       }
     }

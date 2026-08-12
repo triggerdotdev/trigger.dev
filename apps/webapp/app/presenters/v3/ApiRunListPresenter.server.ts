@@ -1,5 +1,10 @@
 import { MachinePresetName, parsePacket, RunStatus } from "@trigger.dev/core/v3";
-import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
+import {
+  type Project,
+  type RuntimeEnvironment,
+  type TaskRunStatus,
+  boundedIn,
+} from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
 import type { API_VERSIONS } from "~/api/versions";
@@ -208,7 +213,7 @@ export class ApiRunListPresenter extends BasePresenter {
             where: {
               projectId: project.id,
               slug: {
-                in: searchParams["filter[env]"],
+                in: boundedIn(searchParams["filter[env]"]),
               },
             },
           });
@@ -290,7 +295,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
         organizationId,
-        "standard"
+        "runsList"
       );
       const presenter = new NextRunListPresenter(this._replica, clickhouse, this.readThroughDeps);
 

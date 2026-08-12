@@ -1,26 +1,57 @@
 // Read-through proof for the public single-run result poll (ApiRunResultPresenter). The presenter
-// routes its TaskRun(+attempts) lookup-by-friendlyId through readThroughRun: split mode resolves
-// from new first then the legacy READ REPLICA on a new-probe miss (never a primary),
-// past-retention → undefined → the route's normal 404; single-DB is one plain findFirst. NEVER mock
-// the DB — the cross-version proof uses a heterogeneous legacy+new Postgres fixture; only pure
-// boundaries (splitEnabled/isPastRetention) are injected.
+// routes its TaskRun(+attempts) lookup-by-friendlyId through the run store, which selects the owning
+// DB by run-id residency (id shape): a run-ops (NEW) id reads the new store, a cuid (LEGACY) id reads
+// the legacy store; a missing run → undefined → the route's normal 404; single-DB is one plain
+// findFirst. NEVER mock the DB — the cross-version proof uses a heterogeneous legacy+new Postgres
+// fixture wired into a RoutingRunStore; only pure boundaries are injected.
 import { heteroPostgresTest } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import type { PrismaClient } from "@trigger.dev/database";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { customAlphabet } from "nanoid";
 import { describe, expect, vi } from "vitest";
 import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.server";
-import type { PrismaReplicaClient } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 // Neutralize the db.server singleton so importing the presenter (via BasePresenter) and
-// readThrough.server (which imports db.server defaults) does not try to connect to the env
-// database. Every read in this file goes through clients we inject explicitly.
+// runStore.server (which imports db.server defaults) does not try to connect to the env
+// database. Every read in this file goes through the RoutingRunStore we inject explicitly.
 vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
 vi.setConfig({ testTimeout: 60_000 });
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
+
+// Wire the presenter's run store to the test containers so run reads route to the container DBs
+// (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client. legacyClient may be a
+// tripwire proxy to assert a leg is never probed.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
+
+// A legacy client whose `taskRun` delegate throws if it is ever accessed — used to prove a
+// NEW-resident run is served without probing the legacy store.
+function tripwireLegacy(legacy: PrismaClient): PrismaClient {
+  return new Proxy(legacy, {
+    get(target, prop) {
+      if (prop === "taskRun") {
+        throw new Error("legacy store must not be probed for a NEW-resident run");
+      }
+      return (target as any)[prop];
+    },
+  }) as unknown as PrismaClient;
+}
 
 // Residency by friendlyId shape (after stripping `run_`): a valid 26-char v1 body (version "1" at
 // index 25, base32hex core) → NEW; a 25-char body → LEGACY (cuid analog). ownerEngine classifies on
@@ -182,19 +213,6 @@ async function seedRunWithAttempt(
   return run;
 }
 
-// A legacy-replica closure that explodes if ever touched — used to prove the primary/legacy store
-// is structurally unreachable when it must not be read.
-function throwingLegacy(): PrismaReplicaClient {
-  return new Proxy(
-    {},
-    {
-      get() {
-        throw new Error("legacy replica must never be read in this case");
-      },
-    }
-  ) as unknown as PrismaReplicaClient;
-}
-
 describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgres)", () => {
   heteroPostgresTest(
     "split: a run living on the NEW DB resolves from new and never probes the legacy replica",
@@ -206,14 +224,16 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
         attempt: { status: "COMPLETED", output: '"hello"', outputType: "application/json" },
       });
 
+      // NEW-resident friendlyId routes to the new store; the tripwire legacy throws if its taskRun
+      // delegate is ever touched, proving the legacy store is never probed.
       const presenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: throwingLegacy(),
-        }
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          prisma17 as unknown as PrismaClient,
+          tripwireLegacy(prisma14 as unknown as PrismaClient)
+        )
       );
 
       const result = await presenter.call(friendlyId, authEnv(ctx.environmentId));
@@ -228,13 +248,13 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
     }
   );
 
-  // Old legacy-only run resolves from the legacy read replica (cross-version). The only legacy
-  // handle exposed is a read replica — no writer/primary field exists in this path.
+  // Old legacy-only run resolves from the legacy store (cross-version). A LEGACY-classified id
+  // routes directly to the legacy leg, which is backed by the read replica in production.
   heteroPostgresTest(
     "split: an OLD legacy-only run resolves from the legacy read replica across the version boundary",
     async ({ prisma14, prisma17 }) => {
       const friendlyId = legacyFriendlyId();
-      // Seed only on legacy. New gets just an env so the new-probe runs but misses.
+      // Seed only on legacy. New gets just an env (it is never probed for a LEGACY id).
       const legacyCtx = await fullSeed(prisma14 as unknown as PrismaClient, "legacy-only");
       await fullSeed(prisma17 as unknown as PrismaClient, "new-empty");
       await seedRunWithAttempt(prisma14 as unknown as PrismaClient, legacyCtx, friendlyId, {
@@ -243,13 +263,10 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
       });
 
       const presenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma14 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        }
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14 as unknown as PrismaClient)
       );
 
       const result = await presenter.call(friendlyId, authEnv(legacyCtx.environmentId));
@@ -265,23 +282,21 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
     }
   );
 
-  // Legacy-classified id present on neither store, isPastRetention=true → past-retention → undefined.
+  // A run present on neither store returns undefined — the route's normal 404 surface. (Retention
+  // handling is owned by the read-through/retention layer, not this presenter; a plain miss and a
+  // past-retention id are indistinguishable here, both mapping to undefined.)
   heteroPostgresTest(
-    "split: a past-retention id returns undefined (the route's normal 404 surface)",
+    "split: a missing id returns undefined (the route's normal 404 surface)",
     async ({ prisma14, prisma17 }) => {
       const friendlyId = legacyFriendlyId();
       const ctx = await fullSeed(prisma17 as unknown as PrismaClient, "past-ret-new");
       await fullSeed(prisma14 as unknown as PrismaClient, "past-ret-legacy");
 
       const presenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma14 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isPastRetention: () => true,
-        }
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14 as unknown as PrismaClient)
       );
 
       const result = await presenter.call(friendlyId, authEnv(ctx.environmentId));
@@ -300,10 +315,12 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
         attempt: { status: "COMPLETED", output: '"single"', outputType: "application/json" },
       });
 
-      // No read-through deps → passthrough (single plain findFirst).
+      // Single DB is the NEW leg; the run resolves there (single plain findFirst).
       const presenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma17 as unknown as PrismaClient)
       );
 
       const result = await presenter.call(friendlyId, authEnv(ctx.environmentId));
@@ -313,15 +330,15 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
         expect(result.output).toBe('"single"');
       }
 
-      // splitEnabled:false with a throwing legacy proves no second store is touched.
+      // A tripwire legacy leg proves no second store is touched for a NEW-resident run.
       const presenter2 = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: false,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: throwingLegacy(),
-        }
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          prisma17 as unknown as PrismaClient,
+          tripwireLegacy(prisma14 as unknown as PrismaClient)
+        )
       );
       const result2 = await presenter2.call(friendlyId, authEnv(ctx.environmentId));
       expect(result2?.ok).toBe(true);
@@ -354,17 +371,19 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
       });
 
       const splitPresenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: throwingLegacy(),
-        }
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          prisma17 as unknown as PrismaClient,
+          tripwireLegacy(prisma14 as unknown as PrismaClient)
+        )
       );
       const passthroughPresenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma17 as unknown as PrismaClient)
       );
 
       for (const id of [successId, failedId, canceledId]) {

@@ -1,5 +1,56 @@
 # @trigger.dev/build
 
+## 4.5.10
+
+### Patch Changes
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- You can now mark environment variables synced via the `syncEnvVars` build extension as secrets. Return `{ name, value, isSecret: true }` from your callback and those variables are stored redacted in the dashboard, just like manually created secret env vars. ([#4203](https://github.com/triggerdotdev/trigger.dev/pull/4203))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+
 ## 4.5.3
 
 ### Patch Changes

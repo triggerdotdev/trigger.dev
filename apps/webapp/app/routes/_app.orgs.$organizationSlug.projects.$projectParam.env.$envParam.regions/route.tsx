@@ -7,7 +7,7 @@ import {
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -51,9 +51,11 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -62,6 +64,11 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Regions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -72,7 +79,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     presenter.call({
       userId: user.id,
       projectSlug: projectParam,
-      isAdmin: user.admin || user.isImpersonating,
+      isAdmin: hasAdminDisplayAccess(user),
     })
   );
 
@@ -90,43 +97,66 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const user = await requireUser(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+  },
+  async ({ user, ability, request, params }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    const redirectPath = regionsPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
 
-  const redirectPath = regionsPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam }
-  );
+    if (!ability.can("manage", { type: "project" })) {
+      throw await redirectWithErrorMessage(
+        redirectPath,
+        request,
+        "You don't have permission to change the default region"
+      );
+    }
 
-  if (!project) {
-    throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+
+    if (!project) {
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    }
+
+    const formData = await request.formData();
+    const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
+
+    if (!parsedFormData.success) {
+      throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
+    }
+
+    const service = new SetDefaultRegionService();
+    const [error, result] = await tryCatch(
+      service.call({
+        projectId: project.id,
+        regionId: parsedFormData.data.regionId,
+        // Raw impersonation, not `hasAdminDisplayAccess`: this decides whether a restricted or
+        // hidden region may be set as the default, which is a capability. "View as user" only
+        // changes what is shown.
+        isAdmin: user.admin || user.isImpersonating,
+      })
+    );
+
+    if (error) {
+      return redirectWithErrorMessage(redirectPath, request, error.message);
+    }
+
+    return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
+);
 
-  const formData = await request.formData();
-  const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsedFormData.success) {
-    throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
-  }
-
-  const service = new SetDefaultRegionService();
-  const [error, result] = await tryCatch(
-    service.call({
-      projectId: project.id,
-      regionId: parsedFormData.data.regionId,
-      isAdmin: user.admin || user.isImpersonating,
-    })
-  );
-
-  if (error) {
-    return redirectWithErrorMessage(redirectPath, request, error.message);
-  }
-
-  return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("regions"),
 };
 
 export default function Page() {
@@ -145,7 +175,9 @@ export default function Page() {
               {regions.map((region) => (
                 <Property.Item key={region.id}>
                   <Property.Label>{region.name}</Property.Label>
-                  <Property.Value>{region.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={region.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>
@@ -290,6 +322,7 @@ export default function Page() {
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>
                       <TableCellMenu
+                        className="suggest-region-cell"
                         alignment="right"
                         isSticky
                         visibleButtons={

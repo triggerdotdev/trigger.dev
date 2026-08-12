@@ -1,15 +1,22 @@
 import type { z } from "zod";
-import type { ApiAuthenticationResultSuccess } from "../apiAuth.server";
+import type {
+  ApiAuthenticationResultSuccess,
+  UserActorAuthenticatedActor,
+} from "../apiAuth.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
+import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { isUserActorToken } from "@trigger.dev/rbac";
-import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
-import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
+import {
+  resolveAndRecheckUserActorClaims,
+  updateLastAccessedAtIfStale,
+} from "../personalAccessToken.server";
+import { assertUserActorScope } from "../userActorEnvironment.server";
 import { safeJsonParse } from "~/utils/json";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
@@ -53,9 +60,14 @@ async function authenticateRequestForApiBuilder(
   { allowJWT }: { allowJWT: boolean }
 ): Promise<
   | { ok: false; status: 401 | 403; error: string }
-  | { ok: true; authentication: ApiAuthenticationResultSuccess; ability: RbacAbility }
+  | {
+      ok: true;
+      authentication: ApiAuthenticationResultSuccess;
+      ability: RbacAbility;
+      restrictedApiKey: boolean;
+    }
 > {
-  const result = await rbac.authenticateBearer(request, { allowJWT });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
@@ -78,7 +90,47 @@ async function authenticateRequestForApiBuilder(
     actor: result.jwt?.act,
   };
 
-  return { ok: true, authentication, ability: result.ability };
+  return {
+    ok: true,
+    authentication,
+    ability: result.ability,
+    restrictedApiKey: result.subject.type === "apiKey" && result.subject.restricted,
+  };
+}
+
+export function shouldRejectRestrictedKeyWithoutAuthorization(
+  restrictedApiKey: boolean,
+  hasAuthorization: boolean
+): boolean {
+  return restrictedApiKey && !hasAuthorization;
+}
+
+async function rejectRestrictedKeyWithoutAuthorization({
+  request,
+  restrictedApiKey,
+  hasAuthorization,
+  useCors,
+}: {
+  request: Request;
+  restrictedApiKey: boolean;
+  hasAuthorization: boolean;
+  useCors: boolean;
+}): Promise<Response | undefined> {
+  if (!shouldRejectRestrictedKeyWithoutAuthorization(restrictedApiKey, hasAuthorization)) return;
+
+  return wrapResponse(
+    request,
+    json(
+      {
+        error: "Unauthorized",
+        code: "unauthorized",
+        param: "access_token",
+        type: "authorization",
+      },
+      { status: 403 }
+    ),
+    useCors
+  );
 }
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -115,14 +167,18 @@ type AnyResourceAuth = {
 type EveryResourceAuth = {
   readonly [EVERY_RESOURCE_MARKER]: true;
   readonly resources: readonly RbacResource[];
+  readonly orResources: readonly RbacResource[];
 };
 
 export function anyResource(resources: RbacResource[]): AnyResourceAuth {
   return { [ANY_RESOURCE_MARKER]: true, resources };
 }
 
-export function everyResource(resources: RbacResource[]): EveryResourceAuth {
-  return { [EVERY_RESOURCE_MARKER]: true, resources };
+export function everyResource(
+  resources: RbacResource[],
+  orResources: RbacResource[] = []
+): EveryResourceAuth {
+  return { [EVERY_RESOURCE_MARKER]: true, resources, orResources };
 }
 
 function isAnyResource(value: unknown): value is AnyResourceAuth {
@@ -143,8 +199,15 @@ function isEveryResource(value: unknown): value is EveryResourceAuth {
 
 type AuthResource = RbacResource | AnyResourceAuth | EveryResourceAuth;
 
-function checkAuth(ability: RbacAbility, action: string, resource: AuthResource): boolean {
+export function checkAuth(ability: RbacAbility, action: string, resource: AuthResource): boolean {
   if (isEveryResource(resource)) {
+    // A broad collection grant may be supplied as an alternative to all
+    // instance checks. This preserves scopes such as read:runs while making
+    // mixed selected-task filters require access to every requested task.
+    if (resource.orResources.length > 0 && ability.can(action, [...resource.orResources])) {
+      return true;
+    }
+
     // Empty array via [].every() is vacuously true — would let any token
     // pass auth. Routes building everyResource() from request bodies
     // (e.g. batch trigger items) should never produce zero elements
@@ -223,6 +286,7 @@ type ApiKeyHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  ability: RbacAbility;
   request: Request;
   resource: NonNullable<TResource>;
   apiVersion: API_VERSIONS;
@@ -263,6 +327,13 @@ export function createLoaderApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       let parsedParams: any = undefined;
       if (paramsSchema) {
@@ -357,13 +428,17 @@ export function createLoaderApiRoute<
       const apiVersion = getApiVersion(request);
 
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           handler({
             params: parsedParams,
             searchParams: parsedSearchParams,
             headers: parsedHeaders,
             authentication: authenticationResult,
+            ability,
             request,
             resource,
             apiVersion,
@@ -392,6 +467,10 @@ export function createLoaderApiRoute<
   };
 }
 
+// `environmentId` is checked against a user-actor token's environment claim, so an env-scoped
+// route enforces the scope by declaring it here.
+type PATRouteContext = { organizationId?: string; projectId?: string; environmentId?: string };
+
 type PATRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -413,9 +492,7 @@ type PATRouteBuilderOptions<
       ? z.infer<TParamsSchema>
       : undefined,
     request: Request
-  ) =>
-    | { organizationId?: string; projectId?: string }
-    | Promise<{ organizationId?: string; projectId?: string }>;
+  ) => PATRouteContext | Promise<PATRouteContext>;
   authorization?: {
     action: string;
     resource: (
@@ -434,6 +511,18 @@ type PATRouteBuilderOptions<
   };
 };
 
+type PATLoaderRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+> = PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
+  // Opts a contextless route into being reachable by an environment-scoped user-actor token.
+  // Only for routes whose answer is the caller's own identity (their orgs, their projects) and
+  // which mutate nothing — otherwise such a token is refused for want of anything to check.
+  // Loaders only: an action mutates by definition, so the action options forbid it.
+  identityOnly?: true;
+};
+
 type PATHandlerFunction<
   TParamsSchema extends AnyZodSchema | undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined,
@@ -450,7 +539,7 @@ type PATHandlerFunction<
   headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<THeadersSchema>
     : undefined;
-  authentication: PersonalAccessTokenAuthenticationResult;
+  authentication: UserActorAuthenticatedActor;
   ability: RbacAbility;
   request: Request;
   apiVersion: API_VERSIONS;
@@ -461,7 +550,7 @@ export function createLoaderPATApiRoute<
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
 >(
-  options: PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
+  options: PATLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: PATHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
 ) {
   return async function loader({ request, params }: LoaderFunctionArgs) {
@@ -471,6 +560,7 @@ export function createLoaderPATApiRoute<
       headers: headersSchema,
       corsStrategy = "none",
       context: contextFn,
+      identityOnly,
       authorization,
     } = options;
 
@@ -548,7 +638,7 @@ export function createLoaderPATApiRoute<
       // cached timestamp is fresher than the throttle window).
       const ctx = contextFn ? await contextFn(parsedParams, request) : {};
 
-      let authenticationResult: PersonalAccessTokenAuthenticationResult;
+      let authenticationResult: UserActorAuthenticatedActor;
       let ability: RbacAbility;
 
       const bearer = request.headers
@@ -566,7 +656,16 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        authenticationResult = { userId: uatAuth.userId };
+        const claims = await resolveAndRecheckUserActorClaims(uatAuth.claims, bearer);
+        if (!claims) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid user-actor token" }, { status: 401 }),
+            corsStrategy !== "none"
+          );
+        }
+        await assertUserActorScope(claims, ctx, { identityOnly });
+        authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
         // PAT: validate + compute the cap-and-floor ability in one query.
@@ -623,6 +722,292 @@ export function createLoaderPATApiRoute<
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+
+        return json({ error: "Internal Server Error" }, { status: 500 });
+      }
+    }
+  };
+}
+
+// The mutation counterpart to `createLoaderPATApiRoute`. Same PAT/user-actor
+// auth + `context` role-floor + `authorization` gating + `tenantContext`
+// user attribution, plus a method guard, body parsing, and — unlike the
+// loader — `ServiceValidationError` is mapped to its `.status` so services
+// can raise typed 4xx errors instead of the route string-matching messages.
+// Deliberately self-contained (not sharing internals with the loader) so
+// existing PAT loader routes are untouched.
+type PATActionMethod = "POST" | "PUT" | "DELETE" | "PATCH";
+
+type PATActionRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+> = PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
+  // A single verb, or a list for multi-method routes (e.g. ["PATCH", "DELETE"]).
+  method?: PATActionMethod | PATActionMethod[];
+  body?: TBodySchema;
+  // `identityOnly` waives the contextless refusal for reads that mutate nothing. An action
+  // never qualifies, so it cannot be declared here.
+  identityOnly?: never;
+};
+
+type PATActionHandlerFunction<
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+> = (args: {
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
+  authentication: UserActorAuthenticatedActor;
+  ability: RbacAbility;
+  request: Request;
+  apiVersion: API_VERSIONS;
+}) => Promise<Response>;
+
+export function createActionPATApiRoute<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+>(
+  options: PATActionRouteBuilderOptions<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >,
+  handler: PATActionHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TBodySchema>
+) {
+  return async function action({ request, params }: ActionFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      headers: headersSchema,
+      body: bodySchema,
+      corsStrategy = "none",
+      context: contextFn,
+      authorization,
+      method,
+    } = options;
+
+    if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
+      return apiCors(request, json({}));
+    }
+
+    const allowedMethods = method ? (Array.isArray(method) ? method : [method]) : undefined;
+    if (allowedMethods && !(allowedMethods as string[]).includes(request.method.toUpperCase())) {
+      return await wrapResponse(
+        request,
+        json(
+          { error: "Method not allowed" },
+          { status: 405, headers: { Allow: allowedMethods.join(", ") } }
+        ),
+        corsStrategy !== "none"
+      );
+    }
+
+    try {
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const rawBody = await request.text();
+        if (rawBody.length === 0) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body is empty" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const rawParsedJson = safeJsonParse(rawBody);
+        if (!rawParsedJson) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid JSON" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const body = bodySchema.safeParse(rawParsedJson);
+        if (!body.success) {
+          return await wrapResponse(
+            request,
+            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+        parsedBody = body.data;
+      }
+
+      const apiVersion = getApiVersion(request);
+
+      // `context` resolves the target org/project so the plugin can compute the
+      // caller's role floor for the cap intersection (see the loader builder).
+      const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+
+      let authenticationResult: UserActorAuthenticatedActor;
+      let ability: RbacAbility;
+
+      const bearer = request.headers
+        .get("Authorization")
+        ?.replace(/^Bearer /, "")
+        .trim();
+      if (bearer && isUserActorToken(bearer)) {
+        const uatAuth = await rbac.authenticateUserActor(request, ctx);
+        if (!uatAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: uatAuth.error }, { status: uatAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        const claims = await resolveAndRecheckUserActorClaims(uatAuth.claims, bearer);
+        if (!claims) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid user-actor token" }, { status: 401 }),
+            corsStrategy !== "none"
+          );
+        }
+        await assertUserActorScope(claims, ctx);
+        authenticationResult = { userId: uatAuth.userId, userActor: claims };
+        ability = uatAuth.ability;
+      } else {
+        const patAuth = await rbac.authenticatePat(request, ctx);
+        if (!patAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: patAuth.error }, { status: patAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        authenticationResult = { userId: patAuth.userId };
+        ability = patAuth.ability;
+        await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+      }
+
+      if (authorization) {
+        const $resource = authorization.resource(parsedParams, parsedSearchParams, parsedHeaders);
+        if (!checkAuth(ability, authorization.action, $resource)) {
+          return await wrapResponse(
+            request,
+            json(
+              {
+                error: "Unauthorized",
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      // PAT auth carries `userId` but no environment — enrich the scope the
+      // Express middleware established so Sentry events get user attribution.
+      tenantContext.enrich({ userId: authenticationResult.userId });
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        headers: parsedHeaders,
+        body: parsedBody,
+        authentication: authenticationResult,
+        ability,
+        request,
+        apiVersion,
+      });
+      return await wrapResponse(request, result, corsStrategy !== "none");
+    } catch (error) {
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        logBoundaryError("Error in action", error, request.url);
+
+        // Typed validation errors map to their own status (default 400);
+        // logBoundaryError already classified them as expected (no Sentry).
+        if (error instanceof ServiceValidationError) {
+          return await wrapResponse(
+            request,
+            json({ error: error.message }, { status: error.status ?? 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
         return await wrapResponse(
           request,
           json({ error: "Internal Server Error" }, { status: 500 }),
@@ -712,6 +1097,7 @@ type ApiKeyActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  ability: RbacAbility;
   request: Request;
   resource?: TResource;
 }) => Promise<Response>;
@@ -781,6 +1167,13 @@ export function createActionApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");
@@ -930,7 +1323,10 @@ export function createActionApiRoute<
       }
 
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           handler({
             params: parsedParams,
@@ -938,6 +1334,7 @@ export function createActionApiRoute<
             headers: parsedHeaders,
             body: parsedBody,
             authentication: authenticationResult,
+            ability,
             request,
             resource,
           })
@@ -1066,6 +1463,13 @@ export function createMultiMethodApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
+        request,
+        restrictedApiKey: authResult.restrictedApiKey,
+        hasAuthorization: authorization !== undefined,
+        useCors: corsStrategy !== "none",
+      });
+      if (restrictedKeyRejection) return restrictedKeyRejection;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");
@@ -1187,7 +1591,10 @@ export function createMultiMethodApiRoute<
 
       // Dispatch to method handler
       const result = await tenantContext.run(
-        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        ),
         () =>
           methodConfig.handler({
             params: parsedParams,
@@ -1263,6 +1670,7 @@ type WorkerLoaderHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   runnerId?: string;
+  environmentId?: string;
 }) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
@@ -1327,6 +1735,8 @@ export function createLoaderWorkerApiRoute<
       }
 
       const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+      // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
+      const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
 
       const result = await handler({
         params: parsedParams,
@@ -1335,6 +1745,7 @@ export function createLoaderWorkerApiRoute<
         request,
         headers: parsedHeaders,
         runnerId,
+        environmentId,
       });
       return result;
     } catch (error) {
@@ -1386,6 +1797,7 @@ type WorkerActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   runnerId?: string;
+  environmentId?: string;
 }) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
@@ -1484,6 +1896,8 @@ export function createActionWorkerApiRoute<
       }
 
       const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+      // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
+      const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
 
       const result = await handler({
         params: parsedParams,
@@ -1493,6 +1907,7 @@ export function createActionWorkerApiRoute<
         body: parsedBody,
         headers: parsedHeaders,
         runnerId,
+        environmentId,
       });
       return result;
     } catch (error) {

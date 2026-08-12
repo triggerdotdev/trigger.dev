@@ -1,5 +1,5 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -40,6 +41,12 @@ import {
 } from "~/components/primitives/Resizable";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TextLink } from "~/components/primitives/TextLink";
+import {
+  QueueSidebarStats,
+  type QueueLiveCounts,
+  type QueueMetricIds,
+} from "~/components/queues/QueueMetricCards";
 import {
   Table,
   TableBlankRow,
@@ -56,7 +63,6 @@ import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
 import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
@@ -84,24 +90,33 @@ import {
   v3EditSchedulePath,
   v3EnvironmentPath,
   v3NewSchedulePath,
+  v3QueuePath,
   v3RunsPath,
   v3SchedulePath,
   v3SchedulesAddOnPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { engine } from "~/v3/runEngine.server";
 import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
 import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
 import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [
-    { title: slug ? `${slug} | Scheduled tasks | Trigger.dev` : "Scheduled task | Trigger.dev" },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Scheduled tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
@@ -140,6 +155,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   if (!task) throw new Response("Scheduled task not found", { status: 404 });
+
+  // Live queue counts for the sidebar Queue property (flag on only; the property itself
+  // is not rendered without them, so flag off = no extra reads and no UI change).
+  let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
+  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+    const queueName = task.queue.name;
+    const [lengths, concurrency] = await Promise.all([
+      engine.lengthOfQueues(environment, [queueName]),
+      engine.currentConcurrencyOfQueues(environment, [queueName]),
+    ]);
+    queueMetrics = {
+      live: {
+        queued: lengths?.[queueName] ?? 0,
+        running: concurrency?.[queueName] ?? 0,
+      },
+      ids: {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        environmentId: environment.id,
+      },
+    };
+  }
 
   const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
@@ -181,6 +218,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      includeHasAnyRuns: true,
     })
     .catch(() => null);
 
@@ -189,11 +227,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     activity,
     scheduleList,
     runList,
+    queueMetrics,
   });
 };
 
 export default function Page() {
-  const { task, activity, scheduleList, runList } = useTypedLoaderData<typeof loader>();
+  const { task, activity, scheduleList, runList, queueMetrics } =
+    useTypedLoaderData<typeof loader>();
   const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
@@ -203,6 +243,9 @@ export default function Page() {
   const testPath = v3TestTaskPath(organization, project, environment, {
     taskIdentifier: task.slug,
   });
+  const queuePath = task.queue
+    ? v3QueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    : undefined;
 
   const filters: TaskRunListSearchFilters = useMemo(() => ({ tasks: [task.slug] }), [task.slug]);
 
@@ -231,6 +274,13 @@ export default function Page() {
     !!plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.schedules.canExceed;
   const isAtLimit = !!limits && limits.used >= limits.limit;
 
+  // New-runs banner state is lifted here so the button can live in the top bar,
+  // while the count/action originate from the live-reload hook inside the
+  // deferred runs table below. Count drives visibility; the ref exposes the
+  // click action (kept current by TaskRunsList each render).
+  const [newRunsCount, setNewRunsCount] = useState(0);
+  const showNewRunsRef = useRef<() => void>(() => {});
+
   return (
     <PageContainer>
       <NavBar>
@@ -248,28 +298,15 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="scheduled-task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
-              {/* Top bar — title on the left; actions + TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright py-2 pl-3 pr-2">
-                <Header2>Runs</Header2>
+              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright px-2 py-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                  <CreateScheduleButton
-                    isAtLimit={isAtLimit}
-                    limits={limits}
-                    canUpgrade={canUpgrade}
-                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
-                    extraSchedules={scheduleList?.extraSchedules ?? 0}
-                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
-                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
-                    schedulePricing={scheduleList?.schedulePricing ?? null}
-                    onCreate={openCreateSchedule}
-                    disabled={isCreatingSchedule}
-                  />
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
                   <LinkButton
                     variant="secondary/small"
                     to={v3RunsPath(organization, project, environment, filters)}
                     LeadingIcon={RunsIcon}
+                    // -7px halves the icon's default 6px of space on each side.
+                    leadingIconClassName="-mx-[7px]"
                   >
                     View all runs
                   </LinkButton>
@@ -288,11 +325,18 @@ export default function Page() {
                   >
                     Bulk replay…
                   </LinkButton>
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
+                  <CreateScheduleButton
+                    isAtLimit={isAtLimit}
+                    limits={limits}
+                    canUpgrade={canUpgrade}
+                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
+                    extraSchedules={scheduleList?.extraSchedules ?? 0}
+                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
+                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
+                    schedulePricing={scheduleList?.schedulePricing ?? null}
+                    onCreate={openCreateSchedule}
+                    disabled={isCreatingSchedule}
+                  />
                 </div>
               </div>
 
@@ -316,28 +360,39 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="scheduled-task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                variant="dimmed"
-                                showTopBorder={false}
-                                stickyHeader
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
                               />
-                            </div>
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -372,6 +427,8 @@ export default function Page() {
               testPath={testPath}
               scheduleList={scheduleList}
               onSelectSchedule={openSchedule}
+              queuePath={queuePath}
+              queueMetrics={queueMetrics}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -718,10 +775,15 @@ function ScheduledTaskDetailSidebar({
   testPath,
   scheduleList,
   onSelectSchedule,
-}: { task: TaskDetail; testPath: string; onSelectSchedule: (friendlyId: string) => void } & Pick<
-  LoaderData,
-  "scheduleList"
->) {
+  queuePath,
+  queueMetrics,
+}: {
+  task: TaskDetail;
+  testPath: string;
+  onSelectSchedule: (friendlyId: string) => void;
+  queuePath: string | undefined;
+  queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null;
+} & Pick<LoaderData, "scheduleList">) {
   const sortedSchedules = useMemo(() => {
     if (!scheduleList) return [];
     // DECLARATIVE first; createdAt-desc within each type (stable sort).
@@ -853,6 +915,26 @@ function ScheduledTaskDetailSidebar({
                 )}
               </Property.Value>
             </Property.Item>
+            {queueMetrics && task.queue && queuePath ? (
+              <Property.Item>
+                <Property.Label>Queue</Property.Label>
+                <Property.Value>
+                  <div className="flex flex-col gap-0.5">
+                    <TextLink to={queuePath}>{task.queue.name}</TextLink>
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
+                      {task.queue.paused ? " · Paused" : ""}
+                    </Paragraph>
+                    <QueueSidebarStats
+                      live={queueMetrics.live}
+                      ids={queueMetrics.ids}
+                      queueName={task.queue.name}
+                      defaultPeriod="7d"
+                    />
+                  </div>
+                </Property.Value>
+              </Property.Item>
+            ) : null}
           </Property.Table>
           {scheduleList && sortedSchedules.length === 0 ? (
             <div className="mt-4">

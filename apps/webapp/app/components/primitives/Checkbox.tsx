@@ -139,7 +139,11 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           className={cn(
             inputPositionClasses,
             props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-            "read-only:border-border-bright disabled:border-border-bright rounded-sm border border-border-bright bg-transparent transition checked:bg-indigo-500! read-only:bg-background-raised! group-hover:bg-background-deep checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden  focus-visible:ring-indigo-500 disabled:bg-background-raised!"
+            // NB: don't use the `read-only:` variant here — checkboxes always
+            // match :read-only, so it would override the checked style.
+            "rounded-sm border border-border-bright bg-transparent transition checked:bg-indigo-500! group-hover:bg-background-deep checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden focus-visible:ring-indigo-500",
+            (isDisabled || props.readOnly) &&
+              "bg-background-raised! checked:bg-background-raised! checked:group-hover:bg-background-raised! group-hover:bg-background-raised!"
           )}
           id={id}
           ref={ref}
@@ -189,7 +193,13 @@ export const Checkbox = forwardRef<HTMLInputElement, SimpleCheckboxProps>(
             : props.readOnly
               ? "cursor-default"
               : "cursor-pointer",
-          "read-only:border-border-bright disabled:border-border-bright disabled:opacity-50 rounded-sm border border-border-bright bg-transparent transition checked:bg-indigo-500! read-only:bg-background-raised! group-hover:bg-background-deep checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden focus-visible:ring-indigo-500 disabled:bg-background-raised!"
+          // NB: don't use the `read-only:` variant here — checkboxes always
+          // match :read-only, so it would override the checked style.
+          "rounded-sm border border-border-bright bg-transparent transition checked:bg-indigo-500! group-hover:bg-background-deep checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden focus-visible:ring-indigo-500",
+          props.disabled && "opacity-50",
+          (props.disabled || props.readOnly) &&
+            "bg-background-raised! checked:bg-background-raised! checked:group-hover:bg-background-raised! group-hover:bg-background-raised!",
+          className
         )}
         {...props}
         ref={ref}

@@ -11,6 +11,8 @@ interface BigNumberProps {
   animate?: boolean;
   loading?: boolean;
   value?: number;
+  /** Pre-formatted display value; overrides the numeric `value` rendering when set. */
+  formattedValue?: ReactNode;
   valueClassName?: string;
   defaultValue?: number;
   accessory?: ReactNode;
@@ -22,6 +24,7 @@ interface BigNumberProps {
 export function BigNumber({
   title,
   value,
+  formattedValue,
   defaultValue,
   valueClassName,
   suffix,
@@ -37,7 +40,7 @@ export function BigNumber({
     typeof compactThreshold === "number" && v !== undefined && v >= compactThreshold;
 
   return (
-    <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
+    <div className="group flex flex-col justify-between gap-4 rounded-lg border border-grid-bright bg-background-bright pb-4 pl-4 pr-3 pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Header3 className="leading-6">{title}</Header3>
         {accessory && <div className="shrink-0">{accessory}</div>}
@@ -50,6 +53,11 @@ export function BigNumber({
       >
         {loading ? (
           <Spinner className="size-6" />
+        ) : formattedValue !== undefined ? (
+          <div className="flex flex-wrap items-baseline gap-2">
+            {formattedValue}
+            {suffix && <div className={cn("text-xs tabular-nums", suffixClassName)}>{suffix}</div>}
+          </div>
         ) : v !== undefined ? (
           <div className="flex flex-wrap items-baseline gap-2">
             {shouldCompact ? (
@@ -62,7 +70,7 @@ export function BigNumber({
             ) : (
               formatNumber(v)
             )}
-            {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
+            {suffix && <div className={cn("text-xs tabular-nums", suffixClassName)}>{suffix}</div>}
           </div>
         ) : (
           "–"

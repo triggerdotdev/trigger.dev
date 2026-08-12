@@ -58,11 +58,31 @@ vi.mock("~/presenters/v3/NextRunListPresenter.server", () => ({
 }));
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
 
 vi.setConfig({ testTimeout: 90_000 });
+
+// Wire the presenter's run store to the test containers. The NEW leg is the REAL dedicated run-ops
+// client (subset schema, explicit `waitpointRunConnection` join), so `schemaVariant: "dedicated"`
+// is required for the connected-run gather to resolve the join model rather than a missing relation.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 type SeedContext = {
   organizationId: string;
@@ -128,10 +148,12 @@ async function seedWaitpoint(
 async function seedRun(
   prisma: PrismaClient | RunOpsPrismaClient,
   ctx: SeedContext,
-  friendlyId: string
+  friendlyId: string,
+  id?: string
 ) {
   return (prisma as PrismaClient).taskRun.create({
     data: {
+      ...(id ? { id } : {}),
       friendlyId,
       taskIdentifier: "my-task",
       status: "PENDING",
@@ -168,11 +190,16 @@ describe("WaitpointPresenter against the REAL dedicated run-ops client", () => {
       legacyReplicaHolder.client = prisma14;
       newClientHolder.client = prisma17;
 
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17 as unknown as PrismaClient,
-        legacyReplica: prisma14,
-      });
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaClient,
+          legacyReplica: prisma14,
+        },
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14)
+      );
 
       const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
 
@@ -192,7 +219,7 @@ describe("WaitpointPresenter against the REAL dedicated run-ops client", () => {
       const waitpoint = await seedWaitpoint(prisma14, ctx, "waitpoint_crossdb");
 
       // The connected run + join live only on the NEW dedicated DB (co-resident with the run).
-      const run = await seedRun(prisma17, ctx, "run_crossnew");
+      const run = await seedRun(prisma17, ctx, "run_crossnew", `run_${generateRunOpsId()}`);
       await prisma17.waitpointRunConnection.create({
         data: { taskRunId: run.id, waitpointId: waitpoint.id },
       });
@@ -200,11 +227,16 @@ describe("WaitpointPresenter against the REAL dedicated run-ops client", () => {
       legacyReplicaHolder.client = prisma14;
       newClientHolder.client = prisma17;
 
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17 as unknown as PrismaClient,
-        legacyReplica: prisma14,
-      });
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaClient,
+          legacyReplica: prisma14,
+        },
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14)
+      );
 
       const result = await presenter.call(callArgs(ctx, waitpoint.friendlyId));
 
@@ -240,11 +272,16 @@ describe("WaitpointPresenter against the REAL dedicated run-ops client", () => {
       legacyReplicaHolder.client = prisma14;
       newClientHolder.client = prisma17;
 
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17 as unknown as PrismaClient,
-        legacyReplica: prisma14,
-      });
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaClient,
+          legacyReplica: prisma14,
+        },
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14)
+      );
 
       const result = await presenter.call(callArgs(ctx, waitpoint.friendlyId));
 

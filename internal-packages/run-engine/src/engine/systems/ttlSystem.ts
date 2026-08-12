@@ -8,6 +8,7 @@ import type { WaitpointSystem } from "./waitpointSystem.js";
 import { startSpan } from "@internal/tracing";
 import pMap from "p-map";
 
+import { boundedIn } from "@trigger.dev/database";
 export type TtlSystemOptions = {
   resources: SystemResources;
   waitpointSystem: WaitpointSystem;
@@ -158,22 +159,26 @@ export class TtlSystem {
       const skipped: { runId: string; reason: string }[] = [];
 
       // Fetch all runs in a single query (no snapshot data needed)
-      const runs = await this.$.runStore.findRuns({
-        where: { id: { in: runIds } },
-        select: {
-          id: true,
-          spanId: true,
-          status: true,
-          lockedAt: true,
-          ttl: true,
-          taskEventStore: true,
-          createdAt: true,
-          associatedWaitpoint: { select: { id: true } },
-          organizationId: true,
-          projectId: true,
-          runtimeEnvironmentId: true,
+      const runs = await this.$.runStore.findRuns(
+        {
+          where: { id: { in: boundedIn(runIds) } },
+          select: {
+            id: true,
+            spanId: true,
+            status: true,
+            lockedAt: true,
+            ttl: true,
+            taskEventStore: true,
+            createdAt: true,
+            associatedWaitpoint: { select: { id: true } },
+            organizationId: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+          },
+          // read-your-writes: the queue slot is already claimed; a lagging replica would orphan the run
         },
-      });
+        this.$.prisma
+      );
 
       // Filter runs that can be expired
       const runsToExpire: typeof runs = [];

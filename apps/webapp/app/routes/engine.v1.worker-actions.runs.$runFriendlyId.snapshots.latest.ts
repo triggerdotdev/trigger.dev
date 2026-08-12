@@ -13,11 +13,13 @@ export const loader = createLoaderWorkerApiRoute(
   async ({
     authenticatedWorker,
     params,
+    environmentId,
   }): Promise<TypedResponse<WorkerApiRunLatestSnapshotResponseBody>> => {
     const { runFriendlyId } = params;
 
     const executionData = await authenticatedWorker.getLatestSnapshot({
       runFriendlyId,
+      environmentId,
     });
 
     if (!executionData) {

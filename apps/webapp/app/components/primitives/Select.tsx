@@ -30,13 +30,16 @@ const style = {
   },
   secondary: {
     button:
-      "bg-secondary focus-custom border border-border-bright hover:text-text-bright hover:border-border-brighter text-text-bright hover:bg-surface-control",
+      "bg-secondary focus-custom border border-border-bright/50 shadow-xs hover:text-text-bright text-text-bright hover:bg-background-raised",
   },
 };
 
 const variants = {
   "secondary/small": {
     button: cn(sizes.small.button, style.secondary.button),
+  },
+  "secondary/medium": {
+    button: cn(sizes.medium.button, style.secondary.button),
   },
   "tertiary/small": {
     button: cn(sizes.small.button, style.tertiary.button),
@@ -62,6 +65,7 @@ type Section<TItem> = {
 
 function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TItem>[] {
   const firstItem = data[0];
+  if (!firstItem) return false;
   return (
     (firstItem as Section<TItem>).type === "section" &&
     (firstItem as Section<TItem>).items !== undefined &&
@@ -691,12 +695,21 @@ export function ComboBox({
   shortcut,
   ...props
 }: ComboBoxProps) {
+  const combobox = Ariakit.useComboboxContext();
+  const open = combobox?.useState("open");
+  const input = combobox?.useState("baseElement");
+
+  React.useEffect(() => {
+    if (!open || !input) return;
+    input.focus();
+  }, [open, input]);
+
   return (
-    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent pl-0 pr-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
+        className="flex-1 border-0 bg-transparent text-xs text-text-dimmed outline-hidden focus:border-0 focus:ring-0"
         {...props}
       />
       {shortcut && (

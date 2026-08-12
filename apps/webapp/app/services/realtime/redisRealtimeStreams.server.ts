@@ -321,7 +321,9 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     let currentChunkIndex = startChunk;
 
     try {
-      const textStream = stream.pipeThrough(new TextDecoderStream());
+      const textStream = stream.pipeThrough(
+        new TextDecoderStream() as ReadableWritablePair<string, Uint8Array>
+      );
       const reader = textStream.getReader();
 
       while (true) {

@@ -3,29 +3,34 @@ import { Counter, Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
+import { singleton } from "~/utils/singleton";
 
-const loadFailures = new Counter({
-  name: "reloading_registry_load_failures_total",
-  help: "Failed loads of a reloading registry",
-  labelNames: ["name"],
-  registers: [metricsRegister],
-});
-
-const lastSuccessfulLoadAt = new Gauge({
-  name: "reloading_registry_last_successful_load_timestamp_seconds",
-  help: "Unix time of the last successful registry load (staleness signal)",
-  labelNames: ["name"],
-  registers: [metricsRegister],
-});
-
-// 0 until the first successful load, then 1. Starts at 0 (not absent) so a
-// never-loaded registry is an alertable series, distinct from "feature off".
-const registryLoaded = new Gauge({
-  name: "reloading_registry_loaded",
-  help: "1 once the registry has loaded at least once, else 0 (0 = serving cold fallback)",
-  labelNames: ["name"],
-  registers: [metricsRegister],
-});
+// singleton: module-scope registrations double-register under Vite dev HMR
+const { loadFailures, lastSuccessfulLoadAt, registryLoaded } = singleton(
+  "reloadingRegistryMetrics",
+  () => ({
+    loadFailures: new Counter({
+      name: "reloading_registry_load_failures_total",
+      help: "Failed loads of a reloading registry",
+      labelNames: ["name"],
+      registers: [metricsRegister],
+    }),
+    lastSuccessfulLoadAt: new Gauge({
+      name: "reloading_registry_last_successful_load_timestamp_seconds",
+      help: "Unix time of the last successful registry load (staleness signal)",
+      labelNames: ["name"],
+      registers: [metricsRegister],
+    }),
+    // 0 until the first successful load, then 1. Starts at 0 (not absent) so a
+    // never-loaded registry is an alertable series, distinct from "feature off".
+    registryLoaded: new Gauge({
+      name: "reloading_registry_loaded",
+      help: "1 once the registry has loaded at least once, else 0 (0 = serving cold fallback)",
+      labelNames: ["name"],
+      registers: [metricsRegister],
+    }),
+  })
+);
 
 export type ReloadingRegistry<T> = {
   isReady: Promise<void>;

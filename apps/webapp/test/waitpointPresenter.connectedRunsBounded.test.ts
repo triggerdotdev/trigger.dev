@@ -1,11 +1,12 @@
-// RED->GREEN guard: WaitpointPresenter connected-run gather must BOUND the fetch of a waitpoint's
-// connected-run ids, not just the number displayed. A "displayed count <= 5" assertion would
-// false-green (the take:5 on the run resolve already bounds the DISPLAY). Instead this captures the
-// real `taskRun.findMany` call args via a Proxy over a REAL testcontainer Postgres client (no mocks)
-// and asserts the IN-list is capped at the scan limit (danglers over-read), never unbounded.
-//
-// Exercises the dedicated-schema (Prisma `waitpointRunConnection`) branch: waitpoint + more than the
-// scan-limit connected runs seeded on the NEW dedicated run-ops client (RunOpsPrismaClient, prisma17).
+// The connected-run gather now delegates to the injectable run store (findWaitpointConnectedRunIds +
+// findRuns take:CONNECTED_RUNS_DISPLAY_LIMIT), which fans out over both DBs via $queryRaw and is
+// BOUNDED inside the store — so the old per-client `taskRun.findMany` IN-list scan-limit assertion no
+// longer describes the code (that store-level bound is covered by
+// internal-packages/run-store/src/PostgresRunStore.connectedRunsBounded.test.ts). This test asserts
+// the OUTPUT bound instead: seeding far more connections than the display limit, the presenter still
+// returns at most CONNECTED_RUNS_DISPLAY_LIMIT connected-run friendlyIds. Exercises the dedicated
+// `waitpointRunConnection` branch on the NEW run-ops client (prisma17), routed through a store wired
+// to the per-test containers (NEW=dedicated prisma17, LEGACY=prisma14).
 import { describe, expect, vi } from "vitest";
 
 const legacyReplicaHolder = vi.hoisted(() => ({ client: undefined as any }));
@@ -62,14 +63,34 @@ vi.mock("~/presenters/v3/NextRunListPresenter.server", () => ({
 }));
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   CONNECTED_RUNS_CONNECTION_SCAN_LIMIT,
+  CONNECTED_RUNS_DISPLAY_LIMIT,
   WaitpointPresenter,
 } from "~/presenters/v3/WaitpointPresenter.server";
 
 vi.setConfig({ testTimeout: 90_000 });
+
+// Wire the presenter's run store to the test containers (NEW=dedicated prisma17, LEGACY=prisma14) so
+// the connected-run gather routes to the containers instead of the default localhost:5432 store.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 type SeedContext = {
   organizationId: string;
@@ -136,6 +157,7 @@ async function seedRun(
 ) {
   return (prisma as PrismaClient).taskRun.create({
     data: {
+      id: `run_${generateRunOpsId()}`,
       friendlyId,
       taskIdentifier: "my-task",
       status: "PENDING",
@@ -153,43 +175,14 @@ async function seedRun(
   });
 }
 
-// Wrap the REAL dedicated run-ops client's `taskRun.findMany` to capture the args of every call,
-// delegating unchanged to the real client (the DB still runs the query -- pure instrumentation,
-// never a mock).
-function capturingTaskRunFindMany(real: RunOpsPrismaClient): {
-  client: RunOpsPrismaClient;
-  calls: { where?: { id?: { in?: string[] } } }[];
-} {
-  const calls: { where?: { id?: { in?: string[] } } }[] = [];
-  const wrappedTaskRun = new Proxy((real as any).taskRun, {
-    get(target, prop) {
-      if (prop === "findMany") {
-        return (...args: any[]) => {
-          calls.push(args[0]);
-          return (target as any)[prop](...args);
-        };
-      }
-      return (target as any)[prop];
-    },
-  });
-  const client = new Proxy(real as object, {
-    get(target, prop) {
-      if (prop === "taskRun") {
-        return wrappedTaskRun;
-      }
-      return (target as any)[prop];
-    },
-  }) as RunOpsPrismaClient;
-  return { client, calls };
-}
-
-// Seed MORE than the scan limit so the assertion bites: an unbounded gather IN-lists all of them,
-// a correctly bounded one caps at CONNECTED_RUNS_CONNECTION_SCAN_LIMIT.
+// Seed MORE than the scan limit (well above the display limit) so the output bound bites: an
+// unbounded gather would surface every connection, a correctly bounded one caps the returned
+// connected-run friendlyIds at CONNECTED_RUNS_DISPLAY_LIMIT.
 const CONNECTED_RUN_COUNT = CONNECTED_RUNS_CONNECTION_SCAN_LIMIT + 5;
 
-describe("WaitpointPresenter bounds the connected-run-id FETCH", () => {
+describe("WaitpointPresenter bounds the connected runs it returns", () => {
   heteroRunOpsPostgresTest(
-    "a waitpoint with more connections than the scan limit caps the IN-list at the scan limit",
+    "a waitpoint with many more connections than the display limit returns at most the display limit",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma14, "bounded");
       const waitpoint = await seedWaitpoint(prisma17, ctx, "waitpoint_bounded");
@@ -206,30 +199,37 @@ describe("WaitpointPresenter bounds the connected-run-id FETCH", () => {
       legacyReplicaHolder.client = prisma14;
       newClientHolder.client = prisma17;
 
-      const { client: countingPrisma17, calls } = capturingTaskRunFindMany(prisma17);
+      // Route the gather through a store wired to the containers; without this it would fall through
+      // to the default global store (localhost:5432) and fail in CI. NEW=prisma17 (dedicated) owns
+      // the waitpoint + connections + runs; LEGACY=prisma14 holds the env parents.
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaClient,
+          legacyReplica: prisma14,
+        },
+        makeRunStore(prisma17 as unknown as PrismaClient, prisma14 as unknown as PrismaClient)
+      );
 
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: countingPrisma17 as unknown as PrismaClient,
-        legacyReplica: prisma14,
-      });
-
-      await presenter.call({
+      const result = await presenter.call({
         friendlyId: waitpoint.friendlyId,
         environmentId: ctx.environmentId,
         projectId: ctx.projectId,
       });
 
-      // The guard: assert the FETCH (the IN-list built from the connected-run-id gather) is
-      // bounded, not just the eventual displayed count. An unbounded gather would IN-list every
-      // connection row; the dedicated branch over-reads up to CONNECTED_RUNS_CONNECTION_SCAN_LIMIT
-      // (25) so a display slot is never lost to a dangler, so the IN-list must be capped at the
-      // scan limit -- above the display limit (5), but never unbounded.
-      expect(calls.length).toBeGreaterThan(0);
-      for (const call of calls) {
-        expect(call.where?.id?.in?.length ?? 0).toBeLessThanOrEqual(
-          CONNECTED_RUNS_CONNECTION_SCAN_LIMIT
-        );
+      // OUTPUT bound: the waitpoint has CONNECTED_RUN_COUNT (> scan limit) connections, but the
+      // presenter surfaces at most CONNECTED_RUNS_DISPLAY_LIMIT connected-run friendlyIds. The
+      // NextRunListPresenter mock echoes the gathered runId set back verbatim, so
+      // `result.connectedRuns` is exactly the (bounded) gather output. An unbounded gather would
+      // return every connection here. The IN-list scan-limit bound now lives in the run store and is
+      // covered by internal-packages/run-store/src/PostgresRunStore.connectedRunsBounded.test.ts.
+      expect(result?.connectedRuns.length).toBe(CONNECTED_RUNS_DISPLAY_LIMIT);
+      const friendlyIds = result?.connectedRuns.map((r) => r.friendlyId) ?? [];
+      expect(new Set(friendlyIds).size).toBe(CONNECTED_RUNS_DISPLAY_LIMIT);
+      for (const friendlyId of friendlyIds) {
+        expect(friendlyId.startsWith("run_b")).toBe(true);
       }
     }
   );

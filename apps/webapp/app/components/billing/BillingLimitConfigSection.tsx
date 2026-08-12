@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getBillingLimitMode } from "~/components/billing/billingAlertsFormat";
 import { formatGracePeriodMs } from "~/components/billing/billingLimitFormat";
 import { AnimatedCallout } from "~/components/primitives/AnimatedCallout";
+import { Callout } from "~/components/primitives/Callout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -51,10 +52,14 @@ type BillingLimitActionData = {
 
 export function isBillingLimitFormDirty(input: {
   billingLimit: BillingLimitResult;
-  mode: "none" | "plan" | "custom";
+  mode: "" | "none" | "plan" | "custom";
   customAmount: string;
   cancelInProgressRuns: boolean;
 }): boolean {
+  if (input.mode === "") {
+    return false;
+  }
+
   const needsInitialSave = !input.billingLimit.isConfigured;
   const savedMode = getBillingLimitMode(input.billingLimit);
   const savedCustomAmount =
@@ -75,7 +80,7 @@ export function isBillingLimitFormDirty(input: {
 
 export function getBillingLimitFormLastSubmission(
   submission: BillingLimitActionData["submission"] | undefined,
-  mode: "none" | "plan" | "custom",
+  mode: "" | "none" | "plan" | "custom",
   isDirty: boolean
 ) {
   if (!isDirty || !submission) {
@@ -111,17 +116,20 @@ export function BillingLimitConfigSection({
       : "";
   const savedCancelInProgressRuns = billingLimit.isConfigured && billingLimit.cancelInProgressRuns;
 
-  const [mode, setMode] = useState<"none" | "plan" | "custom">(savedMode);
+  // Unconfigured limit starts with nothing selected.
+  const resetMode: "" | "none" | "plan" | "custom" = billingLimit.isConfigured ? savedMode : "";
+
+  const [mode, setMode] = useState<"" | "none" | "plan" | "custom">(resetMode);
   const [customAmount, setCustomAmount] = useState(savedCustomAmount);
   const [cancelInProgressRuns, setCancelInProgressRuns] = useState(savedCancelInProgressRuns);
   const customAmountInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    setMode(savedMode);
+    setMode(resetMode);
     setCustomAmount(savedCustomAmount);
     setCancelInProgressRuns(savedCancelInProgressRuns);
-  }, [savedMode, savedCustomAmount, savedCancelInProgressRuns]);
+  }, [resetMode, savedCustomAmount, savedCancelInProgressRuns]);
 
   function handleModeChange(value: string) {
     const nextMode = value as typeof mode;
@@ -182,6 +190,13 @@ export function BillingLimitConfigSection({
           billable environments enter a grace period before new triggers are rejected.
         </Paragraph>
       </div>
+
+      {!billingLimit.isConfigured && (
+        <Callout variant="warning" className="mb-3">
+          Configure a monthly billing limit below to cap your spend, or set no limit to let runs
+          keep going.
+        </Callout>
+      )}
 
       <Form method="post" {...getFormProps(form)} ref={formRef}>
         <input type="hidden" name="intent" value="billing-limit" />
@@ -283,7 +298,7 @@ export function BillingLimitConfigSection({
             </div>
           </RadioGroup>
 
-          {mode !== "none" && (
+          {(mode === "plan" || mode === "custom") && (
             <CheckboxWithLabel
               className="mt-4"
               name="cancelInProgressRuns"
@@ -295,14 +310,16 @@ export function BillingLimitConfigSection({
               onChange={setCancelInProgressRuns}
             />
           )}
-          <FormButtons
-            className={isDirty ? undefined : "invisible"}
-            confirmButton={
-              <Button type="submit" variant="primary/small" disabled={!isDirty}>
-                Save billing limit
-              </Button>
-            }
-          />
+          {mode !== "" && (
+            <FormButtons
+              className={isDirty ? undefined : "invisible"}
+              confirmButton={
+                <Button type="submit" variant="primary/small" disabled={!isDirty}>
+                  Save billing limit
+                </Button>
+              }
+            />
+          )}
         </Fieldset>
       </Form>
     </div>

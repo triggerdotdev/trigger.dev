@@ -1,85 +1,14 @@
-import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { runStore } from "~/v3/runStore.server";
-import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   streamId: z.string(),
 });
-
-// Plain action for backwards compatibility with older clients that don't send auth headers
-export async function action({ request, params }: ActionFunctionArgs) {
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return new Response("Invalid parameters", { status: 400 });
-  }
-
-  const { runId, streamId } = parsedParams.data;
-
-  // Look up the run without environment scoping for backwards compatibility
-  const run = await runStore.findRun(
-    {
-      friendlyId: runId,
-    },
-    {
-      select: {
-        id: true,
-        friendlyId: true,
-        streamBasinName: true,
-        runtimeEnvironmentId: true,
-      },
-    },
-    $replica
-  );
-
-  if (!run) {
-    return new Response("Run not found", { status: 404 });
-  }
-
-  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
-
-  if (!environment) {
-    return new Response("Run not found", { status: 404 });
-  }
-
-  // Extract client ID from header, default to "default" if not provided
-  const clientId = request.headers.get("X-Client-Id") || "default";
-  const streamVersion = request.headers.get("X-Stream-Version") || "v1";
-
-  if (!request.body) {
-    return new Response("No body provided", { status: 400 });
-  }
-
-  const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
-  let resumeFromChunkNumber: number | undefined = undefined;
-  if (resumeFromChunk) {
-    const parsed = parseInt(resumeFromChunk, 10);
-    if (isNaN(parsed) || parsed < 0) {
-      return new Response(`Invalid X-Resume-From-Chunk header value: ${resumeFromChunk}`, {
-        status: 400,
-      });
-    }
-    resumeFromChunkNumber = parsed;
-  }
-
-  const realtimeStream = getRealtimeStreamInstance(environment, streamVersion, {
-    run,
-  });
-
-  return realtimeStream.ingestData(
-    request.body,
-    run.friendlyId,
-    streamId,
-    clientId,
-    resumeFromChunkNumber
-  );
-}
 
 export const loader = createLoaderApiRoute(
   {
@@ -87,29 +16,29 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const run = await runStore.findRun(
-        {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: auth.environment.id,
-        },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            taskIdentifier: true,
-            runTags: true,
-            realtimeStreamsVersion: true,
-            streamBasinName: true,
-            batch: {
-              select: {
-                friendlyId: true,
-              },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: auth.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          taskIdentifier: true,
+          runTags: true,
+          realtimeStreamsVersion: true,
+          streamBasinName: true,
+          batch: {
+            select: {
+              friendlyId: true,
             },
           },
         },
-        $replica
-      );
-      return run;
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the SSE subscription
+      // (the client treats 404 as "stream gone"). Re-read the owning primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
     authorization: {
       action: "read",

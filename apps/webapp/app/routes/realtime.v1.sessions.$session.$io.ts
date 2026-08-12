@@ -34,6 +34,16 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ params, authentication }) => {
+    // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —
+    // i.e. the agent run itself — may initialize it. Session-scoped JWTs carry
+    // `write:sessions:<key>` for `.in`; without this gate they could obtain
+    // credentials to forge assistant chunks on their own session's `.out`.
+    if (params.io === "out" && authentication.type !== "PRIVATE") {
+      return new Response("Initializing the out channel requires secret key authentication", {
+        status: 403,
+      });
+    }
+
     // Row-optional addressing. The agent calls PUT initialize as part
     // of `session.out.writer()`, by which time it has already created
     // the row at bind, so a missing row here is an unusual case

@@ -170,6 +170,10 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
+            {{- with .Values.supervisor.config.kubernetes.runnerTolerations }}
+            - name: KUBERNETES_RUNNER_TOLERATIONS
+              value: {{ join "," . | quote }}
+            {{- end }}
             {{- $registryAuthEnabled := false }}
             {{- if .Values.registry.deploy }}
               {{- $registryAuthEnabled = .Values.registry.auth.enabled }}

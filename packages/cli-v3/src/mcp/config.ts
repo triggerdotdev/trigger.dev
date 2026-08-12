@@ -136,6 +136,12 @@ export const toolsMetadata = {
     description:
       "Execute a single widget query from a built-in dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
   },
+  get_report: {
+    name: "get_report",
+    title: "Get Report",
+    description:
+      "Render an interpreted report (an answered question, not a raw panel) as text + sparklines. The server computes the verdict deterministically. Currently: 'health' — whether work is flowing, whether the runs that start are healthy, and whether the telemetry is fresh, with a headline verdict and a suggested next action.",
+  },
   whoami: {
     name: "whoami",
     title: "Who Am I",

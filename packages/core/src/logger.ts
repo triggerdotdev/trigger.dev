@@ -16,10 +16,53 @@ export type LogLevel = "log" | "error" | "warn" | "info" | "debug" | "verbose";
 
 const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug", "verbose"];
 
+// Applied to every Logger instance, on top of whatever a caller passes in as `filteredKeys`.
+// Keeps the previous "opt-in, per-instance" list from being the only thing standing between a
+// logged object and a credential or piece of customer content that happens to share its name.
+const DEFAULT_FILTERED_KEYS = [
+  "authorization",
+  "token",
+  "apikey",
+  "secretkey",
+  "accesstoken",
+  "refreshtoken",
+  "password",
+  "jwt",
+  "payload",
+  "output",
+  "metadata",
+  "seedmetadata",
+  "input",
+  "email",
+  "headers",
+  "completedwaitpoints",
+];
+
+// Belt-and-braces value-shape check: catches secrets anywhere in values that land under a field
+// name we didn't think to deny-list (a trigger.dev API key, bearer token, or OpenAI-style key).
+const SECRET_VALUE_PATTERN = /(tr_[a-zA-Z0-9_-]{4,}|sk-[a-zA-Z0-9_-]{4,}|Bearer\s+\S+)/;
+
+// Per-field and per-structure caps so a single unbounded object (a run payload, a batch of
+// items, a DB row) can't blow up log line size or CPU. Truncation keeps the field present and
+// queryable rather than dropping it.
+const MAX_STRING_LENGTH = 8192;
+const MAX_ARRAY_LENGTH = 100;
+const MAX_DEPTH = 10;
+
+function buildFilteredKeySet(filteredKeys: string[]): Set<string> {
+  const set = new Set(DEFAULT_FILTERED_KEYS);
+
+  for (const key of filteredKeys) {
+    set.add(key.toLowerCase());
+  }
+
+  return set;
+}
+
 export class Logger {
   #name: string;
   readonly #level: number;
-  #filteredKeys: string[] = [];
+  #filteredKeys: Set<string> = new Set(DEFAULT_FILTERED_KEYS);
   #jsonReplacer?: (key: string, value: unknown) => unknown;
   #additionalFields: () => Record<string, unknown>;
 
@@ -39,7 +82,7 @@ export class Logger {
   ) {
     this.#name = name;
     this.#level = logLevels.indexOf((env.TRIGGER_LOG_LEVEL ?? level) as LogLevel);
-    this.#filteredKeys = filteredKeys;
+    this.#filteredKeys = buildFilteredKeySet(filteredKeys);
     this.#jsonReplacer = createReplacer(jsonReplacer);
     this.#additionalFields = additionalFields ?? (() => ({}));
   }
@@ -48,7 +91,7 @@ export class Logger {
     return new Logger(
       this.#name,
       logLevels[this.#level],
-      this.#filteredKeys,
+      Array.from(this.#filteredKeys),
       this.#jsonReplacer,
       () => ({ ...this.#additionalFields(), ...fields })
     );
@@ -115,8 +158,8 @@ export class Logger {
     // Get the current context from trace if it exists
     const currentSpan = trace.getSpan(context.active());
 
-    const structuredError = extractStructuredErrorFromArgs(...args);
-    const structuredMessage = extractStructuredMessageFromArgs(...args);
+    const structuredError = extractStructuredErrorFromArgs(this.#filteredKeys, ...args);
+    const structuredMessage = extractStructuredMessageFromArgs(this.#filteredKeys, ...args);
 
     const structuredLog = {
       ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
@@ -153,38 +196,52 @@ export class Logger {
 // Detect if args is an error object
 // Or if args contains an error object at the "error" key
 // In both cases, return the error object as a structured error
-function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> | undefined>) {
-  const error = args.find((arg) => arg instanceof Error) as Error | undefined;
+// Run every field through the same filter/truncation used for the rest of the log line, so an
+// error's message/stack/metadata (which can embed request or row data verbatim) gets the same
+// treatment as everything else, instead of bypassing it.
+function extractStructuredErrorFromArgs(
+  filteredKeys: Set<string>,
+  ...args: Array<Record<string, unknown> | undefined>
+) {
+  const error = args.find((arg) => arg instanceof Error) as
+    | (Error & { metadata?: unknown })
+    | undefined;
 
   if (error) {
     return {
-      message: error.message,
-      stack: error.stack,
+      message: filterKeys(error.message, filteredKeys),
+      stack: filterKeys(error.stack, filteredKeys),
       name: error.name,
-      metadata: "metadata" in error ? error.metadata : undefined,
+      metadata: "metadata" in error ? filterKeys(error.metadata, filteredKeys) : undefined,
     };
   }
 
   const structuredError = args.find((arg) => arg?.error);
 
   if (structuredError && structuredError.error instanceof Error) {
+    const nestedError = structuredError.error as Error & { metadata?: unknown };
+
     return {
-      message: structuredError.error.message,
-      stack: structuredError.error.stack,
-      name: structuredError.error.name,
-      metadata: "metadata" in structuredError.error ? structuredError.error.metadata : undefined,
+      message: filterKeys(nestedError.message, filteredKeys),
+      stack: filterKeys(nestedError.stack, filteredKeys),
+      name: nestedError.name,
+      metadata:
+        "metadata" in nestedError ? filterKeys(nestedError.metadata, filteredKeys) : undefined,
     };
   }
 
   return;
 }
 
-function extractStructuredMessageFromArgs(...args: Array<Record<string, unknown> | undefined>) {
+function extractStructuredMessageFromArgs(
+  filteredKeys: Set<string>,
+  ...args: Array<Record<string, unknown> | undefined>
+) {
   // Check to see if there is a `message` key in the args, and if so, return it
   const structuredMessage = args.find((arg) => arg?.message);
 
   if (structuredMessage) {
-    return structuredMessage.message;
+    return filterKeys(structuredMessage.message, filteredKeys);
   }
 
   return;
@@ -221,37 +278,65 @@ function safeJsonClone(obj: unknown) {
   }
 }
 
-// If args is has a single item that is an object, return that object
-function structureArgs(args: Array<Record<string, unknown>>, filteredKeys: string[] = []) {
-  if (!args) {
+// `args` has already been through safeJsonClone, so this only has to filter/truncate it, not
+// clone it again. If there's exactly one arg, return it directly (unwrapped) so it can be spread
+// onto the structured log; otherwise filter every arg and return the array. Filtering runs
+// regardless of arg count, so a multi-arg call gets the same redaction as the common single-arg
+// case.
+function structureArgs(
+  args: Array<Record<string, unknown>> | undefined,
+  filteredKeys: Set<string> = new Set()
+) {
+  if (!args || args.length === 0) {
     return;
   }
 
-  if (args.length === 0) {
-    return;
+  const filteredArgs = args.map((arg) => filterKeys(arg, filteredKeys));
+
+  if (filteredArgs.length === 1) {
+    return filteredArgs[0];
   }
 
-  if (args.length === 1 && typeof args[0] === "object") {
-    return filterKeys(JSON.parse(JSON.stringify(args[0], bigIntReplacer)), filteredKeys);
-  }
-
-  return args;
+  return filteredArgs;
 }
 
-// Recursively filter out keys from an object, including nested objects, and arrays
-function filterKeys(obj: unknown, keys: string[]): any {
+// Recursively filter out keys from an object, including nested objects and arrays. Also caps
+// string length, array length and recursion depth, and redacts string values that look like a
+// secret regardless of which key they were found under.
+function filterKeys(obj: unknown, keys: Set<string>, depth = 0): any {
+  if (typeof obj === "string") {
+    if (SECRET_VALUE_PATTERN.test(obj)) {
+      return `[filtered ${prettyPrintBytes(obj)}]`;
+    }
+
+    return truncateString(obj);
+  }
+
   if (typeof obj !== "object" || obj === null) {
     return obj;
   }
 
+  if (depth >= MAX_DEPTH) {
+    return "[max depth exceeded]";
+  }
+
   if (Array.isArray(obj)) {
-    return obj.map((item) => filterKeys(item, keys));
+    const isTruncated = obj.length > MAX_ARRAY_LENGTH;
+    const items = (isTruncated ? obj.slice(0, MAX_ARRAY_LENGTH) : obj).map((item) =>
+      filterKeys(item, keys, depth + 1)
+    );
+
+    if (isTruncated) {
+      items.push(`[truncated ${obj.length - MAX_ARRAY_LENGTH} more items]`);
+    }
+
+    return items;
   }
 
   const filteredObj: any = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    if (keys.includes(key)) {
+    if (keys.has(key.toLowerCase())) {
       if (value) {
         filteredObj[key] = `[filtered ${prettyPrintBytes(value)}]`;
       } else {
@@ -260,10 +345,27 @@ function filterKeys(obj: unknown, keys: string[]): any {
       continue;
     }
 
-    filteredObj[key] = filterKeys(value, keys);
+    filteredObj[key] = filterKeys(value, keys, depth + 1);
   }
 
   return filteredObj;
+}
+
+function truncateString(value: string): string {
+  if (value.length <= MAX_STRING_LENGTH) {
+    return value;
+  }
+
+  return `${value.slice(0, MAX_STRING_LENGTH)}...[truncated ${
+    value.length - MAX_STRING_LENGTH
+  } chars]`;
+}
+
+// Runs a value through the same default-deny-list + truncation pipeline every Logger applies to
+// its own log lines. For destinations that receive log arguments through a side channel (e.g. an
+// error reporting `onError` hook) rather than through `Logger#structuredLog` itself.
+export function redact(value: unknown, filteredKeys: string[] = []): unknown {
+  return filterKeys(value, buildFilteredKeySet(filteredKeys));
 }
 
 function prettyPrintBytes(value: unknown): string {

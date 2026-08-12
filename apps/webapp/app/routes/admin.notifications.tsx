@@ -140,6 +140,8 @@ function parseNotificationFormData(formData: FormData) {
   const cliShowEvery = formData.get("cliShowEvery")
     ? Number(formData.get("cliShowEvery"))
     : undefined;
+  const minimumCliVersion =
+    (formData.get("minimumCliVersion") as string | null)?.trim() || undefined;
 
   const discoveryFilePatterns = (formData.get("discoveryFilePatterns") as string) || "";
   const discoveryContentPattern = (formData.get("discoveryContentPattern") as string) || undefined;
@@ -177,6 +179,7 @@ function parseNotificationFormData(formData: FormData) {
     cliMaxShowCount,
     cliMaxDaysAfterFirstSeen,
     cliShowEvery,
+    minimumCliVersion,
     discovery,
   };
 }
@@ -192,6 +195,9 @@ function buildPayloadInput(fields: ReturnType<typeof parseNotificationFormData>)
       ...(fields.image ? { image: fields.image } : {}),
       ...(fields.dismissOnAction ? { dismissOnAction: true } : {}),
       ...(fields.discovery ? { discovery: fields.discovery } : {}),
+      ...(fields.surface === "CLI" && fields.minimumCliVersion
+        ? { minimumCliVersion: fields.minimumCliVersion }
+        : {}),
     },
   };
 }
@@ -669,6 +675,7 @@ type NotificationFormDefaults = {
     contentPattern?: string;
     matchBehavior: "show-if-found" | "show-if-not-found";
   } | null;
+  payloadMinimumCliVersion?: string | null;
   cliMaxShowCount?: number | null;
   cliMaxDaysAfterFirstSeen?: number | null;
   cliShowEvery?: number | null;
@@ -1024,7 +1031,19 @@ function NotificationForm({
         <>
           <input type="hidden" name="discoveryMatchBehavior" value={discoveryMatchBehavior} />
 
-          <div className="grid grid-cols-3 gap-3 rounded border border-grid-dimmed bg-background-deep p-3">
+          <div className="grid grid-cols-2 gap-3 rounded border border-grid-dimmed bg-background-deep p-3">
+            <div>
+              <Label variant="small">Minimum CLI version</Label>
+              <Input
+                name="minimumCliVersion"
+                variant="medium"
+                fullWidth
+                defaultValue={n?.payloadMinimumCliVersion ?? ""}
+                placeholder="e.g. 4.5.7"
+                className="mt-1"
+              />
+              <Hint>Exact SemVer, inclusive</Hint>
+            </div>
             <div>
               <Label variant="small">Max show count</Label>
               <Input
@@ -1188,6 +1207,7 @@ function NotificationDetailContent({
     payloadDescription: string | null;
     payloadActionUrl: string | null | undefined;
     payloadImage: string | null | undefined;
+    payloadMinimumCliVersion: string | null;
     cliMaxShowCount: number | null;
     cliMaxDaysAfterFirstSeen: number | null;
     cliShowEvery: number | null;
@@ -1239,10 +1259,16 @@ function NotificationDetailContent({
 
       {/* CLI settings */}
       {n.surface === "CLI" &&
-        (n.cliMaxShowCount || n.cliMaxDaysAfterFirstSeen || n.cliShowEvery) && (
+        (n.payloadMinimumCliVersion ||
+          n.cliMaxShowCount ||
+          n.cliMaxDaysAfterFirstSeen ||
+          n.cliShowEvery) && (
           <div>
             <p className="mb-1 text-xs font-medium text-text-dimmed">CLI Settings</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              {n.payloadMinimumCliVersion && (
+                <DetailRow label="Minimum CLI version" value={n.payloadMinimumCliVersion} />
+              )}
               {n.cliMaxShowCount != null && (
                 <DetailRow label="Max show count" value={String(n.cliMaxShowCount)} />
               )}

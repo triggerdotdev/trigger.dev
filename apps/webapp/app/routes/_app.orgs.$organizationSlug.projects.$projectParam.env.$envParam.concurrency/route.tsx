@@ -7,13 +7,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
@@ -21,6 +15,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import {
@@ -73,14 +68,15 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Manage concurrency | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("concurrency"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Manage concurrency");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -270,7 +266,9 @@ export default function Page() {
                     {environment.type}{" "}
                     {environment.branchName ? ` (${environment.branchName})` : ""}
                   </Property.Label>
-                  <Property.Value>{environment.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={environment.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>

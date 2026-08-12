@@ -4,6 +4,7 @@ import { requestUrl } from "./utils/requestUrl.server";
 export type TriggerFeatures = {
   isManagedCloud: boolean;
   hasPrivateConnections: boolean;
+  queueMetricsQueryTables: boolean;
 };
 
 function isManagedCloud(host: string): boolean {
@@ -26,6 +27,7 @@ function featuresForHost(host: string): TriggerFeatures {
   return {
     isManagedCloud: isManagedCloud(host),
     hasPrivateConnections: hasPrivateConnections(host),
+    queueMetricsQueryTables: env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1",
   };
 }
 

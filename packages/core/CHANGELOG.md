@@ -1,5 +1,70 @@
 # internal-platform
 
+## 4.5.10
+
+### Patch Changes
+
+- Fix a chunk occasionally dropped when a chat.agent run takes over from the warm first turn. The realtime stream writer now reports the inclusive last-written position as the resume cursor, so the agent's first record after the handover is no longer skipped. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Transient connection errors when a run starts are now retried for longer, so a brief connectivity blip no longer sends the run back through the queue and delays its first attempt. ([#4441](https://github.com/triggerdotdev/trigger.dev/pull/4441))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+
+## 4.5.9
+
+### Patch Changes
+
+- Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+
+  ```bash
+  npx trigger.dev@latest report health --env prod --period 24h
+  ```
+
+  The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.
+
+## 4.5.8
+
+### Patch Changes
+
+- Allow additional environment API keys to create scoped public access tokens through the Trigger.dev API. Use server-issued public access tokens for batch operations so environment-scoped API keys can read batch results. ([#4387](https://github.com/triggerdotdev/trigger.dev/pull/4387))
+
+## 4.5.7
+
+### Patch Changes
+
+- Add `node-24` and `node-26` as supported `runtime` options in `trigger.config.ts`. The `experimental-node-24` and `experimental-node-26` names are now deprecated aliases and emit a deprecation warning; switch to `node-24` / `node-26` instead. ([#4337](https://github.com/triggerdotdev/trigger.dev/pull/4337))
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+
+  export default defineConfig({
+    runtime: "node-24",
+    project: "<your-project-ref>",
+  });
+  ```
+
+## 4.5.6
+
+### Patch Changes
+
+- Prevent prototype pollution when applying run metadata operations or reconstructing nested telemetry attributes, while preserving legitimate `constructor` and `prototype` fields. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Add helpers to mint and verify the deployment-scoped token used to authenticate run controllers to the platform. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Add `defaultRegion` to the project GET and list API responses; null when unset. ([#4146](https://github.com/triggerdotdev/trigger.dev/pull/4146))
+
+## 4.5.4
+
+### Patch Changes
+
+- Removed the unused `ResourceMonitor` export from `@trigger.dev/core/v3/serverOnly`. It was a server-side logging helper with no remaining consumers. ([#4244](https://github.com/triggerdotdev/trigger.dev/pull/4244))
+- Removed the unused `@trigger.dev/core/v3/zodNamespace` export and the legacy v3 socket message schemas. These were only used by the now-retired v3 engine and have no v4 consumers. ([#4236](https://github.com/triggerdotdev/trigger.dev/pull/4236))
+
 ## 4.5.3
 
 ## 4.5.2

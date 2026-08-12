@@ -23,7 +23,6 @@ import type { EphemeralDirectory } from "../utilities/tempDirectories.js";
 import { clearTmpDirs, getStoreDir, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
-import { startMcpServer, stopMcpServer } from "./mcpServer.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { join } from "node:path";
 
@@ -66,17 +65,6 @@ export async function startDevSession({
     client,
     dashboardUrl,
   });
-
-  if (rawArgs.mcp) {
-    await startMcpServer({
-      port: rawArgs.mcpPort,
-      cliApiClient: client,
-      devSession: {
-        dashboardUrl,
-        projectRef: rawConfig.project,
-      },
-    });
-  }
 
   const stopOutput = startDevOutput({
     name,
@@ -237,7 +225,6 @@ export async function startDevSession({
       stopBundling?.().catch((error) => {});
       runtime.shutdown().catch((error) => {});
       stopOutput();
-      stopMcpServer();
     },
   };
 }

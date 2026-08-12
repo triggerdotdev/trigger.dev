@@ -1,7 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
-import { type WorkerDeployment, type Project } from "@trigger.dev/database";
+import { type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
   logger,
@@ -169,7 +169,7 @@ export class DeploymentService extends BaseService {
         })
       );
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen((deployment) => {
         if (deployment.status === "PENDING") {
@@ -191,7 +191,7 @@ export class DeploymentService extends BaseService {
    * @param data Cancelation reason.
    */
   public cancelDeployment(
-    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "id">,
     friendlyId: string,
     data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
@@ -220,7 +220,7 @@ export class DeploymentService extends BaseService {
           where: {
             id: deployment.id,
             status: {
-              notIn: FINAL_DEPLOYMENT_STATUSES, // status could've changed in the meantime, we're not locking the row
+              notIn: boundedIn(FINAL_DEPLOYMENT_STATUSES), // status could've changed in the meantime, we're not locking the row
             },
           },
           data: {
@@ -246,7 +246,7 @@ export class DeploymentService extends BaseService {
         cause: error,
       }));
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
       .andThen(({ deployment }) =>
@@ -278,7 +278,7 @@ export class DeploymentService extends BaseService {
    * @param friendlyId The friendly deployment ID.
    */
   public generateRegistryCredentials(
-    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "id" | "projectId">,
     friendlyId: string
   ) {
     const validateDeployment = (
@@ -326,7 +326,7 @@ export class DeploymentService extends BaseService {
         });
       });
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(getDeploymentRegion)
       .andThen(generateCredentials);
@@ -472,12 +472,12 @@ export class DeploymentService extends BaseService {
     );
   }
 
-  private getDeployment(projectId: string, friendlyId: string) {
+  private getDeployment(environmentId: string, friendlyId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId,
-          projectId,
+          environmentId,
         },
         select: {
           status: true,

@@ -1,5 +1,5 @@
 import { redirect } from "@remix-run/server-runtime";
-import { prisma } from "~/db.server";
+import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import type { SearchParams } from "~/routes/admin._index";
 import {
@@ -11,6 +11,7 @@ import {
 import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { impersonationDestinationPath } from "~/utils/pathBuilder";
 
 const pageSize = 20;
 
@@ -213,7 +214,8 @@ export async function redirectWithImpersonation(
   request: Request,
   userId: string,
   path: string,
-  currentUser?: { id: string; admin: boolean }
+  currentUser?: { id: string; admin: boolean },
+  prismaClient: PrismaClientOrTransaction = prisma
 ) {
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
@@ -224,7 +226,7 @@ export async function redirectWithImpersonation(
   const ipAddress = extractClientIp(xff);
 
   try {
-    await prisma.impersonationAuditLog.create({
+    await prismaClient.impersonationAuditLog.create({
       data: {
         action: "START",
         adminId: user.id,
@@ -245,6 +247,87 @@ export async function redirectWithImpersonation(
   return redirect(path, {
     headers: { "Set-Cookie": await commitImpersonationSession(session) },
   });
+}
+
+type ImpersonationTarget =
+  | { success: true; userId: string; organizationName: string }
+  | { success: false; reason: "org-not-found" | "no-confirmed-member" };
+
+/**
+ * Read-only lookup of who a `/@/orgs/<slug>/…` link would impersonate: the
+ * first organization member who has confirmed their basic details. Writes
+ * nothing, so it is safe to call while only rendering the consent page.
+ */
+export async function findImpersonationTarget(
+  organizationSlug: string,
+  prismaClient: PrismaClientOrTransaction = $replica
+): Promise<ImpersonationTarget> {
+  const org = await prismaClient.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      deletedAt: null,
+    },
+    select: {
+      title: true,
+      members: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              confirmedBasicDetails: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!org) {
+    return { success: false, reason: "org-not-found" };
+  }
+
+  const firstValidMember = org.members.find((m) => m.user.confirmedBasicDetails);
+
+  if (!firstValidMember) {
+    return { success: false, reason: "no-confirmed-member" };
+  }
+
+  return { success: true, userId: firstValidMember.user.id, organizationName: org.title };
+}
+
+/**
+ * Starts impersonating the organization's first confirmed member and lands on
+ * the requested path with the `/@` prefix stripped. Shared by the same-origin
+ * loader path and the consent page's POST so there is one implementation.
+ *
+ * The destination keeps the incoming query string: both entry points are served
+ * at the `/@`-prefixed URL, so `request.url` carries the same search the link
+ * arrived with (for example the `?span=` a `/@/runs/<id>` link redirects with).
+ */
+export async function startImpersonation(
+  request: Request,
+  organizationSlug: string,
+  path: string,
+  currentUser: { id: string; admin: boolean },
+  clients: { read: PrismaClientOrTransaction; write: PrismaClientOrTransaction } = {
+    read: $replica,
+    write: prisma,
+  }
+) {
+  const target = await findImpersonationTarget(organizationSlug, clients.read);
+
+  if (!target.success) {
+    logger.debug("Cannot impersonate organization", { organizationSlug, reason: target.reason });
+    return clearImpersonation(request, "/admin");
+  }
+
+  return redirectWithImpersonation(
+    request,
+    target.userId,
+    impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
+    currentUser,
+    clients.write
+  );
 }
 
 export async function clearImpersonation(request: Request, path: string) {

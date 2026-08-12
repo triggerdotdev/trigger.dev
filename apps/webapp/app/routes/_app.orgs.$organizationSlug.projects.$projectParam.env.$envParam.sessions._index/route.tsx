@@ -1,5 +1,3 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
@@ -7,7 +5,6 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -22,16 +19,17 @@ import { getSessionFiltersFromRequest } from "~/presenters/SessionFilters.server
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Sessions | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => sessionsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Sessions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -81,13 +79,6 @@ export default function Page() {
         <PageTitle title="Sessions" accessory={<SessionsHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("ai-chat/sessions")}
-          >
-            Sessions docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

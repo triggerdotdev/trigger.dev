@@ -21,7 +21,9 @@ export async function action({ request }: ActionFunctionArgs) {
         await exporter.exportTracesRaw(new Uint8Array(buffer));
 
         return new Response(
-          ExportTraceServiceResponse.encode(ExportTraceServiceResponse.create()).finish(),
+          ExportTraceServiceResponse.encode(
+            ExportTraceServiceResponse.create()
+          ).finish() as Uint8Array<ArrayBuffer>,
           { status: 200 }
         );
       }
@@ -30,9 +32,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportTraces(exportRequest);
 
-      return new Response(ExportTraceServiceResponse.encode(exportResponse).finish(), {
-        status: 200,
-      });
+      return new Response(
+        ExportTraceServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>,
+        {
+          status: 200,
+        }
+      );
     } else {
       return new Response(
         "Unsupported content type. Must be either application/x-protobuf or application/json",

@@ -1,7 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
-  BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
   NoSymbolIcon,
@@ -16,7 +15,6 @@ import {
   useFetcher,
   useNavigation,
   useRevalidator,
-  type MetaFunction,
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -40,7 +38,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -73,11 +71,11 @@ import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  docsPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
@@ -87,14 +85,15 @@ import {
   shouldSyncEnvVar,
   type TriggerEnvironmentType,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Environment variables | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("envvars"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Environment variables");
 
 type PageVercelIntegration = NonNullable<
   Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
@@ -265,6 +264,24 @@ export const action = dashboardAction(
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // Per-env write gate for the mutating value actions: `environmentId` is a
+    // user-supplied hidden field and the repository only checks project
+    // membership. Mirrors the create route's check.
+    if (submission.value.action === "edit" || submission.value.action === "delete") {
+      const submittedEnvs = await prisma.runtimeEnvironment.findMany({
+        where: { projectId: project.id, id: submission.value.environmentId },
+        select: { id: true, type: true, orgMember: { select: { userId: true } } },
+      });
+      const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
+        submittedEnvs,
+        [submission.value.environmentId],
+        userId
+      );
+      if (unauthorizedEnvironmentId) {
+        return json(submission.reply({ formErrors: ["This environment is not writable by you."] }));
+      }
     }
 
     switch (submission.value.action) {
@@ -443,15 +460,6 @@ function EnvironmentVariablesListPage({
     <PageContainer>
       <NavBar>
         <PageTitle title="Environment variables" />
-        <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/deploy-environment-variables")}
-            variant="docs/small"
-          >
-            Environment variables docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("flex h-full min-h-0 flex-col")}>
@@ -894,7 +902,7 @@ function DeleteEnvironmentVariableButton({
         fullWidth
         textAlignLeft
         LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
+        leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
         className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : ""}

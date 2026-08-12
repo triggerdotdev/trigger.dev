@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -28,10 +27,15 @@ import {
   v3EnvironmentPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Tasks | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Tasks");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

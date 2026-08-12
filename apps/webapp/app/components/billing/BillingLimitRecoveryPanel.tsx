@@ -113,7 +113,7 @@ export function BillingLimitRecoveryPanel({
       <div className="border-b border-grid-dimmed pb-3">
         <Header2 spacing>Action required</Header2>
         <Callout variant="warning">
-          <Paragraph variant="small" className="text-yellow-200">
+          <Paragraph variant="small" className="text-callout-warning-text">
             {isGrace ? (
               <>
                 Your organization has reached its billing limit. Processing is paused and new runs

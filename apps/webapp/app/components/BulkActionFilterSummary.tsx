@@ -9,7 +9,7 @@ import { Paragraph } from "./primitives/Paragraph";
 import simplur from "simplur";
 import { appliedSummary, dateFromString, timeFilterRenderValues } from "./runs/v3/SharedFilters";
 import { formatNumber } from "~/utils/numberFormatter";
-import { SpinnerWhite } from "./primitives/Spinner";
+import { Spinner } from "./primitives/Spinner";
 import { ArrowPathIcon, CheckIcon, XCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon as XCircleIconOutline } from "@heroicons/react/24/outline";
 import assertNever from "assert-never";
@@ -306,5 +306,5 @@ export function EstimatedCount({ count }: { count?: number }) {
     return <>~{formatNumber(count)}</>;
   }
 
-  return <SpinnerWhite className="mx-0.5 -mt-0.5 inline size-3" />;
+  return <Spinner color="blue" className="mx-0.5 -mt-0.5 inline size-3" />;
 }

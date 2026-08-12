@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
-import { type MetaFunction, useFetcher, useNavigation, useLocation, Form } from "@remix-run/react";
+import { useFetcher, useNavigation, useLocation, Form } from "@remix-run/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
@@ -42,6 +42,9 @@ import {
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
@@ -52,13 +55,11 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
 }
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Logs | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("logs"),
 };
+
+export const meta = pageMeta("Logs");
 
 // TODO: Move this to a more appropriate shared location
 async function hasLogsPageAccess(

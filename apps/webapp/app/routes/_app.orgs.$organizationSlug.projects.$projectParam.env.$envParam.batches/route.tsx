@@ -1,6 +1,6 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -51,25 +51,21 @@ import { requireUserId } from "~/services/session.server";
 import {
   $replica,
   runOpsNewReplicaClient,
-  runOpsLegacyReplica,
+  runOpsLegacyReplicaClient,
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3BatchPath,
-  v3BatchRunsPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BatchPath, v3BatchRunsPath } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { batchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Batches | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => batchesAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Batches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -98,8 +94,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const filters = BatchListFilters.parse(s);
 
   const presenter = new BatchListPresenter(undefined, undefined, {
-    runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
-    runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+    runOpsNew: runOpsNewReplicaClient,
+    runOpsLegacyReplica: runOpsLegacyReplicaClient,
     controlPlaneReplica: $replica as unknown as PrismaClientOrTransaction,
     splitEnabled: runOpsSplitReadEnabled,
   });
@@ -126,13 +122,6 @@ export default function Page() {
         <PageTitle title="Batches" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/triggering")}
-          >
-            Batches docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

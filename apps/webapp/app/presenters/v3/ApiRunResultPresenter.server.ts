@@ -2,13 +2,14 @@ import type { TaskRunExecutionResult } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { executionResultForTaskRun } from "~/models/taskRun.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type ApiRunResultReadThroughDeps = {
   splitEnabled?: boolean;
   newClient?: PrismaReplicaClient;
-  // LEGACY RUN-OPS READ REPLICA ONLY (never a writer/primary); defaults to this._replica.
+  // LEGACY RUN-OPS READ REPLICA ONLY (never a writer/primary); defaults to runOpsLegacyReplica
+  // (the Aurora legacy read replica), never the control-plane replica.
   legacyReplica?: PrismaReplicaClient;
   isPastRetention?: (runId: string) => boolean;
 };
@@ -17,7 +18,8 @@ export class ApiRunResultPresenter extends BasePresenter {
   constructor(
     prisma?: PrismaClientOrTransaction,
     replica?: PrismaClientOrTransaction,
-    private readonly _readThrough?: ApiRunResultReadThroughDeps
+    private readonly _readThrough?: ApiRunResultReadThroughDeps,
+    private readonly runStore = defaultRunStore
   ) {
     super(prisma, replica);
   }
@@ -27,31 +29,14 @@ export class ApiRunResultPresenter extends BasePresenter {
     env: AuthenticatedEnvironment
   ): Promise<TaskRunExecutionResult | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const findRun = (client: PrismaReplicaClient) =>
-        client.taskRun.findFirst({
-          where: { friendlyId, runtimeEnvironmentId: env.id },
-          include: { attempts: { orderBy: { createdAt: "desc" } } },
-        });
-
-      // Single-run result poll routed through run-ops read-through. Split on: primary store first,
-      // then the secondary read replica for runs that miss on new; past-retention ids return
-      // undefined -> the route's normal 404. Split off (single-DB / self-host): readThroughRun does
-      // one plain findFirst against the single client (passthrough).
-      const result = await readThroughRun({
-        runId: friendlyId,
-        environmentId: env.id,
-        readNew: findRun,
-        readLegacy: findRun,
-        deps: {
-          splitEnabled: this._readThrough?.splitEnabled,
-          newClient: this._readThrough?.newClient ?? (this._prisma as PrismaReplicaClient),
-          legacyReplica: this._readThrough?.legacyReplica ?? (this._replica as PrismaReplicaClient),
-          isPastRetention: this._readThrough?.isPastRetention,
-        },
-      });
-
-      const taskRun =
-        result.source === "new" || result.source === "legacy-replica" ? result.value : undefined;
+      // Single-run result poll routed through the run store, which selects the owning DB by
+      // run-id residency (id shape): a run-ops (NEW) id reads the new store, a cuid (LEGACY) id
+      // reads the legacy store. Single-DB / self-host collapses to one plain findFirst against the
+      // one store (passthrough). The identical TaskRun(+attempts) lookup runs inside the router.
+      const taskRun = await this.runStore.findRun(
+        { friendlyId, runtimeEnvironmentId: env.id },
+        { include: { attempts: { orderBy: { createdAt: "desc" } } } }
+      );
 
       if (!taskRun) {
         return undefined;

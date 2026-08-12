@@ -9,6 +9,22 @@ import useLazyRef from "~/hooks/useLazyRef";
 // Recharts 3.x will have portal support, but until then we're using this:
 //https://github.com/recharts/recharts/issues/2458#issuecomment-1063463873
 
+// A portal only mounts once its tooltip is active, so its own mousemove listener attaches too late
+// to know where the cursor already is — the tooltip would sit at {0,0} (top-left of the page) until
+// the next mouse movement. Track the pointer globally so a newly-activated tooltip can seed its
+// position immediately.
+const lastPointer = { x: 0, y: 0 };
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "mousemove",
+    (e) => {
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+    },
+    { passive: true }
+  );
+}
+
 export interface PopperPortalProps {
   active?: boolean;
   children: ReactNode;
@@ -40,8 +56,11 @@ export default function TooltipPortal({ active = true, children }: PopperPortalP
 
   useEffect(() => {
     if (!active) return;
+    // Seed from the last known pointer so the tooltip appears at the cursor immediately, even if the
+    // mouse is held still after hovering onto a point (otherwise it flashes in the top-left corner).
+    virtualElementRef.current?.update(lastPointer.x, lastPointer.y);
     update?.();
-  }, [active, update]);
+  }, [active, update, virtualElementRef]);
 
   if (!portalElement) return null;
 
@@ -53,6 +72,9 @@ export default function TooltipPortal({ active = true, children }: PopperPortalP
         ...styles.popper,
         zIndex: 1000,
         display: active ? "block" : "none",
+        // The tooltip sits just under the cursor; without this, moving along the line drags the
+        // cursor onto the tooltip, which fires the chart's mouseleave and flickers it off/on.
+        pointerEvents: "none",
       }}
     >
       {children}

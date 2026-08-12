@@ -189,13 +189,14 @@ export function InputNumberStepper({
           aria-label={`Decrease by ${step}`}
           className={cn(
             "flex items-center justify-center rounded border border-error/30 bg-error/20 transition",
+            "system:border-transparent system:bg-error system:transition system:hover:bg-error system:hover:brightness-90",
             size.button,
             "hover:border-error/50 hover:bg-error/30",
             "disabled:cursor-not-allowed disabled:opacity-40",
             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
-          <MinusIcon className={cn("text-error", size.icon)} />
+          <MinusIcon className={cn("text-error system:text-white", size.icon)} />
         </button>
 
         <button
@@ -206,13 +207,14 @@ export function InputNumberStepper({
           aria-label={`Increase by ${step}`}
           className={cn(
             "flex items-center justify-center rounded border border-success/30 bg-success/10 transition",
+            "system:border-transparent system:bg-success system:transition system:hover:bg-success system:hover:brightness-90",
             size.button,
             "hover:border-success/40 hover:bg-success/20",
             "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
-          <PlusIcon className={cn("text-success", size.icon)} />
+          <PlusIcon className={cn("text-success system:text-white", size.icon)} />
         </button>
       </div>
     </div>

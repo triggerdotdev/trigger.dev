@@ -6,5 +6,4 @@ export * from "./k8s.js";
 export * from "./jumpHash.js";
 export * from "../apiClient/version.js";
 export * from "./placementTags.js";
-export * from "./resourceMonitor.js";
 export * from "./idempotencyKeys.js";

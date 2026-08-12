@@ -97,9 +97,18 @@ jobs:
     permissions:
       contents: read
       packages: read # pull the just-published image from GHCR
-    uses: ./.github/workflows/trivy-image-webapp.yml
+    uses: ./.github/workflows/trivy-image.yml
     with:
       image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}
+
+  scan-supervisor:
+    needs: [publish-worker-v4]
+    permissions:
+      contents: read
+      packages: read # pull the just-published image from GHCR
+    uses: ./.github/workflows/trivy-image.yml
+    with:
+      image-ref: ${{ needs.publish-worker-v4.outputs.image_repo }}:${{ needs.publish-worker-v4.outputs.version }}
 
   # Announce the freshly published mutable `main` webapp image to subscriber
   # repos via repository_dispatch, handing them a digest-pinned ref to build or

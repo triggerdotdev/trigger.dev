@@ -1,16 +1,17 @@
 import type { ColumnSchema } from "@internal/tsql";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
-import { querySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
+import { useFeatures } from "~/hooks/useFeatures";
 
 function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   return (
     <div className="pt-1">
       <div className="flex items-center gap-2">
-        <CopyableText value={col.name} className="text-sm text-indigo-400" />
+        <CopyableText value={col.name} className="text-sm text-indigo-400 light:text-indigo-600" />
         <Badge className="font-mono text-xxs">{col.type}</Badge>
       </div>
       {col.description && (
@@ -43,11 +44,18 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   );
 }
 
-const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));
-
 export function TableSchemaContent() {
-  const [selectedTable, setSelectedTable] = useState(querySchemas[0].name);
-  const table = querySchemas.find((s) => s.name === selectedTable) ?? querySchemas[0];
+  const { queueMetricsQueryTables } = useFeatures();
+  const schemas = useMemo(
+    () => listableQuerySchemas({ includeQueueMetrics: queueMetricsQueryTables }),
+    [queueMetricsQueryTables]
+  );
+  const tableOptions = useMemo(
+    () => schemas.map((s) => ({ label: s.name, value: s.name })),
+    [schemas]
+  );
+  const [selectedTable, setSelectedTable] = useState(schemas[0].name);
+  const table = schemas.find((s) => s.name === selectedTable) ?? schemas[0];
 
   return (
     <div>

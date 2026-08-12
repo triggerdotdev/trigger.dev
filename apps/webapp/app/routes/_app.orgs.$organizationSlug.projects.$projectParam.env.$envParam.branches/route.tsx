@@ -1,7 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -67,7 +66,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
-  docsPath,
   EnvironmentParamSchema,
   ProjectParamSchema,
   v3BillingPath,
@@ -79,6 +77,11 @@ import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
+import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Preview branches");
 
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({
@@ -187,6 +190,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return json({ ok: false, error: "Unsupported action" } as const, { status: 400 });
 }
 
+export const handle: Handle = {
+  agentPageContext: (data) => branchesAgentPageContext(data),
+};
+
 export default function Page() {
   const {
     branchableEnvironment,
@@ -242,20 +249,13 @@ export default function Page() {
               {branches.map((branch) => (
                 <Property.Item key={branch.id}>
                   <Property.Label>{branch.branchName}</Property.Label>
-                  <Property.Value>{branch.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={branch.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("deployment/preview-branches")}
-          >
-            Branches docs
-          </LinkButton>
-
           {limits.isAtLimit ? (
             <UpgradePanel
               limits={limits}

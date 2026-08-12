@@ -15,9 +15,10 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { publicAccessTokenResponseHeaders } from "~/services/publicAccessTokenResponse.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -58,6 +59,16 @@ const { action } = createActionApiRoute(
 
       const timeout = await parseDelay(body.timeout);
 
+      // A token (and its tags) has no owning run, so it can't co-locate. Resolve the env mint kind so a
+      // minted-new env creates them on the run-ops DB (NEW) instead of defaulting to the draining LEGACY
+      // DB by their cuid id-shape.
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+      const residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
+
       //upsert tags
       let tags: { id: string; name: string }[] = [];
       const bodyTags = typeof body.tags === "string" ? [body.tags] : body.tags;
@@ -74,6 +85,7 @@ const { action } = createActionApiRoute(
             tag,
             environmentId: authentication.environment.id,
             projectId: authentication.environment.projectId,
+            residency,
           });
           if (tagRecord) {
             tags.push(tagRecord);
@@ -88,13 +100,19 @@ const { action } = createActionApiRoute(
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
+        standaloneResidency: residency,
       });
 
-      const $responseHeaders = await responseHeaders(authentication.environment);
+      const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
+      const $responseHeaders = await publicAccessTokenResponseHeaders({
+        environment: authentication.environment,
+        scopes: [`write:waitpoints:${waitpointId}`],
+        expirationTime: "24h",
+      });
 
       return json<CreateWaitpointTokenResponseBody>(
         {
-          id: WaitpointId.toFriendlyId(result.waitpoint.id),
+          id: waitpointId,
           isCached: result.isCached,
           url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
         },
@@ -110,18 +128,5 @@ const { action } = createActionApiRoute(
     }
   }
 );
-
-async function responseHeaders(
-  environment: AuthenticatedEnvironment
-): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
-    sub: environment.id,
-    pub: true,
-  });
-
-  return {
-    "x-trigger-jwt-claims": claimsHeader,
-  };
-}
 
 export { action };

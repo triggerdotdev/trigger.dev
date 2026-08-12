@@ -15,8 +15,8 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
-import { $replica, type PrismaReplicaClient } from "~/db.server";
-import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
+import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -81,20 +81,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    const waitpoint = await resolveWaitpointThroughReadThrough({
-      waitpointId,
-      environmentId: "",
-      read: (client: PrismaReplicaClient) =>
-        client.waitpoint.findFirst({
-          select: {
-            projectId: true,
-            environmentId: true,
-          },
-          where: {
-            id: waitpointId,
-          },
-        }),
+    let waitpoint = await runStore.findWaitpoint({
+      select: {
+        projectId: true,
+        environmentId: true,
+      },
+      where: {
+        id: waitpointId,
+      },
     });
+    if (!waitpoint) {
+      // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
+      // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
+      waitpoint = await runStore.findWaitpointOnPrimary({
+        select: { projectId: true, environmentId: true },
+        where: { id: waitpointId },
+      });
+    }
 
     if (waitpoint?.projectId !== project.id) {
       return redirectWithErrorMessage(

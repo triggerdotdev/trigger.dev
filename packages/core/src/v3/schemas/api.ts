@@ -10,6 +10,7 @@ import {
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
+import { ScheduleWindow } from "./schemas.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -38,6 +39,10 @@ export const GetProjectResponseBody = z.object({
   name: z.string(),
   slug: z.string(),
   createdAt: z.coerce.date(),
+  // Worker-group name of the project's default region, or null when unset
+  // (the project falls back to the global platform default). Optional so a
+  // newer client still parses responses from an older server that omits it.
+  defaultRegion: z.string().nullable().optional(),
   organization: z.object({
     id: z.string(),
     title: z.string(),
@@ -62,6 +67,21 @@ export const GetOrgsResponseBody = z.array(
 );
 
 export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
+
+export const CreateOrgRequestBody = z.object({
+  title: z.string().trim().min(3).max(50),
+  companySize: z.string().optional(),
+  companyUrl: z.string().optional(),
+});
+export type CreateOrgRequestBody = z.infer<typeof CreateOrgRequestBody>;
+
+export const CreateOrgResponseBody = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type CreateOrgResponseBody = z.infer<typeof CreateOrgResponseBody>;
 
 export const CreateProjectRequestBody = z.object({
   name: z
@@ -107,6 +127,7 @@ export const GetWorkerTaskResponse = z.object({
   triggerSource: z.string(),
   createdAt: z.coerce.date(),
   payloadSchema: z.any().nullish(),
+  queueConfig: z.any().nullish(),
 });
 
 export const GetWorkerByTagResponse = z.object({
@@ -411,6 +432,8 @@ export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Respon
 export const CreateBatchRequestBody = z.object({
   /** Expected number of items in the batch */
   runCount: z.number().int().positive(),
+  /** Distinct task identifiers expected in the item stream */
+  taskIdentifiers: z.array(z.string().min(1)).min(1).optional(),
   /** Parent run ID for batchTriggerAndWait (friendly ID) */
   parentRunId: z.string().optional(),
   /** Whether to resume parent on completion (true for batchTriggerAndWait) */
@@ -1023,6 +1046,13 @@ export const CreateScheduleOptions = z.object({
    *
    */
   timezone: z.string().optional(),
+  /** Optionally delay each occurrence by a stable amount within this window.
+   * Absolute windows use whole minutes or hours up to 24 hours and are capped at the next
+   * nominal interval. Percentages are relative to each nominal interval.
+   *
+   * @example "30m", "2h", "24h", "30%", "100%"
+   */
+  window: ScheduleWindow.optional(),
 });
 
 export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
@@ -1048,6 +1078,7 @@ export const ScheduleObject = z.object({
   externalId: z.string().nullish(),
   generator: ScheduleGenerator,
   timezone: z.string(),
+  window: ScheduleWindow.optional(),
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
@@ -1347,6 +1378,8 @@ export type ListBulkActionsResponseBody = z.infer<typeof ListBulkActionsResponse
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),
   value: z.string(),
+  // When omitted, the variable defaults to non-secret (the DB default is false).
+  isSecret: z.boolean().optional(),
 });
 
 export type CreateEnvironmentVariableRequestBody = z.infer<

@@ -1,6 +1,6 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
+import { CheckIcon } from "@heroicons/react/24/solid";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
@@ -21,7 +21,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -65,21 +65,21 @@ import { requireUserId } from "~/services/session.server";
 import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3RunPath,
-  v3RunsPath,
-  v3SessionsPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3RunPath, v3RunsPath, v3SessionsPath } from "~/utils/pathBuilder";
+import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+import { pageMeta } from "~/utils/pageTitle";
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
 });
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Session | Trigger.dev` }];
+export const handle: Handle = {
+  agentPageContext: (data) => sessionsAgentPageContext(data),
 };
+
+export const meta = pageMeta(({ params }) => [params.sessionParam ?? "Session", "Sessions"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -139,15 +139,6 @@ export default function Page() {
             </span>
           }
         />
-        <PageAccessories>
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/ai-chat/sessions")}
-          >
-            Sessions docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">

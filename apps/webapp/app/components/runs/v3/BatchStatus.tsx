@@ -42,7 +42,12 @@ export function BatchStatusCombo({
 }
 
 export function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
-  return <span className={batchStatusColor(status)}>{batchStatusTitle(status)}</span>;
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
+  return (
+    <span className={cn("system-mono-label", batchStatusColor(status))}>
+      {batchStatusTitle(status)}
+    </span>
+  );
 }
 
 export function BatchStatusIcon({

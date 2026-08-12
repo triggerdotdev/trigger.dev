@@ -121,13 +121,14 @@ export function BulkActionStatusLabel({
   status: BulkActionStatus;
   className?: string;
 }) {
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
   switch (status) {
     case "PENDING":
-      return <span className={cn("text-pending", className)}>In progress</span>;
+      return <span className={cn("system-mono-label text-pending", className)}>In progress</span>;
     case "COMPLETED":
-      return <span className={cn("text-success", className)}>Completed</span>;
+      return <span className={cn("system-mono-label text-success", className)}>Completed</span>;
     case "ABORTED":
-      return <span className={cn("text-error", className)}>Aborted</span>;
+      return <span className={cn("system-mono-label text-error", className)}>Aborted</span>;
     default: {
       assertNever(status);
     }

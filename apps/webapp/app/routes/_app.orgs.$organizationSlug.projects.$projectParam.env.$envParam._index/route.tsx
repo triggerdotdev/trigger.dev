@@ -1,12 +1,13 @@
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { json } from "@remix-run/node";
+
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientOnly } from "remix-utils/client-only";
-import { Bar, BarChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
+import { Bar, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -16,6 +17,7 @@ import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
@@ -51,6 +53,12 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
+import {
+  ActivityBarChart,
+  ACTIVITY_CHART_HEIGHT,
+  ACTIVITY_CHART_PEAK_CLASS,
+  ACTIVITY_CHART_WIDTH,
+} from "~/components/metrics/ActivityBarChart";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
@@ -64,6 +72,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -83,7 +92,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3PlaygroundAgentPath,
@@ -93,10 +101,15 @@ import {
   v3TasksStreamingPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Tasks | Trigger.dev` }];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Tasks");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -122,7 +135,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
-    return typeddefer({ items, hourlyActivity, runningStates, usefulLinksPreference });
+    const initialized = await prisma.project.findFirst({
+      where: { id: project.id },
+      select: { initializedAt: true },
+    });
+
+    return typeddefer({
+      items,
+      hourlyActivity,
+      runningStates,
+      usefulLinksPreference,
+      projectInitializedAt: initialized?.initializedAt ?? null,
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -189,7 +213,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates, usefulLinksPreference } =
+  const { items, hourlyActivity, runningStates, usefulLinksPreference, projectInitializedAt } =
     useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
@@ -261,13 +285,7 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/tasks/overview")}
-          >
-            Task docs
-          </LinkButton>
+          <AdminDebugTooltip />
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -348,7 +366,7 @@ export default function Page() {
                 </div>
               ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev />
+                  <HasNoTasksDev initializedAt={projectInitializedAt} />
                 </MainCenteredContainer>
               ) : (
                 <MainCenteredContainer className="max-w-prose">
@@ -624,64 +642,31 @@ const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
   { status: "TIMED_OUT", fill: "var(--color-run-timed-out)" },
 ];
 
-// Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize re-renders all 25 charts.
-const ACTIVITY_CHART_WIDTH = 112;
-const ACTIVITY_CHART_HEIGHT = 24;
 // chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
 const ACTIVITY_CELL_WIDTH = 146;
-const ACTIVITY_CHART_COUNT_CLASS =
-  "-mt-1 inline-block min-w-7 text-xxs tabular-nums text-text-dimmed";
 
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));
 
   return (
-    <div className="flex items-start gap-1.5">
-      <div
-        className="rounded-sm"
-        style={{ width: ACTIVITY_CHART_WIDTH, height: ACTIVITY_CHART_HEIGHT }}
-      >
-        <BarChart
-          data={activity}
-          width={ACTIVITY_CHART_WIDTH}
-          height={ACTIVITY_CHART_HEIGHT}
-          margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-        >
-          <YAxis domain={[0, maxTotal || 1]} hide />
-          <Tooltip
-            cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
-            content={<TaskActivityTooltip />}
-            allowEscapeViewBox={{ x: true, y: true }}
-            wrapperStyle={{ zIndex: 1000 }}
-            animationDuration={0}
-          />
-          {STATUS_BARS.map(({ status, fill }) => (
-            <Bar
-              key={status}
-              dataKey={status}
-              stackId="a"
-              fill={fill}
-              strokeWidth={0}
-              isAnimationActive={false}
-            />
-          ))}
-          <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
-          {maxTotal > 0 && (
-            <ReferenceLine
-              y={maxTotal}
-              stroke="var(--color-border-brighter)"
-              strokeDasharray="4 4"
-              strokeWidth={1}
-            />
-          )}
-        </BarChart>
-      </div>
-      <SimpleTooltip
-        asChild
-        button={<span className={ACTIVITY_CHART_COUNT_CLASS}>{formatNumberCompact(maxTotal)}</span>}
-        content="Peak runs in a single hour"
-      />
-    </div>
+    <ActivityBarChart
+      data={activity}
+      max={maxTotal}
+      tooltip={<TaskActivityTooltip />}
+      peak={formatNumberCompact(maxTotal)}
+      peakTooltip="Peak runs in a single hour"
+    >
+      {STATUS_BARS.map(({ status, fill }) => (
+        <Bar
+          key={status}
+          dataKey={status}
+          stackId="a"
+          fill={fill}
+          strokeWidth={0}
+          isAnimationActive={false}
+        />
+      ))}
+    </ActivityBarChart>
   );
 }
 
@@ -699,7 +684,7 @@ function TaskActivityBlankState() {
           strokeWidth={1}
         />
       </svg>
-      <span className={ACTIVITY_CHART_COUNT_CLASS}>0</span>
+      <span className={ACTIVITY_CHART_PEAK_CLASS}>0</span>
     </div>
   );
 }

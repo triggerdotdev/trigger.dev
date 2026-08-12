@@ -8,7 +8,7 @@ generator client {
   provider        = "prisma-client-js"
   output          = "../generated/prisma"
   binaryTargets   = ["native", "debian-openssl-1.1.x"]
-  previewFeatures = ["metrics"]
+  previewFeatures = ["metrics", "driverAdapters"]
 }
 
 model User {
@@ -69,6 +69,7 @@ model User {
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
+  createdApiKeys       ApiKey[]
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
@@ -154,6 +155,8 @@ model PersonalAccessToken {
   updatedAt DateTime @updatedAt
 
   authorizationCodes AuthorizationCode[]
+
+  @@index([userId])
 }
 
 enum OrganizationAccessTokenType {
@@ -393,13 +396,41 @@ model RuntimeEnvironment {
   playgroundConversations PlaygroundConversation[]
   errorGroupStates        ErrorGroupState[]
   taskIdentifiers         TaskIdentifier[]
+  apiKeys                 ApiKey[]
   revokedApiKeys          RevokedApiKey[]
 
+  // A partial unique index also enforces one STAGING/PREVIEW root per project and type.
+  // It is defined in SQL because Prisma does not support partial indexes in the schema.
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+}
+
+model ApiKey {
+  id       String @id @default(cuid())
+  name     String
+  keyHash  String @unique @map("key_hash")
+  lastFour String @map("last_four")
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String             @map("runtime_environment_id")
+
+  createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdByUserId String? @map("created_by_user_id")
+
+  presetId String?  @map("preset_id")
+  scopes   String[]
+
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  expiresAt  DateTime? @map("expires_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([runtimeEnvironmentId, revokedAt, createdAt(sort: Desc)])
+  @@map("api_keys")
 }
 
 /// Records of previously-valid API keys that are still accepted for authentication
@@ -440,6 +471,9 @@ model Project {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+
+  /// Set the first time the CLI `init` command completes against this project. Drives the dev onboarding progress.
+  initializedAt DateTime?
 
   version ProjectVersion   @default(V2)
   engine  RunEngineVersion @default(V1)
@@ -724,6 +758,7 @@ model BackgroundWorkerTask {
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
+  @@index([projectId, slug, createdAt])
   @@index([runtimeEnvironmentId, projectId])
   @@index([runtimeEnvironmentId, slug, triggerSource])
 }
@@ -1830,14 +1865,18 @@ model TaskQueue {
   runtimeEnvironmentId String
 
   /// Represents the current concurrency limit for the queue
-  concurrencyLimit             Int?
+  concurrencyLimit                Int?
   /// When the concurrency limit was overridden
-  concurrencyLimitOverriddenAt DateTime?
+  concurrencyLimitOverriddenAt    DateTime?
   /// Who overrode the concurrency limit (will be null if overridden via the API)
-  concurrencyLimitOverriddenBy String?
+  concurrencyLimitOverriddenBy    String?
   /// If concurrencyLimit is overridden, this is the overridden value
-  concurrencyLimitBase         Int?
-  rateLimit                    Json?
+  concurrencyLimitBase            Int?
+  /// If the override was expressed as a percentage of the environment limit, this stores that
+  /// percentage (the source of truth). The absolute concurrencyLimit is materialized from it.
+  /// Decimal(5,2) allows fractional percentages like 12.50% (0.01–100.00).
+  concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
+  rateLimit                       Json?
 
   paused Boolean @default(false)
 
@@ -1934,6 +1973,7 @@ model BatchTaskRun {
   @@index([dependentTaskAttemptId])
   // This is for the batch list dashboard page
   @@index([runtimeEnvironmentId, id(sort: Desc)])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 enum BatchTaskRunStatus {
@@ -2033,6 +2073,7 @@ model EnvironmentVariableValue {
 
   @@unique([variableId, environmentId])
   @@index([environmentId])
+  @@index([valueReferenceId])
 }
 
 model Checkpoint {
@@ -2175,6 +2216,8 @@ model WorkerDeployment {
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
   @@index([commitSHA])
+  @@index([environmentId, createdAt])
+  @@index([environmentId, status, id])
 }
 
 enum WorkerDeploymentStatus {
@@ -2231,6 +2274,10 @@ model TaskSchedule {
   /// These are IANA format string, or the default "UTC". E.g. "America/New_York"
   timezone String @default("UTC")
 
+  // Cron spread
+  windowDurationSeconds       Int?
+  windowPercentage            Int?
+
   ///Can be provided by the user then accessed inside a run
   externalId String?
 
@@ -2277,6 +2324,9 @@ model TaskScheduleInstance {
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
+
+  // Durable cron spread phase
+  schedulePhase Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2377,6 +2427,8 @@ model ProjectAlert {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([channelId])
 }
 
 enum ProjectAlertType {
@@ -2386,6 +2438,7 @@ enum ProjectAlertType {
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS
   ERROR_GROUP
+  DASHBOARD_AGENT_WATCH
 }
 
 enum ProjectAlertStatus {

@@ -28,7 +28,7 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
@@ -38,6 +38,9 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { isAtOrBelow } from "~/utils/inviteRoleLadder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Invite team members");
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -127,6 +130,20 @@ const schema = z.object({
   rbacRoleId: z.string().optional(),
 });
 
+function describeSkippedInvites(alreadyMembers: string[], alreadyInvited: string[]) {
+  const parts: string[] = [];
+
+  if (alreadyMembers.length > 0) {
+    parts.push(simplur`${alreadyMembers.length} already [a member|members] of this organization`);
+  }
+
+  if (alreadyInvited.length > 0) {
+    parts.push(simplur`${alreadyInvited.length} already invited`);
+  }
+
+  return parts.join(" and ");
+}
+
 export const action = dashboardAction(
   {
     params: Params,
@@ -201,7 +218,11 @@ export const action = dashboardAction(
     }
 
     try {
-      const invites = await inviteMembers({
+      const {
+        created: invites,
+        alreadyMembers,
+        alreadyInvited,
+      } = await inviteMembers({
         slug: organizationSlug,
         emails: submission.value.emails,
         userId,
@@ -224,10 +245,19 @@ export const action = dashboardAction(
         }
       }
 
+      const teamPath = organizationTeamPath({ slug: organizationSlug });
+      const skipped = describeSkippedInvites(alreadyMembers, alreadyInvited);
+
+      if (invites.length === 0) {
+        return redirectWithErrorMessage(teamPath, request, `No invitations sent: ${skipped}.`);
+      }
+
       return redirectWithSuccessMessage(
-        organizationTeamPath(invites[0].organization),
+        teamPath,
         request,
-        simplur`${submission.value.emails.length} member[|s] invited`
+        skipped
+          ? simplur`${invites.length} member[|s] invited. Skipped ${skipped}.`
+          : simplur`${invites.length} member[|s] invited`
       );
     } catch (error: any) {
       return json({ errors: { body: error.message } }, { status: 400 });

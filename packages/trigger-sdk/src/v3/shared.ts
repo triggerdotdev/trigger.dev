@@ -749,7 +749,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1005,7 +1005,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1271,7 +1271,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1532,7 +1532,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1631,6 +1631,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   }
 }
 
+export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
+  return Array.from(new Set(items.map((item) => item.task))).sort();
+}
+
 /**
  * Helper function that executes a 2-phase batch trigger:
  * 1. Creates the batch record with expected run count
@@ -1678,6 +1682,7 @@ async function executeBatchTwoPhase(
     batch = await apiClient.createBatch(
       {
         runCount: items.length,
+        taskIdentifiers: uniqueBatchTaskIdentifiers(items),
         parentRunId: options.parentRunId,
         resumeParentOnCompletion: options.resumeParentOnCompletion,
         idempotencyKey: options.idempotencyKey,
@@ -2014,7 +2019,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2066,7 +2071,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2117,7 +2122,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2168,7 +2173,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2221,7 +2226,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2281,7 +2286,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2418,8 +2423,9 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -2849,8 +2855,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 

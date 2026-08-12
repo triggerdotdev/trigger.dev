@@ -4,7 +4,8 @@
     "isolatedDeclarations": false,
     "composite": true,
     "sourceMap": true,
-    "stripInternal": true
+    "stripInternal": true,
+    "types": ["node"]
   },
   "include": ["./src/**/*.ts"]
 }

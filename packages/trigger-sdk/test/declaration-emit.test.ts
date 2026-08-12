@@ -1,16 +1,19 @@
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
 
 /**
  * Regression test for declaration-emit portability (customer TS2742).
@@ -76,40 +79,39 @@ describe("declaration emit portability", () => {
         }
 
         const fixturePath = join(consumerDir, "agent.ts");
-        ts.sys.writeFile(fixturePath, FIXTURE_SOURCE);
-
-        const emitted = new Map<string, string>();
-        const host = ts.createCompilerHost({});
-        host.writeFile = (fileName, text) => emitted.set(fileName, text);
-
-        const program = ts.createProgram({
-          rootNames: [fixturePath],
-          options: {
-            target: ts.ScriptTarget.ES2022,
-            module: ts.ModuleKind.NodeNext,
-            moduleResolution: ts.ModuleResolutionKind.NodeNext,
-            strict: true,
-            declaration: true,
-            emitDeclarationOnly: true,
-            skipLibCheck: true,
-            outDir: join(consumerDir, "out"),
-            rootDir: consumerDir,
-          },
-          host,
-        });
-
-        const emitResult = program.emit();
-        const diagnostics = [
-          ...ts.getPreEmitDiagnostics(program),
-          ...emitResult.diagnostics,
-        ].filter((d) => d.category === ts.DiagnosticCategory.Error);
-        const formatted = diagnostics.map((d) =>
-          ts.flattenDiagnosticMessageText(d.messageText, "\n")
+        writeFileSync(fixturePath, FIXTURE_SOURCE);
+        writeFileSync(
+          join(consumerDir, "tsconfig.json"),
+          JSON.stringify({
+            compilerOptions: {
+              target: "ES2022",
+              module: "NodeNext",
+              moduleResolution: "NodeNext",
+              strict: true,
+              declaration: true,
+              emitDeclarationOnly: true,
+              skipLibCheck: true,
+              outDir: "out",
+              rootDir: ".",
+            },
+            files: ["agent.ts"],
+          })
         );
-        expect(formatted).toEqual([]);
 
-        const dts = [...emitted.entries()].find(([name]) => name.endsWith("agent.d.ts"))?.[1];
-        expect(dts).toBeDefined();
+        const require = createRequire(import.meta.url);
+        const typescriptRoot = dirname(require.resolve("typescript/package.json"));
+        const result = spawnSync(
+          process.execPath,
+          [join(typescriptRoot, "bin", "tsc"), "-p", consumerDir],
+          {
+            encoding: "utf8",
+          }
+        );
+        const compilerOutput = [result.stdout, result.stderr].filter(Boolean).join("\n");
+        expect(result.error, compilerOutput).toBeUndefined();
+        expect(result.status, compilerOutput).toBe(0);
+
+        const dts = readFileSync(join(consumerDir, "out", "agent.d.ts"), "utf8");
         // The payload generic must be named via the public subpath, and the
         // emit must not fall back to file paths into the package.
         expect(dts).toContain('import("@trigger.dev/sdk/chat").ChatTaskWirePayload');

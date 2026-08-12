@@ -1,5 +1,4 @@
 import { ArrowsRightLeftIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -28,10 +27,15 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { EnvironmentParamSchema, v3ModelsPath } from "~/utils/pathBuilder";
 import { formatModelCost } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Compare Models | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Compare Models");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

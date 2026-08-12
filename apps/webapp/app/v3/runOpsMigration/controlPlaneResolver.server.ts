@@ -17,6 +17,7 @@ import {
 } from "./controlPlaneCache.server";
 import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
 
+import { boundedIn } from "@trigger.dev/database";
 /**
  * App-level control-plane resolution + cache layer. Replaces the run-ops -> control-plane
  * Prisma joins (env/project/org, the pinned/current worker version + its tasks/queues, the
@@ -304,7 +305,7 @@ export class ControlPlaneResolver {
     ids: string[]
   ): Promise<Map<string, LockedToVersionRow>> {
     const rows = await client.backgroundWorker.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: boundedIn(ids) } },
       select: {
         id: true,
         version: true,
@@ -432,7 +433,7 @@ export class ControlPlaneResolver {
     // MANAGED deployment.
     const latestV2Deployment = await client.workerDeployment.findFirst({
       where: { environmentId, type: "MANAGED" },
-      orderBy: { id: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: { worker: { include: { tasks: true, queues: true } } },
     });
 
@@ -455,7 +456,6 @@ export class ControlPlaneResolver {
     const worker = await client.backgroundWorker.findFirst({
       where: { id: workerId },
       include: { deployment: true, tasks: true, queues: true },
-      orderBy: { id: "desc" },
     });
 
     if (!worker) {
@@ -472,7 +472,7 @@ export class ControlPlaneResolver {
     const worker = await client.backgroundWorker.findFirst({
       where: { runtimeEnvironmentId: environmentId },
       include: { tasks: true, queues: true },
-      orderBy: { id: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
     if (!worker) {

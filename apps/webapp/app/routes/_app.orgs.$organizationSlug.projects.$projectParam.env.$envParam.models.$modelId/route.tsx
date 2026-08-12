@@ -1,5 +1,4 @@
 import { ArrowsRightLeftIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -33,14 +32,22 @@ import {
   formatTokenCount,
 } from "~/utils/modelFormatters";
 import { EnvironmentParamSchema, v3ModelComparePath, v3ModelsPath } from "~/utils/pathBuilder";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),
 });
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Model Detail | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
 };
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.model?.modelName ?? params.modelId ?? "Model",
+  "Models",
+]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

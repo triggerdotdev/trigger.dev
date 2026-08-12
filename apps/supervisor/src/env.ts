@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
+import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -14,8 +14,18 @@ export const Env = z
 
     // Required settings
     TRIGGER_API_URL: z.string().url(),
-    TRIGGER_WORKER_TOKEN: z.string(), // accepts file:// path to read from a file
+    TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file
     MANAGED_WORKER_SECRET: z.string(),
+
+    // Deployment token: sign a token into TRIGGER_DEPLOYMENT_ID at pod creation and verify it on
+    // inbound workload calls. "disabled" = off; "log" = mint + verify + metrics only; "enforce" =
+    // also reject invalid tokens.
+    WORKLOAD_TOKEN_SECRET: z.string().optional(),
+    WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
+    // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
+    // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
+    WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
     // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
@@ -70,7 +80,7 @@ export const Env = z
       .number()
       .int()
       .positive()
-      .default(15_000), // Stale verdict → fail-open (treat as not engaged)
+      .default(120_000), // Grace window: held verdict older than this → fail-open
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT: z.coerce.number().int().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),
@@ -103,6 +113,7 @@ export const Env = z
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
+    TRIGGER_WARM_START_DISPATCH_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
     TRIGGER_METADATA_URL: z.string().optional(),
 
@@ -163,7 +174,7 @@ export const Env = z
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
     KUBERNETES_NAMESPACE: z.string().default("default"),
-    KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
+    KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
@@ -246,65 +257,8 @@ export const Env = z
       .max(100)
       .default(20),
 
-    // Schedule toleration settings - scheduled runs tolerate taints on the dedicated pool
-    // Comma-separated list of tolerations in the format: key=value:effect
-    // For Exists operator (no value): key:effect
-    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z
-      .string()
-      .transform((val, ctx) => {
-        const tolerations = val
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-          .map((entry) => {
-            const colonIdx = entry.lastIndexOf(":");
-            if (colonIdx === -1) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (missing effect): "${entry}"`,
-              });
-              return z.NEVER;
-            }
-
-            const effect = entry.slice(colonIdx + 1);
-            const validEffects = ["NoSchedule", "NoExecute", "PreferNoSchedule"];
-            if (!validEffects.includes(effect)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(
-                  ", "
-                )}`,
-              });
-              return z.NEVER;
-            }
-
-            const keyValue = entry.slice(0, colonIdx);
-            const eqIdx = keyValue.indexOf("=");
-            const key = eqIdx === -1 ? keyValue : keyValue.slice(0, eqIdx);
-
-            if (!key) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (empty key): "${entry}"`,
-              });
-              return z.NEVER;
-            }
-
-            if (eqIdx === -1) {
-              return { key, operator: "Exists" as const, effect };
-            }
-
-            return {
-              key,
-              operator: "Equal" as const,
-              value: keyValue.slice(eqIdx + 1),
-              effect,
-            };
-          });
-
-        return tolerations;
-      })
-      .optional(),
+    KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
+    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
@@ -363,6 +317,22 @@ export const Env = z
         code: z.ZodIssueCode.custom,
         message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
+      });
+    }
+    if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+        path: ["WORKLOAD_TOKEN_SECRET"],
+      });
+    }
+    if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
+        path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
       });
     }
     if (

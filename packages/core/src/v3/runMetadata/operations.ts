@@ -1,5 +1,5 @@
 import { JSONHeroPath } from "@jsonhero/path";
-import type { RunMetadataChangeOperation } from "../schemas/common.js";
+import { isSafeMetadataKey, type RunMetadataChangeOperation } from "../schemas/common.js";
 import { dequal } from "dequal";
 
 export type ApplyOperationResult = {
@@ -16,6 +16,13 @@ export function applyMetadataOperations(
   let newMetadata: Record<string, unknown> = structuredClone(currentMetadata);
 
   for (const operation of Array.isArray(operations) ? operations : [operations]) {
+    // Prevent unsafe JSON paths and direct __proto__ assignments from changing Object.prototype.
+    // ("update" carries no key.)
+    if (operation.type !== "update" && !isSafeMetadataKey(operation.key)) {
+      unappliedOperations.push(operation);
+      continue;
+    }
+
     switch (operation.type) {
       case "set": {
         if (operation.key.startsWith("$.")) {

@@ -1,4 +1,4 @@
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, boundedIn } from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
@@ -6,6 +6,7 @@ import type {
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunStatus,
+  WaitpointTag,
 } from "@trigger.dev/database";
 import type {
   ClearIdempotencyKeyInput,
@@ -16,7 +17,9 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
+  FinalizeRunData,
   ForWaitpointCompletionContext,
+  IdempotencyKeyRunMatch,
   LockRunData,
   ReadClient,
   RescheduleSnapshotInput,
@@ -65,8 +68,11 @@ export interface RunOpsCapableClient {
   // optional so the legacy client stays assignable. Touched only on the dedicated branch.
   waitpointRunConnection?: RunOpsDelegate<"createMany" | "findMany">;
   batchTaskRun: RunOpsDelegate<"create" | "findFirst" | "update" | "updateMany">;
-  batchTaskRunItem: RunOpsDelegate<"create" | "count" | "updateMany">;
+  batchTaskRunItem: RunOpsDelegate<"create" | "count" | "updateMany" | "findFirst" | "findMany">;
+  // Standalone entity keyed by (environmentId, name); present on both schemas.
+  waitpointTag: RunOpsDelegate<"upsert" | "findMany">;
   $queryRaw: PrismaClient["$queryRaw"];
+  $queryRawUnsafe: PrismaClient["$queryRawUnsafe"];
   $executeRaw: PrismaClient["$executeRaw"];
 }
 
@@ -78,7 +84,10 @@ export interface RunOpsCapableClient {
  * per-call `tx` so they share one transaction (see `runInTransaction`).
  */
 export interface RunOpsTransactionalClient extends RunOpsCapableClient {
-  $transaction: <R>(fn: (tx: RunOpsCapableClient) => Promise<R>) => Promise<R>;
+  $transaction: <R>(
+    fn: (tx: RunOpsCapableClient) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number; isolationLevel?: unknown }
+  ) => Promise<R>;
 }
 
 /**
@@ -92,6 +101,8 @@ export type RunStoreSchemaVariant = "legacy" | "dedicated";
 // Mirrors the webapp's `CONNECTED_RUNS_DISPLAY_LIMIT`
 // (apps/webapp/app/presenters/v3/WaitpointPresenter.server.ts) — keep the values in sync.
 export const CONNECTED_RUNS_LIMIT = 5;
+
+export const RUN_OPS_WRITE_TX_TIMEOUT_MS = 15_000;
 
 export type PostgresRunStoreOptions = {
   prisma: RunOpsCapableClient;
@@ -228,7 +239,7 @@ async function batchHydrateJoinRelation(
     return byParent;
   }
   const links = (await join.findMany({
-    where: { [joinParentField]: { in: parentIds } },
+    where: { [joinParentField]: { in: boundedIn(parentIds) } },
     select: { [joinParentField]: true, [joinTargetField]: true },
   })) as Record<string, string>[];
   if (links.length === 0) {
@@ -236,7 +247,7 @@ async function batchHydrateJoinRelation(
   }
   const targetIds = [...new Set(links.map((l) => l[joinTargetField]))];
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -261,7 +272,7 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
     return byParent;
   }
   const rows = (await client.waitpoint.findMany(
-    targetFindManyArgs({ completedByTaskRunId: { in: parentIds } }, projection, [
+    targetFindManyArgs({ completedByTaskRunId: { in: boundedIn(parentIds) } }, projection, [
       "completedByTaskRunId",
     ])
   )) as Record<string, unknown>[];
@@ -305,7 +316,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     return byParent;
   }
   const edges = (await client.taskRunWaitpoint.findMany({
-    where: { waitpointId: { in: parentIds } },
+    where: { waitpointId: { in: boundedIn(parentIds) } },
   })) as Record<string, unknown>[];
   const nestedTaskRun = projection?.select?.taskRun;
   const runProjection = nestedTaskRun ? projectionOf(nestedTaskRun as SubProjection) : undefined;
@@ -315,7 +326,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     const runs = (
       runIds.length > 0
         ? await client.taskRun.findMany(
-            targetFindManyArgs({ id: { in: runIds } }, runProjection, ["id"])
+            targetFindManyArgs({ id: { in: boundedIn(runIds) } }, runProjection, ["id"])
           )
         : []
     ) as Record<string, unknown>[];
@@ -365,7 +376,7 @@ const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, 
   }
   const targetIds = [...new Set(links.map((l) => l.taskRunId))];
   const rows = (await client.taskRun.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -421,7 +432,7 @@ async function batchHydrateEdgeTarget(
     return byParent;
   }
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: [...new Set(targetIds)] } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn([...new Set(targetIds)]) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const p of parents) {
@@ -515,6 +526,7 @@ const RUN_OPS_DELEGATE_KEYS: ReadonlySet<string> = new Set([
   "waitpointRunConnection",
   "batchTaskRun",
   "batchTaskRunItem",
+  "waitpointTag",
 ]);
 
 // Every method call on a delegate rewrites ONLY its rejection reason; success is untouched.
@@ -654,16 +666,26 @@ export class PostgresRunStore implements RunStore {
   // (snapshot + completed-waitpoints, run + associated-waitpoint) which must commit together.
   #withOptionalTransaction<R>(
     tx: PrismaClientOrTransaction | undefined,
-    fn: (client: PrismaClientOrTransaction) => Promise<R>
+    fn: (client: PrismaClientOrTransaction) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number }
   ): Promise<R> {
     const alreadyInTransaction =
       tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
     if (alreadyInTransaction) {
       return fn(tx);
     }
-    return (this.prisma as RunOpsTransactionalClient).$transaction((t) =>
-      fn(t as unknown as PrismaClientOrTransaction)
+    return (this.prisma as RunOpsTransactionalClient).$transaction(
+      (t) => fn(t as unknown as PrismaClientOrTransaction),
+      options
     );
+  }
+
+  #writeClientWithoutTransaction(
+    tx: PrismaClientOrTransaction | undefined
+  ): PrismaClientOrTransaction {
+    const alreadyInTransaction =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    return (alreadyInTransaction ? tx : this.prisma) as PrismaClientOrTransaction;
   }
 
   async createRun(
@@ -673,6 +695,7 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     const snapshotCreate = {
+      id: params.snapshot.id,
       engine: params.snapshot.engine,
       executionStatus: params.snapshot.executionStatus,
       description: params.snapshot.description,
@@ -686,19 +709,31 @@ export class PostgresRunStore implements RunStore {
     };
 
     if (this.schemaVariant === "dedicated") {
-      // The run + its associated RUN-type waitpoint are two writes here (the legacy branch below nests
-      // them). Commit them together so a crash / lagging read never leaves a run without its waitpoint.
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: {
             ...params.data,
             executionSnapshots: { create: snapshotCreate },
           },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: {
+              ...params.data,
+              executionSnapshots: { create: snapshotCreate },
+            },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({
@@ -776,15 +811,25 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     if (this.schemaVariant === "dedicated") {
-      // Run + associated RUN-type waitpoint are two writes here; commit them together (see createRun).
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: { ...params.data },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: { ...params.data },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({
@@ -976,6 +1021,61 @@ export class PostgresRunStore implements RunStore {
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  }
+
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  async finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    argsOrTx?:
+      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+      | PrismaClientOrTransaction,
+    tx?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    // Disambiguate the 3rd positional: a `{ select | include }` projection vs. a tx client (a client
+    // never carries a select/include own-key), mirroring #resolveReadArgs on the read path.
+    const isProjection =
+      typeof argsOrTx === "object" &&
+      argsOrTx !== null &&
+      ("select" in argsOrTx || "include" in argsOrTx);
+    const args = isProjection
+      ? (argsOrTx as { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude })
+      : {};
+    const prisma =
+      (isProjection ? tx : (argsOrTx as PrismaClientOrTransaction | undefined)) ?? this.prisma;
+
+    // status + error land in the SAME update (a separate later error write races realtime, which
+    // shuts the stream on the final status before the error lands). undefined fields are skipped.
+    return this.#updateTaskRunWithSelect(
+      prisma,
+      { id: runId },
+      {
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.expiredAt !== undefined && { expiredAt: data.expiredAt }),
+        ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+        ...(data.error !== undefined && { error: data.error as Prisma.InputJsonValue }),
+        ...(data.bulkActionId !== undefined && {
+          bulkActionGroupIds: { push: data.bulkActionId },
+        }),
+      },
+      args
+    );
   }
 
   async expireRun<S extends Prisma.TaskRunSelect>(
@@ -1372,7 +1472,7 @@ export class PostgresRunStore implements RunStore {
 
     // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt
     const result = await prisma.taskRun.updateMany({
-      where: { friendlyId: { in: params.byFriendlyIds } },
+      where: { friendlyId: { in: boundedIn(params.byFriendlyIds) } },
       data: { idempotencyKey: null },
     });
     return { count: result.count };
@@ -1605,7 +1705,9 @@ export class PostgresRunStore implements RunStore {
         ? { include: args.include }
         : {};
     const rows = (await this.findRuns(
-      { where: { id: { in: ids } }, ...projected } as Parameters<PostgresRunStore["findRuns"]>[0],
+      { where: { id: { in: boundedIn(ids) } }, ...projected } as Parameters<
+        PostgresRunStore["findRuns"]
+      >[0],
       client
     )) as Record<string, unknown>[];
     const byId = new Map<string, unknown>();
@@ -1622,19 +1724,41 @@ export class PostgresRunStore implements RunStore {
     return byId;
   }
 
+  async findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]> {
+    if (args.idempotencyKeys.length === 0) {
+      return [];
+    }
+    const prisma = (client ?? this.readOnlyPrisma) as RunOpsCapableClient;
+    const params: string[] = [];
+    const branches = args.idempotencyKeys.map((key) => {
+      const base = params.length;
+      params.push(args.runtimeEnvironmentId, args.taskIdentifier, key);
+      return `SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
+    });
+    return prisma.$queryRawUnsafe<IdempotencyKeyRunMatch[]>(
+      branches.join(" UNION ALL "),
+      ...params
+    );
+  }
+
   // --- run-ops persistence ---
 
   async findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const prisma = client ?? this.readOnlyPrisma;
+    const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
 
     if (this.schemaVariant === "dedicated") {
       const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where,
         include: { checkpoint: true },
         orderBy: { createdAt: "desc" },
       });
@@ -1646,7 +1770,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     return prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId, isValid: true },
+      where,
       include: {
         completedWaitpoints: true,
         checkpoint: true,
@@ -1675,7 +1799,7 @@ export class PostgresRunStore implements RunStore {
       return [];
     }
     return client.waitpoint.findMany({
-      where: { id: { in: links.map((l) => l.waitpointId) } },
+      where: { id: { in: boundedIn(links.map((l) => l.waitpointId)) } },
     });
   }
 
@@ -1815,7 +1939,9 @@ export class PostgresRunStore implements RunStore {
 
   async findSnapshotCompletedWaitpointIds(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<string[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -1842,7 +1968,9 @@ export class PostgresRunStore implements RunStore {
   // return the snapshot (via a separate read) while a different, laggier reader returns 0 links.
   async findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<{ present: boolean; ids: string[] }> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2015,7 +2143,12 @@ export class PostgresRunStore implements RunStore {
       SELECT COUNT(*) FROM inserted`;
   }
 
-  async countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number> {
+  async countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
+  ): Promise<number> {
     const prisma = client ?? this.readOnlyPrisma;
 
     if (waitpointIds.length === 0) {
@@ -2034,7 +2167,7 @@ export class PostgresRunStore implements RunStore {
         WHERE id = ANY(${waitpointIds}::text[])
         AND status = 'PENDING'
       `;
-      return Number(pendingCheck.at(0)?.pending_count ?? 0);
+      return Number(pendingCheck[0]?.pending_count ?? 0);
     }
 
     const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
@@ -2043,7 +2176,36 @@ export class PostgresRunStore implements RunStore {
       WHERE id IN (${Prisma.join(waitpointIds)})
       AND status = 'PENDING'
     `;
-    return Number(pendingCheck.at(0)?.pending_count ?? 0);
+    return Number(pendingCheck[0]?.pending_count ?? 0);
+  }
+
+  // One `SELECT id, status` returns which ids are PENDING and which exist on this store (any status),
+  // so the router can route by run id and only re-count the ids ABSENT here on the other DB — without
+  // undercounting pending (which would prematurely unblock a run) or double-counting a drain-mirrored
+  // id. Reads only id+status, so it stays cheap for a run's small blocking set.
+  async countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    if (waitpointIds.length === 0) {
+      return { pendingIds: [], presentIds: [] };
+    }
+
+    const rows =
+      this.schemaVariant === "dedicated"
+        ? await prisma.$queryRaw<{ id: string; status: string }[]>`
+            SELECT id, status FROM "Waitpoint" WHERE id = ANY(${waitpointIds}::text[])
+          `
+        : await prisma.$queryRaw<{ id: string; status: string }[]>`
+            SELECT id, status FROM "Waitpoint" WHERE id IN (${Prisma.join(waitpointIds)})
+          `;
+
+    return {
+      pendingIds: rows.filter((r) => r.status === "PENDING").map((r) => r.id),
+      presentIds: rows.map((r) => r.id),
+    };
   }
 
   async createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -2107,7 +2269,9 @@ export class PostgresRunStore implements RunStore {
 
   async findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2379,6 +2543,72 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     return prisma.batchTaskRunItem.updateMany(args);
+  }
+
+  // The item's `batchTaskRun`/`taskRun` relations stay real FKs on BOTH schemas (co-resident), so a
+  // caller `include` passes straight through — no dedicated-subset stripping is needed.
+  async findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.batchTaskRunItem.findMany({
+      where,
+      ...(args?.include ? { include: args.include } : {}),
+    }) as Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
+  }
+
+  async findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.batchTaskRunItem.findFirst({
+      where,
+      ...(args?.include ? { include: args.include } : {}),
+    }) as Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
+  }
+
+  // --- WaitpointTag (run-ops) ---
+
+  async upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction,
+    // `residency` selects the store at the router; a single store has one client and ignores it.
+    _residency?: "NEW" | "LEGACY"
+  ): Promise<WaitpointTag> {
+    const prisma = tx ?? this.prisma;
+
+    return prisma.waitpointTag.upsert({
+      where: { environmentId_name: { environmentId: data.environmentId, name: data.name } },
+      create: {
+        ...(data.id !== undefined && { id: data.id }),
+        name: data.name,
+        environmentId: data.environmentId,
+        projectId: data.projectId,
+      },
+      update: {},
+    }) as Promise<WaitpointTag>;
+  }
+
+  async findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.waitpointTag.findMany(args) as Promise<WaitpointTag[]>;
   }
 
   /**

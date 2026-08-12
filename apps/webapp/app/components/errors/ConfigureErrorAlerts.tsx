@@ -1,12 +1,7 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { parseWithZod } from "@conform-to/zod";
-import {
-  EnvelopeIcon,
-  GlobeAltIcon,
-  HashtagIcon,
-  LockClosedIcon,
-  XMarkIcon,
-} from "@heroicons/react/20/solid";
+import { EnvelopeIcon, HashtagIcon, LockClosedIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { BellAlertIcon } from "@heroicons/react/24/solid";
 import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
@@ -319,7 +314,7 @@ export function ConfigureErrorAlerts({
                       placeholder={
                         index === 0 ? "https://example.com/webhook" : "Add another webhook URL"
                       }
-                      icon={GlobeAltIcon}
+                      icon={GlobeLinesIcon}
                       onChange={(e) => {
                         webhookFieldValues.current[index] = e.target.value;
                         if (

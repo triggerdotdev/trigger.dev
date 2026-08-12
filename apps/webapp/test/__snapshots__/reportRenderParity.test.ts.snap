@@ -1,0 +1,157 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ANSI surface > paints the same layout (degraded) 1`] = `
+"/report health        <grey>prod · last 1h · vs your 7d normal</>
+
+<red>✕</> Flow stalled — at your env concurrency limit <amber>for the last 38 min</>
+
+  concurrency     50/50                <green>▁</><green>▂</><green>▃</><green>▄</><green>▅</><amber>▆</><amber>▇</><amber>█</>   38 min at limit
+
+  pending         4,812       <amber>↑ 120×</>   <green>▁</><green>▂</><green>▃</><green>▄</><green>▅</><amber>▆</><amber>▇</><amber>█</>   <grey>(normal ~40)</>
+
+  start latency   p95 43s     <amber>↑ 6×</>     <green>▁</><green>▂</><green>▃</><green>▄</><green>▅</><amber>▆</><amber>▇</><amber>█</>   <grey>(normal ~7s)</>
+
+  throughput      −180/min
+    done          820/min
+    triggered     1,000/min
+
+<grey>  why:  71% of pending is demo-email-sends</>
+<grey>        not your code — failures and durations normal</>
+<grey>        runs are finishing at ~820/min</>
+
+<green>✓</> EXECUTION   runs are executing normally
+
+<green>✓</> LIVENESS    fresh — telemetry current, updated 18s ago
+
+<grey>  read: limit saturated → incoming work exceeds capacity → backlog grows</>
+<grey>        NOT a code problem</>
+
+→ Contact us to raise the limit
+  Read concurrency docs
+  or do nothing — backlog drains in ~26.7 min once triggers ease"
+`;
+
+exports[`ANSI surface > paints the same layout (empty) 1`] = `
+"/report health        <grey>prod · last 1h</>
+
+<green>✓</> health ok
+
+<green>✓</> data fresh
+
+→ nothing to do"
+`;
+
+exports[`ANSI surface > paints the same layout (healthy) 1`] = `
+"/report health        <grey>prod · last 1h · vs your 7d normal</>
+
+<green>✓</> Flow healthy — starting normally
+
+  start latency   p95 6.8s   <grey>→ flat</>   <amber>▇</><amber>▆</><green>▁</><green>▅</><amber>█</><green>▂</><green>▃</><amber>█</>   <grey>(normal ~7s)</>
+
+  pending         34         <grey>→ flat</>   <amber>▇</><amber>▆</><green>▁</><green>▅</><amber>█</><green>▂</><green>▃</><amber>█</>   <grey>(normal ~40)</>
+
+  throughput      +12/min
+    done          842/min
+    triggered     830/min
+
+<green>✓</> EXECUTION   runs are executing normally
+
+<green>✓</> LIVENESS    fresh — telemetry current, updated 21s ago
+
+<grey>  read: runs are starting on time</>
+<grey>        runs are completing normally</>
+
+→ nothing to do"
+`;
+
+exports[`ANSI surface > paints the same layout (untrustworthy) 1`] = `
+"/report health  <amber>⚑</> stale data  <grey>prod · last 1h · vs your 7d normal</>
+
+<red>✕</> Flow unknown — data stale
+
+<amber>⚑</> The telemetry behind this report is stale, so the numbers below are informational only.
+
+<red>✕</> EXECUTION   execution can't be assessed — the telemetry is stale
+
+<red>✕</> LIVENESS    stale — no telemetry in 21m
+
+→ Check control plane"
+`;
+
+exports[`markdown surface > renders (degraded) 1`] = `
+"/report health        prod · last 1h · vs your 7d normal
+
+🔴 Flow stalled — at your env concurrency limit for the last 38 min
+
+  concurrency     50/50                ▁▂▃▄▅▆▇█   38 min at limit
+
+  pending         4,812       ↑ 120×   ▁▂▃▄▅▆▇█   (normal ~40)
+
+  start latency   p95 43s     ↑ 6×     ▁▂▃▄▅▆▇█   (normal ~7s)
+
+  throughput      −180/min
+    done          820/min
+    triggered     1,000/min
+
+  why:  71% of pending is demo-email-sends
+        not your code — failures and durations normal
+        runs are finishing at ~820/min
+
+🟢 EXECUTION   runs are executing normally
+
+🟢 LIVENESS    fresh — telemetry current, updated 18s ago
+
+  read: limit saturated → incoming work exceeds capacity → backlog grows
+        NOT a code problem
+
+→ Contact us to raise the limit
+  Read concurrency docs
+  or do nothing — backlog drains in ~26.7 min once triggers ease"
+`;
+
+exports[`markdown surface > renders (empty) 1`] = `
+"/report health        prod · last 1h
+
+🟢 health ok
+
+🟢 data fresh
+
+→ nothing to do"
+`;
+
+exports[`markdown surface > renders (healthy) 1`] = `
+"/report health        prod · last 1h · vs your 7d normal
+
+🟢 Flow healthy — starting normally
+
+  start latency   p95 6.8s   → flat   ▇▆▁▅█▂▃█   (normal ~7s)
+
+  pending         34         → flat   ▇▆▁▅█▂▃█   (normal ~40)
+
+  throughput      +12/min
+    done          842/min
+    triggered     830/min
+
+🟢 EXECUTION   runs are executing normally
+
+🟢 LIVENESS    fresh — telemetry current, updated 21s ago
+
+  read: runs are starting on time
+        runs are completing normally
+
+→ nothing to do"
+`;
+
+exports[`markdown surface > renders (untrustworthy) 1`] = `
+"/report health  🚩 stale data  prod · last 1h · vs your 7d normal
+
+🔴 Flow unknown — data stale
+
+🚩 The telemetry behind this report is stale, so the numbers below are informational only.
+
+🔴 EXECUTION   execution can't be assessed — the telemetry is stale
+
+🔴 LIVENESS    stale — no telemetry in 21m
+
+→ Check control plane"
+`;

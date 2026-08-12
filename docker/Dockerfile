@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22.23.1-bookworm-slim@sha256:813a7480f28fdadac1f7f5c824bcdad435b5bc1322a5968bbbdef8d058f9dff4
+ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:39a4259b6f744868a8228742ad45aa3026f97302e5eec2fa4a38b30ca0a66e12
 
 FROM golang:1.26-alpine AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
@@ -91,6 +91,12 @@ COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/database
 # Run-ops Prisma client (query engine + client). Only constructed when the split is enabled,
 # but the image must carry it so a split-on deployment doesn't hit a missing query engine.
 COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/run-ops-database/generated ./internal-packages/run-ops-database/generated
+# These workspace packages stay external to the Vite SSR bundle, so their
+# built entry points must ship in the image (core is the sdk's runtime dep).
+COPY --from=builder --chown=node:node /triggerdotdev/internal-packages/database/dist ./internal-packages/database/dist
+COPY --from=builder --chown=node:node /triggerdotdev/internal-packages/run-ops-database/dist ./internal-packages/run-ops-database/dist
+COPY --from=builder --chown=node:node /triggerdotdev/packages/trigger-sdk/dist ./packages/trigger-sdk/dist
+COPY --from=builder --chown=node:node /triggerdotdev/packages/core/dist ./packages/core/dist
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public

@@ -18,6 +18,7 @@ import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -51,6 +52,18 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => deploymentAgentPageContext(data),
+};
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.deploymentParam ?? "Deployment",
+  "Deployments",
+]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -283,20 +296,28 @@ export default function Page() {
           <Property.Table>
             <Property.Item>
               <Property.Label>ID</Property.Label>
-              <Property.Value>{deployment.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.id} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
-              <Property.Value>{deployment.projectId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.projectId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Org ID</Property.Label>
-              <Property.Value>{deployment.organizationId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.organizationId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             {deployment.imageReference && (
               <Property.Item>
                 <Property.Label>Image</Property.Label>
-                <Property.Value>{deployment.imageReference}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={deployment.imageReference} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             )}
             <Property.Item>

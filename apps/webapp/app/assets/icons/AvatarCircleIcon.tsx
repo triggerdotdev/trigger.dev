@@ -1,4 +1,4 @@
-export function AvatarCircleIcon({ className }: { className?: string }) {
+function AvatarCircle({ className, strokeWidth }: { className?: string; strokeWidth: number }) {
   return (
     <svg
       className={className}
@@ -8,13 +8,28 @@ export function AvatarCircleIcon({ className }: { className?: string }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-      <circle cx="12" cy="9.5" r="2.5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth={strokeWidth} />
+      <circle cx="12" cy="9.5" r="2.5" stroke="currentColor" strokeWidth={strokeWidth} />
       <path
         d="M6 19C7.00156 16.6478 9.32233 15 12.0254 15C14.6837 15 16.9724 16.5938 18 18.884"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth={strokeWidth}
       />
     </svg>
   );
+}
+
+/** User avatar placeholder with a 2px stroke (the default). */
+export function AvatarCircleIcon({ className }: { className?: string }) {
+  return <AvatarCircle className={className} strokeWidth={2} />;
+}
+
+/** Thinner 1.5px-stroke variant of {@link AvatarCircleIcon}. */
+export function AvatarCircleIconThin({ className }: { className?: string }) {
+  return <AvatarCircle className={className} strokeWidth={1.5} />;
+}
+
+/** Thinnest 1.25px-stroke variant of {@link AvatarCircleIcon}. */
+export function AvatarCircleIconExtraThin({ className }: { className?: string }) {
+  return <AvatarCircle className={className} strokeWidth={1.25} />;
 }

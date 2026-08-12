@@ -57,6 +57,36 @@ export const BUCKET_THRESHOLDS: BucketThreshold[] = [
 /** Default interval for very large ranges (365+ days) */
 const DEFAULT_LARGE_INTERVAL: TimeBucketInterval = { value: 1, unit: "MONTH" };
 
+/** Seconds in each bucket unit. MONTH is nominal (30 days) and only used for comparisons. */
+export const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
+  SECOND: 1,
+  MINUTE: 60,
+  HOUR: 3600,
+  DAY: 86400,
+  WEEK: 604800,
+  MONTH: 2592000,
+};
+
+/** Duration of a bucket interval, in seconds. */
+export function intervalToSeconds(interval: TimeBucketInterval): number {
+  return interval.value * INTERVAL_UNIT_SECONDS[interval.unit];
+}
+
+/**
+ * Express a duration in seconds as a bucket interval, preferring the largest unit it divides
+ * evenly into so the emitted `INTERVAL N UNIT` reads naturally (120 -> 2 MINUTE, not 120 SECOND).
+ */
+function secondsToInterval(seconds: number): TimeBucketInterval {
+  const units: Array<TimeBucketInterval["unit"]> = ["WEEK", "DAY", "HOUR", "MINUTE"];
+  for (const unit of units) {
+    const unitSeconds = INTERVAL_UNIT_SECONDS[unit];
+    if (seconds >= unitSeconds && seconds % unitSeconds === 0) {
+      return { value: seconds / unitSeconds, unit };
+    }
+  }
+  return { value: Math.max(1, Math.round(seconds)), unit: "SECOND" };
+}
+
 /**
  * Calculate the most appropriate time bucket interval for a given time range.
  *
@@ -66,6 +96,9 @@ const DEFAULT_LARGE_INTERVAL: TimeBucketInterval = { value: 1, unit: "MONTH" };
  *
  * @param from - Start of the time range
  * @param to - End of the time range
+ * @param thresholds - Table-specific thresholds, defaulting to `BUCKET_THRESHOLDS`
+ * @param minBucketSeconds - Floor for the returned interval, for series whose samples are too
+ *   sparse to be meaningful at the range's natural bucket width
  * @returns The recommended bucket interval
  *
  * @example
@@ -86,10 +119,21 @@ const DEFAULT_LARGE_INTERVAL: TimeBucketInterval = { value: 1, unit: "MONTH" };
 export function calculateTimeBucketInterval(
   from: Date,
   to: Date,
-  thresholds?: BucketThreshold[]
+  thresholds?: BucketThreshold[],
+  minBucketSeconds?: number
 ): TimeBucketInterval {
   const rangeSeconds = Math.abs(to.getTime() - from.getTime()) / 1000;
 
+  const interval = pickInterval(rangeSeconds, thresholds);
+
+  if (minBucketSeconds !== undefined && intervalToSeconds(interval) < minBucketSeconds) {
+    return secondsToInterval(minBucketSeconds);
+  }
+
+  return interval;
+}
+
+function pickInterval(rangeSeconds: number, thresholds?: BucketThreshold[]): TimeBucketInterval {
   for (const threshold of thresholds ?? BUCKET_THRESHOLDS) {
     if (rangeSeconds < threshold.maxRangeSeconds) {
       return threshold.interval;

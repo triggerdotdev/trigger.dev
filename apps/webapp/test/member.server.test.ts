@@ -1,31 +1,60 @@
 import { randomBytes } from "node:crypto";
-import { describe, expect, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
 import type { PrismaClient } from "@trigger.dev/database";
 
 const prismaHolder = vi.hoisted(() => ({
   client: null as PrismaClient | null,
 }));
 
+type SetUserRoleParams = { userId: string; organizationId: string; roleId: string };
+type SetUserRoleResult = { ok: true } | { ok: false; error: string; code?: "last_owner" };
+type CurrentRole = { id: string } | null;
+
+const rbacHolder = vi.hoisted(() => ({
+  setUserRoleCalls: [] as SetUserRoleParams[],
+  setUserRoleResult: { ok: true } as SetUserRoleResult,
+  currentRole: null as CurrentRole,
+}));
+
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
-    setUserRole: async () => ({ ok: true as const }),
+    getUserRole: async () => rbacHolder.currentRole,
+    setUserRole: async (params: SetUserRoleParams) => {
+      rbacHolder.setUserRoleCalls.push(params);
+      return rbacHolder.setUserRoleResult;
+    },
   },
 }));
 
-vi.mock("~/db.server", () => ({
-  get prisma() {
-    if (!prismaHolder.client) {
-      throw new Error("test prisma not set");
-    }
-    return prismaHolder.client;
-  },
-  get $replica() {
-    if (!prismaHolder.client) {
-      throw new Error("test prisma not set");
-    }
-    return prismaHolder.client;
-  },
-}));
+function resetRbac(result: SetUserRoleResult = { ok: true }, currentRole: CurrentRole = null) {
+  rbacHolder.setUserRoleCalls.length = 0;
+  rbacHolder.setUserRoleResult = result;
+  rbacHolder.currentRole = currentRole;
+}
+
+beforeEach(() => {
+  resetRbac();
+});
+
+vi.mock("~/db.server", async () => {
+  const { Prisma } = await import("@trigger.dev/database");
+
+  return {
+    Prisma,
+    get prisma() {
+      if (!prismaHolder.client) {
+        throw new Error("test prisma not set");
+      }
+      return prismaHolder.client;
+    },
+    get $replica() {
+      if (!prismaHolder.client) {
+        throw new Error("test prisma not set");
+      }
+      return prismaHolder.client;
+    },
+  };
+});
 
 import { postgresTest } from "@internal/testcontainers";
 
@@ -39,7 +68,7 @@ function randomHex(len = 12): string {
 
 async function seedInviteFixture(
   prisma: PrismaClient,
-  opts: { activeProjectCount: number; deletedProjectCount?: number }
+  opts: { activeProjectCount: number; deletedProjectCount?: number; rbacRoleId?: string }
 ) {
   const suffix = randomHex(8);
   const inviter = await prisma.user.create({
@@ -99,6 +128,7 @@ async function seedInviteFixture(
       organizationId: organization.id,
       inviterId: inviter.id,
       role: "MEMBER",
+      rbacRoleId: opts.rbacRoleId ?? null,
     },
   });
 
@@ -253,6 +283,205 @@ describe("acceptInvite", () => {
       expect(member).toBeNull();
     }
   );
+
+  postgresTest(
+    "applies the invite RBAC role when it creates the membership",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([
+        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
+      ]);
+    }
+  );
+
+  postgresTest(
+    "does not apply the invite RBAC role to a member who already has a role",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac({ ok: true }, { id: "role_owner" });
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([]);
+
+      const remainingInvite = await prisma.orgMemberInvite.findFirst({
+        where: { id: invite.id },
+      });
+      expect(remainingInvite).toBeNull();
+
+      const member = await prisma.orgMember.findFirst({
+        where: { userId: invitee.id, organizationId: organization.id },
+      });
+      expect(member).not.toBeNull();
+    }
+  );
+
+  postgresTest(
+    "applies the invite RBAC role to an existing member who has no role assigned",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac({ ok: true }, null);
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([
+        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
+      ]);
+    }
+  );
+
+  postgresTest(
+    "still joins the org when the RBAC role assignment is refused",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac({
+        ok: false,
+        error: "An organisation must have at least one Owner",
+        code: "last_owner",
+      });
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      const { organization: joinedOrg } = await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(joinedOrg.id).toBe(organization.id);
+      expect(rbacHolder.setUserRoleCalls).toHaveLength(1);
+
+      const member = await prisma.orgMember.findFirst({
+        where: { userId: invitee.id, organizationId: organization.id },
+      });
+      expect(member).not.toBeNull();
+    }
+  );
+});
+
+describe("inviteMembers", () => {
+  postgresTest(
+    "skips emails that already belong to a member of the org",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const { inviter, invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 0,
+      });
+
+      await prisma.orgMemberInvite.delete({ where: { id: invite.id } });
+
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      const newcomerEmail = `newcomer-${randomHex(8)}@test.local`;
+
+      const { created, alreadyMembers, alreadyInvited } = await inviteMembers({
+        slug: organization.slug,
+        emails: [invitee.email, newcomerEmail],
+        userId: inviter.id,
+      });
+
+      expect(created.map((row) => row.email)).toEqual([newcomerEmail]);
+      expect(alreadyMembers).toEqual([invitee.email]);
+      expect(alreadyInvited).toEqual([]);
+
+      const invites = await prisma.orgMemberInvite.findMany({
+        where: { organizationId: organization.id },
+        select: { email: true },
+      });
+      expect(invites.map((pending) => pending.email)).toEqual([newcomerEmail]);
+    }
+  );
+
+  postgresTest(
+    "reports an email with a pending invitation as already invited",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const { inviter, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 0,
+      });
+
+      const newcomerEmail = `newcomer-${randomHex(8)}@test.local`;
+
+      const { created, alreadyMembers, alreadyInvited } = await inviteMembers({
+        slug: organization.slug,
+        emails: [invite.email, newcomerEmail],
+        userId: inviter.id,
+      });
+
+      expect(created.map((row) => row.email)).toEqual([newcomerEmail]);
+      expect(alreadyInvited).toEqual([invite.email]);
+      expect(alreadyMembers).toEqual([]);
+    }
+  );
 });
 
 describe("provisionMemberDevelopmentEnvironments", () => {
@@ -291,8 +520,8 @@ describe("provisionMemberDevelopmentEnvironments", () => {
       });
 
       await provisionMemberDevelopmentEnvironments({
+        source: "invite",
         inviteId: invite.id,
-        user: { id: invitee.id, email: invitee.email },
         member,
         organization,
         projects: activeProjects,
@@ -316,7 +545,7 @@ describe("provisionMemberDevelopmentEnvironments", () => {
     { timeout: 60_000 },
     async ({ prisma }) => {
       prismaHolder.client = prisma;
-      const { provisionMemberDevelopmentEnvironments, ENV_SETUP_INCOMPLETE } =
+      const { provisionMemberDevelopmentEnvironments, DevEnvironmentProvisioningError } =
         await import("../app/models/member.server");
 
       const { invitee, organization, activeProjects, invite } = await seedInviteFixture(prisma, {
@@ -335,14 +564,13 @@ describe("provisionMemberDevelopmentEnvironments", () => {
 
       await expect(
         provisionMemberDevelopmentEnvironments({
-          inviteId: invite.id,
-          user: { id: invitee.id, email: invitee.email },
+          source: "sso_jit",
           member,
           organization,
           projects: [...activeProjects, { id: "missing-project-id" }],
           maximumConcurrencyLimit: 5,
         })
-      ).rejects.toThrow(ENV_SETUP_INCOMPLETE);
+      ).rejects.toThrow(DevEnvironmentProvisioningError);
 
       const devEnvs = await prisma.runtimeEnvironment.findMany({
         where: {
@@ -355,6 +583,57 @@ describe("provisionMemberDevelopmentEnvironments", () => {
       const envProjectIds = devEnvs.map((env) => env.projectId);
       expect(envProjectIds).toContain(activeProjects[0].id);
       expect(envProjectIds).toContain(activeProjects[1].id);
+    }
+  );
+});
+
+describe("acceptInvite environment provisioning failures", () => {
+  postgresTest(
+    "reports setup as incomplete and keeps the invite so it can be retried",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { acceptInvite, ENV_SETUP_INCOMPLETE, isAcceptInviteFormError } =
+        await import("../app/models/member.server");
+
+      const { invitee, organization, activeProjects, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 2,
+      });
+
+      const member = await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      const keys = devEnvKeys(`tr_stg_${randomHex(24)}`, `pk_stg_${randomHex(24)}`);
+      await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "dev",
+          type: "STAGING",
+          ...keys,
+          projectId: activeProjects[1].id,
+          organizationId: organization.id,
+          orgMemberId: member.id,
+        },
+      });
+
+      const error = await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(ENV_SETUP_INCOMPLETE);
+      expect(isAcceptInviteFormError(error)).toBe(true);
+
+      const remainingInvite = await prisma.orgMemberInvite.findFirst({
+        where: { id: invite.id },
+      });
+      expect(remainingInvite).not.toBeNull();
     }
   );
 });

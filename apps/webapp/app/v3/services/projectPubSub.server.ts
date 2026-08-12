@@ -14,6 +14,9 @@ const messageCatalog = {
     taskCount: z.number(),
     type: z.union([z.literal("local"), z.literal("deployed")]),
   }),
+  PROJECT_INITIALIZED: z.object({
+    initializedAt: z.coerce.date(),
+  }),
 };
 
 export type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;

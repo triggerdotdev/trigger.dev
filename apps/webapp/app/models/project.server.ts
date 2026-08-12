@@ -3,7 +3,12 @@ import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
 import { projectCreated } from "~/services/projectCreated.server";
-import { type Organization, createEnvironment } from "./organization.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import {
+  type Organization,
+  createDevelopmentEnvironmentForMember,
+  createEnvironment,
+} from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
@@ -50,7 +55,10 @@ export async function createProject(
 
   if (version === "v3") {
     if (!organization.isActivated) {
-      throw new Error(`Organization can't create v3 projects.`);
+      throw new ServiceValidationError(
+        "You must select a plan for this organization before creating projects.",
+        402
+      );
     }
   }
 
@@ -125,13 +133,9 @@ export async function createProject(
   });
 
   for (const member of project.organization.members) {
-    await createEnvironment({
+    await createDevelopmentEnvironmentForMember({
       organization,
       project,
-      type: "DEVELOPMENT",
-      // We set this true but no backfill (yet!?) so never used
-      // for dev environments
-      isBranchableEnvironment: true,
       member,
     });
   }

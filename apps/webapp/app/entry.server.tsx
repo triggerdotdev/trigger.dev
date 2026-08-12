@@ -10,6 +10,7 @@ import { PassThrough } from "stream";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
@@ -18,7 +19,7 @@ import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
-import { resourceMonitor } from "./services/resourceMonitor.server";
+import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -47,6 +48,30 @@ import { workerRegionRegistry } from "./v3/workerRegions.server";
 
 const ABORT_DELAY = 30000;
 
+/**
+ * Where a document may load images from. The markdown renderer that strips images
+ * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
+ * a model- or customer-authored image from reaching a remote host.
+ *
+ * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
+ * (e.g. a self-hosted SSO avatar host).
+ */
+const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
+  singleton("CspImageOrigins", () => {
+    const { origins, rejected } = parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST, {
+      allowHttp: env.NODE_ENV === "development",
+    });
+
+    for (const entry of rejected) {
+      logger.warn(
+        `⚠️  CSP_IMG_SRC_ALLOWLIST entry "${entry.value}" was ignored: it ${entry.reason}.`
+      );
+    }
+
+    return origins;
+  })
+);
+
 export default function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -55,10 +80,21 @@ export default function handleRequest(
 ) {
   const url = new URL(request.url);
 
+  // Stale documents reference /build asset hashes that 404 after a deploy —
+  // always revalidate HTML. Route-set headers win.
+  if (!responseHeaders.has("Cache-Control")) {
+    responseHeaders.set("Cache-Control", "no-cache");
+  }
+
   if (url.pathname.startsWith("/login")) {
     responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
   }
+
+  responseHeaders.set(
+    "Content-Security-Policy",
+    withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)
+  );
 
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
@@ -229,6 +265,8 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
+initQueueMetricsEmitter();
+initQueueMetricsConsumer();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -294,7 +332,10 @@ singleton("SentryTenantContextProcessor", () => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
+export { otlpRateLimiter } from "./services/otlpRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
 export { socketIo } from "./v3/handleSocketIo.server";
@@ -308,8 +349,4 @@ if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
-}
-
-if (env.RESOURCE_MONITOR_ENABLED === "1") {
-  resourceMonitor.startMonitoring(1000);
 }

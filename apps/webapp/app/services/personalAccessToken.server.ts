@@ -6,7 +6,7 @@ import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
-import { isUserActorToken } from "@trigger.dev/rbac";
+import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -17,6 +17,10 @@ const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", toke
 // /account/tokens UI reads this field at human granularity so a few-minute
 // staleness is fine.
 export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
+
+// How long an unconsumed CLI authorization code stays valid. Shared constant so
+// the mint and read paths can't drift.
+export const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
 
 type CreatePersonalAccessTokenOptions = {
   name: string;
@@ -60,16 +64,16 @@ export type ObfuscatedPersonalAccessToken = Awaited<
 
 /** Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created */
 export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
-  //only allow authorization codes that were created less than 10 mins ago
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const code = await prisma.authorizationCode.findUnique({
+  // Only allow authorization codes created within the short consent window.
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prisma.authorizationCode.findFirst({
     select: {
       personalAccessToken: true,
     },
     where: {
       code: authorizationCode,
       createdAt: {
-        gte: tenMinutesAgo,
+        gte: validAfter,
       },
     },
   });
@@ -111,6 +115,11 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
 
 export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
+  /**
+   * Verified claims when the caller presented a delegated user-actor token. They ride on the
+   * result so no caller can hold the actor without its environment scope.
+   */
+  userActor?: UserActorClaims;
 };
 
 /**
@@ -163,11 +172,12 @@ export async function authenticateApiRequestWithPersonalAccessToken(
     return;
   }
 
-  // A user-actor token authenticates as the user wherever a PAT does.
-  // The plugin verifies it (identity path → no org context to floor against).
+  // PAT-only: this helper checks no scopes and no capability context, and its callers include
+  // actions and the admin gate. A delegated token is refused at the entrance and reaches the
+  // API through the actor-aware routes instead, which do enforce its claims.
   if (isUserActorToken(token)) {
-    const result = await rbac.authenticateUserActor(request, {});
-    return result.ok ? { userId: result.userId } : undefined;
+    logger.warn("Rejected a user-actor token at the PAT-only authentication helper");
+    return;
   }
 
   return authenticatePersonalAccessToken(token);
@@ -280,6 +290,62 @@ export function isPersonalAccessToken(token: string) {
   return token.startsWith(tokenPrefix);
 }
 
+/**
+ * A user-actor token minted from a PAT carries the source PAT's id (`claims.pat`).
+ * The token is stateless, so revoking the PAT can't invalidate it by itself — hosts
+ * recheck the source PAT is still live here. A token with no `pat` (e.g. the dashboard
+ * agent's) has no source to check and is left alone.
+ */
+export async function assertSourcePatActive(claims: UserActorClaims): Promise<boolean> {
+  if (!claims.pat) return true;
+
+  const found = await prisma.personalAccessToken.findFirst({
+    where: { id: claims.pat, revokedAt: null },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
+/**
+ * Resolve + source-PAT-recheck a user-actor token for a verify site where `claims` may be
+ * supplied by the RBAC plugin (the apiBuilder path). We re-verify the bearer locally so the
+ * recheck reads the token's OWN `pat`, not the plugin's: a plugin image predating the `pat`
+ * claim would deliver pat-less claims and silently no-op revocation here. Returns the claims
+ * to act on, or undefined to deny. Locally-verified claims win whenever verification succeeds
+ * — a plugin predating a claim would otherwise narrow the set the route builder scopes on —
+ * and the plugin's claims are only the fallback.
+ */
+export async function resolveAndRecheckUserActorClaims(
+  claims: UserActorClaims | undefined,
+  bearer: string
+): Promise<UserActorClaims | undefined> {
+  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer);
+  const resolved = verified ?? claims;
+  if (!resolved) return undefined;
+  return (await assertSourcePatActive(resolved)) ? resolved : undefined;
+}
+
+/**
+ * Read-only check that an authorization code is still mintable: it exists, is
+ * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
+ * consent-screen loader show Authorize vs expired/invalid without minting a PAT.
+ */
+export async function isAuthorizationCodeMintable(
+  authorizationCode: string,
+  prismaClient = prisma
+): Promise<boolean> {
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prismaClient.authorizationCode.findFirst({
+    where: {
+      code: authorizationCode,
+      personalAccessTokenId: null,
+      createdAt: { gte: validAfter },
+    },
+    select: { id: true },
+  });
+  return code !== null;
+}
+
 export function createAuthorizationCode() {
   return prisma.authorizationCode.create({
     data: {
@@ -293,14 +359,14 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   authorizationCode: string,
   userId: string
 ) {
-  //only allow authorization codes that were created less than 10 mins ago
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const code = await prisma.authorizationCode.findUnique({
+  // Only allow authorization codes created within the short consent window.
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prisma.authorizationCode.findFirst({
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
       createdAt: {
-        gte: tenMinutesAgo,
+        gte: validAfter,
       },
     },
   });

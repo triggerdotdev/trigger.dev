@@ -1,5 +1,5 @@
 import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { Outlet, useLoaderData, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
@@ -24,10 +24,15 @@ import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server"
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Playground | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => playgroundAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Playground");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -54,6 +59,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the
+    // playground's region picker, so it decides which region a submitted run
+    // can be sent to. "View as user" only changes what is shown.
     new RegionsPresenter().call({
       userId: user.id,
       projectSlug: projectParam,

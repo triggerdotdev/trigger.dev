@@ -1,7 +1,6 @@
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
-  BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -106,10 +105,11 @@ import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
+import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { cn } from "~/utils/cn";
+import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
-  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -121,6 +121,9 @@ import {
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.runParam ?? "Run", "Runs"]);
 
 const resizableSettings = {
   parent: {
@@ -193,7 +196,7 @@ async function getRunsListFromTableState({
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       project.organizationId,
-      "standard"
+      "runsList"
     );
     const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
@@ -266,6 +269,10 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   const canWriteRun = auth.ok ? auth.ability.can("write", { type: "runs" }) : true;
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
+
+export const handle: Handle = {
+  agentPageContext: (data) => runAgentPageContext(data),
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -489,25 +496,30 @@ export default function Page() {
             <Property.Table>
               <Property.Item>
                 <Property.Label>ID</Property.Label>
-                <Property.Value>{run.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={run.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Trace ID</Property.Label>
-                <Property.Value>{run.traceId}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={run.traceId} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Env ID</Property.Label>
-                <Property.Value>{run.environment.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={run.environment.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
-                <Property.Value>{run.environment.organizationId}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={run.environment.organizationId} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
-            Run docs
-          </LinkButton>
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button
@@ -1482,7 +1494,7 @@ function TimelineView({
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
+                              "timeline-point -ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={disableSpansAnimations ? undefined : node.id}
@@ -1736,7 +1748,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-0.5 items-center",
+          "timeline-span relative flex h-4 w-full min-w-0.5 items-center",
           eventBackgroundClassName(node.data),
           fadeLeft ? "rounded-r-sm bg-linear-to-r from-black/50 to-transparent" : "rounded-sm"
         )}

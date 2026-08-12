@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/redis-worker",
-  "version": "4.5.3",
+  "version": "4.5.10",
   "description": "Redis worker for trigger.dev",
   "license": "MIT",
   "publishConfig": {
@@ -17,13 +17,13 @@
   ],
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.5.3",
+    "@trigger.dev/core": "workspace:4.5.10",
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",
@@ -37,8 +37,9 @@
     "@internal/tracing": "workspace:*",
     "@types/lodash.omit": "^4.5.7",
     "@types/seedrandom": "^3.0.8",
+    "esbuild": "^0.23.0",
     "rimraf": "6.0.1",
-    "tsup": "^8.4.0",
+    "tsdown": "0.22.10",
     "tsx": "4.17.0"
   },
   "engines": {

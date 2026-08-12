@@ -25,7 +25,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   redisTest("should allow requests within the rate limit", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redisOptions,
+      redis: { ...redisOptions, tlsDisabled: true },
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -56,7 +56,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   redisTest("should reject requests without an Authorization header", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redisOptions,
+      redis: { ...redisOptions, tlsDisabled: true },
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -80,7 +80,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   redisTest("should reject requests that exceed the rate limit", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redisOptions,
+      redis: { ...redisOptions, tlsDisabled: true },
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -108,7 +108,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   redisTest("should not apply rate limiting to whitelisted paths", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redisOptions,
+      redis: { ...redisOptions, tlsDisabled: true },
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -138,7 +138,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     "should apply different rate limits based on limiterConfigOverride",
     async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test",
         defaultLimiter: {
           type: "tokenBucket",
@@ -150,10 +150,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
         limiterConfigOverride: async (authorizationValue) => {
           if (authorizationValue === "Bearer premium-token") {
             return {
-              type: "tokenBucket",
-              refillRate: 10,
-              interval: "1m",
-              maxTokens: 100,
+              config: {
+                type: "tokenBucket",
+                refillRate: 10,
+                interval: "1m",
+                maxTokens: 100,
+              },
             };
           }
           return undefined;
@@ -184,11 +186,80 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     }
   );
 
+  redisTest(
+    "should share a bucket across tokens that resolve to the same identifier",
+    async ({ redisOptions }) => {
+      const rateLimitMiddleware = authorizationRateLimitMiddleware({
+        redis: { ...redisOptions, tlsDisabled: true },
+        keyPrefix: "test-identifier",
+        defaultLimiter: {
+          type: "tokenBucket",
+          refillRate: 1,
+          interval: "1m",
+          maxTokens: 1,
+        },
+        pathMatchers: [/^\/api/],
+        // Both tokens map to the same environment identifier, so they should
+        // consume from a single shared bucket rather than one bucket each.
+        limiterConfigOverride: async () => ({ identifier: "env_shared" }),
+      });
+
+      app.use(rateLimitMiddleware);
+      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+      // First token uses the single token in the shared bucket.
+      const first = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_aaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(first.status).toBe(200);
+
+      // A different token that resolves to the same identifier is limited,
+      // because the bucket is shared rather than per-key.
+      const second = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_bbbbbbbbbbbbbbbbbbbbbbbb");
+      expect(second.status).toBe(429);
+    }
+  );
+
+  redisTest("should key per token when no identifier is supplied", async ({ redisOptions }) => {
+    const rateLimitMiddleware = authorizationRateLimitMiddleware({
+      redis: { ...redisOptions, tlsDisabled: true },
+      keyPrefix: "test-no-identifier",
+      defaultLimiter: {
+        type: "tokenBucket",
+        refillRate: 1,
+        interval: "1m",
+        maxTokens: 1,
+      },
+      pathMatchers: [/^\/api/],
+      // Override supplies a config but no identifier: bucketing stays per-key
+      // (hashed Authorization header), the legacy behavior.
+      limiterConfigOverride: async () => ({
+        config: { type: "tokenBucket", refillRate: 1, interval: "1m", maxTokens: 1 },
+      }),
+    });
+
+    app.use(rateLimitMiddleware);
+    app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+    const first = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+    expect(first.status).toBe(200);
+
+    // Same token is limited...
+    const firstAgain = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+    expect(firstAgain.status).toBe(429);
+
+    // ...but a different token gets its own bucket.
+    const second = await request(app).get("/api/test").set("Authorization", "Bearer token-b");
+    expect(second.status).toBe(200);
+  });
+
   describe("Advanced Cases", () => {
     // 1. Test different rate limit configurations
     redisTest("should enforce fixed window rate limiting", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test-fixed",
         defaultLimiter: {
           type: "fixedWindow",
@@ -224,7 +295,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
     redisTest("should enforce sliding window rate limiting", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test-sliding",
         defaultLimiter: {
           type: "slidingWindow",
@@ -268,7 +339,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     // 2. Test edge cases around rate limit calculations
     redisTest("should handle token refill correctly", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test-refill",
         defaultLimiter: {
           type: "tokenBucket",
@@ -309,7 +380,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
     redisTest("should handle near-zero remaining tokens correctly", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test-near-zero",
         defaultLimiter: {
           type: "tokenBucket",
@@ -357,7 +428,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     redisTest("should use cached limiter configurations", async ({ redisOptions }) => {
       let configOverrideCalls = 0;
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redisOptions,
+        redis: { ...redisOptions, tlsDisabled: true },
         keyPrefix: "test-cache",
         defaultLimiter: {
           type: "tokenBucket",
@@ -375,10 +446,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
           configOverrideCalls++;
           if (authorizationValue === "Bearer premium-token") {
             return {
-              type: "tokenBucket",
-              refillRate: 10,
-              interval: "1m",
-              maxTokens: 100,
+              config: {
+                type: "tokenBucket",
+                refillRate: 10,
+                interval: "1m",
+                maxTokens: 100,
+              },
             };
           }
           return undefined;

@@ -1,14 +1,15 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { type PrismaClientOrTransaction, type PrismaReplicaClient } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
+import { boundedIn } from "@trigger.dev/database";
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
 // Single-sourced display bound for a waitpoint's connected run friendlyIds.
@@ -22,140 +23,59 @@ export class WaitpointPresenter extends BasePresenter {
     prisma?: PrismaClientOrTransaction,
     replica?: PrismaClientOrTransaction,
     private readonly readThroughDeps?: {
-      // The new run-ops client + the legacy run-ops read replica (never the legacy writer).
-      // Omitted => single-DB / self-host: both default to `_replica` (passthrough).
+      // Forwarded to the NextRunListPresenter that hydrates connected runs; this presenter's own
+      // waitpoint + connected-run reads route through `runStore`. Omitted => single-DB passthrough.
       newClient?: PrismaClientOrTransaction;
       legacyReplica?: PrismaClientOrTransaction;
-      // Resolved boot constant from isSplitEnabled(). When false/absent:
-      // the waitpoint lookup is one plain findFirst and the connected-runs hydrate runs passthrough.
       splitEnabled?: boolean;
-    }
+    },
+    private readonly runStore = defaultRunStore
   ) {
     super(prisma, replica);
   }
 
   async #findWaitpoint(friendlyId: string, environmentId: string) {
-    const where = { friendlyId, environmentId };
-    const select = {
-      id: true,
-      friendlyId: true,
-      type: true,
-      status: true,
-      idempotencyKey: true,
-      userProvidedIdempotencyKey: true,
-      idempotencyKeyExpiresAt: true,
-      inactiveIdempotencyKey: true,
-      output: true,
-      outputType: true,
-      outputIsError: true,
-      completedAfter: true,
-      completedAt: true,
-      createdAt: true,
-      tags: true,
-      environmentId: true,
-    } as const;
-
-    const hydrate = (client: PrismaReplicaClient) => client.waitpoint.findFirst({ where, select });
-
-    if (!this.readThroughDeps) {
-      return this._replica.waitpoint.findFirst({ where, select });
-    }
-
-    const result = await readThroughRun({
-      runId: friendlyId,
-      environmentId,
-      readNew: (client) => hydrate(client),
-      readLegacy: (replica) => hydrate(replica),
-      deps: {
-        splitEnabled: this.readThroughDeps.splitEnabled,
-        newClient:
-          (this.readThroughDeps.newClient as PrismaReplicaClient | undefined) ??
-          (this._replica as unknown as PrismaReplicaClient),
-        legacyReplica:
-          (this.readThroughDeps.legacyReplica as PrismaReplicaClient | undefined) ??
-          (this._replica as unknown as PrismaReplicaClient),
+    // Keyed by (friendlyId, environmentId) with no classifiable waitpoint id, so the run-store
+    // probes NEW then LEGACY and reads each store's own replica — resolving the waitpoint whichever
+    // run store owns it. When split is off it reads the single control-plane replica (passthrough).
+    return this.runStore.findWaitpoint({
+      where: { friendlyId, environmentId },
+      select: {
+        id: true,
+        friendlyId: true,
+        type: true,
+        status: true,
+        idempotencyKey: true,
+        userProvidedIdempotencyKey: true,
+        idempotencyKeyExpiresAt: true,
+        inactiveIdempotencyKey: true,
+        output: true,
+        outputType: true,
+        outputIsError: true,
+        completedAfter: true,
+        completedAt: true,
+        createdAt: true,
+        tags: true,
+        environmentId: true,
       },
     });
-
-    return result.source === "new" || result.source === "legacy-replica" ? result.value : null;
   }
 
   // Connected-run friendlyIds gathered across BOTH stores. The run<->waitpoint join co-locates with
-  // the RUN (written on the run's DB), so the waitpoint's own store misses a cross-DB connection; we
-  // read the join on each client, resolve the run's friendlyId on that same client, and union.
+  // the RUN (written on the run's DB), so the waitpoint's own store misses a cross-DB connection.
+  // The run-store fans the connection lookup out to both DBs (bounded there) and resolves each run
+  // id on its owning DB (by id-shape residency), so we get the union without joining across the seam.
   async #connectedRunFriendlyIds(waitpointId: string): Promise<string[]> {
-    const replica = this._replica as unknown as PrismaReplicaClient;
-    const rawClients: PrismaReplicaClient[] =
-      this.readThroughDeps?.splitEnabled === true
-        ? [
-            (this.readThroughDeps.newClient as PrismaReplicaClient | undefined) ?? replica,
-            (this.readThroughDeps.legacyReplica as PrismaReplicaClient | undefined) ?? replica,
-          ]
-        : [replica];
-    const clients = [...new Set(rawClients)];
-
-    const friendlyIds = new Set<string>();
-    for (const client of clients) {
-      for (const friendlyId of await this.#connectedRunFriendlyIdsOn(client, waitpointId)) {
-        friendlyIds.add(friendlyId);
-      }
-      if (friendlyIds.size >= CONNECTED_RUNS_DISPLAY_LIMIT) {
-        break;
-      }
+    const runIds = await this.runStore.findWaitpointConnectedRunIds(waitpointId);
+    if (runIds.length === 0) {
+      return [];
     }
-    return Array.from(friendlyIds).slice(0, CONNECTED_RUNS_DISPLAY_LIMIT);
-  }
-
-  // Connected-run friendlyIds for one store, via the ORM. Two indexed reads joined in memory instead
-  // of a SQL JOIN onto the (very large) TaskRun table: `id IN (...)` can only plan as a PK lookup, so
-  // the planner can never scan TaskRun.
-  //
-  // Dedicated subset: the explicit `WaitpointRunConnection` is scalar (`taskRunId`, no FK), so a
-  // connection can outlive a deleted run. We over-read connection ids, resolve runs by id (a missing
-  // id just drops out -- danglers cost no display slot), and cap at the display limit.
-  //
-  // Control-plane full schema: no queryable join delegate (implicit M2M), so we traverse the
-  // `connectedRuns` relation; it cascade-deletes with the run, so no dangler can exist.
-  async #connectedRunFriendlyIdsOn(
-    client: PrismaReplicaClient,
-    waitpointId: string
-  ): Promise<string[]> {
-    const dedicated = (
-      client as unknown as {
-        waitpointRunConnection?: {
-          findMany: (args: unknown) => Promise<{ taskRunId: string }[]>;
-        };
-      }
-    ).waitpointRunConnection;
-
-    if (dedicated) {
-      const connections = await dedicated.findMany({
-        where: { waitpointId },
-        select: { taskRunId: true },
-        take: CONNECTED_RUNS_CONNECTION_SCAN_LIMIT,
-      });
-      if (connections.length === 0) {
-        return [];
-      }
-      const runs = await client.taskRun.findMany({
-        where: { id: { in: connections.map((connection) => connection.taskRunId) } },
-        select: { friendlyId: true },
-        take: CONNECTED_RUNS_DISPLAY_LIMIT,
-      });
-      return runs.map((run) => run.friendlyId);
-    }
-
-    const waitpoint = (await (
-      client.waitpoint.findFirst as (
-        args: unknown
-      ) => Promise<{ connectedRuns: { friendlyId: string }[] } | null>
-    )({
-      where: { id: waitpointId },
-      select: {
-        connectedRuns: { select: { friendlyId: true }, take: CONNECTED_RUNS_DISPLAY_LIMIT },
-      },
-    })) as { connectedRuns: { friendlyId: string }[] } | null;
-    return (waitpoint?.connectedRuns ?? []).map((run) => run.friendlyId);
+    const runs = await this.runStore.findRuns({
+      where: { id: { in: boundedIn(runIds) } },
+      select: { friendlyId: true },
+      take: CONNECTED_RUNS_DISPLAY_LIMIT,
+    });
+    return runs.map((run) => run.friendlyId);
   }
 
   public async call({

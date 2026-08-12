@@ -208,6 +208,11 @@ export function isLegacyDollarAmountField(
     return false;
   }
 
+  // The exact $1 absolute base marker always wins, even with levels below 100 (e.g. a $5 alert).
+  if (rawAmount === ABSOLUTE_ALERT_BASE_CENTS) {
+    return false;
+  }
+
   if (!Number.isFinite(rawAmount) || rawAmount < 10) {
     return false;
   }
@@ -315,8 +320,9 @@ export function getAlertPreviewLimitCents(
   planLimitCents: number
 ): number {
   const amountCents = getSavedAlertAmountCents(alerts);
+  // Percentages always apply to the current limit, not the base stored at last save.
   if (amountCents > 0 && percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0) {
-    return amountCents;
+    return effectiveLimitCents;
   }
   if (percentageAlertAmountMatches(amountCents, effectiveLimitCents, planLimitCents)) {
     return amountCents;

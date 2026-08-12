@@ -1,4 +1,4 @@
-import { containerTest, heteroPostgresTest } from "@internal/testcontainers";
+import { postgresTest, heteroPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
@@ -304,6 +304,7 @@ async function seedRunWithTree(
     runFriendlyId: `run_${runId}`,
     parentFriendlyId: `run_${parentId}`,
     rootFriendlyId: `run_${rootId}`,
+    childId,
     childFriendlyId: `run_${childId}`,
     attemptId: attempt.id,
   };
@@ -315,7 +316,7 @@ beforeEach(() => {
 });
 
 describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant)", () => {
-  containerTest(
+  postgresTest(
     "returns run + attempts + tree from the store read; resolveSchedule reads control-plane prisma",
     async ({ prisma }) => {
       // Single-DB shape: one PostgresRunStore over the one prisma/replica pair,
@@ -354,6 +355,10 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
         where: { id: tree.run.id },
         data: { scheduleId },
       });
+      await prisma.taskRun.update({
+        where: { id: tree.childId },
+        data: { taskIdentifier: "other-task" },
+      });
 
       const env = authEnv(organization, project, runtimeEnvironment);
       const found = await readFoundRunViaStore(store, tree.runFriendlyId, env.id);
@@ -381,7 +386,7 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
     }
   );
 
-  containerTest(
+  postgresTest(
     "resolveSchedule re-reads TaskSchedule off the control-plane prisma on every call (no caching)",
     async ({ prisma }) => {
       // Single-DB: this proves resolveSchedule re-reads `prisma.taskSchedule`

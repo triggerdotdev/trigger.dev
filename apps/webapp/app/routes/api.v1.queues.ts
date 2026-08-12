@@ -12,13 +12,19 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  perPage: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce
+    .number()
+    .int()
+    .positive()
+    .transform((n) => Math.min(n, 100))
+    .optional(),
 });
 
 export const loader = createLoaderApiRoute(
   {
     searchParams: SearchParamsSchema,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+    authorization: { action: "read", resource: () => ({ type: "queues" }) },
   },
   async ({ searchParams, authentication }) => {
     const service = new QueueListPresenter(searchParams.perPage);

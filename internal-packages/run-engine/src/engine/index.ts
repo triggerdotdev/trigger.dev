@@ -23,6 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
+  generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
@@ -36,6 +37,7 @@ import {
   type TaskRunExecutionSnapshot,
   type Waitpoint,
   Prisma,
+  boundedIn,
 } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
@@ -53,6 +55,7 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
+import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js";
 import {
   ExecutionSnapshotNotFoundError,
   NotImplementedError,
@@ -218,6 +221,7 @@ export class RunEngine {
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,
+      queueMetrics: options.queue?.queueMetrics,
       masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
@@ -284,6 +288,9 @@ export class RunEngine {
         },
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
+        },
+        expireBatch: async ({ payload }) => {
+          await this.batchSystem.expireBatch({ batchId: payload.batchId });
         },
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
@@ -378,7 +385,7 @@ export class RunEngine {
       redis: options.debounce?.redis ?? options.runLock.redis,
       executionSnapshotSystem: this.executionSnapshotSystem,
       delayedRunSystem: this.delayedRunSystem,
-      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs,
       quantizeNewDelayUntilMs: options.debounce?.quantizeNewDelayUntilMs ?? 1000,
       fastPathSkipEnabled: options.debounce?.fastPathSkipEnabled ?? true,
       useReplicaForFastPathRead: options.debounce?.useReplicaForFastPathRead ?? false,
@@ -946,6 +953,7 @@ export class RunEngine {
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+        const initialSnapshotId = generateInternalId();
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
@@ -1031,9 +1039,10 @@ export class RunEngine {
                 annotations,
               },
               snapshot: {
+                id: initialSnapshotId,
                 engine: "V2",
-                executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
-                description: delayUntil ? "Run is delayed" : "Run was created",
+                executionStatus: delayUntil ? "DELAYED" : QUEUED_SNAPSHOT_STATUS,
+                description: delayUntil ? "Run is delayed" : QUEUED_SNAPSHOT_DESCRIPTION,
                 runStatus: status,
                 environmentId: environment.id,
                 environmentType: environment.type,
@@ -1160,14 +1169,31 @@ export class RunEngine {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
 
-            await this.enqueueSystem.enqueueRun({
+            this.eventBus.emit("executionSnapshotCreated", {
+              time: new Date(),
+              run: {
+                id: taskRun.id,
+              },
+              snapshot: {
+                id: initialSnapshotId,
+                executionStatus: QUEUED_SNAPSHOT_STATUS,
+                description: QUEUED_SNAPSHOT_DESCRIPTION,
+                runStatus: taskRun.status,
+                attemptNumber: taskRun.attemptNumber ?? null,
+                checkpointId: null,
+                workerId: workerId ?? null,
+                runnerId: runnerId ?? null,
+                isValid: true,
+                error: null,
+                completedWaitpointIds: [],
+              },
+            });
+
+            await this.enqueueSystem.publishRun({
               run: taskRun,
               env: environment,
-              workerId,
-              runnerId,
-              tx: prisma,
-              skipRunLock: true,
               includeTtl: true,
+              anchorEligibilityAtQueuePosition: true,
               enableFastPath,
             });
           } catch (enqueueError) {
@@ -1497,6 +1523,7 @@ export class RunEngine {
     workerId,
     runnerId,
     isWarmStart,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -1504,6 +1531,7 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
@@ -1512,6 +1540,7 @@ export class RunEngine {
       workerId,
       runnerId,
       isWarmStart,
+      environmentId,
       tx,
     });
   }
@@ -1523,12 +1552,14 @@ export class RunEngine {
     completion,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     return this.runAttemptSystem.completeRunAttempt({
       runId,
@@ -1536,6 +1567,7 @@ export class RunEngine {
       completion,
       workerId,
       runnerId,
+      environmentId,
     });
   }
 
@@ -1605,9 +1637,26 @@ export class RunEngine {
 
   async lengthOfQueue(
     environment: MinimalAuthenticatedEnvironment,
-    queue: string
+    queue: string,
+    concurrencyKey?: string
   ): Promise<number> {
-    return this.runQueue.lengthOfQueue(environment, queue);
+    return this.runQueue.lengthOfQueue(environment, queue, concurrencyKey);
+  }
+
+  async currentConcurrencyOfQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): Promise<number> {
+    return this.runQueue.currentConcurrencyOfQueue(environment, queue, concurrencyKey);
+  }
+
+  async oldestMessageInQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): Promise<number | undefined> {
+    return this.runQueue.oldestMessageInQueue(environment, queue, concurrencyKey);
   }
 
   async concurrencyOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
@@ -1626,6 +1675,22 @@ export class RunEngine {
     queues: string[]
   ): Promise<Record<string, number>> {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
+  }
+
+  async concurrencyKeyBreakdown(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    options?: { limit?: number }
+  ) {
+    return this.runQueue.concurrencyKeyBreakdown(environment, queue, options);
+  }
+
+  async concurrencyKeyLiveStats(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKeys: string[]
+  ) {
+    return this.runQueue.concurrencyKeyLiveStats(environment, queue, concurrencyKeys);
   }
 
   async removeEnvironmentQueuesFromMasterQueue({
@@ -1685,6 +1750,7 @@ export class RunEngine {
     idempotencyKeyExpiresAt,
     timeout,
     tags,
+    standaloneResidency,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1694,6 +1760,8 @@ export class RunEngine {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
+    /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
+    standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1703,6 +1771,7 @@ export class RunEngine {
       idempotencyKeyExpiresAt,
       timeout,
       tags,
+      standaloneResidency,
     });
   }
 
@@ -1765,6 +1834,28 @@ export class RunEngine {
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
+  }
+
+  /**
+   * Terminally fail a batch whose phase 2 item stream never sealed it, completing the
+   * parent's batchTriggerAndWait waitpoint with an error so the parent resumes.
+   */
+  async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+    return this.batchSystem.expireBatch({ batchId });
+  }
+
+  /**
+   * Schedule the seal-timeout reaper. Only worth scheduling for a batch that blocks a
+   * parent, since a fire-and-forget batch has nothing to strand.
+   */
+  async scheduleExpireBatch({
+    batchId,
+    availableAt,
+  }: {
+    batchId: string;
+    availableAt: Date;
+  }): Promise<void> {
+    return this.batchSystem.scheduleExpireBatch({ batchId, availableAt });
   }
 
   // ============================================================================
@@ -2010,12 +2101,14 @@ export class RunEngine {
     snapshotId,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
@@ -2023,6 +2116,7 @@ export class RunEngine {
       snapshotId,
       workerId,
       runnerId,
+      environmentId,
       tx,
     });
   }
@@ -2058,14 +2152,21 @@ export class RunEngine {
   /** Get required data to execute the run */
   async getRunExecutionData({
     runId,
+    environmentId,
     tx,
   }: {
     runId: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
     try {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.runStore);
+      const snapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.runStore,
+        environmentId
+      );
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
       this.logger.error("Failed to getRunExecutionData", {
@@ -2082,10 +2183,12 @@ export class RunEngine {
   async getSnapshotsSince({
     runId,
     snapshotId,
+    environmentId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
     const useReplica =
@@ -2103,7 +2206,8 @@ export class RunEngine {
         runId,
         snapshotId,
         this.runStore,
-        repairClient
+        repairClient,
+        environmentId
       );
       return snapshots.map(executionDataFromSnapshot);
     };
@@ -2852,7 +2956,7 @@ export class RunEngine {
   ): Promise<Array<{ id: string; orgId: string }>> {
     const runs = await this.runStore.findRuns({
       where: {
-        id: { in: runIds },
+        id: { in: boundedIn(runIds) },
         completedAt: {
           lte: new Date(Date.now() - completedAtOffsetMs), // This only finds runs that were completed more than 10 minutes ago
         },
@@ -2860,7 +2964,7 @@ export class RunEngine {
           not: null,
         },
         status: {
-          in: getFinalRunStatuses(),
+          in: boundedIn(getFinalRunStatuses()),
         },
       },
       select: {

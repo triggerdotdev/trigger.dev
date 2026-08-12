@@ -47,13 +47,18 @@ class AttioClient {
 
     if (!response.ok) {
       const body = await response.text();
-      logger.error("Attio assert failed", {
-        object,
-        matchingAttribute,
-        status: response.status,
-        body,
-      });
-      throw new Error(`Attio assert ${object} failed with status ${response.status}`);
+      // 5xx/429 are transient (the worker retries); warn + tag so they don't page Sentry. Real 4xx stay error.
+      const transient = response.status >= 500 || response.status === 429;
+      const fields = { object, matchingAttribute, status: response.status, body };
+      if (transient) {
+        logger.warn("Attio assert failed", fields);
+      } else {
+        logger.error("Attio assert failed", fields);
+      }
+      const message = `Attio assert ${object} failed with status ${response.status}`;
+      throw transient
+        ? Object.assign(new Error(message), { logLevel: "warn" as const })
+        : new Error(message);
     }
 
     const recordId = ((await response.json()) as any).data?.id?.record_id;

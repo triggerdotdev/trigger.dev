@@ -45,20 +45,25 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
       include: {
         tasks: true,
-        files: {
-          include: {
-            tasks: {
-              select: {
-                slug: true,
-              },
-            },
-          },
-        },
+        files: true,
       },
     });
 
     if (!backgroundWorker) {
       return json({ error: "Background worker not found" }, { status: 404 });
+    }
+
+    // Group task slugs by fileId from the already-loaded tasks (which are fetched
+    // via the indexed workerId relation) instead of loading files.tasks, which
+    // queries BackgroundWorkerTask by the unindexed fileId column.
+    const taskSlugsByFileId = new Map<string, Set<string>>();
+    for (const task of backgroundWorker.tasks) {
+      if (!task.fileId) {
+        continue;
+      }
+      const slugs = taskSlugsByFileId.get(task.fileId) ?? new Set<string>();
+      slugs.add(task.slug);
+      taskSlugsByFileId.set(task.fileId, slugs);
     }
 
     return json({
@@ -82,7 +87,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         filePath: file.filePath,
         contentHash: file.contentHash,
         contents: decompressContent(file.contents),
-        tasks: Array.from(new Set(file.tasks.map((task) => task.slug))),
+        tasks: Array.from(taskSlugsByFileId.get(file.id) ?? []),
       })),
     });
   } catch (error) {

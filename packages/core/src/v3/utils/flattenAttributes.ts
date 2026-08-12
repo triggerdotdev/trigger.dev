@@ -5,6 +5,10 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 const DEFAULT_MAX_DEPTH = 128;
 
+// This property name would let a crafted key walk into Object.prototype during
+// reconstruction and pollute the shared process.
+const PROTOTYPE_POLLUTION_KEY = "__proto__";
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
@@ -297,6 +301,11 @@ export function unflattenAttributes(
       continue;
     }
 
+    // Skip any key whose path could walk into Object.prototype.
+    if (parts.includes(PROTOTYPE_POLLUTION_KEY)) {
+      continue;
+    }
+
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
@@ -330,8 +339,10 @@ export function unflattenAttributes(
     }
   }
 
-  // Convert the result to an array if all top-level keys are numeric indices
-  if (Object.keys(result).every((k) => /^\d+$/.test(k))) {
+  // Convert the result to an array if all top-level keys are numeric indices.
+  // Guard against an empty result (e.g. every key was skipped as unsafe), which
+  // would otherwise produce Array(-Infinity) and throw.
+  if (Object.keys(result).length > 0 && Object.keys(result).every((k) => /^\d+$/.test(k))) {
     const maxIndex = Math.max(...Object.keys(result).map((k) => parseInt(k)));
     const arrayResult = Array(maxIndex + 1);
     for (const key in result) {

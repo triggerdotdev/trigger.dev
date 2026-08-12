@@ -51,6 +51,13 @@ export type EnvChangeRouterOptions = {
   /** Observability: a buffered record was evicted. `cap` evictions mean the env churns more
    * runs inside the window than the buffer holds (the replay guarantee is degrading). */
   onReplayEviction?: (reason: "cap" | "window") => void;
+  /** Observability: per-batch emission fan-out. `deliveries` = total (feed,run) rows matched and
+   * resolved to feeds this batch. It is an upper bound on the per-feed wire serializations, since
+   * the client working-set diff drops already-seen rows before encoding. `distinctRuns` = distinct
+   * (columnSig,runId) among them (the serialize-once-per-batch floor). `deliveries / distinctRuns`
+   * is the average number of feeds a changed run is delivered to; a shared-serialization step would
+   * save at most `deliveries - distinctRuns` encodings. */
+  onEmissionFanout?: (stats: { distinctRuns: number; deliveries: number; feeds: number }) => void;
   /** Read-your-writes gate over the replica: delays wake-path hydrates until the replica
    * should have applied the change (record.updatedAtMs + lag + margin), and re-hydrates
    * rows the tripwire still finds stale. Omit to hydrate immediately (legacy behavior). */
@@ -609,6 +616,8 @@ export class EnvChangeRouter {
 
     // 4. Assemble each feed's matched rows (post-filtering tag feeds against the
     //    authoritative hydrated row) and resolve its pending wait.
+    let deliveries = 0;
+    const distinctRunKeys = new Set<string>();
     for (const [feed, runIds] of matchedRunIdsByFeed) {
       if (!feed.resolve) {
         continue; // stopped waiting while we hydrated; its next poll/backstop covers it
@@ -631,9 +640,21 @@ export class EnvChangeRouter {
 
       if (rows.length > 0) {
         feed.resolve({ reason: "notify", rows });
+        deliveries += rows.length;
+        for (const matched of rows) {
+          distinctRunKeys.add(`${feed.columnSig} ${matched.row.id}`);
+        }
       }
       // No surviving rows (e.g. a partial-record candidate that didn't actually match):
       // leave the feed waiting; nothing relevant changed for it.
+    }
+
+    if (deliveries > 0) {
+      this.options.onEmissionFanout?.({
+        distinctRuns: distinctRunKeys.size,
+        deliveries,
+        feeds: matchedRunIdsByFeed.size,
+      });
     }
   }
 

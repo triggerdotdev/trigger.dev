@@ -128,14 +128,12 @@ export async function findCurrentWorkerDeployment({
   }
 
   // We need to get the latest deployment of the given type
-  const latestDeployment = await prisma.workerDeployment.findFirst({
+  const latestDeployment = await $prisma.workerDeployment.findFirst({
     where: {
       environmentId,
       type,
     },
-    orderBy: {
-      id: "desc",
-    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
       imageReference: true,

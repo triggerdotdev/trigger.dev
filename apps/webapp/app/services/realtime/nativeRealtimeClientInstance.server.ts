@@ -1,5 +1,5 @@
 import { getMeter } from "@internal/tracing";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -71,6 +71,16 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unit: "rows",
   });
 
+  const emissionFeedDeliveries = meter.createCounter("realtime_native.emission_feed_deliveries", {
+    description:
+      "Matched (feed,run) rows resolved to feeds per batch, summed. Upper bound on per-feed wire serializations, since the client working-set diff drops already-seen rows before encoding. Divide by realtime_native.emission_distinct_runs for average feeds-per-run fan-out.",
+  });
+
+  const emissionDistinctRuns = meter.createCounter("realtime_native.emission_distinct_runs", {
+    description:
+      "Distinct (columnSig,run) among the deliveries per batch, summed. The serialize-once-per-batch floor: a shared-serialization step would encode at most this many rows, saving at most (feed_deliveries minus distinct_runs) encodings.",
+  });
+
   const backstops = meter.createCounter("realtime_native.backstops", {
     description:
       "Backstop full resolves by outcome. 'empty' is normal idle behavior; sustained 'delivered' means the notify/replay path missed changes — alert on it.",
@@ -120,9 +130,11 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
         })
       : undefined;
 
+  const runReadsFromPrimary = env.REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY === "1";
+
   // One RunHydrator shared by the router and the client, so its single-flight + short-TTL cache covers both.
   const runReader = new RunHydrator({
-    replica: $replica,
+    readClient: runReadsFromPrimary ? prisma : $replica,
     runStore,
     cacheTtlMs: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_TTL_MS,
     maxCacheEntries: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_MAX_ENTRIES,
@@ -132,7 +144,7 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
   // when idle) and the router delays wake hydrates by it, anchored to each record's
   // updatedAtMs — so a publish racing the replica's apply is waited out, not read stale.
   const lagEstimator =
-    env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED === "1"
+    !runReadsFromPrimary && env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED === "1"
       ? new ReplicaLagEstimator({
           source: createPostgresReplicaLagSource($replica),
           sampleIntervalMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_SAMPLE_INTERVAL_MS,
@@ -166,6 +178,10 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
     onReplay: (result) => replays.add(1, { result }),
     onReplayEviction: (reason) => replayEvictions.add(1, { reason }),
+    onEmissionFanout: ({ distinctRuns, deliveries }) => {
+      emissionFeedDeliveries.add(deliveries);
+      emissionDistinctRuns.add(distinctRuns);
+    },
     replicaLag: lagEstimator
       ? {
           getLagMs: () => lagEstimator.getLagMs(),

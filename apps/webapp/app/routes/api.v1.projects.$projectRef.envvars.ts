@@ -1,7 +1,8 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { env } from "~/env.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -15,11 +16,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+  // Reading env vars requires the read:envvars scope (root keys authorize
+  // everything).
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "read",
+    resource: { type: "envvars" },
+  });
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const { projectRef } = parsedParams.data;
 
@@ -44,6 +50,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     include: {
       parentEnvironment: true,
+      // Feeds resolveProdApiOrigin; only loaded when internal-origin routing is possible.
+      ...(env.INTERNAL_API_ORIGIN ? { organization: { select: { featureFlags: true } } } : {}),
     },
   });
 

@@ -24,11 +24,37 @@ vi.mock("~/db.server", async () => {
   };
 });
 
+// WaitpointListPresenter reads through the module-global `runStore`; override that one wiring
+// boundary with a container-backed store (not a DB mock). Mirrors SpanPresenter.readthrough.test.ts.
+const routingStoreRef = vi.hoisted(() => ({ current: undefined as unknown }));
+vi.mock("~/v3/runStore.server", () => ({
+  get runStore() {
+    return routingStoreRef.current;
+  },
+}));
+
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { ApiWaitpointListPresenter } from "~/presenters/v3/ApiWaitpointListPresenter.server";
 
 vi.setConfig({ testTimeout: 120_000 });
+
+// List reads fan out to both legs and dedup by id, so both legs on one container is fine.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 const ENV_ID = "env0000000000000000t19";
 const PROJ_ID = "proj00000000000000t19";
@@ -70,9 +96,10 @@ const baseEnv = {
 
 describe("ApiWaitpointListPresenter read-route threading", () => {
   postgresTest(
-    "split enabled: waitpoint on NEW handle is returned via readRoute",
+    "split enabled: waitpoint on NEW handle is returned via the run store",
     async ({ prisma }) => {
       setDbClient(prisma);
+      routingStoreRef.current = makeRunStore(prisma, prisma);
       await seedLegacyParents(prisma, "t19split");
 
       await prisma.waitpoint.create({
@@ -102,9 +129,10 @@ describe("ApiWaitpointListPresenter read-route threading", () => {
   );
 
   postgresTest(
-    "passthrough: no readRoute => _replica only, result empty (nothing seeded)",
+    "passthrough: no readRoute => run store empty, result empty (nothing seeded)",
     async ({ prisma }) => {
       setDbClient(prisma);
+      routingStoreRef.current = makeRunStore(prisma, prisma);
       await seedLegacyParents(prisma, "t19pass");
 
       const presenter = new ApiWaitpointListPresenter(prisma, prisma);

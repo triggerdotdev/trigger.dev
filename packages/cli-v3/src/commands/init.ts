@@ -94,7 +94,7 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Currently only supports node and bun",
+        "Which runtime to use for the project. Supported: node, node-22, bun",
         "node"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
@@ -338,6 +338,15 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
+
+  try {
+    const result = await apiClient.markProjectInitialized(selectedProject.externalRef);
+    if (!result.success) {
+      logger.debug("Failed to mark project as initialized", { error: result.error });
+    }
+  } catch (error) {
+    logger.debug("Failed to mark project as initialized", { error });
+  }
 
   const projectDashboard = cliLink(
     "project dashboard",

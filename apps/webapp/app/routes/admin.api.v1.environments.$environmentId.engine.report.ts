@@ -13,7 +13,12 @@ const ParamsSchema = z.object({
 const SearchParamsSchema = z.object({
   verbose: z.string().default("0"),
   page: z.coerce.number().optional(),
-  per_page: z.coerce.number().optional(),
+  per_page: z.coerce
+    .number()
+    .int()
+    .positive()
+    .transform((n) => Math.min(n, 100))
+    .optional(),
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {

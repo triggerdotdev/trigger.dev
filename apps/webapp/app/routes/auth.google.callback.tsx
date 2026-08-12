@@ -9,12 +9,12 @@ import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { appendRedirectTo, ssoRedirectFromAuthError } from "~/services/ssoAutoDiscovery.server";
 import type { AuthUser } from "~/services/authUser";
-import { redirectCookie } from "./auth.google";
+import { googleRedirectCookie } from "~/services/redirectCookies.server";
 import { sanitizeRedirectPath } from "~/utils";
 
 export let loader: LoaderFunction = async ({ request }) => {
   const cookie = request.headers.get("Cookie");
-  const redirectValue = await redirectCookie.parse(cookie);
+  const redirectValue = await googleRedirectCookie.parse(cookie);
   const redirectTo = sanitizeRedirectPath(redirectValue);
 
   // The SSO auto-discovery gate runs inside the strategy's verify
