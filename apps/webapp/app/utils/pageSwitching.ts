@@ -22,6 +22,9 @@ const NESTED_PORTABLE_PAGES = [
 /** The branch lists render under any environment of their project, but not in every project. */
 export const PROJECT_SPECIFIC_PAGES = ["branches", "dev-branches"];
 
+/** Gated by an organization feature flag, so their loaders send you home from an organization without it. */
+export const ORGANIZATION_SPECIFIC_PAGES = ["logs", "query"];
+
 /** Every page below an environment that names no resource, so any environment can render it. */
 export const ENVIRONMENT_PORTABLE_PAGES: ReadonlySet<string> = new Set(
   [
@@ -30,9 +33,14 @@ export const ENVIRONMENT_PORTABLE_PAGES: ReadonlySet<string> = new Set(
   ].filter((page) => page !== "")
 );
 
-/** The ones every project has, which is what a project or organization switch can carry. */
+/** The ones every project has, which is what a project switch can carry. */
 export const PROJECT_PORTABLE_PAGES: ReadonlySet<string> = new Set(
   [...ENVIRONMENT_PORTABLE_PAGES].filter((page) => !PROJECT_SPECIFIC_PAGES.includes(page))
+);
+
+/** The ones every organization has, which is what an organization switch can carry. */
+export const ORGANIZATION_PORTABLE_PAGES: ReadonlySet<string> = new Set(
+  [...PROJECT_PORTABLE_PAGES].filter((page) => !ORGANIZATION_SPECIFIC_PAGES.includes(page))
 );
 
 /**
@@ -56,14 +64,26 @@ export function environmentPortablePage(suffix: string): string {
   return nearestPage(suffix, ENVIRONMENT_PORTABLE_PAGES);
 }
 
-/** The page to keep when the project or organization changes. */
+/** The page to keep when the project changes. */
 export function projectPortablePage(suffix: string): string {
   return nearestPage(suffix, PROJECT_PORTABLE_PAGES);
 }
 
-export function requestedPortablePage(request: Request): string {
-  const requested = new URL(request.url).searchParams.get(PORTABLE_PAGE_PARAM);
-  return projectPortablePage(requested ?? "");
+/** The page to keep when the organization changes. */
+export function organizationPortablePage(suffix: string): string {
+  return nearestPage(suffix, ORGANIZATION_PORTABLE_PAGES);
+}
+
+function requestedPage(request: Request): string {
+  return new URL(request.url).searchParams.get(PORTABLE_PAGE_PARAM) ?? "";
+}
+
+export function requestedProjectPortablePage(request: Request): string {
+  return projectPortablePage(requestedPage(request));
+}
+
+export function requestedOrganizationPortablePage(request: Request): string {
+  return organizationPortablePage(requestedPage(request));
 }
 
 export function portablePageSearch(page: string): string {

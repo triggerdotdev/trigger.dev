@@ -2,6 +2,7 @@ import { useMatches } from "@remix-run/react";
 import { type RuntimeEnvironment } from "@trigger.dev/database";
 import {
   ENVIRONMENT_MATCH_ID,
+  organizationPortablePage,
   pageBelowEnvironment,
   pathForEnvironmentSwitch,
   portablePageSearch,
@@ -43,13 +44,15 @@ export function useEnvironmentSwitcher() {
 export function usePageSwitcher() {
   const location = useOptimisticLocation();
   const environmentPathname = useEnvironmentPathname();
-  const page = projectPortablePage(pageBelowEnvironment(location.pathname, environmentPathname));
-  const search = portablePageSearch(page);
+  const page = pageBelowEnvironment(location.pathname, environmentPathname);
+  const projectSearch = portablePageSearch(projectPortablePage(page));
+  const organizationSearch = portablePageSearch(organizationPortablePage(page));
 
   return {
     urlForProject: (organization: OrgForPath, project: ProjectForPath) =>
-      `${v3ProjectPath(organization, project)}${search}`,
-    urlForOrganization: (organization: OrgForPath) => `${organizationPath(organization)}${search}`,
+      `${v3ProjectPath(organization, project)}${projectSearch}`,
+    urlForOrganization: (organization: OrgForPath) =>
+      `${organizationPath(organization)}${organizationSearch}`,
   };
 }
 

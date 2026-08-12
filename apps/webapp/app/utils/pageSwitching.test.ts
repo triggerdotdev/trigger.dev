@@ -7,6 +7,9 @@ import {
   ENVIRONMENT_MATCH_ID,
   ENVIRONMENT_PORTABLE_PAGES,
   environmentPortablePage,
+  ORGANIZATION_PORTABLE_PAGES,
+  ORGANIZATION_SPECIFIC_PAGES,
+  organizationPortablePage,
   pageBelowEnvironment,
   pagePath,
   pathForEnvironmentSwitch,
@@ -14,7 +17,8 @@ import {
   PROJECT_PORTABLE_PAGES,
   PROJECT_SPECIFIC_PAGES,
   projectPortablePage,
-  requestedPortablePage,
+  requestedOrganizationPortablePage,
+  requestedProjectPortablePage,
 } from "./pageSwitching";
 
 const APP_DIR = join(__dirname, "..");
@@ -40,11 +44,16 @@ function rendersAPage(file: string): boolean {
   return /^export default/m.test(readFileSync(join(APP_DIR, file), "utf8"));
 }
 
+function sendsYouHome(file: string): boolean {
+  return /redirect\("\/"\)/.test(readFileSync(join(APP_DIR, file), "utf8"));
+}
+
 const belowEnvironment = Object.values(compiledRoutes)
   .filter((route) => compiledUrl(route.id).startsWith(ENVIRONMENT_URL))
   .map((route) => ({
     suffix: compiledUrl(route.id).slice(ENVIRONMENT_URL.length).replace(/^\//, ""),
     rendersAPage: rendersAPage(route.file),
+    sendsYouHome: sendsYouHome(route.file),
   }));
 
 const environmentRoutes = [...new Set(belowEnvironment.map((route) => route.suffix))];
@@ -122,8 +131,12 @@ describe("portable pages", () => {
     for (const page of PROJECT_PORTABLE_PAGES) {
       expect(projectPortablePage(page)).toBe(page);
     }
+    for (const page of ORGANIZATION_PORTABLE_PAGES) {
+      expect(organizationPortablePage(page)).toBe(page);
+    }
     expect(environmentPortablePage("")).toBe("");
     expect(projectPortablePage("")).toBe("");
+    expect(organizationPortablePage("")).toBe("");
   });
 
   it("include the pages named in the request", () => {
@@ -133,7 +146,7 @@ describe("portable pages", () => {
   });
 });
 
-describe("pages a project or organization switch cannot carry", () => {
+describe("pages a project switch cannot carry", () => {
   it("are the branch lists, which not every project has", () => {
     expect([...PROJECT_SPECIFIC_PAGES].sort()).toEqual(["branches", "dev-branches"]);
 
@@ -174,10 +187,53 @@ describe("pages a project or organization switch cannot carry", () => {
   it("fall back to the tasks page when the project changes", () => {
     expect(portablePageSearch(projectPortablePage("branches"))).toBe("");
     expect(portablePageSearch(projectPortablePage("dev-branches"))).toBe("");
-    expect(requestedPortablePage(new Request("http://localhost/orgs/acme?page=branches"))).toBe("");
-    expect(requestedPortablePage(new Request("http://localhost/orgs/acme?page=dev-branches"))).toBe(
-      ""
-    );
+    expect(
+      requestedProjectPortablePage(new Request("http://localhost/orgs/acme?page=branches"))
+    ).toBe("");
+    expect(
+      requestedProjectPortablePage(new Request("http://localhost/orgs/acme?page=dev-branches"))
+    ).toBe("");
+  });
+});
+
+describe("pages an organization switch cannot carry", () => {
+  it("are the ones whose loaders send you home when the organization is not allowed in", () => {
+    const sendHome = [
+      ...new Set(
+        belowEnvironment.filter((route) => route.sendsYouHome).map((route) => route.suffix)
+      ),
+    ].sort();
+
+    expect(sendHome).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
+  });
+
+  it("still travel with an environment or project switch, which stay in the same organization", () => {
+    for (const page of ORGANIZATION_SPECIFIC_PAGES) {
+      expect(ENVIRONMENT_PORTABLE_PAGES.has(page)).toBe(true);
+      expect(PROJECT_PORTABLE_PAGES.has(page)).toBe(true);
+      expect(ORGANIZATION_PORTABLE_PAGES.has(page)).toBe(false);
+      expect(environmentPortablePage(page)).toBe(page);
+      expect(projectPortablePage(page)).toBe(page);
+      expect(organizationPortablePage(page)).toBe("");
+    }
+  });
+
+  it("are otherwise the same list, so nothing else is quietly dropped", () => {
+    const dropped = [...PROJECT_PORTABLE_PAGES]
+      .filter((page) => !ORGANIZATION_PORTABLE_PAGES.has(page))
+      .sort();
+
+    expect(dropped).toEqual([...ORGANIZATION_SPECIFIC_PAGES].sort());
+  });
+
+  it("fall back to the tasks page when the organization changes", () => {
+    const read = (search: string) =>
+      requestedOrganizationPortablePage(new Request(`http://localhost/orgs/acme${search}`));
+
+    expect(portablePageSearch(organizationPortablePage("logs"))).toBe("");
+    expect(read("?page=logs")).toBe("");
+    expect(read("?page=query")).toBe("");
+    expect(read("?page=apikeys")).toBe("apikeys");
   });
 });
 
@@ -194,6 +250,7 @@ describe("pages named after a resource", () => {
 
     expect(leaks(environmentPortablePage, ENVIRONMENT_PORTABLE_PAGES)).toEqual([]);
     expect(leaks(projectPortablePage, PROJECT_PORTABLE_PAGES)).toEqual([]);
+    expect(leaks(organizationPortablePage, ORGANIZATION_PORTABLE_PAGES)).toEqual([]);
   });
 
   it("truncate to the list they were reached from", () => {
@@ -271,6 +328,10 @@ describe("a page suffix that is not a plain relative page", () => {
       expect(
         environmentPortablePage(attempt) === "" ||
           ENVIRONMENT_PORTABLE_PAGES.has(environmentPortablePage(attempt))
+      ).toBe(true);
+      expect(
+        organizationPortablePage(attempt) === "" ||
+          ORGANIZATION_PORTABLE_PAGES.has(organizationPortablePage(attempt))
       ).toBe(true);
     }
   });
@@ -392,7 +453,7 @@ describe("carrying a page across a project or organization switch", () => {
 
   it("reads the page back off the request, validating it again", () => {
     const read = (search: string) =>
-      requestedPortablePage(new Request(`http://localhost/orgs/acme${search}`));
+      requestedProjectPortablePage(new Request(`http://localhost/orgs/acme${search}`));
 
     expect(read("?page=apikeys")).toBe("apikeys");
     expect(read("?page=waitpoints/tokens")).toBe("waitpoints/tokens");

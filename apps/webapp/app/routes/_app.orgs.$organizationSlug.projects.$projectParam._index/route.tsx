@@ -2,7 +2,7 @@ import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { pagePath, requestedPortablePage } from "~/utils/pageSwitching";
+import { pagePath, requestedProjectPortablePage } from "~/utils/pageSwitching";
 import { ProjectParamSchema, v3EnvironmentPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -43,5 +43,5 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environmentPath = v3EnvironmentPath({ slug: organizationSlug }, project, environment);
 
-  return redirect(pagePath(environmentPath, requestedPortablePage(request)));
+  return redirect(pagePath(environmentPath, requestedProjectPortablePage(request)));
 };
