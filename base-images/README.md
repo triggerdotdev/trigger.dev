@@ -16,7 +16,9 @@ images derived from these behave like their upstream bases.
 Tags are mutable and rebuilt in place on demand; each rebuild picks up Debian
 security updates published up to its snapshot date. The
 runtime itself (the node or bun binaries from the upstream base) only moves
-when the base digests in `images.json` are bumped. Consumers pin digests: the CLI's generated
+when the base digests in `images.json` are bumped. When bumping a base
+digest, keep the snapshot at least as new as the upstream image's own archive
+state, or the upgrade step silently becomes a no-op. Consumers pin digests: the CLI's generated
 Containerfile references these images as `triggerdotdev/node:22-bookworm@sha256:...`,
 and digests only move when a CLI release updates its pins.
 
@@ -33,8 +35,9 @@ digests differ because they carry build metadata labels like the source
 revision):
 
 ```bash
+# needs a docker-container builder (docker buildx create --use)
 SNAPSHOT=$(docker buildx imagetools inspect triggerdotdev/node:22-bookworm \
-  --format '{{index .Image.config.Labels "dev.trigger.debian-snapshot"}}')
+  --format '{{index (index .Image "linux/amd64").Config.Labels "dev.trigger.debian-snapshot"}}')
 # GNU date; the epoch must match the one the workflow derived from the snapshot
 EPOCH=$(date -u -d "${SNAPSHOT:0:4}-${SNAPSHOT:4:2}-${SNAPSHOT:6:2} ${SNAPSHOT:9:2}:${SNAPSHOT:11:2}:${SNAPSHOT:13:2}Z" +%s)
 docker buildx build base-images --target runtime \
@@ -47,7 +50,9 @@ docker buildx build base-images --target runtime \
   --output type=oci,dest=rebuilt.tar,rewrite-timestamp=true
 # then compare .layers[].digest of the rebuilt per-platform manifests against
 # the published ones (imagetools inspect --raw returns the index; fetch each
-# platform manifest it references to see its layers)
+# platform manifest it references to see its layers). For the -build variant,
+# use --target build and additionally pass --build-arg BUILD_PACKAGES. Layer
+# digests are stable for a given BuildKit version and compression settings.
 ```
 
 Every published digest also carries a GitHub build provenance attestation:

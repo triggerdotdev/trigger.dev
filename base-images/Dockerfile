@@ -29,9 +29,9 @@ RUN . /etc/os-release && [ "$VERSION_CODENAME" = "${DEBIAN_SUITE}" ] || { echo "
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
     > /etc/apt/sources.list && \
-  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
+  printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
-  apt-get upgrade -y && \
+  apt-get upgrade -y --with-new-pkgs && \
   apt-get install -y --no-install-recommends ${PACKAGES} && \
   apt-get clean && \
   rm /etc/apt/sources.list /etc/apt/apt.conf.d/99-snapshot-retries && \
@@ -52,7 +52,7 @@ RUN [ -n "${DEBIAN_SNAPSHOT}" ] && [ -n "${BUILD_PACKAGES}" ] || { echo "DEBIAN_
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
     > /etc/apt/sources.list && \
-  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
+  printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
   apt-get install -y --no-install-recommends ${BUILD_PACKAGES} && \
   apt-get clean && \
