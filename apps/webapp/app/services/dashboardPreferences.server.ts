@@ -17,7 +17,11 @@ export type {
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
-import { type ThemePreference } from "~/utils/themePreference";
+import {
+  type SystemDarkTheme,
+  type SystemLightTheme,
+  type ThemePreference,
+} from "~/utils/themePreference";
 export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
@@ -233,6 +237,44 @@ export async function updateUnderlineLinksPreference({
       ),
       '{underlineLinks}',
       to_jsonb(${underlineLinks}::boolean)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+/**
+ * Which theme `system` resolves to at one end of the OS setting. `end` names the
+ * key, so both ends share this one narrow jsonb_set write.
+ */
+export async function updateSystemThemePreference({
+  user,
+  end,
+  theme,
+}: {
+  user: UserFromSession;
+  end: "systemLightTheme" | "systemDarkTheme";
+  theme: SystemLightTheme | SystemDarkTheme;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences[end] === theme) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference. The key is a checked
+  // union, never caller-supplied text.
+  const key = end === "systemLightTheme" ? "{systemLightTheme}" : "{systemDarkTheme}";
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      ${key}::text[],
+      to_jsonb(${theme}::text)
     )
     WHERE id = ${user.id}
   `;

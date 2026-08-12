@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ThemePreference } from "~/utils/themePreference";
+import { SystemDarkTheme, SystemLightTheme, ThemePreference } from "~/utils/themePreference";
 
 /* Schema and pure parsing for the User.dashboardPreferences JSON column.
    Kept out of the .server module so tests can exercise the schema without
@@ -56,6 +56,9 @@ const DashboardPreferences = z.object({
   iconContrast: z.boolean().optional().catch(undefined),
   /** Underlines inline links. */
   underlineLinks: z.boolean().optional().catch(undefined),
+  /** Which theme `system` resolves to at each end of the OS setting. */
+  systemLightTheme: SystemLightTheme.optional().catch(undefined),
+  systemDarkTheme: SystemDarkTheme.optional().catch(undefined),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),

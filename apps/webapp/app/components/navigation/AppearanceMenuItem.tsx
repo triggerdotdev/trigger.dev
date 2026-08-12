@@ -24,13 +24,14 @@ export function AppearanceMenuItem() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
   const fetcher = useFetcher<{ success?: boolean }>();
   const savedTheme = rootData?.themePreference;
+  const systemThemes = rootData?.systemThemes;
 
   // A failed write would otherwise leave the optimistic theme on screen, since
   // the loader data never changes and so `useSystemThemeSync` never re-runs.
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data || fetcher.data.success || !savedTheme) return;
-    applyThemePreference(savedTheme);
-  }, [fetcher.state, fetcher.data, savedTheme]);
+    applyThemePreference(savedTheme, systemThemes);
+  }, [fetcher.state, fetcher.data, savedTheme, systemThemes]);
 
   if (!rootData?.showThemeSwitcher) {
     return null;
@@ -48,7 +49,7 @@ export function AppearanceMenuItem() {
     // root loader: dismissing the popover unmounts this row, and an unmounted
     // fetcher's revalidation is dropped, which left the theme untouched even
     // though the preference had saved.
-    applyThemePreference(value);
+    applyThemePreference(value, rootData.systemThemes);
     fetcher.submit({ theme: value }, { method: "post", action: THEME_ACTION_PATH });
   };
 

@@ -63,3 +63,11 @@ export function themeOptionIcon(option: ThemeOption, appearance: ThemeAppearance
   }
   return option.icon;
 }
+
+/** The two candidates for each end of the `system` setting. */
+export const SYSTEM_LIGHT_OPTIONS: ThemeOption[] = ALL_THEME_OPTIONS.filter(
+  (option) => option.value === "light" || option.value === "white"
+);
+export const SYSTEM_DARK_OPTIONS: ThemeOption[] = ALL_THEME_OPTIONS.filter(
+  (option) => option.value === "dark" || option.value === "black"
+);

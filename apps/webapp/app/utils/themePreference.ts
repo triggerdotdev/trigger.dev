@@ -5,6 +5,23 @@ import { z } from "zod";
 export const ThemePreference = z.enum(["classic", "system", "dark", "light", "black", "white"]);
 export type ThemePreference = z.infer<typeof ThemePreference>;
 
+/* Which theme `system` resolves to at each end of the OS setting. Both ends have
+   a flat counterpart (White, Black), so the user picks per end. */
+export const SystemLightTheme = z.enum(["light", "white"]);
+export type SystemLightTheme = z.infer<typeof SystemLightTheme>;
+export const SystemDarkTheme = z.enum(["dark", "black"]);
+export type SystemDarkTheme = z.infer<typeof SystemDarkTheme>;
+
+export function normalizeSystemLightTheme(value: unknown): SystemLightTheme {
+  const result = SystemLightTheme.safeParse(value);
+  return result.success ? result.data : "light";
+}
+
+export function normalizeSystemDarkTheme(value: unknown): SystemDarkTheme {
+  const result = SystemDarkTheme.safeParse(value);
+  return result.success ? result.data : "dark";
+}
+
 /** Coerce any stored/legacy value into a valid preference. Missing or unknown
  * values fall back to `dark` - the new dark theme is the default (pinned, not
  * system-resolved, so nobody gets surprised by light mode). */

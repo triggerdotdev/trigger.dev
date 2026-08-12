@@ -20,11 +20,13 @@ import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
-import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
+import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
   normalizeIconContrast,
+  normalizeSystemDarkTheme,
+  normalizeSystemLightTheme,
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
@@ -105,6 +107,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const underlineLinks = showThemeSwitcher
     ? normalizeUnderlineLinks(user?.dashboardPreferences.underlineLinks)
     : false;
+  // Which theme `system` lands on at each end of the OS setting.
+  const systemThemes = {
+    light: normalizeSystemLightTheme(user?.dashboardPreferences.systemLightTheme),
+    dark: normalizeSystemDarkTheme(user?.dashboardPreferences.systemDarkTheme),
+  };
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
@@ -137,6 +144,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       iconContrast,
       underlineLinks,
       themePreference,
+      systemThemes,
       themeContrast,
       // Consumed by ResizablePanel: the browser check must match between SSR
       // and hydration, so it is derived from the request user-agent.
@@ -190,12 +198,13 @@ export default function App() {
     themeContrast,
     iconContrast,
     underlineLinks,
+    systemThemes,
   } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
-  useSystemThemeSync(themePreference);
-  // SSR falls back to dark for `system`; the inline script below corrects it
-  // before paint, and useSystemThemeSync keeps it live afterwards.
-  const resolvedTheme = themePreference === "system" ? "dark" : themePreference;
+  useSystemThemeSync(themePreference, systemThemes);
+  // SSR falls back to the dark end for `system`; the inline script below corrects
+  // it before paint, and useSystemThemeSync keeps it live afterwards.
+  const resolvedTheme = resolveThemePreference(themePreference, true, systemThemes);
 
   return (
     <>
@@ -206,6 +215,10 @@ export default function App() {
         suppressHydrationWarning
         data-theme={resolvedTheme}
         data-theme-preference={themePreference}
+        // Read by the pre-paint script below, which resolves `system` before the
+        // loader data is available to JS
+        data-system-light={systemThemes.light}
+        data-system-dark={systemThemes.dark}
         // Accent set for icons and badges; the `system:` variant keys off this
         data-icon-contrast={iconContrast ? "true" : "false"}
         // Underlines links carrying the inline-text-link marker class
@@ -216,7 +229,7 @@ export default function App() {
         <head>
           <script
             dangerouslySetInnerHTML={{
-              __html: `try{if(document.documentElement.getAttribute("data-theme-preference")==="system"){document.documentElement.setAttribute("data-theme",matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}}catch(e){}`,
+              __html: `try{var h=document.documentElement;if(h.getAttribute("data-theme-preference")==="system"){var d=matchMedia("(prefers-color-scheme: dark)").matches;h.setAttribute("data-theme",d?(h.getAttribute("data-system-dark")||"dark"):(h.getAttribute("data-system-light")||"light"))}}catch(e){}`,
             }}
           />
           <StaleAssetRecovery isProduction={isProduction} />

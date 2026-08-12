@@ -37,6 +37,9 @@ import {
 import { buildSideMenuSections } from "~/components/navigation/sideMenuSections";
 import {
   ALL_THEME_OPTIONS,
+  SYSTEM_DARK_OPTIONS,
+  SYSTEM_LIGHT_OPTIONS,
+  type ThemeOption,
   THEME_OPTIONS_BY_VALUE,
   themeOptionIcon,
 } from "~/components/themeOptions";
@@ -55,14 +58,19 @@ import { updateUser } from "~/models/user.server";
 import {
   updateContrastPreference,
   updateIconContrastPreference,
+  updateSystemThemePreference,
   updateThemePreference,
   updateUnderlineLinksPreference,
 } from "~/services/dashboardPreferences.server";
 import {
   normalizeIconContrast,
+  normalizeSystemDarkTheme,
+  normalizeSystemLightTheme,
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
+  SystemDarkTheme,
+  SystemLightTheme,
   type ThemePreference,
 } from "~/utils/themePreference";
 import { cachedFlag } from "~/v3/featureFlags.server";
@@ -87,6 +95,56 @@ function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   // shrink-0: without it the icon is the flex item that gives way to a long
   // label, and "System"/"Classic" squash it to a sliver.
   return <Icon className="size-4 shrink-0 text-text-bright" />;
+}
+
+/**
+ * Picker for one end of the `system` setting: Light or White, Dark or Black. Same
+ * shape as the Interface theme select, with its own two options.
+ */
+function SystemThemeSelect({
+  label,
+  value,
+  options,
+  appearance,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ThemeOption[];
+  appearance: ThemeAppearance;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Select<string, string>
+      aria-label={`${label} system theme`}
+      value={value}
+      setValue={onChange}
+      variant="secondary/small"
+      dropdownIcon
+      items={options.map((option) => option.value)}
+      text={(item) => (
+        <span className="flex items-center gap-1.5">
+          {themeIcon(item as ThemePreference, appearance)}
+          {THEME_OPTIONS_BY_VALUE[item as ThemePreference].label}
+        </span>
+      )}
+      className="w-fit"
+      popoverClassName="min-w-27"
+    >
+      {(items) =>
+        items.map((item) => (
+          <SelectItem
+            key={item}
+            value={item}
+            icon={themeIcon(item as ThemePreference, appearance)}
+            className="text-text-bright"
+          >
+            {THEME_OPTIONS_BY_VALUE[item as ThemePreference].label}
+          </SelectItem>
+        ))
+      }
+    </Select>
+  );
 }
 
 function createSchema(
@@ -211,6 +269,31 @@ export const action: ActionFunction = async ({ request }) => {
       underlineLinks: formData.get("underlineLinks") === "true",
     });
     return json({ success: true });
+  }
+
+  if (formData.get("action") === "update-system-theme") {
+    const user = await requireUser(request);
+    const showThemeSwitcher =
+      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    // Parsed strictly: an unknown end or theme should fail rather than silently
+    // resetting which theme `system` lands on.
+    const end = formData.get("end");
+    if (end === "light") {
+      const theme = SystemLightTheme.safeParse(formData.get("theme"));
+      if (!theme.success) return json({ error: "Invalid theme" }, { status: 400 });
+      await updateSystemThemePreference({ user, end: "systemLightTheme", theme: theme.data });
+      return json({ success: true });
+    }
+    if (end === "dark") {
+      const theme = SystemDarkTheme.safeParse(formData.get("theme"));
+      if (!theme.success) return json({ error: "Invalid theme" }, { status: 400 });
+      await updateSystemThemePreference({ user, end: "systemDarkTheme", theme: theme.data });
+      return json({ success: true });
+    }
+    return json({ error: "Invalid end" }, { status: 400 });
   }
 
   const formSchema = createSchema({
@@ -404,6 +487,34 @@ export default function Page() {
   // follow the optimistic pick rather than waiting for the write to land.
   const appearance = useThemeAppearance(theme);
 
+  // Which theme `system` lands on at each end. One fetcher per end so picking
+  // both in quick succession can't cancel the first.
+  const systemLightFetcher = useFetcher();
+  const systemDarkFetcher = useFetcher();
+  const pendingSystemLight = systemLightFetcher.formData?.get("theme");
+  const pendingSystemDark = systemDarkFetcher.formData?.get("theme");
+  const systemLightTheme = normalizeSystemLightTheme(
+    typeof pendingSystemLight === "string"
+      ? pendingSystemLight
+      : user.dashboardPreferences.systemLightTheme
+  );
+  const systemDarkTheme = normalizeSystemDarkTheme(
+    typeof pendingSystemDark === "string"
+      ? pendingSystemDark
+      : user.dashboardPreferences.systemDarkTheme
+  );
+  const systemThemes = { light: systemLightTheme, dark: systemDarkTheme };
+
+  const saveSystemTheme = (end: "light" | "dark", value: string) => {
+    const fetcher = end === "light" ? systemLightFetcher : systemDarkFetcher;
+    // Re-resolve straight away: on `system` this changes which theme is showing
+    applyThemePreference(theme, {
+      ...systemThemes,
+      [end]: value,
+    } as typeof systemThemes);
+    fetcher.submit({ action: "update-system-theme", end, theme: value }, { method: "post" });
+  };
+
   // Dragging previews the contrast via the CSS var before it persists; once the
   // save settles, resnap the page and the thumb to the stored value so a failed
   // or rejected save doesn't leave a phantom contrast level on screen.
@@ -513,23 +624,8 @@ export default function Page() {
           {showThemeSwitcher && (
             <>
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
-                <Header2>Interface and theme</Header2>
+                <Header2>Theme</Header2>
               </div>
-              {sidebarContext && (
-                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                      <Label>App sidebar</Label>
-                      <SettingsRowDescription>
-                        Customize sidebar item visibility, order and rename favorites
-                      </SettingsRowDescription>
-                    </div>
-                    <div className="flex flex-none items-center">
-                      <CustomizeSidebarButton context={sidebarContext} />
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
@@ -545,7 +641,7 @@ export default function Page() {
                       setValue={(value) => {
                         // Applied here so the theme lands immediately rather than
                         // on the root loader's next pass (see applyThemePreference).
-                        applyThemePreference(normalizeThemePreference(value));
+                        applyThemePreference(normalizeThemePreference(value), systemThemes);
                         themeFetcher.submit(
                           { action: "update-theme", theme: value },
                           { method: "post" }
@@ -583,6 +679,48 @@ export default function Page() {
                   </div>
                 </div>
               </div>
+              {theme === "system" && (
+                <>
+                  <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                    <div className="flex w-full items-center justify-between gap-4">
+                      <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                        <Label>Light</Label>
+                        <SettingsRowDescription>
+                          Choose a theme for the light system setting
+                        </SettingsRowDescription>
+                      </div>
+                      <div className="flex flex-none items-center">
+                        <SystemThemeSelect
+                          label="Light"
+                          value={systemLightTheme}
+                          options={SYSTEM_LIGHT_OPTIONS}
+                          appearance={appearance}
+                          onChange={(value) => saveSystemTheme("light", value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                    <div className="flex w-full items-center justify-between gap-4">
+                      <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                        <Label>Dark</Label>
+                        <SettingsRowDescription>
+                          Choose the theme for the dark system setting.
+                        </SettingsRowDescription>
+                      </div>
+                      <div className="flex flex-none items-center">
+                        <SystemThemeSelect
+                          label="Dark"
+                          value={systemDarkTheme}
+                          options={SYSTEM_DARK_OPTIONS}
+                          appearance={appearance}
+                          onChange={(value) => saveSystemTheme("dark", value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
               {theme !== "classic" && (
                 <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                   <div className="flex w-full items-center justify-between gap-4">
@@ -615,6 +753,24 @@ export default function Page() {
                         onValueChange={(values) => previewContrast(values[0] ?? 0)}
                         onValueCommit={(values) => saveContrast(values[0] ?? 0)}
                       />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
+                <Header2>Interface</Header2>
+              </div>
+              {sidebarContext && (
+                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                      <Label>App sidebar</Label>
+                      <SettingsRowDescription>
+                        Customize sidebar item visibility, order and rename favorites
+                      </SettingsRowDescription>
+                    </div>
+                    <div className="flex flex-none items-center">
+                      <CustomizeSidebarButton context={sidebarContext} />
                     </div>
                   </div>
                 </div>
