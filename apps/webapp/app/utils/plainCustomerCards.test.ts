@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   answerAllCardKeys,
-  normalizeEmail,
+  emailLookupCandidates,
   PlainCustomerCardRequestSchema,
 } from "./plainCustomerCards";
 
@@ -59,22 +59,30 @@ describe("PlainCustomerCardRequestSchema", () => {
   });
 });
 
-// Users are stored with a lowercased, trimmed email, so a lookup on the raw value Plain sends
-// would miss a real account whose address differs only in casing or padding.
-describe("normalizeEmail", () => {
-  it("lowercases and trims", () => {
-    expect(normalizeEmail("  DEV@Example.COM ")).toBe("dev@example.com");
+// `User.email` casing depends on the signup path: the SSO upsert lowercases, magic-link and OAuth
+// store what the provider gave. Either candidate alone misses one of those populations.
+describe("emailLookupCandidates", () => {
+  it("tries the address as sent before its lowercased form", () => {
+    // Finds a magic-link user stored with capitals, then an SSO user stored lowercased.
+    expect(emailLookupCandidates("Dev@Example.com")).toEqual([
+      "Dev@Example.com",
+      "dev@example.com",
+    ]);
   });
 
-  it("leaves an already-normalized address alone", () => {
-    expect(normalizeEmail("dev@example.com")).toBe("dev@example.com");
+  it("yields a single candidate when the address is already lowercase", () => {
+    expect(emailLookupCandidates("dev@example.com")).toEqual(["dev@example.com"]);
   });
 
-  it("is null for absent or empty addresses, so the lookup can be skipped", () => {
-    expect(normalizeEmail(null)).toBeNull();
-    expect(normalizeEmail(undefined)).toBeNull();
-    expect(normalizeEmail("")).toBeNull();
-    expect(normalizeEmail("   ")).toBeNull();
+  it("trims before comparing, so padding doesn't produce a duplicate candidate", () => {
+    expect(emailLookupCandidates("  dev@example.com  ")).toEqual(["dev@example.com"]);
+  });
+
+  it("is empty for absent or blank addresses, so the lookup can be skipped", () => {
+    expect(emailLookupCandidates(null)).toEqual([]);
+    expect(emailLookupCandidates(undefined)).toEqual([]);
+    expect(emailLookupCandidates("")).toEqual([]);
+    expect(emailLookupCandidates("   ")).toEqual([]);
   });
 });
 

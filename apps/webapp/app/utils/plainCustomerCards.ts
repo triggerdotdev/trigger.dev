@@ -31,17 +31,26 @@ export const PlainCustomerCardRequestSchema = z.object({
 export type PlainCustomerCardRequest = z.infer<typeof PlainCustomerCardRequestSchema>;
 
 /**
- * An email in the form `User.email` is stored in.
+ * The values to try, in order, when looking a user up by email.
  *
- * Users are written with `email.toLowerCase().trim()` (see `createUser` / SSO upsert in
- * `models/user.server.ts`), and `User.email` is unique, so an exact lookup on whatever Plain sends
- * would miss a real account whenever the address arrives with different casing or padding — which
- * it can, because for customers created outside our own writes it comes from a sender address.
+ * `User.email` is not stored consistently cased: the SSO upsert writes
+ * `email.toLowerCase().trim()`, while `findOrCreateMagicLinkUser` and the OAuth paths store
+ * whatever the provider gave us. So neither an exact match nor a lowercased one finds everybody —
+ * exact misses an SSO user whose address arrives capitalised, lowercased misses a magic-link user
+ * stored with capitals.
  *
- * Returns null for an address with nothing left after trimming, so callers can skip the lookup.
+ * Hence two candidates: the address as sent (trimmed), then its lowercased form. Both are exact
+ * matches, so each uses the unique index on `email` — a case-insensitive query would not, and this
+ * table is far too big to scan. The common case hits on the first.
+ *
+ * Empty when there's no usable address, so callers can skip the lookup entirely.
  */
-export function normalizeEmail(email: string | null | undefined): string | null {
-  return email?.toLowerCase().trim() || null;
+export function emailLookupCandidates(email: string | null | undefined): string[] {
+  const asSent = email?.trim();
+  if (!asSent) return [];
+
+  const lowercased = asSent.toLowerCase();
+  return asSent === lowercased ? [asSent] : [asSent, lowercased];
 }
 
 type NoDataCard = { key: string; components: null; timeToLiveSeconds: number };

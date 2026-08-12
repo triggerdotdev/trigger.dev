@@ -7,7 +7,7 @@ import { logger } from "~/services/logger.server";
 import { generateImpersonationToken } from "~/services/impersonation.server";
 import {
   answerAllCardKeys,
-  normalizeEmail,
+  emailLookupCandidates,
   PlainCustomerCardRequestSchema,
 } from "~/utils/plainCustomerCards";
 
@@ -124,10 +124,17 @@ export async function action({ request }: ActionFunctionArgs) {
       ? await prisma.user.findFirst({ where: { id: customer.externalId }, include: userInclude })
       : null;
 
-    const email = normalizeEmail(customer.email);
-    const user =
-      byExternalId ??
-      (email ? await prisma.user.findFirst({ where: { email }, include: userInclude }) : null);
+    // Emails aren't stored consistently cased, so try the address as sent and then its lowercased
+    // form — see `emailLookupCandidates`. Both are exact matches on the unique index.
+    const findByEmail = async () => {
+      for (const email of emailLookupCandidates(customer.email)) {
+        const match = await prisma.user.findFirst({ where: { email }, include: userInclude });
+        if (match) return match;
+      }
+      return null;
+    };
+
+    const user = byExternalId ?? (await findByEmail());
 
     // An external id we set ourselves that no longer resolves is an anomaly worth seeing, even
     // though the email match keeps the card useful — otherwise the stale link stays invisible.
