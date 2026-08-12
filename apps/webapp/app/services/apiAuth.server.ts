@@ -13,7 +13,12 @@ import {
   findEnvironmentByPublicApiKey,
   toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
-import type { RbacAbility, RbacResource, UserActorClaims } from "@trigger.dev/rbac";
+import type {
+  BearerAuthOptions,
+  RbacAbility,
+  RbacResource,
+  UserActorClaims,
+} from "@trigger.dev/rbac";
 import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
@@ -33,6 +38,7 @@ import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import {
   authenticateAuthorizeBearerWithTelemetry,
+  authenticateBearerWithTelemetry,
   observeLegacyBearerAuthentication,
 } from "~/services/authTelemetry.server";
 
@@ -295,23 +301,11 @@ async function authenticateApiKeyWithFailure(
   }
 }
 
-/**
- * Authenticate an API-key request for a legacy (non-apiBuilder) route that
- * needs to accept granular additional keys, then enforce that the key's ability
- * authorizes `action` on `resource`. Root keys (and grace-window root keys)
- * carry the unrestricted `admin` ability, preserving pre-granular behavior.
- *
- * Only apiKey credentials are accepted (no PAT / org token / public key). Use
- * this for routes previously guarded by a bare `authenticateApiRequest` call.
- */
-export async function authenticateApiKeyWithScope(
+/** Authenticate a private API-key request without requiring a resource scope. */
+export async function authenticateApiKeyRequest(
   request: Request,
-  {
-    action,
-    resource,
-    allowJWT = false,
-  }: { action: string; resource: RbacResource; allowJWT?: boolean },
-  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
+  options: BearerAuthOptions = {},
+  authenticateBearer: typeof authenticateBearerWithTelemetry = authenticateBearerWithTelemetry
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
@@ -321,7 +315,7 @@ export async function authenticateApiKeyWithScope(
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
   }
 
-  const result = await authorizeBearer(request, { action, resource }, { allowJWT });
+  const result = await authenticateBearer(request, options);
   if (!result.ok) {
     return result;
   }
@@ -335,6 +329,100 @@ export async function authenticateApiKeyWithScope(
       environment: result.environment,
       ability: result.ability,
     },
+  };
+}
+
+/**
+ * Authenticate an API-key request for a legacy (non-apiBuilder) route that
+ * needs to accept granular additional keys, then enforce that the key's ability
+ * authorizes `action` on `resource`. Root keys (and grace-window root keys)
+ * carry the unrestricted `admin` ability, preserving pre-granular behavior.
+ *
+ * Only apiKey credentials are accepted (no PAT / org token / public key). Use
+ * this for routes previously guarded by a bare `authenticateApiRequest` call.
+ */
+export type ApiKeyScopeAuthorization = {
+  action: string;
+  resource: RbacResource;
+  allowJWT?: boolean;
+  allowPreviewParent?: boolean;
+};
+
+export async function authenticateApiKeyWithScope(
+  request: Request,
+  { action, resource, allowJWT = false, allowPreviewParent = false }: ApiKeyScopeAuthorization,
+  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
+): Promise<
+  | { ok: true; authentication: ApiAuthenticationResultSuccess }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
+  if (!apiKey) {
+    return { ok: false, status: 401, error: "Invalid or Missing API key" };
+  }
+
+  const result = await authorizeBearer(
+    request,
+    { action, resource },
+    { allowJWT, allowPreviewParent }
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    authentication: {
+      ok: true,
+      apiKey,
+      type: "PRIVATE",
+      environment: result.environment,
+      ability: result.ability,
+    },
+  };
+}
+
+export type ScopedApiKeyAuthenticationDependencies = {
+  authenticateRequest: typeof authenticateRequest;
+  authenticateApiKeyWithScope: typeof authenticateApiKeyWithScope;
+};
+
+export async function authenticateRequestWithScopedApiKey(
+  request: Request,
+  {
+    personalAccessToken,
+    organizationAccessToken,
+    apiKey,
+  }: {
+    personalAccessToken: true;
+    organizationAccessToken: true;
+    apiKey: ApiKeyScopeAuthorization;
+  },
+  dependencies: ScopedApiKeyAuthenticationDependencies = {
+    authenticateRequest,
+    authenticateApiKeyWithScope,
+  }
+): Promise<
+  | { ok: true; authentication: AuthenticationResult }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const userOrOrganizationAuthentication = await dependencies.authenticateRequest(request, {
+    personalAccessToken,
+    organizationAccessToken,
+    apiKey: false,
+  });
+  if (userOrOrganizationAuthentication) {
+    return { ok: true, authentication: userOrOrganizationAuthentication };
+  }
+
+  const apiKeyAuthentication = await dependencies.authenticateApiKeyWithScope(request, apiKey);
+  if (!apiKeyAuthentication.ok) {
+    return apiKeyAuthentication;
+  }
+
+  return {
+    ok: true,
+    authentication: { type: "apiKey", result: apiKeyAuthentication.authentication },
   };
 }
 

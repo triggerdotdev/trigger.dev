@@ -198,6 +198,7 @@ export type RbacScopeResourceType =
   | "deployments"
   | "envvars"
   | "apiKeys"
+  | "branches"
   | "sessions"
   | "waitpoints"
   | "tags"
@@ -381,6 +382,13 @@ export type BearerAuthResult =
       jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
     };
 
+export type BearerAuthOptions = {
+  allowJWT?: boolean;
+  // Branch creation authenticates against the branchable Preview parent before
+  // the requested child environment exists.
+  allowPreviewParent?: boolean;
+};
+
 export type SessionAuthResult =
   | { ok: false; reason: "unauthenticated" | "unauthorized" }
   | { ok: true; user: RbacUser; subject: RbacSubject; ability: RbacAbility };
@@ -433,7 +441,7 @@ export interface RoleBaseAccessController {
 
   // API routes (Bearer token): one DB query → identity + pre-built ability
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
-  authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;
+  authenticateBearer(request: Request, options?: BearerAuthOptions): Promise<BearerAuthResult>;
 
   // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability.
   // The caller resolves `userId` from the session cookie and passes it in.
@@ -481,7 +489,7 @@ export interface RoleBaseAccessController {
   authenticateAuthorizeBearer(
     request: Request,
     check: { action: string; resource: RbacResource | RbacResource[] },
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult>;
 
   authenticateAuthorizeSession(

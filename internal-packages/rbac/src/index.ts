@@ -1,6 +1,7 @@
 import type {
   ApiKeyPolicyDescription,
   ApiKeyPreset,
+  BearerAuthOptions,
   BearerAuthResult,
   Permission,
   PrepareApiKeyPolicyResult,
@@ -22,7 +23,12 @@ import { RoleBaseAccessFallback } from "./fallback.js";
 // exchange route imports it to project requested scopes against it.
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
-export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
+export type {
+  BearerAuthOptions,
+  RoleBaseAccessController,
+  RbacAbility,
+  RbacResource,
+} from "@trigger.dev/plugins";
 export type {
   BearerCredentialKind,
   BearerLookupPath,
@@ -42,10 +48,7 @@ export type {
 export type HostBearerAuthResult = BearerAuthResult & { resolution: BearerResolution };
 
 export type HostRbacController = Omit<Required<RoleBaseAccessController>, "authenticateBearer"> & {
-  authenticateBearer(
-    request: Request,
-    options?: { allowJWT?: boolean }
-  ): Promise<HostBearerAuthResult>;
+  authenticateBearer(request: Request, options?: BearerAuthOptions): Promise<HostBearerAuthResult>;
 };
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";

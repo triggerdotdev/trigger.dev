@@ -5,6 +5,7 @@ import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import {
   scopesGrantFullAccess,
   type AuthenticatedEnvironment,
+  type BearerAuthOptions,
   type BearerAuthResult,
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
@@ -80,7 +81,7 @@ export class BearerCredentialResolver {
 
   async authenticate(
     request: Request,
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerCredentialResult> {
     // Deprecated public API keys (`pk_*` minted long before public JWTs
     // landed) are intentionally NOT handled here. That token format hasn't
@@ -221,15 +222,16 @@ export class BearerCredentialResolver {
         };
       }
 
-      return this.resolveAdditionalKey(rawToken, branchName);
+      return this.resolveAdditionalKey(rawToken, branchName, options?.allowPreviewParent);
     }
 
-    return this.resolveRootKey(rawToken, branchName);
+    return this.resolveRootKey(rawToken, branchName, options?.allowPreviewParent);
   }
 
   private async resolveRootKey(
     rawToken: string,
-    branchName: string | null
+    branchName: string | null,
+    allowPreviewParent = false
   ): Promise<BearerCredentialResult> {
     const include = environmentInclude(branchName);
     const now = new Date();
@@ -270,7 +272,7 @@ export class BearerCredentialResolver {
       };
     }
 
-    const [branchError, resolvedEnvironment] = resolveBranch(env, branchName);
+    const [branchError, resolvedEnvironment] = resolveBranch(env, branchName, allowPreviewParent);
     if (branchError !== null) {
       return {
         ok: false,
@@ -296,7 +298,8 @@ export class BearerCredentialResolver {
 
   private async resolveAdditionalKey(
     rawToken: string,
-    branchName: string | null
+    branchName: string | null,
+    allowPreviewParent = false
   ): Promise<BearerCredentialResult> {
     const resolution: BearerResolution = {
       credentialKind: "additional_api_key",
@@ -321,7 +324,11 @@ export class BearerCredentialResolver {
       return { ok: false, status: 401, error: "Invalid API key", resolution };
     }
 
-    const [branchError, resolvedEnvironment] = resolveBranch(match.runtimeEnvironment, branchName);
+    const [branchError, resolvedEnvironment] = resolveBranch(
+      match.runtimeEnvironment,
+      branchName,
+      allowPreviewParent
+    );
     if (branchError !== null) {
       return {
         ok: false,
@@ -387,9 +394,10 @@ type BranchResolution =
 
 function resolveBranch(
   environment: EnvironmentWithBranches,
-  branchName: string | null
+  branchName: string | null,
+  allowPreviewParent: boolean
 ): BranchResolution {
-  if (environment.type === "PREVIEW" && !branchName) {
+  if (environment.type === "PREVIEW" && !branchName && !allowPreviewParent) {
     return ["x-trigger-branch header required for preview env", null];
   }
 
