@@ -156,6 +156,10 @@ export class DequeueSystem {
 
         const orgId = message.message.orgId;
         const runId = message.messageId;
+        const queueWaitMs =
+          typeof message.message.eligibleAtMs === "number"
+            ? Math.max(0, Date.now() - message.message.eligibleAtMs)
+            : undefined;
 
         this.$.logger.info("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
           runId,
@@ -174,6 +178,9 @@ export class DequeueSystem {
         span.setAttribute("consumer_id", consumerId);
         span.setAttribute("worker_queue", workerQueue);
         span.setAttribute("blocking_pop", blockingPop ?? true);
+        if (queueWaitMs !== undefined) {
+          span.setAttribute("queue_wait_ms", queueWaitMs);
+        }
 
         //lock the run so nothing else can modify it
         try {

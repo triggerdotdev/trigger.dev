@@ -174,10 +174,20 @@ export const QueueManifest = z.object({
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
 
+/**
+ * A delay window after a nominal cron tick.
+ *
+ * The server's schedule timing domain validates and normalizes the public syntax.
+ */
+export const ScheduleWindow = z.string().min(1);
+
+export type ScheduleWindow = z.infer<typeof ScheduleWindow>;
+
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
   environments: z.array(EnvironmentType).optional(),
+  window: ScheduleWindow.optional(),
 });
 
 const AgentConfig = z.object({
