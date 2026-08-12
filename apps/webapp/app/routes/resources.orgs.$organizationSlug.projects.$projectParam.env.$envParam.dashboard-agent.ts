@@ -50,6 +50,7 @@ import {
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
@@ -525,23 +526,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     if (!result.ok) {
-      const status =
-        result.code === "limit_reached" ||
-        result.code === "duplicate" ||
-        result.code === "request_conflict"
-          ? 409
-          : result.code === "invalid_target" || result.code === "chat_not_found"
-            ? 404
-            : result.code === "not_configured"
-              ? 501
-              : 500;
       return json(
         {
           error: result.error,
           code: result.code,
           ...(result.existingId ? { existingId: result.existingId } : {}),
         },
-        { status }
+        { status: watchErrorStatus(result.code) }
       );
     }
 
