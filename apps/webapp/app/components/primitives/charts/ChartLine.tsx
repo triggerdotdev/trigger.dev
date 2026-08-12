@@ -168,7 +168,7 @@ function ReferenceLineLabel({
         y={viewBox.y}
         dominantBaseline="middle"
         textAnchor="start"
-        fill="#878C99"
+        className="fill-text-dimmed"
         fontSize={REFERENCE_LABEL_FONT_SIZE}
       >
         {value}
@@ -180,7 +180,7 @@ function ReferenceLineLabel({
       x={viewBox.x + viewBox.width - 4}
       y={viewBox.y + 12}
       textAnchor="end"
-      fill="#878C99"
+      className="fill-text-dimmed"
       fontSize={REFERENCE_LABEL_FONT_SIZE}
     >
       {value}
@@ -458,7 +458,7 @@ export function ChartLineRenderer({
         <ReferenceLine
           key={`ref-${line.y}-${line.label ?? ""}`}
           y={line.y}
-          stroke={line.color ?? "#4D525B"}
+          stroke={line.color ?? "var(--color-border-brighter)"}
           strokeDasharray="4 4"
           strokeWidth={1}
           // extendDomain (not "hidden") means recharts does NOT wrap this layer in the plot
