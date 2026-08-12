@@ -435,7 +435,7 @@
 
 /* dark: follows the app theme (data-theme on <html>), not the OS preference.
    Classic and Dark are both dark-mode themes, so the variant matches both. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="dark"] *, [data-theme="classic"] *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="black"], [data-theme="dark"] *, [data-theme="classic"] *, [data-theme="black"] *));
 
 /* system: the high-contrast icon and badge treatment - solid status badges,
    monochrome nav icons. Named for the System themes it shipped with, but it now
@@ -445,7 +445,7 @@
 
 /* light: the Light theme only - for values that are fine on every dark theme
    but illegible on white. Classic is never matched. */
-@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="white"], [data-theme="light"] *, [data-theme="white"] *));
 
 @utility focus-custom {
   &:focus-visible {
@@ -587,7 +587,7 @@
   :root {
     color-scheme: dark;
   }
-  [data-theme="light"] {
+  :is([data-theme="light"], [data-theme="white"]) {
     color-scheme: light;
   }
 
@@ -601,7 +601,7 @@
   }
 
   /* Classic and Dark share these HSL chart vars - they were the app-wide dark values. */
-  :is([data-theme="dark"], [data-theme="classic"]) {
+  :is([data-theme="dark"], [data-theme="classic"], [data-theme="black"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -611,7 +611,7 @@
 
   /* System preference unified chart set (dark+light): Classic's hues, with
      chart-2/3 darkened to clear 3:1 on white. Classic keeps the set above. */
-  :is([data-theme="dark"], [data-theme="light"]) {
+  :is([data-theme="dark"], [data-theme="light"], [data-theme="black"], [data-theme="white"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 40%;
     --chart-3: 30 80% 47%;
@@ -755,7 +755,9 @@
   Light theme. Overrides the themable variables only; raw palettes stay put.
   Code/editor values come from the trigger.light VS Code theme.
 */
-[data-theme="light"] {
+/* The Light theme's token set, shared with White (which only pins its
+   backgrounds, further down) */
+:is([data-theme="light"], [data-theme="white"]) {
   --color-secondary: #ffffff;
   --color-input-bg: #ffffff;
 
@@ -891,7 +893,7 @@
   uses. Every Classic accent that already clears white (dev, tasks, runs,
   batches, logs, alerts...) is left alone.
 */
-[data-theme="light"]:not([data-icon-contrast="true"]) {
+:is([data-theme="light"], [data-theme="white"]):not([data-icon-contrast="true"]) {
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
@@ -927,7 +929,7 @@
 }
 
 /* Streamdown's muted surface has no semantic token (charcoal-775); theme it here */
-[data-theme="light"] .streamdown-container {
+:is([data-theme="light"], [data-theme="white"]) .streamdown-container {
   --muted: #eceef1;
 }
 
@@ -938,28 +940,28 @@
 }
 
 /* Neutral timeline points: invert to a light dot with a gray ring */
-[data-theme="light"] .timeline-point.bg-surface-control-active {
+:is([data-theme="light"], [data-theme="white"]) .timeline-point.bg-surface-control-active {
   border-color: var(--color-surface-control-active);
   background-color: var(--color-background-bright);
 }
 
 /* Run timeline bars: no fade gradient on light */
-[data-theme="light"] .timeline-span {
+:is([data-theme="light"], [data-theme="white"]) .timeline-span {
   background-image: none;
 }
 /* On saturated bars the duration label keeps the dark-theme treatment,
    but only when the bar is wide enough to contain the label — on narrow
    bars the sticky label overflows onto the page background, where the
    default dark-on-light text is correct. */
-[data-theme="light"] .timeline-span.bg-success,
-[data-theme="light"] .timeline-span.bg-error,
-[data-theme="light"] .timeline-span.bg-blue-500 {
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 {
   container-type: inline-size;
 }
 @container (min-width: 3.5rem) {
-  [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-blue-500 .text-shadow-custom {
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 .text-shadow-custom {
     color: #ffffff;
   }
 }
@@ -967,7 +969,7 @@
 /* The table row-hover menu wraps the always-visible "Suggest a region" button
    in a ring container; on light that ring doubles up with the button's own
    border, so drop it here. */
-[data-theme="light"] .suggest-region-cell > div > div {
+:is([data-theme="light"], [data-theme="white"]) .suggest-region-cell > div > div {
   box-shadow: none;
 }
 
@@ -980,7 +982,7 @@
   These blocks must stay below the [data-theme="light"] theme block so they
   win the cascade.
 */
-[data-theme="dark"] {
+:is([data-theme="dark"], [data-theme="black"]) {
   /* Text brightens toward white */
   --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), #fff calc(var(--theme-contrast, 0) * 100%));
   --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), #fff calc(var(--theme-contrast, 0) * 60%));
@@ -1005,7 +1007,7 @@
   --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 30%));
 }
 
-[data-theme="light"] {
+:is([data-theme="light"], [data-theme="white"]) {
   /* Text deepens toward black */
   --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
   --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 85%));
@@ -1027,6 +1029,38 @@
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
   --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
   --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
+}
+
+/*
+  Black and White. Each takes its whole token set from Dark or Light above -
+  text, borders, controls, accents, charts, the contrast overlay - and only pins
+  the surfaces flat, so sections are separated by grid lines rather than by
+  layered fills.
+
+  These must stay below the contrast blocks so the pinned surfaces win: the
+  contrast control still moves text, grid lines, borders and controls, but the
+  backgrounds hold at black or white at every contrast level. Deliberately
+  neutral greys, not charcoal, which carries a blue cast.
+*/
+[data-theme="black"] {
+  /* Page, side menu, cards and popovers all sit flat on black */
+  --color-background-deep: #000000;
+  --color-background-dimmed: #000000;
+  --color-background-bright: #000000;
+  /* Interaction feedback still needs somewhere to go */
+  --color-background-hover: #171717;
+  --color-background-raised: #1f1f1f;
+  /* Inputs read as part of the page; their border does the work */
+  --color-input-bg: #0a0a0a;
+}
+
+[data-theme="white"] {
+  --color-background-deep: #ffffff;
+  --color-background-dimmed: #ffffff;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f5f5f5;
+  --color-background-raised: #ededed;
+  --color-input-bg: #ffffff;
 }
 
 form:has(.unlock-hint-staging-env:hover) [data-unlock-target="staging-env"],

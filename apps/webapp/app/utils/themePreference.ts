@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Shared between server (dashboard preferences) and client (theme UI, system
 // theme sync) - must stay free of server-only imports.
-export const ThemePreference = z.enum(["classic", "system", "dark", "light"]);
+export const ThemePreference = z.enum(["classic", "system", "dark", "light", "black", "white"]);
 export type ThemePreference = z.infer<typeof ThemePreference>;
 
 /** Coerce any stored/legacy value into a valid preference. Missing or unknown
