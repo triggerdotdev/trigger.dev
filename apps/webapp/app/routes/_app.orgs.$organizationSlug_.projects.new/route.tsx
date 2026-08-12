@@ -3,7 +3,6 @@ import { parseWithZod } from "@conform-to/zod";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
 import {
   json,
-  redirect,
   redirectDocument,
   type ActionFunction,
   type LoaderFunctionArgs,
@@ -11,7 +10,7 @@ import {
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { Prisma } from "@trigger.dev/database";
 import React, { useEffect, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
