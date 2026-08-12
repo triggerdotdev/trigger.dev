@@ -21,18 +21,20 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN . /etc/os-release && [ "$VERSION_CODENAME" = "${DEBIAN_SUITE}" ] || { echo "Base image is Debian $VERSION_CODENAME but this build pins ${DEBIAN_SUITE} apt sources"; exit 1; } && \
   [ -n "${DEBIAN_SNAPSHOT}" ] && [ -n "${PACKAGES}" ] || { echo "DEBIAN_SNAPSHOT and PACKAGES build args are required (see images.json)"; exit 1; } && \
   mv /etc/apt/sources.list.d/debian.sources /tmp/debian.sources && \
+  { [ ! -f /etc/apt/sources.list ] || mv /etc/apt/sources.list /tmp/upstream-sources.list; } && \
   printf '%s\n' \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE} main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
-    > /etc/apt/sources.list && \
+    > /etc/apt/sources.list.d/snapshot.list && \
   printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
   apt-get upgrade -y --with-new-pkgs && \
   apt-get install -y --no-install-recommends ${PACKAGES} && \
   apt-get clean && \
-  rm /etc/apt/sources.list /etc/apt/apt.conf.d/99-snapshot-retries && \
+  rm /etc/apt/sources.list.d/snapshot.list /etc/apt/apt.conf.d/99-snapshot-retries && \
   mv /tmp/debian.sources /etc/apt/sources.list.d/debian.sources && \
+  { [ ! -f /tmp/upstream-sources.list ] || mv /tmp/upstream-sources.list /etc/apt/sources.list; } && \
   rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /var/log/apt /var/log/alternatives.log /var/cache/ldconfig/aux-cache /var/cache/debconf/*-old
 
 FROM runtime AS build
@@ -44,15 +46,17 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN [ -n "${DEBIAN_SNAPSHOT}" ] && [ -n "${BUILD_PACKAGES}" ] || { echo "DEBIAN_SNAPSHOT and BUILD_PACKAGES build args are required (see images.json)"; exit 1; } && \
   mv /etc/apt/sources.list.d/debian.sources /tmp/debian.sources && \
+  { [ ! -f /etc/apt/sources.list ] || mv /etc/apt/sources.list /tmp/upstream-sources.list; } && \
   printf '%s\n' \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE} main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-security main" \
     "deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${DEBIAN_SUITE}-updates main" \
-    > /etc/apt/sources.list && \
+    > /etc/apt/sources.list.d/snapshot.list && \
   printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99-snapshot-retries && \
   apt-get update && \
   apt-get install -y --no-install-recommends ${BUILD_PACKAGES} && \
   apt-get clean && \
-  rm /etc/apt/sources.list /etc/apt/apt.conf.d/99-snapshot-retries && \
+  rm /etc/apt/sources.list.d/snapshot.list /etc/apt/apt.conf.d/99-snapshot-retries && \
   mv /tmp/debian.sources /etc/apt/sources.list.d/debian.sources && \
+  { [ ! -f /tmp/upstream-sources.list ] || mv /tmp/upstream-sources.list /etc/apt/sources.list; } && \
   rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /var/log/apt /var/log/alternatives.log /var/cache/ldconfig/aux-cache /var/cache/debconf/*-old
