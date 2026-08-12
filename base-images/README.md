@@ -13,8 +13,8 @@ images derived from these behave like their upstream bases.
 
 ## Tags and pinning
 
-Tags are mutable and rebuilt in place (weekly, and on demand) so all Debian
-packages pick up security updates published up to the new snapshot date. The
+Tags are mutable and rebuilt in place on demand; each rebuild picks up Debian
+security updates published up to its snapshot date. The
 runtime itself (the node or bun binaries from the upstream base) only moves
 when the base digests in `images.json` are bumped. Consumers pin digests: the CLI's generated
 Containerfile references these images as `triggerdotdev/node:22-bookworm@sha256:...`,
@@ -58,7 +58,7 @@ gh attestation verify oci://index.docker.io/triggerdotdev/node:22-bookworm --own
 
 ## Publishing
 
-`.github/workflows/base-images.yml` publishes on a weekly schedule, on manual
-dispatch, and on changes to this directory. Pull requests build the images
+`.github/workflows/base-images.yml` publishes on manual dispatch and on
+changes to this directory. Pull requests build the images
 without pushing. After a publish, the digests in the job summary are used to
 update the `BASE_IMAGE` pins in `packages/cli-v3/src/deploy/buildImage.ts`.
