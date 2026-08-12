@@ -1,11 +1,16 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
-import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
+import {
+  json,
+  redirectDocument,
+  type ActionFunction,
+  type LoaderFunctionArgs,
+} from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { Prisma } from "@trigger.dev/database";
 import React, { useEffect, useState } from "react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -285,14 +290,17 @@ export const action: ActionFunction = async ({ request, params }) => {
       if (next) {
         params.set("next", next);
       }
-      return redirect(`/vercel/connect?${params.toString()}`);
+      return redirectDocument(`/vercel/connect?${params.toString()}`);
     }
 
-    return redirectWithSuccessMessage(
-      v3ProjectPath(project.organization, project),
+    const destination = v3ProjectPath(project.organization, project);
+    const response = await redirectWithSuccessMessage(
+      destination,
       request,
       `${submission.value.projectName} created`
     );
+
+    return redirectDocument(destination, { headers: response.headers });
   } catch (error) {
     if (error instanceof ExceededProjectLimitError) {
       return redirectWithErrorMessage(
