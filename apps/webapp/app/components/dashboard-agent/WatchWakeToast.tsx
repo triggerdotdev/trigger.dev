@@ -126,7 +126,7 @@ export function showWatchWakesSummaryToast(count: number, onOpenChat: () => void
       <WakeToastUI
         t={t}
         title="Watch updates"
-        message={`${count} watch updates — open the chat panel.`}
+        message={`${count} watch update${count === 1 ? "" : "s"} — open the chat panel.`}
         onOpenChat={onOpenChat}
       />
     ),
