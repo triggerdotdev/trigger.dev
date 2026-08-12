@@ -780,6 +780,52 @@ export async function cancelActiveWatchesForChat(
 }
 
 /**
+ * Both delivery sweeps skip a watch whose chat is deleted, and retention only deletes rows
+ * whose delivery is settled — so a wake still owed when the chat goes is kept until the
+ * chat's hard delete (30 days) instead of the much shorter watch retention cutoff. Deleting
+ * the chat is the answer that the wake is no longer owed.
+ *
+ * `delivering` is settled too: once the chat is deleted no sweep can re-claim a stale claim,
+ * so the row would never leave it. A live deliverer is unharmed — its release is guarded on
+ * `delivering` and its delivered mark on the claim, so both no-op and neither is read.
+ */
+export async function settlePendingWatchDeliveriesForChat(
+  db: DashboardAgentDbOrTx,
+  params: { chatId: string }
+): Promise<Watch[]> {
+  return db
+    .update(watches)
+    .set({ deliveryStatus: "not_required", deliveryClaimedAt: null, deliveryClaimId: null })
+    .where(
+      and(
+        eq(watches.chatId, params.chatId),
+        inArray(watches.status, ["fired", "expired"]),
+        inArray(watches.deliveryStatus, ["pending", "delivering"])
+      )
+    )
+    .returning();
+}
+
+/** The org-deletion path's half of {@link settlePendingWatchDeliveriesForChat}. */
+export async function settlePendingWatchDeliveriesForOrganization(
+  db: DashboardAgentDbOrTx,
+  params: { organizationId: string }
+): Promise<number> {
+  const rows = await db
+    .update(watches)
+    .set({ deliveryStatus: "not_required", deliveryClaimedAt: null, deliveryClaimId: null })
+    .where(
+      and(
+        eq(watches.organizationId, params.organizationId),
+        inArray(watches.status, ["fired", "expired"]),
+        inArray(watches.deliveryStatus, ["pending", "delivering"])
+      )
+    )
+    .returning({ id: watches.id });
+  return rows.length;
+}
+
+/**
  * How long a `delivering` claim is respected before the wake may be claimed again.
  * Much longer than a delivery takes, so it only releases rows whose deliverer died.
  */

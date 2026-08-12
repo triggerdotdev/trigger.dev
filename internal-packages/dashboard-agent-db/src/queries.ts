@@ -21,7 +21,11 @@ import {
   type NewChatTurnEval,
   type Watch,
 } from "./schema.js";
-import { cancelActiveWatchesForChat } from "./watch-queries.js";
+import {
+  cancelActiveWatchesForChat,
+  settlePendingWatchDeliveriesForChat,
+  settlePendingWatchDeliveriesForOrganization,
+} from "./watch-queries.js";
 
 // The watch, wake and batch-chain queries live in `watch-queries.js`, re-exported
 // here so every existing import path still resolves.
@@ -355,6 +359,11 @@ export async function softDeleteChat(
       chatId: params.chatId,
       reason: "chat_deleted",
     });
+
+    // A wake already owed can no longer be delivered into a deleted chat, and an unsettled
+    // delivery is exempt from retention: settle it here, or the row is kept until the chat's
+    // hard delete (30 days) instead of the much shorter watch retention cutoff.
+    await settlePendingWatchDeliveriesForChat(tx, { chatId: params.chatId });
 
     return { deleted: true, cancelledWatches };
   });
@@ -819,12 +828,22 @@ export async function softDeleteChatsForOrganization(
   db: DashboardAgentDb,
   params: { organizationId: string }
 ): Promise<number> {
-  const rows = await db
-    .update(chats)
-    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-    .where(and(eq(chats.organizationId, params.organizationId), isNull(chats.deletedAt)))
-    .returning({ id: chats.id });
-  return rows.length;
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .update(chats)
+      .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(eq(chats.organizationId, params.organizationId), isNull(chats.deletedAt)))
+      .returning({ id: chats.id });
+
+    // Same reason as in `softDeleteChat`: a wake owed to a chat nobody can open again is
+    // invisible to both delivery sweeps, and an unsettled delivery is exempt from retention
+    // until the chat's hard delete.
+    await settlePendingWatchDeliveriesForOrganization(tx, {
+      organizationId: params.organizationId,
+    });
+
+    return rows.length;
+  });
 }
 
 export type UpsertInvestigationResult =

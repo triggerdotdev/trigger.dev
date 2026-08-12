@@ -91,6 +91,15 @@ export function queueMetricsAreEmpty(data: unknown): boolean {
 }
 
 /**
+ * The name to ask for a queue under. Only a task queue carries the `task/` prefix — and the
+ * route adds it itself — so a custom queue asked for as `task/worker-1` has to lose it, or
+ * the metrics, live-row and consumer reads all miss the row that is stored as `worker-1`.
+ */
+export function queueNameForKind(queue: string, kind: "task" | "custom"): string {
+  return kind === "custom" ? queue.replace(/^task\//, "") : queue;
+}
+
+/**
  * The deployed tasks whose `queueConfig` points at this queue, from the current worker's
  * task list. A custom queue's name is unrelated to any task id, so who consumes it can
  * only be read off the tasks — never guessed from the name.
@@ -480,7 +489,7 @@ export function buildApiTools(args: {
           if (period) sp.append("period", period);
           // Queue names may contain `/`; encode them as a single path segment.
           const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
+            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}/metrics?${sp.toString()}`
           );
           return result;
         };
@@ -490,7 +499,7 @@ export function buildApiTools(args: {
         // someone stopped, and the answer has to lead with which one it is.
         const live = async (kind: "task" | "custom") => {
           const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queue)}?type=${kind}`
+            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}?type=${kind}`
           );
           return readQueueLiveState(result);
         };
@@ -508,7 +517,10 @@ export function buildApiTools(args: {
             userActorToken!
           );
           if (!workers.ok) return base;
-          return { ...base, consumerTasks: consumerTasksForQueue(workers.data, queue) };
+          return {
+            ...base,
+            consumerTasks: consumerTasksForQueue(workers.data, queueNameForKind(queue, "custom")),
+          };
         };
 
         const first = await read(type ?? "task");
