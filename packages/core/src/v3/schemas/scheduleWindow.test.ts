@@ -33,6 +33,12 @@ describe("ScheduleWindow", () => {
     expect(ScheduleWindow.safeParse(window).success).toBe(false);
   });
 
+  it("reports percentages above 100% precisely", () => {
+    expect(() => parseScheduleWindow("110%")).toThrow(
+      "Schedule window percentage cannot exceed 100%"
+    );
+  });
+
   it("normalizes valid windows", () => {
     expect(parseScheduleWindow("30m")).toEqual({
       type: "duration",

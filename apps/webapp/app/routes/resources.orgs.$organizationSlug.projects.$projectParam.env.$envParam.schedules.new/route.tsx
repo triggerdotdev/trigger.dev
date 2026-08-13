@@ -1,5 +1,6 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
+import { ScheduleWindow } from "@trigger.dev/core/v3";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
   type FetcherWithComponents,
@@ -150,6 +151,15 @@ type CronPatternResult =
       error: string;
     };
 
+type ScheduleWindowResult =
+  | {
+      isValid: true;
+    }
+  | {
+      isValid: false;
+      error: string;
+    };
+
 export function UpsertScheduleForm({
   schedule,
   possibleTasks,
@@ -179,6 +189,7 @@ export function UpsertScheduleForm({
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
+  const [scheduleWindowValue, setScheduleWindowValue] = useState<string>(schedule?.window ?? "");
   const navigation = useNavigation();
   const isLoading = submitFetcher ? submitFetcher.state !== "idle" : navigation.state !== "idle";
   const organization = useOrganization();
@@ -210,7 +221,15 @@ export function UpsertScheduleForm({
   });
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
+  let scheduleWindowResult: ScheduleWindowResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+
+  if (scheduleWindowValue !== "") {
+    const result = ScheduleWindow.safeParse(scheduleWindowValue);
+    scheduleWindowResult = result.success
+      ? { isValid: true }
+      : { isValid: false, error: result.error.errors[0].message };
+  }
 
   if (cronPattern !== "") {
     const result = CronPattern.safeParse(cronPattern);
@@ -327,9 +346,19 @@ export function UpsertScheduleForm({
               {cronPatternResult === undefined ? (
                 <Hint>Enter a CRON pattern or use natural language above.</Hint>
               ) : cronPatternResult.isValid ? (
-                <ValidCronMessage isValid={true} message={`${cronPatternResult.description}.`} />
+                <ValidationMessage
+                  isValid={true}
+                  validLabel="Valid pattern:"
+                  invalidLabel="Invalid pattern:"
+                  message={`${cronPatternResult.description}.`}
+                />
               ) : (
-                <ValidCronMessage isValid={false} message={cronPatternResult.error} />
+                <ValidationMessage
+                  isValid={false}
+                  validLabel="Valid pattern:"
+                  invalidLabel="Invalid pattern:"
+                  message={cronPatternResult.error}
+                />
               )}
             </InputGroup>
             <InputGroup>
@@ -364,19 +393,45 @@ export function UpsertScheduleForm({
               <Input
                 {...getInputProps(scheduleWindow, { type: "text" })}
                 placeholder="30m or 25%"
-                defaultValue={schedule?.window}
+                value={scheduleWindowValue}
+                aria-invalid={scheduleWindowResult?.isValid === false ? true : undefined}
+                aria-describedby={
+                  scheduleWindowResult === undefined ? undefined : scheduleWindow.errorId
+                }
+                onChange={(event) => setScheduleWindowValue(event.target.value)}
               />
-              <Hint>
-                Assigns each run a stable time after its CRON time. Use minutes, hours, or a
-                percentage of the interval. Schedules always use at least a 60-second placement
-                range.
-              </Hint>
-              <FormError id={scheduleWindow.errorId}>{scheduleWindow.errors}</FormError>
+              {scheduleWindowResult === undefined ? (
+                <Hint>
+                  Assigns each run a stable time after its CRON time. Use minutes, hours, or a
+                  percentage of the interval.
+                </Hint>
+              ) : scheduleWindowResult.isValid ? (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={true}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message="Runs will be assigned a stable time within this window."
+                />
+              ) : (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={false}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message={scheduleWindowResult.error}
+                />
+              )}
             </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
-                <Header3>Next 5 CRON times</Header3>
-                <Hint>Assigned times are calculated after the schedule is saved.</Hint>
+                <Header3>Next 5 runs</Header3>
+                {scheduleWindowValue !== "" && (
+                  <Hint>
+                    Actual run times will get a fixed offset based on the window, displayed after
+                    creation.
+                  </Hint>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -525,9 +580,21 @@ function buttonText(mode: "edit" | "new", isLoading: boolean) {
   }
 }
 
-function ValidCronMessage({ isValid, message }: { isValid: boolean; message: string }) {
+function ValidationMessage({
+  id,
+  isValid,
+  validLabel,
+  invalidLabel,
+  message,
+}: {
+  id?: string;
+  isValid: boolean;
+  validLabel: string;
+  invalidLabel: string;
+  message: string;
+}) {
   return (
-    <Paragraph variant="small">
+    <Paragraph id={id} variant="small">
       <span className="mr-1">
         {isValid ? (
           <CheckIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-success" />
@@ -535,7 +602,7 @@ function ValidCronMessage({ isValid, message }: { isValid: boolean; message: str
           <XMarkIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-error" />
         )}
         <span className={isValid ? "text-success" : "text-error"}>
-          {isValid ? "Valid pattern:" : "Invalid pattern:"}
+          {isValid ? validLabel : invalidLabel}
         </span>
       </span>
       <span>{message}</span>

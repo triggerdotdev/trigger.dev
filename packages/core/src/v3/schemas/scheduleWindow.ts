@@ -106,13 +106,19 @@ export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
     return { type: "duration", durationSeconds };
   }
 
-  const percentageMatch = /^(0|[1-9]\d?|100)%$/.exec(value);
+  const percentageMatch = /^(0|[1-9]\d*)%$/.exec(value);
   if (percentageMatch) {
-    return { type: "percentage", percentage: Number(percentageMatch[1]) };
+    const percentage = Number(percentageMatch[1]);
+
+    if (!Number.isSafeInteger(percentage) || percentage > 100) {
+      throw new RangeError("Schedule window percentage cannot exceed 100%");
+    }
+
+    return { type: "percentage", percentage };
   }
 
   throw new TypeError(
-    'Schedule window must be a whole duration such as "0m", "30m", or "24h", or a percentage such as "30%"'
+    'Schedule window must be a whole duration such as "30m" or "2h", or a percentage such as "30%"'
   );
 }
 

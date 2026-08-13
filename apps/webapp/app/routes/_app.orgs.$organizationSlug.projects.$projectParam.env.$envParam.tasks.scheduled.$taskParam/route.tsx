@@ -867,23 +867,13 @@ function ScheduledTaskDetailSidebar({
               </Property.Value>
             </Property.Item>
             <Property.Item>
-              <Property.Label>CRON</Property.Label>
+              <Property.Label>Cron</Property.Label>
               <Property.Value>
                 {firstSchedule ? (
                   <div className="space-y-2">
                     <InlineCode variant="extra-small">{firstSchedule.cron}</InlineCode>
                     <Paragraph variant="small">{firstSchedule.cronDescription}</Paragraph>
                   </div>
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Window</Property.Label>
-              <Property.Value>
-                {firstSchedule ? (
-                  (firstSchedule.window ?? "Default (60 seconds)")
                 ) : (
                   <span className="text-text-dimmed">–</span>
                 )}
@@ -1020,7 +1010,7 @@ function SchedulesMiniTable({
         <TableRow>
           <TableHeaderCell>Schedule ID</TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
-          <TableHeaderCell>CRON</TableHeaderCell>
+          <TableHeaderCell>Cron</TableHeaderCell>
           <TableHeaderCell>Window</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>Next run</TableHeaderCell>
@@ -1049,7 +1039,7 @@ function SchedulesMiniTable({
                 <span className="font-mono text-xs">{schedule.cron}</span>
               </TableCell>
               <TableCell onClick={open}>
-                <span className="text-xs">{schedule.window ?? "Default (60s)"}</span>
+                <span className="text-xs">{schedule.window}</span>
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.externalId ? (
