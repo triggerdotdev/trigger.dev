@@ -5,7 +5,7 @@ import type {
   InitOutput,
   OffsetLimitPagePromise,
   ScheduleObject,
-  ScheduleWindow,
+  ValidatedScheduleWindow,
 } from "@trigger.dev/core/v3";
 import {
   TimezonesResult,
@@ -24,6 +24,7 @@ export type ScheduleOptions<
   TIdentifier extends string,
   TOutput,
   TInitOutput extends InitOutput,
+  TWindow extends string | undefined = string | undefined,
 > = TaskOptions<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput> & {
   /** You can optionally specify a CRON schedule on your task. You can also dynamically add a schedule in the dashboard or using the SDK functions.
    *
@@ -52,7 +53,7 @@ export type ScheduleOptions<
         /** Optionally assign each run a stable time after its CRON time.
          * Use a whole duration such as `"30m"` or `"2h"`, or a percentage such as `"30%"`.
          */
-        window?: ScheduleWindow;
+        window?: ValidatedScheduleWindow<TWindow>;
         /** You can optionally specify which environments this schedule should run in.
          * When not specified, the schedule will run in all environments.
          *
@@ -70,8 +71,13 @@ export type ScheduleOptions<
       };
 };
 
-export function task<TIdentifier extends string, TOutput, TInitOutput extends InitOutput>(
-  params: ScheduleOptions<TIdentifier, TOutput, TInitOutput>
+export function task<
+  TIdentifier extends string,
+  TOutput,
+  TInitOutput extends InitOutput,
+  const TWindow extends string | undefined = undefined,
+>(
+  params: ScheduleOptions<TIdentifier, TOutput, TInitOutput, TWindow>
 ): Task<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput> {
   const task = createTask(params);
 
@@ -111,8 +117,8 @@ export function task<TIdentifier extends string, TOutput, TInitOutput extends In
  * @param options.deduplicationKey - An optional deduplication key for the schedule
  * @returns The created schedule
  */
-export function create(
-  options: SchedulesAPI.CreateScheduleOptions,
+export function create<const TWindow extends string | undefined = undefined>(
+  options: SchedulesAPI.CreateScheduleOptions<TWindow>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.clientOrThrow();
@@ -185,9 +191,9 @@ export function retrieve(
  * @param options.externalId - An optional external identifier for the schedule
  * @returns The updated schedule
  */
-export function update(
+export function update<const TWindow extends string | undefined = undefined>(
   scheduleId: string,
-  options: SchedulesAPI.UpdateScheduleOptions,
+  options: SchedulesAPI.UpdateScheduleOptions<TWindow>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.clientOrThrow();

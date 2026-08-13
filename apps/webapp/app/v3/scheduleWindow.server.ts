@@ -1,9 +1,9 @@
+import { calculateEffectiveScheduleTime, calculateSchedulePhase } from "@internal/schedule-engine";
 import {
-  calculateEffectiveScheduleTime,
-  calculateSchedulePhase,
+  ScheduleWindow,
   parseScheduleWindow,
   type NormalizedScheduleWindow,
-} from "@internal/schedule-engine";
+} from "@trigger.dev/core/v3";
 import { nextScheduledTimestamps } from "./utils/calculateNextSchedule.server";
 
 const SECONDS_PER_UNIT = {
@@ -127,13 +127,13 @@ export function validateScheduleWindowSyntax(
     return { valid: true };
   }
 
-  try {
-    parseScheduleWindow(window);
+  const result = ScheduleWindow.safeParse(window);
+  if (result.success) {
     return { valid: true };
-  } catch (error) {
-    return {
-      valid: false,
-      message: error instanceof Error ? error.message : String(error),
-    };
   }
+
+  return {
+    valid: false,
+    message: result.error.issues[0]?.message ?? "Invalid schedule window",
+  };
 }

@@ -7,6 +7,9 @@ import {
   TaskRunExecution,
   V3TaskRunExecution,
 } from "./common.js";
+import { ScheduleWindow } from "./scheduleWindow.js";
+
+export * from "./scheduleWindow.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -173,15 +176,6 @@ export const QueueManifest = z.object({
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
-
-/**
- * A delay window after a nominal cron tick.
- *
- * The server's schedule timing domain validates and normalizes the public syntax.
- */
-export const ScheduleWindow = z.string().min(1);
-
-export type ScheduleWindow = `${bigint}${"m" | "h" | "%"}`;
 
 export const ScheduleMetadata = z.object({
   cron: z.string(),
