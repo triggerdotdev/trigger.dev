@@ -23,7 +23,7 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { organizationPath, v3ProjectSettingsGeneralPath } from "~/utils/pathBuilder";
+import { organizationSettingsPath, v3ProjectSettingsGeneralPath } from "~/utils/pathBuilder";
 import { useState } from "react";
 
 function createSchema(
@@ -173,7 +173,7 @@ export const action = dashboardAction(
         }
 
         return redirectWithSuccessMessage(
-          organizationPath({ slug: organizationSlug }),
+          organizationSettingsPath({ slug: organizationSlug }),
           request,
           "Project deleted"
         );

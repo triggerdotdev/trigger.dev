@@ -7,6 +7,7 @@
 import { okAsync } from "neverthrow";
 import { describe, expect, it, vi } from "vitest";
 import { commitSession, getSession, redirectWithErrorMessage } from "~/models/message.server";
+import { action as generalSettingsAction } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings.general/route";
 
 vi.mock("~/services/routeBuilders/dashboardBuilder", () => ({
   dashboardAction: (_options: unknown, handler: unknown) => handler,
@@ -22,10 +23,14 @@ vi.mock("~/services/projectSettings.server", () => ({
     verifyProjectMembership() {
       return okAsync({ projectId: "proj_1" });
     }
+    deleteProject() {
+      return okAsync(undefined);
+    }
   },
 }));
 
 const SETTINGS_PATH = "/orgs/o/projects/p/env/prod/settings/general";
+const ORG_SETTINGS_PATH = "/orgs/o/settings";
 
 // Mirrors the read in app/root.tsx's loader.
 async function rootLoaderHop(cookie: string | null) {
@@ -38,28 +43,28 @@ function asRequestCookie(setCookie: string) {
   return setCookie.split(";")[0];
 }
 
-async function denialRedirect(action: "rename" | "delete") {
-  const module =
-    await import("~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings.general/route");
-
+async function runAction(action: "rename" | "delete", allowed: boolean) {
   const body = new URLSearchParams(
     action === "rename" ? { action, projectName: "New name" } : { action, projectSlug: "p" }
   );
 
   try {
-    await (module.action as any)({
+    return (await (generalSettingsAction as any)({
       user: { id: "user_1" },
-      ability: { can: () => false },
+      ability: { can: () => allowed },
       request: new Request(`https://app.example.com${SETTINGS_PATH}`, { method: "POST", body }),
       params: { organizationSlug: "o", projectParam: "p", envParam: "prod" },
       context: {},
       searchParams: undefined,
-    });
+    })) as Response;
   } catch (thrown) {
     return thrown as Response;
   }
+}
 
-  throw new Error("expected the action to throw a redirect");
+async function toastFor(response: Response) {
+  const hop = await rootLoaderHop(asRequestCookie(response.headers.get("Set-Cookie")!));
+  return hop.toastMessage?.message;
 }
 
 describe("toast flash through a redirect chain", () => {
@@ -77,22 +82,25 @@ describe("toast flash through a redirect chain", () => {
   });
 });
 
-describe("general settings permission denial", () => {
-  it("redirects a denied rename back to the settings page with the message", async () => {
-    const response = await denialRedirect("rename");
+describe("general settings redirects target a page that renders", () => {
+  it("sends a denied rename back to the settings page with the message", async () => {
+    const response = await runAction("rename", false);
 
     expect(response.headers.get("Location")).toBe(SETTINGS_PATH);
-
-    const hop = await rootLoaderHop(asRequestCookie(response.headers.get("Set-Cookie")!));
-    expect(hop.toastMessage?.message).toBe("You don't have permission to rename this project");
+    expect(await toastFor(response)).toBe("You don't have permission to rename this project");
   });
 
-  it("redirects a denied delete back to the settings page with the message", async () => {
-    const response = await denialRedirect("delete");
+  it("sends a denied delete back to the settings page with the message", async () => {
+    const response = await runAction("delete", false);
 
     expect(response.headers.get("Location")).toBe(SETTINGS_PATH);
+    expect(await toastFor(response)).toBe("You don't have permission to delete this project");
+  });
 
-    const hop = await rootLoaderHop(asRequestCookie(response.headers.get("Set-Cookie")!));
-    expect(hop.toastMessage?.message).toBe("You don't have permission to delete this project");
+  it("sends a successful delete to the organization settings page with the message", async () => {
+    const response = await runAction("delete", true);
+
+    expect(response.headers.get("Location")).toBe(ORG_SETTINGS_PATH);
+    expect(await toastFor(response)).toBe("Project deleted");
   });
 });
