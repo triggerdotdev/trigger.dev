@@ -213,10 +213,10 @@ jobs:
             curl -fsS --connect-timeout 10 --max-time 60 -o /dev/null               -H "Authorization: Bearer $TOKEN"               -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"               "https://registry-1.docker.io/v2/triggerdotdev/$IMAGE_REPO/manifests/$digest"               || { echo "triggerdotdev/$IMAGE_REPO@$digest is not anonymously pullable; is the repo private?"; exit 1; }
           done
 
-      # Image is already pushed by this point; don't fail publishes on a Sigstore hiccup
+      # Builds are reproducible, so re-running a red publish re-pushes the
+      # same digests and re-attests them
       - name: 🔏 Attest runtime image provenance
         if: needs.setup.outputs.push == 'true'
-        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
@@ -225,7 +225,6 @@ jobs:
 
       - name: 🔏 Attest build-variant image provenance
         if: needs.setup.outputs.push == 'true'
-        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}

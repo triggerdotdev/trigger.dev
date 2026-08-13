@@ -55,8 +55,8 @@ docker buildx build base-images --target runtime \
 # digests are stable for a given BuildKit version and compression settings.
 ```
 
-Publishes also attest build provenance (best effort: a Sigstore outage does
-not block a publish, so a digest can occasionally lack its attestation):
+Every published digest carries a GitHub build provenance attestation (a
+publish whose attestation fails goes red and is re-run):
 
 ```bash
 gh attestation verify oci://index.docker.io/triggerdotdev/node:22-bookworm \
