@@ -91,7 +91,7 @@ jobs:
             echo "build_packages=$BUILD_PACKAGES"
             echo "suite=$SUITE"
             echo "snapshot=$SNAPSHOT"
-            echo "publish_id=${SNAPSHOT:0:8}-${SHA:0:7}"
+            echo "publish_id=${SNAPSHOT:0:8}-${SNAPSHOT:9:6}-${SHA:0:7}"
             echo "source_date_epoch=$EPOCH"
             echo "push=$PUSH"
           } >> "$GITHUB_OUTPUT"
