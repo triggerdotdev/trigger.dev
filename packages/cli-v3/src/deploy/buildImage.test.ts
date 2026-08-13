@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PACKAGES, TOOLCHAIN_PACKAGES, generateContainerfile } from "./buildImage.js";
+import {
+  BASE_IMAGE,
+  BUILD_IMAGE,
+  DEFAULT_PACKAGES,
+  TOOLCHAIN_PACKAGES,
+  generateContainerfile,
+} from "./buildImage.js";
 
 const images: Array<[BuildRuntime, string, string]> = [
   [
@@ -52,6 +58,17 @@ describe("generateContainerfile", () => {
       expect(containerfile).not.toContain("FROM base AS build");
     }
   );
+
+  it("pairs every runtime image with its -build variant", () => {
+    for (const runtime of Object.keys(BASE_IMAGE) as BuildRuntime[]) {
+      const baseRef = BASE_IMAGE[runtime].split("@")[0];
+      const buildRef = BUILD_IMAGE[runtime].split("@")[0];
+
+      expect(buildRef).toBe(`${baseRef}-build`);
+      expect(BASE_IMAGE[runtime]).toMatch(/@sha256:[a-f0-9]{64}$/);
+      expect(BUILD_IMAGE[runtime]).toMatch(/@sha256:[a-f0-9]{64}$/);
+    }
+  });
 
   it("matches the published base image package lists", () => {
     const imagesJson = JSON.parse(

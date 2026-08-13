@@ -688,7 +688,7 @@ export type GenerateContainerfileOptions = {
 };
 
 // Prebuilt in base-images/; both maps must be bumped together, from one publish run
-const BASE_IMAGE: Record<BuildRuntime, string> = {
+export const BASE_IMAGE: Record<BuildRuntime, string> = {
   bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:61d0f681429e69a0eb0eb054c6dbbc5876012feebabf012dd9b80e2f3f776771",
   node: "triggerdotdev/node:21-bookworm@sha256:2580fbfa9a1f75d53126d98bb4bbafabaf3db6b7c1b7996b6603dbea0efcd88c",
   "node-22":
@@ -699,7 +699,7 @@ const BASE_IMAGE: Record<BuildRuntime, string> = {
     "triggerdotdev/node:26-bookworm@sha256:04420c0cb9bd1890fe9dd51fcdfd0a263276e76c5fe088b175a943ccbab36b2a",
 };
 
-const BUILD_IMAGE: Record<BuildRuntime, string> = {
+export const BUILD_IMAGE: Record<BuildRuntime, string> = {
   bun: "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:fdd8dcaf4d0370f9571156d8c71c4b91c0cd02bb49850e0019e3e233fe1b35e1",
   node: "triggerdotdev/node:21-bookworm-build@sha256:39e1d485e759280c4935f14ee5b31fdfc322b3d246d631abada11fd9734e0ae1",
   "node-22":
