@@ -64,11 +64,8 @@ export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;
 
 type ProviderOptions = Record<string, any> | undefined;
 
-// Which breakpoint a marker is, kept under a top-level key no provider registers so
-// neither converter serialises it. The value is an object because the AI SDK validates
-// message providerOptions as Record<string, Record<string, JSONValue>> — a bare string
-// would be rejected. The `cacheControl`/`cachePoint` fields carry only real provider
-// data, never a discriminator; the step pass reads this tag instead.
+// Breakpoint discriminator under a top-level key no provider serialises. Value is an
+// object because the AI SDK validates providerOptions as records, rejecting a bare string.
 const CACHE_BREAKPOINT_KEY = "__cacheBreakpoint";
 
 function breakpointKind(providerOptions: ProviderOptions): CacheBreakpoint | undefined {

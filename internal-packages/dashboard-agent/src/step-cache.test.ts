@@ -161,9 +161,8 @@ describe("the step cache breakpoint on Bedrock", () => {
     };
   }
 
-  // Nothing undocumented reaches AWS: the wire cachePoint (which the SDK copies verbatim)
-  // is a plain `{type:"default"}` for both markers — no `ttl`. The prefix/step distinction
-  // lives only in the non-serialized `__cacheBreakpoint` tag.
+  // Nothing undocumented reaches AWS: the wire cachePoint is a plain `{type:"default"}`
+  // for both markers. The prefix/step distinction lives only in the `__cacheBreakpoint` tag.
   it("emits a plain cachePoint with no ttl for either marker", () => {
     expect(bedrockCachePoint(prefixMarker())).toEqual({ type: "default" });
     const step: Message = {
