@@ -2,19 +2,26 @@ import type { BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { describe, expect, it } from "vitest";
 import { generateContainerfile } from "./buildImage.js";
 
-const nodeImages: Array<[BuildRuntime, string]> = [
+const images: Array<[BuildRuntime, string, string]> = [
   [
     "node-24",
-    "node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+    "triggerdotdev/node:24-bookworm@sha256:7cb5dcce8a2ae96ba3164ea6a16b14fe77cfb9b4c9161ebb2cc2b045392fada9",
+    "triggerdotdev/node:24-bookworm-build@sha256:3dbc4abde322a71ea91eb2516912589c136d9aa1094b2dd0e787dd73783b8047",
   ],
   [
     "node-26",
-    "node:26.4.0-bookworm-slim@sha256:ec82d089a8ae2cf02628da7b34ea57dc357b24db724d557fe2d240e6beb659c1",
+    "triggerdotdev/node:26-bookworm@sha256:04420c0cb9bd1890fe9dd51fcdfd0a263276e76c5fe088b175a943ccbab36b2a",
+    "triggerdotdev/node:26-bookworm-build@sha256:75776ca741da628bb2478283aa93f75626a495a3a2601c4828b2bb19386264a6",
+  ],
+  [
+    "bun",
+    "triggerdotdev/bun:1.3-node20-bookworm@sha256:61d0f681429e69a0eb0eb054c6dbbc5876012feebabf012dd9b80e2f3f776771",
+    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:fdd8dcaf4d0370f9571156d8c71c4b91c0cd02bb49850e0019e3e233fe1b35e1",
   ],
 ];
 
 describe("generateContainerfile", () => {
-  it.each(nodeImages)("selects the pinned multiplatform image for %s", async (runtime, image) => {
+  it.each(images)("uses the pinned published base images for %s", async (runtime, base, build) => {
     const containerfile = await generateContainerfile({
       runtime,
       build: {},
@@ -23,7 +30,62 @@ describe("generateContainerfile", () => {
       entrypoint: "entrypoint.js",
     });
 
-    expect(containerfile).toContain(`FROM ${image} AS base`);
+    expect(containerfile).toContain(`FROM ${base} AS base`);
+    expect(containerfile).toContain(`FROM ${build} AS build`);
+  });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "runs no package installation for uncustomized projects on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).not.toContain("apt-get");
+    }
+  );
+
+  it("installs user packages after instructions, in both stages", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-22",
+      build: {},
+      image: {
+        pkgs: ["jq", "curl", "git"],
+        instructions: ["RUN echo custom > /etc/marker"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    // sorted, defaults filtered out, downgrades allowed for pinned defaults
+    const installLine = "apt-get install -y --no-install-recommends --allow-downgrades curl jq";
+    const first = containerfile.indexOf(installLine);
+    const second = containerfile.indexOf(installLine, first + 1);
+    const firstInstructions = containerfile.indexOf("RUN echo custom > /etc/marker");
+
+    expect(first).toBeGreaterThan(firstInstructions);
+    // base and build come from separate images, so both need the customization
+    expect(second).toBeGreaterThan(first);
+  });
+
+  it("repairs dpkg state after instructions when there are no user packages", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-22",
+      build: {},
+      image: { instructions: ["RUN echo custom > /etc/marker"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const instructions = containerfile.indexOf("RUN echo custom > /etc/marker");
+    const repair = containerfile.indexOf("apt-get --fix-broken install -y");
+
+    expect(instructions).toBeGreaterThan(-1);
+    expect(repair).toBeGreaterThan(instructions);
   });
 
   it.each(["node", "bun"] as BuildRuntime[])(

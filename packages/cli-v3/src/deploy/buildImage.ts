@@ -687,17 +687,32 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
+// Prebuilt in base-images/ with the default system packages included, so the
+// package layer is one blob shared by every project instead of an apt install
+// per build. Both maps must be bumped together from the same publish run.
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.3.3-20-slim@sha256:59d84856a7e31eec83afedadb542f7306f672343b8b265c70d733404a6e8834b",
-  node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
+  bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:61d0f681429e69a0eb0eb054c6dbbc5876012feebabf012dd9b80e2f3f776771",
+  node: "triggerdotdev/node:21-bookworm@sha256:2580fbfa9a1f75d53126d98bb4bbafabaf3db6b7c1b7996b6603dbea0efcd88c",
   "node-22":
-    "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
+    "triggerdotdev/node:22-bookworm@sha256:4c85fbb6805f07d1b2d9b311fb53f180f5b281e30b671305c0fbe2a5f4b473b0",
   "node-24":
-    "node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+    "triggerdotdev/node:24-bookworm@sha256:7cb5dcce8a2ae96ba3164ea6a16b14fe77cfb9b4c9161ebb2cc2b045392fada9",
   "node-26":
-    "node:26.4.0-bookworm-slim@sha256:ec82d089a8ae2cf02628da7b34ea57dc357b24db724d557fe2d240e6beb659c1",
+    "triggerdotdev/node:26-bookworm@sha256:04420c0cb9bd1890fe9dd51fcdfd0a263276e76c5fe088b175a943ccbab36b2a",
 };
 
+const BUILD_IMAGE: Record<BuildRuntime, string> = {
+  bun: "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:fdd8dcaf4d0370f9571156d8c71c4b91c0cd02bb49850e0019e3e233fe1b35e1",
+  node: "triggerdotdev/node:21-bookworm-build@sha256:39e1d485e759280c4935f14ee5b31fdfc322b3d246d631abada11fd9734e0ae1",
+  "node-22":
+    "triggerdotdev/node:22-bookworm-build@sha256:af582b998838d9923fe05075e1d39aca560153293163651f99f779c497c80d25",
+  "node-24":
+    "triggerdotdev/node:24-bookworm-build@sha256:3dbc4abde322a71ea91eb2516912589c136d9aa1094b2dd0e787dd73783b8047",
+  "node-26":
+    "triggerdotdev/node:26-bookworm-build@sha256:75776ca741da628bb2478283aa93f75626a495a3a2601c4828b2bb19386264a6",
+};
+
+// Already installed in the published base images
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
@@ -714,6 +729,25 @@ export async function generateContainerfile(options: GenerateContainerfileOption
   }
 }
 
+function aptInstall(packages: string[]): string {
+  // --allow-downgrades: a user pin of a preinstalled package (e.g.
+  // openssl=<older>) is a downgrade by the time this runs
+  return `RUN apt-get update && \\
+  apt-get install -y --no-install-recommends --allow-downgrades ${packages.join(" ")} && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`;
+}
+
+// Instructions can leave dpkg in a broken state (e.g. dpkg -i of a local .deb)
+// that installing user packages would normally repair; when there are none,
+// repair explicitly
+function aptRepair(): string {
+  return `RUN apt-get update && \\
+  apt-get --fix-broken install -y && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`;
+}
+
 const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const buildArgs = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ARG ${key}`)
@@ -726,43 +760,46 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
   const baseInstructions = (options.image?.instructions || []).join("\n");
-  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
-    " "
-  );
+  const userPackages = Array.from(new Set(options.image?.pkgs || []))
+    .filter((pkg) => !DEFAULT_PACKAGES.includes(pkg))
+    .sort();
+
+  // Rendered into both the base and build stages: they come from separate
+  // published images, so customization no longer inherits from base to build
+  const customization = [
+    baseInstructions,
+    userPackages.length > 0 ? aptInstall(userPackages) : baseInstructions ? aptRepair() : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return {
     baseImage: BASE_IMAGE[options.runtime],
-    baseInstructions,
+    buildImage: BUILD_IMAGE[options.runtime],
+    customization,
     buildArgs,
     buildEnvVars,
-    packages,
     postInstallCommands,
   };
 };
 
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+  const { baseImage, buildImage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
-${baseInstructions}
+ENV DEBIAN_FRONTEND=noninteractive
+
+${customization}
+
+FROM ${buildImage} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
 
-FROM base AS build
-
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends python3 make g++ && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+${customization}
 
 USER bun
 WORKDIR /app
@@ -853,28 +890,22 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+  const { baseImage, buildImage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
-${baseInstructions}
+ENV DEBIAN_FRONTEND=noninteractive
+
+${customization}
+
+FROM ${buildImage} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM base AS build
-
-# Install build dependencies
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends python3 make g++ && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+${customization}
 
 USER node
 WORKDIR /app
