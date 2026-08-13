@@ -127,6 +127,7 @@ containerTest(
     });
     expect(apiKeyPresets).toHaveBeenCalledWith(organization.id);
     expect(result.rootApiKey.obfuscated).toBe(`tr_prod_••••••••${environment.apiKey.slice(-4)}`);
+    expect(result.rootApiKey).not.toHaveProperty("createdAt");
     expect(keysByName.get("Full access")?.obfuscated).toBe("tr_prod_sk_••••••••full");
     expect(keysByName.get("Full access")?.access).toMatchObject({
       presetId: null,

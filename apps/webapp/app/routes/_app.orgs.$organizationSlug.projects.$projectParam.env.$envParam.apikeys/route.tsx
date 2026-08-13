@@ -404,9 +404,7 @@ export default function Page() {
                     <ApiKeyAccess label="No restrictions" />
                   </TableCell>
                   <TableCell>–</TableCell>
-                  <TableCell>
-                    <DateTime date={rootApiKey.createdAt} />
-                  </TableCell>
+                  <TableCell>–</TableCell>
                   <TableCell>–</TableCell>
                   <TableCellMenu
                     isSticky
