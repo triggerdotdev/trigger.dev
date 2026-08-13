@@ -39,6 +39,7 @@ jobs:
       build_packages: ${{ steps.config.outputs.build_packages }}
       suite: ${{ steps.config.outputs.suite }}
       snapshot: ${{ steps.config.outputs.snapshot }}
+      snapshot_date: ${{ steps.config.outputs.snapshot_date }}
       source_date_epoch: ${{ steps.config.outputs.source_date_epoch }}
       push: ${{ steps.config.outputs.push }}
     steps:
@@ -89,6 +90,7 @@ jobs:
             echo "build_packages=$BUILD_PACKAGES"
             echo "suite=$SUITE"
             echo "snapshot=$SNAPSHOT"
+            echo "snapshot_date=${SNAPSHOT:0:8}"
             echo "source_date_epoch=$EPOCH"
             echo "push=$PUSH"
           } >> "$GITHUB_OUTPUT"
@@ -164,7 +166,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
           outputs: type=image,push=true,rewrite-timestamp=true
-          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+          # The dated tag is immutable and keeps every published digest
+          # tag-referenced forever; shipped CLI releases pin these digests
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-${{ needs.setup.outputs.snapshot_date }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
@@ -187,7 +193,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
           outputs: type=image,push=true,rewrite-timestamp=true
-          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build-${{ needs.setup.outputs.snapshot_date }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
