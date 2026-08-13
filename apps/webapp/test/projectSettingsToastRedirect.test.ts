@@ -30,7 +30,7 @@ vi.mock("~/services/projectSettings.server", () => ({
 }));
 
 const SETTINGS_PATH = "/orgs/o/projects/p/env/prod/settings/general";
-const ORG_SETTINGS_PATH = "/orgs/o/settings";
+const ORG_PATH = "/orgs/o";
 
 // Mirrors the read in app/root.tsx's loader.
 async function rootLoaderHop(cookie: string | null) {
@@ -97,10 +97,11 @@ describe("general settings redirects target a page that renders", () => {
     expect(await toastFor(response)).toBe("You don't have permission to delete this project");
   });
 
-  it("sends a successful delete to the organization settings page with the message", async () => {
+  // The deleted project's settings page is gone and no org-level page renders, so a
+  // successful delete keeps its original destination and its message is not shown.
+  it("leaves a successful delete pointed at the organization root", async () => {
     const response = await runAction("delete", true);
 
-    expect(response.headers.get("Location")).toBe(ORG_SETTINGS_PATH);
-    expect(await toastFor(response)).toBe("Project deleted");
+    expect(response.headers.get("Location")).toBe(ORG_PATH);
   });
 });
