@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PACKAGES, generateContainerfile } from "./buildImage.js";
+import { DEFAULT_PACKAGES, TOOLCHAIN_PACKAGES, generateContainerfile } from "./buildImage.js";
 
 const images: Array<[BuildRuntime, string, string]> = [
   [
@@ -52,15 +53,19 @@ describe("generateContainerfile", () => {
     }
   );
 
-  it("matches the published base image package list", () => {
+  it("matches the published base image package lists", () => {
     const imagesJson = JSON.parse(
-      readFileSync(join(process.cwd(), "../../base-images/images.json"), "utf-8")
+      readFileSync(
+        join(fileURLToPath(import.meta.url), "../../../../../base-images/images.json"),
+        "utf-8"
+      )
     );
 
     expect(imagesJson.packages.split(" ").sort()).toEqual([...DEFAULT_PACKAGES].sort());
+    expect(imagesJson.buildPackages).toBe(TOOLCHAIN_PACKAGES);
   });
 
-  it("applies customization once and builds FROM base when customized", async () => {
+  it("applies instructions once and builds FROM base when they are present", async () => {
     const containerfile = await generateContainerfile({
       runtime: "node-22",
       build: {},
@@ -72,18 +77,37 @@ describe("generateContainerfile", () => {
       entrypoint: "entrypoint.js",
     });
 
-    // sorted, defaults filtered out, downgrades allowed for pinned defaults
-    const installLine = "apt-get install -y --no-install-recommends --allow-downgrades curl jq";
-    expect(containerfile.indexOf(installLine)).toBeGreaterThan(
-      containerfile.indexOf("RUN echo custom > /etc/marker")
-    );
-    expect(containerfile.indexOf(installLine, containerfile.indexOf(installLine) + 1)).toBe(-1);
-    // apt-get install refuses to run on dpkg state broken by an instruction
-    expect(containerfile.indexOf("apt-get --fix-broken install -y")).toBeLessThan(
-      containerfile.indexOf(installLine)
-    );
+    // sorted, defaults filtered out, downgrades allowed for pinned defaults,
+    // and repaired first: apt-get install refuses to run on dpkg state broken
+    // by an instruction
+    const installRun = `apt-get --fix-broken install -y --no-install-recommends && \\
+  apt-get install -y --no-install-recommends --allow-downgrades curl jq`;
+    const first = containerfile.indexOf(installRun);
+
+    expect(first).toBeGreaterThan(containerfile.indexOf("RUN echo custom > /etc/marker"));
+    expect(containerfile.indexOf(installRun, first + 1)).toBe(-1);
     expect(containerfile).toContain("FROM base AS build");
-    expect(containerfile).toContain("python3 make g++");
+    expect(containerfile).toContain(TOOLCHAIN_PACKAGES);
+  });
+
+  it("keeps the prebuilt toolchain image for package-only projects", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-22",
+      build: {},
+      image: { pkgs: ["jq"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const installLine = "apt-get install -y --no-install-recommends --allow-downgrades jq";
+    const first = containerfile.indexOf(installLine);
+
+    // installed in both stages, since base and build are separate images
+    expect(first).toBeGreaterThan(-1);
+    expect(containerfile.indexOf(installLine, first + 1)).toBeGreaterThan(first);
+    expect(containerfile).not.toContain("FROM base AS build");
+    // a pristine base has nothing to repair
+    expect(containerfile).not.toContain("--fix-broken");
   });
 
   it("repairs dpkg state after instructions when there are no user packages", async () => {

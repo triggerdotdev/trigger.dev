@@ -735,7 +735,7 @@ export async function generateContainerfile(options: GenerateContainerfileOption
 // package (e.g. openssl=<older>) is a downgrade by the time this runs.
 function aptInstall(packages: string[], { repair }: { repair: boolean }): string {
   const repairStep = repair
-    ? `apt-get --fix-broken install -y && \\
+    ? `apt-get --fix-broken install -y --no-install-recommends && \\
   `
     : "";
 
@@ -747,10 +747,13 @@ function aptInstall(packages: string[], { repair }: { repair: boolean }): string
 
 function aptRepair(): string {
   return `RUN apt-get update && \\
-  apt-get --fix-broken install -y && \\
+  apt-get --fix-broken install -y --no-install-recommends && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`;
 }
+
+// Must match base-images/images.json buildPackages, which the -build images preinstall
+export const TOOLCHAIN_PACKAGES = "python3 make g++";
 
 const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const buildArgs = Object.entries(options.build.env || {})
@@ -779,19 +782,21 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     .filter(Boolean)
     .join("\n\n");
 
-  // Customized projects build FROM base so instructions and packages apply
-  // exactly once; uncustomized projects use the prebuilt toolchain image and
-  // run no apt at all
-  const buildStage = customization
+  // Projects with instructions build FROM base so instructions run exactly
+  // once (their downloads are unbounded); package-only projects keep the
+  // prebuilt toolchain image and repeat the small package install
+  const buildStage = baseInstructions
     ? `FROM base AS build
 
 RUN apt-get update && \\
-  apt-get install -y --no-install-recommends python3 make g++ && \\
+  apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`
     : `FROM ${BUILD_IMAGE[options.runtime]} AS build
 
-ENV DEBIAN_FRONTEND=noninteractive`;
+ENV DEBIAN_FRONTEND=noninteractive${
+        userPackages.length > 0 ? `\n\n${aptInstall(userPackages, { repair: false })}` : ""
+      }`;
 
   return {
     baseImage: BASE_IMAGE[options.runtime],
