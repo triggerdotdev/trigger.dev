@@ -388,43 +388,51 @@ function ReplayForm({
                 <Label htmlFor={queue.id} variant="small">
                   Queue
                 </Label>
-                <Select
-                  name={queue.name}
-                  id={queue.id}
-                  placeholder="Select queue"
-                  heading="Filter queues"
-                  variant="tertiary/small"
-                  dropdownIcon
-                  items={queueItems}
-                  filter={{ keys: ["label"] }}
-                  defaultValue={replayData.queue}
-                >
-                  {(matches) =>
-                    matches.map((queueItem) => (
-                      <SelectItem
-                        key={queueItem.value}
-                        value={queueItem.value}
-                        className="max-w-(--popover-anchor-width)"
-                        icon={
-                          queueItem.type === "task" ? (
-                            <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                          ) : (
-                            <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                          )
-                        }
-                      >
-                        <div className="flex w-full min-w-0 items-center justify-between">
-                          <span className="truncate">{queueItem.label}</span>
-                          {queueItem.paused && (
-                            <Badge variant="extra-small" className="ml-1 text-warning">
-                              Paused
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
+                {replayData.allowArbitraryQueues ? (
+                  <Input
+                    {...getInputProps(queue, { type: "text" })}
+                    variant="small"
+                    defaultValue={replayData.queue}
+                  />
+                ) : (
+                  <Select
+                    name={queue.name}
+                    id={queue.id}
+                    placeholder="Select queue"
+                    heading="Filter queues"
+                    variant="tertiary/small"
+                    dropdownIcon
+                    items={queueItems}
+                    filter={{ keys: ["label"] }}
+                    defaultValue={replayData.queue}
+                  >
+                    {(matches) =>
+                      matches.map((queueItem) => (
+                        <SelectItem
+                          key={queueItem.value}
+                          value={queueItem.value}
+                          className="max-w-(--popover-anchor-width)"
+                          icon={
+                            queueItem.type === "task" ? (
+                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                            ) : (
+                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                            )
+                          }
+                        >
+                          <div className="flex w-full min-w-0 items-center justify-between">
+                            <span className="truncate">{queueItem.label}</span>
+                            {queueItem.paused && (
+                              <Badge variant="extra-small" className="ml-1 text-warning">
+                                Paused
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                )}
                 <Hint>Assign run to a specific queue.</Hint>
                 <FormError id={queue.errorId}>{queue.errors}</FormError>
               </InputGroup>

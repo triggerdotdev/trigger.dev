@@ -7,7 +7,6 @@ import {
   PlusIcon,
   QuestionMarkCircleIcon,
   RectangleGroupIcon,
-  RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
@@ -471,36 +470,6 @@ export function AlertsNoneDeployed() {
         </div>
       </InfoPanel>
     </div>
-  );
-}
-
-export function QueuesHasNoTasks() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  return (
-    <InfoPanel
-      title="You don't have any queues"
-      icon={RectangleStackIcon}
-      iconClassName="text-queues"
-      panelClassName="max-w-md"
-      accessory={
-        <LinkButton
-          to={v3EnvironmentPath(organization, project, environment)}
-          variant="primary/small"
-        >
-          Create a task
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        Queues will appear here when you have created a task in this environment. Follow the
-        instructions on the{" "}
-        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
-        to create a task, then return here to see its queue.
-      </Paragraph>
-    </InfoPanel>
   );
 }
 

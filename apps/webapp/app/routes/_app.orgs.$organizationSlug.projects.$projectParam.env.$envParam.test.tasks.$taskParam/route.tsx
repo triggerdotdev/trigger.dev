@@ -324,6 +324,7 @@ export default function Page() {
           versions={result.latestVersions}
           templates={result.taskRunTemplates}
           disableVersionSelection={result.disableVersionSelection}
+          allowArbitraryQueues={result.allowArbitraryQueues}
           regions={result.regions}
         />
       );
@@ -338,6 +339,7 @@ export default function Page() {
           templates={result.taskRunTemplates}
           possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
+          allowArbitraryQueues={result.allowArbitraryQueues}
           regions={result.regions}
         />
       );
@@ -358,6 +360,7 @@ function StandardTaskForm({
   versions,
   templates,
   disableVersionSelection,
+  allowArbitraryQueues,
   regions,
 }: {
   task: StandardTaskResult["task"];
@@ -366,6 +369,7 @@ function StandardTaskForm({
   versions: string[];
   templates: RunTemplate[];
   disableVersionSelection: boolean;
+  allowArbitraryQueues: boolean;
   regions: Region[];
 }) {
   const environment = useEnvironment();
@@ -681,44 +685,53 @@ function StandardTaskForm({
                   <Label htmlFor={queue.id} variant="small">
                     Queue
                   </Label>
-                  <Select
-                    name={queue.name}
-                    id={queue.id}
-                    placeholder="Select queue"
-                    heading="Filter queues"
-                    variant="tertiary/small"
-                    dropdownIcon
-                    items={queueItems}
-                    filter={{ keys: ["label"] }}
-                    value={queueValue}
-                    setValue={setQueueValue}
-                  >
-                    {(matches) =>
-                      matches.map((queueItem) => (
-                        <SelectItem
-                          key={queueItem.value}
-                          value={queueItem.value}
-                          className="max-w-(--popover-anchor-width)"
-                          icon={
-                            queueItem.type === "task" ? (
-                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                            ) : (
-                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                            )
-                          }
-                        >
-                          <div className="flex w-full min-w-0 items-center justify-between">
-                            <span className="truncate">{queueItem.label}</span>
-                            {queueItem.paused && (
-                              <Badge variant="extra-small" className="ml-1 text-warning">
-                                Paused
-                              </Badge>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
+                  {allowArbitraryQueues ? (
+                    <Input
+                      {...getInputProps(queue, { type: "text" })}
+                      variant="small"
+                      value={queueValue ?? ""}
+                      onChange={(e) => setQueueValue(e.target.value)}
+                    />
+                  ) : (
+                    <Select
+                      name={queue.name}
+                      id={queue.id}
+                      placeholder="Select queue"
+                      heading="Filter queues"
+                      variant="tertiary/small"
+                      dropdownIcon
+                      items={queueItems}
+                      filter={{ keys: ["label"] }}
+                      value={queueValue}
+                      setValue={setQueueValue}
+                    >
+                      {(matches) =>
+                        matches.map((queueItem) => (
+                          <SelectItem
+                            key={queueItem.value}
+                            value={queueItem.value}
+                            className="max-w-(--popover-anchor-width)"
+                            icon={
+                              queueItem.type === "task" ? (
+                                <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                              ) : (
+                                <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                              )
+                            }
+                          >
+                            <div className="flex w-full min-w-0 items-center justify-between">
+                              <span className="truncate">{queueItem.label}</span>
+                              {queueItem.paused && (
+                                <Badge variant="extra-small" className="ml-1 text-warning">
+                                  Paused
+                                </Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
+                  )}
                   <Hint>Assign run to a specific queue.</Hint>
                   <FormError id={queue.errorId}>{queue.errors}</FormError>
                 </InputGroup>
@@ -907,6 +920,7 @@ function ScheduledTaskForm({
   versions,
   templates,
   disableVersionSelection,
+  allowArbitraryQueues,
   regions,
 }: {
   task: ScheduledTaskResult["task"];
@@ -916,6 +930,7 @@ function ScheduledTaskForm({
   versions: string[];
   templates: RunTemplate[];
   disableVersionSelection: boolean;
+  allowArbitraryQueues: boolean;
   regions: Region[];
 }) {
   const environment = useEnvironment();
@@ -1220,44 +1235,53 @@ function ScheduledTaskForm({
                 <Label htmlFor={queue.id} variant="small">
                   Queue
                 </Label>
-                <Select
-                  name={queue.name}
-                  id={queue.id}
-                  placeholder="Select queue"
-                  heading="Filter queues"
-                  variant="tertiary/small"
-                  dropdownIcon
-                  items={queueItems}
-                  filter={{ keys: ["label"] }}
-                  value={queueValue}
-                  setValue={setQueueValue}
-                >
-                  {(matches) =>
-                    matches.map((queueItem) => (
-                      <SelectItem
-                        key={queueItem.value}
-                        value={queueItem.value}
-                        className="max-w-(--popover-anchor-width)"
-                        icon={
-                          queueItem.type === "task" ? (
-                            <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                          ) : (
-                            <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                          )
-                        }
-                      >
-                        <div className="flex w-full min-w-0 items-center justify-between">
-                          <span className="truncate">{queueItem.label}</span>
-                          {queueItem.paused && (
-                            <Badge variant="extra-small" className="ml-1 text-warning">
-                              Paused
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
+                {allowArbitraryQueues ? (
+                  <Input
+                    {...getInputProps(queue, { type: "text" })}
+                    variant="small"
+                    value={queueValue ?? ""}
+                    onChange={(e) => setQueueValue(e.target.value)}
+                  />
+                ) : (
+                  <Select
+                    name={queue.name}
+                    id={queue.id}
+                    placeholder="Select queue"
+                    heading="Filter queues"
+                    variant="tertiary/small"
+                    dropdownIcon
+                    items={queueItems}
+                    filter={{ keys: ["label"] }}
+                    value={queueValue}
+                    setValue={setQueueValue}
+                  >
+                    {(matches) =>
+                      matches.map((queueItem) => (
+                        <SelectItem
+                          key={queueItem.value}
+                          value={queueItem.value}
+                          className="max-w-(--popover-anchor-width)"
+                          icon={
+                            queueItem.type === "task" ? (
+                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                            ) : (
+                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                            )
+                          }
+                        >
+                          <div className="flex w-full min-w-0 items-center justify-between">
+                            <span className="truncate">{queueItem.label}</span>
+                            {queueItem.paused && (
+                              <Badge variant="extra-small" className="ml-1 text-warning">
+                                Paused
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                )}
                 <Hint>Assign run to a specific queue.</Hint>
                 <FormError id={queue.errorId}>{queue.errors}</FormError>
               </InputGroup>
