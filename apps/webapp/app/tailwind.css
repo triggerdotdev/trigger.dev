@@ -154,7 +154,10 @@
   --color-background-dimmed: var(--color-charcoal-850);
   --color-background-bright: var(--color-charcoal-800);
   --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
@@ -163,6 +166,9 @@
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
   --color-grid-bright: var(--color-charcoal-700);
+  /* Blend of border-bright over the selected card, so it tracks whatever ramp
+     border-bright is on - the dark themes need no contrast entry of their own */
+  --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
   --color-border-bright: var(--color-charcoal-600);
   --color-border-brighter: var(--color-charcoal-550);
   --color-border-brightest: var(--color-charcoal-500);
@@ -766,14 +772,21 @@
   --color-background-dimmed: #fbfbfc;
   --color-background-bright: #ffffff;
   --color-background-hover: #f2f3f5;
+  /* Cards on white need a gentler hover than the app-wide surfaces */
+  --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
+  /* Selection sits lighter than the controls here - on white a soft grey is
+     already enough to read as selected */
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
   --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
   --color-border-bright: #d2d5db;
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
@@ -931,6 +944,7 @@
   --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), #000 calc(var(--theme-contrast, 0) * 55%));
   --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), #000 calc(var(--theme-contrast, 0) * 45%));
   --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+  --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
   --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), #000 calc(var(--theme-contrast, 0) * 25%));
   --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
 
@@ -955,6 +969,9 @@
      page-behind surfaces darken a touch so panels separate */
   --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
   --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
+  /* Radio card surfaces take no ramp at all on white - their contrast is
+     carried by border-selected below. Deliberately absent: surface-hover-subtle,
+     surface-selected, surface-selected-hover. */
   --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
 
   /* Controls and borders push hard toward black - this is where light-mode
@@ -964,6 +981,8 @@
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
+  /* Steeper than border-bright so the selected card stays the loudest edge */
+  --color-border-selected: color-mix(in srgb, #e0e2e6, #000 calc(var(--theme-contrast, 0) * 45%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
   --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
   --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
