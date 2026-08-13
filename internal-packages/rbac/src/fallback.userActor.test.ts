@@ -89,10 +89,10 @@ postgresTest(
   "authenticateUserActor: unscoped context skips the floor and never queries the user",
   async ({ prisma }) => {
     const p = prisma as PrismaClient;
-    const stranger = await seedUser(p, "unscoped@example.test");
     const controller = new RoleBaseAccessFallback(p, { userActorSecret: SECRET }).create();
 
-    const result = await controller.authenticateUserActor(uatRequest(await uat(stranger.id)), {});
+    // A user that doesn't exist: if the unscoped path ran the lookup this would 401.
+    const result = await controller.authenticateUserActor(uatRequest(await uat("usr_ghost")), {});
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.ability.can("read", { type: "runs", id: "run_x" })).toBe(true);
