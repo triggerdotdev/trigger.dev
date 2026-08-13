@@ -156,6 +156,14 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
+      "dashboardAgent.maintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 1,
+        },
+      },
       // The watch backstops: expiry, wake redelivery and dead batch chains.
       "dashboardAgent.watchMaintenance": {
         schema: CronSchema,
@@ -233,6 +241,8 @@ function initializeWorker() {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
       },
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
+      "dashboardAgent.maintenance": async () => {},
       "dashboardAgent.watchMaintenance": async () => {
         // Each backstop runs independently; the first failure is rethrown at the end.
         let failure: unknown;
