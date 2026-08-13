@@ -380,14 +380,14 @@ A sweep (`dashboardAgentWatchSweep.server.ts`) is the backstop:
 - a row still active **2 minutes** past `expiresAt` is finalized;
 - a resolved row whose wake is still owed **5 minutes** later is redelivered —
   the sweep can't tell whether the user was already told, so delivery is
-  id-deduped rather than conditional;
-- terminal rows are kept **7 days**; the outcome also lives in the transcript.
+  id-deduped rather than conditional.
 
 The agent project runs two scheduled tasks of its own: `dashboard-agent-investigation-sweep`
 every 5 minutes settles cards left `in_progress` past **30 minutes**
 (`investigation-sweep.ts`), and `dashboard-agent-maintenance` at 03:00 daily is
 retention (`maintenance.ts`) — judged turns and soft-deleted chats past **30
-days**, terminal watches and their submission ledger past **7 days**. Retention
+days**, terminal watches and their submission ledger past **7 days** — a purged
+watch outcome still lives in the transcript. Retention
 does nothing at all without `DASHBOARD_AGENT_DATABASE_URL`: it never falls back
 to another database.
 

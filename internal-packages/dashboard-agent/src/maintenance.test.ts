@@ -74,6 +74,64 @@ async function seedSubmission(chatId: string, requestId: string, ageDays: number
   );
 }
 
+/** One row in every chatId-keyed table, so a delete that misses one leaves a leak. */
+async function seedChatWithChildren(db: DashboardAgentDb, id: string) {
+  await createChat(db, { id, organizationId: ORG, userId: USER });
+  await raw(
+    `insert into trigger_dashboard_agent.chat_messages (chat_id, message_id, position, role, message)
+     values ($1, $1 || '-m', 1, 'user', '{}'::jsonb)`,
+    [id]
+  );
+  await raw(
+    `insert into trigger_dashboard_agent.chat_sessions (chat_id, public_access_token) values ($1, 'pat')`,
+    [id]
+  );
+  await raw(
+    `insert into trigger_dashboard_agent.chat_turn_evals (chat_id, turn, organization_id, user_id)
+     values ($1, 0, $2, $3)`,
+    [id, ORG, USER]
+  );
+  await raw(
+    `insert into trigger_dashboard_agent.investigations (id, chat_id, project_ref, environment_ref, state)
+     values ($1 || '-inv', $1, 'proj', 'env', '{"outcome":"in_progress"}'::jsonb)`,
+    [id]
+  );
+  await raw(
+    `insert into trigger_dashboard_agent.watches
+       (id, chat_id, identity, spec, organization_id, project_id, environment_id, user_id, expires_at)
+     values ($1 || '-w', $1, 'ident', '{}'::jsonb, $2, 'proj', 'env', $3, now() + interval '1 day')`,
+    [id, ORG, USER]
+  );
+  await raw(
+    `insert into trigger_dashboard_agent.watch_submissions
+       (chat_id, client_request_id, organization_id, user_id, project_id, environment_id, draft_hash, draft)
+     values ($1, 'req', $2, $3, 'proj', 'env', 'hash', '{}'::jsonb)`,
+    [id, ORG, USER]
+  );
+}
+
+const CHILD_TABLES = [
+  "chat_messages",
+  "chat_sessions",
+  "chat_turn_evals",
+  "investigations",
+  "watches",
+  "watch_submissions",
+];
+
+async function rowCounts(id: string): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const table of ["chats", ...CHILD_TABLES]) {
+    const column = table === "chats" ? "id" : "chat_id";
+    const rows = await raw(
+      `select count(*)::int as n from trigger_dashboard_agent.${table} where ${column} = $1`,
+      [id]
+    );
+    counts[table] = Number((rows as unknown as { n: number }[])[0]!.n);
+  }
+  return counts;
+}
+
 async function count(table: string): Promise<number> {
   const rows = await raw(`select count(*)::int as n from trigger_dashboard_agent.${table}`);
   return Number((rows as unknown as { n: number }[])[0]!.n);
@@ -132,6 +190,32 @@ describe("the dashboard agent retention pass", () => {
           (row) => row.client_request_id
         )
       ).toEqual(["req_new"]);
+    },
+    60_000
+  );
+
+  postgresTest(
+    "a purged chat takes every chatId-keyed child row with it",
+    async ({ postgresContainer }) => {
+      const db = await boot(postgresContainer.getConnectionUri());
+
+      await seedChatWithChildren(db, "chat_cascade_old");
+      await seedChatWithChildren(db, "chat_cascade_new");
+      await raw(
+        `update trigger_dashboard_agent.chats set deleted_at = now() - interval '40 days' where id = 'chat_cascade_old'`
+      );
+      await raw(
+        `update trigger_dashboard_agent.chats set deleted_at = now() - interval '1 day' where id = 'chat_cascade_new'`
+      );
+
+      expect(await runDashboardAgentRetention(db)).toMatchObject({ chats: 1 });
+
+      const purged = await rowCounts("chat_cascade_old");
+      const kept = await rowCounts("chat_cascade_new");
+      for (const table of ["chats", ...CHILD_TABLES]) {
+        expect(purged[table], `${table} should be empty for the purged chat`).toBe(0);
+        expect(kept[table], `${table} kept for the in-window chat`).toBe(1);
+      }
     },
     60_000
   );

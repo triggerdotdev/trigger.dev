@@ -26,16 +26,16 @@ export const TURN_EVAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
  * enough that an accidental delete can still be investigated; organization deletion soft-
  * deletes the org's chats, so those are removed the same way once the window passes.
  */
-export const CHAT_SOFT_DELETE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const CHAT_SOFT_DELETE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** How long a terminal watch and its submission ledger are kept. */
-export const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Per-statement cap. */
-export const RETENTION_BATCH_LIMIT = 500;
+const RETENTION_BATCH_LIMIT = 500;
 
 /** Cap on the statements one pass may run, so a huge backlog can't run forever. */
-export const MAX_RETENTION_BATCHES = 20;
+const MAX_RETENTION_BATCHES = 20;
 
 export type RetentionResult = {
   turnEvals: number;
@@ -89,6 +89,9 @@ export async function runDashboardAgentRetention(
         const deleted = await purge({ before, limit });
         total += deleted;
         if (deleted < limit) break;
+        if (batch === maxBatches - 1) {
+          logger.warn(`dashboard-agent retention hit the batch cap: ${name}`, { total, before });
+        }
       }
     } catch (error) {
       failed.push(name);
