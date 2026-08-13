@@ -77,7 +77,7 @@ export function Avatar({
         />
       );
     case "image":
-      return <AvatarImage avatar={avatar} size={size} />;
+      return <AvatarImage key={avatar.url} avatar={avatar} size={size} />;
   }
 }
 
