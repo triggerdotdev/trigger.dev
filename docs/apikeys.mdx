@@ -89,11 +89,30 @@ Access presets define what a key can do. Some presets require a paid plan. The d
 | **Task operator** | Trigger all or selected tasks and inspect or operate on their runs |
 | **Observer** | Read runs, tasks, batches, logs, traces, and queues |
 | **Operator** | Observe and operate on runs and queues, and trigger tasks |
-| **Deploy only** | Deploy new versions, read deployment status, and read environment variables |
+| **Deploy only** | Deploy versions, sync environment variables, and manage Preview branches |
 | **Variables only** | Read and write environment variables in this environment |
 | **No restrictions** | Full access to the environment |
 
 **Trigger only** and **Task operator** can be restricted to selected tasks. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks — such as a batch trigger — succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
+
+## Deploy with an API key
+
+Set a key in `TRIGGER_ACCESS_TOKEN` to authenticate `trigger deploy` without logging in.
+
+<CodeGroup>
+
+```bash npm
+TRIGGER_ACCESS_TOKEN="tr_prod_sk_…" npx trigger.dev@latest deploy
+```
+</CodeGroup>
+
+The key must belong to the target environment. Use a Production key for the default deployment, a Staging key with `--env staging`, or a key from the Preview environment with `--env preview`. A Preview deployment key can create and archive Preview branches and sync their environment variables.
+
+<Note>
+  The deploy CLI reads environment API keys from `TRIGGER_ACCESS_TOKEN`, not
+  `TRIGGER_SECRET_KEY`. Setting an API key in `TRIGGER_ACCESS_TOKEN` takes precedence over a saved
+  CLI login.
+</Note>
 
 ## Expire and revoke keys
 
@@ -115,7 +134,7 @@ Public access tokens signed with the previous root key remain valid until the ea
 
 ## Create public access tokens
 
-API keys can be used create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
+API keys can be used to create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
 
 In order to do so with the newer non-root keys, you must use `@trigger.dev/sdk` version 4.5.8 or later. Creating public tokens with non-root keys has the following restrictions:
 
