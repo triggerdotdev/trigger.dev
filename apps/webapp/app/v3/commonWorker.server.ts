@@ -27,8 +27,12 @@ import {
   MembershipDevEnvironmentsSchema,
   provisionDevEnvironmentsForMembership,
 } from "~/services/memberDevEnvironments.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
+import { isSupportChannelEnabled } from "~/services/supportChannelFlag.server";
 import {
   createSupportSlackClient,
+  failSupportChannelProvisioning,
+  hasPrivateSlackSupport,
   OrganizationSupportChannelSchema,
   provisionOrganizationSupportChannel,
 } from "~/services/supportSlackChannel.server";
@@ -331,13 +335,49 @@ function initializeWorker() {
         }
       },
       "supportChannel.provision": async ({ payload }) => {
+        const { organizationId } = payload;
+
+        // Entitlement is rechecked here, not just at enqueue time: an org can
+        // lose it (downgrade, flag off) while the job sits in the queue, and
+        // provisioning a paid Slack channel for an unentitled org is exactly
+        // what the fail-closed gate is meant to prevent.
+        const [flagEnabled, plan] = await Promise.all([
+          isSupportChannelEnabled(organizationId),
+          getCurrentPlan(organizationId),
+        ]);
+        if (!flagEnabled || !hasPrivateSlackSupport(plan)) {
+          await failSupportChannelProvisioning(
+            prisma,
+            organizationId,
+            "Organization is no longer entitled to a support channel"
+          );
+          return;
+        }
+
         const slackClient = createSupportSlackClient(env.SLACK_BOT_TOKEN);
-        if (!slackClient) return;
-        await provisionOrganizationSupportChannel({
-          organizationId: payload.organizationId,
+        if (!slackClient) {
+          // Without this the row sits at PROVISIONING forever and the page
+          // shows "Setting up your channel" with no error and no retry.
+          await failSupportChannelProvisioning(
+            prisma,
+            organizationId,
+            "Slack is not configured (missing SLACK_BOT_TOKEN)"
+          );
+          return;
+        }
+
+        const result = await provisionOrganizationSupportChannel({
+          organizationId,
           prisma,
           slackClient,
         });
+
+        // The status row is already written; throwing is what makes the
+        // configured maxAttempts actually retry. Permanent failures are
+        // accepted so they don't burn attempts.
+        if (result.status === "failed" && result.retryable) {
+          throw new Error(`Support channel provisioning failed for ${organizationId}`);
+        }
       },
     },
   });

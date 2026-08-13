@@ -30,6 +30,14 @@ function isSlackErrorCode(error: unknown, code: string): boolean {
   );
 }
 
+/**
+ * `retryable` tells the worker whether to throw (and burn a retry attempt) or
+ * accept the job. Slack errors are transient; a missing owner or org is not.
+ */
+export type ProvisionResult =
+  | { status: "invited" | "exists"; channelId?: string }
+  | { status: "failed"; retryable: boolean; channelId?: string };
+
 export interface SupportSlackDiscoveryClient {
   ownTeamId(): Promise<string>;
   listCustomerChannels(): Promise<
@@ -146,7 +154,9 @@ export class SupportSlackClientLive implements SupportSlackClient, SupportSlackD
         channels.push({
           channelId: c.id,
           channelName: c.name,
-          connectedTeamIds: (c as { connected_team_ids?: string[] }).connected_team_ids ?? [],
+          // users.conversations does not return connected_team_ids — only
+          // conversations.info does. Fetched per channel below.
+          connectedTeamIds: await this.connectedTeamIds(c.id),
         });
       }
 
@@ -154,6 +164,19 @@ export class SupportSlackClientLive implements SupportSlackClient, SupportSlackD
     } while (cursor);
 
     return channels;
+  }
+
+  private async connectedTeamIds(channelId: string): Promise<string[]> {
+    try {
+      const res = await this.client.conversations.info({ channel: channelId });
+      return (
+        (res.channel as { connected_team_ids?: string[] } | undefined)?.connected_team_ids ?? []
+      );
+    } catch {
+      // Best-effort: the team ids only feed the domain matching hint, so a
+      // failure here degrades the proposal rather than breaking discovery.
+      return [];
+    }
   }
 
   async getTeamDomains(teamId: string): Promise<{ domain?: string; emailDomain?: string }> {
@@ -278,7 +301,7 @@ export async function provisionOrganizationSupportChannel({
   organizationId: string;
   prisma: PrismaClientOrTransaction;
   slackClient: SupportSlackClient;
-}): Promise<{ status: "invited" | "exists" | "failed"; channelId?: string }> {
+}): Promise<ProvisionResult> {
   const existing = await prisma.organizationSupportChannel.findFirst({
     where: { organizationId },
   });
@@ -291,7 +314,8 @@ export async function provisionOrganizationSupportChannel({
     await setStatus(prisma, organizationId, "FAILED", {
       lastError: "No organization owner email found",
     });
-    return { status: "failed" };
+    // Permanent: no amount of retrying invents an owner.
+    return { status: "failed", retryable: false };
   }
 
   // A re-upgrade after an unlink (archive) reuses the existing channel: recreating the
@@ -320,12 +344,16 @@ export async function provisionOrganizationSupportChannel({
       });
       return { status: "invited", channelId };
     } catch (error) {
-      await setStatus(prisma, organizationId, "FAILED", {
+      // Stay ARCHIVED rather than dropping to FAILED: the channel is still
+      // archived in Slack, and only this branch unarchives it. Marking it FAILED
+      // would send the next attempt down the reuse path, which invites into an
+      // archived channel and fails forever.
+      await setStatus(prisma, organizationId, "ARCHIVED", {
         slackChannelId: channelId,
         slackChannelName: channelName,
         lastError: error instanceof Error ? error.message : String(error),
       });
-      return { status: "failed" };
+      return { status: "failed", retryable: true };
     }
   }
 
@@ -342,7 +370,8 @@ export async function provisionOrganizationSupportChannel({
     });
     if (!org) {
       await setStatus(prisma, organizationId, "FAILED", { lastError: "Organization not found" });
-      return { status: "failed" };
+      // Permanent: the org is gone.
+      return { status: "failed", retryable: false };
     }
 
     await setStatus(prisma, organizationId, "PROVISIONING", { invitedEmail: ownerEmail });
@@ -362,7 +391,7 @@ export async function provisionOrganizationSupportChannel({
       await setStatus(prisma, organizationId, "FAILED", {
         lastError: error instanceof Error ? error.message : String(error),
       });
-      return { status: "failed" };
+      return { status: "failed", retryable: true };
     }
   } else {
     await setStatus(prisma, organizationId, "PROVISIONING", {
@@ -391,8 +420,21 @@ export async function provisionOrganizationSupportChannel({
       slackChannelName: channelName,
       lastError: error instanceof Error ? error.message : String(error),
     });
-    return { status: "failed" };
+    return { status: "failed", retryable: true };
   }
+}
+
+/**
+ * Marks a provisioning attempt failed without going near Slack. Used when the
+ * worker refuses to provision at all, so the row never sits at PROVISIONING
+ * with nothing coming to move it.
+ */
+export async function failSupportChannelProvisioning(
+  prisma: PrismaClientOrTransaction,
+  organizationId: string,
+  lastError: string
+): Promise<void> {
+  await setStatus(prisma, organizationId, "FAILED", { lastError });
 }
 
 export async function unlinkSupportChannel({

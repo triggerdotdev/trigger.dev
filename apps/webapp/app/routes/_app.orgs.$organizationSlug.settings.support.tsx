@@ -1,5 +1,5 @@
 import { json, redirect } from "@remix-run/node";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import {
@@ -121,18 +121,25 @@ export const action = dashboardAction(
       return redirect(organizationSupportPath({ slug: params.organizationSlug }));
     }
 
+    // Persist before enqueueing. The worker can finish between the two, and if
+    // the write came second it would clobber INVITED back to PROVISIONING —
+    // leaving the page stuck, with the job already deduped so nothing retries.
+    await prisma.organizationSupportChannel.upsert({
+      where: { organizationId },
+      create: { organizationId, status: "PROVISIONING" },
+      update: { status: "PROVISIONING", lastError: null },
+    });
+
     try {
       await enqueueProvisionSupportChannel({ organizationId });
     } catch (error) {
       logger.error("Failed to enqueue support channel provisioning", { organizationId, error });
+      await prisma.organizationSupportChannel.update({
+        where: { organizationId },
+        data: { status: "FAILED", lastError: "Failed to enqueue provisioning" },
+      });
       return json({ error: "Failed to start Slack channel provisioning" }, { status: 500 });
     }
-
-    await prisma.organizationSupportChannel.upsert({
-      where: { organizationId },
-      create: { organizationId, status: "PROVISIONING" },
-      update: { status: "PROVISIONING" },
-    });
 
     return redirect(organizationSupportPath({ slug: params.organizationSlug }));
   }
@@ -140,6 +147,7 @@ export const action = dashboardAction(
 
 export default function Page() {
   const { supportChannel, hasSupportAccess, canManage } = useTypedLoaderData<typeof loader>();
+  const actionData = useActionData<{ error?: string }>();
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
   const navigation = useNavigation();
@@ -182,21 +190,19 @@ export default function Page() {
                   ? ` We've sent a Slack Connect invite to ${supportChannel.invitedEmail}.`
                   : ""}
               </Paragraph>
-              {supportChannel.status === "LINKED" ? (
-                <Paragraph variant="small">
-                  Your support channel is #{supportChannel.slackChannelName}
-                </Paragraph>
-              ) : null}
-              {supportChannel.slackChannelId ? (
+              {/* While INVITED the owner has not joined yet, so the deep link
+                  would 404 for them — offer the Slack Connect invite instead.
+                  The channel id is always set by then, so ordering matters. */}
+              {supportChannel.status === "INVITED" && supportChannel.inviteUrl ? (
+                <LinkButton variant="primary/medium" to={supportChannel.inviteUrl}>
+                  Join the channel
+                </LinkButton>
+              ) : supportChannel.slackChannelId ? (
                 <LinkButton
                   variant="primary/medium"
                   to={`https://slack.com/app_redirect?channel=${supportChannel.slackChannelId}`}
                 >
                   Open in Slack
-                </LinkButton>
-              ) : supportChannel.inviteUrl ? (
-                <LinkButton variant="primary/medium" to={supportChannel.inviteUrl}>
-                  Join the channel
                 </LinkButton>
               ) : null}
             </div>
@@ -206,6 +212,11 @@ export default function Page() {
             </Paragraph>
           ) : (
             <Form method="post" className="flex flex-col gap-3">
+              {actionData?.error ? (
+                <Paragraph variant="small" className="text-error">
+                  {actionData.error}
+                </Paragraph>
+              ) : null}
               {supportChannel?.status === "FAILED" ? (
                 <Paragraph variant="small" className="text-error">
                   Something went wrong setting up your channel. Try again, or contact us.

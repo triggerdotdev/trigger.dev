@@ -86,9 +86,12 @@ class FakeSupportSlackClient implements SupportSlackClient {
   public invited: Array<{ channelId: string; email: string }> = [];
   public archived: string[] = [];
   public unarchived: string[] = [];
-  constructor(private opts: { failInvite?: boolean } = {}) {}
+  constructor(private opts: { failInvite?: boolean; failUnarchive?: boolean } = {}) {}
   setFailInvite(failInvite: boolean) {
     this.opts = { ...this.opts, failInvite };
+  }
+  setFailUnarchive(failUnarchive: boolean) {
+    this.opts = { ...this.opts, failUnarchive };
   }
   async createPrivateChannel(name: string) {
     this.created.push(name);
@@ -104,6 +107,7 @@ class FakeSupportSlackClient implements SupportSlackClient {
   }
   async unarchiveChannel(channelId: string) {
     this.unarchived.push(channelId);
+    if (this.opts.failUnarchive) throw new Error("channel_not_found");
   }
 }
 
@@ -192,6 +196,69 @@ describe("provisionOrganizationSupportChannel", () => {
 
       expect(result.status).toBe("invited");
       expect(client.invited).toEqual([{ channelId: "C123", email: "owner@acme.com" }]);
+    },
+    15000
+  );
+
+  postgresTest(
+    "a failed unarchive stays ARCHIVED so the next attempt retries it",
+    async ({ prisma }) => {
+      const { org } = await seedOrg(prisma);
+      await prisma.organizationSupportChannel.create({
+        data: {
+          organizationId: org.id,
+          status: "ARCHIVED",
+          slackChannelId: "C123",
+          slackChannelName: "cus-acme",
+        },
+      });
+
+      const client = new FakeSupportSlackClient({ failUnarchive: true });
+      const failed = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(failed).toEqual({ status: "failed", retryable: true });
+      // Dropping to FAILED here would send the retry down the reuse path, which
+      // invites into a channel that is still archived — broken forever.
+      const row = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: org.id },
+      });
+      expect(row?.status).toBe("ARCHIVED");
+
+      client.setFailUnarchive(false);
+      const retried = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(retried.status).toBe("invited");
+      expect(client.unarchived).toEqual(["C123", "C123"]);
+    },
+    15000
+  );
+
+  postgresTest(
+    "a missing owner is a permanent failure, Slack errors are retryable",
+    async ({ prisma }) => {
+      const { org: noOwner } = await seedOrg(prisma, { withAdmin: false, slug: "noowner" });
+      const permanent = await provisionOrganizationSupportChannel({
+        organizationId: noOwner.id,
+        prisma,
+        slackClient: new FakeSupportSlackClient(),
+      });
+      expect(permanent).toEqual({ status: "failed", retryable: false });
+
+      const { org } = await seedOrg(prisma, { slug: "transient" });
+      const transient = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: new FakeSupportSlackClient({ failInvite: true }),
+      });
+      expect(transient).toEqual({ status: "failed", retryable: true });
     },
     15000
   );
