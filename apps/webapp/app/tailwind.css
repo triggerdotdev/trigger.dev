@@ -154,6 +154,7 @@
   --color-background-dimmed: var(--color-charcoal-850);
   --color-background-bright: var(--color-charcoal-800);
   --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
   --color-surface-selected: var(--color-charcoal-650);
   --color-surface-selected-hover: var(--color-charcoal-600);
@@ -768,14 +769,16 @@
   --color-background-dimmed: #fbfbfc;
   --color-background-bright: #ffffff;
   --color-background-hover: #f2f3f5;
+  /* Cards on white need a gentler hover than the app-wide surfaces */
+  --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
   /* Selection sits lighter than the controls here - on white a soft grey is
      already enough to read as selected */
-  --color-surface-selected: #ebedf0;
-  --color-surface-selected-hover: #e3e5ea;
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
@@ -937,6 +940,7 @@
   --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), #000 calc(var(--theme-contrast, 0) * 55%));
   --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), #000 calc(var(--theme-contrast, 0) * 45%));
   --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+  --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
   --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), #000 calc(var(--theme-contrast, 0) * 25%));
   --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
 
@@ -961,6 +965,7 @@
      page-behind surfaces darken a touch so panels separate */
   --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
   --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
+  --color-surface-hover-subtle: color-mix(in srgb, #f7f8f9, #000 calc(var(--theme-contrast, 0) * 8%));
   --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
 
   /* Controls and borders push hard toward black - this is where light-mode
@@ -968,8 +973,8 @@
   --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-surface-selected: color-mix(in srgb, #ebedf0, #000 calc(var(--theme-contrast, 0) * 25%));
-  --color-surface-selected-hover: color-mix(in srgb, #e3e5ea, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-surface-selected: color-mix(in srgb, #eff0f2, #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-surface-selected-hover: color-mix(in srgb, #e7e9ec, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
