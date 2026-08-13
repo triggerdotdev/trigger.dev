@@ -9,6 +9,7 @@
     "@trigger.dev/plugins": "workspace:*"
   },
   "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1"

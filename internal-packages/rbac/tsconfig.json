@@ -13,5 +13,8 @@
     "strict": true,
     "customConditions": ["@triggerdotdev/source"]
   },
-  "exclude": ["node_modules", "dist"]
+  // Excluded from tsc: it imports @internal/testcontainers, whose source
+  // (pulled in via customConditions) doesn't type-check under this config.
+  // vitest still runs and transpiles it.
+  "exclude": ["node_modules", "dist", "src/fallback.userActor.test.ts"]
 }

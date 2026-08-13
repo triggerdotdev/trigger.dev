@@ -260,6 +260,25 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     if (!claims) {
       return { ok: false, status: 401, error: "Invalid user-actor token" };
     }
+
+    // Same tenant floor as authenticateSession: a non-member's delegated token is
+    // denied here, not handed a usable ability (even for reads). Admins are exempt.
+    const user = await this.replica.user.findFirst({
+      where: { id: claims.userId },
+      select: { id: true, admin: true },
+    });
+    if (!user) {
+      return { ok: false, status: 401, error: "Invalid user-actor token" };
+    }
+    if (!user.admin) {
+      const denied = await this.deniedByMembership(
+        context.organizationId,
+        context.projectId,
+        user.id
+      );
+      if (denied) return { ok: false, status: 403, error: "Unauthorized" };
+    }
+
     return {
       ok: true,
       userId: claims.userId,
