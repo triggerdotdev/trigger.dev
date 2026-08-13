@@ -1057,12 +1057,20 @@
   --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
   --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
 
-  /* On white the foregrounds carry the contrast: cards stay white while the
-     page-behind surfaces darken a touch so panels separate. These move within
-     light's own pale greys - charcoal is too coarse up here. */
-  --color-background-deep: color-mix(in srgb, #f1f2f4, var(--color-charcoal-200) calc(var(--theme-contrast, 0) * 100%));
-  --color-background-hover: color-mix(in srgb, #f2f3f5, #dcdee3 calc(var(--theme-contrast, 0) * 100%));
-  --color-background-raised: color-mix(in srgb, #e9eaee, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
+  /* Surfaces, mirroring the dark side: the whole stack translates two stops
+     together, so the gaps between the tiers are the same at both ends of the
+     slider. Dark deepens away from its light text; light has nowhere brighter to
+     go than the white it already sits on, so it deepens too - which is what buys
+     panel separation here rather than text contrast.
+
+     These stay among light's own pale greys: charcoal has nothing between c-100
+     and c-200 to hold them. White pins all six afterwards, so it stays flat. */
+  --color-background-bright: color-mix(in srgb, #ffffff, #f2f3f5 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-dimmed: color-mix(in srgb, #fbfbfc, #f1f2f4 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #eceef1 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, #e2e4e9 calc(var(--theme-contrast, 0) * 100%));
+  --color-input-bg: color-mix(in srgb, #ffffff, #f2f3f5 calc(var(--theme-contrast, 0) * 100%));
 
   /* Controls, grid lines and borders push down onto the charcoal stops - this is
      where light-mode contrast is actually visible, and where mixing toward #000
