@@ -358,7 +358,7 @@ The order is load-bearing.
 | Window | 30 min, 1, 2, 6, 12 or 24 hours |
 
 The ceiling is 24 hours and the schema enforces both. A watch schedules its own
-next check — there is no shared cron — so the first answer lands one cadence
+next check — no cron polls for due watches — so the first answer lands one cadence
 after you confirm the card. `expiresAt` is creation time plus the window.
 
 Due watches of one `(environment, cadence)` group can instead be checked
@@ -382,6 +382,14 @@ A sweep (`dashboardAgentWatchSweep.server.ts`) is the backstop:
   the sweep can't tell whether the user was already told, so delivery is
   id-deduped rather than conditional;
 - terminal rows are kept **7 days**; the outcome also lives in the transcript.
+
+The agent project runs two scheduled tasks of its own: `dashboard-agent-investigation-sweep`
+every 5 minutes settles cards left `in_progress` past **30 minutes**
+(`investigation-sweep.ts`), and `dashboard-agent-maintenance` at 03:00 daily is
+retention (`maintenance.ts`) — judged turns and soft-deleted chats past **30
+days**, terminal watches and their submission ledger past **7 days**. Retention
+does nothing at all without `DASHBOARD_AGENT_DATABASE_URL`: it never falls back
+to another database.
 
 The sweep re-authorizes each row before reading anything, and carries the
 previous check's facts into the final evaluation, so a stall streak survives the

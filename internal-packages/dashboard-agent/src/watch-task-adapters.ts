@@ -24,7 +24,7 @@ export function getWatchDb(): DashboardAgentDbClient {
     const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error(
-        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the watch task"
+        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the watch and sweep tasks"
       );
     }
     dbClient = createDashboardAgentDb(connectionString, { max: 2 });
