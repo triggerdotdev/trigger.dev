@@ -158,6 +158,8 @@
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-input-bg: var(--color-charcoal-750);
 
   /* Borders, from subtlest to most visible */
@@ -770,6 +772,8 @@
   --color-surface-control: #dcdee3;
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
+  --color-surface-selected: #dcdee3;
+  --color-surface-selected-hover: #cfd2d9;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
