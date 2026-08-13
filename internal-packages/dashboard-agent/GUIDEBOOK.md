@@ -388,8 +388,8 @@ every 5 minutes settles cards left `in_progress` past **30 minutes**
 retention (`maintenance.ts`) — judged turns and soft-deleted chats past **30
 days**, terminal watches and their submission ledger past **7 days** — a purged
 watch outcome still lives in the transcript. Retention connects with
-`DASHBOARD_AGENT_DATABASE_URL ?? DATABASE_URL`, like the watch and sweep tasks,
-and skips only when neither is set.
+`DASHBOARD_AGENT_DATABASE_URL`, falling back to `DATABASE_URL`, like the watch
+and sweep tasks, and skips only when neither is set.
 
 The sweep re-authorizes each row before reading anything, and carries the
 previous check's facts into the final evaluation, so a stall streak survives the
