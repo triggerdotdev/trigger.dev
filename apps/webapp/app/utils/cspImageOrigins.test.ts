@@ -17,7 +17,11 @@ function directivePermits(directive: string, imageUrl: string): boolean {
       if (!source.startsWith("http")) return false;
       const parsed = new URL(source);
       if (parsed.protocol !== url.protocol || parsed.host !== url.host) return false;
-      return parsed.pathname === "/" || parsed.pathname === url.pathname;
+      // CSP path matching: a source path ending in "/" matches by prefix, otherwise it
+      // must match exactly. The query string is never part of the match.
+      return parsed.pathname.endsWith("/")
+        ? url.pathname.startsWith(parsed.pathname)
+        : parsed.pathname === url.pathname;
     });
 }
 
@@ -104,9 +108,9 @@ describe("parseCspImageOrigins", () => {
 });
 
 describe("buildImgSrcDirective", () => {
-  it("is self, data, blob, the SSO avatar hosts and the favicon endpoint by default", () => {
+  it("is self, data, blob, the SSO avatar hosts, the favicon endpoints and the changelog by default", () => {
     expect(buildImgSrcDirective()).toBe(
-      "img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://www.google.com/s2/favicons"
+      "img-src 'self' data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://www.google.com/s2/favicons https://t0.gstatic.com/faviconV2 https://t1.gstatic.com/faviconV2 https://t2.gstatic.com/faviconV2 https://t3.gstatic.com/faviconV2 https://trigger.dev/changelog/"
     );
   });
 
@@ -118,6 +122,29 @@ describe("buildImgSrcDirective", () => {
     expect(directivePermits(buildImgSrcDirective(), "https://www.google.com/beacon.png")).toBe(
       false
     );
+  });
+
+  it("permits the gstatic shard the favicon endpoint redirects to", () => {
+    expect(
+      directivePermits(
+        buildImgSrcDirective(),
+        "https://t2.gstatic.com/faviconV2?url=https://example.com&size=128"
+      )
+    ).toBe(true);
+  });
+
+  it("permits nothing else on a gstatic shard, and no shard we did not list", () => {
+    const directive = buildImgSrcDirective();
+    expect(directivePermits(directive, "https://t2.gstatic.com/beacon.png")).toBe(false);
+    expect(directivePermits(directive, "https://t9.gstatic.com/faviconV2")).toBe(false);
+  });
+
+  it("permits changelog images by path prefix, and nothing else on our domain", () => {
+    const directive = buildImgSrcDirective();
+    expect(directivePermits(directive, "https://trigger.dev/changelog/some-post/image.png")).toBe(
+      true
+    );
+    expect(directivePermits(directive, "https://trigger.dev/anything.png")).toBe(false);
   });
 
   it("permits both OAuth avatar hosts", () => {
