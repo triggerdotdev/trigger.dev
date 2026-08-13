@@ -1,4 +1,8 @@
-import { ChevronRightIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import {
   Form,
@@ -92,6 +96,7 @@ import {
   adminPath,
   branchesPath,
   concurrencyPath,
+  docsPath,
   limitsPath,
   logoutPath,
   newOrganizationPath,
@@ -130,9 +135,10 @@ import {
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
-import { Button, ButtonContent } from "../primitives/Buttons";
+import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
+import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import {
   Popover,
@@ -320,7 +326,7 @@ type SideMenuUser = Pick<
 };
 export type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "version" | "environments"
+  "id" | "name" | "slug" | "version" | "environments" | "engine" | "createdAt"
 >;
 export type SideMenuEnvironment = MatchedEnvironment;
 
@@ -396,6 +402,7 @@ export function SideMenu({
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
+  const isV3Project = project.engine === "V1";
   const favorites = useFavorites();
   const [isCustomizeOpen, setCustomizeOpen] = useState(false);
   // Lives here (not in the dialog): the dialog unmounts on close, which would abort a fetcher it
@@ -1247,6 +1254,13 @@ export function SideMenu({
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
           />
+          <V3DeprecationPanel
+            isCollapsed={isCollapsed}
+            isV3={isV3Project}
+            projectCreatedAt={project.createdAt}
+            hasIncident={incidentStatus.hasIncident}
+            isManagedCloud={incidentStatus.isManagedCloud}
+          />
           <motion.div
             layout
             transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -1537,6 +1551,100 @@ function SectionHeaderMenu({ onCustomize }: { onCustomize: () => void }) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function V3DeprecationPanel({
+  isCollapsed,
+  isV3,
+  projectCreatedAt,
+  hasIncident,
+  isManagedCloud,
+}: {
+  isCollapsed: boolean;
+  isV3: boolean;
+  projectCreatedAt: Date;
+  hasIncident: boolean;
+  isManagedCloud: boolean;
+}) {
+  // Only show for projects created before v4 was released
+  const V4_RELEASE_DATE = new Date("2025-09-01");
+  const isLikelyV3 = isV3 && new Date(projectCreatedAt) < V4_RELEASE_DATE;
+
+  if (!isManagedCloud || !isLikelyV3 || hasIncident) {
+    return null;
+  }
+
+  return (
+    <Popover>
+      <div className="p-1">
+        <motion.div
+          initial={false}
+          animate={{
+            height: isCollapsed ? 0 : "auto",
+            opacity: isCollapsed ? 0 : 1,
+          }}
+          transition={{ duration: 0.15 }}
+          className="overflow-hidden"
+        >
+          <V3DeprecationContent />
+        </motion.div>
+
+        <motion.div
+          initial={false}
+          animate={{
+            height: isCollapsed ? "auto" : 0,
+            opacity: isCollapsed ? 1 : 0,
+          }}
+          transition={{ duration: 0.15 }}
+          className="overflow-hidden"
+        >
+          <SimpleTooltip
+            button={
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
+                <ExclamationTriangleIcon className="size-5 text-amber-400" />
+              </PopoverTrigger>
+            }
+            content="v3 is now deprecated"
+            side="right"
+            sideOffset={8}
+            disableHoverableContent
+            asChild
+          />
+        </motion.div>
+      </div>
+      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 min-w-0! p-0">
+        <V3DeprecationContent />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function V3DeprecationContent() {
+  return (
+    <div className="flex flex-col gap-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 pt-1.5">
+      <div className="flex items-center gap-1 border-b border-amber-500/30 pb-1">
+        <ExclamationTriangleIcon className="size-4 text-amber-400" />
+        <Paragraph variant="small/bright" className="text-amber-300">
+          v3 is now deprecated
+        </Paragraph>
+      </div>
+      <Paragraph variant="extra-small/bright" className="text-amber-300">
+        This is a v3 project which is now deprecated so no runs are executing. Upgrade to v4 to
+        resume executing runs in this project.
+      </Paragraph>
+      <LinkButton
+        variant="secondary/small"
+        to={docsPath("/upgrade-to-v4")}
+        target="_blank"
+        fullWidth
+        TrailingIcon={ArrowTopRightOnSquareIcon}
+        trailingIconClassName="text-amber-300"
+        className="border-amber-500/30 bg-amber-500/15 hover:border-amber-500/50! hover:bg-amber-500/25!"
+      >
+        <span className="text-amber-300">Upgrade to v4</span>
+      </LinkButton>
+    </div>
   );
 }
 
