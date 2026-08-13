@@ -24,13 +24,8 @@ describe("document image CSP", () => {
     expect(directive).not.toMatch(/(^|\s)https?:(\s|$)/);
   });
 
-  it("permits a changelog image", () => {
-    const imageUrl = "https://trigger.dev/changelog/some-post/image.png";
-    const permitted = buildImgSrcDirective()
-      .split(" ")
-      .slice(1)
-      .some((source) => source.endsWith("/") && imageUrl.startsWith(source));
-    expect(permitted).toBe(true);
+  it("allows changelog images", () => {
+    expect(buildImgSrcDirective().split(" ")).toContain("https://trigger.dev/changelog/");
   });
 
   it("sets the header on every document response, not only on /login", () => {

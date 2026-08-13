@@ -10,7 +10,8 @@
  * favicon endpoint org avatars are stored as (see `utils/favicon.ts`), and our own
  * changelog images. The path pins each endpoint — CSP matches the path and ignores the
  * query string. The favicon endpoint 302s to a `tN.gstatic.com` shard and CSP re-checks
- * the redirect target, so the shards are listed too. A trailing "/" matches by prefix.
+ * only the host on a redirect, so the shards are listed too; their path pin limits
+ * direct loads only. A trailing "/" matches by prefix.
  */
 export const BASE_IMG_SRC_SOURCES = [
   "'self'",
