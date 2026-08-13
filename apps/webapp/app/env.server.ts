@@ -175,6 +175,7 @@ const EnvironmentSchema = z
     // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
     // provider resolves credentials itself, so only the region is read here.
     AWS_REGION: z.string().optional(),
+    AWS_DEFAULT_REGION: z.string().optional(),
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     AWS_SESSION_TOKEN: z.string().optional(),
