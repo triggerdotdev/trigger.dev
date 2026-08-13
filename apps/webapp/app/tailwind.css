@@ -155,11 +155,11 @@
   --color-background-bright: var(--color-charcoal-800);
   --color-background-hover: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
-  --color-surface-selected: var(--color-charcoal-650);
-  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-input-bg: var(--color-charcoal-750);
 
   /* Borders, from subtlest to most visible */
@@ -772,6 +772,7 @@
   --color-surface-control: #dcdee3;
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
+  /* Light keeps the control values for selection; only dark tones them down */
   --color-surface-selected: #dcdee3;
   --color-surface-selected-hover: #cfd2d9;
 
@@ -966,6 +967,8 @@
   --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
+  --color-surface-selected: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-surface-selected-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
