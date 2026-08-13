@@ -60,6 +60,17 @@ function createSchema(
   ]);
 }
 
+type FormAction = "rename" | "delete";
+
+export function submissionFor(lastSubmission: unknown, formAction: FormAction) {
+  return lastSubmission &&
+    typeof lastSubmission === "object" &&
+    "formAction" in lastSubmission &&
+    lastSubmission.formAction === formAction
+    ? lastSubmission
+    : undefined;
+}
+
 const Params = z.object({
   organizationSlug: z.string(),
   projectParam: z.string(),
@@ -85,6 +96,7 @@ export const action = dashboardAction(
     );
 
     const formData = await request.formData();
+    const formAction = formData.get("action") as FormAction;
 
     const schema = createSchema({
       getSlugMatch: (slug) => {
@@ -94,7 +106,7 @@ export const action = dashboardAction(
     const submission = parseWithZod(formData, { schema });
 
     if (submission.status !== "success") {
-      return json(submission.reply());
+      return json({ ...submission.reply(), formAction });
     }
 
     const projectSettingsService = new ProjectSettingsService();
@@ -105,7 +117,10 @@ export const action = dashboardAction(
     );
 
     if (membershipResultOrFail.isErr()) {
-      return json(submission.reply({ formErrors: ["Project not found"] }), { status: 404 });
+      return json(
+        { ...submission.reply({ formErrors: ["Project not found"] }), formAction },
+        { status: 404 }
+      );
     }
 
     const { projectId } = membershipResultOrFail.value;
@@ -133,9 +148,10 @@ export const action = dashboardAction(
               logger.error("Failed to rename project", {
                 error: resultOrFail.error,
               });
-              return json(submission.reply({ formErrors: ["Failed to rename project"] }), {
-                status: 400,
-              });
+              return json(
+                { ...submission.reply({ formErrors: ["Failed to rename project"] }), formAction },
+                { status: 400 }
+              );
             }
           }
         }
@@ -194,7 +210,7 @@ export default function GeneralSettingsPage() {
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastResult: submissionFor(lastSubmission, "rename") as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parseWithZod(formData, {
@@ -210,7 +226,7 @@ export default function GeneralSettingsPage() {
   const [deleteForm, { projectSlug }] = useForm({
     id: "delete-project",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastResult: submissionFor(lastSubmission, "delete") as any,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {

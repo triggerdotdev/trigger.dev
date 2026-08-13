@@ -7,7 +7,10 @@
 import { errAsync, okAsync } from "neverthrow";
 import { describe, expect, it, vi } from "vitest";
 import { commitSession, getSession, redirectWithErrorMessage } from "~/models/message.server";
-import { action as generalSettingsAction } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings.general/route";
+import {
+  action as generalSettingsAction,
+  submissionFor,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings.general/route";
 
 vi.mock("~/services/routeBuilders/dashboardBuilder", () => ({
   dashboardAction: (_options: unknown, handler: unknown) => handler,
@@ -121,5 +124,17 @@ describe("general settings failures reach the form", () => {
     expect(await response.json()).toMatchObject({
       error: { "": ["Failed to rename project"] },
     });
+  });
+
+  // A SubmissionResult carries no form identity, so both forms would otherwise show it.
+  it("scopes the rename failure to the rename form", async () => {
+    renameFails.value = true;
+    const response = await runAction("rename", true);
+    renameFails.value = false;
+
+    const result = await response.json();
+
+    expect(submissionFor(result, "rename")).toEqual(result);
+    expect(submissionFor(result, "delete")).toBeUndefined();
   });
 });
