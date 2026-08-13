@@ -166,6 +166,9 @@
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
   --color-grid-bright: var(--color-charcoal-700);
+  /* Blend of border-bright over the selected card, so it tracks whatever ramp
+     border-bright is on - the dark themes need no contrast entry of their own */
+  --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
   --color-border-bright: var(--color-charcoal-600);
   --color-border-brighter: var(--color-charcoal-550);
   --color-border-brightest: var(--color-charcoal-500);
@@ -783,6 +786,7 @@
   /* Borders */
   --color-grid-dimmed: #eceef1;
   --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
   --color-border-bright: #d2d5db;
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
@@ -965,8 +969,9 @@
      page-behind surfaces darken a touch so panels separate */
   --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
   --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
-  /* Radio card surface - shallow ramp, see surface-selected below */
-  --color-surface-hover-subtle: color-mix(in srgb, #f7f8f9, #000 calc(var(--theme-contrast, 0) * 4%));
+  /* Radio card surfaces take no ramp at all on white - their contrast is
+     carried by border-selected below. Deliberately absent: surface-hover-subtle,
+     surface-selected, surface-selected-hover. */
   --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
 
   /* Controls and borders push hard toward black - this is where light-mode
@@ -974,12 +979,10 @@
   --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  /* Selection marks state, it is not a filled control: the radio trio keeps a
-     shallow ramp so the cards stay light even at full contrast */
-  --color-surface-selected: color-mix(in srgb, #eff0f2, #000 calc(var(--theme-contrast, 0) * 6%));
-  --color-surface-selected-hover: color-mix(in srgb, #e7e9ec, #000 calc(var(--theme-contrast, 0) * 8%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
+  /* Steeper than border-bright so the selected card stays the loudest edge */
+  --color-border-selected: color-mix(in srgb, #e0e2e6, #000 calc(var(--theme-contrast, 0) * 45%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
   --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
   --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
