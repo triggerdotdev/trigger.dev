@@ -145,7 +145,7 @@ export function ScheduleInspector({
               </Property.Item>
               <Property.Item>
                 <Property.Label>Window</Property.Label>
-                <Property.Value>{schedule.window ?? "Default (60 seconds)"}</Property.Value>
+                <Property.Value>{schedule.window}</Property.Value>
               </Property.Item>
               <Property.Item className="gap-1">
                 <Property.Label>Environment</Property.Label>
@@ -200,13 +200,12 @@ export function ScheduleInspector({
             />
           </div>
           <div className="flex flex-col gap-1 pt-2">
-            <Header3 className="pb-1 pl-3">Next 5 scheduled runs</Header3>
+            <Header3 className="pb-1 pl-3">Next 5 runs</Header3>
             <Table variant="bright">
               <TableHeader>
                 <TableRow>
-                  {!isUtc && <TableHeaderCell>CRON ({schedule.timezone})</TableHeaderCell>}
-                  <TableHeaderCell>CRON (UTC)</TableHeaderCell>
-                  <TableHeaderCell>Assigned (UTC)</TableHeaderCell>
+                  {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
+                  <TableHeaderCell>UTC</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -216,24 +215,21 @@ export function ScheduleInspector({
                       <TableRow key={index}>
                         {!isUtc && (
                           <TableCell>
-                            <DateTime date={run.nominalAt} timeZone={schedule.timezone} />
+                            <DateTime date={run.effectiveAt} timeZone={schedule.timezone} />
                           </TableCell>
                         )}
-                        <TableCell>
-                          <DateTime date={run.nominalAt} timeZone="UTC" />
-                        </TableCell>
                         <TableCell>
                           <DateTime date={run.effectiveAt} timeZone="UTC" />
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
-                    <TableBlankRow colSpan={isUtc ? 2 : 3}>
+                    <TableBlankRow colSpan={isUtc ? 1 : 2}>
                       <PlaceholderText title="You found a bug" />
                     </TableBlankRow>
                   )
                 ) : (
-                  <TableBlankRow colSpan={isUtc ? 2 : 3}>
+                  <TableBlankRow colSpan={isUtc ? 1 : 2}>
                     <PlaceholderText title="Schedule disabled" />
                   </TableBlankRow>
                 )}
