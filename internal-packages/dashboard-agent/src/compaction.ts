@@ -5,7 +5,7 @@ import { generateText, type ModelMessage, type UIMessage } from "ai";
 import {
   dashboardAgentModelKey,
   latestCards,
-  registry,
+  resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
 } from "./agent-runtime";
 
@@ -271,7 +271,7 @@ export function renderTranscriptForSummary(messages: ModelMessage[]): string {
 
 async function summarizeConversation(event: SummarizeEvent): Promise<string> {
   const { text } = await generateText({
-    model: locals.get(dashboardAgentModelKey) ?? registry.languageModel(SUMMARY_MODEL),
+    model: locals.get(dashboardAgentModelKey) ?? resolveDashboardAgentModel(SUMMARY_MODEL),
     system: SUMMARY_INSTRUCTION,
     prompt: renderTranscriptForSummary(event.messages),
     maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,

@@ -28,7 +28,7 @@ import {
   getStore,
   getSystemPrompt,
   modeFor,
-  registry,
+  resolveDashboardAgentModel,
   latestCards,
   sanitizeReplayedToolInputs,
   clearOpenInvestigations,
@@ -428,7 +428,7 @@ async function narrateWithPlan(input: {
       ? streamText({
           model:
             locals.get(dashboardAgentModelKey) ??
-            registry.languageModel("anthropic:claude-haiku-4-5"),
+            resolveDashboardAgentModel("anthropic:claude-haiku-4-5"),
           system: HAIKU_WAKE_BRIEF,
           // Bounded on purpose: the wake alone, no conversation and no tools.
           messages: [
@@ -442,9 +442,7 @@ async function narrateWithPlan(input: {
       : streamText({
           model:
             locals.get(dashboardAgentModelKey) ??
-            registry.languageModel(
-              (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-            ),
+            resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
           system: resolved.text,
           // No tools: a wake reports what the check already established, and carries no
           // delegated token to read with. The breakpoint goes on the last message of the
@@ -782,9 +780,7 @@ async function conductWatchInvestigation(args: {
   const result = streamText({
     model:
       locals.get(dashboardAgentModelKey) ??
-      registry.languageModel(
-        (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-      ),
+      resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
     system: resolved.text,
     tools,
     // Ten steps of accumulating tool output is exactly what the rolling breakpoint
