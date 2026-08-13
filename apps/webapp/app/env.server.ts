@@ -168,9 +168,14 @@ const EnvironmentSchema = z
     // uses its own key on the Trigger side. When unset, Head Start is disabled
     // and the first turn falls back to the normal cold-start path.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // Selects the dashboard agent's LLM provider (default anthropic). The internal
+    // seam reads process.env directly; this entry validates the value webapp-side.
+    DASHBOARD_AGENT_MODEL_PROVIDER: z.enum(["anthropic", "bedrock"]).default("anthropic"),
     // AWS credentials for the dashboard agent's Bedrock provider (only used when
-    // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic).
+    // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
+    // provider resolves credentials itself, so only the region is read here.
     AWS_REGION: z.string().optional(),
+    AWS_DEFAULT_REGION: z.string().optional(),
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     AWS_SESSION_TOKEN: z.string().optional(),
