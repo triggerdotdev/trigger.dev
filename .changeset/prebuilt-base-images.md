@@ -2,4 +2,4 @@
 "trigger.dev": patch
 ---
 
-Deploys are faster: images no longer install system packages during every build, and repeat deploys pull less because the shared base layers are already cached. Custom packages from the aptGet extension still install as before.
+Deployment builds now use custom base layer images and no longer install system packages during every build. This improves layer caching resulting in both faster deployments and faster image pulls on the worker cluster side.
