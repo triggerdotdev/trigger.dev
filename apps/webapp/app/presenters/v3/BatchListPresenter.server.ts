@@ -200,6 +200,7 @@ export class BatchListPresenter extends BasePresenter {
       select: {
         id: true,
         environments: {
+          where: { id: environmentId },
           select: {
             id: true,
             type: true,
