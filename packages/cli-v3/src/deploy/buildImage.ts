@@ -687,9 +687,7 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
-// Prebuilt in base-images/ with the default system packages included, so the
-// package layer is one blob shared by every project instead of an apt install
-// per build. Both maps must be bumped together from the same publish run.
+// Prebuilt in base-images/; both maps must be bumped together, from one publish run
 const BASE_IMAGE: Record<BuildRuntime, string> = {
   bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:61d0f681429e69a0eb0eb054c6dbbc5876012feebabf012dd9b80e2f3f776771",
   node: "triggerdotdev/node:21-bookworm@sha256:2580fbfa9a1f75d53126d98bb4bbafabaf3db6b7c1b7996b6603dbea0efcd88c",
@@ -729,10 +727,9 @@ export async function generateContainerfile(options: GenerateContainerfileOption
   }
 }
 
-// Instructions can leave dpkg in a broken state (e.g. dpkg -i of a local
-// .deb), and apt-get install refuses to run on one, so repair first whenever
-// instructions preceded. --allow-downgrades: a user pin of a preinstalled
-// package (e.g. openssl=<older>) is a downgrade by the time this runs.
+// repair: apt-get install refuses to run on dpkg state an instruction left
+// broken (the dpkg -i pattern). --allow-downgrades: a user pin of a
+// preinstalled package is a downgrade by the time this runs.
 function aptInstall(packages: string[], { repair }: { repair: boolean }): string {
   const repairStep = repair
     ? `apt-get --fix-broken install -y --no-install-recommends && \\
@@ -782,9 +779,8 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     .filter(Boolean)
     .join("\n\n");
 
-  // Projects with instructions build FROM base so instructions run exactly
-  // once (their downloads are unbounded); package-only projects keep the
-  // prebuilt toolchain image and repeat the small package install
+  // Instructions run once (FROM base) since their downloads are unbounded;
+  // package-only projects keep the prebuilt toolchain and repeat the small install
   const buildStage = baseInstructions
     ? `FROM base AS build
 
