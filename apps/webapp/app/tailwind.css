@@ -965,7 +965,8 @@
      page-behind surfaces darken a touch so panels separate */
   --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
   --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
-  --color-surface-hover-subtle: color-mix(in srgb, #f7f8f9, #000 calc(var(--theme-contrast, 0) * 8%));
+  /* Radio card surface - shallow ramp, see surface-selected below */
+  --color-surface-hover-subtle: color-mix(in srgb, #f7f8f9, #000 calc(var(--theme-contrast, 0) * 4%));
   --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
 
   /* Controls and borders push hard toward black - this is where light-mode
@@ -973,10 +974,10 @@
   --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  /* Selection stays light across the slider - it marks state, it is not a
-     filled control, so it does not follow surface-control's steep ramp */
-  --color-surface-selected: color-mix(in srgb, #eff0f2, #000 calc(var(--theme-contrast, 0) * 10%));
-  --color-surface-selected-hover: color-mix(in srgb, #e7e9ec, #000 calc(var(--theme-contrast, 0) * 12%));
+  /* Selection marks state, it is not a filled control: the radio trio keeps a
+     shallow ramp so the cards stay light even at full contrast */
+  --color-surface-selected: color-mix(in srgb, #eff0f2, #000 calc(var(--theme-contrast, 0) * 6%));
+  --color-surface-selected-hover: color-mix(in srgb, #e7e9ec, #000 calc(var(--theme-contrast, 0) * 8%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
