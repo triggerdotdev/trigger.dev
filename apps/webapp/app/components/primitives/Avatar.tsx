@@ -203,6 +203,8 @@ function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
   if (!avatar.url || failed) {
     return (
       <span
+        role="img"
+        aria-label="Organization avatar"
         className="grid shrink-0 place-items-center overflow-hidden"
         style={styleFromSize(size)}
       >
