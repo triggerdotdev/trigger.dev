@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
 
@@ -7,21 +8,39 @@ import { cn } from "~/utils/cn";
    (or component group), split into titled sections whose samples sit in a
    responsive grid of labelled cells. */
 
+/**
+ * The component's own file name, copyable on hover, so a story can be traced
+ * back to source without hunting. Pass every file a page covers.
+ */
+export function ComponentNames({ names }: { names: string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {names.map((name) => (
+        <CopyableText key={name} value={name} className="font-mono text-xs text-text-dimmed" />
+      ))}
+    </div>
+  );
+}
+
 export function StoryPage({
   title,
+  componentNames,
   description,
   children,
   className,
 }: {
   title: string;
+  /** File names of the components shown, e.g. ["Buttons.tsx"]. */
+  componentNames?: string[];
   description?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("flex flex-col gap-10 p-8 pb-24", className)}>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <Header1>{title}</Header1>
+        {componentNames && componentNames.length > 0 && <ComponentNames names={componentNames} />}
         {description && <Paragraph variant="small">{description}</Paragraph>}
       </div>
       {children}
@@ -31,11 +50,14 @@ export function StoryPage({
 
 export function StorySection({
   title,
+  componentName,
   description,
   children,
   className,
 }: {
   title: string;
+  /** Shown beside the heading when a page covers several component files. */
+  componentName?: string;
   description?: string;
   children: ReactNode;
   className?: string;
@@ -43,11 +65,34 @@ export function StorySection({
   return (
     <section className={cn("space-y-3", className)}>
       <div className="space-y-0.5 border-b border-grid-dimmed pb-2">
-        <Header2>{title}</Header2>
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <Header2>{title}</Header2>
+          {componentName && (
+            <CopyableText value={componentName} className="font-mono text-xs text-text-dimmed" />
+          )}
+        </div>
         {description && <Paragraph variant="extra-small">{description}</Paragraph>}
       </div>
       {children}
     </section>
+  );
+}
+
+/** Sub-heading inside a section, for grouping variants of one component. */
+export function StorySubSection({
+  title,
+  children,
+  className,
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("space-y-2", className)}>
+      <Header3 className="text-text-dimmed">{title}</Header3>
+      {children}
+    </div>
   );
 }
 
