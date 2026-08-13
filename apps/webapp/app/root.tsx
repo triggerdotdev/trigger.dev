@@ -85,22 +85,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
-  // Theme switching is feature-flagged; while off, everyone stays on the
-  // classic theme even if a preference was saved earlier. Admins always get
-  // the switcher so the team can dogfood before the flag flips. Cached: the
-  // root loader runs on every document request and client navigation.
+  // Theme switching is feature-flagged; while off, everyone stays on Dark at
+  // contrast 0 even if a preference was saved earlier - that pairing renders
+  // the exact palette the Classic theme used to ship. Admins always get the
+  // switcher so the team can dogfood before the flag flips. Cached: the root
+  // loader runs on every document request and client navigation.
   const showThemeSwitcher = user
     ? user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }))
     : false;
-  // Logged-out pages (login, invites) always render the branded Classic look.
+  // Logged-out pages (login, invites) always render the branded dark look.
   const themePreference: ThemePreference = showThemeSwitcher
     ? normalizeThemePreference(user?.dashboardPreferences.theme)
-    : "classic";
+    : "dark";
   const themeContrast = showThemeSwitcher
     ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
     : 0;
-  // Icon and badge accents. Off by default, and forced off with the switcher
-  // hidden so logged-out and unflagged pages render the Classic set.
+  // The "Distinguish without color" accents. Off by default, and forced off
+  // with the switcher hidden so logged-out and unflagged pages render the
+  // standard set.
   const iconContrast = showThemeSwitcher
     ? normalizeIconContrast(user?.dashboardPreferences.iconContrast)
     : false;
@@ -167,7 +169,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export function ErrorBoundary() {
   return (
     <>
-      <html lang="en" className="h-full" data-theme="classic">
+      <html lang="en" className="h-full" data-theme="dark">
         <head>
           <meta charSet="utf-8" />
 

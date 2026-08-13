@@ -82,18 +82,18 @@ import { cn } from "~/utils/cn";
 
 export const meta = pageMeta("Your profile");
 
-/** Floor of the contrast slider. The stored value and the colours it drives are
- *  unchanged - this only stops the slider offering the bottom of the range. */
-const MIN_CONTRAST = 15;
+/** Floor of the contrast slider. 0 is meaningful now: it's the palette the
+ *  Classic theme shipped, so the bottom of the range has to stay reachable. */
+const MIN_CONTRAST = 0;
 
-/** The contrast the slider ticks and labels as "Default". Note this is not the
- *  same as `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
-const DEFAULT_CONTRAST_MARK = 30;
+/** The contrast the slider ticks and labels as "Default". Matches
+ *  `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
+const DEFAULT_CONTRAST_MARK = 0;
 
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   const Icon = themeOptionIcon(THEME_OPTIONS_BY_VALUE[value], appearance);
   // shrink-0: without it the icon is the flex item that gives way to a long
-  // label, and "System"/"Classic" squash it to a sliver.
+  // label, and "System" squashes it to a sliver.
   return <Icon className="size-4 shrink-0 text-text-bright" />;
 }
 
@@ -739,42 +739,41 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-              {theme !== "classic" && (
-                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                      <Label>Contrast</Label>
-                      <SettingsRowDescription>Adjust the interface contrast</SettingsRowDescription>
-                    </div>
-                    <div className="flex flex-none items-center">
-                      <Slider
-                        variant="settings"
-                        className="w-44"
-                        aria-label="Contrast"
-                        min={MIN_CONTRAST}
-                        max={100}
-                        step={1}
-                        marks={[
-                          {
-                            value: DEFAULT_CONTRAST_MARK,
-                            label: "Reset to default",
-                            onSelect: () => {
-                              previewContrast(DEFAULT_CONTRAST_MARK);
-                              saveContrast(DEFAULT_CONTRAST_MARK);
-                            },
+              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                    <Label>Contrast</Label>
+                    <SettingsRowDescription>Adjust the interface contrast</SettingsRowDescription>
+                  </div>
+                  <div className="flex flex-none items-center">
+                    <Slider
+                      variant="settings"
+                      className="w-44"
+                      aria-label="Contrast"
+                      min={MIN_CONTRAST}
+                      max={100}
+                      step={1}
+                      marks={[
+                        {
+                          value: DEFAULT_CONTRAST_MARK,
+                          label: "Reset to default",
+                          onSelect: () => {
+                            previewContrast(DEFAULT_CONTRAST_MARK);
+                            saveContrast(DEFAULT_CONTRAST_MARK);
                           },
-                        ]}
-                        valueTooltip={(value) =>
-                          value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
-                        }
-                        value={[contrastPreview]}
-                        onValueChange={(values) => previewContrast(values[0] ?? 0)}
-                        onValueCommit={(values) => saveContrast(values[0] ?? 0)}
-                      />
-                    </div>
+                        },
+                      ]}
+                      valueTooltip={(value) =>
+                        value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
+                      }
+                      value={[contrastPreview]}
+                      onValueChange={(values) => previewContrast(values[0] ?? 0)}
+                      onValueCommit={(values) => saveContrast(values[0] ?? 0)}
+                    />
                   </div>
                 </div>
-              )}
+              </div>
+
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
                 <Header2>Interface</Header2>
               </div>
@@ -796,15 +795,16 @@ export default function Page() {
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                    <Label>Icon contrast</Label>
+                    <Label>Distinguish without color</Label>
                     <SettingsRowDescription>
-                      Increase the contrast of icons and badges
+                      Raise the contrast of icons, badges and charts, and give anything that relies
+                      on color alone a distinct shape
                     </SettingsRowDescription>
                   </div>
                   <div className="flex flex-none items-center">
                     <Switch
                       variant="minimal/medium"
-                      aria-label="Icon contrast"
+                      aria-label="Distinguish without color"
                       checked={iconContrast}
                       onCheckedChange={(checked) =>
                         iconContrastFetcher.submit(

@@ -1,4 +1,3 @@
-import { SwatchIcon } from "@heroicons/react/24/outline";
 import { type FunctionComponent } from "react";
 import { CircleFilledIcon } from "~/assets/icons/CircleFilledIcon";
 import { CircleOutlineIcon } from "~/assets/icons/CircleOutlineIcon";
@@ -24,22 +23,15 @@ export const THEME_OPTIONS: ThemeOption[] = [
 ];
 
 /** Light and Dark with their surfaces pinned flat, so grid lines carry the
- *  layout. Account page only, alongside Classic. The icons here are the
+ *  layout. Account page only. The icons here are the
  *  dark-theme pair; `themeOptionIcon` swaps them per active theme. */
 const FLAT_OPTIONS: ThemeOption[] = [
   { value: "white", label: "White", icon: CircleFilledIcon },
   { value: "black", label: "Black", icon: CircleOutlineIcon },
 ];
 
-/** Legacy theme, offered on the account page only. */
-export const CLASSIC_OPTION: ThemeOption = {
-  value: "classic",
-  label: "Classic",
-  icon: SwatchIcon,
-};
-
 /** Every theme, for the account page's full picker. */
-export const ALL_THEME_OPTIONS: ThemeOption[] = [...THEME_OPTIONS, ...FLAT_OPTIONS, CLASSIC_OPTION];
+export const ALL_THEME_OPTIONS: ThemeOption[] = [...THEME_OPTIONS, ...FLAT_OPTIONS];
 
 export const THEME_OPTIONS_BY_VALUE = Object.fromEntries(
   ALL_THEME_OPTIONS.map((option) => [option.value, option])

@@ -219,8 +219,9 @@ function ThemeShortcut({
   return null;
 }
 
-/* Icon contrast is a plain attribute on <html>, so the storybook can flip it
-   locally the same way it does the theme, and hand it back on the way out. */
+/* The accessibility preference is a plain attribute on <html>, so the storybook
+   can flip it locally the same way it does the theme, and hand it back on the
+   way out. The stored key is still `iconContrast`. */
 function useStorybookIconContrast() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
   const [iconContrast, setIconContrast] = useState(false);
@@ -294,7 +295,7 @@ export default function App() {
             <div className="flex flex-none items-center gap-3">
               <Switch
                 variant="minimal/medium"
-                label="Icon contrast"
+                label="Distinguish without color"
                 checked={iconContrast}
                 onCheckedChange={setIconContrast}
               />

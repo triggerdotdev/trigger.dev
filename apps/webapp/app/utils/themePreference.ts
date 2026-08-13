@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Shared between server (dashboard preferences) and client (theme UI, system
 // theme sync) - must stay free of server-only imports.
-export const ThemePreference = z.enum(["classic", "system", "dark", "light", "black", "white"]);
+export const ThemePreference = z.enum(["system", "dark", "light", "black", "white"]);
 export type ThemePreference = z.infer<typeof ThemePreference>;
 
 /* Which theme `system` resolves to at each end of the OS setting. Both ends have
@@ -23,18 +23,25 @@ export function normalizeSystemDarkTheme(value: unknown): SystemDarkTheme {
 }
 
 /** Coerce any stored/legacy value into a valid preference. Missing or unknown
- * values fall back to `dark` - the new dark theme is the default (pinned, not
- * system-resolved, so nobody gets surprised by light mode). */
+ * values fall back to `dark`, which is the default. This is also the upgrade
+ * path off the removed `classic` theme: a stored "classic" no longer parses, so
+ * it lands here and resolves to Dark - which at contrast 0 renders the exact
+ * palette Classic used to. Pinned rather than system-resolved, so nobody gets
+ * surprised by light mode. */
 export function normalizeThemePreference(value: unknown): ThemePreference {
   const result = ThemePreference.safeParse(value);
   return result.success ? result.data : "dark";
 }
 
-/** The default dark theme ships with a slight contrast bump. */
-export const DEFAULT_THEME_CONTRAST = 50;
+/** Dark's palette at contrast 0 is exactly the palette the Classic theme
+ *  shipped, so 0 is the default: anyone arriving from Classic sees no change,
+ *  and the slider only ever adds contrast on top. */
+export const DEFAULT_THEME_CONTRAST = 0;
 
-/** Icon and badge contrast: on swaps the Classic accents for the high-contrast
- *  set (solid badges, monochrome nav icons). Off is the default. */
+/** The "Distinguish without color" accessibility preference: on swaps the
+ *  default accents for the high-contrast set (solid badges, monochrome nav
+ *  icons, darker chart series). Off is the default. Stored as `iconContrast`,
+ *  which predates the preference covering charts and shapes too. */
 export function normalizeIconContrast(value: unknown): boolean {
   return value === true;
 }

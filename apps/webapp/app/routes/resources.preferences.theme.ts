@@ -8,7 +8,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   // Same gate as the account page: while the flag is off, everyone stays on the
-  // classic theme, so a preference must not be writable from the menu either.
+  // default theme, so a preference must not be writable from the menu either.
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
   if (!showThemeSwitcher) {

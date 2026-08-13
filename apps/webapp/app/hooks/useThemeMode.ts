@@ -5,7 +5,7 @@ export type ThemeMode = "dark" | "light";
 
 /* Which themes read as light. Taken from the enum that also drives the "Light"
    end of the `system` preference, so a new theme only has to be classified once
-   - anything not in here (dark, classic, black) reads as dark. */
+   - anything not in here (dark, black) reads as dark. */
 const LIGHT_THEMES = new Set<string>(SystemLightTheme.options);
 
 /**
