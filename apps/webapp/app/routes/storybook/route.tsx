@@ -3,8 +3,12 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData, useTypedRouteLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { Header2 } from "~/components/primitives/Headers";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { Switch } from "~/components/primitives/Switch";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { applyThemePreference } from "~/hooks/useSystemThemeSync";
 import { type loader as rootLoader } from "~/root";
 import { requireUser } from "~/services/session.server";
@@ -149,14 +153,96 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 /* The storybook's theme is its own, so components can be checked in every theme
-   without touching the account preference. Default is System. */
-const THEME_SEGMENTS: { label: string; value: ThemePreference }[] = [
-  { label: "System", value: "system" },
-  { label: "Light", value: "light" },
-  { label: "Dark", value: "dark" },
-  { label: "White", value: "white" },
-  { label: "Black", value: "black" },
+   without touching the account preference. Default is System.
+
+   Each segment gets mod+1..5. The browser binds those to tab switching, hence
+   preventDefault; the shortcuts only exist while this layout is mounted, so
+   they're scoped to the storybook. */
+const THEME_OPTIONS: { label: string; value: ThemePreference; shortcut: ShortcutDefinition }[] = [
+  {
+    label: "System",
+    value: "system",
+    shortcut: { key: "1", modifiers: ["mod"], preventDefault: true },
+  },
+  {
+    label: "Light",
+    value: "light",
+    shortcut: { key: "2", modifiers: ["mod"], preventDefault: true },
+  },
+  {
+    label: "Dark",
+    value: "dark",
+    shortcut: { key: "3", modifiers: ["mod"], preventDefault: true },
+  },
+  {
+    label: "White",
+    value: "white",
+    shortcut: { key: "4", modifiers: ["mod"], preventDefault: true },
+  },
+  {
+    label: "Black",
+    value: "black",
+    shortcut: { key: "5", modifiers: ["mod"], preventDefault: true },
+  },
 ];
+
+/** Hover hint carrying the theme name and its key, on the standard 500ms delay. */
+const TOOLTIP_DELAY_MS = 500;
+
+function ThemeSegmentLabel({ label, shortcut }: { label: string; shortcut: ShortcutDefinition }) {
+  return (
+    <SimpleTooltip
+      button={<span className="px-0.5">{label}</span>}
+      content={
+        <span className="flex items-center gap-1.5">
+          {label}
+          <ShortcutKey shortcut={shortcut} variant="small" />
+        </span>
+      }
+      side="bottom"
+      delayDuration={TOOLTIP_DELAY_MS}
+      disableHoverableContent
+      asChild
+    />
+  );
+}
+
+/** Binds one theme's shortcut. Separate component so each gets its own hook. */
+function ThemeShortcut({
+  shortcut,
+  onTrigger,
+}: {
+  shortcut: ShortcutDefinition;
+  onTrigger: () => void;
+}) {
+  useShortcutKeys({ shortcut, action: onTrigger });
+  return null;
+}
+
+/* Icon contrast is a plain attribute on <html>, so the storybook can flip it
+   locally the same way it does the theme, and hand it back on the way out. */
+function useStorybookIconContrast() {
+  const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
+  const [iconContrast, setIconContrast] = useState(false);
+
+  const savedIconContrast = useRef(rootData?.iconContrast);
+  savedIconContrast.current = rootData?.iconContrast;
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-icon-contrast", iconContrast ? "true" : "false");
+  }, [iconContrast]);
+
+  useEffect(() => {
+    return () => {
+      document.documentElement.setAttribute(
+        "data-icon-contrast",
+        savedIconContrast.current ? "true" : "false"
+      );
+    };
+  }, []);
+
+  return [iconContrast, setIconContrast] as const;
+}
 
 function useStorybookTheme() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
@@ -189,23 +275,40 @@ function useStorybookTheme() {
 export default function App() {
   const { sections } = useTypedLoaderData<typeof loader>();
   const [theme, setTheme] = useStorybookTheme();
+  const [iconContrast, setIconContrast] = useStorybookIconContrast();
 
   return (
     <AppContainer>
+      {THEME_OPTIONS.map((option) => (
+        <ThemeShortcut
+          key={option.value}
+          shortcut={option.shortcut}
+          onTrigger={() => setTheme(option.value)}
+        />
+      ))}
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
         <SideMenu sections={sections} />
-        <div className="grid grid-rows-[2.75rem_1fr] overflow-hidden">
-          <div className="flex items-center justify-between border-b border-grid-bright bg-background-bright pl-4 pr-2">
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              Storybook
-            </Paragraph>
-            <SegmentedControl
-              name="storybook-theme"
-              value={theme}
-              options={THEME_SEGMENTS}
-              variant="secondary/small"
-              onChange={(value) => setTheme(value as ThemePreference)}
-            />
+        <div className="grid grid-rows-[3rem_1fr] overflow-hidden">
+          <div className="flex items-center justify-between gap-4 border-b border-grid-bright bg-background-bright pl-4 pr-2">
+            <Header2>Storybook</Header2>
+            <div className="flex flex-none items-center gap-3">
+              <Switch
+                variant="minimal/medium"
+                label="Icon contrast"
+                checked={iconContrast}
+                onCheckedChange={setIconContrast}
+              />
+              <SegmentedControl
+                name="storybook-theme"
+                value={theme}
+                options={THEME_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: <ThemeSegmentLabel label={option.label} shortcut={option.shortcut} />,
+                }))}
+                variant="secondary/small"
+                onChange={(value) => setTheme(value as ThemePreference)}
+              />
+            </div>
           </div>
           <div className="overflow-y-auto">
             <Outlet />
