@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { BackgroundWorkerMetadata, type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
@@ -78,7 +78,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             where: {
               type: "DECLARATIVE",
               projectId: authenticatedEnv.projectId,
-              taskIdentifier: { in: declarativeTasks.map((task) => task.id) },
+              taskIdentifier: { in: boundedIn(declarativeTasks.map((task) => task.id)) },
               instances: { some: { environmentId: authenticatedEnv.id } },
             },
             select: {
