@@ -3,6 +3,7 @@ import { type QueueItem, type RetrieveQueueParam, RetrieveQueueType } from "@tri
 import { z } from "zod";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 
 const SearchParamsSchema = z.object({
   type: RetrieveQueueType.default("id"),
@@ -24,6 +25,15 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, searchParams, authentication }) => {
+    // v3 (engine V1) has no V2 queues to retrieve, so old clients get a clean 400.
+    const engineVersion = await determineEngineVersion({
+      environment: authentication.environment,
+    });
+
+    if (engineVersion === "V1") {
+      return json({ error: "engine-version" }, { status: 400 });
+    }
+
     const input: RetrieveQueueParam =
       searchParams.type === "id"
         ? params.queueParam
@@ -39,11 +49,7 @@ export const loader = createLoaderApiRoute(
     });
 
     if (!result.success) {
-      if (result.code === "queue-not-found") {
-        return json({ error: result.code }, { status: 404 });
-      }
-
-      return json({ error: result.code }, { status: 400 });
+      return json({ error: result.code }, { status: 404 });
     }
 
     const q: QueueItem = result.queue;
