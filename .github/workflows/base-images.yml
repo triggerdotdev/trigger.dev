@@ -39,6 +39,7 @@ jobs:
       build_packages: ${{ steps.config.outputs.build_packages }}
       suite: ${{ steps.config.outputs.suite }}
       snapshot: ${{ steps.config.outputs.snapshot }}
+      publish_id: ${{ steps.config.outputs.publish_id }}
       source_date_epoch: ${{ steps.config.outputs.source_date_epoch }}
       push: ${{ steps.config.outputs.push }}
     steps:
@@ -52,6 +53,7 @@ jobs:
           SNAPSHOT_INPUT: ${{ inputs.debian_snapshot }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
         run: |
           PACKAGES="$(jq -er '.packages' base-images/images.json)"
           BUILD_PACKAGES="$(jq -er '.buildPackages' base-images/images.json)"
@@ -89,6 +91,7 @@ jobs:
             echo "build_packages=$BUILD_PACKAGES"
             echo "suite=$SUITE"
             echo "snapshot=$SNAPSHOT"
+            echo "publish_id=${SNAPSHOT:0:8}-${SNAPSHOT:9:6}-${SHA:0:7}"
             echo "source_date_epoch=$EPOCH"
             echo "push=$PUSH"
           } >> "$GITHUB_OUTPUT"
@@ -164,7 +167,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
           outputs: type=image,push=true,rewrite-timestamp=true
-          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+          # The dated tag is immutable and keeps every published digest
+          # tag-referenced forever; shipped CLI releases pin these digests
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
@@ -187,7 +194,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
           outputs: type=image,push=true,rewrite-timestamp=true
-          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
