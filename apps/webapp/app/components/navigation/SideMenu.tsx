@@ -96,6 +96,7 @@ import {
   adminPath,
   branchesPath,
   concurrencyPath,
+  docsPath,
   limitsPath,
   logoutPath,
   newOrganizationPath,
@@ -1111,7 +1112,7 @@ export function SideMenu({
                   isDragging={isDragging}
                   className="min-w-0 flex-1"
                 />
-                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                {environment.type === "DEVELOPMENT" && (
                   <CollapsibleElement isDragging={isDragging} className="shrink-0">
                     <Dialog>
                       <TooltipProvider disableHoverableContent={true}>
@@ -1604,7 +1605,7 @@ function V3DeprecationPanel({
                 <ExclamationTriangleIcon className="size-5 text-amber-400" />
               </PopoverTrigger>
             }
-            content="V3 deprecation warning"
+            content="v3 is now deprecated"
             side="right"
             sideOffset={8}
             disableHoverableContent
@@ -1625,23 +1626,23 @@ function V3DeprecationContent() {
       <div className="flex items-center gap-1 border-b border-amber-500/30 pb-1">
         <ExclamationTriangleIcon className="size-4 text-amber-400" />
         <Paragraph variant="small/bright" className="text-amber-300">
-          V3 deprecation warning
+          v3 is now deprecated
         </Paragraph>
       </div>
       <Paragraph variant="extra-small/bright" className="text-amber-300">
-        This is a v3 project. V3 deploys will stop working on 1 April 2026. Full shutdown is 1 July
-        2026 where all v3 runs will stop executing. Migrate to v4 to avoid downtime.
+        This is a v3 project which is now deprecated so no runs are executing. Upgrade to v4 to
+        resume executing runs in this project.
       </Paragraph>
       <LinkButton
         variant="secondary/small"
-        to="https://trigger.dev/docs/migrating-from-v3"
+        to={docsPath("/upgrade-to-v4")}
         target="_blank"
         fullWidth
         TrailingIcon={ArrowTopRightOnSquareIcon}
         trailingIconClassName="text-amber-300"
         className="border-amber-500/30 bg-amber-500/15 hover:border-amber-500/50! hover:bg-amber-500/25!"
       >
-        <span className="text-amber-300">View migration guide</span>
+        <span className="text-amber-300">Upgrade to v4</span>
       </LinkButton>
     </div>
   );

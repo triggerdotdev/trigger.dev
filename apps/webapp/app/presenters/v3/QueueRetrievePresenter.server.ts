@@ -7,7 +7,6 @@ import {
   type TaskQueueType,
 } from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -80,16 +79,6 @@ export class QueueRetrievePresenter extends BasePresenter {
     environment: AuthenticatedEnvironment;
     queueInput: RetrieveQueueParam;
   }) {
-    //check the engine is the correct version
-    const engineVersion = await determineEngineVersion({ environment });
-
-    if (engineVersion === "V1") {
-      return {
-        success: false as const,
-        code: "engine-version",
-      };
-    }
-
     const queue = await getQueue(this._replica, environment, queueInput);
     if (!queue) {
       return {
