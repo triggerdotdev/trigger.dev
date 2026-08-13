@@ -23,8 +23,12 @@ export function dashboardAgentProvider(): DashboardAgentProvider {
 
 export const registry = createProviderRegistry({ anthropic, bedrock });
 
-/** Canonical model id -> Bedrock inference profile. */
-const BEDROCK_MODEL_IDS: Record<string, string> = {
+/**
+ * Canonical model id -> Bedrock us cross-region inference profile, verbatim from
+ * the @ai-sdk/amazon-bedrock model-id union. The 4-6 generation profiles are
+ * undated `-vN`; 4-5 and older carry a date and a `:N` suffix.
+ */
+export const BEDROCK_MODEL_IDS: Record<string, string> = {
   "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-v1",
   "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 };
@@ -35,7 +39,12 @@ export function resolveDashboardAgentModel(model: string) {
   if (dashboardAgentProvider() === "anthropic") {
     return registry.languageModel(`anthropic:${id}` as `anthropic:${string}`);
   }
-  const bedrockId = BEDROCK_MODEL_IDS[id] ?? `us.anthropic.${id}`;
+  const bedrockId = BEDROCK_MODEL_IDS[id];
+  if (!bedrockId) {
+    // No Bedrock profile can be guessed from the canonical id — a made-up one is a
+    // guaranteed 404, so fail loudly instead.
+    throw new Error(`No Bedrock model mapping for "${id}"`);
+  }
   return registry.languageModel(`bedrock:${bedrockId}` as `bedrock:${string}`);
 }
 
