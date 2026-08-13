@@ -21,11 +21,10 @@ export function dashboardAgentProvider(): DashboardAgentProvider {
   return process.env.DASHBOARD_AGENT_MODEL_PROVIDER === "bedrock" ? "bedrock" : "anthropic";
 }
 
-// Region threaded explicitly so both AWS_REGION and AWS_DEFAULT_REGION work; the SDK
-// itself only reads AWS_REGION. Credentials are left to the SDK's own chain (IAM
-// role / static keys / session token / bearer) — only region is passed.
+// Region passed explicitly since the SDK reads only AWS_REGION; credentials stay on
+// its own chain. `||` treats an empty region as unset, matching the webapp gate.
 const bedrock = createAmazonBedrock({
-  region: process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION,
+  region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION,
 });
 
 export const registry = createProviderRegistry({ anthropic, bedrock });
