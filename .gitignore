@@ -65,6 +65,7 @@ apps/**/public/build
 /packages/trigger-sdk/src/package.json
 /packages/python/src/package.json
 **/.claude/settings.local.json
+.claude/agents/
 .claude/architecture/
 .claude/docs-plans/
 .claude/plans/
