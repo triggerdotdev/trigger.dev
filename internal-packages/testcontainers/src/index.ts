@@ -29,6 +29,7 @@ import {
 } from "./utils";
 
 export { assertNonNullable, createPostgresContainer } from "./utils";
+export { OtelCollectorContainer, StartedOtelCollectorContainer } from "./otelCollector";
 export { laggingReplica, type LaggingModel } from "./laggingReplica";
 export { logCleanup };
 export type { MinIOConnectionConfig };
