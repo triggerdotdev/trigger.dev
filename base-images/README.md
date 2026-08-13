@@ -15,7 +15,7 @@ images derived from these behave like their upstream bases.
 
 Tags are mutable and rebuilt in place on demand; each rebuild picks up Debian
 security updates published up to its snapshot date. Every publish also pushes
-an immutable snapshot-dated tag (e.g. `22-bookworm-20260812`) so previously
+an immutable per-publish tag (snapshot date plus commit, e.g. `22-bookworm-20260812-45444a7`) so previously
 published digests stay tag-referenced; never delete these, since shipped CLI
 releases pin their digests. The
 runtime itself (the node or bun binaries from the upstream base) only moves
