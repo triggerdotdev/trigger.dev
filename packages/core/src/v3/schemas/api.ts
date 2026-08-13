@@ -827,7 +827,8 @@ export const GetDeploymentResponseBody = z.object({
             timezone: z.string(),
             window: ScheduleWindow.optional(),
             nextRun: z.coerce.date(),
-            nextRunEffectiveAt: z.coerce.date(),
+            /** Null until the deployment's schedule is registered in this environment. */
+            nextRunEffectiveAt: z.coerce.date().nullable(),
           })
         )
         .optional(),

@@ -20,6 +20,22 @@ describe("declarative schedule deploy output", () => {
     ]);
   });
 
+  it("reports that an assigned time is pending registration", () => {
+    expect(
+      formatDeclarativeScheduleOutput([
+        {
+          task: "daily-report",
+          cron: "0 9 * * *",
+          timezone: "UTC",
+          nextRun: new Date("2026-08-12T09:00:00.000Z"),
+          nextRunEffectiveAt: null,
+        },
+      ])
+    ).toContain(
+      "  daily-report: 0 9 * * * (UTC) | window default 60s | next nominal 2026-08-12 09:00:00 UTC | next assigned time pending registration"
+    );
+  });
+
   it("nudges schedules using the default window", () => {
     const lines = formatDeclarativeScheduleOutput([
       {

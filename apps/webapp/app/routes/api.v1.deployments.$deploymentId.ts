@@ -6,6 +6,7 @@ import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
 import { calculateNextScheduleRunTimes, normalizeScheduleWindow } from "~/v3/scheduleWindow.server";
+import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 
 const ParamsSchema = z.object({
   deploymentId: z.string(),
@@ -58,39 +59,75 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const workerMetadata = deployment.worker
       ? BackgroundWorkerMetadata.safeParse(deployment.worker.metadata)
       : undefined;
-    const declarativeSchedules = workerMetadata?.success
+    const declarativeTasks = workerMetadata?.success
       ? workerMetadata.data.tasks.flatMap((task) => {
+          const schedule = task.schedule;
           if (
-            !task.schedule ||
-            (task.schedule.environments &&
-              !task.schedule.environments.includes(authenticatedEnv.type))
+            !schedule ||
+            (schedule.environments && !schedule.environments.includes(authenticatedEnv.type))
           ) {
             return [];
           }
 
-          const windowFields = normalizeScheduleWindow(task.schedule.window);
-          const [nextRun] = calculateNextScheduleRunTimes({
-            cron: task.schedule.cron,
-            timezone: task.schedule.timezone,
-            deduplicationKey: task.id,
-            environmentId: authenticatedEnv.id,
-            schedulePhase: null,
-            phaseSecret: env.ENCRYPTION_KEY,
-            ...windowFields,
-          });
-
-          return [
-            {
-              task: task.id,
-              cron: task.schedule.cron,
-              timezone: task.schedule.timezone,
-              window: task.schedule.window,
-              nextRun: nextRun.nominalAt,
-              nextRunEffectiveAt: nextRun.effectiveAt,
-            },
-          ];
+          return [{ id: task.id, schedule }];
         })
       : [];
+    const persistedDeclarativeSchedules =
+      declarativeTasks.length > 0
+        ? await prisma.taskSchedule.findMany({
+            where: {
+              type: "DECLARATIVE",
+              projectId: authenticatedEnv.projectId,
+              taskIdentifier: { in: declarativeTasks.map((task) => task.id) },
+              instances: { some: { environmentId: authenticatedEnv.id } },
+            },
+            select: {
+              taskIdentifier: true,
+              deduplicationKey: true,
+              generatorExpression: true,
+              timezone: true,
+              windowDurationSeconds: true,
+              windowPercentage: true,
+              instances: {
+                where: { environmentId: authenticatedEnv.id },
+                select: { schedulePhase: true },
+              },
+            },
+          })
+        : [];
+    const declarativeSchedules = declarativeTasks.map((task) => {
+      const windowFields = normalizeScheduleWindow(task.schedule.window);
+      const persistedSchedule = persistedDeclarativeSchedules.find(
+        (schedule) =>
+          schedule.taskIdentifier === task.id &&
+          schedule.generatorExpression === task.schedule.cron &&
+          schedule.timezone === task.schedule.timezone &&
+          schedule.windowDurationSeconds === windowFields.windowDurationSeconds &&
+          schedule.windowPercentage === windowFields.windowPercentage
+      );
+      const registeredNextRun = persistedSchedule
+        ? calculateNextScheduleRunTimes({
+            cron: task.schedule.cron,
+            timezone: task.schedule.timezone,
+            deduplicationKey: persistedSchedule.deduplicationKey,
+            environmentId: authenticatedEnv.id,
+            schedulePhase: persistedSchedule.instances[0]?.schedulePhase ?? null,
+            phaseSecret: env.ENCRYPTION_KEY,
+            ...windowFields,
+          })[0]
+        : undefined;
+
+      return {
+        task: task.id,
+        cron: task.schedule.cron,
+        timezone: task.schedule.timezone,
+        window: task.schedule.window,
+        nextRun:
+          registeredNextRun?.nominalAt ??
+          nextScheduledTimestamps(task.schedule.cron, task.schedule.timezone, new Date())[0],
+        nextRunEffectiveAt: registeredNextRun?.effectiveAt ?? null,
+      };
+    });
 
     return json({
       id: deployment.friendlyId,

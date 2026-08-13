@@ -13,10 +13,13 @@ export function formatDeclarativeScheduleOutput(schedules: DeclarativeScheduleSu
   const lines = ["Declarative schedules"];
 
   for (const schedule of schedules) {
+    const timing = schedule.nextRunEffectiveAt
+      ? `${formatTime(schedule.nextRun)} -> ${formatTime(schedule.nextRunEffectiveAt)}`
+      : `next nominal ${formatTime(schedule.nextRun)} | next assigned time pending registration`;
     lines.push(
       `  ${schedule.task}: ${schedule.cron} (${schedule.timezone}) | window ${
         schedule.window ?? "default 60s"
-      } | ${formatTime(schedule.nextRun)} -> ${formatTime(schedule.nextRunEffectiveAt)}`
+      } | ${timing}`
     );
   }
 
