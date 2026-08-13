@@ -99,6 +99,11 @@ export function CopyButton({
         content={copied ? "Copied!" : "Copy"}
         className="font-sans"
         disableHoverableContent
+        // The button variant is a real <button>; without asChild the tooltip
+        // trigger wraps it in its own, and the browser parser splits the nested
+        // buttons apart, which React then fails to hydrate.
+        asChild={variant === "button"}
+        tabbable={variant === "button"}
       />
     </span>
   );
