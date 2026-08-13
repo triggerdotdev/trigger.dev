@@ -6,6 +6,7 @@ import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["Pagination.tsx"]}
       title="Pagination"
       description="Page controls for list views. The links write ?page to this page's URL."
     >

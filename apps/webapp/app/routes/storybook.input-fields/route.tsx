@@ -13,7 +13,11 @@ import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit
 
 export default function Story_() {
   return (
-    <StoryPage title="Input fields" description="Text inputs, search inputs and one-time codes.">
+    <StoryPage
+      componentNames={["Input.tsx", "SearchInput.tsx", "InputOTP.tsx"]}
+      title="Input fields"
+      description="Text inputs, search inputs and one-time codes."
+    >
       <StorySection title="Input" description="All variants, enabled and disabled.">
         <div className="flex gap-16">
           <InputFieldSet />
@@ -86,6 +90,7 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
         <Input disabled={disabled} variant="medium" placeholder="Name" type="text" />
         <Input disabled={disabled} variant="small" placeholder="Name" type="text" />
         <Input disabled={disabled} variant="tertiary" placeholder="Name" type="text" />
+        <Input disabled={disabled} variant="secondary-small" placeholder="Name" type="text" />
         <Input disabled={disabled} variant="outline/large" placeholder="Name" type="text" />
         <Input disabled={disabled} variant="outline/medium" placeholder="Name" type="text" />
         <Input disabled={disabled} variant="outline/small" placeholder="Name" type="text" />

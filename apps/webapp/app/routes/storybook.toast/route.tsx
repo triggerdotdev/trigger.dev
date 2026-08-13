@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
 import { ToastUI } from "~/components/primitives/Toast";
@@ -5,6 +6,9 @@ import { ToastUI } from "~/components/primitives/Toast";
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Toast.tsx"]} />
+      </div>
       <ToastUI variant="success" message="Success UI" t="-" />
       <ToastUI
         variant="success"

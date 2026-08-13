@@ -11,6 +11,12 @@ export default function Story_() {
 
   return (
     <StoryPage
+      componentNames={[
+        "PulsingDot.tsx",
+        "StepNumber.tsx",
+        "AnimatedNumber.tsx",
+        "AnimatingArrow.tsx",
+      ]}
       title="Indicators"
       description="Small animated affordances: pulsing dots, step numbers, animated numbers and arrows."
     >
@@ -67,7 +73,7 @@ export default function Story_() {
         description="Hover each cell — the arrow extends on group hover."
       >
         <StoryGrid min="11rem">
-          {(["small", "medium", "large"] as const).map((variant) => (
+          {(["small", "medium", "large", "extra-large"] as const).map((variant) => (
             <Story key={variant} label={`${variant} / dimmed`}>
               <span className="group">
                 <AnimatingArrow variant={variant} theme="dimmed" />

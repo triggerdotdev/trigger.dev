@@ -10,7 +10,11 @@ import { StoryPage, StorySection } from "../storybook/StoryKit";
 
 export default function Story_() {
   return (
-    <StoryPage title="Accordion" description="Collapsible sections built on Radix Accordion.">
+    <StoryPage
+      componentNames={["Accordion.tsx"]}
+      title="Accordion"
+      description="Collapsible sections built on Radix Accordion."
+    >
       <StorySection title="Single, collapsible">
         <div className="max-w-xl rounded-sm border border-grid-dimmed p-2">
           <Accordion type="single" collapsible>

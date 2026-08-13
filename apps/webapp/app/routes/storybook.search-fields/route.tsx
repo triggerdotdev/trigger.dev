@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -10,6 +11,9 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 export default function Story() {
   return (
     <MainCenteredContainer>
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Input.tsx", "Fieldset.tsx"]} />
+      </div>
       <div>
         <Form>
           <Fieldset>

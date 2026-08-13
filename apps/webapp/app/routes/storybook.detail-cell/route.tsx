@@ -17,6 +17,12 @@ const SAMPLE_DATE = new Date("2026-08-12T09:24:03.000Z");
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={[
+        "DetailCell.tsx",
+        "PropertyTable.tsx",
+        "LabelValueStack.tsx",
+        "MiddleTruncate.tsx",
+      ]}
       title="Cells & key-value"
       description="Detail cells, property tables, label/value stacks and middle truncation."
     >
@@ -44,6 +50,15 @@ export default function Story_() {
             description="Run #42 complete"
             trailingIcon={PlusIcon}
             trailingIconClassName="text-text-faint group-hover:text-text-bright"
+          />
+          <DetailCell
+            leadingIcon={CodeBracketIcon}
+            leadingIconClassName="text-text-dimmed"
+            label='variant="small"'
+            description="The tighter size"
+            variant="small"
+            trailingIcon={ArrowTopRightOnSquareIcon}
+            trailingIconClassName="text-text-dimmed"
           />
         </div>
       </StorySection>

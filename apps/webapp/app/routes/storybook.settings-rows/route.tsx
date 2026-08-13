@@ -20,6 +20,7 @@ export default function Story_() {
 
   return (
     <StoryPage
+      componentNames={["SettingsLayout.tsx"]}
       title="Settings rows"
       description="SettingsSection, SettingsHeader and SettingsRow — the account/org settings page pattern."
     >

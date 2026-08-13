@@ -120,5 +120,11 @@ const STATES: Record<string, React.ReactNode> = {
 };
 
 export default function Story() {
-  return <GalleryPage page="view-blocks" states={STATES} />;
+  return (
+    <GalleryPage
+      page="view-blocks"
+      states={STATES}
+      componentNames={["AgentChart.tsx", "RunDiagnosisCard.tsx", "agent-card.tsx"]}
+    />
+  );
 }

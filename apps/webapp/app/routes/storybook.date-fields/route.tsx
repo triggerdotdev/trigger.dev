@@ -8,10 +8,11 @@ import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["DateField.tsx", "DateTimePicker.tsx", "DurationPicker.tsx"]}
       title="Date fields"
       description="Segmented date entry, the combined date-time picker and the duration picker."
     >
-      <StorySection title="DateField — small">
+      <StorySection title='DateField — variant="small" (default)'>
         <div className="flex flex-col gap-4">
           <DateField label="From (UTC)" granularity="second" showNowButton showClearButton />
           <DateField
@@ -54,8 +55,11 @@ export default function Story_() {
 
       <StorySection title="DurationPicker">
         <StoryGrid min="20rem">
-          <Story label="Controlled (starts at 90s)">
+          <Story label="small (default), starts at 90s">
             <ControlledDurationPicker />
+          </Story>
+          <Story label="medium">
+            <ControlledDurationPicker variant="medium" />
           </Story>
         </StoryGrid>
       </StorySection>
@@ -81,11 +85,11 @@ function ControlledDateTimePicker() {
   );
 }
 
-function ControlledDurationPicker() {
+function ControlledDurationPicker({ variant }: { variant?: "small" | "medium" }) {
   const [seconds, setSeconds] = useState(90);
   return (
     <div className="flex flex-col gap-2">
-      <DurationPicker value={seconds} onChange={setSeconds} />
+      <DurationPicker value={seconds} onChange={setSeconds} variant={variant} />
       <Paragraph variant="extra-small" className="text-text-dimmed">
         {seconds} seconds
       </Paragraph>

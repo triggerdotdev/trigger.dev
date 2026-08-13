@@ -8,6 +8,7 @@ const SPARSE = [0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 1, 0, 
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["UsageSparkline.tsx"]}
       title="Usage sparkline"
       description="The inline 24h bar chart used on prompt and model list rows. Hover for the per-bucket tooltip."
     >

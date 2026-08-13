@@ -138,11 +138,7 @@ export function MfaDisableDialog({
             </Button>
             <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
               {isSubmitting ? <Spinner className="mr-2 size-5" color="white" /> : null}
-              {isSubmitting ? (
-                <span>Disabling…</span>
-              ) : (
-                <span>Disable MFA</span>
-              )}
+              {isSubmitting ? <span>Disabling…</span> : <span>Disable MFA</span>}
             </Button>
           </DialogFooter>
         </Form>

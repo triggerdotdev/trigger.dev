@@ -14,6 +14,7 @@ const SAMPLE_ROWS: { level: (typeof validLogLevels)[number]; message: string }[]
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["LogLevel.tsx", "logUtils.ts"]}
       title="Log levels"
       description="The severity chip shown on every row of the Logs page."
     >

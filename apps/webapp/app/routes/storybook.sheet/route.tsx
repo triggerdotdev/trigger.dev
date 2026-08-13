@@ -39,6 +39,7 @@ function DemoSheet({ side }: { side: "top" | "bottom" | "left" | "right" }) {
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["SheetV3.tsx"]}
       title="Sheet"
       description="Slide-over panels (SheetV3) from each edge, with header, description and footer."
     >

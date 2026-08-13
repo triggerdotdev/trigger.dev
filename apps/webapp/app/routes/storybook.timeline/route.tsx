@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import * as Slider from "@radix-ui/react-slider";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useState } from "react";
@@ -86,6 +87,9 @@ export default function Story() {
 
   return (
     <div className="m-4 grid h-full grid-rows-[auto_1fr] overflow-hidden">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Timeline.tsx"]} />
+      </div>
       <div className="flex flex-col gap-2 pb-4">
         <div className="flex flex-col gap-0.5">
           <Paragraph variant="extra-small">Scale</Paragraph>

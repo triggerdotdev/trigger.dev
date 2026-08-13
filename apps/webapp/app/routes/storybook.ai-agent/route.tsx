@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
@@ -26,6 +27,9 @@ import {
 export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["AgentDotMatrix.tsx"]} />
+      </div>
       <div className="flex max-w-3xl flex-col gap-1">
         <Header1>Trigger Agent — Icons & Buttons</Header1>
         <Paragraph variant="small">

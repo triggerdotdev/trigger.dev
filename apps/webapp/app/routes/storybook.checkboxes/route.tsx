@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -7,6 +8,9 @@ export default function Story() {
 
   return (
     <div className="flex flex-col items-start gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Checkbox.tsx"]} />
+      </div>
       <Button
         onClick={() => setIsDisabled((d) => !d)}
         variant="primary/medium"
@@ -70,6 +74,21 @@ export default function Story() {
           disabled={isDisabled}
         />
       </div>
+      <CheckboxWithLabel
+        name="Button small checkbox"
+        id="check5"
+        variant="button/small"
+        label="This is a button/small checkbox"
+        disabled={isDisabled}
+      />
+      <CheckboxWithLabel
+        name="Button small checkbox checked"
+        id="check6"
+        variant="button/small"
+        defaultChecked
+        label="button/small, default checked"
+        disabled={isDisabled}
+      />
     </div>
   );
 }

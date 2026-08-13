@@ -59,6 +59,7 @@ function Swatch({ token, tall }: { token: string; tall?: boolean }) {
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["tailwind.css"]}
       title="Theme tokens"
       description="The semantic color layer. Use the theme switcher above to compare every theme's values live."
     >

@@ -9,6 +9,12 @@ const RUN_ID = "run_cmsq1zzim1g2y2k8q1az3sfqf";
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={[
+        "CopyButton.tsx",
+        "CopyableText.tsx",
+        "TruncatedCopyableValue.tsx",
+        "CopyTextLink.tsx",
+      ]}
       title="Copy & clipboard"
       description="The copy affordances: buttons, links, inline text and truncated IDs. Click any of them."
     >
@@ -56,6 +62,9 @@ export default function Story_() {
           </Story>
           <Story label="Copy a different value">
             <CopyableText value="Display text" copyValue={RUN_ID} className="text-sm" />
+          </Story>
+          <Story label="text-below">
+            <CopyableText value="hello-world" variant="text-below" className="text-sm" />
           </Story>
         </StoryGrid>
       </StorySection>

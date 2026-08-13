@@ -333,5 +333,15 @@ const STATES: Record<string, React.ReactNode> = {
 };
 
 export default function Story() {
-  return <GalleryPage page="chat" states={STATES} />;
+  return (
+    <GalleryPage
+      page="chat"
+      states={STATES}
+      componentNames={[
+        "DashboardAgentComposer.tsx",
+        "DashboardAgentMessages.tsx",
+        "DashboardAgentHero.tsx",
+      ]}
+    />
+  );
 }

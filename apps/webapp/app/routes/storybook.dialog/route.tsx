@@ -23,6 +23,7 @@ import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["Dialog.tsx", "Alert.tsx"]}
       title="Dialog"
       description="Modal dialogs, plus the alert dialog for destructive confirmations."
     >

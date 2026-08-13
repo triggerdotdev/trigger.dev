@@ -22,6 +22,7 @@ export default function Story_() {
 
   return (
     <StoryPage
+      componentNames={["DateTime.tsx", "PrettyDuration.tsx", "LiveTimer.tsx"]}
       title="Dates & timers"
       description="Every date formatting component, plus the live-updating timers used on run rows."
     >

@@ -61,6 +61,7 @@ function TertiarySlider({ withIcons }: { withIcons?: boolean }) {
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["Slider.tsx"]}
       title="Slider"
       description="Radix slider with a quiet settings variant and a hover-boxed tertiary variant."
     >

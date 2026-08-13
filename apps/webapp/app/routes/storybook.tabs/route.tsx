@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { Outlet } from "@remix-run/react";
 import {
   ClientTabs,
@@ -12,6 +13,9 @@ import { Tabs } from "~/components/primitives/Tabs";
 export default function Story() {
   return (
     <div className="flex items-start justify-center gap-20 px-16 pt-20">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Tabs.tsx", "ClientTabs.tsx"]} />
+      </div>
       <div className="flex w-full max-w-2xl flex-col gap-4">
         <div className="flex h-fit flex-col gap-2">
           <div className="flex flex-col gap-2">

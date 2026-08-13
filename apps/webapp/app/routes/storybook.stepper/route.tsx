@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
@@ -11,6 +12,9 @@ export default function Story() {
 
   return (
     <div className="grid h-full w-full place-items-center">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["InputNumberStepper.tsx"]} />
+      </div>
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-2">
           <Header2>InputNumberStepper</Header2>

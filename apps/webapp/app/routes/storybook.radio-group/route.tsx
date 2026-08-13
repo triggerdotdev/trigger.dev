@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -8,6 +9,9 @@ export default function Story() {
 
   return (
     <div className="flex flex-col items-start gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["RadioButton.tsx"]} />
+      </div>
       <Button
         onClick={() => setIsDisabled((d) => !d)}
         variant="primary/medium"

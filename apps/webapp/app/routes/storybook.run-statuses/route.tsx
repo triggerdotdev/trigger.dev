@@ -71,6 +71,7 @@ const SAMPLE_TAGS = [
 export default function Story_() {
   return (
     <StoryPage
+      componentNames={["TaskRunStatus.tsx", "RunIcon.tsx", "RunTag.tsx"]}
       title="Run statuses"
       description="Task run status combos, span icons and run tags, with every state."
     >

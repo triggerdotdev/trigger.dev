@@ -28,5 +28,5 @@ const STATES: Record<string, React.ReactNode> = {
 };
 
 export default function Story() {
-  return <GalleryPage page="report" states={STATES} />;
+  return <GalleryPage page="report" states={STATES} componentNames={["ReportView.tsx"]} />;
 }
