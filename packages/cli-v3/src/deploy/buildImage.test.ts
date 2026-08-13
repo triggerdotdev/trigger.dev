@@ -14,18 +14,18 @@ import {
 const images: Array<[BuildRuntime, string, string]> = [
   [
     "node-24",
-    "triggerdotdev/node:24-bookworm@sha256:7cb5dcce8a2ae96ba3164ea6a16b14fe77cfb9b4c9161ebb2cc2b045392fada9",
-    "triggerdotdev/node:24-bookworm-build@sha256:3dbc4abde322a71ea91eb2516912589c136d9aa1094b2dd0e787dd73783b8047",
+    "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
+    "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",
   ],
   [
     "node-26",
-    "triggerdotdev/node:26-bookworm@sha256:04420c0cb9bd1890fe9dd51fcdfd0a263276e76c5fe088b175a943ccbab36b2a",
-    "triggerdotdev/node:26-bookworm-build@sha256:75776ca741da628bb2478283aa93f75626a495a3a2601c4828b2bb19386264a6",
+    "triggerdotdev/node:26-bookworm@sha256:0e9b19f814f32d3766a8cf167835a499349df5bd34702611577b1f75bc2d2026",
+    "triggerdotdev/node:26-bookworm-build@sha256:de5cdfd683dabad582182c79779135d59faac0e6893b6cf04520d5a0dc826dd7",
   ],
   [
     "bun",
-    "triggerdotdev/bun:1.3-node20-bookworm@sha256:61d0f681429e69a0eb0eb054c6dbbc5876012feebabf012dd9b80e2f3f776771",
-    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:fdd8dcaf4d0370f9571156d8c71c4b91c0cd02bb49850e0019e3e233fe1b35e1",
+    "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
+    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
   ],
 ];
 
