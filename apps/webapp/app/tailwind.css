@@ -774,8 +774,8 @@
   --color-surface-control-active: #b8bcc6;
   /* Selection sits lighter than the controls here - on white a soft grey is
      already enough to read as selected */
-  --color-surface-selected: #e8e9ec;
-  --color-surface-selected-hover: #dcdee3;
+  --color-surface-selected: #ebedf0;
+  --color-surface-selected-hover: #e3e5ea;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
@@ -968,8 +968,8 @@
   --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-surface-selected: color-mix(in srgb, #e8e9ec, #000 calc(var(--theme-contrast, 0) * 25%));
-  --color-surface-selected-hover: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-surface-selected: color-mix(in srgb, #ebedf0, #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-surface-selected-hover: color-mix(in srgb, #e3e5ea, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
   --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
