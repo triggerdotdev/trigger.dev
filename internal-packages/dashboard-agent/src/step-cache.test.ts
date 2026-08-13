@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   markStepCacheBreakpoint,
   MIN_STEP_CACHE_CHARS,
@@ -7,6 +7,7 @@ import {
   withStepCacheBreakpoint,
 } from "./step-cache";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
+import { withCacheBreakpoint } from "./model-provider";
 
 type Message = {
   role: string;
@@ -124,6 +125,46 @@ describe("the step cache breakpoint", () => {
   it("does nothing to an empty step", () => {
     const empty: Message[] = [];
     expect(markStepCacheBreakpoint(empty)).toBe(empty);
+  });
+});
+
+describe("the step cache breakpoint on Bedrock", () => {
+  afterEach(() => {
+    delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+  });
+
+  function bedrockCachePoint(message: Message | undefined): { ttl?: unknown } | undefined {
+    return (message?.providerOptions?.bedrock as { cachePoint?: { ttl?: unknown } } | undefined)
+      ?.cachePoint;
+  }
+
+  // The turn-wide prefix marker sits on the last message; a short conversation never
+  // earns a step marker, so stripping the prefix would leave the history uncached.
+  it("keeps the turn-wide prefix cachePoint on a short conversation", () => {
+    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
+    const last: Message = {
+      role: "user",
+      content: "why did run_1 fail?",
+      providerOptions: withCacheBreakpoint(undefined, "prefix"),
+    };
+    const marked = markStepCacheBreakpoint([last]);
+
+    const cachePoint = bedrockCachePoint(marked.at(-1));
+    expect(cachePoint).toEqual({ type: "default" });
+    expect(cachePoint?.ttl).toBeUndefined();
+  });
+
+  it("rolls the per-step cachePoint onto the tail once it is worth caching", () => {
+    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
+    const prefix: Message = {
+      role: "user",
+      content: "why did run_1 fail?",
+      providerOptions: withCacheBreakpoint(undefined, "prefix"),
+    };
+    const marked = markStepCacheBreakpoint([prefix, toolResult(MIN_STEP_CACHE_CHARS)]);
+
+    expect(bedrockCachePoint(marked[0])).toEqual({ type: "default" });
+    expect(bedrockCachePoint(marked.at(-1))).toEqual({ type: "default", ttl: "5m" });
   });
 });
 

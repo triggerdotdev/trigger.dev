@@ -66,9 +66,15 @@ function cacheOptions(breakpoint: CacheBreakpoint): Record<string, any> {
       },
     };
   }
-  // No ttl: Bedrock's 1h cache is not supported on every model we run, and its
-  // default 5m applies to both breakpoints.
-  return { bedrock: { cachePoint: { type: "default" } } };
+  // Bedrock's 1h cache is not supported on every model we run, so both breakpoints
+  // are the default 5m. The step marker still carries an explicit `ttl` so it stays
+  // distinguishable from the turn-wide prefix marker (which the step-strip pass must
+  // preserve) — without it the two are byte-identical and the prefix is stripped too.
+  return {
+    bedrock: {
+      cachePoint: breakpoint === "prefix" ? { type: "default" } : { type: "default", ttl: "5m" },
+    },
+  };
 }
 
 /** Merge the active provider's breakpoint into a message's provider options. */
@@ -81,21 +87,24 @@ export function withCacheBreakpoint(
 }
 
 /**
- * Whether these options carry the rolling step breakpoint. On Bedrock a cache
- * point carries no ttl, so any breakpoint on a message counts as the rolling one.
+ * Whether these options carry the rolling step breakpoint — the one the step-strip
+ * pass rolls off. On both providers the step marker is the one tagged with the 5m ttl.
  */
 export function isStepCacheBreakpoint(providerOptions: ProviderOptions): boolean {
   if (dashboardAgentProvider() === "anthropic") {
     return providerOptions?.anthropic?.cacheControl?.ttl === STEP_CACHE_CONTROL.ttl;
   }
-  return providerOptions?.bedrock?.cachePoint !== undefined;
+  return providerOptions?.bedrock?.cachePoint?.ttl === STEP_CACHE_CONTROL.ttl;
 }
 
-/** Whether these options carry a breakpoint that outlives a step. */
+/** Whether these options carry a breakpoint that outlives a step (the turn-wide prefix). */
 export function isLongLivedCacheBreakpoint(providerOptions: ProviderOptions): boolean {
-  if (dashboardAgentProvider() !== "anthropic") return false;
-  const ttl = providerOptions?.anthropic?.cacheControl?.ttl;
-  return typeof ttl === "string" && ttl !== STEP_CACHE_CONTROL.ttl;
+  if (dashboardAgentProvider() === "anthropic") {
+    const ttl = providerOptions?.anthropic?.cacheControl?.ttl;
+    return typeof ttl === "string" && ttl !== STEP_CACHE_CONTROL.ttl;
+  }
+  const cachePoint = providerOptions?.bedrock?.cachePoint;
+  return cachePoint !== undefined && cachePoint.ttl !== STEP_CACHE_CONTROL.ttl;
 }
 
 /**
