@@ -10,6 +10,7 @@ import {
   type SettledInvestigationCard,
 } from "@internal/dashboard-agent-db";
 import { logger, schedules } from "@trigger.dev/sdk";
+import { serializeError } from "./serialize-error";
 import { getWatchDb } from "./watch-task-adapters";
 
 /**
@@ -125,7 +126,7 @@ export async function sweepDashboardAgentInvestigations(
         logger.error("dashboard-agent investigation sweep: failed to record a sweep attempt", {
           investigationId: investigation.id,
           chatId: investigation.chatId,
-          error: recordError,
+          error: serializeError(recordError),
         });
       }
 
@@ -148,7 +149,7 @@ export async function sweepDashboardAgentInvestigations(
           logger.error("dashboard-agent investigation sweep: failed to abandon a poison card", {
             investigationId: investigation.id,
             chatId: investigation.chatId,
-            error: abandonError,
+            error: serializeError(abandonError),
           });
         }
       }
@@ -158,7 +159,7 @@ export async function sweepDashboardAgentInvestigations(
         investigationId: investigation.id,
         chatId: investigation.chatId,
         attempts,
-        error,
+        error: serializeError(error),
       });
     }
   }
@@ -172,11 +173,32 @@ export async function sweepDashboardAgentInvestigations(
   return result;
 }
 
+const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
+  stale: 0,
+  settled: 0,
+  closed: 0,
+  alreadySettled: 0,
+  abandoned: 0,
+  failed: 0,
+};
+
+/** The url the sweep would connect with, so an unwired deployment can skip instead of throw. */
+export function sweepConnectionString(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.DASHBOARD_AGENT_DATABASE_URL ?? env.DATABASE_URL;
+}
+
 export const dashboardAgentInvestigationSweep = schedules.task({
   id: "dashboard-agent-investigation-sweep",
   cron: "*/5 * * * *",
   retry: { maxAttempts: 3 },
   run: async (): Promise<InvestigationSweepResult> => {
+    if (!sweepConnectionString()) {
+      logger.warn(
+        "dashboard-agent investigation sweep skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
+      );
+      return { ...EMPTY_SWEEP_RESULT };
+    }
+
     const { db } = getWatchDb();
     const result = await sweepDashboardAgentInvestigations(db);
 

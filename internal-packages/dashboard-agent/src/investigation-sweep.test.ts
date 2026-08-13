@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   INVESTIGATION_STALE_MS,
   MAX_SWEEP_ATTEMPTS,
+  sweepConnectionString,
   sweepDashboardAgentInvestigations,
 } from "./investigation-sweep";
 
@@ -552,5 +553,17 @@ describe("the investigation sweep's closing card", () => {
     ]);
     expect(second).toMatchObject({ stale: 1, settled: 0, closed: 0, alreadySettled: 1, failed: 0 });
     expect(store.row.revision).toBe(1);
+  });
+});
+
+describe("the investigation sweep database guard", () => {
+  it("skips rather than throwing when neither url is set", () => {
+    expect(sweepConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
+  });
+
+  it("falls back to the main database url", () => {
+    expect(sweepConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
+      "postgres://main"
+    );
   });
 });

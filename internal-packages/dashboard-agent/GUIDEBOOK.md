@@ -384,7 +384,7 @@ A sweep (`dashboardAgentWatchSweep.server.ts`) is the backstop:
 
 The agent project runs two scheduled tasks of its own: `dashboard-agent-investigation-sweep`
 every 5 minutes settles cards left `in_progress` past **30 minutes**
-(`investigation-sweep.ts`), and `dashboard-agent-maintenance` at 03:00 daily is
+(`investigation-sweep.ts`), and `dashboard-agent-maintenance` at 03:00 UTC daily is
 retention (`maintenance.ts`) — judged turns and soft-deleted chats past **30
 days**, terminal watches and their submission ledger past **7 days** — a purged
 watch outcome still lives in the transcript. Retention

@@ -8,6 +8,7 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { logger, schedules } from "@trigger.dev/sdk";
+import { serializeError } from "./serialize-error";
 
 /**
  * Retention for the agent's own datastore: judged turns, soft-deleted chats, and the
@@ -35,7 +36,7 @@ const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RETENTION_BATCH_LIMIT = 500;
 
 /** Cap on the statements one pass may run, so a huge backlog can't run forever. */
-const MAX_RETENTION_BATCHES = 20;
+const MAX_RETENTION_BATCHES = 200;
 
 export type RetentionResult = {
   turnEvals: number;
@@ -95,7 +96,7 @@ export async function runDashboardAgentRetention(
       }
     } catch (error) {
       failed.push(name);
-      logger.error(`dashboard-agent retention failed: ${name}`, { error });
+      logger.error(`dashboard-agent retention failed: ${name}`, { error: serializeError(error) });
     }
     return total;
   }
