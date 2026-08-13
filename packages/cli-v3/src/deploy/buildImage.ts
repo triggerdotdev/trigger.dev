@@ -712,8 +712,8 @@ const BUILD_IMAGE: Record<BuildRuntime, string> = {
     "triggerdotdev/node:26-bookworm-build@sha256:75776ca741da628bb2478283aa93f75626a495a3a2601c4828b2bb19386264a6",
 };
 
-// Already installed in the published base images
-const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
+// Preinstalled in the published base images; must match base-images/images.json
+export const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
@@ -729,18 +729,22 @@ export async function generateContainerfile(options: GenerateContainerfileOption
   }
 }
 
-function aptInstall(packages: string[]): string {
-  // --allow-downgrades: a user pin of a preinstalled package (e.g.
-  // openssl=<older>) is a downgrade by the time this runs
+// Instructions can leave dpkg in a broken state (e.g. dpkg -i of a local
+// .deb), and apt-get install refuses to run on one, so repair first whenever
+// instructions preceded. --allow-downgrades: a user pin of a preinstalled
+// package (e.g. openssl=<older>) is a downgrade by the time this runs.
+function aptInstall(packages: string[], { repair }: { repair: boolean }): string {
+  const repairStep = repair
+    ? `apt-get --fix-broken install -y && \\
+  `
+    : "";
+
   return `RUN apt-get update && \\
-  apt-get install -y --no-install-recommends --allow-downgrades ${packages.join(" ")} && \\
+  ${repairStep}apt-get install -y --no-install-recommends --allow-downgrades ${packages.join(" ")} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`;
 }
 
-// Instructions can leave dpkg in a broken state (e.g. dpkg -i of a local .deb)
-// that installing user packages would normally repair; when there are none,
-// repair explicitly
 function aptRepair(): string {
   return `RUN apt-get update && \\
   apt-get --fix-broken install -y && \\
@@ -764,18 +768,34 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     .filter((pkg) => !DEFAULT_PACKAGES.includes(pkg))
     .sort();
 
-  // Rendered into both the base and build stages: they come from separate
-  // published images, so customization no longer inherits from base to build
   const customization = [
     baseInstructions,
-    userPackages.length > 0 ? aptInstall(userPackages) : baseInstructions ? aptRepair() : "",
+    userPackages.length > 0
+      ? aptInstall(userPackages, { repair: baseInstructions.length > 0 })
+      : baseInstructions
+        ? aptRepair()
+        : "",
   ]
     .filter(Boolean)
     .join("\n\n");
 
+  // Customized projects build FROM base so instructions and packages apply
+  // exactly once; uncustomized projects use the prebuilt toolchain image and
+  // run no apt at all
+  const buildStage = customization
+    ? `FROM base AS build
+
+RUN apt-get update && \\
+  apt-get install -y --no-install-recommends python3 make g++ && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`
+    : `FROM ${BUILD_IMAGE[options.runtime]} AS build
+
+ENV DEBIAN_FRONTEND=noninteractive`;
+
   return {
     baseImage: BASE_IMAGE[options.runtime],
-    buildImage: BUILD_IMAGE[options.runtime],
+    buildStage,
     customization,
     buildArgs,
     buildEnvVars,
@@ -784,7 +804,7 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
 };
 
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildImage, buildArgs, buildEnvVars, postInstallCommands, customization } =
+  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
@@ -795,11 +815,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-FROM ${buildImage} AS build
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-${customization}
+${buildStage}
 
 USER bun
 WORKDIR /app
@@ -890,7 +906,7 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildImage, buildArgs, buildEnvVars, postInstallCommands, customization } =
+  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
@@ -901,11 +917,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-FROM ${buildImage} AS build
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-${customization}
+${buildStage}
 
 USER node
 WORKDIR /app

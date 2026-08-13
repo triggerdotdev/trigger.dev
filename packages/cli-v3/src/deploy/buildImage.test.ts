@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { describe, expect, it } from "vitest";
-import { generateContainerfile } from "./buildImage.js";
+import { DEFAULT_PACKAGES, generateContainerfile } from "./buildImage.js";
 
 const images: Array<[BuildRuntime, string, string]> = [
   [
@@ -46,10 +48,19 @@ describe("generateContainerfile", () => {
       });
 
       expect(containerfile).not.toContain("apt-get");
+      expect(containerfile).not.toContain("FROM base AS build");
     }
   );
 
-  it("installs user packages after instructions, in both stages", async () => {
+  it("matches the published base image package list", () => {
+    const imagesJson = JSON.parse(
+      readFileSync(join(process.cwd(), "../../base-images/images.json"), "utf-8")
+    );
+
+    expect(imagesJson.packages.split(" ").sort()).toEqual([...DEFAULT_PACKAGES].sort());
+  });
+
+  it("applies customization once and builds FROM base when customized", async () => {
     const containerfile = await generateContainerfile({
       runtime: "node-22",
       build: {},
@@ -63,13 +74,16 @@ describe("generateContainerfile", () => {
 
     // sorted, defaults filtered out, downgrades allowed for pinned defaults
     const installLine = "apt-get install -y --no-install-recommends --allow-downgrades curl jq";
-    const first = containerfile.indexOf(installLine);
-    const second = containerfile.indexOf(installLine, first + 1);
-    const firstInstructions = containerfile.indexOf("RUN echo custom > /etc/marker");
-
-    expect(first).toBeGreaterThan(firstInstructions);
-    // base and build come from separate images, so both need the customization
-    expect(second).toBeGreaterThan(first);
+    expect(containerfile.indexOf(installLine)).toBeGreaterThan(
+      containerfile.indexOf("RUN echo custom > /etc/marker")
+    );
+    expect(containerfile.indexOf(installLine, containerfile.indexOf(installLine) + 1)).toBe(-1);
+    // apt-get install refuses to run on dpkg state broken by an instruction
+    expect(containerfile.indexOf("apt-get --fix-broken install -y")).toBeLessThan(
+      containerfile.indexOf(installLine)
+    );
+    expect(containerfile).toContain("FROM base AS build");
+    expect(containerfile).toContain("python3 make g++");
   });
 
   it("repairs dpkg state after instructions when there are no user packages", async () => {
