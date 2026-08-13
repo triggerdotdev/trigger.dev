@@ -280,7 +280,7 @@ export function getTraceEventsForExportQueryBuilderV2(
 }
 
 // ============================================================================
-// Search Table Query Builders (for logs page, using task_events_search_v1)
+// Search Table Query Builders (for logs page, using task_events_search_v2)
 // ============================================================================
 
 export const LogsSearchListResult = z.object({
@@ -294,19 +294,25 @@ export const LogsSearchListResult = z.object({
   span_id: z.string(),
   parent_span_id: z.string(),
   message: z.string(),
+  error_message: z.string(),
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  attributes_text: z.string(),
   triggered_timestamp: z.string(),
 });
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
 
-export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
+export type LogsSearchTableVersion = "v1" | "v2";
+
+export function getLogsSearchListQueryBuilder(
+  ch: ClickhouseReader,
+  version: LogsSearchTableVersion = "v1"
+) {
   return ch.queryBuilderFast<LogsSearchListResult>({
-    name: "getLogsSearchList",
-    table: "trigger_dev.task_events_search_v1",
+    name: version === "v2" ? "getLogsSearchListV2" : "getLogsSearchListV1",
+    table:
+      version === "v2" ? "trigger_dev.task_events_search_v2" : "trigger_dev.task_events_search_v1",
     columns: [
       "environment_id",
       "organization_id",
@@ -318,10 +324,16 @@ export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
       "span_id",
       "parent_span_id",
       { name: "message", expression: "LEFT(message, 512)" },
+      {
+        name: "error_message",
+        expression:
+          version === "v2"
+            ? "error_message"
+            : "LEFT(JSONExtractString(attributes_text, 'error', 'message'), 2048)",
+      },
       "kind",
       "status",
       "duration",
-      "attributes_text",
       "triggered_timestamp",
     ],
     settings: {

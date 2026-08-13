@@ -2094,20 +2094,13 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    // v2 is populated forward-only. Keep reads on v1 until v2 has enough history or has been
+    // backfilled, then opt in explicitly per deployment.
+    LOGS_SEARCH_TABLE_VERSION: z.enum(["v1", "v2"]).default("v1"),
+
+    // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
-    // Days back from the page ceiling to probe before widening to the full requested window,
-    // comma-separated. Empty disables narrowing (a single full-window query).
-    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
-      .string()
-      .default("1,7")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),

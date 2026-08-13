@@ -825,7 +825,7 @@ export function SideMenu({
     });
   }
 
-  if (isAdmin || featureFlags.hasQueryAccess) {
+  if (isAdmin || featureFlags.hasQueryAccess || featureFlags.hasLogsPageAccess) {
     staticSections.push({
       id: "metrics",
       title: "Observability",
@@ -843,55 +843,59 @@ export function SideMenu({
               } satisfies SideMenuItemConfig,
             ]
           : []),
-        {
-          id: "errors",
-          name: "Errors",
-          icon: BugIcon,
-          activeIconColor: "text-errors",
-          to: v3ErrorsPath(organization, project, environment),
-          dataAction: "errors",
-        },
-        {
-          id: "query",
-          name: "Query",
-          icon: CodeSquareIcon,
-          activeIconColor: "text-query",
-          to: queryPath(organization, project, environment),
-          dataAction: "query",
-        },
-        {
-          id: "queues",
-          name: "Queues",
-          icon: QueuesIcon,
-          activeIconColor: "text-queues",
-          to: v3QueuesPath(organization, project, environment),
-          dataAction: "queues",
-        },
-        {
-          id: "dashboards",
-          name: "Dashboards",
-          icon: ChartBarIcon,
-          activeIconColor: "text-metrics",
-          to: v3DashboardsLandingPath(organization, project, environment),
-          dataAction: "dashboards-landing",
-          action: (
-            <CreateDashboardButton
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-            />
-          ),
-          after: (
-            <DashboardList
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-              user={user}
-            />
-          ),
-        },
+        ...(isAdmin || featureFlags.hasQueryAccess
+          ? [
+              {
+                id: "errors",
+                name: "Errors",
+                icon: BugIcon,
+                activeIconColor: "text-errors",
+                to: v3ErrorsPath(organization, project, environment),
+                dataAction: "errors",
+              },
+              {
+                id: "query",
+                name: "Query",
+                icon: CodeSquareIcon,
+                activeIconColor: "text-query",
+                to: queryPath(organization, project, environment),
+                dataAction: "query",
+              },
+              {
+                id: "queues",
+                name: "Queues",
+                icon: QueuesIcon,
+                activeIconColor: "text-queues",
+                to: v3QueuesPath(organization, project, environment),
+                dataAction: "queues",
+              },
+              {
+                id: "dashboards",
+                name: "Dashboards",
+                icon: ChartBarIcon,
+                activeIconColor: "text-metrics",
+                to: v3DashboardsLandingPath(organization, project, environment),
+                dataAction: "dashboards-landing",
+                action: (
+                  <CreateDashboardButton
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    isCollapsed={isCollapsed}
+                  />
+                ),
+                after: (
+                  <DashboardList
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    isCollapsed={isCollapsed}
+                    user={user}
+                  />
+                ),
+              },
+            ]
+          : []),
       ],
     });
   }
