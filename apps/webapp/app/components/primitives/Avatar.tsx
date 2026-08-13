@@ -9,6 +9,7 @@ import {
   StarIcon,
 } from "@heroicons/react/20/solid";
 import type { Prisma } from "@trigger.dev/database";
+import { useState } from "react";
 import { z } from "zod";
 import { cn } from "~/utils/cn";
 
@@ -190,20 +191,26 @@ function AvatarIcon({
 }
 
 function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
-  if (!avatar.url) {
+  const [failed, setFailed] = useState(false);
+
+  if (!avatar.url || failed) {
     return (
-      <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+      <span
+        className="grid shrink-0 place-items-center overflow-hidden"
+        style={styleFromSize(size)}
+      >
         <GlobeLinesIcon className="size-[90%] text-text-dimmed" />
       </span>
     );
   }
 
   return (
-    <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+    <span className="grid shrink-0 place-items-center overflow-hidden" style={styleFromSize(size)}>
       <img
         src={avatar.url}
         alt="Organization avatar"
         className="size-full rounded-[10%] object-contain"
+        onError={() => setFailed(true)}
       />
     </span>
   );
