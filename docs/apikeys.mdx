@@ -37,6 +37,8 @@ import type { sendEmail } from "./trigger/send-email";
 
 configure({
   secretKey: process.env.TRIGGER_SECRET_KEY,
+  previewBranch: "my-branch", // Only needed for preview branches
+  baseURL: "https://mytrigger.example.com", // Optional
 });
 
 await tasks.trigger<typeof sendEmail>("send-email", {
