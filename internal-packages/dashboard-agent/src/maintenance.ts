@@ -1,14 +1,13 @@
 import {
-  createDashboardAgentDb,
   deleteTerminalWatchesOlderThan,
   deleteTurnEvalsOlderThan,
   deleteWatchSubmissionsOlderThan,
   hardDeleteChatsSoftDeletedBefore,
   type DashboardAgentDb,
-  type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { logger, schedules } from "@trigger.dev/sdk";
 import { serializeError } from "./serialize-error";
+import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
 
 /**
  * Retention for the agent's own datastore: judged turns, soft-deleted chats, and the
@@ -116,35 +115,19 @@ export async function runDashboardAgentRetention(
   return result;
 }
 
-/**
- * No DATABASE_URL fallback, unlike the watch tasks: a delete sweep must never guess which
- * database it is deleting from, so without its own URL the task does nothing.
- */
-export function maintenanceConnectionString(
-  env: NodeJS.ProcessEnv = process.env
-): string | undefined {
-  return env.DASHBOARD_AGENT_DATABASE_URL;
-}
-
-// One connection pool per worker process.
-let dbClient: DashboardAgentDbClient | undefined;
-function getMaintenanceDb(): DashboardAgentDb | undefined {
-  const connectionString = maintenanceConnectionString();
-  if (!connectionString) return undefined;
-  if (!dbClient) dbClient = createDashboardAgentDb(connectionString, { max: 2 });
-  return dbClient.db;
-}
-
 export const dashboardAgentMaintenance = schedules.task({
   id: "dashboard-agent-maintenance",
   cron: "0 3 * * *",
   retry: { maxAttempts: 3 },
   run: async (): Promise<RetentionResult | undefined> => {
-    const db = getMaintenanceDb();
-    if (!db) {
-      logger.warn("dashboard-agent maintenance skipped: DASHBOARD_AGENT_DATABASE_URL isn't set");
+    if (!watchConnectionString()) {
+      logger.warn(
+        "dashboard-agent maintenance skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
+      );
       return undefined;
     }
+
+    const { db } = getWatchDb();
 
     const result = await runDashboardAgentRetention(db);
     logger.info("dashboard-agent retention swept", result);

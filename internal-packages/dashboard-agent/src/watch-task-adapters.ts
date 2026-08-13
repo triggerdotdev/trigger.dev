@@ -17,9 +17,10 @@ import type { WatchBatchCheckResponse, WatchBatchTickPayload } from "./watch-bat
 
 /** What the two watch tasks plug into the lifecycle: the db, the wake append, the callbacks. */
 
-/** The url the watch and sweep tasks connect with, so an unwired deployment can skip instead of throw. */
+/** The url the watch, sweep and retention tasks connect with, so an unwired deployment can skip instead of throw. */
 export function watchConnectionString(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.DASHBOARD_AGENT_DATABASE_URL ?? env.DATABASE_URL;
+  // `||`, so an empty dedicated url falls back instead of connecting to "".
+  return env.DASHBOARD_AGENT_DATABASE_URL || env.DATABASE_URL;
 }
 
 // One connection pool per worker process.

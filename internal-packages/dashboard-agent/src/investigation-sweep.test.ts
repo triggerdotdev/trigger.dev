@@ -566,4 +566,13 @@ describe("the investigation sweep database guard", () => {
       "postgres://main"
     );
   });
+
+  it("treats an empty dedicated url as unset", () => {
+    expect(
+      watchConnectionString({
+        DASHBOARD_AGENT_DATABASE_URL: "",
+        DATABASE_URL: "postgres://main",
+      } as NodeJS.ProcessEnv)
+    ).toBe("postgres://main");
+  });
 });

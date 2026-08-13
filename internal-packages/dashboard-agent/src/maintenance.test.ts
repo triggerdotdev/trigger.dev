@@ -8,11 +8,8 @@ import {
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  maintenanceConnectionString,
-  runDashboardAgentRetention,
-  TURN_EVAL_RETENTION_MS,
-} from "./maintenance";
+import { runDashboardAgentRetention, TURN_EVAL_RETENTION_MS } from "./maintenance";
+import { watchConnectionString } from "./watch-task-adapters";
 
 const ORG = "org_retention";
 const USER = "user_retention";
@@ -324,15 +321,19 @@ describe("the dashboard agent retention pass", () => {
 });
 
 describe("the maintenance database guard", () => {
-  it("never falls back to the main database url", () => {
-    expect(
-      maintenanceConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)
-    ).toBeUndefined();
+  it("skips rather than throwing when neither url is set", () => {
+    expect(watchConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
+  });
+
+  it("falls back to the main database url", () => {
+    expect(watchConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
+      "postgres://main"
+    );
   });
 
   it("uses the agent's own url when it is set", () => {
     expect(
-      maintenanceConnectionString({
+      watchConnectionString({
         DASHBOARD_AGENT_DATABASE_URL: "postgres://agent",
         DATABASE_URL: "postgres://main",
       } as NodeJS.ProcessEnv)
