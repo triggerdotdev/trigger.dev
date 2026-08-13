@@ -189,6 +189,25 @@ describe("per-step cache telemetry", () => {
     });
   });
 
+  it("reports Bedrock's write from its metadata and its read from the call's usage", () => {
+    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
+    try {
+      expect(
+        stepCacheAttributes(
+          2,
+          { bedrock: { usage: { cacheWriteInputTokens: 8_000 } } },
+          { inputTokenDetails: { cacheReadTokens: 12_000 } }
+        )
+      ).toEqual({
+        "dashboard_agent.step": 2,
+        "gen_ai.usage.cache_creation_input_tokens": 8_000,
+        "gen_ai.usage.cache_read_input_tokens": 12_000,
+      });
+    } finally {
+      delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+    }
+  });
+
   it("reports null rather than zero when the provider said nothing", () => {
     expect(stepCacheAttributes(0, undefined)).toEqual({
       "dashboard_agent.step": 0,

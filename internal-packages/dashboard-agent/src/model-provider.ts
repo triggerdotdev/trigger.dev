@@ -89,6 +89,25 @@ export function isLongLivedCacheBreakpoint(providerOptions: ProviderOptions): bo
   return typeof ttl === "string" && ttl !== STEP_CACHE_CONTROL.ttl;
 }
 
+/**
+ * The cache token counts the active provider reports on a call's metadata.
+ * Bedrock puts only the write there; its read count reaches the call's usage.
+ */
+export function cacheUsageFromProviderMetadata(providerMetadata: unknown): {
+  write?: number;
+  read?: number;
+} {
+  const metadata = providerMetadata as Record<string, any> | undefined;
+  const count = (value: unknown) => (typeof value === "number" ? value : undefined);
+  if (dashboardAgentProvider() === "anthropic") {
+    return {
+      write: count(metadata?.anthropic?.cacheCreationInputTokens),
+      read: count(metadata?.anthropic?.cacheReadInputTokens),
+    };
+  }
+  return { write: count(metadata?.bedrock?.usage?.cacheWriteInputTokens) };
+}
+
 /** The same options with the active provider's breakpoint removed. */
 export function withoutCacheBreakpoint(providerOptions: ProviderOptions): Record<string, any> {
   const key = dashboardAgentProvider() === "anthropic" ? "anthropic" : "bedrock";

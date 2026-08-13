@@ -1,6 +1,7 @@
 import { logger } from "@trigger.dev/sdk";
 import type { ModelMessage, ToolSet } from "ai";
 import {
+  cacheUsageFromProviderMetadata,
   isLongLivedCacheBreakpoint,
   isStepCacheBreakpoint,
   withCacheBreakpoint,
@@ -76,16 +77,16 @@ export function stepCachePrepareStep(options: unknown): PrepareStepFn {
 
 export function stepCacheAttributes(
   step: number | undefined,
-  providerMetadata: unknown
+  providerMetadata: unknown,
+  usage?: PromptCacheUsage
 ): Record<string, unknown> {
-  const anthropic = (providerMetadata as { anthropic?: Record<string, unknown> } | undefined)
-    ?.anthropic;
-  const write = anthropic?.cacheCreationInputTokens;
-  const read = anthropic?.cacheReadInputTokens;
+  const { write, read } = cacheUsageFromProviderMetadata(providerMetadata);
   return {
     "dashboard_agent.step": step ?? null,
-    "gen_ai.usage.cache_creation_input_tokens": typeof write === "number" ? write : null,
-    "gen_ai.usage.cache_read_input_tokens": typeof read === "number" ? read : null,
+    "gen_ai.usage.cache_creation_input_tokens":
+      write ?? usage?.inputTokenDetails?.cacheWriteTokens ?? null,
+    "gen_ai.usage.cache_read_input_tokens":
+      read ?? usage?.inputTokenDetails?.cacheReadTokens ?? null,
   };
 }
 
@@ -110,7 +111,7 @@ export function recordPromptCacheUsage(args: {
         usage: args.usage,
         prefix: describePromptPrefix({ system: args.system, tools: args.tools }),
       }),
-      ...stepCacheAttributes(args.step, args.providerMetadata),
+      ...stepCacheAttributes(args.step, args.providerMetadata, args.usage),
     });
   } catch (error) {
     // Measurement must never fail a turn.
