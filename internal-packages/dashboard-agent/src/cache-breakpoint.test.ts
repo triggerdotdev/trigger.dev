@@ -35,6 +35,7 @@ describe("withCacheBreakpointOnLast", () => {
     const prepared = withCacheBreakpointOnLast(lastMessageWithAnthropicOptions());
 
     expect(prepared[1]!.providerOptions).toEqual({
+      __cacheBreakpoint: { kind: "prefix" },
       anthropic: { cacheControl: PROMPT_CACHE_CONTROL, thinking: { budget: 1024 } },
       openai: { store: false },
     });
@@ -54,6 +55,7 @@ describe("prepareTurnMessages", () => {
     });
 
     expect(prepared[1]!.providerOptions).toEqual({
+      __cacheBreakpoint: { kind: "prefix" },
       anthropic: { cacheControl: PROMPT_CACHE_CONTROL, thinking: { budget: 1024 } },
       openai: { store: false },
     });

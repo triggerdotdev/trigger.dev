@@ -64,6 +64,17 @@ export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;
 
 type ProviderOptions = Record<string, any> | undefined;
 
+// Which breakpoint a marker is, kept under a top-level key no provider registers so
+// neither converter serialises it. The value is an object because the AI SDK validates
+// message providerOptions as Record<string, Record<string, JSONValue>> — a bare string
+// would be rejected. The `cacheControl`/`cachePoint` fields carry only real provider
+// data, never a discriminator; the step pass reads this tag instead.
+const CACHE_BREAKPOINT_KEY = "__cacheBreakpoint";
+
+function breakpointKind(providerOptions: ProviderOptions): CacheBreakpoint | undefined {
+  return providerOptions?.[CACHE_BREAKPOINT_KEY]?.kind;
+}
+
 function cacheOptions(breakpoint: CacheBreakpoint): Record<string, any> {
   if (dashboardAgentProvider() === "anthropic") {
     return {
@@ -72,15 +83,8 @@ function cacheOptions(breakpoint: CacheBreakpoint): Record<string, any> {
       },
     };
   }
-  // Bedrock's 1h cache is not supported on every model we run, so both breakpoints
-  // are the default 5m. The step marker still carries an explicit `ttl` so it stays
-  // distinguishable from the turn-wide prefix marker (which the step-strip pass must
-  // preserve) — without it the two are byte-identical and the prefix is stripped too.
-  return {
-    bedrock: {
-      cachePoint: breakpoint === "prefix" ? { type: "default" } : { type: "default", ttl: "5m" },
-    },
-  };
+  // Plain, documented cachePoint for both markers — nothing undocumented reaches AWS.
+  return { bedrock: { cachePoint: { type: "default" } } };
 }
 
 /** Merge the active provider's breakpoint into a message's provider options. */
@@ -89,28 +93,24 @@ export function withCacheBreakpoint(
   breakpoint: CacheBreakpoint
 ): Record<string, any> {
   const [key, options] = Object.entries(cacheOptions(breakpoint))[0]!;
-  return { ...providerOptions, [key]: { ...providerOptions?.[key], ...options } };
+  return {
+    ...providerOptions,
+    [CACHE_BREAKPOINT_KEY]: { kind: breakpoint },
+    [key]: { ...providerOptions?.[key], ...options },
+  };
 }
 
 /**
  * Whether these options carry the rolling step breakpoint — the one the step-strip
- * pass rolls off. On both providers the step marker is the one tagged with the 5m ttl.
+ * pass rolls off.
  */
 export function isStepCacheBreakpoint(providerOptions: ProviderOptions): boolean {
-  if (dashboardAgentProvider() === "anthropic") {
-    return providerOptions?.anthropic?.cacheControl?.ttl === STEP_CACHE_CONTROL.ttl;
-  }
-  return providerOptions?.bedrock?.cachePoint?.ttl === STEP_CACHE_CONTROL.ttl;
+  return breakpointKind(providerOptions) === "step";
 }
 
 /** Whether these options carry a breakpoint that outlives a step (the turn-wide prefix). */
 export function isLongLivedCacheBreakpoint(providerOptions: ProviderOptions): boolean {
-  if (dashboardAgentProvider() === "anthropic") {
-    const ttl = providerOptions?.anthropic?.cacheControl?.ttl;
-    return typeof ttl === "string" && ttl !== STEP_CACHE_CONTROL.ttl;
-  }
-  const cachePoint = providerOptions?.bedrock?.cachePoint;
-  return cachePoint !== undefined && cachePoint.ttl !== STEP_CACHE_CONTROL.ttl;
+  return breakpointKind(providerOptions) === "prefix";
 }
 
 /**
@@ -132,11 +132,15 @@ export function cacheUsageFromProviderMetadata(providerMetadata: unknown): {
   return { write: count(metadata?.bedrock?.usage?.cacheWriteInputTokens) };
 }
 
-/** The same options with the active provider's breakpoint removed. */
+/** The same options with the active provider's breakpoint and its discriminator removed. */
 export function withoutCacheBreakpoint(providerOptions: ProviderOptions): Record<string, any> {
   const key = dashboardAgentProvider() === "anthropic" ? "anthropic" : "bedrock";
   const field = key === "anthropic" ? "cacheControl" : "cachePoint";
-  const { [key]: provider, ...rest } = (providerOptions ?? {}) as Record<string, any>;
+  const {
+    [key]: provider,
+    [CACHE_BREAKPOINT_KEY]: _tag,
+    ...rest
+  } = (providerOptions ?? {}) as Record<string, any>;
   const { [field]: _dropped, ...providerRest } = (provider ?? {}) as Record<string, any>;
   // An empty provider entry is not the same as no options for it, so drop the key.
   return Object.keys(providerRest).length > 0 ? { ...rest, [key]: providerRest } : rest;

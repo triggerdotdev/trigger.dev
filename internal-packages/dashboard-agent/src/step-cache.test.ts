@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   markStepCacheBreakpoint,
   MIN_STEP_CACHE_CHARS,
@@ -23,7 +23,10 @@ function turnHistory(): Message {
   return {
     role: "user",
     content: "why did run_1 fail?",
-    providerOptions: { anthropic: { cacheControl: PROMPT_CACHE_CONTROL } },
+    providerOptions: {
+      __cacheBreakpoint: { kind: "prefix" },
+      anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
+    },
   };
 }
 
@@ -32,6 +35,7 @@ function stepBreakpointWith(otherAnthropicOptions: Record<string, unknown>): Mes
     role: "tool",
     content: "ok",
     providerOptions: {
+      __cacheBreakpoint: { kind: "step" },
       anthropic: { cacheControl: STEP_CACHE_CONTROL, ...otherAnthropicOptions },
       openai: { store: false },
     },
@@ -108,6 +112,7 @@ describe("the step cache breakpoint", () => {
     ]);
 
     expect(marked.at(-1)!.providerOptions).toEqual({
+      __cacheBreakpoint: { kind: "step" },
       anthropic: { anotherOption: "keep", cacheControl: STEP_CACHE_CONTROL },
       openai: { store: false },
     });
@@ -129,8 +134,14 @@ describe("the step cache breakpoint", () => {
 });
 
 describe("the step cache breakpoint on Bedrock", () => {
+  let priorProvider: string | undefined;
+  beforeEach(() => {
+    priorProvider = process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
+  });
   afterEach(() => {
-    delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+    if (priorProvider === undefined) delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+    else process.env.DASHBOARD_AGENT_MODEL_PROVIDER = priorProvider;
   });
 
   function bedrockCachePoint(message: Message | undefined): { ttl?: unknown } | undefined {
@@ -138,33 +149,50 @@ describe("the step cache breakpoint on Bedrock", () => {
       ?.cachePoint;
   }
 
+  function breakpointTag(message: Message | undefined): unknown {
+    return (message?.providerOptions?.__cacheBreakpoint as { kind?: unknown } | undefined)?.kind;
+  }
+
+  function prefixMarker(): Message {
+    return {
+      role: "user",
+      content: "why did run_1 fail?",
+      providerOptions: withCacheBreakpoint(undefined, "prefix"),
+    };
+  }
+
+  // Nothing undocumented reaches AWS: the wire cachePoint (which the SDK copies verbatim)
+  // is a plain `{type:"default"}` for both markers — no `ttl`. The prefix/step distinction
+  // lives only in the non-serialized `__cacheBreakpoint` tag.
+  it("emits a plain cachePoint with no ttl for either marker", () => {
+    expect(bedrockCachePoint(prefixMarker())).toEqual({ type: "default" });
+    const step: Message = {
+      role: "tool",
+      content: "ok",
+      providerOptions: withCacheBreakpoint(undefined, "step"),
+    };
+    expect(bedrockCachePoint(step)).toEqual({ type: "default" });
+    expect(bedrockCachePoint(step)).not.toHaveProperty("ttl");
+    expect(breakpointTag(prefixMarker())).toBe("prefix");
+    expect(breakpointTag(step)).toBe("step");
+  });
+
   // The turn-wide prefix marker sits on the last message; a short conversation never
   // earns a step marker, so stripping the prefix would leave the history uncached.
   it("keeps the turn-wide prefix cachePoint on a short conversation", () => {
-    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
-    const last: Message = {
-      role: "user",
-      content: "why did run_1 fail?",
-      providerOptions: withCacheBreakpoint(undefined, "prefix"),
-    };
-    const marked = markStepCacheBreakpoint([last]);
+    const marked = markStepCacheBreakpoint([prefixMarker()]);
 
-    const cachePoint = bedrockCachePoint(marked.at(-1));
-    expect(cachePoint).toEqual({ type: "default" });
-    expect(cachePoint?.ttl).toBeUndefined();
+    expect(bedrockCachePoint(marked.at(-1))).toEqual({ type: "default" });
+    expect(breakpointTag(marked.at(-1))).toBe("prefix");
   });
 
   it("rolls the per-step cachePoint onto the tail once it is worth caching", () => {
-    process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
-    const prefix: Message = {
-      role: "user",
-      content: "why did run_1 fail?",
-      providerOptions: withCacheBreakpoint(undefined, "prefix"),
-    };
-    const marked = markStepCacheBreakpoint([prefix, toolResult(MIN_STEP_CACHE_CHARS)]);
+    const marked = markStepCacheBreakpoint([prefixMarker(), toolResult(MIN_STEP_CACHE_CHARS)]);
 
     expect(bedrockCachePoint(marked[0])).toEqual({ type: "default" });
-    expect(bedrockCachePoint(marked.at(-1))).toEqual({ type: "default", ttl: "5m" });
+    expect(breakpointTag(marked[0])).toBe("prefix");
+    expect(bedrockCachePoint(marked.at(-1))).toEqual({ type: "default" });
+    expect(breakpointTag(marked.at(-1))).toBe("step");
   });
 });
 
@@ -203,6 +231,7 @@ describe("wrapping the SDK's prepareStep", () => {
     const prepared = await withStepCacheBreakpoint(inner as never)({ messages: [] } as never);
 
     expect((prepared!.messages!.at(-1) as Message).providerOptions).toEqual({
+      __cacheBreakpoint: { kind: "step" },
       anthropic: { anotherOption: "keep", cacheControl: STEP_CACHE_CONTROL },
     });
   });
@@ -231,6 +260,7 @@ describe("per-step cache telemetry", () => {
   });
 
   it("reports Bedrock's write from its metadata and its read from the call's usage", () => {
+    const prior = process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
     process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
     try {
       expect(
@@ -245,7 +275,8 @@ describe("per-step cache telemetry", () => {
         "gen_ai.usage.cache_read_input_tokens": 12_000,
       });
     } finally {
-      delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+      if (prior === undefined) delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+      else process.env.DASHBOARD_AGENT_MODEL_PROVIDER = prior;
     }
   });
 

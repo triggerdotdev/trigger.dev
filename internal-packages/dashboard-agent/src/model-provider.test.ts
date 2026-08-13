@@ -56,33 +56,44 @@ describe("resolveDashboardAgentModel", () => {
 });
 
 describe("cache breakpoints", () => {
-  it("emits Anthropic cache control by default", () => {
+  it("keeps the Anthropic cacheControl ttls intact, tagged with the discriminator", () => {
     expect(withCacheBreakpoint({ openai: { store: false } }, "prefix")).toEqual({
+      __cacheBreakpoint: { kind: "prefix" },
       openai: { store: false },
       anthropic: { cacheControl: PROMPT_CACHE_CONTROL },
     });
     expect(withCacheBreakpoint(undefined, "step")).toEqual({
+      __cacheBreakpoint: { kind: "step" },
       anthropic: { cacheControl: STEP_CACHE_CONTROL },
     });
   });
 
-  it("emits a Bedrock cache point when the switch is on", () => {
+  it("emits a plain Bedrock cachePoint with no ttl for either marker", () => {
     useBedrock();
-    expect(withCacheBreakpoint(undefined, "prefix")).toEqual({
-      bedrock: { cachePoint: { type: "default" } },
-    });
+    for (const breakpoint of ["prefix", "step"] as const) {
+      const options = withCacheBreakpoint(undefined, breakpoint);
+      // The only thing the SDK serialises to AWS is bedrock.cachePoint — it must be plain.
+      expect(options.bedrock.cachePoint).toEqual({ type: "default" });
+      expect(options.bedrock.cachePoint).not.toHaveProperty("ttl");
+      expect(options.__cacheBreakpoint).toEqual({ kind: breakpoint });
+    }
   });
 
-  it("classifies and strips the active provider's breakpoint", () => {
+  it("classifies and strips the active provider's breakpoint via the discriminator", () => {
     const anthropicStep = withCacheBreakpoint({ anthropic: { keep: true } }, "step");
     expect(isStepCacheBreakpoint(anthropicStep)).toBe(true);
     expect(isLongLivedCacheBreakpoint(withCacheBreakpoint(undefined, "prefix"))).toBe(true);
+    // The strip removes both the provider field and the top-level discriminator.
     expect(withoutCacheBreakpoint(anthropicStep)).toEqual({ anthropic: { keep: true } });
 
     useBedrock();
     const bedrockStep = withCacheBreakpoint(undefined, "step");
+    const bedrockPrefix = withCacheBreakpoint(undefined, "prefix");
+    // The two Bedrock markers are byte-identical on the wire — only the tag tells them apart.
+    expect(bedrockStep.bedrock).toEqual(bedrockPrefix.bedrock);
     expect(isStepCacheBreakpoint(bedrockStep)).toBe(true);
     expect(isLongLivedCacheBreakpoint(bedrockStep)).toBe(false);
+    expect(isLongLivedCacheBreakpoint(bedrockPrefix)).toBe(true);
     expect(withoutCacheBreakpoint(bedrockStep)).toEqual({});
   });
 });
