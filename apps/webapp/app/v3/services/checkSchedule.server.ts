@@ -6,7 +6,7 @@ import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
 import type { ScheduleWindow } from "@trigger.dev/core/v3";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { boundedIn, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { validateScheduleWindowSyntax } from "../scheduleWindow.server";
 
 type Schedule = {
@@ -81,6 +81,9 @@ export class CheckScheduleService extends BaseService {
       select: {
         organizationId: true,
         environments: {
+          where: {
+            id: { in: boundedIn(environmentIds) },
+          },
           select: {
             id: true,
             type: true,
