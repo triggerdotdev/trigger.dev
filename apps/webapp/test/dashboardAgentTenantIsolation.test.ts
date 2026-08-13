@@ -11,10 +11,9 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect } from "vitest";
 
 /**
@@ -34,21 +33,6 @@ import { afterEach, describe, expect } from "vitest";
 let agentDb: DashboardAgentDb;
 let agentDbClient: DashboardAgentDbClient | undefined;
 
-const MIGRATIONS = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-
-/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
-async function applyAgentSchema(prisma: PrismaClient) {
-  for (const name of readdirSync(MIGRATIONS)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(MIGRATIONS, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
-
 // Org A owns the chat. Org B and a same-org other user are the foreign tenants.
 const ORG_A = "org_a";
 const USER_A = "user_a";
@@ -57,7 +41,7 @@ const USER_B = "user_b";
 const CHAT = "chat_owned_by_a";
 
 async function boot(prisma: PrismaClient, connectionUri: string) {
-  await applyAgentSchema(prisma);
+  await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 4 });
   agentDb = agentDbClient.db;
 }

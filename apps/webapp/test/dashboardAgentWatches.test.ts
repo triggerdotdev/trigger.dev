@@ -30,11 +30,10 @@ import {
   type DashboardAgentDbClient,
   type Watch,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import type { WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, vi } from "vitest";
 import {
   previousCheckFacts,
@@ -144,26 +143,11 @@ const { findProjectBySlug } = await import("~/models/project.server");
 const { DASHBOARD_AGENT_WATCH_ALERT_TYPE, subscribeUserToWatchAlerts } =
   await import("~/services/dashboardAgentWatchAlerts.server");
 
-/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  const migrations = readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-  for (const name of migrations) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
-
 let agentDbClient: DashboardAgentDbClient | undefined;
 
 async function boot(prisma: PrismaClient, connectionUri: string) {
   ctx.prisma = prisma;
-  await applyAgentSchema(prisma);
+  await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
   // A pool, not a single connection: the concurrent-create test needs the advisory lock to span connections.
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 8 });
   ctx.agentDb = agentDbClient.db;
