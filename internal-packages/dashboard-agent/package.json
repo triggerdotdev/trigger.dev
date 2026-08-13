@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.8",
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/build": "workspace:*",
     "trigger.dev": "workspace:*",
     "vitest": "4.1.7"
