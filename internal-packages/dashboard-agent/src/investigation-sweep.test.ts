@@ -26,9 +26,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   INVESTIGATION_STALE_MS,
   MAX_SWEEP_ATTEMPTS,
-  sweepConnectionString,
   sweepDashboardAgentInvestigations,
 } from "./investigation-sweep";
+import { watchConnectionString } from "./watch-task-adapters";
 
 const ORG = "org_sweep";
 const USER = "user_sweep";
@@ -558,11 +558,11 @@ describe("the investigation sweep's closing card", () => {
 
 describe("the investigation sweep database guard", () => {
   it("skips rather than throwing when neither url is set", () => {
-    expect(sweepConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(watchConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
   });
 
   it("falls back to the main database url", () => {
-    expect(sweepConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
+    expect(watchConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
       "postgres://main"
     );
   });

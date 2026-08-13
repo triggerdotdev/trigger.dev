@@ -11,7 +11,7 @@ import {
 } from "@internal/dashboard-agent-db";
 import { logger, schedules } from "@trigger.dev/sdk";
 import { serializeError } from "./serialize-error";
-import { getWatchDb } from "./watch-task-adapters";
+import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
 
 /**
  * The investigation backstop, for cards left `in_progress`. They settle as `inconclusive`,
@@ -182,17 +182,12 @@ const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
   failed: 0,
 };
 
-/** The url the sweep would connect with, so an unwired deployment can skip instead of throw. */
-export function sweepConnectionString(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.DASHBOARD_AGENT_DATABASE_URL ?? env.DATABASE_URL;
-}
-
 export const dashboardAgentInvestigationSweep = schedules.task({
   id: "dashboard-agent-investigation-sweep",
   cron: "*/5 * * * *",
   retry: { maxAttempts: 3 },
   run: async (): Promise<InvestigationSweepResult> => {
-    if (!sweepConnectionString()) {
+    if (!watchConnectionString()) {
       logger.warn(
         "dashboard-agent investigation sweep skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
       );
