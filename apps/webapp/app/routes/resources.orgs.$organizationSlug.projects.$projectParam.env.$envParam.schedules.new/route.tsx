@@ -367,7 +367,7 @@ export function UpsertScheduleForm({
                 defaultValue={schedule?.window}
               />
               <Hint>
-                Assigns each run a stable time after its CRON time. Use minutes, hours, days, or a
+                Assigns each run a stable time after its CRON time. Use minutes, hours, or a
                 percentage of the interval. Schedules always use at least a 60-second placement
                 range.
               </Hint>
