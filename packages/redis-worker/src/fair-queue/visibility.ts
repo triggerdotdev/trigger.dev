@@ -388,7 +388,10 @@ export class VisibilityManager {
    *
    * @param shardId - The shard to check
    * @param getQueueKeys - Function to get queue keys for a queue ID
-   * @returns Array of reclaimed message info for concurrency release
+   * @param onBeforeRequeue - Hook invoked with the batch before any message is requeued,
+   *   used to free concurrency slots. A throw aborts the whole batch, leaving the
+   *   messages in-flight for the next reclaim tick.
+   * @returns Array of reclaimed message info
    */
   async reclaimTimedOut(
     shardId: number,
@@ -398,7 +401,8 @@ export class VisibilityManager {
       tenantQueueIndexKey: string;
       dispatchKey: string;
       tenantId: string;
-    }
+    },
+    onBeforeRequeue?: (messages: ReclaimedMessageInfo[]) => Promise<void>
   ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
@@ -415,30 +419,68 @@ export class VisibilityManager {
       100 // Process in batches
     );
 
-    const reclaimedMessages: ReclaimedMessageInfo[] = [];
+    const candidates: Array<{
+      member: string;
+      deadlineScore: string;
+      info: ReclaimedMessageInfo;
+      storedMessage: StoredMessage | null;
+    }> = [];
 
     for (let i = 0; i < timedOut.length; i += 2) {
       const member = timedOut[i];
-      const _deadlineScore = timedOut[i + 1]; // This is the visibility deadline, not the original timestamp
-      if (!member || !_deadlineScore) {
+      const deadlineScore = timedOut[i + 1];
+      if (!member || !deadlineScore) {
         continue;
       }
       const { messageId, queueId } = this.#parseMember(member);
+
+      const dataJson = await this.redis.hget(inflightDataKey, messageId);
+      let storedMessage: StoredMessage | null = null;
+      if (dataJson) {
+        try {
+          storedMessage = JSON.parse(dataJson);
+        } catch {
+          // Ignore parse error, proceed with reclaim
+        }
+      }
+
+      if (!storedMessage) {
+        this.logger.error("Missing or corrupted message data during reclaim, using fallback", {
+          messageId,
+          queueId,
+        });
+      }
+
+      candidates.push({
+        member,
+        deadlineScore,
+        storedMessage,
+        info: {
+          messageId,
+          queueId,
+          tenantId: storedMessage?.tenantId ?? this.keys.extractTenantId(queueId),
+          metadata: storedMessage?.metadata ?? {},
+        },
+      });
+    }
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    if (onBeforeRequeue) {
+      await onBeforeRequeue(candidates.map((candidate) => candidate.info));
+    }
+
+    const reclaimedMessages: ReclaimedMessageInfo[] = [];
+
+    for (const { member, deadlineScore, storedMessage, info } of candidates) {
+      const { messageId, queueId } = info;
+
       const { queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, tenantId } =
         getQueueKeys(queueId);
 
       try {
-        // Get message data BEFORE releasing so we can extract tenantId for concurrency release
-        const dataJson = await this.redis.hget(inflightDataKey, messageId);
-        let storedMessage: StoredMessage | null = null;
-        if (dataJson) {
-          try {
-            storedMessage = JSON.parse(dataJson);
-          } catch {
-            // Ignore parse error, proceed with reclaim
-          }
-        }
-
         // Re-add to queue with original timestamp to preserve priority
         // Fall back to now if we can't get the original timestamp
         const score = storedMessage?.timestamp ?? now;
@@ -457,34 +499,12 @@ export class VisibilityManager {
           tenantId
         );
 
-        // Track reclaimed message for concurrency release
-        // Always add to reclaimedMessages to avoid concurrency leaks
-        if (storedMessage) {
-          reclaimedMessages.push({
-            messageId,
-            queueId,
-            tenantId: storedMessage.tenantId,
-            metadata: storedMessage.metadata,
-          });
-        } else {
-          // Fallback: extract tenantId from queueId when message data is missing or corrupted
-          // This ensures concurrency is released even if we can't get the full metadata
-          this.logger.error("Missing or corrupted message data during reclaim, using fallback", {
-            messageId,
-            queueId,
-          });
-          reclaimedMessages.push({
-            messageId,
-            queueId,
-            tenantId: this.keys.extractTenantId(queueId),
-            metadata: {},
-          });
-        }
+        reclaimedMessages.push(info);
 
         this.logger.debug("Reclaimed timed-out message", {
           messageId,
           queueId,
-          deadline: _deadlineScore,
+          deadline: deadlineScore,
         });
       } catch (error) {
         this.logger.error("Failed to reclaim message", {
@@ -707,7 +727,9 @@ local tenantId = ARGV[6]
 -- Get message data from in-flight
 local payload = redis.call('HGET', inflightDataKey, messageId)
 if not payload then
-  -- Message not in in-flight or already released
+  -- Message not in in-flight or already released. Drop the dangling in-flight
+  -- entry so it stops consuming a slot in every future reclaim scan.
+  redis.call('ZREM', inflightKey, member)
   return 0
 end
 
@@ -717,13 +739,14 @@ if updatedData and updatedData ~= "" then
   payload = updatedData
 end
 
+-- Add back to queue before dropping the in-flight record. Lua does not roll back on
+-- error, so removing first would lose the message outright if the queue write failed.
+redis.call('ZADD', queueKey, score, messageId)
+redis.call('HSET', queueItemsKey, messageId, payload)
+
 -- Remove from in-flight
 redis.call('ZREM', inflightKey, member)
 redis.call('HDEL', inflightDataKey, messageId)
-
--- Add back to queue
-redis.call('ZADD', queueKey, score, messageId)
-redis.call('HSET', queueItemsKey, messageId, payload)
 
 -- Update tenant queue index (Level 2) with queue's oldest message
 local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -771,15 +794,20 @@ for i = 0, numMessages - 1 do
   -- Get message data from in-flight
   local payload = redis.call('HGET', inflightDataKey, messageId)
   if payload then
+    -- Add back to queue before dropping the in-flight record, so a failed queue write
+    -- cannot lose the message: Lua does not roll back already-applied commands.
+    redis.call('ZADD', queueKey, score, messageId)
+    redis.call('HSET', queueItemsKey, messageId, payload)
+
     -- Remove from in-flight
     redis.call('ZREM', inflightKey, member)
     redis.call('HDEL', inflightDataKey, messageId)
 
-    -- Add back to queue
-    redis.call('ZADD', queueKey, score, messageId)
-    redis.call('HSET', queueItemsKey, messageId, payload)
-
     releasedCount = releasedCount + 1
+  else
+    -- Dangling in-flight entry with no payload: drop it so it stops consuming
+    -- a slot in every future reclaim scan.
+    redis.call('ZREM', inflightKey, member)
   end
 end
 
