@@ -274,7 +274,7 @@ export async function collectSessionOut(
     if (!gotNew) {
       await new Promise((r) => setTimeout(r, 100));
     }
-  } while (true);
+  } while (true); // oxlint-disable-line no-constant-condition
 
   return { parts, durationMs: performance.now() - started, subscription };
 }

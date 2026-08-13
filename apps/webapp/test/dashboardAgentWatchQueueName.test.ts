@@ -180,8 +180,16 @@ async function createFor(seeded: Seeded, spec: WatchSpec, chatId?: string) {
 }
 
 async function persistedQueueName(created: { watchId?: string }) {
-  const watch = await getWatch(ctx.agentDb, { id: created.watchId! });
-  return (watch?.spec as { queue: string }).queue;
+  if (!created.watchId) {
+    throw new Error("Expected the created watch to have an ID");
+  }
+
+  const watch = await getWatch(ctx.agentDb, { id: created.watchId });
+  if (!watch) {
+    throw new Error(`Expected watch ${created.watchId} to exist`);
+  }
+
+  return (watch.spec as { queue: string }).queue;
 }
 
 /** The queue as `QueueRetrievePresenter` hands it to the page: the prefix already stripped. */

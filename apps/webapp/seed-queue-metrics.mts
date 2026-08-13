@@ -1,11 +1,13 @@
 import { boundedIn } from "@trigger.dev/database";
 import { ClickHouse } from "@internal/clickhouse";
 import type { QueueMetricsRawV1Input } from "@internal/clickhouse";
-// App modules compile to CommonJS under tsx, so import them as default bindings.
+// App modules compile to CommonJS under tsx, so these intentionally use default bindings.
+// oxlint-disable import/default
 import dbServer from "./app/db.server";
 import organizationServer from "./app/models/organization.server";
 import projectServer from "./app/models/project.server";
 import friendlyIdentifiers from "./app/v3/friendlyIdentifiers";
+// oxlint-enable import/default
 
 const { prisma } = dbServer;
 const { createOrganization } = organizationServer;
