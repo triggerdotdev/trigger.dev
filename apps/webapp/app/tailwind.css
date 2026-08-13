@@ -1029,28 +1029,53 @@
   --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
 }
 
+/*
+  Light travels the same way, with one wrinkle: light's greys are its own
+  hand-picked set, not charcoal stops - but they sit on the SAME cool scale and
+  continue straight into it (text-faint is c-400, text-dimmed c-500, text-bright
+  c-800), with the same tint curve. So the scale for light is its pale greys at
+  the top and the charcoal ramp below them.
+
+  Light's pale end is densely sampled while the mid-greys it travels into are
+  charcoal's sparser stops, so a "step" is not a fixed perceptual distance here.
+  Destinations are therefore chosen per token to land near where that token sits
+  today - which mirrors the old per-token weights (25%, 28%, 32%, 38%...) rather
+  than replacing them with one number. Ordering is enforced within each group;
+  groups already crossed each other at high contrast before this change.
+
+  Backgrounds stay among light's pale greys, since charcoal has nothing between
+  c-100 and c-200 to move them into. Everything else lands on a charcoal stop.
+
+  Text is the exception to matching today: at full contrast the old mixing sent
+  text-bright to pure #000 and text-dimmed to #0e0f11, only 1.10:1 apart, so the
+  bright/dimmed hierarchy disappeared. It now moves two stops like the dark
+  side, which keeps the three text tones spaced as they are at contrast 0.
+*/
 :is([data-theme="light"], [data-theme="white"]) {
-  /* Text deepens toward black */
-  --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
-  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 85%));
-  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 70%));
+  /* Text deepens down the ramp, holding the gaps it has at contrast 0 */
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
 
   /* On white the foregrounds carry the contrast: cards stay white while the
-     page-behind surfaces darken a touch so panels separate */
-  --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
-  --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
-  --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
+     page-behind surfaces darken a touch so panels separate. These move within
+     light's own pale greys - charcoal is too coarse up here. */
+  --color-background-deep: color-mix(in srgb, #f1f2f4, var(--color-charcoal-200) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #dcdee3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
 
-  /* Controls and borders push hard toward black - this is where light-mode
-     contrast is actually visible */
-  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
-  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
-  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
-  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
-  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
-  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
+  /* Controls, grid lines and borders push down onto the charcoal stops - this is
+     where light-mode contrast is actually visible, and where mixing toward #000
+     did the most damage: border-bright used to land on a +6 blue lean where the
+     ramp's own grey at that brightness carries +18. */
+  --color-surface-control: color-mix(in srgb, #dcdee3, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, var(--color-charcoal-550) calc(var(--theme-contrast, 0) * 100%));
 }
 
 /*

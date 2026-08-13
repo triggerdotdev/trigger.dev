@@ -797,8 +797,8 @@ export default function Page() {
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                     <Label>Distinguish without color</Label>
                     <SettingsRowDescription>
-                      Raise the contrast of icons, badges and charts, and give anything that relies
-                      on color alone a distinct shape
+                      Raise the contrast of icons, badges and charts, and give color-only items a
+                      distinct shape
                     </SettingsRowDescription>
                   </div>
                   <div className="flex flex-none items-center">
