@@ -88,10 +88,13 @@ class FailingMetricReader extends MetricReader {
 }
 
 class FailingShutdownMetricReader extends MetricReader {
+  shutdownAttempts = 0;
+
   protected async onForceFlush(): Promise<void> {}
 
   protected async onShutdown(): Promise<void> {
-    throw new Error("reader shutdown failed");
+    this.shutdownAttempts++;
+    throw new Error(`reader shutdown failed (attempt ${this.shutdownAttempts})`);
   }
 }
 
@@ -201,5 +204,31 @@ describe("TracingSDK shutdown", () => {
     await tracingSDK.shutdown().catch(() => {});
 
     expect(recordingReader.shutdownCount).toBeGreaterThan(0);
+  });
+
+  it("does not retry a metric reader that failed to shut down", async () => {
+    const failingReader = new FailingShutdownMetricReader();
+
+    const tracingSDK = new TracingSDK({
+      url: "http://localhost:1",
+      forceFlushTimeoutMillis: 5_000,
+      diagLogLevel: "none",
+      metricReaders: [failingReader],
+    });
+
+    await tracingSDK.shutdown().catch(() => {});
+
+    expect(failingReader.shutdownAttempts).toBe(1);
+  });
+
+  it("reports the original shutdown failure, not a later one", async () => {
+    const tracingSDK = new TracingSDK({
+      url: "http://localhost:1",
+      forceFlushTimeoutMillis: 5_000,
+      diagLogLevel: "none",
+      metricReaders: [new FailingShutdownMetricReader()],
+    });
+
+    await expect(tracingSDK.shutdown()).rejects.toThrow("attempt 1");
   });
 });

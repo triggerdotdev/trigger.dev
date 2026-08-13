@@ -359,11 +359,8 @@ export class TracingSDK {
   }
 
   private async _shutdownMetricReadersSerially() {
-    try {
-      await this._eachMetricReaderSerially("shut down", (reader) => reader.shutdown());
-    } finally {
-      await this._meterProvider.shutdown();
-    }
+    await this._eachMetricReaderSerially("shut down", (reader) => reader.shutdown());
+    await this._meterProvider.shutdown();
   }
 
   private async _eachMetricReaderSerially(

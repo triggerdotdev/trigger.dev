@@ -39,7 +39,7 @@ function gauge(name: string, values: number[]): MetricData {
     aggregationTemporality: AggregationTemporality.CUMULATIVE,
     dataPointType: DataPointType.GAUGE,
     dataPoints: values.map((value) => ({
-      attributes: { "process.cpu.state": String(value) },
+      attributes: { "process.cpu.state": "user" },
       startTime: [1786481102, 584000000],
       endTime: [1786481102, 698000000],
       value,
@@ -71,7 +71,7 @@ function histogram(name: string, sums: number[]): MetricData {
     aggregationTemporality: AggregationTemporality.DELTA,
     dataPointType: DataPointType.HISTOGRAM,
     dataPoints: sums.map((sum) => ({
-      attributes: { sum: String(sum) },
+      attributes: { "task.status": "completed" },
       startTime: [1786481102, 584000000],
       endTime: [1786481102, 698000000],
       value: {
