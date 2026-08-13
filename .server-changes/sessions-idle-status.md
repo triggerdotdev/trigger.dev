@@ -3,4 +3,4 @@ area: webapp
 type: fix
 ---
 
-The Sessions list no longer shows an abandoned session as Active with a duration that climbs forever. A session whose run has finished now shows as Idle with a duration frozen at when it stopped, and only sessions with a run still executing show as Active.
+The Sessions list no longer shows an ever-growing duration for a session whose run finished long ago. The duration now stops at the last run's activity, and only sessions with a run still executing keep counting up.

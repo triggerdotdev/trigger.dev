@@ -36,7 +36,6 @@ import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
-import { deriveSessionStatus } from "./deriveSessionStatus";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import {
   controlPlaneResolver,
@@ -359,27 +358,11 @@ export class SpanPresenter extends BasePresenter {
                 taskIdentifier: true,
                 closedAt: true,
                 expiresAt: true,
-                currentRunId: true,
               },
             },
           },
         })
       : null;
-
-    // Resolve the session's current run so the badge reflects run liveness
-    // (the same IDLE-vs-ACTIVE distinction as the sessions list/detail), not
-    // just closedAt/expiresAt. Env-scoped, matching the run reads here.
-    const sessionCurrentRun =
-      sessionRun && sessionRun.session.currentRunId
-        ? await runStore.findRun(
-            {
-              id: sessionRun.session.currentRunId,
-              runtimeEnvironmentId: run.runtimeEnvironmentId,
-            },
-            { select: { status: true } },
-            this._replica
-          )
-        : null;
 
     const session = sessionRun
       ? {
@@ -387,13 +370,13 @@ export class SpanPresenter extends BasePresenter {
           externalId: sessionRun.session.externalId,
           type: sessionRun.session.type,
           taskIdentifier: sessionRun.session.taskIdentifier,
-          status: deriveSessionStatus({
-            closedAt: sessionRun.session.closedAt,
-            expiresAt: sessionRun.session.expiresAt,
-            hasCurrentRun: sessionRun.session.currentRunId != null,
-            currentRunStatus: sessionCurrentRun?.status,
-            now: Date.now(),
-          }),
+          status:
+            sessionRun.session.closedAt != null
+              ? ("CLOSED" as const)
+              : sessionRun.session.expiresAt != null &&
+                  sessionRun.session.expiresAt.getTime() < Date.now()
+                ? ("EXPIRED" as const)
+                : ("ACTIVE" as const),
           reason: sessionRun.reason,
           triggeredAt: sessionRun.triggeredAt,
         }

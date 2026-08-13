@@ -56,14 +56,13 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { deriveSessionStatus } from "~/presenters/v3/deriveSessionStatus";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
 import {
   type StreamChunk,
   useRealtimeStream,
 } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 import { requireUserId } from "~/services/session.server";
-import { type SessionDisplayStatus } from "~/services/sessionsRepository/sessionsRepository.server";
+import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
 import { EnvironmentParamSchema, v3RunPath, v3RunsPath, v3SessionsPath } from "~/utils/pathBuilder";
@@ -118,13 +117,12 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
-  const status = deriveSessionStatus({
-    closedAt: session.closedAt ? new Date(session.closedAt) : null,
-    expiresAt: session.expiresAt ? new Date(session.expiresAt) : null,
-    hasCurrentRun: session.currentRun != null,
-    currentRunStatus: session.currentRun?.status,
-    now: Date.now(),
-  });
+  const status: SessionStatus =
+    session.closedAt != null
+      ? "CLOSED"
+      : session.expiresAt != null && new Date(session.expiresAt).getTime() < Date.now()
+        ? "EXPIRED"
+        : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -695,13 +693,7 @@ function MergedStreamRow({
   );
 }
 
-function InspectorPane({
-  session,
-  status,
-}: {
-  session: LoadedSession;
-  status: SessionDisplayStatus;
-}) {
+function InspectorPane({ session, status }: { session: LoadedSession; status: SessionStatus }) {
   const { value, replace } = useSearchParams();
   const tab = value("tab") ?? "overview";
   const organization = useOrganization();
@@ -761,13 +753,7 @@ function InspectorPane({
   );
 }
 
-function OverviewTab({
-  session,
-  status,
-}: {
-  session: LoadedSession;
-  status: SessionDisplayStatus;
-}) {
+function OverviewTab({ session, status }: { session: LoadedSession; status: SessionStatus }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -784,7 +770,7 @@ function OverviewTab({
               <SessionStatusCombo status={status} />
             </Property.Value>
           </Property.Item>
-          {(status === "ACTIVE" || status === "IDLE") && (
+          {status === "ACTIVE" && (
             <Dialog key={`close-${session.friendlyId}`}>
               <DialogTrigger asChild>
                 <Button variant="danger/small">Close session…</Button>
@@ -959,7 +945,7 @@ function RunsTab({
   allRunsPath,
 }: {
   session: LoadedSession;
-  status: SessionDisplayStatus;
+  status: SessionStatus;
   allRunsPath: string;
 }) {
   const organization = useOrganization();
@@ -1026,12 +1012,10 @@ function RunsTab({
   );
 }
 
-function sessionStatusBlurb(status: SessionDisplayStatus): string {
+function sessionStatusBlurb(status: SessionStatus): string {
   switch (status) {
     case "ACTIVE":
       return "Accepting new runs";
-    case "IDLE":
-      return "Open, no run currently executing";
     case "CLOSED":
       return "No longer accepting new runs";
     case "EXPIRED":

@@ -1,11 +1,11 @@
-// Integration guard for SessionListPresenter status + duration derivation (TRI-12687).
+// Integration guard for SessionListPresenter status + duration derivation.
 //
 // Drives the REAL SessionListPresenter.call() against a real Postgres (heteroPostgresTest).
 // The ClickHouse session index is stubbed (orthogonal — it only orders ids) so each stub
 // session's `currentRunId` points at a REAL run we seed in Postgres with a known status.
-// The presenter's `findRuns` read + `deriveSessionStatus` therefore run for real end-to-end,
-// which is the wiring the pure unit test can't cover: does the presenter feed the helper the
-// current run's status, emit IDLE for an open-but-dead session, and pass the freeze timestamp
+// The presenter's `findRuns` read + liveness check therefore run for real end-to-end, which
+// is the wiring the pure unit test can't cover: does the presenter derive the filterable
+// status correctly, compute `hasLiveRun` from the current run, and pass the freeze timestamp
 // (`currentRunCompletedAt`) through?
 
 import { heteroPostgresTest } from "@internal/testcontainers";
@@ -207,7 +207,7 @@ function stubSession(p: {
 
 describe("SessionListPresenter status + duration derivation", () => {
   heteroPostgresTest(
-    "derives IDLE/ACTIVE/CLOSED/EXPIRED from run liveness and freezes idle duration",
+    "keeps the filterable status and drives duration off run liveness",
     async ({ prisma14 }) => {
       const prisma = prisma14 as unknown as PrismaClient;
       const suffix = `status_${seq++}`;
@@ -216,7 +216,8 @@ describe("SessionListPresenter status + duration derivation", () => {
       const RUN_COMPLETED_AT = new Date("2024-01-01T00:10:00.000Z");
       const PAST = new Date("2020-01-01T00:00:00.000Z");
 
-      // An open session whose only run has EXPIRED — the reported bug.
+      // An open session whose only run has terminated — the reported bug. Status
+      // stays ACTIVE (it is open), but it is not live so its duration freezes.
       const idleRunId = await seedRun(prisma, seed, {
         suffix: `idle_${suffix}`,
         status: "EXPIRED",
@@ -257,18 +258,25 @@ describe("SessionListPresenter status + duration derivation", () => {
 
       const byId = new Map(result.sessions.map((s) => [s.id, s] as const));
 
+      // Open but not live: still ACTIVE (filterable), not live, and the duration
+      // freezes at the terminated run's completion instead of climbing forever.
       const idle = byId.get(`sess_idle_${suffix}`)!;
-      expect(idle.status).toBe("IDLE");
-      // Duration freezes at the dead run's completedAt rather than ticking.
+      expect(idle.status).toBe("ACTIVE");
+      expect(idle.hasLiveRun).toBe(false);
       expect(idle.currentRunCompletedAt).toBe(RUN_COMPLETED_AT.toISOString());
 
-      expect(byId.get(`sess_active_${suffix}`)!.status).toBe("ACTIVE");
+      // Open with a live run: ACTIVE and ticking.
+      const active = byId.get(`sess_active_${suffix}`)!;
+      expect(active.status).toBe("ACTIVE");
+      expect(active.hasLiveRun).toBe(true);
+
       expect(byId.get(`sess_closed_${suffix}`)!.status).toBe("CLOSED");
       expect(byId.get(`sess_expired_${suffix}`)!.status).toBe("EXPIRED");
 
-      // Open session that never ran: IDLE with no freeze point (renders as a dash).
+      // Open session that never ran: ACTIVE, not live, no freeze point (dash).
       const neverRan = byId.get(`sess_neverran_${suffix}`)!;
-      expect(neverRan.status).toBe("IDLE");
+      expect(neverRan.status).toBe("ACTIVE");
+      expect(neverRan.hasLiveRun).toBe(false);
       expect(neverRan.currentRunCompletedAt).toBeUndefined();
     }
   );
