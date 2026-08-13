@@ -819,19 +819,6 @@ export const GetDeploymentResponseBody = z.object({
           exportName: z.string().optional(),
         })
       ),
-      declarativeSchedules: z
-        .array(
-          z.object({
-            task: z.string(),
-            cron: z.string(),
-            timezone: z.string(),
-            window: ScheduleWindow.optional(),
-            nextRun: z.coerce.date(),
-            /** Null until the deployment's schedule is registered in this environment. */
-            nextRunEffectiveAt: z.coerce.date().nullable(),
-          })
-        )
-        .optional(),
     })
     .optional(),
   integrationDeployments: z

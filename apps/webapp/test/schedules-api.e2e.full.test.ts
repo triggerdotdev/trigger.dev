@@ -139,87 +139,6 @@ describe("Schedules API windows", () => {
     }
   });
 
-  it("returns declarative schedule summaries with deployments", async () => {
-    const server = getTestServer();
-    const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
-    const worker = await seedScheduledTask(server.prisma, project.id, environment.id);
-    const deployment = await server.prisma.workerDeployment.create({
-      data: {
-        friendlyId: `deployment_${environment.id}`,
-        shortCode: environment.shortcode,
-        version: "20260811.1",
-        contentHash: `hash_${environment.id}`,
-        status: "DEPLOYED",
-        projectId: project.id,
-        environmentId: environment.id,
-        workerId: worker.id,
-      },
-    });
-    await server.prisma.taskSchedule.create({
-      data: {
-        friendlyId: `schedule_${environment.id}`,
-        projectId: project.id,
-        taskIdentifier: TASK_IDENTIFIER,
-        deduplicationKey: "persisted-schedule-identity",
-        generatorExpression: "0 9 * * *",
-        generatorDescription: "At 09:00",
-        timezone: "UTC",
-        type: "DECLARATIVE",
-        windowDurationSeconds: 30 * 60,
-        instances: {
-          create: {
-            environmentId: environment.id,
-            projectId: project.id,
-            schedulePhase: 0,
-          },
-        },
-      },
-    });
-
-    const response = await server.webapp.fetch(`/api/v1/deployments/${deployment.friendlyId}`, {
-      headers: authHeaders(apiKey),
-    });
-
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.worker.declarativeSchedules).toHaveLength(1);
-    expect(body.worker.declarativeSchedules[0]).toMatchObject({
-      task: TASK_IDENTIFIER,
-      cron: "0 9 * * *",
-      timezone: "UTC",
-      window: "30m",
-    });
-    expect(body.worker.declarativeSchedules[0].nextRunEffectiveAt).toBe(
-      body.worker.declarativeSchedules[0].nextRun
-    );
-  });
-
-  it("reports an unassigned effective time until a declarative schedule is registered", async () => {
-    const server = getTestServer();
-    const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
-    const worker = await seedScheduledTask(server.prisma, project.id, environment.id);
-    const deployment = await server.prisma.workerDeployment.create({
-      data: {
-        friendlyId: `deployment_unregistered_${environment.id}`,
-        shortCode: environment.shortcode,
-        version: "20260811.1",
-        contentHash: `hash_unregistered_${environment.id}`,
-        status: "DEPLOYED",
-        projectId: project.id,
-        environmentId: environment.id,
-        workerId: worker.id,
-      },
-    });
-
-    const response = await server.webapp.fetch(`/api/v1/deployments/${deployment.friendlyId}`, {
-      headers: authHeaders(apiKey),
-    });
-
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.worker.declarativeSchedules[0].nextRunEffectiveAt).toBeNull();
-  });
-
   it("returns safe errors for invalid windows", async () => {
     const server = getTestServer();
     const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
@@ -272,21 +191,7 @@ async function seedScheduledTask(
       friendlyId: `worker_${runtimeEnvironmentId}`,
       contentHash: `hash_${runtimeEnvironmentId}`,
       version: "20260811.1",
-      metadata: {
-        packageVersion: "4.5.10",
-        contentHash: `hash_${runtimeEnvironmentId}`,
-        tasks: [
-          {
-            id: TASK_IDENTIFIER,
-            filePath: "src/trigger/scheduled-task.ts",
-            schedule: {
-              cron: "0 9 * * *",
-              timezone: "UTC",
-              window: "30m",
-            },
-          },
-        ],
-      },
+      metadata: {},
       projectId,
       runtimeEnvironmentId,
     },
@@ -303,6 +208,4 @@ async function seedScheduledTask(
       triggerSource: "SCHEDULED",
     },
   });
-
-  return worker;
 }
