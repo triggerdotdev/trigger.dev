@@ -4,7 +4,7 @@
 // never renders the toast. The general settings action must therefore redirect to a page
 // that renders.
 
-import { okAsync } from "neverthrow";
+import { errAsync, okAsync } from "neverthrow";
 import { describe, expect, it, vi } from "vitest";
 import { commitSession, getSession, redirectWithErrorMessage } from "~/models/message.server";
 import { action as generalSettingsAction } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings.general/route";
@@ -18,10 +18,15 @@ vi.mock("~/models/organization.server", () => ({
   resolveOrgIdFromSlug: vi.fn().mockResolvedValue("org_1"),
 }));
 
+const renameFails = { value: false };
+
 vi.mock("~/services/projectSettings.server", () => ({
   ProjectSettingsService: class {
     verifyProjectMembership() {
       return okAsync({ projectId: "proj_1" });
+    }
+    renameProject() {
+      return renameFails.value ? errAsync({ type: "other" as const }) : okAsync(undefined);
     }
     deleteProject() {
       return okAsync(undefined);
@@ -103,5 +108,18 @@ describe("general settings redirects target a page that renders", () => {
     const response = await runAction("delete", true);
 
     expect(response.headers.get("Location")).toBe(ORG_PATH);
+  });
+});
+
+describe("general settings failures reach the form", () => {
+  it("returns a form-level error when the rename fails", async () => {
+    renameFails.value = true;
+    const response = await runAction("rename", true);
+    renameFails.value = false;
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { "": ["Failed to rename project"] },
+    });
   });
 });

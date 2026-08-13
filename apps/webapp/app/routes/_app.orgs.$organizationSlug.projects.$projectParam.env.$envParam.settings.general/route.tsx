@@ -105,7 +105,7 @@ export const action = dashboardAction(
     );
 
     if (membershipResultOrFail.isErr()) {
-      return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
+      return json(submission.reply({ formErrors: ["Project not found"] }), { status: 404 });
     }
 
     const { projectId } = membershipResultOrFail.value;
@@ -133,7 +133,9 @@ export const action = dashboardAction(
               logger.error("Failed to rename project", {
                 error: resultOrFail.error,
               });
-              return json({ errors: { body: "Failed to rename project" } }, { status: 400 });
+              return json(submission.reply({ formErrors: ["Failed to rename project"] }), {
+                status: 400,
+              });
             }
           }
         }
@@ -257,6 +259,7 @@ export default function GeneralSettingsPage() {
                     }}
                   />
                   <FormError id={projectName.errorId}>{projectName.errors}</FormError>
+                  <FormError>{renameForm.errors}</FormError>
                 </InputGroup>
                 <FormButtons
                   confirmButton={
