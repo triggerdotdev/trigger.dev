@@ -17,14 +17,20 @@ import type { WatchBatchCheckResponse, WatchBatchTickPayload } from "./watch-bat
 
 /** What the two watch tasks plug into the lifecycle: the db, the wake append, the callbacks. */
 
+/** The url the watch, sweep and retention tasks connect with, so an unwired deployment can skip instead of throw. */
+export function watchConnectionString(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  // `||`, so an empty dedicated url falls back instead of connecting to "".
+  return env.DASHBOARD_AGENT_DATABASE_URL || env.DATABASE_URL;
+}
+
 // One connection pool per worker process.
 let dbClient: DashboardAgentDbClient | undefined;
 export function getWatchDb(): DashboardAgentDbClient {
   if (!dbClient) {
-    const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
+    const connectionString = watchConnectionString();
     if (!connectionString) {
       throw new Error(
-        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the watch task"
+        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the watch and sweep tasks"
       );
     }
     dbClient = createDashboardAgentDb(connectionString, { max: 2 });

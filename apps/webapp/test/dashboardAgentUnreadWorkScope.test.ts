@@ -10,30 +10,15 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect } from "vitest";
-
-const DRIZZLE = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
 
 const SCOPE = { organizationId: "org_1", userId: "user_1" };
 
 const MESSAGED_AT = new Date("2026-02-01T00:00:00.000Z");
 const READ_AFTER = new Date("2026-03-01T00:00:00.000Z");
-
-async function applyAgentSchema(prisma: PrismaClient) {
-  for (const name of readdirSync(DRIZZLE)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(DRIZZLE, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
 
 async function seedChat(prisma: PrismaClient, id: string, readAt: Date | null) {
   await prisma.$executeRawUnsafe(
@@ -59,7 +44,7 @@ describe("the chat the panel has on screen", () => {
   postgresTest(
     "is left out of the work count, and only it",
     async ({ prisma, postgresContainer }) => {
-      await applyAgentSchema(prisma);
+      await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
       const agentDb: DashboardAgentDb = agentDbClient.db;
 

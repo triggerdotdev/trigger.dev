@@ -1040,6 +1040,9 @@ importers:
       '@ai-sdk/provider':
         specifier: 3.0.8
         version: 3.0.8
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
       '@trigger.dev/build':
         specifier: workspace:*
         version: link:../../packages/build
@@ -28560,7 +28563,7 @@ snapshots:
 
   node-abi@3.89.0:
     dependencies:
-      semver: 7.8.5
+      semver: 7.8.1
     optional: true
 
   node-abort-controller@3.1.1: {}

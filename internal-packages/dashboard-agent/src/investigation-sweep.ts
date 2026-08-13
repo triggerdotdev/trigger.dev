@@ -1,20 +1,22 @@
-/**
- * The investigation backstop, for cards left `in_progress`. They settle as `inconclusive`,
- * conditional on the row still being `in_progress`, so a concluding turn wins the race.
- */
-
+import { UNSETTLED_INVESTIGATION_NOTE } from "@internal/dashboard-agent-contracts";
 import {
   listStaleOpenInvestigations,
   recordInvestigationSweepAttempt,
   settleInvestigationAndCloseCard,
   settleInvestigationAsInconclusive,
+  type DashboardAgentDb,
   type Investigation,
   type SettledInvestigation,
   type SettledInvestigationCard,
 } from "@internal/dashboard-agent-db";
-import { UNSETTLED_INVESTIGATION_NOTE } from "@internal/dashboard-agent-contracts";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
-import { logger } from "~/services/logger.server";
+import { logger, schedules } from "@trigger.dev/sdk";
+import { serializeError } from "./serialize-error";
+import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
+
+/**
+ * The investigation backstop, for cards left `in_progress`. They settle as `inconclusive`,
+ * conditional on the row still being `in_progress`, so a concluding turn wins the race.
+ */
 
 /**
  * How long a card may sit `in_progress` before the sweep settles it. Must outlast the
@@ -69,18 +71,18 @@ export type InvestigationSweepDeps = {
  * and the run throws at the end if any failed so the job is retried.
  */
 export async function sweepDashboardAgentInvestigations(
+  db: DashboardAgentDb,
   deps: InvestigationSweepDeps = {}
 ): Promise<InvestigationSweepResult> {
   const now = deps.now?.() ?? new Date();
   const limit = deps.limit ?? SWEEP_BATCH_LIMIT;
-  const listStale =
-    deps.listStale ?? ((params) => listStaleOpenInvestigations(dashboardAgentDb, params));
+  const listStale = deps.listStale ?? ((params) => listStaleOpenInvestigations(db, params));
   const settleAndClose =
-    deps.settleAndClose ?? ((params) => settleInvestigationAndCloseCard(dashboardAgentDb, params));
+    deps.settleAndClose ?? ((params) => settleInvestigationAndCloseCard(db, params));
   const recordAttempt =
-    deps.recordAttempt ?? ((params) => recordInvestigationSweepAttempt(dashboardAgentDb, params));
+    deps.recordAttempt ?? ((params) => recordInvestigationSweepAttempt(db, params));
   const forceAbandon =
-    deps.forceAbandon ?? ((params) => settleInvestigationAsInconclusive(dashboardAgentDb, params));
+    deps.forceAbandon ?? ((params) => settleInvestigationAsInconclusive(db, params));
 
   const result: InvestigationSweepResult = {
     stale: 0,
@@ -121,10 +123,10 @@ export async function sweepDashboardAgentInvestigations(
       try {
         attempts = await recordAttempt({ id: investigation.id });
       } catch (recordError) {
-        logger.error("Dashboard agent investigation sweep: failed to record a sweep attempt", {
+        logger.error("dashboard-agent investigation sweep: failed to record a sweep attempt", {
           investigationId: investigation.id,
           chatId: investigation.chatId,
-          error: recordError,
+          error: serializeError(recordError),
         });
       }
 
@@ -135,7 +137,7 @@ export async function sweepDashboardAgentInvestigations(
           await forceAbandon({ id: investigation.id, note: UNSETTLED_INVESTIGATION_NOTE });
           result.abandoned++;
           logger.warn(
-            "Dashboard agent investigation sweep: abandoned a card past the attempt cap",
+            "dashboard-agent investigation sweep: abandoned a card past the attempt cap",
             {
               investigationId: investigation.id,
               chatId: investigation.chatId,
@@ -144,20 +146,20 @@ export async function sweepDashboardAgentInvestigations(
           );
           continue;
         } catch (abandonError) {
-          logger.error("Dashboard agent investigation sweep: failed to abandon a poison card", {
+          logger.error("dashboard-agent investigation sweep: failed to abandon a poison card", {
             investigationId: investigation.id,
             chatId: investigation.chatId,
-            error: abandonError,
+            error: serializeError(abandonError),
           });
         }
       }
 
       result.failed++;
-      logger.error("Dashboard agent investigation sweep: failed to settle an investigation", {
+      logger.error("dashboard-agent investigation sweep: failed to settle an investigation", {
         investigationId: investigation.id,
         chatId: investigation.chatId,
         attempts,
-        error,
+        error: serializeError(error),
       });
     }
   }
@@ -170,3 +172,33 @@ export async function sweepDashboardAgentInvestigations(
 
   return result;
 }
+
+const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
+  stale: 0,
+  settled: 0,
+  closed: 0,
+  alreadySettled: 0,
+  abandoned: 0,
+  failed: 0,
+};
+
+export const dashboardAgentInvestigationSweep = schedules.task({
+  id: "dashboard-agent-investigation-sweep",
+  cron: "*/5 * * * *",
+  retry: { maxAttempts: 3 },
+  run: async (): Promise<InvestigationSweepResult> => {
+    if (!watchConnectionString()) {
+      logger.warn(
+        "dashboard-agent investigation sweep skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
+      );
+      return { ...EMPTY_SWEEP_RESULT };
+    }
+
+    const { db } = getWatchDb();
+    const result = await sweepDashboardAgentInvestigations(db);
+
+    logger.info("dashboard-agent investigations swept", result);
+
+    return result;
+  },
+});

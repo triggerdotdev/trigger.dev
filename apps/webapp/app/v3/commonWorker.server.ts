@@ -11,12 +11,7 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
-import {
-  purgeDashboardAgentChatsForOrganization,
-  sweepDashboardAgentSoftDeletedChats,
-} from "~/services/dashboardAgentChatRetention.server";
-import { sweepDashboardAgentTurnEvals } from "~/services/dashboardAgentEvalRetention.server";
-import { sweepDashboardAgentInvestigations } from "~/services/dashboardAgentInvestigationSweep.server";
+import { purgeDashboardAgentChatsForOrganization } from "~/services/dashboardAgentChatRetention.server";
 import {
   rearmDashboardAgentWatchBatches,
   sweepDashboardAgentWatches,
@@ -47,7 +42,7 @@ function initializeWorker() {
 
   logger.debug(`👨‍🏭 Initializing common worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
 
-  // Only schedule the agent maintenance cron where the agent is actually set up. Otherwise
+  // Only schedule the agent watch cron where the agent is actually set up. Otherwise
   // its sweeps hit a missing schema and drip a dead-letter entry every run.
   const dashboardAgentConfigured =
     env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
@@ -161,16 +156,15 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      // Stuck investigation cards and turn-eval retention.
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
       "dashboardAgent.maintenance": {
         schema: CronSchema,
-        visibilityTimeoutMs: 60_000 * 5,
-        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 1,
         },
       },
-      // The watch backstops: expiry, wake redelivery, retention and dead batch chains.
+      // The watch backstops: expiry, wake redelivery and dead batch chains.
       "dashboardAgent.watchMaintenance": {
         schema: CronSchema,
         visibilityTimeoutMs: 60_000 * 5,
@@ -179,7 +173,7 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
-      // Soft-deletes a deleted organization's chats; the maintenance sweep purges them.
+      // Soft-deletes a deleted organization's chats; retention hard-deletes them later.
       "dashboardAgent.purgeOrganization": {
         schema: z.object({
           organizationId: z.string(),
@@ -247,48 +241,15 @@ function initializeWorker() {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
       },
-      "dashboardAgent.maintenance": async () => {
-        // Each backstop runs independently; the first failure is rethrown at the end.
-        let failure: unknown;
-
-        try {
-          const investigations = await sweepDashboardAgentInvestigations();
-          if (investigations.stale > 0) {
-            logger.debug("Dashboard agent investigation sweep", investigations);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
-        // Retention on the judged-turn rows. Independent of the agent being configured.
-        try {
-          const evals = await sweepDashboardAgentTurnEvals();
-          if (evals.purged > 0) {
-            logger.debug("Dashboard agent turn-eval retention", evals);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
-        // Hard-delete chats soft-deleted past the retention window, with their children.
-        try {
-          const chats = await sweepDashboardAgentSoftDeletedChats();
-          if (chats.purged > 0) {
-            logger.debug("Dashboard agent chat retention", chats);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
-        if (failure) throw failure;
-      },
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
+      "dashboardAgent.maintenance": async () => {},
       "dashboardAgent.watchMaintenance": async () => {
         // Each backstop runs independently; the first failure is rethrown at the end.
         let failure: unknown;
 
         try {
           const watches = await sweepDashboardAgentWatches();
-          if (watches.overdue > 0 || watches.undelivered > 0 || watches.purged > 0) {
+          if (watches.overdue > 0 || watches.undelivered > 0) {
             logger.debug("Dashboard agent watch sweep", watches);
           }
         } catch (error) {
