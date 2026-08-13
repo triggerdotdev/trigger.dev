@@ -138,7 +138,7 @@ Public access tokens signed with the previous root key remain valid until the ea
 
 API keys can be used to create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
 
-In order to do so with the newer non-root keys, you must use `@trigger.dev/sdk` version 4.5.8 or later. Creating public tokens with non-root keys has the following restrictions:
+To do so with the newer non-root keys, you must use `@trigger.dev/sdk` version 4.5.8 or later. Creating public tokens with non-root keys has the following restrictions:
 
 - The token must request at least one scope.
 - Its scopes cannot exceed the key's access.
