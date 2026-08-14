@@ -10,6 +10,9 @@ import {
   ControlPlaneCache,
   DEFAULT_CP_CACHE_MAX_ENTRIES,
   DEFAULT_CP_CACHE_TTL_MS,
+  resolvedTaskQueueSelect,
+  resolvedWorkerDeploymentSelect,
+  resolvedWorkerTaskSelect,
   type ResolvedAuthenticatedEnv,
   type ResolvedEnv,
   type ResolvedWorkerVersion,
@@ -389,7 +392,11 @@ export class ControlPlaneResolver {
     if (backgroundWorkerId) {
       const worker = await client.backgroundWorker.findFirst({
         where: { id: backgroundWorkerId },
-        include: { deployment: true, tasks: true, queues: true },
+        include: {
+          deployment: { select: resolvedWorkerDeploymentSelect },
+          tasks: { select: resolvedWorkerTaskSelect },
+          queues: { select: resolvedTaskQueueSelect },
+        },
       });
 
       if (!worker) {
@@ -411,7 +418,16 @@ export class ControlPlaneResolver {
       where: { environmentId, label: CURRENT_DEPLOYMENT_LABEL },
       include: {
         deployment: {
-          include: { worker: { include: { tasks: true, queues: true } } },
+          select: {
+            ...resolvedWorkerDeploymentSelect,
+            type: true,
+            worker: {
+              include: {
+                tasks: { select: resolvedWorkerTaskSelect },
+                queues: { select: resolvedTaskQueueSelect },
+              },
+            },
+          },
         },
       },
     });
@@ -421,11 +437,17 @@ export class ControlPlaneResolver {
     }
 
     if (type === undefined || promotion.deployment.type === "MANAGED") {
+      const { worker } = promotion.deployment;
       return {
-        worker: promotion.deployment.worker,
-        tasks: promotion.deployment.worker.tasks,
-        queues: promotion.deployment.worker.queues,
-        deployment: promotion.deployment,
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: {
+          id: promotion.deployment.id,
+          friendlyId: promotion.deployment.friendlyId,
+          imageReference: promotion.deployment.imageReference,
+          imagePlatform: promotion.deployment.imagePlatform,
+        },
       };
     }
 
@@ -434,7 +456,15 @@ export class ControlPlaneResolver {
     const latestV2Deployment = await client.workerDeployment.findFirst({
       where: { environmentId, type: "MANAGED" },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      include: { worker: { include: { tasks: true, queues: true } } },
+      select: {
+        ...resolvedWorkerDeploymentSelect,
+        worker: {
+          include: {
+            tasks: { select: resolvedWorkerTaskSelect },
+            queues: { select: resolvedTaskQueueSelect },
+          },
+        },
+      },
     });
 
     if (!latestV2Deployment?.worker) {
@@ -445,7 +475,12 @@ export class ControlPlaneResolver {
       worker: latestV2Deployment.worker,
       tasks: latestV2Deployment.worker.tasks,
       queues: latestV2Deployment.worker.queues,
-      deployment: latestV2Deployment,
+      deployment: {
+        id: latestV2Deployment.id,
+        friendlyId: latestV2Deployment.friendlyId,
+        imageReference: latestV2Deployment.imageReference,
+        imagePlatform: latestV2Deployment.imagePlatform,
+      },
     };
   }
 
@@ -455,7 +490,11 @@ export class ControlPlaneResolver {
   ): Promise<ResolvedWorkerVersion | null> {
     const worker = await client.backgroundWorker.findFirst({
       where: { id: workerId },
-      include: { deployment: true, tasks: true, queues: true },
+      include: {
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { select: resolvedWorkerTaskSelect },
+        queues: { select: resolvedTaskQueueSelect },
+      },
     });
 
     if (!worker) {
@@ -471,7 +510,10 @@ export class ControlPlaneResolver {
   ): Promise<ResolvedWorkerVersion | null> {
     const worker = await client.backgroundWorker.findFirst({
       where: { runtimeEnvironmentId: environmentId },
-      include: { tasks: true, queues: true },
+      include: {
+        tasks: { select: resolvedWorkerTaskSelect },
+        queues: { select: resolvedTaskQueueSelect },
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
