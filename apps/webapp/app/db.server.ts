@@ -3,10 +3,12 @@ import {
   PrismaClient,
   boundedIn,
   $transaction as transac,
+  TokenBucketRetryBudget,
   type PrismaClientOrTransaction,
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
+  type TransactionStartRetryConfig,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
@@ -59,6 +61,82 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
   });
 }
 
+/**
+ * Resolved transaction-resilience config for one writer pool. Each pool gets its own
+ * {@link TransactionStartRetryConfig} (with its OWN token bucket, so a storm on one pool cannot
+ * drain another's retry budget) plus the `maxWait` applied when that pool opens a transaction.
+ * Env is read here at the app boundary (IoC); the library never reads env.
+ */
+export type TransactionResilienceConfig = {
+  maxWait: number;
+  startRetry: TransactionStartRetryConfig;
+};
+
+function resolveTransactionResilience(
+  pool: "control-plane" | "run-ops" | "run-ops-legacy",
+  overrides: {
+    maxWaitMs?: number;
+    enabled?: boolean;
+    maxAttempts?: number;
+    backoffMinMs?: number;
+    backoffMaxMs?: number;
+    budgetPerSec?: number;
+    budgetBurst?: number;
+  }
+): TransactionResilienceConfig {
+  const budgetPerSec =
+    overrides.budgetPerSec ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC;
+  const budgetBurst = overrides.budgetBurst ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST;
+  return {
+    maxWait: overrides.maxWaitMs ?? env.DATABASE_TRANSACTION_MAX_WAIT_MS,
+    startRetry: {
+      options: {
+        enabled: overrides.enabled ?? env.DATABASE_TRANSACTION_START_RETRY_ENABLED,
+        maxAttempts: overrides.maxAttempts ?? env.DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
+        backoffMinMs: overrides.backoffMinMs ?? env.DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
+        backoffMaxMs: overrides.backoffMaxMs ?? env.DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
+      },
+      budget: new TokenBucketRetryBudget({ ratePerSec: budgetPerSec, burst: budgetBurst }),
+      onRetry: ({ attempt, delayMs }) =>
+        logger.warn("retrying transaction start after acquisition failure", {
+          pool,
+          attempt,
+          delayMs,
+        }),
+    },
+  };
+}
+
+export const controlPlaneTransactionResilience = resolveTransactionResilience("control-plane", {});
+
+export const runOpsTransactionResilience = resolveTransactionResilience("run-ops", {
+  maxWaitMs: env.RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS,
+  enabled: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED,
+  maxAttempts: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
+  backoffMinMs: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
+  backoffMaxMs: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
+  budgetPerSec: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
+  budgetBurst: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
+});
+
+export const runOpsLegacyTransactionResilience = resolveTransactionResilience("run-ops-legacy", {
+  maxWaitMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS,
+  enabled: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_ENABLED,
+  maxAttempts: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
+  backoffMinMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
+  backoffMaxMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
+  budgetPerSec: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
+  budgetBurst: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
+});
+
+function withTransactionDefaults(options?: PrismaTransactionOptions): PrismaTransactionOptions {
+  return {
+    maxWait: controlPlaneTransactionResilience.maxWait,
+    ...options,
+    startRetry: options?.startRetry ?? controlPlaneTransactionResilience.startRetry,
+  };
+}
+
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
   name: string,
@@ -93,35 +171,41 @@ async function $transactionInner<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
   if (typeof fnOrName === "string") {
+    const effectiveOptions = withTransactionDefaults(options);
     return await startActiveSpan(fnOrName, async (span) => {
       span.setAttribute("$transaction", true);
 
-      if (options?.isolationLevel) {
-        span.setAttribute("isolation_level", options.isolationLevel);
+      if (effectiveOptions.isolationLevel) {
+        span.setAttribute("isolation_level", effectiveOptions.isolationLevel);
       }
 
-      if (options?.timeout) {
-        span.setAttribute("timeout", options.timeout);
+      if (effectiveOptions.timeout) {
+        span.setAttribute("timeout", effectiveOptions.timeout);
       }
 
-      if (options?.maxWait) {
-        span.setAttribute("max_wait", options.maxWait);
+      if (effectiveOptions.maxWait) {
+        span.setAttribute("max_wait", effectiveOptions.maxWait);
       }
 
-      if (options?.swallowPrismaErrors) {
-        span.setAttribute("swallow_prisma_errors", options.swallowPrismaErrors);
+      if (effectiveOptions.swallowPrismaErrors) {
+        span.setAttribute("swallow_prisma_errors", effectiveOptions.swallowPrismaErrors);
       }
 
       const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
 
-      return transac(prisma, (client) => fn(client, span), logTransactionPrismaError, options);
+      return transac(
+        prisma,
+        (client) => fn(client, span),
+        logTransactionPrismaError,
+        effectiveOptions
+      );
     });
   } else {
     return transac(
       prisma,
       fnOrName,
       logTransactionPrismaError,
-      typeof fnOrOptions === "function" ? undefined : fnOrOptions
+      withTransactionDefaults(typeof fnOrOptions === "function" ? undefined : fnOrOptions)
     );
   }
 }
