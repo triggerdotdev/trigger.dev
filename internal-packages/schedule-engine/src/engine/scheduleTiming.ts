@@ -1,15 +1,18 @@
+import {
+  MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS,
+  parseScheduleWindow,
+  type NormalizedScheduleWindow,
+} from "@trigger.dev/core/v3";
 import { createHmac } from "node:crypto";
+
+export { MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS, parseScheduleWindow };
+export type { NormalizedScheduleWindow };
 
 export const SCHEDULE_PHASE_DENOMINATOR = 2_147_483_648;
 export const MAX_SCHEDULE_PHASE = SCHEDULE_PHASE_DENOMINATOR - 1;
 export const MINIMUM_SCHEDULE_RANGE_MS = 60_000;
-export const MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS = 24 * 60 * 60;
 
 const PERCENTAGE_DENOMINATOR = 100;
-
-export type NormalizedScheduleWindow =
-  | { type: "duration"; durationSeconds: number }
-  | { type: "percentage"; percentage: number };
 
 export type SchedulePhaseInput = {
   secret: string | Buffer;
@@ -27,42 +30,6 @@ export type EffectiveScheduleTime = {
   offsetMs: number;
   windowWasCappedToInterval: boolean;
 };
-
-/**
- * Parses the public schedule-window syntax.
- *
- * Durations are non-negative whole minutes or hours up to 24 hours.
- * Percentages are whole numbers from 0% through 100%.
- */
-export function parseScheduleWindow(value: string): NormalizedScheduleWindow {
-  const durationMatch = /^(0|[1-9]\d*)([mh])$/.exec(value);
-
-  if (durationMatch) {
-    const amount = Number(durationMatch[1]);
-    const unit = durationMatch[2] as "m" | "h";
-    const unitSeconds = unit === "m" ? 60 : 3_600;
-    const durationSeconds = amount * unitSeconds;
-
-    if (
-      !Number.isSafeInteger(durationSeconds) ||
-      durationSeconds > MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS
-    ) {
-      throw new RangeError("Schedule window duration cannot exceed 24 hours");
-    }
-
-    return { type: "duration", durationSeconds };
-  }
-
-  const percentageMatch = /^(0|[1-9]\d?|100)%$/.exec(value);
-
-  if (percentageMatch) {
-    return { type: "percentage", percentage: Number(percentageMatch[1]) };
-  }
-
-  throw new TypeError(
-    'Schedule window must be a whole duration such as "0m", "30m", or "24h", or a percentage such as "30%"'
-  );
-}
 
 export function validateScheduleWindow(window: NormalizedScheduleWindow): void {
   if (window.type === "duration") {

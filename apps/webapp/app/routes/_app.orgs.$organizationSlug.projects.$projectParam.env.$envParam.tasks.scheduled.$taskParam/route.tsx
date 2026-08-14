@@ -867,7 +867,7 @@ function ScheduledTaskDetailSidebar({
               </Property.Value>
             </Property.Item>
             <Property.Item>
-              <Property.Label>CRON</Property.Label>
+              <Property.Label>Cron</Property.Label>
               <Property.Value>
                 {firstSchedule ? (
                   <div className="space-y-2">
@@ -889,7 +889,7 @@ function ScheduledTaskDetailSidebar({
               <Property.Label>Next run</Property.Label>
               <Property.Value>
                 {firstSchedule ? (
-                  <RelativeDateTime date={firstSchedule.nextRun} />
+                  <RelativeDateTime date={firstSchedule.nextRunEffectiveAt} />
                 ) : (
                   <span className="text-text-dimmed">–</span>
                 )}
@@ -972,8 +972,9 @@ type ScheduleRow = {
   type: "DECLARATIVE" | "IMPERATIVE";
   cron: string;
   cronDescription: string;
+  window?: string;
   externalId: string | null;
-  nextRun: Date;
+  nextRunEffectiveAt: Date;
   lastRun: Date | undefined;
   active: boolean;
 };
@@ -993,7 +994,7 @@ function SchedulesMiniTable({
     return (
       <Table variant={variant} showTopBorder={showTopBorder}>
         <TableBody>
-          <TableBlankRow colSpan={6}>
+          <TableBlankRow colSpan={8}>
             <Paragraph variant="small" className="flex items-center justify-center">
               No schedules attached to this task yet.
             </Paragraph>
@@ -1010,6 +1011,7 @@ function SchedulesMiniTable({
           <TableHeaderCell>Schedule ID</TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
           <TableHeaderCell>Cron</TableHeaderCell>
+          <TableHeaderCell>Window</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>Next run</TableHeaderCell>
           <TableHeaderCell>Last run</TableHeaderCell>
@@ -1037,6 +1039,9 @@ function SchedulesMiniTable({
                 <span className="font-mono text-xs">{schedule.cron}</span>
               </TableCell>
               <TableCell onClick={open}>
+                <span className="text-xs">{schedule.window}</span>
+              </TableCell>
+              <TableCell onClick={open}>
                 {schedule.externalId ? (
                   <span className="font-mono text-xs">{schedule.externalId}</span>
                 ) : (
@@ -1044,7 +1049,7 @@ function SchedulesMiniTable({
                 )}
               </TableCell>
               <TableCell onClick={open}>
-                <RelativeDateTime date={schedule.nextRun} />
+                <RelativeDateTime date={schedule.nextRunEffectiveAt} />
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.lastRun ? (

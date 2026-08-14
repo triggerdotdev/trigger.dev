@@ -1,5 +1,6 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
+import { ScheduleWindow } from "@trigger.dev/core/v3";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
   type FetcherWithComponents,
@@ -52,6 +53,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
@@ -114,10 +116,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       message
     );
   } catch (error: any) {
-    logger.error("Failed to create schedule", error);
+    if (!(error instanceof ServiceValidationError)) {
+      logger.error("Failed to create schedule", error);
+    }
 
-    const errorMessage = `Something went wrong. Please try again.`;
+    const errorMessage =
+      error instanceof ServiceValidationError
+        ? error.message
+        : `Something went wrong. Please try again.`;
     if (wantsJson) {
+      if (error instanceof ServiceValidationError) {
+        return json(submission.reply({ formErrors: [error.message] }), {
+          status: error.status ?? 422,
+        });
+      }
+
       return json({ ok: false as const, message: errorMessage }, { status: 500 });
     }
     return redirectWithErrorMessage(
@@ -132,6 +145,15 @@ type CronPatternResult =
   | {
       isValid: true;
       description: string;
+    }
+  | {
+      isValid: false;
+      error: string;
+    };
+
+type ScheduleWindowResult =
+  | {
+      isValid: true;
     }
   | {
       isValid: false;
@@ -167,6 +189,7 @@ export function UpsertScheduleForm({
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
+  const [scheduleWindowValue, setScheduleWindowValue] = useState<string>(schedule?.window ?? "");
   const navigation = useNavigation();
   const isLoading = submitFetcher ? submitFetcher.state !== "idle" : navigation.state !== "idle";
   const organization = useOrganization();
@@ -174,21 +197,39 @@ export function UpsertScheduleForm({
   const environment = useEnvironment();
   const location = useLocation();
 
-  const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
-    useForm({
-      // Disambiguate per-schedule so both sheets (create + edit) can
-      // coexist without duplicate DOM ids breaking `htmlFor` / conform.
-      id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
-      // TODO: type this
-      lastResult: lastSubmission as any,
-      shouldRevalidate: "onSubmit",
-      onValidate({ formData }) {
-        return parseWithZod(formData, { schema: UpsertSchedule });
-      },
-    });
+  const [
+    form,
+    {
+      taskIdentifier,
+      cron,
+      timezone,
+      window: scheduleWindow,
+      externalId,
+      environments,
+      deduplicationKey,
+    },
+  ] = useForm({
+    // Disambiguate per-schedule so both sheets (create + edit) can
+    // coexist without duplicate DOM ids breaking `htmlFor` / conform.
+    id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
+    // TODO: type this
+    lastResult: lastSubmission as any,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: UpsertSchedule });
+    },
+  });
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
+  let scheduleWindowResult: ScheduleWindowResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+
+  if (scheduleWindowValue !== "") {
+    const result = ScheduleWindow.safeParse(scheduleWindowValue);
+    scheduleWindowResult = result.success
+      ? { isValid: true }
+      : { isValid: false, error: result.error.errors[0].message };
+  }
 
   if (cronPattern !== "") {
     const result = CronPattern.safeParse(cronPattern);
@@ -305,9 +346,19 @@ export function UpsertScheduleForm({
               {cronPatternResult === undefined ? (
                 <Hint>Enter a CRON pattern or use natural language above.</Hint>
               ) : cronPatternResult.isValid ? (
-                <ValidCronMessage isValid={true} message={`${cronPatternResult.description}.`} />
+                <ValidationMessage
+                  isValid={true}
+                  validLabel="Valid pattern:"
+                  invalidLabel="Invalid pattern:"
+                  message={`${cronPatternResult.description}.`}
+                />
               ) : (
-                <ValidCronMessage isValid={false} message={cronPatternResult.error} />
+                <ValidationMessage
+                  isValid={false}
+                  validLabel="Valid pattern:"
+                  invalidLabel="Invalid pattern:"
+                  message={cronPatternResult.error}
+                />
               )}
             </InputGroup>
             <InputGroup>
@@ -335,9 +386,52 @@ export function UpsertScheduleForm({
               </Hint>
               <FormError id={timezone.errorId}>{timezone.errors}</FormError>
             </InputGroup>
+            <InputGroup>
+              <Label required={false} htmlFor={scheduleWindow.id}>
+                Window
+              </Label>
+              <Input
+                {...getInputProps(scheduleWindow, { type: "text" })}
+                placeholder="30m or 25%"
+                value={scheduleWindowValue}
+                aria-invalid={scheduleWindowResult?.isValid === false ? true : undefined}
+                aria-describedby={
+                  scheduleWindowResult === undefined ? undefined : scheduleWindow.errorId
+                }
+                onChange={(event) => setScheduleWindowValue(event.target.value)}
+              />
+              {scheduleWindowResult === undefined ? (
+                <Hint>
+                  Assigns each run a stable time after its CRON time. Use minutes, hours, or a
+                  percentage of the interval.
+                </Hint>
+              ) : scheduleWindowResult.isValid ? (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={true}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message="Runs will be assigned a stable time within this window."
+                />
+              ) : (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={false}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message={scheduleWindowResult.error}
+                />
+              )}
+            </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
                 <Header3>Next 5 runs</Header3>
+                {scheduleWindowValue !== "" && (
+                  <Hint>
+                    Actual run times will get a fixed offset based on the window, displayed after
+                    creation.
+                  </Hint>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -486,9 +580,21 @@ function buttonText(mode: "edit" | "new", isLoading: boolean) {
   }
 }
 
-function ValidCronMessage({ isValid, message }: { isValid: boolean; message: string }) {
+function ValidationMessage({
+  id,
+  isValid,
+  validLabel,
+  invalidLabel,
+  message,
+}: {
+  id?: string;
+  isValid: boolean;
+  validLabel: string;
+  invalidLabel: string;
+  message: string;
+}) {
   return (
-    <Paragraph variant="small">
+    <Paragraph id={id} variant="small">
       <span className="mr-1">
         {isValid ? (
           <CheckIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-success" />
@@ -496,7 +602,7 @@ function ValidCronMessage({ isValid, message }: { isValid: boolean; message: str
           <XMarkIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-error" />
         )}
         <span className={isValid ? "text-success" : "text-error"}>
-          {isValid ? "Valid pattern:" : "Invalid pattern:"}
+          {isValid ? validLabel : invalidLabel}
         </span>
       </span>
       <span>{message}</span>

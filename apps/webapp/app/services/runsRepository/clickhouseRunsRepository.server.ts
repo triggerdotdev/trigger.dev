@@ -280,6 +280,8 @@ export class ClickHouseRunsRepository implements IRunsRepository {
             runtimeEnvironmentId: true,
             status: true,
             createdAt: true,
+            queueTimestamp: true,
+            scheduleId: true,
             startedAt: true,
             lockedAt: true,
             delayUntil: true,

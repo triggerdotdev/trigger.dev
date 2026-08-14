@@ -55,13 +55,14 @@ export type ScheduleInspectorData = {
   cron: string;
   cronDescription: string;
   timezone: string;
+  window?: string;
   externalId: string | null;
   deduplicationKey: string | null;
   userProvidedDeduplicationKey: boolean;
   active: boolean;
   environments: EnvironmentRow[];
   runs: RunRow[];
-  nextRuns: Date[];
+  nextRuns: Array<{ nominalAt: Date; effectiveAt: Date }>;
 };
 
 type Props = {
@@ -142,6 +143,10 @@ export function ScheduleInspector({
                 <Property.Label>Timezone</Property.Label>
                 <Property.Value>{schedule.timezone}</Property.Value>
               </Property.Item>
+              <Property.Item>
+                <Property.Label>Window</Property.Label>
+                <Property.Value>{schedule.window ?? "-"}</Property.Value>
+              </Property.Item>
               <Property.Item className="gap-1">
                 <Property.Label>Environment</Property.Label>
                 <Property.Value>
@@ -210,11 +215,11 @@ export function ScheduleInspector({
                       <TableRow key={index}>
                         {!isUtc && (
                           <TableCell>
-                            <DateTime date={run} timeZone={schedule.timezone} />
+                            <DateTime date={run.effectiveAt} timeZone={schedule.timezone} />
                           </TableCell>
                         )}
                         <TableCell>
-                          <DateTime date={run} timeZone="UTC" />
+                          <DateTime date={run.effectiveAt} timeZone="UTC" />
                         </TableCell>
                       </TableRow>
                     ))
@@ -249,8 +254,8 @@ export function ScheduleInspector({
                 }
                 panelClassName="max-w-full"
               >
-                You can only edit a declarative schedule by updating your schedules.task and then
-                running the CLI dev and deploy commands.
+                You can only edit a declarative schedule, including its window, by updating your
+                schedules.task and then running the CLI dev and deploy commands.
               </InfoPanel>
             </div>
           )}

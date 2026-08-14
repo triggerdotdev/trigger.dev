@@ -1079,7 +1079,10 @@ export const ScheduleObject = z.object({
   generator: ScheduleGenerator,
   timezone: z.string(),
   window: ScheduleWindow.optional(),
+  /** The next nominal CRON time. */
   nextRun: z.coerce.date().nullish(),
+  /** The stable assigned time for the next nominal CRON time. */
+  nextRunEffectiveAt: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
       id: z.string(),
