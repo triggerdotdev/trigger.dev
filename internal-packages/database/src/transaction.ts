@@ -230,6 +230,8 @@ export async function $transaction<R>(
   }
 
   const startRetry = attempt === 0 ? options?.startRetry : undefined;
+  const startRetryActive =
+    !!startRetry && startRetry.options.enabled && startRetry.options.maxAttempts > 1;
 
   try {
     return await withTransactionStartRetry(
@@ -239,7 +241,7 @@ export async function $transaction<R>(
   } catch (error) {
     if (
       isPrismaRetriableError(error) &&
-      !isTransactionAcquisitionError(error) &&
+      !(startRetryActive && isTransactionAcquisitionError(error)) &&
       typeof options?.maxRetries === "number" &&
       attempt < options.maxRetries
     ) {

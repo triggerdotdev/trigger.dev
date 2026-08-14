@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   $transaction,
   isTransactionAcquisitionError,
@@ -41,6 +41,18 @@ function config(
   };
 }
 
+function counter() {
+  let calls = 0;
+  return {
+    get calls() {
+      return calls;
+    },
+    tick() {
+      calls += 1;
+    },
+  };
+}
+
 describe("isTransactionAcquisitionError", () => {
   it("is true only for P2028 raised at acquisition", () => {
     expect(isTransactionAcquisitionError(acquisitionError())).toBe(true);
@@ -62,53 +74,89 @@ describe("isTransactionAcquisitionError", () => {
 
 describe("withTransactionStartRetry", () => {
   it("runs once on success", async () => {
-    const run = vi.fn().mockResolvedValue("ok");
+    const c = counter();
+    const run = async () => {
+      c.tick();
+      return "ok";
+    };
     await expect(withTransactionStartRetry(run, config())).resolves.toBe("ok");
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(c.calls).toBe(1);
   });
 
   it("retries an acquisition failure then succeeds", async () => {
-    const run = vi.fn().mockRejectedValueOnce(acquisitionError()).mockResolvedValueOnce("ok");
+    const c = counter();
+    const run = async () => {
+      c.tick();
+      if (c.calls === 1) throw acquisitionError();
+      return "ok";
+    };
     await expect(withTransactionStartRetry(run, config())).resolves.toBe("ok");
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(c.calls).toBe(2);
   });
 
   it("does NOT retry P2024", async () => {
+    const c = counter();
     const err = poolTimeoutError();
-    const run = vi.fn().mockRejectedValue(err);
+    const run = async () => {
+      c.tick();
+      throw err;
+    };
     await expect(withTransactionStartRetry(run, config())).rejects.toBe(err);
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(c.calls).toBe(1);
   });
 
   it("stops after maxAttempts total attempts", async () => {
-    const run = vi.fn().mockRejectedValue(acquisitionError());
+    const c = counter();
+    const run = async () => {
+      c.tick();
+      throw acquisitionError();
+    };
     await expect(withTransactionStartRetry(run, config({ maxAttempts: 3 }))).rejects.toMatchObject({
       code: "P2028",
     });
-    expect(run).toHaveBeenCalledTimes(3);
+    expect(c.calls).toBe(3);
   });
 
   it("runs once when disabled", async () => {
-    const run = vi.fn().mockRejectedValue(acquisitionError());
+    const c = counter();
+    const run = async () => {
+      c.tick();
+      throw acquisitionError();
+    };
     await expect(withTransactionStartRetry(run, config({ enabled: false }))).rejects.toMatchObject({
       code: "P2028",
     });
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(c.calls).toBe(1);
   });
 
   it("does not retry when the budget is exhausted", async () => {
-    const run = vi.fn().mockRejectedValue(acquisitionError());
-    const budget = { tryConsume: vi.fn().mockReturnValue(false) };
+    const c = counter();
+    const budgetChecks = counter();
+    const run = async () => {
+      c.tick();
+      throw acquisitionError();
+    };
+    const budget = {
+      tryConsume() {
+        budgetChecks.tick();
+        return false;
+      },
+    };
     await expect(
       withTransactionStartRetry(run, { ...config({ maxAttempts: 5 }), budget })
     ).rejects.toMatchObject({ code: "P2028" });
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(budget.tryConsume).toHaveBeenCalledTimes(1);
+    expect(c.calls).toBe(1);
+    expect(budgetChecks.calls).toBe(1);
   });
 
   it("sleeps a jittered delay within [min, max]", async () => {
+    const c = counter();
     const delays: number[] = [];
-    const run = vi.fn().mockRejectedValueOnce(acquisitionError()).mockResolvedValueOnce("ok");
+    const run = async () => {
+      c.tick();
+      if (c.calls === 1) throw acquisitionError();
+      return "ok";
+    };
     await withTransactionStartRetry(run, {
       options: { enabled: true, maxAttempts: 2, backoffMinMs: 50, backoffMaxMs: 250 },
       sleep: (ms) => {
@@ -140,77 +188,111 @@ describe("TokenBucketRetryBudget", () => {
 });
 
 describe("$transaction startRetry wiring", () => {
-  it("retries a transaction start that fails with an acquisition error", async () => {
-    let calls = 0;
-    const prisma = {
-      $transaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) => {
-        calls += 1;
-        if (calls === 1) return Promise.reject(acquisitionError());
-        return fn({});
-      }),
-    } as any;
+  function fakeClient(behavior: (call: number) => Promise<unknown>) {
+    const c = counter();
+    return {
+      client: {
+        $transaction: (fn: (tx: unknown) => Promise<unknown>, _options?: unknown) => {
+          c.tick();
+          return behavior(c.calls).then(() => fn({}));
+        },
+      } as any,
+      get calls() {
+        return c.calls;
+      },
+    };
+  }
 
+  it("retries a transaction start that fails with an acquisition error", async () => {
+    const fake = fakeClient((call) =>
+      call === 1 ? Promise.reject(acquisitionError()) : Promise.resolve()
+    );
     const result = await $transaction(
-      prisma,
+      fake.client,
       async () => "done",
       () => {},
       { startRetry: config() }
     );
-
     expect(result).toBe("done");
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(fake.calls).toBe(2);
   });
 
   it("does not retry without a startRetry config", async () => {
     const err = acquisitionError();
-    const prisma = { $transaction: vi.fn().mockRejectedValue(err) } as any;
-    const onError = vi.fn();
-    await expect($transaction(prisma, async () => "x", onError, {})).rejects.toBe(err);
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith(err);
+    const fake = fakeClient(() => Promise.reject(err));
+    let captured: unknown;
+    await expect(
+      $transaction(
+        fake.client,
+        async () => "x",
+        (e) => {
+          captured = e;
+        },
+        {}
+      )
+    ).rejects.toBe(err);
+    expect(fake.calls).toBe(1);
+    expect(captured).toBe(err);
   });
 
   it("passes maxWait through to prisma.$transaction options", async () => {
-    const prisma = {
-      $transaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn({})),
+    let seenOptions: unknown;
+    const client = {
+      $transaction: (fn: (tx: unknown) => Promise<unknown>, options?: unknown) => {
+        seenOptions = options;
+        return fn({});
+      },
     } as any;
     await $transaction(
-      prisma,
+      client,
       async () => "x",
       () => {},
       { maxWait: 10000 }
     );
-    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { maxWait: 10000 });
+    expect(seenOptions).toEqual({ maxWait: 10000 });
   });
 
-  it("UNLIMITED_RETRY_BUDGET always consumes", () => {
-    expect(UNLIMITED_RETRY_BUDGET.tryConsume()).toBe(true);
-  });
-
-  it("does not let maxRetries retry an acquisition error beyond the startRetry budget", async () => {
-    const prisma = { $transaction: vi.fn().mockRejectedValue(acquisitionError()) } as any;
+  it("does not let maxRetries retry an acquisition error while startRetry is active", async () => {
+    const fake = fakeClient(() => Promise.reject(acquisitionError()));
     await expect(
       $transaction(
-        prisma,
+        fake.client,
         async () => "x",
         () => {},
         { startRetry: config({ maxAttempts: 2 }), maxRetries: 3 }
       )
     ).rejects.toMatchObject({ code: "P2028" });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(fake.calls).toBe(2);
+  });
+
+  it("falls back to maxRetries for acquisition errors when startRetry is disabled", async () => {
+    const fake = fakeClient(() => Promise.reject(acquisitionError()));
+    await expect(
+      $transaction(
+        fake.client,
+        async () => "x",
+        () => {},
+        { startRetry: config({ enabled: false }), maxRetries: 3 }
+      )
+    ).rejects.toMatchObject({ code: "P2028" });
+    expect(fake.calls).toBe(4);
   });
 
   it("still lets maxRetries retry a serialization error (P2034)", async () => {
     const serializationError = { code: "P2034", message: "write conflict / deadlock" };
-    const prisma = { $transaction: vi.fn().mockRejectedValue(serializationError) } as any;
+    const fake = fakeClient(() => Promise.reject(serializationError));
     await expect(
       $transaction(
-        prisma,
+        fake.client,
         async () => "x",
         () => {},
         { maxRetries: 2 }
       )
     ).rejects.toMatchObject({ code: "P2034" });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(fake.calls).toBe(3);
+  });
+
+  it("UNLIMITED_RETRY_BUDGET always consumes", () => {
+    expect(UNLIMITED_RETRY_BUDGET.tryConsume()).toBe(true);
   });
 });

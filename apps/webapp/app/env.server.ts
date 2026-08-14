@@ -120,6 +120,13 @@ const OptionalBoolEnv = z.preprocess((v) => {
   return ["true", "1"].includes(v.toLowerCase().trim());
 }, z.boolean().optional());
 
+/** Int env var with a default where a blank/whitespace value falls back to the default instead of coercing to 0. */
+const IntEnvWithDefault = (defaultValue: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().default(defaultValue)
+  );
+
 /**
  * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
  * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
@@ -148,13 +155,13 @@ const EnvironmentSchema = z
     DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
-    DATABASE_TRANSACTION_MAX_WAIT_MS: z.coerce.number().int().default(10000),
+    DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
     DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnv.default(true),
-    DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: z.coerce.number().int().default(2),
-    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: z.coerce.number().int().default(50),
-    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: z.coerce.number().int().default(250),
-    DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: z.coerce.number().int().default(50),
-    DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: z.coerce.number().int().default(100),
+    DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(2),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
     RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
     RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
     RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
