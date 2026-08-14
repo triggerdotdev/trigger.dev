@@ -47,14 +47,11 @@ describe("idempotencyKeys metadata retention", () => {
 });
 
 describe("resetIdempotencyKey", () => {
-  // A user key that is itself a 64-character digest, which is indistinguishable by
-  // length from a key returned by `idempotencyKeys.create()`.
   const digestShapedKey = "a".repeat(64);
 
   let server: Server;
   let resetKeys: string[] = [];
 
-  /** The value `resetIdempotencyKey` put on the wire. */
   async function resetAndCaptureKey(
     ...args: Parameters<typeof resetIdempotencyKey>
   ): Promise<string> {
@@ -101,8 +98,7 @@ describe("resetIdempotencyKey", () => {
   it("hashes 64-character key material when an explicit scope is passed", async () => {
     const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
 
-    // The reset happens in a different process from the trigger (e.g. from a
-    // lifecycle hook), so the catalog no longer knows the key.
+    // The reset can happen in a different process from the trigger
     resetIdempotencyKeyCatalog();
 
     expect(await resetAndCaptureKey("my-task", digestShapedKey, { scope: "global" })).toBe(created);
@@ -121,13 +117,10 @@ describe("resetIdempotencyKey", () => {
     const created = await createIdempotencyKey("my-key", { scope: "global" });
 
     expect(await resetAndCaptureKey("my-task", created)).toBe(created);
-    // An explicit scope must not hash an already-created key a second time.
     expect(await resetAndCaptureKey("my-task", created, { scope: "global" })).toBe(created);
   });
 
   it("sends a 64-character key unchanged when no scope is passed", async () => {
-    // Passing 64-character material straight to `trigger()` stores it un-hashed, so
-    // resetting it without a scope must keep sending it verbatim.
     expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);
   });
 

@@ -234,18 +234,7 @@ export async function resetIdempotencyKey(
 ): Promise<{ id: string }> {
   const client = apiClientManager.clientOrThrow();
 
-  // A 64-character string is ambiguous: it can be a hash returned by
-  // `idempotencyKeys.create()`, or it can be the caller's own key material (using
-  // a digest of some identity as the key is common). Send it through untouched
-  // only when we have evidence it is already a hash:
-  //
-  //   - the catalog recognises it, so it came from `idempotencyKeys.create()`, or
-  //   - no `scope` was passed, so there is nothing to derive a hash from and the
-  //     length is the only signal available.
-  //
-  // An explicit `scope` is an explicit request to derive the hash, so we never
-  // short-circuit past it. Previously any 64-character key material was assumed to
-  // be pre-hashed and sent as-is, which matched no run.
+  // A 64-char key is only assumed pre-hashed if the catalog knows it, or there's no scope to hash with
   if (typeof idempotencyKey === "string" && idempotencyKey.length === 64) {
     const isCreatedKey = getIdempotencyKeyOptions(idempotencyKey) !== undefined;
 
