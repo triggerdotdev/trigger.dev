@@ -145,10 +145,11 @@
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
-  /* Link hover. Halfway to lavender-300 rather than the stop itself: the ramp
-     is sparse either side of the 400 brand accent, so the full step reads as a
-     flash. This matches the size of TextLink's indigo-500 -> indigo-400 step. */
-  --color-text-link-hover: #9e90ff;
+  /* Link hover: one stop up the ramp. Sized to be unmistakable - a step the
+     size of TextLink's own indigo-500 -> indigo-400 was too subtle to read as a
+     hover at all. This lands just under the largest hover step the app already
+     uses (text-dimmed -> text-bright). */
+  --color-text-link-hover: var(--color-lavender-300);
   --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
   --color-text-bright: var(--color-charcoal-200);
@@ -797,8 +798,9 @@
   --color-text-link: var(--color-lavender-600);
   /* Hover goes *down* the ramp here, not up: on white, more prominent means
      darker. Same direction as every other light-mode hover, where
-     text-dimmed -> text-bright also darkens. */
-  --color-text-link-hover: var(--color-lavender-700);
+     text-dimmed -> text-bright also darkens. Two stops rather than one, because
+     600 and 700 sit close together - one stop is invisible at text sizes. */
+  --color-text-link-hover: var(--color-lavender-800);
   --color-text-faint: var(--color-charcoal-400);
   --color-text-dimmed: var(--color-charcoal-500);
   --color-text-bright: var(--color-charcoal-800);
