@@ -145,7 +145,7 @@ export function ScheduleInspector({
               </Property.Item>
               <Property.Item>
                 <Property.Label>Window</Property.Label>
-                <Property.Value>{schedule.window}</Property.Value>
+                <Property.Value>{schedule.window ?? "-"}</Property.Value>
               </Property.Item>
               <Property.Item className="gap-1">
                 <Property.Label>Environment</Property.Label>

@@ -87,7 +87,7 @@ export class ViewSchedulePresenter {
     const instance = schedule.instances.find(
       (instance) => instance.environmentId === environmentId
     );
-    if (!instance) {
+    if (!instance && schedule.instances.length > 0) {
       return;
     }
 
@@ -97,7 +97,7 @@ export class ViewSchedulePresenter {
           timezone: schedule.timezone,
           deduplicationKey: schedule.deduplicationKey,
           environmentId,
-          schedulePhase: instance.schedulePhase,
+          schedulePhase: instance?.schedulePhase ?? null,
           phaseSecret: env.ENCRYPTION_KEY,
           windowDurationSeconds: schedule.windowDurationSeconds,
           windowPercentage: schedule.windowPercentage,
