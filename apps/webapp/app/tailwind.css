@@ -150,6 +150,13 @@
      hover at all. This lands just under the largest hover step the app already
      uses (text-dimmed -> text-bright). */
   --color-text-link-hover: var(--color-lavender-300);
+  /* The same brand purple as a *fill* under white content - the primary button
+     and the switch's checked track, which must agree with each other. One value
+     for every theme: white content needs 4.5:1, which pins it dark, while
+     --color-text-link above has to travel the other way to stay legible as text
+     on a near-black page. So the fill and the link color match on the light
+     themes and can't on the dark ones. */
+  --color-accent-fill: var(--color-lavender-600);
   --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
   --color-text-bright: var(--color-charcoal-200);

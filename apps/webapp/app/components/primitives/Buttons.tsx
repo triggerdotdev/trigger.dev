@@ -61,7 +61,10 @@ const theme = {
   primary: {
     textColor: "text-white transition group-disabled/button:text-white/60",
     button:
-      "bg-indigo-600 border border-indigo-500 group-hover/button:bg-indigo-500 group-hover/button:border-indigo-400 group-disabled/button:opacity-50 group-disabled/button:bg-indigo-600 group-disabled/button:border-indigo-500 group-disabled/button:pointer-events-none",
+      // Shares --color-accent-fill with the switch's checked track, so the two
+      // accents can't drift. The border is a fixed bevel one stop up the ramp,
+      // like the indigo pair it replaces.
+      "bg-accent-fill border border-lavender-500 group-hover/button:bg-lavender-500 group-hover/button:border-lavender-400 group-disabled/button:opacity-50 group-disabled/button:bg-accent-fill group-disabled/button:border-lavender-500 group-disabled/button:pointer-events-none",
     shortcut:
       "border-white/40 text-white group-hover/button:border-white/60 group-hover/button:text-white",
     icon: "text-white",
