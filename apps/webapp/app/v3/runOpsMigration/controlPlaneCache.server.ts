@@ -228,7 +228,6 @@ export class ControlPlaneCache {
     this.#bump(`env:${id}`);
   }
 
-  // worker version: key = `${environmentId}:${backgroundWorkerId ?? "current"}`
   getWorkerVersion(key: string): (ResolvedWorkerVersion | null) | undefined {
     return this.#read(this.#version, `version:${key}`);
   }

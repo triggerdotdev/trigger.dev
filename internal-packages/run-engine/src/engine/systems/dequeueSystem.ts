@@ -895,6 +895,8 @@ export class DequeueSystem {
           environmentId: run.runtimeEnvironmentId,
           type: env.type,
           workerId: workerId ?? undefined,
+          taskIdentifier: run.taskIdentifier,
+          queue: { lockedQueueId: run.lockedQueueId, name: run.queue },
         });
 
       if (!workerWithTasks) {

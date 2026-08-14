@@ -114,15 +114,45 @@ export type ResolvedWorkerVersion = {
   deployment: ResolvedWorkerDeployment | null;
 };
 
+/**
+ * Optional dispatch filter threaded from the dequeue consumer. When present, the resolve fetches
+ * ONLY the task matching `taskIdentifier` and the queue matching `queue` (index point-lookups via
+ * `@@unique([workerId, slug])` / `@@unique([runtimeEnvironmentId, name])`) instead of the worker's
+ * whole task/queue set. Absent (any non-dequeue caller) keeps the full-set behaviour.
+ */
+export type WorkerVersionDispatchFilter = {
+  taskIdentifier?: string;
+  queue?: { lockedQueueId?: string | null; name: string };
+};
+
 export interface ControlPlaneResolver {
   resolveEnv(environmentId: string): Promise<ResolvedEngineEnv | null>;
   resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null>;
-  resolveWorkerVersion(args: {
-    environmentId: string;
-    type: RuntimeEnvironmentType;
-    workerId?: string;
-  }): Promise<ResolvedWorkerVersion | null>;
+  resolveWorkerVersion(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null>;
   assertEnvExists(environmentId: string): Promise<void>;
+}
+
+type WorkerVersionWheres = {
+  taskWhere: { slug: string } | undefined;
+  queueWhere: { id: string } | { name: string } | undefined;
+};
+
+/** Build the nested-include `where`s for a dispatch filter (undefined = fetch the whole set). */
+export function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
+  return {
+    taskWhere: filter.taskIdentifier ? { slug: filter.taskIdentifier } : undefined,
+    queueWhere: filter.queue
+      ? filter.queue.lockedQueueId
+        ? { id: filter.queue.lockedQueueId }
+        : { name: filter.queue.name }
+      : undefined,
+  };
 }
 
 export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
@@ -240,31 +270,39 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     // no cross-seam FK to replace (matches main, which dropped the TaskRun env FK).
   }
 
-  async resolveWorkerVersion(args: {
-    environmentId: string;
-    type: RuntimeEnvironmentType;
-    workerId?: string;
-  }): Promise<ResolvedWorkerVersion | null> {
+  async resolveWorkerVersion(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null> {
     const { environmentId, type, workerId } = args;
+    const wheres = workerVersionWheres(args);
 
     if (type === "DEVELOPMENT") {
-      return workerId ? this.#getWorkerById(workerId) : this.#getMostRecentWorker(environmentId);
+      return workerId
+        ? this.#getWorkerById(workerId, wheres)
+        : this.#getMostRecentWorker(environmentId, wheres);
     }
 
     return workerId
-      ? this.#getWorkerDeploymentFromWorker(workerId)
-      : this.#getManagedWorkerFromCurrentlyPromotedDeployment(environmentId);
+      ? this.#getWorkerDeploymentFromWorker(workerId, wheres)
+      : this.#getManagedWorkerFromCurrentlyPromotedDeployment(environmentId, wheres);
   }
 
-  async #getWorkerDeploymentFromWorker(workerId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getWorkerDeploymentFromWorker(
+    workerId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         id: workerId,
       },
       include: {
         deployment: { select: resolvedWorkerDeploymentSelect },
-        tasks: { select: resolvedWorkerTaskSelect },
-        queues: { select: resolvedTaskQueueSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
     });
 
@@ -280,14 +318,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     };
   }
 
-  async #getMostRecentWorker(environmentId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getMostRecentWorker(
+    environmentId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         runtimeEnvironmentId: environmentId,
       },
       include: {
-        tasks: { select: resolvedWorkerTaskSelect },
-        queues: { select: resolvedTaskQueueSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -299,15 +340,18 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     return { worker, tasks: worker.tasks, queues: worker.queues, deployment: null };
   }
 
-  async #getWorkerById(workerId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getWorkerById(
+    workerId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         id: workerId,
       },
       include: {
         deployment: { select: resolvedWorkerDeploymentSelect },
-        tasks: { select: resolvedWorkerTaskSelect },
-        queues: { select: resolvedTaskQueueSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
     });
 
@@ -324,7 +368,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
   }
 
   async #getManagedWorkerFromCurrentlyPromotedDeployment(
-    environmentId: string
+    environmentId: string,
+    wheres: WorkerVersionWheres
   ): Promise<ResolvedWorkerVersion | null> {
     const promotion = await this.#prisma.workerDeploymentPromotion.findFirst({
       where: {
@@ -338,8 +383,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
             type: true,
             worker: {
               include: {
-                tasks: { select: resolvedWorkerTaskSelect },
-                queues: { select: resolvedTaskQueueSelect },
+                tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+                queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
               },
             },
           },
@@ -378,8 +423,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         ...resolvedWorkerDeploymentSelect,
         worker: {
           include: {
-            tasks: { select: resolvedWorkerTaskSelect },
-            queues: { select: resolvedTaskQueueSelect },
+            tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+            queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
           },
         },
       },
