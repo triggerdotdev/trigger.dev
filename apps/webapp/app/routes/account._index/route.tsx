@@ -1,7 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { useEffect, useRef, useState } from "react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
-import { Form, useActionData, useFetcher, useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
@@ -11,7 +9,14 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
@@ -20,6 +25,9 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { useToast } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
   SETTINGS_ROW_TITLE_GAP,
@@ -53,8 +61,9 @@ import {
 } from "~/hooks/useSystemThemeSync";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { updateUser } from "~/models/user.server";
+import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
+import { profileUpdateRateLimiter } from "~/services/profileUpdateRateLimiter.server";
+import { isSsoManagedUser } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
   updateIconContrastPreference,
@@ -76,7 +85,6 @@ import {
 import { cachedFlag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
-import { accountPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
 
@@ -147,47 +155,71 @@ function SystemThemeSelect({
   );
 }
 
-function createSchema(
-  constraints: {
-    isEmailUnique?: (email: string) => Promise<boolean>;
-  } = {}
-) {
-  return z.object({
-    name: z
-      .string({ required_error: "You must enter a name" })
-      .min(2, "Your name must be at least 2 characters long")
-      .max(50),
-    email: emailSchema.pipe(
-      z.string().superRefine((email, ctx) => {
-        if (constraints.isEmailUnique === undefined) {
-          //client-side validation skips this
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: conformZodMessage.VALIDATION_UNDEFINED,
-          });
-        } else {
-          // Tell zod this is an async validation by returning the promise
-          return constraints.isEmailUnique(email).then((isUnique) => {
-            if (isUnique) {
-              return;
-            }
+/**
+ * Hover preview for the "Stronger colors" switch: one chip in the accent the
+ * preference moves furthest, so the change is visible at a glance. Nothing here
+ * sets `data-icon-contrast` - it inherits from <html>, so the chip moves with the
+ * rest of the page and can never disagree with what's actually saved.
+ */
+function StrongerColorsPreview() {
+  return (
+    <span className="inline-flex rounded bg-warning/10 px-2 py-0.5 font-medium text-warning">
+      Example
+    </span>
+  );
+}
 
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Email is already being used by a different account",
-            });
-          });
-        }
-      })
-    ),
-    marketingEmails: z.preprocess((value) => value === "on", z.boolean()),
-  });
+/** The name and email rows each save on their own, so each has its own schema
+ *  rather than one that would reject the whole profile over a single field. */
+const MAX_NAME_LENGTH = 50;
+
+const NameSchema = z.object({
+  name: z
+    .string({ required_error: "You must enter a name" })
+    .trim()
+    .min(2, "Your name must be at least 2 characters long")
+    .max(MAX_NAME_LENGTH, `Your name must be ${MAX_NAME_LENGTH} characters or fewer`),
+});
+
+const EmailSchema = z.object({
+  // Trimmed first: a pasted address often carries a trailing space, and
+  // `emailSchema` would reject it with an unhelpful "invalid email".
+  email: z.string({ required_error: "You must enter an email address" }).trim().pipe(emailSchema),
+});
+
+const MarketingEmailsSchema = z.object({
+  // Not `z.coerce.boolean()`: it treats the string "false" as truthy.
+  marketingEmails: z.union([z.literal("true"), z.literal("false")]).transform((v) => v === "true"),
+});
+
+/** What every profile row's fetcher gets back. `error` is written for the person
+ *  reading it, because it lands in a toast and under the field. */
+type ProfileUpdateResult = { success: true } | { success: false; error: string };
+
+function profileUpdateError(error: string, status: number) {
+  return json({ success: false as const, error }, { status });
+}
+
+/** First line of the "don't hammer the database" defence, and the only one a
+ *  scripted POST can't skip: the client debounce and the no-op write guard both
+ *  help, but neither survives someone replaying the request by hand. */
+async function checkProfileUpdateRateLimit(userId: string) {
+  const limit = await profileUpdateRateLimiter.limit(`user:${userId}`);
+  if (limit.success) {
+    return undefined;
+  }
+  return profileUpdateError("Too many changes at once. Please wait a moment and try again.", 429);
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+
+  // Decides which of the two email modals opens. The action re-checks it before
+  // writing — this value only picks the UI, so a stale page can't be used to
+  // sneak an email change past the identity provider.
+  const isSsoManaged = await isSsoManagedUser(user.id);
 
   // The customize modal's section list is built from the side menu's items, which
   // are keyed to a project and environment. Resolve the user's current one so the
@@ -211,7 +243,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // No project to customize a sidebar for
   }
 
-  return json({ showThemeSwitcher, sidebarContext });
+  return json({ showThemeSwitcher, sidebarContext, isSsoManaged });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -296,49 +328,341 @@ export const action: ActionFunction = async ({ request }) => {
     return json({ error: "Invalid end" }, { status: 400 });
   }
 
-  const formSchema = createSchema({
-    isEmailUnique: async (email) => {
-      const existingUser = await prisma.user.findFirst({
-        where: {
-          email,
-        },
-      });
+  if (formData.get("action") === "update-name") {
+    const rateLimited = await checkProfileUpdateRateLimit(userId);
+    if (rateLimited) return rateLimited;
 
-      if (!existingUser) {
-        return true;
-      }
+    const submission = NameSchema.safeParse({ name: formData.get("name") });
+    if (!submission.success) {
+      return profileUpdateError(
+        submission.error.issues[0]?.message ?? "That name isn't valid.",
+        400
+      );
+    }
 
-      if (existingUser.id === userId) {
-        return true;
-      }
+    await updateUserName({ id: userId, name: submission.data.name });
+    return json({ success: true as const });
+  }
 
-      return false;
-    },
+  if (formData.get("action") === "update-email") {
+    const rateLimited = await checkProfileUpdateRateLimit(userId);
+    if (rateLimited) return rateLimited;
+
+    // Re-checked here, not just in the loader: the loader only chose which modal
+    // to render, and an SSO user could post this branch directly.
+    if (await isSsoManagedUser(userId)) {
+      return profileUpdateError(
+        "Your email address is managed by your organization's identity provider.",
+        403
+      );
+    }
+
+    const submission = EmailSchema.safeParse({ email: formData.get("email") });
+    if (!submission.success) {
+      return profileUpdateError(
+        submission.error.issues[0]?.message ?? "That email address isn't valid.",
+        400
+      );
+    }
+
+    const { email } = submission.data;
+    const existingUser = await prisma.user.findFirst({ where: { email } });
+    if (existingUser && existingUser.id !== userId) {
+      return profileUpdateError("Email is already being used by a different account", 400);
+    }
+
+    await updateUserEmail({ id: userId, email });
+    return json({ success: true as const });
+  }
+
+  if (formData.get("action") === "update-marketing-emails") {
+    const rateLimited = await checkProfileUpdateRateLimit(userId);
+    if (rateLimited) return rateLimited;
+
+    const submission = MarketingEmailsSchema.safeParse({
+      marketingEmails: formData.get("marketingEmails"),
+    });
+    if (!submission.success) {
+      return profileUpdateError("That preference isn't valid.", 400);
+    }
+
+    // Writes nothing when the stored value already matches, so a duplicate
+    // request costs one WHERE that matches no rows.
+    await updateUserMarketingEmails({
+      id: userId,
+      marketingEmails: submission.data.marketingEmails,
+    });
+    return json({ success: true as const });
+  }
+
+  return json({ success: false as const, error: "Unknown action" }, { status: 400 });
+};
+
+/**
+ * Wiring shared by the two edit modals: submit through a fetcher, toast the
+ * outcome once, and keep the message around so it can also sit under the field —
+ * the toast says whether it worked, the inline error says which field to fix.
+ *
+ * The fetcher's `data` outlives a submission, so this only settles once THIS
+ * submission has been in flight - the same guard `CustomizeSidebarButton` uses.
+ */
+function useProfileFieldUpdate({
+  successMessage,
+  onSuccess,
+}: {
+  successMessage: string;
+  onSuccess: () => void;
+}) {
+  const fetcher = useFetcher<ProfileUpdateResult>();
+  const toast = useToast();
+  const [error, setError] = useState<string>();
+  const submitSeenRef = useRef(false);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") {
+      submitSeenRef.current = true;
+      return;
+    }
+    if (!submitSeenRef.current) return;
+    submitSeenRef.current = false;
+
+    if (fetcher.data?.success) {
+      setError(undefined);
+      toast.success(successMessage);
+      onSuccess();
+      return;
+    }
+
+    // A dropped request leaves `data` undefined, so there's no server message.
+    const message = fetcher.data?.error ?? "Something went wrong. Please try again.";
+    setError(message);
+    toast.error(message);
+  }, [fetcher.state, fetcher.data]);
+
+  return { fetcher, error, setError, isSubmitting: fetcher.state !== "idle" };
+}
+
+/**
+ * The Full name row's action. The name itself is now read-only text in the row,
+ * and this is the one place it can be changed.
+ */
+function EditNameButton() {
+  const user = useUser();
+  const [isOpen, setIsOpen] = useState(false);
+  const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
+    successMessage: "Your name has been updated.",
+    onSuccess: () => setIsOpen(false),
   });
 
-  const submission = await parseWithZod(formData, { schema: formSchema, async: true });
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) setError(undefined);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary/small">Update</Button>
+      </DialogTrigger>
+      {/* Mounted only while open so the field re-seeds from the stored name each
+          time: a `defaultValue` on a field that stays mounted keeps whatever was
+          typed and abandoned last time. */}
+      {isOpen && (
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit your name</DialogTitle>
+          </DialogHeader>
+          <fetcher.Form method="post">
+            <input type="hidden" name="action" value="update-name" />
+            <div className="py-4">
+              <InputGroup fullWidth>
+                <Label htmlFor="profile-name">Full name</Label>
+                <Input
+                  id="profile-name"
+                  name="name"
+                  type="text"
+                  maxLength={MAX_NAME_LENGTH}
+                  placeholder="Your full name"
+                  defaultValue={user.name ?? ""}
+                  autoFocus
+                  onChange={() => setError(undefined)}
+                />
+                {error && <FormError>{error}</FormError>}
+              </InputGroup>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="secondary/medium" onClick={() => setIsOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
+                {isSubmitting ? "Saving…" : "Edit"}
+              </Button>
+            </DialogFooter>
+          </fetcher.Form>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
+/**
+ * The Email address row's action. Which modal opens depends on whether an
+ * identity provider owns this account: if it does there is nothing to edit, so
+ * the modal explains that and who to ask, and carries no footer to imply
+ * otherwise - closing it is the only thing left to do.
+ *
+ * `isSsoManaged` only picks the modal. The action re-checks it before writing.
+ */
+function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
+  const user = useUser();
+  const [isOpen, setIsOpen] = useState(false);
+  const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
+    successMessage: "Your email address has been updated.",
+    onSuccess: () => setIsOpen(false),
+  });
 
-  try {
-    const _user = await updateUser({
-      id: userId,
-      name: submission.value.name,
-      email: submission.value.email,
-      marketingEmails: submission.value.marketingEmails,
-    });
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) setError(undefined);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary/small">Edit</Button>
+      </DialogTrigger>
+      {/* Mounted only while open, so the field re-seeds from the stored email */}
+      {isOpen && (
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Email address</DialogTitle>
+          </DialogHeader>
+          {isSsoManaged ? (
+            <Paragraph variant="small" className="py-4">
+              Your organization signs you in through its own identity provider, so your email
+              address is managed there rather than here. To change it, ask an admin on your account
+              to update it for you.
+            </Paragraph>
+          ) : (
+            <fetcher.Form method="post">
+              <input type="hidden" name="action" value="update-email" />
+              <div className="py-4">
+                <InputGroup fullWidth>
+                  <Label htmlFor="profile-email">Update your email address</Label>
+                  <Input
+                    id="profile-email"
+                    name="email"
+                    type="email"
+                    maxLength={MAX_EMAIL_LENGTH}
+                    placeholder="Your email address"
+                    defaultValue={user.email}
+                    spellCheck={false}
+                    autoFocus
+                    onChange={() => setError(undefined)}
+                  />
+                  {error && <FormError>{error}</FormError>}
+                </InputGroup>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="secondary/medium" onClick={() => setIsOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving…" : "Update"}
+                </Button>
+              </DialogFooter>
+            </fetcher.Form>
+          )}
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
 
-    return redirectWithSuccessMessage(
-      accountPath(),
-      request,
-      "Your account profile has been updated."
+/** How long after the last click the write goes out. Long enough to collapse a
+ *  burst of clicks into one request, short enough that a deliberate toggle has
+ *  saved by the time you look away. */
+const MARKETING_EMAILS_DEBOUNCE_MS = 600;
+
+/**
+ * "Receive onboarding emails" saves itself now, so the switch is what paces the
+ * writes. Three things keep a spammed switch off the database:
+ *
+ *  1. it shows the click straight away but only writes once the clicking stops,
+ *     so a burst becomes a single request for the value landed on;
+ *  2. one write at a time — a click made mid-flight is reconciled after the
+ *     current write settles rather than queued behind it;
+ *  3. a toggle that ends up back where it started never reaches the server at
+ *     all, and the write itself matches no rows if it does (see
+ *     `updateUserMarketingEmails`).
+ *
+ * None of that survives someone posting the form by hand, which is what the
+ * per-user rate limit in the action is for.
+ */
+function MarketingEmailsSwitch() {
+  const user = useUser();
+  const stored = user.marketingEmails;
+  const fetcher = useFetcher<ProfileUpdateResult>();
+  const toast = useToast();
+
+  // What the switch shows: the last click. `stored` catches up to it when the
+  // write lands and the root loader revalidates.
+  const [desired, setDesired] = useState(stored);
+  // The value the in-flight write is trying to store, read when it settles.
+  const sentRef = useRef(stored);
+  const submitSeenRef = useRef(false);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") {
+      submitSeenRef.current = true;
+      return;
+    }
+    if (!submitSeenRef.current) return;
+    submitSeenRef.current = false;
+
+    if (fetcher.data?.success) {
+      toast.success(
+        sentRef.current
+          ? "You'll now receive onboarding emails."
+          : "You'll no longer receive onboarding emails."
+      );
+      return;
+    }
+
+    toast.error(
+      fetcher.data?.error ?? "Couldn't save your onboarding email preference. Please try again."
     );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
-  }
-};
+    // Put the switch back to what's actually stored. Without this the reconcile
+    // below would see a difference it can never close and retry on a loop.
+    setDesired(stored);
+  }, [fetcher.state, fetcher.data]);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    if (desired === stored) return;
+
+    const timer = setTimeout(() => {
+      sentRef.current = desired;
+      fetcher.submit(
+        { action: "update-marketing-emails", marketingEmails: desired ? "true" : "false" },
+        { method: "post" }
+      );
+    }, MARKETING_EMAILS_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [desired, stored, fetcher.state]);
+
+  return (
+    <Switch
+      id="marketing-emails"
+      variant="minimal/medium"
+      aria-label="Receive onboarding emails"
+      checked={desired}
+      onCheckedChange={setDesired}
+    />
+  );
+}
 
 /**
  * Opens the side menu's own "Customize sidebar" modal from here, so the settings row doesn't send
@@ -457,8 +781,7 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const { showThemeSwitcher, sidebarContext, isSsoManaged } = useLoaderData<typeof loader>();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -538,15 +861,6 @@ export default function Page() {
       { method: "post" }
     );
 
-  const [form, { name, email, marketingEmails }] = useForm({
-    id: "account",
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseWithZod(formData, { schema: createSchema() });
-    },
-  });
-
   return (
     <PageContainer>
       <NavBar>
@@ -558,69 +872,56 @@ export default function Page() {
           <div className="w-full border-b border-grid-dimmed pb-3">
             <Header2>Profile</Header2>
           </div>
-          <Form method="post" {...getFormProps(form)} className="w-full">
-            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-              <div className="flex w-full items-center justify-between gap-4">
-                <InputGroup className="flex-1">
-                  <Label>Profile picture</Label>
-                </InputGroup>
-                <div className="flex flex-none items-center">
-                  <UserProfilePhoto className="size-8" strokeWidth={1.5} />
-                </div>
+          {/* Each row saves itself, so there's no form around the section and no
+              Update button at the bottom of it. */}
+          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4">
+              <InputGroup className="flex-1">
+                <Label>Profile picture</Label>
+              </InputGroup>
+              <div className="flex flex-none items-center">
+                <UserProfilePhoto className="size-8" strokeWidth={1.5} />
               </div>
             </div>
-            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-              <div className="flex w-full items-center justify-between gap-4">
-                <InputGroup className="flex-1">
-                  <Label htmlFor={name.id}>Full name</Label>
-                </InputGroup>
-                <div className="flex w-56 flex-none flex-col gap-1">
-                  <Input
-                    {...getInputProps(name, { type: "text" })}
-                    placeholder="Your full name"
-                    defaultValue={user?.name ?? ""}
-                  />
-                  <FormError id={name.errorId}>{name.errors}</FormError>
-                </div>
+          </div>
+          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4">
+              <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                <Label>Full name</Label>
+                <SettingsRowDescription className="break-words">
+                  {user.name ?? "Not set"}
+                </SettingsRowDescription>
+              </div>
+              <div className="flex flex-none items-center">
+                <EditNameButton />
               </div>
             </div>
-            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-              <div className="flex w-full items-center justify-between gap-4">
-                <InputGroup className="flex-1">
-                  <Label htmlFor={email.id}>Email address</Label>
-                </InputGroup>
-                <div className="flex w-56 flex-none flex-col gap-1">
-                  <Input
-                    {...getInputProps(email, { type: "text" })}
-                    maxLength={MAX_EMAIL_LENGTH}
-                    placeholder="Your email"
-                    defaultValue={user?.email ?? ""}
-                  />
-                  <FormError id={email.errorId}>{email.errors}</FormError>
-                </div>
+          </div>
+          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4">
+              <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                <Label>Email address</Label>
+                {/* break-words: an address has no spaces to wrap at, so a long
+                    one would otherwise run under the button */}
+                <SettingsRowDescription className="break-words">
+                  {user.email}
+                </SettingsRowDescription>
+              </div>
+              <div className="flex flex-none items-center">
+                <EditEmailButton isSsoManaged={isSsoManaged} />
               </div>
             </div>
-            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-              <div className="flex w-full items-center justify-between gap-4">
-                <InputGroup className="flex-1">
-                  <Label htmlFor={marketingEmails.id}>Receive onboarding emails</Label>
-                </InputGroup>
-                <div className="flex flex-none items-center">
-                  <Switch
-                    id={marketingEmails.id}
-                    name={marketingEmails.name}
-                    variant="minimal/medium"
-                    defaultChecked={user.marketingEmails}
-                  />
-                </div>
+          </div>
+          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4">
+              <div className="flex-1">
+                <Label htmlFor="marketing-emails">Receive onboarding emails</Label>
+              </div>
+              <div className="flex flex-none items-center">
+                <MarketingEmailsSwitch />
               </div>
             </div>
-            <div className="flex w-full justify-end pt-4">
-              <Button type="submit" variant="primary/small">
-                Update
-              </Button>
-            </div>
-          </Form>
+          </div>
           {showThemeSwitcher && (
             <>
               <div className="mt-8 w-full border-b border-grid-dimmed pb-3">
@@ -795,27 +1096,50 @@ export default function Page() {
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                    <Label>Distinguish without color</Label>
+                    <Label>Stronger colors</Label>
                     <SettingsRowDescription>
-                      Raise the contrast of icons, badges and charts, and give color-only items a
-                      distinct shape
+                      Make colored text, icons and charts easier to read
                     </SettingsRowDescription>
                   </div>
                   <div className="flex flex-none items-center">
-                    <Switch
-                      variant="minimal/medium"
-                      aria-label="Distinguish without color"
-                      checked={iconContrast}
-                      onCheckedChange={(checked) =>
-                        iconContrastFetcher.submit(
-                          {
-                            action: "update-icon-contrast",
-                            iconContrast: checked ? "true" : "false",
-                          },
-                          { method: "post" }
-                        )
+                    <SimpleTooltip
+                      asChild
+                      side="top"
+                      content={<StrongerColorsPreview />}
+                      button={
+                        /* The trigger is this span rather than the Switch itself:
+                           with asChild on the Switch, Radix merges its own
+                           data-state onto the root and clobbers
+                           checked/unchecked, so the track and thumb lose every
+                           group-data-[state=*] style and the toggle renders as a
+                           bare knob with no background.
+
+                           Radix also closes a tooltip on pointerdown. Stopping
+                           the event here - after it has reached the switch, so
+                           the toggle still fires - keeps the preview up while the
+                           switch is flipped, which is the point of it. Pointer
+                           leave and Escape still close it. */
+                        <span
+                          className="inline-flex"
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <Switch
+                            variant="minimal/medium"
+                            aria-label="Stronger colors"
+                            checked={iconContrast}
+                            onCheckedChange={(checked) =>
+                              iconContrastFetcher.submit(
+                                {
+                                  action: "update-icon-contrast",
+                                  iconContrast: checked ? "true" : "false",
+                                },
+                                { method: "post" }
+                              )
+                            }
+                            className="w-fit"
+                          />
+                        </span>
                       }
-                      className="w-fit"
                     />
                   </div>
                 </div>
