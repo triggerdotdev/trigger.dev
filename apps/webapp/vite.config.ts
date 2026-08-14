@@ -1,6 +1,41 @@
+import { readFileSync } from "node:fs";
 import { vitePlugin as remix } from "@remix-run/dev";
-import { defaultClientConditions, defaultServerConditions, defineConfig } from "vite";
+import { defaultClientConditions, defaultServerConditions, defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+
+const packageVersions: Record<string, string> = Object.fromEntries(
+  ["core", "trigger-sdk"].map((pkg) => [
+    pkg,
+    (
+      JSON.parse(
+        readFileSync(new URL(`../../packages/${pkg}/package.json`, import.meta.url), "utf-8")
+      ) as { version: string }
+    ).version,
+  ])
+);
+
+/**
+ * The `@triggerdotdev/source` condition resolves workspace packages to TS source, where
+ * each VERSION constant is the "0.0.0" placeholder (scripts/updateVersion.ts stamps the
+ * real version, but only in dist output, which this bundle never reads). Stamp the version
+ * modules during bundling so VERSION carries the real package version everywhere it's used.
+ */
+function stampPackageVersions(): Plugin {
+  return {
+    name: "stamp-package-versions",
+    transform(code, id) {
+      const match = id
+        .split("?")[0]
+        .match(/packages[/\\](core|trigger-sdk)[/\\]src[/\\]version\.ts$/);
+      if (match) {
+        return {
+          code: code.replace('"0.0.0"', JSON.stringify(packageVersions[match[1]])),
+          map: null,
+        };
+      }
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
@@ -10,6 +45,7 @@ export default defineConfig({
       serverBuildFile: "index.mjs",
     }),
     tsconfigPaths(),
+    stampPackageVersions(),
   ],
   resolve: {
     // Resolve workspace packages to TS source (same condition the CLI uses)
