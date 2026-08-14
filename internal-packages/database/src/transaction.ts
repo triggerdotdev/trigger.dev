@@ -239,6 +239,7 @@ export async function $transaction<R>(
   } catch (error) {
     if (
       isPrismaRetriableError(error) &&
+      !isTransactionAcquisitionError(error) &&
       typeof options?.maxRetries === "number" &&
       attempt < options.maxRetries
     ) {

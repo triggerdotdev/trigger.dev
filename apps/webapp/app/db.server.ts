@@ -88,7 +88,7 @@ function resolveTransactionResilience(
     overrides.budgetPerSec ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC;
   const budgetBurst = overrides.budgetBurst ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST;
   return {
-    maxWait: overrides.maxWaitMs ?? env.DATABASE_TRANSACTION_MAX_WAIT_MS,
+    maxWait: Math.max(0, overrides.maxWaitMs ?? env.DATABASE_TRANSACTION_MAX_WAIT_MS),
     startRetry: {
       options: {
         enabled: overrides.enabled ?? env.DATABASE_TRANSACTION_START_RETRY_ENABLED,

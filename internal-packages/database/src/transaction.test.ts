@@ -186,4 +186,31 @@ describe("$transaction startRetry wiring", () => {
   it("UNLIMITED_RETRY_BUDGET always consumes", () => {
     expect(UNLIMITED_RETRY_BUDGET.tryConsume()).toBe(true);
   });
+
+  it("does not let maxRetries retry an acquisition error beyond the startRetry budget", async () => {
+    const prisma = { $transaction: vi.fn().mockRejectedValue(acquisitionError()) } as any;
+    await expect(
+      $transaction(
+        prisma,
+        async () => "x",
+        () => {},
+        { startRetry: config({ maxAttempts: 2 }), maxRetries: 3 }
+      )
+    ).rejects.toMatchObject({ code: "P2028" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("still lets maxRetries retry a serialization error (P2034)", async () => {
+    const serializationError = { code: "P2034", message: "write conflict / deadlock" };
+    const prisma = { $transaction: vi.fn().mockRejectedValue(serializationError) } as any;
+    await expect(
+      $transaction(
+        prisma,
+        async () => "x",
+        () => {},
+        { maxRetries: 2 }
+      )
+    ).rejects.toMatchObject({ code: "P2034" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
 });
