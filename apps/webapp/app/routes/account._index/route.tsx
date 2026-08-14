@@ -27,7 +27,6 @@ import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useToast } from "~/components/primitives/Toast";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
   SETTINGS_ROW_TITLE_GAP,
@@ -160,10 +159,32 @@ function SystemThemeSelect({
  * preference moves furthest, so the change is visible at a glance. Nothing here
  * sets `data-icon-contrast` - it inherits from <html>, so the chip moves with the
  * rest of the page and can never disagree with what's actually saved.
+ *
+ * Fades in on hover of an ancestor marked `group/preview`, so it must be rendered
+ * inside one. The group is named because Switch's own root is an unnamed `group`
+ * whose track styles key off `group-hover:` - an unnamed group here would sit
+ * above it and light the track up whenever this chip was hovered.
+ *
+ * Keyboard focus reveals it too, but via `:focus-visible` rather than
+ * `focus-within`: clicking the switch leaves it focused, so `focus-within` would
+ * strand the chip on screen after the pointer had left. A mouse click doesn't set
+ * `:focus-visible`, so tabbing to the switch shows the chip and clicking it
+ * doesn't.
+ *
+ * It stays mounted at `opacity-0` rather than being conditionally rendered: its
+ * width is reserved either way, so the row can't reflow as the pointer arrives.
+ * `text-xs` is explicit because the chip used to inherit it from the tooltip it
+ * lived in; in the row it would otherwise pick up the page's base size and tower
+ * over the description beside it. `aria-hidden` because "Example" tells a screen
+ * reader nothing - the chip is the colour, and the switch's own label carries the
+ * meaning.
  */
 function StrongerColorsPreview() {
   return (
-    <span className="inline-flex rounded bg-warning/10 px-2 py-0.5 font-medium text-warning">
+    <span
+      aria-hidden
+      className="inline-flex rounded bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning opacity-0 transition-opacity group-hover/preview:opacity-100 group-has-[:focus-visible]/preview:opacity-100"
+    >
       Example
     </span>
   );
@@ -1101,45 +1122,28 @@ export default function Page() {
                       Make colored text, icons and charts easier to read
                     </SettingsRowDescription>
                   </div>
-                  <div className="flex flex-none items-center">
-                    <SimpleTooltip
-                      asChild
-                      side="top"
-                      content={<StrongerColorsPreview />}
-                      button={
-                        /* The trigger is this span rather than the Switch itself:
-                           with asChild on the Switch, Radix merges its own
-                           data-state onto the root and clobbers
-                           checked/unchecked, so the track and thumb lose every
-                           group-data-[state=*] style and the toggle renders as a
-                           bare knob with no background.
-
-                           Radix also closes a tooltip on pointerdown. Stopping
-                           the event here - after it has reached the switch, so
-                           the toggle still fires - keeps the preview up while the
-                           switch is flipped, which is the point of it. Pointer
-                           leave and Escape still close it. */
-                        <span
-                          className="inline-flex"
-                          onPointerDown={(event) => event.stopPropagation()}
-                        >
-                          <Switch
-                            variant="minimal/medium"
-                            aria-label="Stronger colors"
-                            checked={iconContrast}
-                            onCheckedChange={(checked) =>
-                              iconContrastFetcher.submit(
-                                {
-                                  action: "update-icon-contrast",
-                                  iconContrast: checked ? "true" : "false",
-                                },
-                                { method: "post" }
-                              )
-                            }
-                            className="w-fit"
-                          />
-                        </span>
+                  {/* The preview is a sibling of the switch inside this hover
+                      group rather than tooltip content, so flipping the switch
+                      can't dismiss it - a Radix tooltip closes on pointerdown,
+                      which fought the one interaction the preview exists for.
+                      Hovering anywhere in this group (chip, gap or switch) shows
+                      it; leaving hides it. */}
+                  <div className="group/preview flex flex-none items-center gap-2">
+                    <StrongerColorsPreview />
+                    <Switch
+                      variant="minimal/medium"
+                      aria-label="Stronger colors"
+                      checked={iconContrast}
+                      onCheckedChange={(checked) =>
+                        iconContrastFetcher.submit(
+                          {
+                            action: "update-icon-contrast",
+                            iconContrast: checked ? "true" : "false",
+                          },
+                          { method: "post" }
+                        )
                       }
+                      className="w-fit"
                     />
                   </div>
                 </div>
