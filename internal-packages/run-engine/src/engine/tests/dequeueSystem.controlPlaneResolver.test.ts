@@ -487,6 +487,102 @@ describe("DequeueSystem controlPlaneResolver (latest-v2 fallback + workerId bran
   );
 });
 
+describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
+  /**
+   * The resolver must ship only the columns the dequeue path reads: for each task id/slug +
+   * machineConfig/retryConfig/maxDurationInSeconds; for the deployment id/friendlyId/
+   * imageReference/imagePlatform; for each queue id/name. The heavy JSON columns it never reads
+   * (task payloadSchema/config/queueConfig/description, deployment externalBuildData/
+   * buildServerMetadata/errorData/git, queue rateLimit) must NOT come back, so the hot
+   * control-plane read stops shipping the large per-query payload.
+   */
+  containerTest(
+    "resolveWorkerVersion returns only the dequeue-read columns and drops the heavy JSON columns",
+    async ({ prisma }) => {
+      const taskSlug = "test-task";
+      const cp = await seedControlPlane(prisma as unknown as PrismaClient, "slim", taskSlug);
+
+      await prisma.backgroundWorkerTask.update({
+        where: { id: cp.task.id },
+        data: {
+          machineConfig: { preset: "small-2x" },
+          retryConfig: { maxAttempts: 5, factor: 2, minTimeoutInMs: 100, maxTimeoutInMs: 1000 },
+          maxDurationInSeconds: 120,
+          payloadSchema: { type: "object", properties: { message: { type: "string" } } },
+          config: { type: "ai-sdk-chat" },
+          queueConfig: { concurrencyLimit: 7 },
+          description: "must not be shipped on the dequeue read",
+        },
+      });
+
+      await prisma.workerDeployment.update({
+        where: { id: cp.deployment.id },
+        data: {
+          externalBuildData: { imageTag: "must-not-ship", buildId: "b1" },
+          buildServerMetadata: { logs: "must-not-ship" },
+          errorData: { message: "must-not-ship" },
+          git: { commitSha: "deadbeef", must: "not-ship" },
+        },
+      });
+
+      await prisma.taskQueue.update({
+        where: { id: cp.queue.id },
+        data: { rateLimit: { limit: 10, must: "not-ship" } },
+      });
+
+      const resolver = new PassthroughControlPlaneResolver({
+        prisma: prisma as unknown as PrismaClient,
+      });
+
+      const version = await resolver.resolveWorkerVersion({
+        environmentId: cp.environment.id,
+        type: "PRODUCTION",
+      });
+
+      assertNonNullable(version);
+      const task = version.tasks.find((t) => t.slug === taskSlug);
+      assertNonNullable(task);
+
+      expect(task.id).toBe(cp.task.id);
+      expect(task.slug).toBe(taskSlug);
+      expect(task.machineConfig).toEqual({ preset: "small-2x" });
+      expect(task.retryConfig).toMatchObject({ maxAttempts: 5 });
+      expect(task.maxDurationInSeconds).toBe(120);
+
+      expect("payloadSchema" in task).toBe(false);
+      expect("config" in task).toBe(false);
+      expect("queueConfig" in task).toBe(false);
+      expect("description" in task).toBe(false);
+      expect(Object.keys(task).sort()).toEqual([
+        "id",
+        "machineConfig",
+        "maxDurationInSeconds",
+        "retryConfig",
+        "slug",
+      ]);
+
+      assertNonNullable(version.deployment);
+      expect(version.deployment.id).toBe(cp.deployment.id);
+      expect("externalBuildData" in version.deployment).toBe(false);
+      expect("buildServerMetadata" in version.deployment).toBe(false);
+      expect("errorData" in version.deployment).toBe(false);
+      expect("git" in version.deployment).toBe(false);
+      expect(Object.keys(version.deployment).sort()).toEqual([
+        "friendlyId",
+        "id",
+        "imagePlatform",
+        "imageReference",
+      ]);
+
+      const queue = version.queues.find((q) => q.id === cp.queue.id);
+      assertNonNullable(queue);
+      expect(queue.name).toBe(cp.queueName);
+      expect("rateLimit" in queue).toBe(false);
+      expect(Object.keys(queue).sort()).toEqual(["id", "name"]);
+    }
+  );
+});
+
 describe("DequeueSystem controlPlaneResolver (single-DB passthrough)", () => {
   containerTest(
     "default passthrough dequeue is byte-identical (resolves env + worker version end-to-end)",

@@ -18,6 +18,9 @@ export type {
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,
   ResolvedWorkerVersion,
+  ResolvedWorkerTask,
+  ResolvedTaskQueue,
+  ResolvedWorkerDeployment,
 } from "./engine/controlPlaneResolver.js";
 
 // Batch Queue exports

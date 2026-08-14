@@ -1,11 +1,8 @@
 import type {
   BackgroundWorker,
-  BackgroundWorkerTask,
   Prisma,
   PrismaClient,
   RuntimeEnvironmentType,
-  TaskQueue,
-  WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
@@ -51,12 +48,70 @@ export type ResolvedEngineEnv = {
  */
 export type ResolvedAuthenticatedEnv = AuthenticatedEnvironment & { git: Prisma.JsonValue | null };
 
+/**
+ * The BackgroundWorkerTask columns the dequeue resolve path actually reads. The worker's
+ * whole task set (~73 rows) is fetched for one matched task, so pulling the unread heavy
+ * JSON columns (`payloadSchema`, `config`, `queueConfig`, `description`) shipped ~62KB/query
+ * on the hottest control-plane read. `machineConfig`/`retryConfig` are read at dequeue and stay.
+ */
+export type ResolvedWorkerTask = {
+  id: string;
+  slug: string;
+  machineConfig: Prisma.JsonValue | null;
+  retryConfig: Prisma.JsonValue | null;
+  maxDurationInSeconds: number | null;
+};
+
+/** The `select` that yields a `ResolvedWorkerTask`. */
+export const resolvedWorkerTaskSelect = {
+  id: true,
+  slug: true,
+  machineConfig: true,
+  retryConfig: true,
+  maxDurationInSeconds: true,
+} satisfies Prisma.BackgroundWorkerTaskSelect;
+
+/**
+ * The TaskQueue columns the dequeue resolve path uses: `id` and `name` (the matcher keys on
+ * `lockedQueueId`/`name`). Drops the unread `rateLimit` JSON and the concurrency/type scalars.
+ */
+export type ResolvedTaskQueue = {
+  id: string;
+  name: string;
+};
+
+/** The `select` that yields a `ResolvedTaskQueue`. */
+export const resolvedTaskQueueSelect = {
+  id: true,
+  name: true,
+} satisfies Prisma.TaskQueueSelect;
+
+/**
+ * The WorkerDeployment columns the dequeue resolve path reads: `id`, `friendlyId`,
+ * `imageReference`, `imagePlatform`. Drops the unread heavy JSON columns (`externalBuildData`,
+ * `buildServerMetadata`, `errorData`, `git`) that this single-row read otherwise ships.
+ */
+export type ResolvedWorkerDeployment = {
+  id: string;
+  friendlyId: string;
+  imageReference: string | null;
+  imagePlatform: string;
+};
+
+/** The `select` that yields a `ResolvedWorkerDeployment`. */
+export const resolvedWorkerDeploymentSelect = {
+  id: true,
+  friendlyId: true,
+  imageReference: true,
+  imagePlatform: true,
+} satisfies Prisma.WorkerDeploymentSelect;
+
 /** Identical to dequeue's `WorkerDeploymentWithWorkerTasks`. */
 export type ResolvedWorkerVersion = {
   worker: BackgroundWorker;
-  tasks: BackgroundWorkerTask[];
-  queues: TaskQueue[];
-  deployment: WorkerDeployment | null;
+  tasks: ResolvedWorkerTask[];
+  queues: ResolvedTaskQueue[];
+  deployment: ResolvedWorkerDeployment | null;
 };
 
 export interface ControlPlaneResolver {
@@ -207,9 +262,9 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         id: workerId,
       },
       include: {
-        deployment: true,
-        tasks: true,
-        queues: true,
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { select: resolvedWorkerTaskSelect },
+        queues: { select: resolvedTaskQueueSelect },
       },
     });
 
@@ -231,8 +286,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         runtimeEnvironmentId: environmentId,
       },
       include: {
-        tasks: true,
-        queues: true,
+        tasks: { select: resolvedWorkerTaskSelect },
+        queues: { select: resolvedTaskQueueSelect },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -250,9 +305,9 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         id: workerId,
       },
       include: {
-        deployment: true,
-        tasks: true,
-        queues: true,
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { select: resolvedWorkerTaskSelect },
+        queues: { select: resolvedTaskQueueSelect },
       },
     });
 
@@ -278,11 +333,13 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       },
       include: {
         deployment: {
-          include: {
+          select: {
+            ...resolvedWorkerDeploymentSelect,
+            type: true,
             worker: {
               include: {
-                tasks: true,
-                queues: true,
+                tasks: { select: resolvedWorkerTaskSelect },
+                queues: { select: resolvedTaskQueueSelect },
               },
             },
           },
@@ -296,11 +353,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
 
     if (promotion.deployment.type === "MANAGED") {
       // This is a run engine v2 deployment, so return it
+      const { worker } = promotion.deployment;
       return {
-        worker: promotion.deployment.worker,
-        tasks: promotion.deployment.worker.tasks,
-        queues: promotion.deployment.worker.queues,
-        deployment: promotion.deployment,
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: {
+          id: promotion.deployment.id,
+          friendlyId: promotion.deployment.friendlyId,
+          imageReference: promotion.deployment.imageReference,
+          imagePlatform: promotion.deployment.imagePlatform,
+        },
       };
     }
 
@@ -311,11 +374,12 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         type: "MANAGED",
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      include: {
+      select: {
+        ...resolvedWorkerDeploymentSelect,
         worker: {
           include: {
-            tasks: true,
-            queues: true,
+            tasks: { select: resolvedWorkerTaskSelect },
+            queues: { select: resolvedTaskQueueSelect },
           },
         },
       },
@@ -329,7 +393,12 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       worker: latestV2Deployment.worker,
       tasks: latestV2Deployment.worker.tasks,
       queues: latestV2Deployment.worker.queues,
-      deployment: latestV2Deployment,
+      deployment: {
+        id: latestV2Deployment.id,
+        friendlyId: latestV2Deployment.friendlyId,
+        imageReference: latestV2Deployment.imageReference,
+        imagePlatform: latestV2Deployment.imagePlatform,
+      },
     };
   }
 }
