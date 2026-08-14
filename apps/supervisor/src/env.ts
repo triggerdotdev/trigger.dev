@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
+import {
+  AdditionalEnvVars,
+  BandwidthQuantity,
+  BoolEnv,
+  NodeLabelValue,
+  Tolerations,
+} from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -205,26 +211,26 @@ export const Env = z
     // Run pod bandwidth caps, applied as kubernetes.io/{egress,ingress}-bandwidth pod
     // annotations (k8s quantity in bits/s, e.g. "50M" = 50 Mbit/s). Unset = no annotation.
     // Enforcement requires CNI support for these annotations (e.g. Cilium bandwidth manager).
-    KUBERNETES_EGRESS_BANDWIDTH: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH: BandwidthQuantity.optional(),
 
     // Per-preset overrides of the global KUBERNETES_EGRESS_BANDWIDTH
-    KUBERNETES_EGRESS_BANDWIDTH_MICRO: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_SMALL_1X: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_SMALL_2X: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_1X: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_2X: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_LARGE_1X: z.string().optional(),
-    KUBERNETES_EGRESS_BANDWIDTH_LARGE_2X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_MICRO: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_SMALL_1X: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_SMALL_2X: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_1X: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_2X: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_LARGE_1X: BandwidthQuantity.optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_LARGE_2X: BandwidthQuantity.optional(),
 
     // Per-preset overrides of the global KUBERNETES_INGRESS_BANDWIDTH
-    KUBERNETES_INGRESS_BANDWIDTH_MICRO: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_SMALL_1X: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_SMALL_2X: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_1X: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_2X: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_LARGE_1X: z.string().optional(),
-    KUBERNETES_INGRESS_BANDWIDTH_LARGE_2X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_MICRO: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_SMALL_1X: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_SMALL_2X: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_1X: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_2X: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_LARGE_1X: BandwidthQuantity.optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_LARGE_2X: BandwidthQuantity.optional(),
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods

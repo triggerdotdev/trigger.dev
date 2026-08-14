@@ -16,6 +16,7 @@ import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
 import {
   nodetypeNodeSelector,
+  resolveRunPodBandwidthCap,
   runPodBandwidthAnnotations,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
@@ -149,8 +150,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               "app.kubernetes.io/component": "create",
             },
             annotations: runPodBandwidthAnnotations(
-              egressBandwidthByMachinePreset[opts.machine.name] ?? env.KUBERNETES_EGRESS_BANDWIDTH,
-              ingressBandwidthByMachinePreset[opts.machine.name] ?? env.KUBERNETES_INGRESS_BANDWIDTH
+              resolveRunPodBandwidthCap(
+                egressBandwidthByMachinePreset[opts.machine.name],
+                env.KUBERNETES_EGRESS_BANDWIDTH
+              ),
+              resolveRunPodBandwidthCap(
+                ingressBandwidthByMachinePreset[opts.machine.name],
+                env.KUBERNETES_INGRESS_BANDWIDTH
+              )
             ),
           },
           spec: {

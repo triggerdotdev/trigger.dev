@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BLOCK_IO_URING_SECCOMP_PROFILE,
   nodetypeNodeSelector,
+  resolveRunPodBandwidthCap,
   runPodBandwidthAnnotations,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
@@ -102,5 +103,22 @@ describe("runPodBandwidthAnnotations", () => {
       "kubernetes.io/egress-bandwidth": "100M",
       "kubernetes.io/ingress-bandwidth": "200M",
     });
+  });
+});
+
+describe("resolveRunPodBandwidthCap", () => {
+  it("prefers the preset override over the global cap", () => {
+    expect(resolveRunPodBandwidthCap("25M", "100M")).toBe("25M");
+  });
+
+  it("falls back to the global cap when no override is set", () => {
+    expect(resolveRunPodBandwidthCap(undefined, "100M")).toBe("100M");
+    expect(resolveRunPodBandwidthCap(undefined, undefined)).toBeUndefined();
+  });
+
+  it("treats an empty override as a per-preset disable, not inherit", () => {
+    const resolved = resolveRunPodBandwidthCap("", "100M");
+    expect(resolved).toBe("");
+    expect(runPodBandwidthAnnotations(resolved, resolved)).toBeUndefined();
   });
 });

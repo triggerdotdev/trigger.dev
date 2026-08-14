@@ -37,6 +37,18 @@ export function runPodTolerations(
 }
 
 /**
+ * Preset override beats the global cap. An override explicitly set to "" disables
+ * the cap for that preset while the global still applies to the others - only a
+ * missing (undefined) override inherits the global.
+ */
+export function resolveRunPodBandwidthCap(
+  presetOverride: string | undefined,
+  globalCap: string | undefined
+): string | undefined {
+  return presetOverride ?? globalCap;
+}
+
+/**
  * Bandwidth-cap annotations for a run pod (k8s quantity in bits/s). Values are
  * only enforced by CNIs that support them; pods without the annotations are
  * never shaped. Returns undefined rather than an empty map to leave the

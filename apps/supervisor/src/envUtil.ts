@@ -65,6 +65,19 @@ export const NodeLabelValue = z.string().trim().refine(isLabelValue, {
 });
 
 /**
+ * Kubernetes quantity for the bandwidth annotations (bits/s), e.g. "50M".
+ * The API server accepts any annotation string, so an invalid value would only
+ * fail at CNI level after rollout; validating here makes a typo fail at startup
+ * instead. Empty is allowed: it's the per-preset off-switch.
+ */
+export const BandwidthQuantity = z
+  .string()
+  .trim()
+  .regex(/^(\d+(\.\d+)?(k|Ki|M|Mi|G|Gi|T|Ti|P|Pi|E|Ei)?)?$/, {
+    message: 'Must be a Kubernetes quantity in bits/s (e.g. "50M"), or empty to disable',
+  });
+
+/**
  * Comma-separated pod tolerations in the format `key=value:effect`, or `key:effect`
  * for the Exists operator. Keys and values are checked against the Kubernetes
  * naming rules here so a typo fails at startup, rather than 422ing every single
