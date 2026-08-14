@@ -129,11 +129,31 @@ export const runOpsLegacyTransactionResilience = resolveTransactionResilience("r
   budgetBurst: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
 });
 
-function withTransactionDefaults(options?: PrismaTransactionOptions): PrismaTransactionOptions {
+const transactionResilienceByClient = new WeakMap<object, TransactionResilienceConfig>();
+
+/**
+ * Associates a writer client with its pool's resilience config so the `$transaction` helper can
+ * pick the right `maxWait` + retry budget for whichever client it is handed, rather than always
+ * using the control-plane pool. Returns the client for inline use at construction.
+ */
+function registerTransactionResilience<T extends object>(
+  client: T,
+  resilience: TransactionResilienceConfig
+): T {
+  transactionResilienceByClient.set(client, resilience);
+  return client;
+}
+
+function withTransactionDefaults(
+  client: PrismaClientOrTransaction,
+  options?: PrismaTransactionOptions
+): PrismaTransactionOptions {
+  const resilience =
+    transactionResilienceByClient.get(client as object) ?? controlPlaneTransactionResilience;
   return {
-    maxWait: controlPlaneTransactionResilience.maxWait,
+    maxWait: resilience.maxWait,
     ...options,
-    startRetry: options?.startRetry ?? controlPlaneTransactionResilience.startRetry,
+    startRetry: options?.startRetry ?? resilience.startRetry,
   };
 }
 
@@ -171,7 +191,7 @@ async function $transactionInner<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
   if (typeof fnOrName === "string") {
-    const effectiveOptions = withTransactionDefaults(options);
+    const effectiveOptions = withTransactionDefaults(prisma, options);
     return await startActiveSpan(fnOrName, async (span) => {
       span.setAttribute("$transaction", true);
 
@@ -205,7 +225,7 @@ async function $transactionInner<R>(
       prisma,
       fnOrName,
       logTransactionPrismaError,
-      withTransactionDefaults(typeof fnOrOptions === "function" ? undefined : fnOrOptions)
+      withTransactionDefaults(prisma, typeof fnOrOptions === "function" ? undefined : fnOrOptions)
     );
   }
 }
@@ -264,7 +284,10 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 }
 
 export const prisma = singleton("prisma", () =>
-  captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient()))
+  registerTransactionResilience(
+    captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient())),
+    controlPlaneTransactionResilience
+  )
 );
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
@@ -393,15 +416,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     {
       controlPlane: { writer: prisma, replica: $replica },
       buildNewWriter: (url, clientType) =>
-        captureInfraErrorsRunOps(
-          tagDatasourceRunOps(
-            "run-ops-writer",
-            buildRunOpsWriterClient({
-              url,
-              clientType,
-              useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsWriterClient({
+                url,
+                clientType,
+                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsTransactionResilience
         ),
       // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
       // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
@@ -422,17 +448,20 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
       // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
       buildLegacyWriter: (url, clientType) =>
-        captureInfrastructureErrors(
-          tagDatasource(
-            "legacy-run-ops-writer",
-            buildWriterClient({
-              url,
-              clientType,
-              poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
-              connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
-              useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfrastructureErrors(
+            tagDatasource(
+              "legacy-run-ops-writer",
+              buildWriterClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
+                useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsLegacyTransactionResilience
         ),
       buildLegacyReplica: (url, clientType) =>
         markReadReplicaClient(
