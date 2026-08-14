@@ -6,12 +6,15 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
+/* Every variant hovers by shifting color, never by adding an underline: the
+   underline is reserved for the "Underline links" preference, so its presence
+   always means the preference is on. */
 const colors = {
   primary: "text-indigo-500 transition hover:text-indigo-400",
   secondary: "text-text-dimmed transition hover:text-text-bright",
   // The theme-remapped link token, for links inside themed surfaces where the
   // raw indigo of `primary` is dark-theme only.
-  token: "text-text-link transition hover:underline",
+  token: "text-text-link transition hover:text-text-link-hover",
 } as const;
 
 const layout = "inline-flex gap-0.5 items-center group";

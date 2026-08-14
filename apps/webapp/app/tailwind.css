@@ -145,6 +145,10 @@
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
+  /* Link hover. Halfway to lavender-300 rather than the stop itself: the ramp
+     is sparse either side of the 400 brand accent, so the full step reads as a
+     flash. This matches the size of TextLink's indigo-500 -> indigo-400 step. */
+  --color-text-link-hover: #9e90ff;
   --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
   --color-text-bright: var(--color-charcoal-200);
@@ -285,7 +289,10 @@
 /* "Underline links" preference: underlines the inline links that carry the
    marker class from the TextLink component, and only those - hand-rolled link
    underlines and decorative ones (dashed tooltip terms, tab underlines) are
-   untouched either way. */
+   untouched either way.
+
+   Links in this set never underline on hover alone; hover shifts their color
+   instead, so the underline means "this preference is on" and nothing else. */
 [data-underline-links="true"] .inline-text-link {
   text-decoration-line: underline;
   text-underline-offset: 2px;
@@ -729,8 +736,10 @@
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
+  /* Matches TextLink: the link token, brightening on hover rather than
+     underlining. */
   & a {
-    @apply text-text-link hover:underline;
+    @apply text-text-link transition hover:text-text-link-hover;
   }
   & strong {
     @apply font-semibold text-text-bright;
@@ -782,6 +791,10 @@
   --color-primary: var(--color-apple-600);
   --color-tertiary: #eef0f3;
   --color-text-link: var(--color-lavender-600);
+  /* Hover goes *down* the ramp here, not up: on white, more prominent means
+     darker. Same direction as every other light-mode hover, where
+     text-dimmed -> text-bright also darkens. */
+  --color-text-link-hover: var(--color-lavender-700);
   --color-text-faint: var(--color-charcoal-400);
   --color-text-dimmed: var(--color-charcoal-500);
   --color-text-bright: var(--color-charcoal-800);
