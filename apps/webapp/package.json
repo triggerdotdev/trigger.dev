@@ -17,6 +17,7 @@
     "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsc --noEmit -p ./tsconfig.check.json",
     "guard:runops-legacy": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsx ./scripts/runOpsLegacyGuard.ts",
+    "guard:fk-cascade-index": "tsx ./scripts/fkCascadeIndexGuard.ts",
     "db:seed": "tsx seed.ts",
     "db:seed:ai-spans": "tsx seed-ai-spans.mts",
     "db:seed:queue-metrics": "tsx seed-queue-metrics.mts",

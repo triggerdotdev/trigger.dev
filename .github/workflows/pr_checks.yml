@@ -58,6 +58,7 @@ jobs:
               - '.github/workflows/unit-tests-webapp.yml'
               - '.github/workflows/e2e-webapp.yml'
               - '.github/workflows/runops-guard.yml'
+              - '.github/workflows/fk-cascade-guard.yml'
               - '.configs/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -150,6 +151,11 @@ jobs:
     if: needs.changes.outputs.webapp == 'true'
     uses: ./.github/workflows/runops-guard.yml
 
+  fk-cascade-guard:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/fk-cascade-guard.yml
+
   webapp:
     needs: changes
     if: needs.changes.outputs.webapp == 'true'
@@ -206,6 +212,7 @@ jobs:
       - code-quality
       - typecheck
       - runops-guard
+      - fk-cascade-guard
       - webapp
       - e2e-webapp
       - packages
