@@ -120,6 +120,13 @@ const OptionalBoolEnv = z.preprocess((v) => {
   return ["true", "1"].includes(v.toLowerCase().trim());
 }, z.boolean().optional());
 
+/** Boolean env var with a default where blank/whitespace falls back to the default instead of parsing as false. */
+const BoolEnvWithDefault = (defaultValue: boolean) =>
+  z.preprocess((v) => {
+    if (typeof v !== "string" || v.trim() === "") return undefined;
+    return ["true", "1"].includes(v.toLowerCase().trim());
+  }, z.boolean().default(defaultValue));
+
 /** Int env var with a default where a blank/whitespace value falls back to the default instead of coercing to 0. */
 const IntEnvWithDefault = (defaultValue: number) =>
   z.preprocess(
@@ -156,7 +163,7 @@ const EnvironmentSchema = z
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
-    DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnv.default(true),
+    DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
     DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
     DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
     DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),

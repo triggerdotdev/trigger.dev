@@ -34,9 +34,10 @@ import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/cont
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import {
   controlPlaneTransactionResilience,
+  registerTransactionResilience,
+  resilienceForClient,
   runOpsLegacyTransactionResilience,
   runOpsTransactionResilience,
-  type TransactionResilienceConfig,
 } from "./v3/transactionResilience.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
@@ -65,27 +66,11 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
   });
 }
 
-const transactionResilienceByClient = new WeakMap<object, TransactionResilienceConfig>();
-
-/**
- * Associates a writer client with its pool's resilience config so the `$transaction` helper can
- * pick the right `maxWait` + retry budget for whichever client it is handed, rather than always
- * using the control-plane pool. Returns the client for inline use at construction.
- */
-function registerTransactionResilience<T extends object>(
-  client: T,
-  resilience: TransactionResilienceConfig
-): T {
-  transactionResilienceByClient.set(client, resilience);
-  return client;
-}
-
 function withTransactionDefaults(
   client: PrismaClientOrTransaction,
   options?: PrismaTransactionOptions
 ): PrismaTransactionOptions {
-  const resilience =
-    transactionResilienceByClient.get(client as object) ?? controlPlaneTransactionResilience;
+  const resilience = resilienceForClient(client as object);
   return {
     maxWait: resilience.maxWait,
     ...options,

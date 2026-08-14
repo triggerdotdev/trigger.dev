@@ -73,3 +73,28 @@ export const runOpsLegacyTransactionResilience = resolveTransactionResilience("r
   budgetPerSec: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
   budgetBurst: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
 });
+
+const transactionResilienceByClient = new WeakMap<object, TransactionResilienceConfig>();
+
+/**
+ * Associate a writer client with its pool's resilience config. Returns the client for inline use at
+ * construction. Kept here (not in db.server) so nothing new lands on db.server's wholesale-mocked
+ * export surface.
+ */
+export function registerTransactionResilience<T extends object>(
+  client: T,
+  resilience: TransactionResilienceConfig
+): T {
+  transactionResilienceByClient.set(client, resilience);
+  return client;
+}
+
+/**
+ * The resilience config registered for a writer client, or the control-plane config as a safe
+ * fallback. Derives resilience from the ACTUAL client identity rather than an assumed routing role,
+ * so run-ops clients aliased onto the control-plane pool (split flag off) correctly get the
+ * control-plane config instead of a run-ops override.
+ */
+export function resilienceForClient(client: object): TransactionResilienceConfig {
+  return transactionResilienceByClient.get(client) ?? controlPlaneTransactionResilience;
+}

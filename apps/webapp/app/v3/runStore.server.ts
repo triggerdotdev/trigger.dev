@@ -13,9 +13,7 @@ import {
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import {
-  controlPlaneTransactionResilience,
-  runOpsLegacyTransactionResilience,
-  runOpsTransactionResilience,
+  resilienceForClient,
   type TransactionResilienceConfig,
 } from "./transactionResilience.server";
 
@@ -126,7 +124,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
       splitEnabled: false,
       singleWriter: prisma,
       singleReplica: $replica,
-      singleResilience: controlPlaneTransactionResilience,
+      singleResilience: resilienceForClient(prisma),
     });
   }
   return buildRunStore({
@@ -134,8 +132,8 @@ export const runStore: RunStore = singleton("RunStore", () => {
     ...handles,
     singleWriter: prisma,
     singleReplica: $replica,
-    singleResilience: controlPlaneTransactionResilience,
-    newResilience: runOpsTransactionResilience,
-    legacyResilience: runOpsLegacyTransactionResilience,
+    singleResilience: resilienceForClient(prisma),
+    newResilience: resilienceForClient(handles.newWriter),
+    legacyResilience: resilienceForClient(handles.legacyWriter),
   });
 });
