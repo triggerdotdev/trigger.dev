@@ -666,13 +666,18 @@ export class PostgresRunStore implements RunStore {
     _runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
   ): Promise<R> {
+    let entered = false;
     return withTransactionStartRetry(
       () =>
         (this.prisma as RunOpsTransactionalClient).$transaction(
-          (tx) => fn(this, tx as unknown as PrismaClientOrTransaction),
+          (tx) => {
+            entered = true;
+            return fn(this, tx as unknown as PrismaClientOrTransaction);
+          },
           { maxWait: this.maxWait }
         ),
-      this.transactionStartRetry
+      this.transactionStartRetry,
+      () => !entered
     );
   }
 
@@ -692,13 +697,15 @@ export class PostgresRunStore implements RunStore {
       return fn(tx);
     }
     const txOptions = { maxWait: this.maxWait, ...options };
+    let entered = false;
     return withTransactionStartRetry(
       () =>
-        (this.prisma as RunOpsTransactionalClient).$transaction(
-          (t) => fn(t as unknown as PrismaClientOrTransaction),
-          txOptions
-        ),
-      this.transactionStartRetry
+        (this.prisma as RunOpsTransactionalClient).$transaction((t) => {
+          entered = true;
+          return fn(t as unknown as PrismaClientOrTransaction);
+        }, txOptions),
+      this.transactionStartRetry,
+      () => !entered
     );
   }
 

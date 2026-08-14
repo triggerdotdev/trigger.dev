@@ -62,20 +62,25 @@ export function isPrismaRaceConditionError(error: unknown): boolean {
 const TRANSACTION_ACQUISITION_MESSAGE = /Unable to start a transaction in the given time/i;
 
 /**
- * True only for the P2028 raised when Prisma could not borrow a connection to
- * BEGIN a transaction within `maxWait` ("Unable to start a transaction in the
- * given time"). No SQL ran, so there is nothing to undo and retrying it is
- * safe. Deliberately narrower than {@link isPrismaRetriableError}: it excludes
- * P2024 (pool exhausted — an immediate retry makes it worse) and P2028s raised
- * from inside a running transaction.
+ * True for a connection-acquisition failure raised BEFORE any SQL ran, so there
+ * is nothing to undo and retrying it is safe. Two shapes:
+ *   - the default engine's P2028 "Unable to start a transaction in the given time"
+ *     (couldn't borrow a connection within `maxWait`), and
+ *   - the pg driver adapter's "timeout exceeded when trying to connect" (the pg
+ *     Pool couldn't hand out a connection within `connectionTimeoutMillis`).
+ * Deliberately narrower than {@link isPrismaRetriableError}: it excludes P2024
+ * (pool exhausted) and P2028s raised from inside a running transaction. Callers
+ * additionally gate retries on the transaction callback not having entered, so a
+ * same-shaped error from a nested transaction never re-runs a side-effectful body.
  */
 export function isTransactionAcquisitionError(error: unknown): boolean {
-  if (!isPrismaKnownError(error) || error.code !== "P2028") {
-    return false;
+  const message = (error as { message?: unknown })?.message;
+
+  if (isPrismaKnownError(error) && error.code === "P2028") {
+    return typeof message === "string" && TRANSACTION_ACQUISITION_MESSAGE.test(message);
   }
 
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" && TRANSACTION_ACQUISITION_MESSAGE.test(message);
+  return typeof message === "string" && ADAPTER_ACQUIRE_TIMEOUT.test(message);
 }
 
 /** Retry tuning for transaction-start (P2028-at-acquisition) failures. */
@@ -161,7 +166,8 @@ function defaultSleep(ms: number): Promise<void> {
  */
 export async function withTransactionStartRetry<R>(
   run: () => Promise<R>,
-  config?: TransactionStartRetryConfig
+  config?: TransactionStartRetryConfig,
+  canRetry?: () => boolean
 ): Promise<R> {
   if (!config || !config.options.enabled || config.options.maxAttempts <= 1) {
     return run();
@@ -177,7 +183,12 @@ export async function withTransactionStartRetry<R>(
     try {
       return await run();
     } catch (error) {
-      if (attempt >= maxAttempts || !isTransactionAcquisitionError(error) || !budget.tryConsume()) {
+      if (
+        attempt >= maxAttempts ||
+        (canRetry !== undefined && !canRetry()) ||
+        !isTransactionAcquisitionError(error) ||
+        !budget.tryConsume()
+      ) {
         throw error;
       }
       const low = Math.max(0, Math.min(backoffMinMs, backoffMaxMs));
@@ -233,10 +244,16 @@ export async function $transaction<R>(
   const startRetryActive =
     !!startRetry && startRetry.options.enabled && startRetry.options.maxAttempts > 1;
 
+  let entered = false;
   try {
     return await withTransactionStartRetry(
-      () => (prisma as PrismaClient).$transaction(fn, options),
-      startRetry
+      () =>
+        (prisma as PrismaClient).$transaction((tx) => {
+          entered = true;
+          return fn(tx as PrismaTransactionClient);
+        }, options),
+      startRetry,
+      () => !entered
     );
   } catch (error) {
     if (

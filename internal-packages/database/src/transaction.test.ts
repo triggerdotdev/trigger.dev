@@ -66,6 +66,15 @@ describe("isTransactionAcquisitionError", () => {
     expect(isTransactionAcquisitionError(inTxP2028())).toBe(false);
   });
 
+  it("is true for the driver-adapter acquire timeout (pre-BEGIN, no code)", () => {
+    expect(
+      isTransactionAcquisitionError({ message: "Timeout exceeded when trying to connect" })
+    ).toBe(true);
+    expect(
+      isTransactionAcquisitionError(new Error("timeout exceeded when trying to connect"))
+    ).toBe(true);
+  });
+
   it("is false for non-Prisma errors", () => {
     expect(isTransactionAcquisitionError(new Error("boom"))).toBe(false);
     expect(isTransactionAcquisitionError(undefined)).toBe(false);
@@ -147,6 +156,18 @@ describe("withTransactionStartRetry", () => {
     ).rejects.toMatchObject({ code: "P2028" });
     expect(c.calls).toBe(1);
     expect(budgetChecks.calls).toBe(1);
+  });
+
+  it("does not retry when canRetry() is false (callback already entered)", async () => {
+    const c = counter();
+    const run = async () => {
+      c.tick();
+      throw acquisitionError();
+    };
+    await expect(
+      withTransactionStartRetry(run, config({ maxAttempts: 5 }), () => false)
+    ).rejects.toMatchObject({ code: "P2028" });
+    expect(c.calls).toBe(1);
   });
 
   it("sleeps a jittered delay within [min, max]", async () => {
@@ -290,6 +311,27 @@ describe("$transaction startRetry wiring", () => {
       )
     ).rejects.toMatchObject({ code: "P2034" });
     expect(fake.calls).toBe(3);
+  });
+
+  it("does not retry an acquisition-shaped error thrown after the callback entered", async () => {
+    let calls = 0;
+    const prisma = {
+      $transaction: (fn: (tx: unknown) => Promise<unknown>) => {
+        calls += 1;
+        return fn({}).then(() => {
+          throw acquisitionError();
+        });
+      },
+    } as any;
+    await expect(
+      $transaction(
+        prisma,
+        async () => "x",
+        () => {},
+        { startRetry: config() }
+      )
+    ).rejects.toMatchObject({ code: "P2028" });
+    expect(calls).toBe(1);
   });
 
   it("UNLIMITED_RETRY_BUDGET always consumes", () => {
