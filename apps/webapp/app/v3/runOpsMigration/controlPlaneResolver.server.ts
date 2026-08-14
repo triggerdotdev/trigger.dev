@@ -59,11 +59,12 @@ export type ControlPlaneResolverOptions = {
   cache: ControlPlaneCache;
   splitEnabled: () => boolean;
   /**
-   * When true (default), the dequeue worker-version resolve reads the matched task/queue fresh on
-   * every call (no cache). When false, it falls back to the legacy env-keyed cache over the whole
-   * task/queue set — a kill-switch, retained only so the read shape can be reverted via config.
+   * When true (the default when omitted), the dequeue worker-version resolve reads the matched
+   * task/queue fresh on every call (no cache). When false, it falls back to the legacy env-keyed
+   * cache over the whole task/queue set — a kill-switch, retained only so the read shape can be
+   * reverted via config.
    */
-  workerVersionFreshReadEnabled: () => boolean;
+  workerVersionFreshReadEnabled?: () => boolean;
 };
 
 type CpClient = PrismaClient | PrismaReplicaClient;
@@ -111,7 +112,7 @@ export class ControlPlaneResolver {
     this.controlPlaneReplica = opts.controlPlaneReplica;
     this.cache = opts.cache;
     this.splitEnabled = opts.splitEnabled;
-    this.workerVersionFreshReadEnabled = opts.workerVersionFreshReadEnabled;
+    this.workerVersionFreshReadEnabled = opts.workerVersionFreshReadEnabled ?? (() => true);
   }
 
   async resolveEnv(environmentId: string): Promise<ResolvedEnv | null> {
