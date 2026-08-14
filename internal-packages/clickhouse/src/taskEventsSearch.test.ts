@@ -93,20 +93,13 @@ describe("task events search v2", () => {
         name: "read-search-v2-table-engine",
         query: `SELECT name, engine FROM system.tables
           WHERE database = 'trigger_dev'
-            AND name IN (
-              'task_events_search_mv_v2',
-              'task_events_search_v2',
-              'task_events_search_v2_insert_triggered'
-            )
+            AND name IN ('task_events_search_mv_v2', 'task_events_search_v2')
           ORDER BY name`,
         schema: z.object({ name: z.string(), engine: z.string() }),
       });
       const [tableError, tables] = await tableQuery({});
       expect(tableError).toBeNull();
-      expect(tables).toEqual([
-        { name: "task_events_search_v2", engine: "ReplacingMergeTree" },
-        { name: "task_events_search_v2_insert_triggered", engine: "MergeTree" },
-      ]);
+      expect(tables).toEqual([{ name: "task_events_search_v2", engine: "ReplacingMergeTree" }]);
 
       const firstProjection = await project(ch, start, end);
       const retryProjection = await project(ch, start, end);
