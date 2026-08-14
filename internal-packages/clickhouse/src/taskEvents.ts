@@ -299,6 +299,7 @@ export const LogsSearchListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   triggered_timestamp: z.string(),
+  projection_fingerprint_string: z.string().optional(),
 });
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
@@ -335,17 +336,21 @@ export function getLogsSearchListQueryBuilder(
       "status",
       "duration",
       "triggered_timestamp",
+      ...(version === "v2"
+        ? [
+            {
+              name: "projection_fingerprint_string",
+              expression: "toString(projection_fingerprint)",
+            },
+          ]
+        : []),
     ],
     settings: {
       use_query_condition_cache: 1,
     },
   });
 
-  return (options?: Parameters<typeof createBuilder>[0]) => {
-    const builder = createBuilder(options);
-    if (version === "v2") builder.limitBy(1, "projection_fingerprint");
-    return builder;
-  };
+  return createBuilder;
 }
 
 // Single log detail query builder (for side panel)

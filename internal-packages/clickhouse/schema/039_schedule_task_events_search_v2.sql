@@ -27,11 +27,8 @@ CREATE TABLE trigger_dev.task_events_search_v2_projector
   status LowCardinality(String) CODEC(ZSTD(1)),
   duration UInt64 CODEC(ZSTD(1)),
   parent_span_id String CODEC(ZSTD(1)),
-  projection_fingerprint FixedString(16) DEFAULT sipHash128(
-    trace_id,
-    span_id,
-    run_id,
-    start_time
+  projection_fingerprint UInt128 DEFAULT reinterpretAsUInt128(
+    sipHash128(trace_id, span_id, run_id, start_time)
   ),
 
   INDEX idx_run_id run_id TYPE bloom_filter(0.001) GRANULARITY 1,

@@ -44,12 +44,12 @@ const projectedColumns = `
   duration,
   parent_span_id`;
 
-const projectionFingerprint = (alias: string) => `sipHash128(
+const projectionFingerprint = (alias: string) => `reinterpretAsUInt128(sipHash128(
   ${alias}.trace_id,
   ${alias}.span_id,
   ${alias}.run_id,
   ${alias}.start_time
-)`;
+))`;
 
 const projectionSql = `
 INSERT INTO trigger_dev.task_events_search_v2

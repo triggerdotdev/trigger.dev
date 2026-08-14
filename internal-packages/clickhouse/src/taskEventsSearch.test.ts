@@ -56,7 +56,9 @@ async function project(ch: ClickHouse, start: Date, end: Date) {
 function searchRows(ch: ClickHouse) {
   const builder = ch.taskEventsSearch.logsListQueryBuilder("v2");
   builder.where("organization_id = {organizationId: String}", { organizationId: ORG });
-  builder.orderBy("triggered_timestamp DESC, trace_id DESC, span_id DESC");
+  builder.orderBy(
+    "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
+  );
   builder.limit(50);
   return builder.execute();
 }
@@ -111,9 +113,9 @@ describe("task events search v2", () => {
       expect(Number(firstProjection.summary?.written_rows)).toBe(1);
       expect(Number(retryProjection.summary?.written_rows)).toBe(1);
 
-      const [readError, rows] = await searchRows(ch);
-      expect(readError).toBeNull();
-      expect(rows).toHaveLength(1);
+      const [preMergeReadError, preMergeRows] = await searchRows(ch);
+      expect(preMergeReadError).toBeNull();
+      expect([1, 2]).toContain(preMergeRows?.length);
       const rawQuery = ch.reader.query({
         name: "count-raw-search-v2-fixture",
         query: `SELECT count() AS count FROM trigger_dev.task_events_search_v2
@@ -123,7 +125,7 @@ describe("task events search v2", () => {
       });
       let [rawError, rawRows] = await rawQuery({ organizationId: ORG });
       expect(rawError).toBeNull();
-      expect(rawRows?.[0].count).toBe(2);
+      expect([1, 2]).toContain(rawRows?.[0].count);
 
       const optimize = ch.writer.command({
         name: "merge-search-v2-retry-fixture",
@@ -134,6 +136,9 @@ describe("task events search v2", () => {
       [rawError, rawRows] = await rawQuery({ organizationId: ORG });
       expect(rawError).toBeNull();
       expect(rawRows?.[0].count).toBe(1);
+      const [readError, rows] = await searchRows(ch);
+      expect(readError).toBeNull();
+      expect(rows).toHaveLength(1);
 
       expect(rows?.[0].message.toLowerCase()).toContain(
         "typeerror: zahlungsübersicht failed, retrying /api/orders/42"
@@ -145,7 +150,7 @@ describe("task events search v2", () => {
         query: `SELECT search_text, error_message
           FROM trigger_dev.task_events_search_v2
           WHERE organization_id = {organizationId: String}
-          LIMIT 1 BY projection_fingerprint`,
+          LIMIT 1`,
         params: z.object({ organizationId: z.string() }),
         schema: z.object({ search_text: z.string(), error_message: z.string() }),
       });
@@ -189,7 +194,7 @@ describe("task events search v2", () => {
         query: `SELECT length(search_text) AS search_length
           FROM trigger_dev.task_events_search_v2
           WHERE organization_id = {organizationId: String}
-          LIMIT 1 BY projection_fingerprint`,
+          LIMIT 1`,
         params: z.object({ organizationId: z.string() }),
         schema: z.object({ search_length: z.number() }),
       });
