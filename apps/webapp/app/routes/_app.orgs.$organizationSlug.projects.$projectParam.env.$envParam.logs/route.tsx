@@ -45,7 +45,7 @@ import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 import { hasLogsPageAccess } from "~/services/logsAccess.server";
-import { MIN_LOGS_SEARCH_LENGTH } from "~/utils/logSearch";
+import { MIN_LOGS_SEARCH_LENGTH, normalizeLogsSearchTerm } from "~/utils/logSearch";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
@@ -235,7 +235,10 @@ function FiltersBar({
       <div className="flex flex-row flex-wrap items-center gap-1.5">
         {list ? (
           <>
-            <SearchInput minLength={MIN_LOGS_SEARCH_LENGTH} />
+            <SearchInput
+              minLength={MIN_LOGS_SEARCH_LENGTH}
+              normalizeForValidation={normalizeLogsSearchTerm}
+            />
             <LogsTaskFilter possibleTasks={list.possibleTasks} />
             <LogsRunIdFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
@@ -258,7 +261,10 @@ function FiltersBar({
             <LogsRunIdFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <LogsLevelFilter />
-            <SearchInput minLength={MIN_LOGS_SEARCH_LENGTH} />
+            <SearchInput
+              minLength={MIN_LOGS_SEARCH_LENGTH}
+              normalizeForValidation={normalizeLogsSearchTerm}
+            />
             {hasFilters && (
               <Form className="-ml-1 h-6">
                 <Button

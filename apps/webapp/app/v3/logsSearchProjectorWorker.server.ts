@@ -2,6 +2,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { getLogsSearchProjector } from "~/services/logsSearchProjectorInstance.server";
 import { singleton } from "~/utils/singleton";
 
 function initializeWorker() {
@@ -36,8 +37,6 @@ function initializeWorker() {
     logger: new Logger("LogsSearchProjectorWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
       "logsSearch.projectV2": async () => {
-        const { getLogsSearchProjector } =
-          await import("~/services/logsSearchProjectorInstance.server");
         await getLogsSearchProjector().processTick();
       },
     },

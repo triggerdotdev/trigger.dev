@@ -19,7 +19,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async find(): Promise<LogsSearchProjectorState | null> {
-    return prisma.logsSearchProjectorState.findUnique({
+    return prisma.logsSearchProjectorState.findFirst({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
     });
   }

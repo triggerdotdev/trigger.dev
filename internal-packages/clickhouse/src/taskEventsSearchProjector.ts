@@ -62,9 +62,17 @@ FROM
     environment_id,
     organization_id,
     project_id,
-    least(
-      fromUnixTimestamp64Nano(toUnixTimestamp64Nano(start_time) + toInt64(duration)),
-      {windowEnd: DateTime64(3, 'UTC')} + INTERVAL 5 MINUTE
+    fromUnixTimestamp64Nano(
+      toInt64(
+        least(
+          toInt128(toUnixTimestamp64Nano(start_time)) + toInt128(duration),
+          toInt128(
+            toUnixTimestamp64Nano(
+              {windowEnd: DateTime64(3, 'UTC')} + INTERVAL 5 MINUTE
+            )
+          )
+        )
+      )
     ) AS triggered_timestamp,
     trace_id,
     span_id,
@@ -73,21 +81,29 @@ FROM
     start_time,
     inserted_at,
     message,
-    substring(JSONExtractString(attributes_text, 'error', 'message'), 1, 2048) AS error_message,
-    replaceRegexpAll(
-      lowerUTF8(
-        substring(
-          concat(
-            substring(message, 1, 2048),
-            ' ',
-            replaceAll(substring(attributes_text, 1, 6144), '\\\\/', '/')
+    toValidUTF8(
+      substring(JSONExtractString(attributes_text, 'error', 'message'), 1, 2045)
+    ) AS error_message,
+    toValidUTF8(
+      substring(
+        replaceRegexpAll(
+          lowerUTF8(
+            concat(
+              toValidUTF8(substring(message, 1, 2045)),
+              ' ',
+              replaceAll(
+                toValidUTF8(substring(attributes_text, 1, 6140)),
+                '\\\\/',
+                '/'
+              )
+            )
           ),
-          1,
-          8192
-        )
-      ),
-      '[^\\\\p{L}\\\\p{N}_./:@+-]+',
-      ' '
+          '[^\\\\p{L}\\\\p{N}_./:@+-]+',
+          ' '
+        ),
+        1,
+        8189
+      )
     ) AS search_text,
     kind,
     status,

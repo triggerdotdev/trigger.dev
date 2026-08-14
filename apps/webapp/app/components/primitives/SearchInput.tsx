@@ -15,6 +15,8 @@ export type SearchInputProps = {
   resetParams?: string[];
   autoFocus?: boolean;
   minLength?: number;
+  /** Normalize the submitted value before applying minLength validation. */
+  normalizeForValidation?: (value: string) => string;
   /**
    * Controlled value. When provided alongside `onValueChange`, the input
    * skips URL params entirely and acts as a controlled component — useful
@@ -36,6 +38,7 @@ export function SearchInput({
   resetParams = ["cursor", "direction"],
   autoFocus,
   minLength,
+  normalizeForValidation,
   value: controlledValue,
   onValueChange,
 }: SearchInputProps) {
@@ -72,6 +75,7 @@ export function SearchInput({
   }, [isControlled, controlledValue, value, isFocused, paramName]);
 
   const updateText = (next: string) => {
+    inputRef.current?.setCustomValidity("");
     setText(next);
     if (isControlled) {
       onValueChange?.(next);
@@ -80,7 +84,12 @@ export function SearchInput({
 
   const handleSubmit = () => {
     const trimmedText = text.trim();
-    if (minLength !== undefined && trimmedText.length > 0 && [...trimmedText].length < minLength) {
+    const validationText = normalizeForValidation?.(trimmedText) ?? trimmedText;
+    if (
+      minLength !== undefined &&
+      trimmedText.length > 0 &&
+      [...validationText].length < minLength
+    ) {
       inputRef.current?.setCustomValidity(`Enter at least ${minLength} characters`);
       inputRef.current?.reportValidity();
       return;

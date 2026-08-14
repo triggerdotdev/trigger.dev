@@ -168,11 +168,17 @@ describe("task events search v2", () => {
       const first = new Date(boundary.getTime() - 60_000);
       const second = boundary;
       const end = new Date(boundary.getTime() + 60_000);
+      const splitUtf8Boundary = `${"x".repeat(2044)}€tail`;
       const [insertError] = await ch.taskEventsV2.insert([
         event(first, {
           span_id: "span_first",
-          duration: "3153600000000000000",
-          attributes: { prefix: "kept-token", payload: "x".repeat(100_000) },
+          duration: "18446744073709551615",
+          message: splitUtf8Boundary,
+          attributes: {
+            prefix: "kept-token",
+            payload: "x".repeat(100_000),
+            error: { message: splitUtf8Boundary },
+          },
         }),
         event(second, { span_id: "span_second" }),
       ]);
@@ -184,18 +190,30 @@ describe("task events search v2", () => {
       expect(rows).toHaveLength(1);
       const lengthQuery = ch.reader.query({
         name: "read-search-v2-length",
-        query: `SELECT length(search_text) AS search_length
+        query: `SELECT
+            length(search_text) AS search_length,
+            length(error_message) AS error_message_length,
+            isValidUTF8(search_text) AS search_text_is_valid_utf8,
+            isValidUTF8(error_message) AS error_message_is_valid_utf8
           FROM trigger_dev.task_events_search_v2
           WHERE organization_id = {organizationId: String}
           LIMIT 1`,
         params: z.object({ organizationId: z.string() }),
-        schema: z.object({ search_length: z.number() }),
+        schema: z.object({
+          search_length: z.number(),
+          error_message_length: z.number(),
+          search_text_is_valid_utf8: z.number(),
+          error_message_is_valid_utf8: z.number(),
+        }),
       });
       const [lengthError, lengths] = await lengthQuery({ organizationId: ORG });
       expect(lengthError).toBeNull();
       expect(lengths?.[0].search_length).toBeLessThanOrEqual(8192);
+      expect(lengths?.[0].error_message_length).toBeLessThanOrEqual(2048);
+      expect(lengths?.[0].search_text_is_valid_utf8).toBe(1);
+      expect(lengths?.[0].error_message_is_valid_utf8).toBe(1);
       expect(rows?.[0].triggered_timestamp).toBeDefined();
-      expect(new Date(`${rows?.[0].triggered_timestamp}Z`).getTime()).toBeLessThanOrEqual(
+      expect(new Date(`${rows?.[0].triggered_timestamp}Z`).getTime()).toBe(
         boundary.getTime() + 5 * 60_000
       );
 
