@@ -3,12 +3,10 @@ import {
   PrismaClient,
   boundedIn,
   $transaction as transac,
-  TokenBucketRetryBudget,
   type PrismaClientOrTransaction,
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
-  type TransactionStartRetryConfig,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
@@ -34,6 +32,12 @@ import {
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import {
+  controlPlaneTransactionResilience,
+  runOpsLegacyTransactionResilience,
+  runOpsTransactionResilience,
+  type TransactionResilienceConfig,
+} from "./v3/transactionResilience.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -60,74 +64,6 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
     name: error.name,
   });
 }
-
-/**
- * Resolved transaction-resilience config for one writer pool. Each pool gets its own
- * {@link TransactionStartRetryConfig} (with its OWN token bucket, so a storm on one pool cannot
- * drain another's retry budget) plus the `maxWait` applied when that pool opens a transaction.
- * Env is read here at the app boundary (IoC); the library never reads env.
- */
-export type TransactionResilienceConfig = {
-  maxWait: number;
-  startRetry: TransactionStartRetryConfig;
-};
-
-function resolveTransactionResilience(
-  pool: "control-plane" | "run-ops" | "run-ops-legacy",
-  overrides: {
-    maxWaitMs?: number;
-    enabled?: boolean;
-    maxAttempts?: number;
-    backoffMinMs?: number;
-    backoffMaxMs?: number;
-    budgetPerSec?: number;
-    budgetBurst?: number;
-  }
-): TransactionResilienceConfig {
-  const budgetPerSec =
-    overrides.budgetPerSec ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC;
-  const budgetBurst = overrides.budgetBurst ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST;
-  return {
-    maxWait: Math.max(0, overrides.maxWaitMs ?? env.DATABASE_TRANSACTION_MAX_WAIT_MS),
-    startRetry: {
-      options: {
-        enabled: overrides.enabled ?? env.DATABASE_TRANSACTION_START_RETRY_ENABLED,
-        maxAttempts: overrides.maxAttempts ?? env.DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
-        backoffMinMs: overrides.backoffMinMs ?? env.DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
-        backoffMaxMs: overrides.backoffMaxMs ?? env.DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
-      },
-      budget: new TokenBucketRetryBudget({ ratePerSec: budgetPerSec, burst: budgetBurst }),
-      onRetry: ({ attempt, delayMs }) =>
-        logger.warn("retrying transaction start after acquisition failure", {
-          pool,
-          attempt,
-          delayMs,
-        }),
-    },
-  };
-}
-
-export const controlPlaneTransactionResilience = resolveTransactionResilience("control-plane", {});
-
-export const runOpsTransactionResilience = resolveTransactionResilience("run-ops", {
-  maxWaitMs: env.RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS,
-  enabled: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED,
-  maxAttempts: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
-  backoffMinMs: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
-  backoffMaxMs: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
-  budgetPerSec: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
-  budgetBurst: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
-});
-
-export const runOpsLegacyTransactionResilience = resolveTransactionResilience("run-ops-legacy", {
-  maxWaitMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS,
-  enabled: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_ENABLED,
-  maxAttempts: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
-  backoffMinMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
-  backoffMaxMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
-  budgetPerSec: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
-  budgetBurst: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
-});
 
 const transactionResilienceByClient = new WeakMap<object, TransactionResilienceConfig>();
 

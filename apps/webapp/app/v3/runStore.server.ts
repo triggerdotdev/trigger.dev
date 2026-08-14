@@ -4,18 +4,20 @@ import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   $replica,
-  controlPlaneTransactionResilience,
   prisma,
   runOpsLegacyPrisma,
   runOpsLegacyReplica,
-  runOpsLegacyTransactionResilience,
   runOpsNewPrismaClient,
   runOpsNewReplicaClient,
-  runOpsTransactionResilience,
-  type TransactionResilienceConfig,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import {
+  controlPlaneTransactionResilience,
+  runOpsLegacyTransactionResilience,
+  runOpsTransactionResilience,
+  type TransactionResilienceConfig,
+} from "./transactionResilience.server";
 
 type BuildRunStoreDeps = {
   /** Boot constant: true only when both run-ops DBs are configured and the split flag is on. */
