@@ -233,6 +233,7 @@
     "@ai-sdk/provider-utils": "^1.0.22",
     "@arethetypeswrong/cli": "^0.18.5",
     "@epic-web/test-server": "^0.1.0",
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",
     "@types/lodash.get": "^4.4.9",

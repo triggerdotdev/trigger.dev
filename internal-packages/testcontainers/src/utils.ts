@@ -4,7 +4,6 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { RedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
 import { isDebug } from "std-env";
@@ -15,6 +14,14 @@ import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
+
+async function tryCatch<T, E = Error>(promise: Promise<T>): Promise<[E, null] | [null, T]> {
+  try {
+    return [null, await promise];
+  } catch (error) {
+    return [error as E, null];
+  }
+}
 
 /** Returns the container's connection URI with the database path swapped to `database`. */
 export function postgresUriWithDatabase(uri: string, database: string): string {

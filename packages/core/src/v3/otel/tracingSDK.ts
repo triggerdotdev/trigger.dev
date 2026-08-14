@@ -100,6 +100,7 @@ export class TracingSDK {
   private readonly _spanExporter: SpanExporter;
   private readonly _traceProvider: NodeTracerProvider;
   private readonly _meterProvider: MeterProvider;
+  private readonly _metricReaders: MetricReader[];
 
   public readonly getLogger: LoggerProvider["getLogger"];
   public readonly getTracer: TracerProvider["getTracer"];
@@ -318,6 +319,7 @@ export class TracingSDK {
     });
 
     this._meterProvider = meterProvider;
+    this._metricReaders = metricReaders;
     metrics.setGlobalMeterProvider(meterProvider);
 
     if (config.hostMetrics) {
@@ -348,15 +350,44 @@ export class TracingSDK {
     await Promise.all([
       this._traceProvider.forceFlush(),
       this._logProvider.forceFlush(),
-      this._meterProvider.forceFlush(),
+      this._flushMetricReadersSerially(),
     ]);
+  }
+
+  private async _flushMetricReadersSerially() {
+    await this._eachMetricReaderSerially("flush", (reader) => reader.forceFlush());
+  }
+
+  private async _shutdownMetricReadersSerially() {
+    await this._eachMetricReaderSerially("shut down", (reader) => reader.shutdown());
+    await this._meterProvider.shutdown();
+  }
+
+  private async _eachMetricReaderSerially(
+    action: string,
+    run: (reader: MetricReader) => Promise<void>
+  ) {
+    const errors: unknown[] = [];
+
+    for (const reader of this._metricReaders) {
+      try {
+        await run(reader);
+      } catch (error) {
+        console.error(`Failed to ${action} metric reader ${reader.constructor.name}`, error);
+        errors.push(error);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw errors[0];
+    }
   }
 
   public async shutdown() {
     await Promise.all([
       this._traceProvider.shutdown(),
       this._logProvider.shutdown(),
-      this._meterProvider.shutdown(),
+      this._shutdownMetricReadersSerially(),
     ]);
   }
 }

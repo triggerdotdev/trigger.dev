@@ -1474,9 +1474,6 @@ importers:
       '@testcontainers/redis':
         specifier: ^11.14.0
         version: 11.14.0
-      '@trigger.dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       std-env:
         specifier: ^3.9.0
         version: 3.9.0
@@ -1940,6 +1937,9 @@ importers:
       '@epic-web/test-server':
         specifier: ^0.1.0
         version: 0.1.0(bufferutil@4.0.9)
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
       '@trigger.dev/database':
         specifier: workspace:*
         version: link:../../internal-packages/database
