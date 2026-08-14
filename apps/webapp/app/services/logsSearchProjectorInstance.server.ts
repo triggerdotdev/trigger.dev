@@ -1,3 +1,4 @@
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getLogsSearchProjectorClickhouseClient } from "~/services/clickhouse/clickhouseFactory.server";
 import { LogsSearchProjector } from "~/services/logsSearchProjector.server";
@@ -28,7 +29,7 @@ function initializeLogsSearchProjector() {
       maxBackfillRangeMs: env.LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_RANGE_DAYS * 24 * 60 * 60 * 1000,
       maxBackfillAgeMs: env.LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_AGE_DAYS * 24 * 60 * 60 * 1000,
     },
-    new PrismaLogsSearchProjectorStateStore(),
+    new PrismaLogsSearchProjectorStateStore(prisma),
     async (window) => {
       const [error, result] = await clickhouse.taskEventsSearch.projectV2Window(window, limits);
       if (error) throw error;

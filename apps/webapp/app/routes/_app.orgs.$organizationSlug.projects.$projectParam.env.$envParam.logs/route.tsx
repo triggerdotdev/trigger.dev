@@ -50,6 +50,11 @@ import { MIN_LOGS_SEARCH_LENGTH, normalizeLogsSearchTerm } from "~/utils/logSear
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
+function formatSearchPeriod(period: string): string {
+  const days = Number(period.replace("d", ""));
+  return days === 1 ? "day" : `${days} days`;
+}
+
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
   if (levelParams.length === 0) return undefined;
@@ -448,7 +453,7 @@ function LogsList({
           className="m-2 mb-0"
           cta={
             <Button variant="tertiary/small" onClick={expandSearch}>
-              Search last {list.searchExpansion.nextPeriod.replace("d", " days")}
+              Search last {formatSearchPeriod(list.searchExpansion.nextPeriod)}
             </Button>
           }
         >

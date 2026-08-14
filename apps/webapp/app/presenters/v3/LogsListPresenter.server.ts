@@ -18,6 +18,7 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   escapeClickHouseLike,
   hasMinimumLogsSearchLength,
+  logsSearchExpansionPeriod,
   LOGS_SEARCH_RETRY_OVERFETCH_FACTOR,
   MIN_LOGS_SEARCH_LENGTH,
   normalizeLogsSearchTerm,
@@ -301,7 +302,7 @@ export class LogsListPresenter extends BasePresenter {
           });
         } else {
           queryBuilder.where(
-            "(lowerUTF8(message) LIKE {searchPattern: String} OR lowerUTF8(attributes_text) LIKE {searchPattern: String})",
+            "(lower(message) LIKE {searchPattern: String} OR lower(attributes_text) LIKE {searchPattern: String})",
             { searchPattern: `%${searchTerm}%` }
           );
         }
@@ -432,6 +433,11 @@ export class LogsListPresenter extends BasePresenter {
       };
     });
 
+    const searchExpansion =
+      searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
+        ? logsSearchExpansionPeriod(effectiveFrom, clampedTo, retentionLimitDays)
+        : undefined;
+
     return {
       logs: transformedLogs,
       pagination: {
@@ -454,10 +460,7 @@ export class LogsListPresenter extends BasePresenter {
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,
       searchTerm: search,
-      searchExpansion:
-        searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
-          ? { nextPeriod: `${Math.min(retentionLimitDays ?? 7, 7)}d` }
-          : undefined,
+      searchExpansion: searchExpansion ? { nextPeriod: searchExpansion } : undefined,
       retention:
         retentionLimitDays !== undefined
           ? {

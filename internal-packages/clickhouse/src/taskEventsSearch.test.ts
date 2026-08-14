@@ -151,10 +151,10 @@ describe("task events search v2", () => {
       expect(searchDataError).toBeNull();
       expect(searchData).toHaveLength(1);
       expect(searchData?.[0].search_text).toContain(
-        "typeerror: zahlungsübersicht failed retrying /api/orders/42"
+        "typeerror:zahlungsübersicht failed retrying /api/orders/42"
       );
-      expect(searchData?.[0].search_text).toContain("status_code :500");
-      expect(searchData?.[0].search_text).toContain("retryable :true");
+      expect(searchData?.[0].search_text).toContain("status_code:500");
+      expect(searchData?.[0].search_text).toContain("retryable:true");
 
       await ch.close();
     }
@@ -221,6 +221,33 @@ describe("task events search v2", () => {
       [readError, rows] = await searchRows(ch);
       expect(readError).toBeNull();
       expect(rows).toHaveLength(2);
+
+      const cursor = rows?.[0];
+      expect(cursor?.projection_fingerprint_string).toEqual(expect.any(String));
+      const nextPageBuilder = ch.taskEventsSearch.logsListQueryBuilder("v2");
+      nextPageBuilder.where("organization_id = {organizationId: String}", {
+        organizationId: ORG,
+      });
+      nextPageBuilder.where(
+        `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
+          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`,
+        {
+          cursorTriggeredTimestamp: cursor!.triggered_timestamp,
+          cursorTraceId: cursor!.trace_id,
+          cursorSpanId: cursor!.span_id,
+          cursorProjectionFingerprint: cursor!.projection_fingerprint_string!,
+        }
+      );
+      nextPageBuilder.orderBy(
+        "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
+      );
+      nextPageBuilder.limit(50);
+      const [nextPageError, nextPage] = await nextPageBuilder.execute();
+      expect(nextPageError).toBeNull();
+      expect(nextPage).toHaveLength(1);
+      expect(nextPage?.[0].span_id).not.toBe(cursor?.span_id);
 
       await ch.close();
     }

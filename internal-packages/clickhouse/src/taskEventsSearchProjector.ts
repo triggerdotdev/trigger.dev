@@ -87,19 +87,23 @@ FROM
     toValidUTF8(
       substring(
         replaceRegexpAll(
-          lowerUTF8(
-            concat(
-              toValidUTF8(substring(message, 1, 2045)),
-              ' ',
-              replaceAll(
-                toValidUTF8(substring(attributes_text, 1, 6140)),
-                '\\\\/',
-                '/'
+          replaceRegexpAll(
+            lowerUTF8(
+              concat(
+                toValidUTF8(substring(message, 1, 2045)),
+                ' ',
+                replaceAll(
+                  toValidUTF8(substring(attributes_text, 1, 6140)),
+                  '\\\\/',
+                  '/'
+                )
               )
-            )
+            ),
+            '[^\\\\p{L}\\\\p{N}_./:@+-]+',
+            ' '
           ),
-          '[^\\\\p{L}\\\\p{N}_./:@+-]+',
-          ' '
+          '\\\\s*:\\\\s*',
+          ':'
         ),
         1,
         8189

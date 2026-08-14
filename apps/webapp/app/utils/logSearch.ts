@@ -1,5 +1,23 @@
 export const MIN_LOGS_SEARCH_LENGTH = 3;
 export const LOGS_SEARCH_RETRY_OVERFETCH_FACTOR = 4;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RANGE_COMPARISON_TOLERANCE_MS = 1000;
+
+export function logsSearchExpansionPeriod(
+  from: Date | undefined,
+  to: Date,
+  retentionLimitDays: number | undefined
+): string | undefined {
+  if (!from) return undefined;
+
+  const candidateDays = Math.min(retentionLimitDays ?? 7, 7);
+  const currentRangeMs = Math.max(0, to.getTime() - from.getTime());
+  if (candidateDays * DAY_MS <= currentRangeMs + RANGE_COMPARISON_TOLERANCE_MS) {
+    return undefined;
+  }
+
+  return `${candidateDays}d`;
+}
 
 type ProjectedLogIdentity = {
   projection_fingerprint_string?: string;
@@ -38,10 +56,11 @@ export function escapeClickHouseLike(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-// Must match the normalization in ClickHouse migration 038.
+// Must match the scheduled ClickHouse projector normalization.
 export function normalizeLogsSearchTerm(value: string): string {
   return value
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}_./:@+-]+/gu, " ")
+    .replace(/\s*:\s*/g, ":")
     .trim();
 }

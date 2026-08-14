@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   escapeClickHouseLike,
   hasMinimumLogsSearchLength,
+  logsSearchExpansionPeriod,
   normalizeLogsSearchTerm,
   prepareLogsSearchPage,
 } from "./logSearch";
@@ -10,7 +11,9 @@ describe("log search normalization", () => {
   it("normalizes punctuation while preserving unicode, paths, and ids", () => {
     expect(
       normalizeLogsSearchTerm("TypeError: Zahlungsübersicht failed, retrying (/api/orders/42)")
-    ).toBe("typeerror: zahlungsübersicht failed retrying /api/orders/42");
+    ).toBe("typeerror:zahlungsübersicht failed retrying /api/orders/42");
+    expect(normalizeLogsSearchTerm('"status_code": 500')).toBe("status_code:500");
+    expect(normalizeLogsSearchTerm("status_code:500")).toBe("status_code:500");
   });
 
   it("escapes LIKE wildcards without escaping path separators", () => {
@@ -22,6 +25,14 @@ describe("log search normalization", () => {
     expect(hasMinimumLogsSearchLength("  ab  ")).toBe(false);
     expect(hasMinimumLogsSearchLength("abc")).toBe(true);
     expect(hasMinimumLogsSearchLength("日本語")).toBe(true);
+  });
+
+  it("only offers a strictly wider retained search range", () => {
+    const to = new Date("2026-08-14T12:00:00.000Z");
+
+    expect(logsSearchExpansionPeriod(new Date("2026-08-14T11:00:00.000Z"), to, 1)).toBe("1d");
+    expect(logsSearchExpansionPeriod(new Date("2026-08-13T12:00:00.000Z"), to, 1)).toBeUndefined();
+    expect(logsSearchExpansionPeriod(new Date("2026-08-13T12:00:00.000Z"), to, 7)).toBe("7d");
   });
 
   it("removes projector retry copies after bounded overfetch", () => {

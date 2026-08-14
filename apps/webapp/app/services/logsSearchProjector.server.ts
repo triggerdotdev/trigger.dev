@@ -205,7 +205,9 @@ export class LogsSearchProjector {
   }
 
   async pause(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.find())) return uninitializedProjectorStatus();
+    if (!(await this.stateStore.find())) {
+      throw new LogsSearchProjectorConflictError("Logs search projector is not initialized");
+    }
     await this.stateStore.pause();
     return this.readStatus(false);
   }

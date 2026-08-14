@@ -1,13 +1,17 @@
-import { prisma } from "~/db.server";
+import type { PrismaClient } from "@trigger.dev/database";
 import {
   LOGS_SEARCH_PROJECTOR_STATE_ID,
   type LogsSearchProjectorState,
   type LogsSearchProjectorStateStore,
 } from "~/services/logsSearchProjector.server";
 
+type LogsSearchProjectorDatabase = Pick<PrismaClient, "logsSearchProjectorState" | "$executeRaw">;
+
 export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorStateStore {
+  constructor(private readonly database: LogsSearchProjectorDatabase) {}
+
   async initialize(boundary: Date): Promise<LogsSearchProjectorState> {
-    return prisma.logsSearchProjectorState.upsert({
+    return this.database.logsSearchProjectorState.upsert({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
       create: {
         id: LOGS_SEARCH_PROJECTOR_STATE_ID,
@@ -19,7 +23,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async find(): Promise<LogsSearchProjectorState | null> {
-    return prisma.logsSearchProjectorState.findFirst({
+    return this.database.logsSearchProjectorState.findFirst({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
     });
   }
@@ -31,7 +35,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async acquireLease(token: string, leaseDurationMs: number): Promise<boolean> {
-    const count = await prisma.$executeRaw`
+    const count = await this.database.$executeRaw`
       UPDATE "LogsSearchProjectorState"
       SET
         "leaseToken" = ${token},
@@ -49,7 +53,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async renewLease(token: string, leaseDurationMs: number): Promise<boolean> {
-    const count = await prisma.$executeRaw`
+    const count = await this.database.$executeRaw`
       UPDATE "LogsSearchProjectorState"
       SET
         "leaseExpiresAt" = CURRENT_TIMESTAMP + (${leaseDurationMs} * INTERVAL '1 millisecond'),
@@ -62,14 +66,14 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async releaseLease(token: string): Promise<void> {
-    await prisma.logsSearchProjectorState.updateMany({
+    await this.database.logsSearchProjectorState.updateMany({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID, leaseToken: token },
       data: { leaseToken: null, leaseExpiresAt: null },
     });
   }
 
   async advanceLive(token: string, expected: Date, next: Date): Promise<boolean> {
-    const result = await prisma.logsSearchProjectorState.updateMany({
+    const result = await this.database.logsSearchProjectorState.updateMany({
       where: {
         id: LOGS_SEARCH_PROJECTOR_STATE_ID,
         paused: false,
@@ -87,7 +91,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
     next: Date,
     expectedTarget: Date
   ): Promise<boolean> {
-    const result = await prisma.logsSearchProjectorState.updateMany({
+    const result = await this.database.logsSearchProjectorState.updateMany({
       where: {
         id: LOGS_SEARCH_PROJECTOR_STATE_ID,
         paused: false,
@@ -104,21 +108,21 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async pause(): Promise<void> {
-    await prisma.logsSearchProjectorState.update({
+    await this.database.logsSearchProjectorState.update({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
       data: { paused: true },
     });
   }
 
   async resume(): Promise<void> {
-    await prisma.logsSearchProjectorState.update({
+    await this.database.logsSearchProjectorState.update({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
       data: { paused: false },
     });
   }
 
   async setBackfillTarget(expectedHistorical: Date, target: Date): Promise<boolean> {
-    const result = await prisma.logsSearchProjectorState.updateMany({
+    const result = await this.database.logsSearchProjectorState.updateMany({
       where: {
         id: LOGS_SEARCH_PROJECTOR_STATE_ID,
         historicalWatermark: expectedHistorical,
@@ -130,7 +134,7 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
   }
 
   async cancelBackfill(): Promise<void> {
-    await prisma.logsSearchProjectorState.update({
+    await this.database.logsSearchProjectorState.update({
       where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
       data: { backfillTarget: null },
     });
