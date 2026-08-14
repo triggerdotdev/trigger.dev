@@ -19,6 +19,10 @@
  * makes a human answer "is the parent ever hard-deleted?" — add the index if yes, regenerate the
  * baseline with a reason if no.
  *
+ * A baseline entry is matched on its key AND its onDelete action AND its ordered fkColumns, so
+ * changing a relation's FK column or flipping Cascade/SetNull re-triggers the guard rather than
+ * silently inheriting the old acceptance.
+ *
  * Modes (mirrors guard:runops-legacy):
  *   tsx ./scripts/fkCascadeIndexGuard.ts             # regenerate the baseline
  *   tsx ./scripts/fkCascadeIndexGuard.ts --check      # CI gate: exit 1 on any un-baselined violation
@@ -67,6 +71,36 @@ type Violation = {
   onDelete: string;
 };
 
+function fingerprint(key: string, onDelete: string, fkColumns: string[]): string {
+  return `${key}::${onDelete}::${fkColumns.join(",")}`;
+}
+
+function stripLineComment(line: string): string {
+  const i = line.indexOf("//");
+  return i === -1 ? line : line.slice(0, i);
+}
+
+function toLogicalLines(body: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let depth = 0;
+  for (const raw of body.split("\n")) {
+    const line = stripLineComment(raw).trim();
+    if (line === "") continue;
+    buf = buf === "" ? line : `${buf} ${line}`;
+    for (const ch of line) {
+      if (ch === "(" || ch === "[") depth++;
+      else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    }
+    if (depth === 0) {
+      out.push(buf);
+      buf = "";
+    }
+  }
+  if (buf !== "") out.push(buf);
+  return out;
+}
+
 function leadingColumn(bracketBody: string): string | null {
   const first = bracketBody.split(",")[0]?.trim();
   if (!first) return null;
@@ -89,12 +123,10 @@ function scanSchema(label: string, file: string): Violation[] {
   let mm: RegExpExecArray | null;
   while ((mm = modelRe.exec(text))) {
     const model = mm[1];
-    const body = mm[2];
-    const lines = body.split("\n");
+    const lines = toLogicalLines(mm[2]);
 
     const leadingIndexed = new Set<string>();
-    for (const raw of lines) {
-      const line = raw.trim();
+    for (const line of lines) {
       const block = /^@@(index|unique|id)\(\s*\[([^\]]*)\]/.exec(line);
       if (block) {
         const lead = leadingColumn(block[2]);
@@ -107,8 +139,7 @@ function scanSchema(label: string, file: string): Violation[] {
       }
     }
 
-    for (const raw of lines) {
-      const line = raw.trim();
+    for (const line of lines) {
       if (!line.includes("@relation(")) continue;
       const onDelete = /onDelete:\s*(Cascade|SetNull)/.exec(line);
       if (!onDelete) continue;
@@ -134,6 +165,52 @@ function scanSchema(label: string, file: string): Violation[] {
   return violations;
 }
 
+function serializeBaseline(comment: string, violations: Violation[]): string {
+  const lines: string[] = ["{", `  "_comment": ${JSON.stringify(comment)},`, `  "violations": [`];
+  violations.forEach((v, i) => {
+    const trailer = i < violations.length - 1 ? "," : "";
+    lines.push(
+      "    {",
+      `      "key": ${JSON.stringify(v.key)},`,
+      `      "onDelete": ${JSON.stringify(v.onDelete)},`,
+      `      "fkColumns": ${JSON.stringify(v.fkColumns)}`,
+      `    }${trailer}`
+    );
+  });
+  lines.push("  ]", "}");
+  return lines.join("\n") + "\n";
+}
+
+function loadBaselineFingerprints(): Set<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
+  } catch {
+    console.error(`baseline is not valid JSON: ${BASELINE_PATH}. Regenerate it without --check.`);
+    process.exit(2);
+  }
+  const violations = (parsed as { violations?: unknown }).violations;
+  if (!Array.isArray(violations)) {
+    console.error(`baseline is missing a "violations" array: ${BASELINE_PATH}.`);
+    process.exit(2);
+  }
+  const fps = new Set<string>();
+  for (const v of violations) {
+    const entry = v as { key?: unknown; onDelete?: unknown; fkColumns?: unknown };
+    if (
+      typeof entry.key !== "string" ||
+      typeof entry.onDelete !== "string" ||
+      !Array.isArray(entry.fkColumns) ||
+      !entry.fkColumns.every((c) => typeof c === "string")
+    ) {
+      console.error(`baseline has a malformed entry: ${JSON.stringify(v)}`);
+      process.exit(2);
+    }
+    fps.add(fingerprint(entry.key, entry.onDelete, entry.fkColumns as string[]));
+  }
+  return fps;
+}
+
 function main() {
   const check = process.argv.includes("--check");
 
@@ -148,18 +225,11 @@ function main() {
   all.sort((a, b) => a.key.localeCompare(b.key));
 
   if (!check) {
-    const baseline = {
-      _comment:
-        "Accepted unindexed cascade/SetNull FK columns. Each is either a soft-deleted parent " +
-        "(cascade never fires) or an accepted risk. Adding a NEW relation here should be a " +
-        "deliberate choice with a reason in the PR. Prefer adding the index instead.",
-      violations: all.map((v) => ({
-        key: v.key,
-        onDelete: v.onDelete,
-        fkColumns: v.fkColumns,
-      })),
-    };
-    fs.writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2) + "\n");
+    const comment =
+      "Accepted unindexed cascade/SetNull FK columns. Each is either a soft-deleted parent " +
+      "(cascade never fires) or an accepted risk. Adding a NEW relation here should be a " +
+      "deliberate choice with a reason in the PR. Prefer adding the index instead.";
+    fs.writeFileSync(BASELINE_PATH, serializeBaseline(comment, all));
     console.log(`Wrote baseline with ${all.length} accepted unindexed cascade FK(s).`);
     console.log(`  -> ${path.relative(REPO_ROOT, BASELINE_PATH)}`);
     return;
@@ -169,14 +239,11 @@ function main() {
     console.error(`baseline missing: ${BASELINE_PATH}. Run without --check to generate it.`);
     process.exit(2);
   }
-  const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8")) as {
-    violations: { key: string }[];
-  };
-  const baselined = new Set(baseline.violations.map((v) => v.key));
-  const fresh = all.filter((v) => !baselined.has(v.key));
+  const baselined = loadBaselineFingerprints();
+  const fresh = all.filter((v) => !baselined.has(fingerprint(v.key, v.onDelete, v.fkColumns)));
 
   if (fresh.length === 0) {
-    console.log(`fk-cascade-index guard: OK (${all.length} baselined, 0 new).`);
+    console.log(`fk-cascade-index guard: OK (${baselined.size} baselined, 0 new).`);
     return;
   }
 
