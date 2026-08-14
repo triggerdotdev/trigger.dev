@@ -26,7 +26,7 @@ function stampPackageVersions(): Plugin {
     transform(code, id) {
       const match = id
         .split("?")[0]
-        .match(/packages[\/\\](core|trigger-sdk)[\/\\]src[\/\\]version\.ts$/);
+        .match(/packages[/\\](core|trigger-sdk)[/\\]src[/\\]version\.ts$/);
       if (match) {
         return {
           code: code.replace('"0.0.0"', JSON.stringify(packageVersions[match[1]])),
