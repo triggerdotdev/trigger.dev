@@ -16,6 +16,7 @@ import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
 import {
   nodetypeNodeSelector,
+  runPodBandwidthAnnotations,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
 } from "./kubernetesPodSpec.js";
@@ -42,6 +43,26 @@ const memoryRequestRatioByMachinePreset: Record<MachinePresetName, number | unde
   "medium-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_2X,
   "large-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X,
   "large-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X,
+};
+
+const egressBandwidthByMachinePreset: Record<MachinePresetName, string | undefined> = {
+  micro: env.KUBERNETES_EGRESS_BANDWIDTH_MICRO,
+  "small-1x": env.KUBERNETES_EGRESS_BANDWIDTH_SMALL_1X,
+  "small-2x": env.KUBERNETES_EGRESS_BANDWIDTH_SMALL_2X,
+  "medium-1x": env.KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_EGRESS_BANDWIDTH_LARGE_1X,
+  "large-2x": env.KUBERNETES_EGRESS_BANDWIDTH_LARGE_2X,
+};
+
+const ingressBandwidthByMachinePreset: Record<MachinePresetName, string | undefined> = {
+  micro: env.KUBERNETES_INGRESS_BANDWIDTH_MICRO,
+  "small-1x": env.KUBERNETES_INGRESS_BANDWIDTH_SMALL_1X,
+  "small-2x": env.KUBERNETES_INGRESS_BANDWIDTH_SMALL_2X,
+  "medium-1x": env.KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_INGRESS_BANDWIDTH_LARGE_1X,
+  "large-2x": env.KUBERNETES_INGRESS_BANDWIDTH_LARGE_2X,
 };
 
 export class KubernetesWorkloadManager implements WorkloadManager {
@@ -127,6 +148,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               "app.kubernetes.io/part-of": "trigger-worker",
               "app.kubernetes.io/component": "create",
             },
+            annotations: runPodBandwidthAnnotations(
+              egressBandwidthByMachinePreset[opts.machine.name] ?? env.KUBERNETES_EGRESS_BANDWIDTH,
+              ingressBandwidthByMachinePreset[opts.machine.name] ?? env.KUBERNETES_INGRESS_BANDWIDTH
+            ),
           },
           spec: {
             ...podSpec,

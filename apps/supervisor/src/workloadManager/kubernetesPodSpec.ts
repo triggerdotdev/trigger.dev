@@ -37,6 +37,26 @@ export function runPodTolerations(
 }
 
 /**
+ * Bandwidth-cap annotations for a run pod (k8s quantity in bits/s). Values are
+ * only enforced by CNIs that support them; pods without the annotations are
+ * never shaped. Returns undefined rather than an empty map to leave the
+ * metadata field unset.
+ */
+export function runPodBandwidthAnnotations(
+  egressBandwidth: string | undefined,
+  ingressBandwidth: string | undefined
+): Record<string, string> | undefined {
+  if (!egressBandwidth && !ingressBandwidth) {
+    return undefined;
+  }
+
+  return {
+    ...(egressBandwidth ? { "kubernetes.io/egress-bandwidth": egressBandwidth } : {}),
+    ...(ingressBandwidth ? { "kubernetes.io/ingress-bandwidth": ingressBandwidth } : {}),
+  };
+}
+
+/**
  * Node >= 24 always creates io_uring fds, which can't be checkpointed. Blocking
  * io_uring_setup makes libuv fall back to epoll. Other runtimes don't need this,
  * so the profile is only applied for node-24+. Tolerates an "experimental-" prefix.

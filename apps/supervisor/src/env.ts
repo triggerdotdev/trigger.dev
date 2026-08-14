@@ -202,6 +202,30 @@ export const Env = z
     KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X: z.coerce.number().min(0).max(1).optional(),
     KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X: z.coerce.number().min(0).max(1).optional(),
 
+    // Run pod bandwidth caps, applied as kubernetes.io/{egress,ingress}-bandwidth pod
+    // annotations (k8s quantity in bits/s, e.g. "50M" = 50 Mbit/s). Unset = no annotation.
+    // Enforcement requires CNI support for these annotations (e.g. Cilium bandwidth manager).
+    KUBERNETES_EGRESS_BANDWIDTH: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH: z.string().optional(),
+
+    // Per-preset overrides of the global KUBERNETES_EGRESS_BANDWIDTH
+    KUBERNETES_EGRESS_BANDWIDTH_MICRO: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_SMALL_1X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_SMALL_2X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_1X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_MEDIUM_2X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_LARGE_1X: z.string().optional(),
+    KUBERNETES_EGRESS_BANDWIDTH_LARGE_2X: z.string().optional(),
+
+    // Per-preset overrides of the global KUBERNETES_INGRESS_BANDWIDTH
+    KUBERNETES_INGRESS_BANDWIDTH_MICRO: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_SMALL_1X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_SMALL_2X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_1X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_MEDIUM_2X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_LARGE_1X: z.string().optional(),
+    KUBERNETES_INGRESS_BANDWIDTH_LARGE_2X: z.string().optional(),
+
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BLOCK_IO_URING_SECCOMP_PROFILE,
   nodetypeNodeSelector,
+  runPodBandwidthAnnotations,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
 } from "./kubernetesPodSpec.js";
@@ -78,5 +79,28 @@ describe("withBlockIoUringSeccompProfile", () => {
     for (const runtime of ["node", "node-22", "bun", undefined, null, ""]) {
       expect(withBlockIoUringSeccompProfile(basePodSpec, runtime)).toEqual(basePodSpec);
     }
+  });
+});
+
+describe("runPodBandwidthAnnotations", () => {
+  it("returns undefined when neither cap is set", () => {
+    expect(runPodBandwidthAnnotations(undefined, undefined)).toBeUndefined();
+    expect(runPodBandwidthAnnotations("", "")).toBeUndefined();
+  });
+
+  it("includes only the caps that are set", () => {
+    expect(runPodBandwidthAnnotations("100M", undefined)).toEqual({
+      "kubernetes.io/egress-bandwidth": "100M",
+    });
+    expect(runPodBandwidthAnnotations(undefined, "200M")).toEqual({
+      "kubernetes.io/ingress-bandwidth": "200M",
+    });
+  });
+
+  it("includes both caps when both are set", () => {
+    expect(runPodBandwidthAnnotations("100M", "200M")).toEqual({
+      "kubernetes.io/egress-bandwidth": "100M",
+      "kubernetes.io/ingress-bandwidth": "200M",
+    });
   });
 });
