@@ -51,7 +51,7 @@ jobs:
         uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
@@ -111,7 +111,7 @@ jobs:
           STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
       - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -142,7 +142,7 @@ jobs:
         # downstream publish-helm job) on a Sigstore/GHCR-referrer hiccup. Real
         # config errors still surface as a step warning in the workflow run.
         continue-on-error: true
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ steps.set_tags.outputs.image_repo }}
           subject-digest: ${{ steps.build_push.outputs.digest }}

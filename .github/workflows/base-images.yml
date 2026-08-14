@@ -43,7 +43,7 @@ jobs:
       source_date_epoch: ${{ steps.config.outputs.source_date_epoch }}
       push: ${{ steps.config.outputs.push }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -113,14 +113,14 @@ jobs:
       DOCKER_BUILD_SUMMARY: "false"
       DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # Before any pull so rate limits are authenticated; fork PRs skip (no secrets)
       - name: 🐳 Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -226,7 +226,7 @@ jobs:
       # same digests and re-attests them
       - name: 🔏 Attest runtime image provenance
         if: needs.setup.outputs.push == 'true'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
           subject-digest: ${{ steps.build_runtime.outputs.digest }}
@@ -234,7 +234,7 @@ jobs:
 
       - name: 🔏 Attest build-variant image provenance
         if: needs.setup.outputs.push == 'true'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
           subject-digest: ${{ steps.build_toolchain.outputs.digest }}
