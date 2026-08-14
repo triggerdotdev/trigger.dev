@@ -21,7 +21,10 @@
  *
  * A baseline entry is matched on its key AND its onDelete action AND its ordered fkColumns, so
  * changing a relation's FK column or flipping Cascade/SetNull re-triggers the guard rather than
- * silently inheriting the old acceptance.
+ * silently inheriting the old acceptance. `--check` also fails on STALE baseline entries whose
+ * fingerprint no longer appears in the schema (the FK got indexed or removed), so the baseline
+ * can't rot: a fixed entry must be pruned by regenerating, otherwise a later change that removes
+ * the index would be silently re-accepted by the leftover entry.
  *
  * Modes (mirrors guard:runops-legacy):
  *   tsx ./scripts/fkCascadeIndexGuard.ts             # regenerate the baseline
@@ -205,7 +208,9 @@ function serializeBaseline(comment: string, violations: Violation[]): string {
   return lines.join("\n") + "\n";
 }
 
-function loadBaselineFingerprints(): Set<string> {
+type BaselineEntry = { key: string; onDelete: string; fkColumns: string[] };
+
+function loadBaseline(): BaselineEntry[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
@@ -218,7 +223,7 @@ function loadBaselineFingerprints(): Set<string> {
     console.error(`baseline is missing a "violations" array: ${BASELINE_PATH}.`);
     process.exit(2);
   }
-  const fps = new Set<string>();
+  const entries: BaselineEntry[] = [];
   for (const v of violations) {
     const entry = v as { key?: unknown; onDelete?: unknown; fkColumns?: unknown };
     if (
@@ -231,9 +236,13 @@ function loadBaselineFingerprints(): Set<string> {
       console.error(`baseline has a malformed entry: ${JSON.stringify(v)}`);
       process.exit(2);
     }
-    fps.add(fingerprint(entry.key, entry.onDelete, entry.fkColumns as string[]));
+    entries.push({
+      key: entry.key,
+      onDelete: entry.onDelete,
+      fkColumns: entry.fkColumns as string[],
+    });
   }
-  return fps;
+  return entries;
 }
 
 function main() {
@@ -264,30 +273,55 @@ function main() {
     console.error(`baseline missing: ${BASELINE_PATH}. Run without --check to generate it.`);
     process.exit(2);
   }
-  const baselined = loadBaselineFingerprints();
-  const fresh = all.filter((v) => !baselined.has(fingerprint(v.key, v.onDelete, v.fkColumns)));
+  const baselineEntries = loadBaseline();
+  const baselinedFps = new Set(
+    baselineEntries.map((e) => fingerprint(e.key, e.onDelete, e.fkColumns))
+  );
+  const currentFps = new Set(all.map((v) => fingerprint(v.key, v.onDelete, v.fkColumns)));
 
-  if (fresh.length === 0) {
-    console.log(`fk-cascade-index guard: OK (${baselined.size} baselined, 0 new).`);
+  const fresh = all.filter((v) => !baselinedFps.has(fingerprint(v.key, v.onDelete, v.fkColumns)));
+  const stale = baselineEntries.filter(
+    (e) => !currentFps.has(fingerprint(e.key, e.onDelete, e.fkColumns))
+  );
+
+  if (fresh.length === 0 && stale.length === 0) {
+    console.log(`fk-cascade-index guard: OK (${baselinedFps.size} baselined, 0 new, 0 stale).`);
     return;
   }
 
-  console.error(
-    `\nfk-cascade-index guard: ${fresh.length} new unindexed cascade FK column(s).\n` +
-      `Each fires a full sequential scan of the child table on every parent delete.\n`
-  );
-  for (const v of fresh) {
+  if (fresh.length > 0) {
     console.error(
-      `  ${v.schema}: ${v.model}.${v.relationField}  ` +
-        `(onDelete: ${v.onDelete}, fk: [${v.fkColumns.join(", ")}])`
+      `\nfk-cascade-index guard: ${fresh.length} new unindexed cascade FK column(s).\n` +
+        `Each fires a full sequential scan of the child table on every parent delete.\n`
+    );
+    for (const v of fresh) {
+      console.error(
+        `  ${v.schema}: ${v.model}.${v.relationField}  ` +
+          `(onDelete: ${v.onDelete}, fk: [${v.fkColumns.join(", ")}])`
+      );
+    }
+    console.error(
+      `\nFix: add @@index([${fresh[0].fkColumns[0]}]) (or a composite leading with it) to the ` +
+        `child model, in its own migration with CREATE INDEX CONCURRENTLY IF NOT EXISTS.\n` +
+        `If the parent is only ever soft-deleted (cascade never fires), regenerate the baseline ` +
+        `and explain why in the PR.\n`
     );
   }
-  console.error(
-    `\nFix: add @@index([${fresh[0].fkColumns[0]}]) (or a composite leading with it) to the ` +
-      `child model, in its own migration with CREATE INDEX CONCURRENTLY IF NOT EXISTS.\n` +
-      `If the parent is only ever soft-deleted (cascade never fires), regenerate the baseline ` +
-      `and explain why in the PR.\n`
-  );
+
+  if (stale.length > 0) {
+    console.error(
+      `\nfk-cascade-index guard: ${stale.length} stale baseline entr${stale.length === 1 ? "y" : "ies"} ` +
+        `no longer present in the schema (now indexed or removed):\n`
+    );
+    for (const e of stale) {
+      console.error(`  ${e.key}  (onDelete: ${e.onDelete}, fk: [${e.fkColumns.join(", ")}])`);
+    }
+    console.error(
+      `\nRegenerate the baseline so a later change can't silently re-accept these:\n` +
+        `  pnpm --filter webapp run guard:fk-cascade-index\n`
+    );
+  }
+
   process.exit(1);
 }
 
