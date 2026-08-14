@@ -24,6 +24,7 @@ import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+import { runTriggeredAt } from "~/v3/runTimestamps";
 
 // Positive-only cache: only envs known to have runs are stored (empty envs are re-checked),
 // so "has runs" is monotonic and the TTL can be very long. Tiered memory + Redis.
@@ -299,12 +300,14 @@ export class NextRunListPresenter {
         const hasFinished = isFinalRunStatus(run.status);
 
         const startedAt = run.startedAt ?? run.lockedAt;
+        const triggeredAt = runTriggeredAt(run);
 
         return {
           id: run.id,
           number: 1,
           friendlyId: run.friendlyId,
           createdAt: run.createdAt.toISOString(),
+          triggeredAt: triggeredAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
           startedAt: startedAt ? startedAt.toISOString() : undefined,
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
