@@ -118,7 +118,9 @@ export class PauseEnvironmentService extends WithRunEngine {
           logger.debug("PauseEnvironmentService: resuming environment", {
             environmentId: environment.id,
           });
-          await updateEnvConcurrencyLimits(environment);
+          // `environment` was read before the update above, so its `paused` is stale: pass the
+          // resumed state or the helper would clamp the limit back to 0.
+          await updateEnvConcurrencyLimits({ ...environment, paused: false });
         }
       } catch (error) {
         await this._prisma.runtimeEnvironment.update({

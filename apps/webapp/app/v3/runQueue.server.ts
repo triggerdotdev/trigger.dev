@@ -6,12 +6,15 @@ export async function updateEnvConcurrencyLimits(
   environment: AuthenticatedEnvironment,
   maximumConcurrencyLimit?: number
 ) {
-  let updatedEnvironment = environment;
-  if (maximumConcurrencyLimit !== undefined) {
-    updatedEnvironment.maximumConcurrencyLimit = maximumConcurrencyLimit;
-  }
+  // A paused env is only enforced by a 0 limit in the RunQueue, so a push without an explicit
+  // limit has to stay 0 — otherwise it silently resumes an env the dashboard still shows as paused.
+  const limit =
+    maximumConcurrencyLimit ?? (environment.paused ? 0 : environment.maximumConcurrencyLimit);
 
-  await engine.runQueue.updateEnvConcurrencyLimits(updatedEnvironment);
+  await engine.runQueue.updateEnvConcurrencyLimits({
+    ...environment,
+    maximumConcurrencyLimit: limit,
+  });
 }
 
 /** Updates the RunQueue limits for a queue */
