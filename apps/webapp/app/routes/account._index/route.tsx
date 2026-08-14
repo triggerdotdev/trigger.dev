@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -484,7 +485,13 @@ function EditNameButton() {
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary/small">Update</Button>
+        <Button
+          type="button"
+          variant="secondary/small-icon"
+          className="w-6 min-w-0 px-0"
+          LeadingIcon={<EditPencilIcon className="size-3.5" />}
+          aria-label="Edit your name"
+        />
       </DialogTrigger>
       {/* Mounted only while open so the field re-seeds from the stored name each
           time: a `defaultValue` on a field that stays mounted keeps whatever was
@@ -492,17 +499,19 @@ function EditNameButton() {
       {isOpen && (
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit your name</DialogTitle>
+            <DialogTitle>Full name</DialogTitle>
           </DialogHeader>
           <fetcher.Form method="post">
             <input type="hidden" name="action" value="update-name" />
             <div className="py-4">
+              {/* The dialog title already names the field, so the input carries an
+                  aria-label rather than a visible one that would repeat it. */}
               <InputGroup fullWidth>
-                <Label htmlFor="profile-name">Full name</Label>
                 <Input
                   id="profile-name"
                   name="name"
                   type="text"
+                  aria-label="Full name"
                   maxLength={MAX_NAME_LENGTH}
                   placeholder="Your full name"
                   defaultValue={user.name ?? ""}
@@ -517,7 +526,7 @@ function EditNameButton() {
                 Cancel
               </Button>
               <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
-                {isSubmitting ? "Saving…" : "Edit"}
+                {isSubmitting ? "Saving…" : "Update"}
               </Button>
             </DialogFooter>
           </fetcher.Form>
@@ -552,7 +561,13 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary/small">Edit</Button>
+        <Button
+          type="button"
+          variant="secondary/small-icon"
+          className="w-6 min-w-0 px-0"
+          LeadingIcon={<EditPencilIcon className="size-3.5" />}
+          aria-label="Edit your email address"
+        />
       </DialogTrigger>
       {/* Mounted only while open, so the field re-seeds from the stored email */}
       {isOpen && (
@@ -570,12 +585,13 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
             <fetcher.Form method="post">
               <input type="hidden" name="action" value="update-email" />
               <div className="py-4">
+                {/* Labelled by the dialog title, as with the name field above. */}
                 <InputGroup fullWidth>
-                  <Label htmlFor="profile-email">Update your email address</Label>
                   <Input
                     id="profile-email"
                     name="email"
                     type="email"
+                    aria-label="Email address"
                     maxLength={MAX_EMAIL_LENGTH}
                     placeholder="Your email address"
                     defaultValue={user.email}
@@ -907,28 +923,24 @@ export default function Page() {
           </div>
           <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
             <div className="flex w-full items-center justify-between gap-4">
-              <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                <Label>Full name</Label>
-                <SettingsRowDescription className="break-words">
+              <Label>Full name</Label>
+              <div className="flex min-w-0 items-center gap-3">
+                <Paragraph variant="small" className="min-w-0 break-words text-right">
                   {user.name ?? "Not set"}
-                </SettingsRowDescription>
-              </div>
-              <div className="flex flex-none items-center">
+                </Paragraph>
                 <EditNameButton />
               </div>
             </div>
           </div>
           <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
             <div className="flex w-full items-center justify-between gap-4">
-              <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                <Label>Email address</Label>
-                {/* break-words: an address has no spaces to wrap at, so a long
-                    one would otherwise run under the button */}
-                <SettingsRowDescription className="break-words">
+              <Label>Email address</Label>
+              <div className="flex min-w-0 items-center gap-3">
+                {/* break-all: an address has no spaces to wrap at, so a long one
+                    would otherwise push the button off the row */}
+                <Paragraph variant="small" className="min-w-0 break-all text-right">
                   {user.email}
-                </SettingsRowDescription>
-              </div>
-              <div className="flex flex-none items-center">
+                </Paragraph>
                 <EditEmailButton isSsoManaged={isSsoManaged} />
               </div>
             </div>
