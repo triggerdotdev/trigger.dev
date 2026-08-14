@@ -209,6 +209,15 @@ export async function findCurrentWorkerFromEnvironment(
       where: {
         runtimeEnvironmentId: environment.id,
       },
+      select: {
+        id: true,
+        friendlyId: true,
+        version: true,
+        sdkVersion: true,
+        cliVersion: true,
+        supportsLazyAttempts: true,
+        engine: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
