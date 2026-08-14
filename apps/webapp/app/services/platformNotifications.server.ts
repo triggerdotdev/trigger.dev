@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
-import { prisma } from "~/db.server";
+import { Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
 import {
   type PlatformNotificationScope,
   type PlatformNotificationSurface,
@@ -49,25 +49,41 @@ export async function getAdminNotificationsList({
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: {
-        _count: {
-          select: { interactions: true },
-        },
-        interactions: {
-          select: {
-            webappDismissedAt: true,
-            webappClickedAt: true,
-            cliDismissedAt: true,
-          },
-        },
-      },
     }),
     prisma.platformNotification.count({ where }),
   ]);
 
+  const notificationIds = notifications.map((n) => n.id);
+
+  const interactionStats =
+    notificationIds.length > 0
+      ? await prisma.$queryRaw<
+          {
+            notificationId: string;
+            seen: bigint;
+            clicked: bigint;
+            dismissed: bigint;
+          }[]
+        >`
+          SELECT
+            "notificationId",
+            COUNT(*) AS seen,
+            COUNT(*) FILTER (WHERE "webappClickedAt" IS NOT NULL) AS clicked,
+            COUNT(*) FILTER (
+              WHERE "webappDismissedAt" IS NOT NULL OR "cliDismissedAt" IS NOT NULL
+            ) AS dismissed
+          FROM ${sqlDatabaseSchema}."PlatformNotificationInteraction"
+          WHERE "notificationId" IN (${Prisma.join(notificationIds)})
+          GROUP BY "notificationId"
+        `
+      : [];
+
+  const statsById = new Map(interactionStats.map((row) => [row.notificationId, row]));
+
   return {
     notifications: notifications.map((n) => {
       const parsed = PayloadV1Schema.safeParse(n.payload);
+      const stats = statsById.get(n.id);
       return {
         id: n.id,
         friendlyId: n.friendlyId,
@@ -99,11 +115,9 @@ export async function getAdminNotificationsList({
         cliMaxDaysAfterFirstSeen: n.cliMaxDaysAfterFirstSeen,
         cliShowEvery: n.cliShowEvery,
         stats: {
-          seen: n._count.interactions,
-          clicked: n.interactions.filter((i) => i.webappClickedAt !== null).length,
-          dismissed: n.interactions.filter(
-            (i) => i.webappDismissedAt !== null || i.cliDismissedAt !== null
-          ).length,
+          seen: stats ? Number(stats.seen) : 0,
+          clicked: stats ? Number(stats.clicked) : 0,
+          dismissed: stats ? Number(stats.dismissed) : 0,
         },
       };
     }),
