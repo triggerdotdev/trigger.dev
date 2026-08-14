@@ -67,10 +67,6 @@ export default function Story({
             <TextLink href="#" variant="secondary">
               secondary
             </TextLink>
-            {" · "}
-            <TextLink href="#" variant="token">
-              token
-            </TextLink>
           </Paragraph>
           <Paragraph variant="extra-extra-small/caps">With a shortcut and a tooltip</Paragraph>
           <Paragraph>

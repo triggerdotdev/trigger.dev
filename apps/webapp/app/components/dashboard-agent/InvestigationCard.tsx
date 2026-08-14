@@ -67,7 +67,7 @@ function EvidenceItem({
         {resolved ? (
           <a
             href={resolved.url}
-            className={cn(textLinkClassName("token"), "block break-all font-mono text-[10px]")}
+            className={cn(textLinkClassName(), "block break-all font-mono text-[10px]")}
           >
             {resolved.label}
           </a>

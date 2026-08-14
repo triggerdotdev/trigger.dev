@@ -27,6 +27,10 @@ type StorySection = {
 
 const sections: StorySection[] = [
   {
+    title: "Accessibility",
+    items: [{ name: "Distinguish without color", slug: "distinguish-without-color" }],
+  },
+  {
     title: "Foundations",
     items: [
       { name: "Theme tokens", slug: "theme-tokens" },

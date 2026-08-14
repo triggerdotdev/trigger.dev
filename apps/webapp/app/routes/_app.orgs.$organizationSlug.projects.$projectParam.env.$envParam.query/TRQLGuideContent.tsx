@@ -9,7 +9,7 @@ import type { QueryScope } from "~/services/queryService.server";
 import { cn } from "~/utils/cn";
 
 /** Table-of-contents links: the shared text-link treatment, laid out as rows. */
-const TOC_LINK = cn(textLinkClassName("token"), "block");
+const TOC_LINK = cn(textLinkClassName(), "block");
 
 /** A code block with an integrated "Try it" button */
 export function TryableCodeBlock({

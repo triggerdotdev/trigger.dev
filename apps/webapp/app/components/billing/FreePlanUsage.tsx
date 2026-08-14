@@ -32,7 +32,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
           <ArrowUpCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />
           <span className="truncate text-2sm text-text-bright">Free Plan</span>
         </div>
-        <Link to={to} className={cn(textLinkClassName("token"), "shrink-0 text-2sm")}>
+        <Link to={to} className={cn(textLinkClassName(), "shrink-0 text-2sm")}>
           Upgrade
         </Link>
       </div>

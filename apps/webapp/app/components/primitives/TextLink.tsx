@@ -6,15 +6,17 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
-/* Every variant hovers by shifting color, never by adding an underline: the
+/* Both variants hover by shifting color, never by adding an underline: the
    underline is reserved for the "Underline links" preference, so its presence
-   always means the preference is on. */
+   always means the preference is on.
+
+   `primary` reads the link token rather than a raw palette value, so each theme
+   picks its own link color - a single hard-coded indigo can't clear 4.5:1 on
+   both a near-black card and white. There used to be a separate `token` variant
+   for exactly that; it's gone, because this is now the only behaviour. */
 const colors = {
-  primary: "text-indigo-500 transition hover:text-indigo-400",
+  primary: "text-text-link transition hover:text-text-link-hover",
   secondary: "text-text-dimmed transition hover:text-text-bright",
-  // The theme-remapped link token, for links inside themed surfaces where the
-  // raw indigo of `primary` is dark-theme only.
-  token: "text-text-link transition hover:text-text-link-hover",
 } as const;
 
 const layout = "inline-flex gap-0.5 items-center group";
@@ -34,7 +36,6 @@ export function textLinkClassName(variant: keyof typeof colors = "primary") {
 const variations = {
   primary: cn(textLinkClassName("primary"), layout),
   secondary: cn(textLinkClassName("secondary"), layout),
-  token: cn(textLinkClassName("token"), layout),
 } as const;
 
 type TextLinkProps = {

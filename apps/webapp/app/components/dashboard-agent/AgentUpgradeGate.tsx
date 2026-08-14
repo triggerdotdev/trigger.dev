@@ -49,7 +49,7 @@ export function AgentQuotaNotice({ remaining, limit }: { remaining: number; limi
         {remaining} of {limit} free messages left
       </span>
       <span aria-hidden>·</span>
-      <Link to={v3BillingPath(organization)} className={textLinkClassName("token")}>
+      <Link to={v3BillingPath(organization)} className={textLinkClassName()}>
         Upgrade
       </Link>
     </div>
