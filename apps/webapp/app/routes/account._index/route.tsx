@@ -723,7 +723,7 @@ export default function Page() {
                       <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                         <Label>Dark</Label>
                         <SettingsRowDescription>
-                          Choose the theme for the dark system setting.
+                          Choose the theme for the dark system setting
                         </SettingsRowDescription>
                       </div>
                       <div className="flex flex-none items-center">
