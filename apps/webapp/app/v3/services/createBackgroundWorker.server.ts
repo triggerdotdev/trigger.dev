@@ -238,7 +238,7 @@ export class CreateBackgroundWorkerService extends BaseService {
       }
 
       const [updateConcurrencyLimitsError] = await tryCatch(
-        updateEnvConcurrencyLimits(environment)
+        updateEnvConcurrencyLimits(environment, undefined, this._prisma)
       );
 
       if (updateConcurrencyLimitsError) {
