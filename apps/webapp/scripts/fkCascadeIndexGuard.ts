@@ -75,9 +75,32 @@ function fingerprint(key: string, onDelete: string, fkColumns: string[]): string
   return `${key}::${onDelete}::${fkColumns.join(",")}`;
 }
 
-function stripLineComment(line: string): string {
-  const i = line.indexOf("//");
-  return i === -1 ? line : line.slice(0, i);
+function scrubLine(line: string): { code: string; masked: string } {
+  let code = "";
+  let masked = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inString) {
+      code += ch;
+      masked += " ";
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      code += ch;
+      masked += " ";
+      continue;
+    }
+    if (ch === "/" && line[i + 1] === "/") break;
+    code += ch;
+    masked += ch;
+  }
+  return { code, masked };
 }
 
 function toLogicalLines(body: string): string[] {
@@ -85,10 +108,11 @@ function toLogicalLines(body: string): string[] {
   let buf = "";
   let depth = 0;
   for (const raw of body.split("\n")) {
-    const line = stripLineComment(raw).trim();
-    if (line === "") continue;
-    buf = buf === "" ? line : `${buf} ${line}`;
-    for (const ch of line) {
+    const { code, masked } = scrubLine(raw);
+    const trimmed = code.trim();
+    if (trimmed === "") continue;
+    buf = buf === "" ? trimmed : `${buf} ${trimmed}`;
+    for (const ch of masked) {
       if (ch === "(" || ch === "[") depth++;
       else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
     }
@@ -199,8 +223,9 @@ function loadBaselineFingerprints(): Set<string> {
     const entry = v as { key?: unknown; onDelete?: unknown; fkColumns?: unknown };
     if (
       typeof entry.key !== "string" ||
-      typeof entry.onDelete !== "string" ||
+      (entry.onDelete !== "Cascade" && entry.onDelete !== "SetNull") ||
       !Array.isArray(entry.fkColumns) ||
+      entry.fkColumns.length === 0 ||
       !entry.fkColumns.every((c) => typeof c === "string")
     ) {
       console.error(`baseline has a malformed entry: ${JSON.stringify(v)}`);
