@@ -309,7 +309,7 @@ export function getLogsSearchListQueryBuilder(
   ch: ClickhouseReader,
   version: LogsSearchTableVersion = "v1"
 ) {
-  return ch.queryBuilderFast<LogsSearchListResult>({
+  const createBuilder = ch.queryBuilderFast<LogsSearchListResult>({
     name: version === "v2" ? "getLogsSearchListV2" : "getLogsSearchListV1",
     table:
       version === "v2" ? "trigger_dev.task_events_search_v2" : "trigger_dev.task_events_search_v1",
@@ -340,6 +340,12 @@ export function getLogsSearchListQueryBuilder(
       use_query_condition_cache: 1,
     },
   });
+
+  return (options?: Parameters<typeof createBuilder>[0]) => {
+    const builder = createBuilder(options);
+    if (version === "v2") builder.limitBy(1, "projection_fingerprint");
+    return builder;
+  };
 }
 
 // Single log detail query builder (for side panel)

@@ -148,6 +148,7 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
+  private limitByClause: string | null = null;
   private groupByClause: string | null = null;
 
   constructor(
@@ -242,6 +243,11 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     return this;
   }
 
+  limitBy(limit: number, expression: string): this {
+    this.limitByClause = `LIMIT ${limit} BY ${expression}`;
+    return this;
+  }
+
   execute(): ReturnType<ClickhouseQueryFunction<void, TOutput>> {
     const { query, params } = this.build();
 
@@ -289,6 +295,9 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;
+    }
+    if (this.limitByClause) {
+      query += ` ${this.limitByClause}`;
     }
     if (this.limitClause) {
       query += ` ${this.limitClause}`;

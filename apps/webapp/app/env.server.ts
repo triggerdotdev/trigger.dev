@@ -2094,9 +2094,44 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // v2 is populated forward-only. Keep reads on v1 until v2 has enough history or has been
-    // backfilled, then opt in explicitly per deployment.
+    // Keep reads on v1 until the scheduled v2 projector has enough history.
     LOGS_SEARCH_TABLE_VERSION: z.enum(["v1", "v2"]).default("v1"),
+
+    // Scheduled logs-search projection. Disabled by default. The writer URL must reach both the
+    // task_events_v2 source and task_events_search_v2 destination tables.
+    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.EVENTS_CLICKHOUSE_URL ?? process.env.CLICKHOUSE_URL),
+    LOGS_SEARCH_PROJECTOR_SAFETY_DELAY_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(3600)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_500_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
+    LOGS_SEARCH_PROJECTOR_BACKFILL_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_RANGE_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .default(7),
+    LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_AGE_DAYS: z.coerce.number().int().min(1).max(90).default(90),
 
     // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),

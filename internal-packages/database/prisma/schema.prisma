@@ -3222,6 +3222,20 @@ model PlatformNotificationInteraction {
   @@unique([notificationId, userId])
 }
 
+model LogsSearchProjectorState {
+  id String @id
+
+  liveWatermark       DateTime
+  historicalWatermark DateTime
+  backfillTarget      DateTime?
+  paused              Boolean   @default(false)
+  leaseToken          String?
+  leaseExpiresAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 enum ErrorGroupStatus {
   UNRESOLVED
   RESOLVED
