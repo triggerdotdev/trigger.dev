@@ -59,7 +59,7 @@ export function escapeClickHouseLike(value: string): string {
 // Must match the scheduled ClickHouse projector normalization.
 export function normalizeLogsSearchTerm(value: string): string {
   return value
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}_./:@+-]+/gu, " ")
     .replace(/\s*:\s*/g, ":")
     .trim();

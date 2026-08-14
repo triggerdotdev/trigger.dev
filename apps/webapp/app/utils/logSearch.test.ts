@@ -16,6 +16,10 @@ describe("log search normalization", () => {
     expect(normalizeLogsSearchTerm("status_code:500")).toBe("status_code:500");
   });
 
+  it("uses the same locale-independent casing as ClickHouse", () => {
+    expect(normalizeLogsSearchTerm("I İ ı İSTANBUL ΟΣ")).toBe("i i ı i stanbul ος");
+  });
+
   it("escapes LIKE wildcards without escaping path separators", () => {
     expect(escapeClickHouseLike("/api/a_b/100%")).toBe("/api/a\\_b/100\\%");
   });
