@@ -93,7 +93,11 @@ export function kindToLevel(kind: string, status: string): LogLevel {
   }
 }
 
-// Level badge color styles
+/* Level badge styles. Every chip is a translucent wash of its own accent over
+   whatever surface it lands on, so the set reads as one family and follows the
+   theme - DEBUG included, which used to be the only solid tile in the row and so
+   stayed a dark chip in a white table. Accents come from tokens rather than the
+   raw palette so the "Increase color contrast" preference can reach them. */
 export function getLevelColor(level: LogLevel): string {
   switch (level) {
     case "ERROR":
@@ -101,12 +105,12 @@ export function getLevelColor(level: LogLevel): string {
     case "WARN":
       return "text-warning bg-warning/10 border-warning/20";
     case "TRACE":
-      return "text-purple-400 bg-purple-500/10 border-purple-500/20";
+      return "text-log-trace bg-log-trace/10 border-log-trace/20";
     case "DEBUG":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10";
     case "INFO":
-      return "text-blue-400 bg-blue-500/10 border-blue-500/20";
+      return "text-pending bg-pending/10 border-pending/20";
     default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10";
   }
 }
