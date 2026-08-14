@@ -99,14 +99,20 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-indigo-500 group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
+          // The checked fill reads the link token, so the accent purple is the
+          // same one links use and follows the theme - a single raw indigo can't
+          // sit on both a near-black track and white.
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-text-link group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
           root
         )}
       >
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
-            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
+            /* White once checked, in every theme: the link token is lighter than
+               the old indigo on the dark themes, so an off-white thumb would fall
+               under 3:1 against the track and stop reading as a separate part. */
+            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-white"
           )}
         />
       </div>
