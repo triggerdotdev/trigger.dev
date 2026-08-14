@@ -44,6 +44,8 @@ import {
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Add Private Connection");
@@ -326,7 +328,7 @@ output "endpoint_service_name" {
           <button
             type="button"
             onClick={addPort}
-            className="text-xs text-indigo-400 transition hover:text-indigo-300"
+            className={cn(textLinkClassName(), "text-xs")}
           >
             + Add port
           </button>
@@ -472,7 +474,7 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
           <button
             type="button"
             onClick={addPort}
-            className="text-xs text-indigo-400 transition hover:text-indigo-300"
+            className={cn(textLinkClassName(), "text-xs")}
           >
             + Add port
           </button>

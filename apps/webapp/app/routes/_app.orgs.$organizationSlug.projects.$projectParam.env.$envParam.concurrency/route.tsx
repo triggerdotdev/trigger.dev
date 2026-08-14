@@ -61,6 +61,7 @@ import {
   getPlans,
   getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -436,7 +437,7 @@ function Upgradable({
                             <span>
                               Save your changes or{" "}
                               <button
-                                className="inline text-indigo-500 hover:text-indigo-300"
+                                className={cn(textLinkClassName(), "inline")}
                                 onClick={() => {
                                   setAllocation(initialAllocation(environments));
                                 }}

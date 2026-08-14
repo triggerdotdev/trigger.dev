@@ -88,7 +88,7 @@ export function NotificationCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="relative z-20 mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
+            className={cn(textLinkClassName(), "relative z-20 mt-0.5 text-xs")}
           >
             {isExpanded ? "Show less" : "Show more"}
           </button>
