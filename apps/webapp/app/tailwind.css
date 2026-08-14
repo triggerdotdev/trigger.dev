@@ -286,14 +286,15 @@
   --color-run-timed-out: #ed5f74;
 }
 
-/* "Underline links" preference: underlines the inline links that carry the
-   marker class from the TextLink component, and only those - hand-rolled link
-   underlines and decorative ones (dashed tooltip terms, tab underlines) are
-   untouched either way.
+/* "Underline links" preference: underlines body-text links - those carrying the
+   marker class from the TextLink component, plus markdown prose links, which
+   can't take a class because streamdown renders the anchors. Decorative
+   underlines (dashed tooltip terms, tab underlines, the always-underlined
+   citation links in agent reports) are untouched either way.
 
    Links in this set never underline on hover alone; hover shifts their color
    instead, so the underline means "this preference is on" and nothing else. */
-[data-underline-links="true"] .inline-text-link {
+[data-underline-links="true"] :is(.inline-text-link, .streamdown-container a) {
   text-decoration-line: underline;
   text-underline-offset: 2px;
 }
@@ -736,10 +737,13 @@
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
-  /* Matches TextLink: the link token, brightening on hover rather than
-     underlining. */
+  /* Matches TextLink: the link token, brightening on hover, and underlined only
+     when the "Underline links" preference says so - see the rule that opts these
+     anchors into it. `no-underline` is load-bearing: streamdown hard-codes
+     `underline` onto every anchor it renders, and this outspecifies it (a class
+     plus a type selector beats a bare class). */
   & a {
-    @apply text-text-link transition hover:text-text-link-hover;
+    @apply text-text-link no-underline transition hover:text-text-link-hover;
   }
   & strong {
     @apply font-semibold text-text-bright;
