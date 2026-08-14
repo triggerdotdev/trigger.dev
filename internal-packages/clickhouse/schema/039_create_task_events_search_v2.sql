@@ -1,9 +1,6 @@
 -- +goose Up
 -- Search v2 stores bounded normalized text outside the task_events_v2 insert path.
--- The source index supports closed projector windows on newly written parts.
-ALTER TABLE trigger_dev.task_events_v2
-  ADD INDEX IF NOT EXISTS idx_inserted_at_projector inserted_at TYPE minmax GRANULARITY 1;
-
+-- The source index (idx_inserted_at_projector) is added in an earlier migration.
 CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v2
 (
   environment_id String,
@@ -46,6 +43,3 @@ SETTINGS ttl_only_drop_parts = 1;
 
 -- +goose Down
 DROP TABLE IF EXISTS trigger_dev.task_events_search_v2;
-
-ALTER TABLE trigger_dev.task_events_v2
-  DROP INDEX IF EXISTS idx_inserted_at_projector;
