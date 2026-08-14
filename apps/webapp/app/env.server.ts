@@ -179,6 +179,7 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
+    RUN_OPS_WORKER_VERSION_FRESH_READ_ENABLED: BoolEnv.default(true),
     // Canonical connection URL for the dedicated NEW run-ops DB — drives the runtime pool, the split
     // decision, replication, and migrations. Optional so single-DB installs never set it.
     RUN_OPS_DATABASE_URL: z
