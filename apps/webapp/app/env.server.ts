@@ -114,6 +114,26 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
+/** Optional boolean env var; blank/whitespace/unset normalises to undefined (so it falls back). */
+const OptionalBoolEnv = z.preprocess((v) => {
+  if (typeof v !== "string" || v.trim() === "") return undefined;
+  return ["true", "1"].includes(v.toLowerCase().trim());
+}, z.boolean().optional());
+
+/** Boolean env var with a default where blank/whitespace falls back to the default instead of parsing as false. */
+const BoolEnvWithDefault = (defaultValue: boolean) =>
+  z.preprocess((v) => {
+    if (typeof v !== "string" || v.trim() === "") return undefined;
+    return ["true", "1"].includes(v.toLowerCase().trim());
+  }, z.boolean().default(defaultValue));
+
+/** Int env var with a default where a blank/whitespace value falls back to the default instead of coercing to 0. */
+const IntEnvWithDefault = (defaultValue: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().default(defaultValue)
+  );
+
 /**
  * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
  * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
@@ -142,6 +162,27 @@ const EnvironmentSchema = z
     DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
+    DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
+    DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
+    RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
     // Dashboard-agent conversation store. Cloud points this at a dedicated
     // database; when unset it falls back to DATABASE_URL (OSS), where
     // the tables live in the isolated `trigger_dashboard_agent` schema.

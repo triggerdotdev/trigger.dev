@@ -32,6 +32,13 @@ import {
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import {
+  controlPlaneTransactionResilience,
+  registerTransactionResilience,
+  resilienceForClient,
+  runOpsLegacyTransactionResilience,
+  runOpsTransactionResilience,
+} from "./v3/transactionResilience.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -57,6 +64,18 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
     message: error.message,
     name: error.name,
   });
+}
+
+function withTransactionDefaults(
+  client: PrismaClientOrTransaction,
+  options?: PrismaTransactionOptions
+): PrismaTransactionOptions {
+  const resilience = resilienceForClient(client as object);
+  return {
+    maxWait: resilience.maxWait,
+    ...options,
+    startRetry: options?.startRetry ?? resilience.startRetry,
+  };
 }
 
 export async function $transaction<R>(
@@ -93,35 +112,41 @@ async function $transactionInner<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
   if (typeof fnOrName === "string") {
+    const effectiveOptions = withTransactionDefaults(prisma, options);
     return await startActiveSpan(fnOrName, async (span) => {
       span.setAttribute("$transaction", true);
 
-      if (options?.isolationLevel) {
-        span.setAttribute("isolation_level", options.isolationLevel);
+      if (effectiveOptions.isolationLevel) {
+        span.setAttribute("isolation_level", effectiveOptions.isolationLevel);
       }
 
-      if (options?.timeout) {
-        span.setAttribute("timeout", options.timeout);
+      if (effectiveOptions.timeout) {
+        span.setAttribute("timeout", effectiveOptions.timeout);
       }
 
-      if (options?.maxWait) {
-        span.setAttribute("max_wait", options.maxWait);
+      if (effectiveOptions.maxWait) {
+        span.setAttribute("max_wait", effectiveOptions.maxWait);
       }
 
-      if (options?.swallowPrismaErrors) {
-        span.setAttribute("swallow_prisma_errors", options.swallowPrismaErrors);
+      if (effectiveOptions.swallowPrismaErrors) {
+        span.setAttribute("swallow_prisma_errors", effectiveOptions.swallowPrismaErrors);
       }
 
       const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
 
-      return transac(prisma, (client) => fn(client, span), logTransactionPrismaError, options);
+      return transac(
+        prisma,
+        (client) => fn(client, span),
+        logTransactionPrismaError,
+        effectiveOptions
+      );
     });
   } else {
     return transac(
       prisma,
       fnOrName,
       logTransactionPrismaError,
-      typeof fnOrOptions === "function" ? undefined : fnOrOptions
+      withTransactionDefaults(prisma, typeof fnOrOptions === "function" ? undefined : fnOrOptions)
     );
   }
 }
@@ -180,7 +205,10 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 }
 
 export const prisma = singleton("prisma", () =>
-  captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient()))
+  registerTransactionResilience(
+    captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient())),
+    controlPlaneTransactionResilience
+  )
 );
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
@@ -309,15 +337,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     {
       controlPlane: { writer: prisma, replica: $replica },
       buildNewWriter: (url, clientType) =>
-        captureInfraErrorsRunOps(
-          tagDatasourceRunOps(
-            "run-ops-writer",
-            buildRunOpsWriterClient({
-              url,
-              clientType,
-              useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsWriterClient({
+                url,
+                clientType,
+                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsTransactionResilience
         ),
       // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
       // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
@@ -338,17 +369,20 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
       // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
       buildLegacyWriter: (url, clientType) =>
-        captureInfrastructureErrors(
-          tagDatasource(
-            "legacy-run-ops-writer",
-            buildWriterClient({
-              url,
-              clientType,
-              poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
-              connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
-              useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfrastructureErrors(
+            tagDatasource(
+              "legacy-run-ops-writer",
+              buildWriterClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
+                useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsLegacyTransactionResilience
         ),
       buildLegacyReplica: (url, clientType) =>
         markReadReplicaClient(
