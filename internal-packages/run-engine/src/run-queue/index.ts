@@ -5083,7 +5083,9 @@ return __qmret(results)
     // :ckVtime / :ckVtimeFloor keys hold virtual times; ckIndex and the master
     // queue keep their timestamp score domain. The per-candidate serve body is a
     // verbatim copy of dequeueMessagesFromCkQueueTracked's, with the marked NEW
-    // lines added (tag advance on serve, ZREM ckVtime on GC, floor advance from pass 1).
+    // lines added (tag advance on serve, ZREM ckVtime on GC, floor advance from pass 1,
+    // and the notReady report that lets pass 1 step over a future-headed variant without
+    // spending a window slot on it).
     // Pass 2 always runs: when the batch is already full it registers the variants
     // pass 1 could not see rather than serving them, which is what keeps a backlog
     // queued before the flag went on from being unreachable.
@@ -5142,6 +5144,10 @@ if actualMaxCount <= 0 then
 end
 
 local window = actualMaxCount * windowMultiplier
+-- Pass 1 reads further than it will spend, so a variant whose head is scheduled in the
+-- future can be passed over without costing a window slot. Capped rather than unbounded:
+-- a block wider than this still degrades to pass 2's age order, which is safe.
+local scanLimit = window * 2
 
 -- Floor only ever rises, by two independent routes: to the lowest tag on record (repairs
 -- a floor that was lost while ckVtime survived), and to the lowest tag actually servable
@@ -5213,6 +5219,10 @@ local function tryServe(ckQueueName, mayRaiseFloor)
           -- Pass 1 only: it walks in ascending tag order, so anything it has not visited
           -- sits above this. Pass 2 goes by message age, so its tag says nothing about the
           -- entries it skipped and must not move the floor over them.
+          -- Pass 1 now steps over future-headed variants below this tag, so the floor can
+          -- rise past one of them. That is the same forfeiture a variant at its concurrency
+          -- ceiling already takes: it keeps its entry, loses the sub-floor credit, and is
+          -- clamped up to the floor when it next becomes servable.
           if mayRaiseFloor and (minServableTag == nil or tag < minServableTag) then
             minServableTag = tag
           end
@@ -5238,24 +5248,37 @@ local function tryServe(ckQueueName, mayRaiseFloor)
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
+        -- NEW: backlog, but the head is scheduled later, so nothing here is servable this
+        -- call. The readiness is already known from the ZRANGEBYSCORE above, so reporting
+        -- it costs nothing and lets pass 1 decline to spend a window slot on it.
+        return 'notReady'
       end
     end
   end
 end
 
 -- Pass 1: fair order (lowest virtual start tag first)
-local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, window - 1)
--- NEW: the window read doubles as a free membership set for pass 2's discovery
--- step. It is complete whenever ckVtime holds no more than window variants,
+local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, scanLimit - 1)
+-- NEW: the scan read doubles as a free membership set for pass 2's discovery
+-- step. It is complete whenever ckVtime holds no more than scanLimit variants,
 -- which is the common case; when it is truncated the discovery ZADD is NX so the
 -- variants it cannot rule out cost correctness nothing.
 local registered = {}
 for _, ckQueueName in ipairs(vtimeCandidates) do
   registered[ckQueueName] = true
 end
+-- NEW: a variant whose head is scheduled in the future stays registered and stays
+-- scanned, it just does not spend one of the window's slots. Without this a retry storm
+-- across enough keys fills the window with variants that cannot be served, pass 1 serves
+-- nothing, and because minServableTag is the only route that can lift the floor over a
+-- stale low tag, the floor freezes for as long as the storm lasts. Every other outcome
+-- (served, gated on concurrency, drained, reaped) still spends a slot, as before.
+local windowBudget = window
 for _, ckQueueName in ipairs(vtimeCandidates) do
-  if dequeuedCount >= actualMaxCount then break end
-  tryServe(ckQueueName, true)
+  if dequeuedCount >= actualMaxCount or windowBudget <= 0 then break end
+  if tryServe(ckQueueName, true) ~= 'notReady' then
+    windowBudget = windowBudget - 1
+  end
 end
 
 -- Pass 2: fill + discovery in age order (work conservation, mixed-deploy safety).
@@ -5289,13 +5312,21 @@ if discovered ~= nil then
   redis.call('ZADD', unpack(discovered))
 end
 
--- NEW: persist floor and refresh TTLs
-if minServableTag ~= nil and minServableTag > floor then
-  floor = minServableTag
-end
-redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
-if redis.call('EXISTS', ckVtimeKey) == 1 then
-  redis.call('EXPIRE', ckVtimeKey, stateTtl)
+-- NEW: persist floor and refresh TTLs. A call that served nothing writes nothing: the two
+-- things this block would persist are both re-derivable, since minServableTag is only set
+-- inside a successful serve and pass 2's discovery only runs once the batch is full, so
+-- the only floor movement on a zero-serve call is the min-tag read-repair, which is
+-- recomputed from ckVtime at the top of every call anyway. Idle polling a queue whose work
+-- is all future-scheduled or concurrency-gated therefore costs no writes, matching the old
+-- command's early return.
+if dequeuedCount > 0 then
+  if minServableTag ~= nil and minServableTag > floor then
+    floor = minServableTag
+  end
+  redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
+  if redis.call('EXISTS', ckVtimeKey) == 1 then
+    redis.call('EXPIRE', ckVtimeKey, stateTtl)
+  end
 end
 
 -- Rebalance master queue (ckIndex keeps its timestamp domain)
