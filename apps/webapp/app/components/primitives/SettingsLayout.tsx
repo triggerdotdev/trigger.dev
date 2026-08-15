@@ -39,6 +39,18 @@ export function SettingsContainer({
   );
 }
 
+/**
+ * Vertical gap between sibling settings sections, for pages that hand-roll their
+ * sections (the account page) instead of using `SettingsSection`, so both sit on
+ * the same rhythm.
+ *
+ * Must stay in step with the `mt-13` in `SettingsSection` below. The two are
+ * written out separately rather than composed, because Tailwind only generates
+ * classes it can see as complete literals in the source - a template literal
+ * building `[&:not(:first-child)]:${gap}` produces no CSS at all.
+ */
+export const SETTINGS_SECTION_GAP = "mt-13";
+
 /** A group of related rows. Adds vertical spacing between sibling sections. */
 export function SettingsSection({
   children,
@@ -48,7 +60,7 @@ export function SettingsSection({
   className?: string;
 }) {
   return (
-    <section className={cn("w-full [&:not(:first-child)]:mt-12", className)}>{children}</section>
+    <section className={cn("w-full [&:not(:first-child)]:mt-13", className)}>{children}</section>
   );
 }
 
