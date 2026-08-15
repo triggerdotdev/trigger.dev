@@ -11,8 +11,6 @@ import type {
   BulkActionStatus,
   BulkActionType,
   ErrorGroupStatus,
-  ScheduleType,
-  TaskTriggerSource,
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
@@ -20,10 +18,6 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import {
-  BranchEnvironmentIconSmall,
-  DeployedEnvironmentIconSmall,
-} from "~/assets/icons/EnvironmentIcons";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import {
@@ -46,8 +40,6 @@ import { allBatchStatuses, BatchStatusCombo } from "~/components/runs/v3/BatchSt
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { deploymentStatuses, DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import {
   allTaskRunAttemptStatuses,
   TaskRunAttemptStatusCombo,
@@ -56,12 +48,7 @@ import {
   allTaskRunStatuses,
   runStatusTitle,
   TaskRunStatusCombo,
-  TaskRunStatusIcon,
 } from "~/components/runs/v3/TaskRunStatus";
-import {
-  taskTriggerSourceDescription,
-  TaskTriggerSourceIcon,
-} from "~/components/runs/v3/TaskTriggerSource";
 import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
 import {
   allSessionStatuses,
@@ -77,8 +64,14 @@ import { useDocumentIconContrast, useThemeRevision } from "./useThemeRevision";
 /* An audit page, not a component gallery. Every entry is something the app
    currently leans on color for - either the color is the only difference between
    two meanings, or the color itself is too low-contrast to see. Each one renders
-   twice: the base treatment on the left, the "Distinguish without color"
-   treatment on the right.
+   twice: the base treatment on the left, the "Stronger colors" treatment on the
+   right.
+
+   Scope note: the preference used to swap icons as well, and this page was named
+   for that. It now only moves colors, so entries whose whole point was a shared
+   glyph have been dropped - what remains is either an accent that shifts, or an
+   icon/label pair where the label's treatment changes and the icon is the
+   context you need to read it.
 
    The two columns work by putting `data-icon-contrast` on a wrapper div. Every
    rule the preference drives is a plain descendant selector
@@ -94,7 +87,7 @@ import { useDocumentIconContrast, useThemeRevision } from "./useThemeRevision";
 
 const COLUMNS = [
   { contrast: false, label: "Original" },
-  { contrast: true, label: "Distinguish without color" },
+  { contrast: true, label: "Stronger colors" },
 ] as const;
 
 /** The page-wide column header, pinned so the halves stay identifiable. */
@@ -430,24 +423,6 @@ const ENVIRONMENTS = [
 /** The three run statuses that share RectangleStackIcon. */
 const STACK_ICON_STATUSES = ["PENDING", "PENDING_VERSION", "DEQUEUED"] as const;
 
-/** The two run statuses that share the Spinner *and* text-pending. */
-const SPINNER_STATUSES = ["EXECUTING", "RETRYING_AFTER_FAILURE"] as const;
-
-/** Deployment statuses that share the Spinner and text-pending. */
-const DEPLOYING_STATUSES = ["INSTALLING", "BUILDING", "DEPLOYING"] as const;
-
-/** Run statuses that all resolve to text-error, each with its own icon. */
-const ERROR_STATUSES = [
-  "COMPLETED_WITH_ERRORS",
-  "SYSTEM_FAILURE",
-  "CRASHED",
-  "TIMED_OUT",
-  "INTERRUPTED",
-] as const;
-
-/** Run statuses that all resolve to text-text-faint, each with its own icon. */
-const FAINT_STATUSES = ["PENDING", "DELAYED", "WAITING_TO_RESUME", "CANCELED", "EXPIRED"] as const;
-
 const WAITPOINT_STATUSES: WaitpointTokenStatus[] = ["WAITING", "COMPLETED", "TIMED_OUT"];
 
 const ERROR_GROUP_STATUSES: ErrorGroupStatus[] = ["UNRESOLVED", "RESOLVED", "IGNORED"];
@@ -455,10 +430,6 @@ const ERROR_GROUP_STATUSES: ErrorGroupStatus[] = ["UNRESOLVED", "RESOLVED", "IGN
 const BULK_ACTION_TYPES: BulkActionType[] = ["REPLAY", "CANCEL"];
 
 const BULK_ACTION_STATUSES: BulkActionStatus[] = ["PENDING", "COMPLETED", "ABORTED"];
-
-const TRIGGER_SOURCES: TaskTriggerSource[] = ["STANDARD", "SCHEDULED", "AGENT"];
-
-const SCHEDULE_TYPES: ScheduleType[] = ["IMPERATIVE", "DECLARATIVE"];
 
 /** The queue health labels from the Queues route. Paused and At capacity share
  *  one tint, so color alone can't separate them even before contrast. */
@@ -523,14 +494,14 @@ export default function Story_() {
 
   return (
     <StoryPage
-      title="Distinguish without color"
+      title="Stronger colors"
       componentNames={["tailwind.css"]}
-      description="Every place the app currently relies on color alone, and every accent whose contrast is worth checking. Left column is the base treatment, right column is the same thing with the accessibility preference on. Switch themes above to see all four."
+      description="Every accent the “Stronger colors” preference moves, and every one whose contrast is worth checking. Left column is the base treatment, right column is the same thing with the preference on. Switch themes above to see all four — several accents only move on the dark themes, because Light and White already darken them for white and land on the same value the high-contrast set uses."
     >
       {documentIconContrast && (
         <Callout variant="warning">
-          The header's “Distinguish without color” switch is on, so both columns are showing the
-          high-contrast treatment. Turn it off to compare them.
+          The header's “Stronger colors” switch is on, so both columns are showing the high-contrast
+          treatment. Turn it off to compare them.
         </Callout>
       )}
 
@@ -612,8 +583,8 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="2. One icon, several meanings"
-        description="Cases where two or more distinct states render the same glyph and only the tint tells them apart. Shown with their labels, and with the rest of the set for context."
+        title="2. Icon and label pairs"
+        description="Combos where the preference changes both halves: the label drops to the surrounding text color (system-mono-label) and the icon keeps a tint that moves. The icon is here as context for the label, not as the thing being audited — sets that differed only by glyph have been dropped, since the preference no longer touches icons."
       >
         <Audit
           title="Staging and Preview share an icon"
@@ -636,27 +607,6 @@ export default function Story_() {
         </Audit>
 
         <Audit
-          title="The shared deployed glyph, isolated"
-          where={["EnvironmentIcons.tsx"]}
-          note="The same two icons at nav size. PreviewEnvironmentIconSmall is an alias of BranchEnvironmentIconSmall, so a preview environment and a branch inside it also draw the same shape."
-        >
-          <Row>
-            <span className="flex items-center gap-1.5 text-sm">
-              <DeployedEnvironmentIconSmall className="size-4.5 text-staging" />
-              <span className="system-mono-label text-staging">Staging</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-sm">
-              <DeployedEnvironmentIconSmall className="size-4.5 text-preview" />
-              <span className="system-mono-label text-preview">Preview</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-sm">
-              <BranchEnvironmentIconSmall className="size-4.5 text-preview" />
-              <span className="system-mono-label text-preview">main</span>
-            </span>
-          </Row>
-        </Audit>
-
-        <Audit
           title="Three run statuses share RectangleStackIcon"
           where={["TaskRunStatus.tsx"]}
           note="Queued (faint), Pending version (amber-500) and Dequeued (blue) all draw the stack glyph. In the runs table the icon column is the first thing you scan."
@@ -665,123 +615,6 @@ export default function Story_() {
             {STACK_ICON_STATUSES.map((status) => (
               <TaskRunStatusCombo key={status} status={status} />
             ))}
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="Executing and Reattempting share the Spinner and the color"
-          where={["TaskRunStatus.tsx"]}
-          note="Same glyph, same text-pending. Only the label separates them, so an icon-only placement (the trace tree, the runs table at narrow widths) can't distinguish a first attempt from a retry."
-        >
-          <Stack>
-            {SPINNER_STATUSES.map((status) => (
-              <TaskRunStatusCombo key={status} status={status} />
-            ))}
-            <Row className="pt-1">
-              {SPINNER_STATUSES.map((status) => (
-                <TaskRunStatusIcon key={status} status={status} className="size-5" />
-              ))}
-              <Paragraph variant="extra-small">← icon only</Paragraph>
-            </Row>
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="Three deployment statuses share the Spinner"
-          where={["DeploymentStatus.tsx"]}
-          note="Installing, Building and Deploying are one glyph in one color; the label is the only signal. The build log header shows this icon on its own."
-        >
-          <Stack>
-            {DEPLOYING_STATUSES.map((status) => (
-              <DeploymentStatus key={status} status={status} isBuilt={false} />
-            ))}
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="Batch Processing and In progress"
-          where={["BatchStatus.tsx"]}
-          note="Processing is text-blue-500 and In progress is text-pending — two different tokens that resolve to the same blue — on the same Spinner glyph."
-        >
-          <Stack>
-            <BatchStatusCombo status="PROCESSING" />
-            <BatchStatusCombo status="PENDING" />
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="RunIcon log levels: one InfoIcon, three meanings"
-          where={["RunIcon.tsx"]}
-          note="debug, log and info draw a dimmed InfoIcon; warn draws the same icon in amber-400; error draws the same icon in text-error. In the trace tree these sit in a single column with no label of their own."
-        >
-          <Stack>
-            {(["log", "warn", "error", "fatal"] as const).map((name) => (
-              <span key={name} className="flex items-center gap-2 text-sm">
-                <RunIcon name={name} spanName="storybook" className="size-4.5" />
-                <span className="font-mono text-xs text-text-dimmed">{name}</span>
-              </span>
-            ))}
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="RunIcon lifecycle hooks: one FunctionIcon, two outcomes"
-          where={["RunIcon.tsx"]}
-          note="Every task-hook-* span draws FunctionIcon. onFailure and catchError are the same glyph in text-error — the failing hook is identified by color only."
-        >
-          <Stack>
-            {(
-              [
-                "task-hook-onStart",
-                "task-hook-onSuccess",
-                "task-hook-onFailure",
-                "task-hook-catchError",
-              ] as const
-            ).map((name) => (
-              <span key={name} className="flex items-center gap-2 text-sm">
-                <RunIcon name={name} spanName="storybook" className="size-4.5" />
-                <span className="font-mono text-xs text-text-dimmed">{name}</span>
-              </span>
-            ))}
-          </Stack>
-        </Audit>
-
-        <Audit
-          title="For contrast: sets where the glyph already carries the meaning"
-          where={["TaskRunStatus.tsx"]}
-          note="Five statuses share text-error and five share text-text-faint, but each has its own icon. These read fine in greyscale — they're the pattern the cases above are missing."
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Stack>
-              {ERROR_STATUSES.map((status) => (
-                <TaskRunStatusCombo key={status} status={status} />
-              ))}
-            </Stack>
-            <Stack>
-              {FAINT_STATUSES.map((status) => (
-                <TaskRunStatusCombo key={status} status={status} />
-              ))}
-            </Stack>
-          </div>
-        </Audit>
-
-        <Audit
-          title="Trigger sources and schedule types"
-          where={["TaskTriggerSource.tsx", "ScheduleType.tsx"]}
-          note="Trigger sources have three distinct glyphs and three accents (the accent is redundant, which is what you want). Schedule types have no color at all — included as the baseline this page is aiming for."
-        >
-          <Stack>
-            {TRIGGER_SOURCES.map((source) => (
-              <span key={source} className="flex items-center gap-2 text-sm text-text-bright">
-                <TaskTriggerSourceIcon source={source} />
-                {taskTriggerSourceDescription(source)}
-              </span>
-            ))}
-            <div className="mt-1 flex flex-col gap-2 text-sm text-text-bright">
-              {SCHEDULE_TYPES.map((type) => (
-                <ScheduleTypeCombo key={type} type={type} />
-              ))}
-            </div>
           </Stack>
         </Audit>
       </StorySection>
