@@ -8,6 +8,7 @@ import { taskContext } from "./task-context-api.js";
 import type { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
+import { NotFoundError } from "./apiClient/errors.js";
 
 // Re-export types from catalog for backwards compatibility
 export type {
@@ -235,7 +236,9 @@ export async function resetIdempotencyKey(
   const client = apiClientManager.clientOrThrow();
 
   // A 64-char key is only assumed pre-hashed if the catalog knows it, or there's no scope to hash with
-  if (typeof idempotencyKey === "string" && idempotencyKey.length === 64) {
+  const is64CharKey = typeof idempotencyKey === "string" && idempotencyKey.length === 64;
+
+  if (is64CharKey) {
     const isCreatedKey = getIdempotencyKeyOptions(idempotencyKey) !== undefined;
 
     if (isCreatedKey || options?.scope === undefined) {
@@ -275,5 +278,22 @@ export async function resetIdempotencyKey(
   // Generate the hash using the same algorithm as createIdempotencyKey
   const hash = await generateIdempotencyKey(keyArray.concat(scopeSuffix));
 
-  return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+  if (!is64CharKey) {
+    return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+  }
+
+  // A 64-char key we had to hash may still have been pre-hashed, so fall back to it verbatim
+  try {
+    return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+  } catch (error) {
+    if (!(error instanceof NotFoundError)) {
+      throw error;
+    }
+
+    try {
+      return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+    } catch (fallbackError) {
+      throw fallbackError instanceof NotFoundError ? error : fallbackError;
+    }
+  }
 }

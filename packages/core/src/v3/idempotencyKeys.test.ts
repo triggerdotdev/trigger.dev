@@ -5,6 +5,7 @@ import { apiClientManager } from "./apiClientManager-api.js";
 import {
   createIdempotencyKey,
   getIdempotencyKeyOptions,
+  makeIdempotencyKey,
   resetIdempotencyKey,
   resetIdempotencyKeyCatalog,
 } from "./idempotencyKeys.js";
@@ -51,6 +52,14 @@ describe("resetIdempotencyKey", () => {
 
   let server: Server;
   let resetKeys: string[] = [];
+  /** Keys the server has runs for. `undefined` means "accept every key". */
+  let existingKeys: Set<string> | undefined;
+  /** When set, every request fails with this status instead. */
+  let forcedStatus: number | undefined;
+
+  function notFoundMessage(key: string) {
+    return `No runs found with idempotency key: ${key}`;
+  }
 
   async function resetAndCaptureKey(
     ...args: Parameters<typeof resetIdempotencyKey>
@@ -63,6 +72,9 @@ describe("resetIdempotencyKey", () => {
 
   beforeEach(async () => {
     resetIdempotencyKeyCatalog();
+    resetKeys = [];
+    existingKeys = undefined;
+    forcedStatus = undefined;
 
     server = createServer((req, res) => {
       req.resume();
@@ -73,7 +85,21 @@ describe("resetIdempotencyKey", () => {
           return;
         }
 
-        resetKeys.push(decodeURIComponent(match[1]!));
+        const key = decodeURIComponent(match[1]!);
+        resetKeys.push(key);
+
+        if (forcedStatus !== undefined) {
+          res.writeHead(forcedStatus, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: `request failed for ${key}` }));
+          return;
+        }
+
+        if (existingKeys !== undefined && !existingKeys.has(key)) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: notFoundMessage(key) }));
+          return;
+        }
+
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ id: "run_reset" }));
       });
@@ -113,15 +139,83 @@ describe("resetIdempotencyKey", () => {
     ).toBe(expected);
   });
 
-  it("sends a key created with idempotencyKeys.create() unchanged", async () => {
+  it("sends a key created with idempotencyKeys.create() unchanged while the catalog knows it", async () => {
     const created = await createIdempotencyKey("my-key", { scope: "global" });
+    existingKeys = new Set([created]);
 
     expect(await resetAndCaptureKey("my-task", created)).toBe(created);
     expect(await resetAndCaptureKey("my-task", created, { scope: "global" })).toBe(created);
   });
 
+  it("sends a created key unchanged when no scope is passed and the catalog is cold", async () => {
+    const created = await createIdempotencyKey("my-key", { scope: "global" });
+
+    // The reset can happen in a different process from the create
+    resetIdempotencyKeyCatalog();
+    existingKeys = new Set([created]);
+
+    expect(await resetAndCaptureKey("my-task", created)).toBe(created);
+  });
+
+  it("falls back to the verbatim key when a created key is reset with a scope and the catalog is cold", async () => {
+    const created = await createIdempotencyKey("my-key", { scope: "global" });
+
+    resetIdempotencyKeyCatalog();
+    existingKeys = new Set([created]);
+
+    await resetIdempotencyKey("my-task", created, { scope: "global" });
+
+    // The derived hash misses, so the already-hashed key is retried verbatim
+    expect(resetKeys).toEqual([await digestSHA256(created), created]);
+  });
+
   it("sends a 64-character key unchanged when no scope is passed", async () => {
     expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);
+  });
+
+  it("resets 64-character material that trigger stored verbatim when no scope is passed", async () => {
+    // trigger() forwards 64-character material as-is, so that is what the server stored
+    expect(await makeIdempotencyKey(digestShapedKey)).toBe(digestShapedKey);
+    existingKeys = new Set([digestShapedKey]);
+
+    expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);
+  });
+
+  it("does not fall back when the derived hash for 64-character material matches", async () => {
+    const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
+
+    resetIdempotencyKeyCatalog();
+    existingKeys = new Set([created]);
+
+    await resetIdempotencyKey("my-task", digestShapedKey, { scope: "global" });
+
+    expect(resetKeys).toEqual([created]);
+  });
+
+  it("does not fall back when the first attempt fails with a non-404", async () => {
+    forcedStatus = 500;
+
+    await expect(
+      resetIdempotencyKey(
+        "my-task",
+        digestShapedKey,
+        { scope: "global" },
+        { retry: { maxAttempts: 1 } }
+      )
+    ).rejects.toMatchObject({ status: 500 });
+
+    expect(resetKeys).toHaveLength(1);
+  });
+
+  it("surfaces the derived key's error when both attempts 404", async () => {
+    const derived = await digestSHA256(digestShapedKey);
+    existingKeys = new Set();
+
+    await expect(
+      resetIdempotencyKey("my-task", digestShapedKey, { scope: "global" })
+    ).rejects.toThrow(notFoundMessage(derived));
+
+    expect(resetKeys).toEqual([derived, digestShapedKey]);
   });
 
   it("hashes key material that is not 64 characters", async () => {
