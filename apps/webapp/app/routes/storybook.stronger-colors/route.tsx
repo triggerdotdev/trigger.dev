@@ -6,6 +6,16 @@ import {
   RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type {
   BatchTaskRunStatus,
   BulkActionStatus,
@@ -484,6 +494,109 @@ const AGENT_STATUS_SERIES = [
   { label: "Failed", token: "--color-error" },
   { label: "Canceled / Expired", token: "--color-text-dimmed" },
 ];
+
+// ---------------------------------------------------------------------------
+// Chart examples
+// ---------------------------------------------------------------------------
+
+/* Invented numbers, shaped like a week of runs so the stack heights vary the way
+   a real chart's would. Both charts share one series list, so the same four
+   accents can be compared as fills and as strokes. */
+const CHART_WEEK = [
+  { day: "Mon", completed: 186, queued: 38, delayed: 22, failed: 24 },
+  { day: "Tue", completed: 205, queued: 44, delayed: 15, failed: 18 },
+  { day: "Wed", completed: 164, queued: 29, delayed: 34, failed: 41 },
+  { day: "Thu", completed: 231, queued: 52, delayed: 11, failed: 12 },
+  { day: "Fri", completed: 198, queued: 35, delayed: 27, failed: 33 },
+  { day: "Sat", completed: 97, queued: 16, delayed: 9, failed: 8 },
+  { day: "Sun", completed: 84, queued: 12, delayed: 18, failed: 15 },
+];
+
+/* A deliberate mix of how the tokens behave, so the columns show the range
+   rather than a best case: queues-chart moves on every theme, success and
+   warning only on the dark ones (Light and White already darken them to the
+   high-contrast value), and error never moves. */
+const CHART_SERIES_TOKENS = [
+  { key: "completed", label: "Completed", color: "var(--color-success)" },
+  { key: "queued", label: "Queued", color: "var(--color-queues-chart)" },
+  { key: "delayed", label: "Delayed", color: "var(--color-warning)" },
+  { key: "failed", label: "Failed", color: "var(--color-error)" },
+] as const;
+
+const AXIS_TICK = { fontSize: 10, fill: "var(--color-text-dimmed)" } as const;
+const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: -18 } as const;
+
+/** Swatch legend, so a series can be named without a tooltip. */
+function SeriesLegend() {
+  return (
+    <Row className="gap-x-3 gap-y-1 pt-2">
+      {CHART_SERIES_TOKENS.map((series) => (
+        <span key={series.key} className="flex items-center gap-1.5">
+          <span
+            className="size-2.5 shrink-0 rounded-xs"
+            style={{ backgroundColor: series.color }}
+          />
+          <span className="text-xxs text-text-dimmed">{series.label}</span>
+        </span>
+      ))}
+    </Row>
+  );
+}
+
+/* Animation is off on both: each renders twice on this page, and a chart that
+   grows out of the axis on every theme switch makes the two columns hard to
+   compare mid-flight. */
+
+/** Stacked bars, so the four fills meet edge to edge with no gap to separate them. */
+function StackedBarExample() {
+  return (
+    <div className="h-44 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={CHART_WEEK} margin={CHART_MARGIN}>
+          <CartesianGrid vertical={false} stroke="var(--color-grid-dimmed)" />
+          <XAxis dataKey="day" tickLine={false} axisLine={false} tick={AXIS_TICK} />
+          <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} width={40} />
+          {CHART_SERIES_TOKENS.map((series, index) => (
+            <Bar
+              key={series.key}
+              dataKey={series.key}
+              stackId="runs"
+              fill={series.color}
+              isAnimationActive={false}
+              radius={index === CHART_SERIES_TOKENS.length - 1 ? [2, 2, 0, 0] : undefined}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** The same series as strokes, where a 2px line has far less area than a bar. */
+function LineExample() {
+  return (
+    <div className="h-44 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={CHART_WEEK} margin={CHART_MARGIN}>
+          <CartesianGrid vertical={false} stroke="var(--color-grid-dimmed)" />
+          <XAxis dataKey="day" tickLine={false} axisLine={false} tick={AXIS_TICK} />
+          <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} width={40} />
+          {CHART_SERIES_TOKENS.map((series) => (
+            <Line
+              key={series.key}
+              type="monotone"
+              dataKey={series.key}
+              stroke={series.color}
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -1024,6 +1137,24 @@ export default function Story_() {
         title="6. Charts, bars and meters"
         description="A series is identified by its swatch and nothing else. These are all judged at 3:1 against the plot surface, and separately against each other."
       >
+        <Audit
+          title="Stacked bars"
+          where={["tailwind.css"]}
+          note="Four series stacked, so the fills touch with no gap between them - the hardest case for telling two accents apart, and the one a legend can't help with once you're reading a single column. Queued moves on all four themes; Completed and Delayed only on the dark ones; Failed never moves."
+        >
+          <StackedBarExample />
+          <SeriesLegend />
+        </Audit>
+
+        <Audit
+          title="Line series"
+          where={["tailwind.css"]}
+          note="The same four accents as 2px strokes. A line carries a fraction of a bar's area, so an accent that reads fine as a fill can drop below the 3:1 floor here - worth checking both marks whenever a series color changes."
+        >
+          <LineExample />
+          <SeriesLegend />
+        </Audit>
+
         <Audit
           title="Run status series"
           where={["TaskRunStatus.tsx", "tailwind.css"]}
