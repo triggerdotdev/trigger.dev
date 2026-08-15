@@ -5,6 +5,21 @@ import * as SwitchPrimitives from "@radix-ui/react-switch";
 import { cn } from "~/utils/cn";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 
+/*
+  The thumb sits inside the track's 2px transparent border, so an even gap on all
+  four sides means: thumb height == the track's content box, and a checked travel
+  of (content width - thumb). The medium track is h-4 w-8, so that's a 12px thumb
+  travelling 16px. `large` already follows this; the thumb here used to be 14px,
+  which overflowed the 12px content box and left 1px above and below against 2px
+  at the ends - visible as a handle sitting tight to the top and bottom rails.
+
+  `small` (h-3 w-6, size-2.5 thumb) still has the same mismatch. It's left alone
+  here because it's the variant used across the app, not the one on the profile
+  page - fixing it would be a size-2 thumb travelling 12px.
+*/
+const MEDIUM_THUMB =
+  "size-3 data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0";
+
 const small = {
   container:
     "flex items-center h-6 gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-background-raised transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
@@ -49,7 +64,7 @@ const variations = {
     container:
       "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
     root: "h-4 w-8",
-    thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
   /* Like medium, minus the hover box: the toggle is the whole target, for rows
@@ -57,7 +72,7 @@ const variations = {
   "minimal/medium": {
     container: "flex items-center gap-x-2 rounded-md focus-custom",
     root: "h-4 w-8",
-    thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
 };
