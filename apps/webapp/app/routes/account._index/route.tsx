@@ -156,10 +156,18 @@ function SystemThemeSelect({
 }
 
 /**
- * Hover preview for the "Stronger colors" switch: one chip in the accent the
- * preference moves furthest, so the change is visible at a glance. Nothing here
- * sets `data-icon-contrast` - it inherits from <html>, so the chip moves with the
- * rest of the page and can never disagree with what's actually saved.
+ * Hover preview for the "Stronger colors" switch: one chip that visibly moves
+ * when the preference does. Nothing here sets `data-icon-contrast` - it inherits
+ * from <html>, so the chip moves with the rest of the page and can never
+ * disagree with what's actually saved.
+ *
+ * It borrows the Resolved error-status treatment (tinted green, going solid with
+ * white text under the preference) rather than a plain accent chip, because the
+ * accent tokens alone don't change on the light themes: those themes already
+ * darken success and warning for white, to the very same values the
+ * high-contrast set uses, so a `text-warning` chip was inert on Light and White.
+ * The `system:` swap to a filled chip is driven by the preference directly, so it
+ * reads in all four themes.
  *
  * Fades in on hover of an ancestor marked `group/preview`, so it must be rendered
  * inside one. The group is named because Switch's own root is an unnamed `group`
@@ -184,7 +192,7 @@ function StrongerColorsPreview() {
   return (
     <span
       aria-hidden
-      className="inline-flex rounded bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning opacity-0 transition-opacity group-hover/preview:opacity-100 group-has-[:focus-visible]/preview:opacity-100"
+      className="contrast-chip inline-flex rounded bg-success/10 px-2 py-0.5 text-xs font-medium text-success opacity-0 transition-opacity system:bg-success system:text-white group-hover/preview:opacity-100 group-has-[:focus-visible]/preview:opacity-100"
     >
       Example
     </span>
