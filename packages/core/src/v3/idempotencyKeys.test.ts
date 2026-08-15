@@ -54,8 +54,8 @@ describe("resetIdempotencyKey", () => {
   let resetKeys: string[] = [];
   /** Keys the server has runs for. `undefined` means "accept every key". */
   let existingKeys: Set<string> | undefined;
-  /** When set, every request fails with this status instead. */
-  let forcedStatus: number | undefined;
+  /** Per-key failure statuses, applied before the existence check. */
+  let statusByKey: Map<string, number>;
 
   function notFoundMessage(key: string) {
     return `No runs found with idempotency key: ${key}`;
@@ -74,7 +74,7 @@ describe("resetIdempotencyKey", () => {
     resetIdempotencyKeyCatalog();
     resetKeys = [];
     existingKeys = undefined;
-    forcedStatus = undefined;
+    statusByKey = new Map();
 
     server = createServer((req, res) => {
       req.resume();
@@ -88,8 +88,9 @@ describe("resetIdempotencyKey", () => {
         const key = decodeURIComponent(match[1]!);
         resetKeys.push(key);
 
-        if (forcedStatus !== undefined) {
-          res.writeHead(forcedStatus, { "content-type": "application/json" });
+        const failWith = statusByKey.get(key);
+        if (failWith !== undefined) {
+          res.writeHead(failWith, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: `request failed for ${key}` }));
           return;
         }
@@ -192,8 +193,28 @@ describe("resetIdempotencyKey", () => {
     expect(resetKeys).toEqual([created]);
   });
 
-  it("does not fall back when the first attempt fails with a non-404", async () => {
-    forcedStatus = 500;
+  it("falls back to the verbatim key when the derived hash fails with a 503", async () => {
+    // The server answers 503, not 404, when it cannot check the buffer for a miss
+    const created = await createIdempotencyKey("my-key", { scope: "global" });
+
+    resetIdempotencyKeyCatalog();
+    statusByKey.set(await digestSHA256(created), 503);
+    existingKeys = new Set([created]);
+
+    await resetIdempotencyKey(
+      "my-task",
+      created,
+      { scope: "global" },
+      { retry: { maxAttempts: 1 } }
+    );
+
+    expect(resetKeys).toEqual([await digestSHA256(created), created]);
+  });
+
+  it("surfaces the derived key's error when it fails with a 503 and the fallback finds nothing", async () => {
+    const derived = await digestSHA256(digestShapedKey);
+    statusByKey.set(derived, 503);
+    existingKeys = new Set();
 
     await expect(
       resetIdempotencyKey(
@@ -202,9 +223,26 @@ describe("resetIdempotencyKey", () => {
         { scope: "global" },
         { retry: { maxAttempts: 1 } }
       )
-    ).rejects.toMatchObject({ status: 500 });
+    ).rejects.toMatchObject({ status: 503 });
 
-    expect(resetKeys).toHaveLength(1);
+    expect(resetKeys).toEqual([derived, digestShapedKey]);
+  });
+
+  it("surfaces the fallback's error when it fails with something other than a 404", async () => {
+    const derived = await digestSHA256(digestShapedKey);
+    statusByKey.set(derived, 404);
+    statusByKey.set(digestShapedKey, 503);
+
+    await expect(
+      resetIdempotencyKey(
+        "my-task",
+        digestShapedKey,
+        { scope: "global" },
+        { retry: { maxAttempts: 1 } }
+      )
+    ).rejects.toMatchObject({ status: 503 });
+
+    expect(resetKeys).toEqual([derived, digestShapedKey]);
   });
 
   it("surfaces the derived key's error when both attempts 404", async () => {
@@ -223,5 +261,39 @@ describe("resetIdempotencyKey", () => {
     resetIdempotencyKeyCatalog();
 
     expect(await resetAndCaptureKey("my-task", "my-key", { scope: "global" })).toBe(created);
+  });
+
+  it("sends a 64-character key verbatim when run scope cannot be derived", async () => {
+    const created = await createIdempotencyKey("my-key", { scope: "run" });
+
+    resetIdempotencyKeyCatalog();
+    existingKeys = new Set([created]);
+
+    // No parentRunId and no task context, so the hash is underivable
+    expect(await resetAndCaptureKey("my-task", created, { scope: "run" })).toBe(created);
+  });
+
+  it("sends a 64-character key verbatim when attempt scope cannot be derived", async () => {
+    existingKeys = new Set([digestShapedKey]);
+
+    expect(await resetAndCaptureKey("my-task", digestShapedKey, { scope: "attempt" })).toBe(
+      digestShapedKey
+    );
+  });
+
+  it("still throws for non-64-character material when run scope cannot be derived", async () => {
+    await expect(resetIdempotencyKey("my-task", "my-key", { scope: "run" })).rejects.toThrow(
+      "parentRunId is required for 'run' scope"
+    );
+
+    expect(resetKeys).toEqual([]);
+  });
+
+  it("still throws for non-64-character material when attempt scope cannot be derived", async () => {
+    await expect(
+      resetIdempotencyKey("my-task", "my-key", { scope: "attempt", parentRunId: "run_abc123" })
+    ).rejects.toThrow("parentRunId and attemptNumber are required for 'attempt' scope");
+
+    expect(resetKeys).toEqual([]);
   });
 });

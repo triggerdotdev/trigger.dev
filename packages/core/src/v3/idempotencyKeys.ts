@@ -255,6 +255,10 @@ export async function resetIdempotencyKey(
     case "run": {
       const parentRunId = options?.parentRunId ?? taskContext?.ctx?.run.id;
       if (!parentRunId) {
+        // We can't derive a hash, but a 64-char key may already be one, so try it rather than fail
+        if (is64CharKey) {
+          return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+        }
         throw new Error(
           "resetIdempotencyKey: parentRunId is required for 'run' scope when called outside a task context"
         );
@@ -266,6 +270,9 @@ export async function resetIdempotencyKey(
       const parentRunId = options?.parentRunId ?? taskContext?.ctx?.run.id;
       const attemptNumber = options?.attemptNumber ?? taskContext?.ctx?.attempt.number;
       if (!parentRunId || attemptNumber === undefined) {
+        if (is64CharKey) {
+          return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+        }
         throw new Error(
           "resetIdempotencyKey: parentRunId and attemptNumber are required for 'attempt' scope when called outside a task context"
         );
@@ -282,14 +289,10 @@ export async function resetIdempotencyKey(
     return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
   }
 
-  // A 64-char key we had to hash may still have been pre-hashed, so fall back to it verbatim
+  // Hashing a 64-char key is a guess, so if it fails at all, still try the key verbatim
   try {
     return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
   } catch (error) {
-    if (!(error instanceof NotFoundError)) {
-      throw error;
-    }
-
     try {
       return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
     } catch (fallbackError) {
