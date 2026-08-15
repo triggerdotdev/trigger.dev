@@ -4286,8 +4286,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -4419,8 +4424,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -6061,8 +6071,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 `,
     });
 
