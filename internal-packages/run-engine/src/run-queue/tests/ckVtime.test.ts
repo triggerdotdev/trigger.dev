@@ -301,8 +301,7 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         prevFloor = floor;
       }
 
-      // Final settle: gate both variants (limit 1 + an occupied slot) so nothing
-      // is served (no advance), and the floor read-repairs up to the current min tag.
+      // Final settle: gate both variants (limit 1 + an occupied slot) so nothing is served.
       await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
       for (const ck of cks) {
         await queue.redis.sadd(
@@ -312,12 +311,28 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       }
       await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
 
-      const floorAfter = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
-      expect(floorAfter).toBeGreaterThanOrEqual(prevFloor);
-
       const minEntry = await queue.redis.zrange(ckVtimeKey, 0, 0, "WITHSCORES");
       const minTag = Number(minEntry[1]);
-      expect(floorAfter).toBe(minTag);
+      expect(minTag).toBeGreaterThan(prevFloor);
+
+      // A call that serves nothing persists nothing. The read-repair to the min tag is
+      // recomputed from ckVtime at the top of every call, so leaving it unwritten here
+      // costs nothing and keeps an idle poll free of writes.
+      const floorWhileGated = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+      expect(floorWhileGated).toBe(prevFloor);
+
+      // Free a slot: the next serving call persists the repaired floor, so the repair
+      // itself is intact, it is only the write that waits for a serve.
+      for (const ck of cks) {
+        await queue.redis.srem(
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(variantName(ck)),
+          "occupant"
+        );
+      }
+      await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+
+      const floorAfter = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+      expect(floorAfter).toBeGreaterThanOrEqual(minTag);
       expect(floorAfter).toBeGreaterThan(10);
     } finally {
       await queue.quit();
@@ -917,14 +932,14 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   );
 
   redisTest(
-    "a pass-1 window filled entirely with unservable variants degrades to age order, and recovers",
+    "a scan filled entirely with unservable variants degrades to age order, and recovers",
     async ({ redisContainer }) => {
-      // The single-stalled case above is handled by the minServableTag route: a servable
-      // variant inside the window raises the floor over the stalled tag. That route needs
-      // pass 1 to serve something. With every window slot (actualMaxCount * multiplier,
-      // 3 here) held by unservable variants, pass 1 serves nothing, minServableTag stays
-      // nil, and the min-tag route is pinned by those same stalled tags, so the floor
-      // cannot move for as long as the block lasts.
+      // Pass 1 steps over a future-headed variant without spending a window slot, so the
+      // window alone can no longer be blocked. The scan behind it is capped though, at
+      // scanLimit = 2 * window (6 here), and this is the residual: with every scanned
+      // position held by an unservable variant, pass 1 still serves nothing, minServableTag
+      // stays nil, and the min-tag route is pinned by those same stalled tags, so the floor
+      // cannot move until the block thins out.
       //
       // Two properties of that state are worth pinning down. It stays work-conserving:
       // pass 2 keeps serving in age order, which is the flag-off behaviour, so a full
@@ -937,9 +952,9 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const t0 = Date.now() - 100_000;
 
         // Names decide tie order at equal tags, and the point of the fixture is that the
-        // blockers hold every window slot: a0/a1/a2 sort below zbusy, so the window read
-        // returns only them.
-        const blockers = ["a0", "a1", "a2"];
+        // blockers hold every scanned position: a0..a5 sort below zbusy, so the scan read
+        // returns only them and zbusy is never reached.
+        const blockers = ["a0", "a1", "a2", "a3", "a4", "a5"];
         for (const ck of blockers) {
           await queue.enqueueMessage({
             env: authenticatedEnvDev,
@@ -1035,8 +1050,12 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           }
         }
 
+        // The unblocked cohort plus the arrival is 7 keys sitting at the floor against an
+        // incumbent on FREEZE_CALLS, so levelling up costs 7 * FREEZE_CALLS serves before
+        // the incumbent competes again. Drain comfortably past that rather than right on
+        // the boundary, or the bound below is measuring the cutoff instead of the debt.
         const servedAfter: Record<string, number> = {};
-        for (let call = 0; call < 60; call++) {
+        for (let call = 0; call < (blockers.length + 1) * FREEZE_CALLS + 60; call++) {
           for (const ck of await drainOne()) {
             servedAfter[ck] = (servedAfter[ck] ?? 0) + 1;
           }
