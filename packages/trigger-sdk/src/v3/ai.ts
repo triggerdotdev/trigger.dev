@@ -4984,6 +4984,7 @@ function buildInteractionResolutionMessage(
       const isTool =
         typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
       if (!isTool) continue;
+      if (part.state !== "input-available") return undefined;
       const slimPart: Record<string, unknown> = {
         type,
         toolCallId: resolution.toolCallId,
@@ -8665,15 +8666,25 @@ function chatAgent<
               }
             }
 
-            if (channelWireEvent && channelConn?.send && channelAckRef) {
-              const channelErrorText =
-                turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+            if (channelWireEvent && channelConn?.send) {
+              const sanitizeChannelError = resolveUIMessageStreamOptions().onError;
+              let channelErrorText: string;
+              try {
+                channelErrorText = sanitizeChannelError
+                  ? sanitizeChannelError(turnError)
+                  : turnError instanceof Error
+                    ? turnError.message
+                    : "An unexpected error occurred";
+              } catch {
+                channelErrorText = "An unexpected error occurred";
+              }
+              const channelErrorMessageId = channelAckRef ?? channelWireEvent.deliveryId;
               let errorMessage: ChannelMessage | null = null;
               try {
                 errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
                   text: channelErrorText,
                   message: {
-                    id: channelAckRef,
+                    id: channelErrorMessageId,
                     role: "assistant",
                     parts: [{ type: "text", text: channelErrorText }],
                   } as UIMessage,
