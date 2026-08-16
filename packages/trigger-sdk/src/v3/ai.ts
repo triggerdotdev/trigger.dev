@@ -6985,6 +6985,9 @@ function chatAgent<
             void _hsm;
             channelWireEvent = wireChannelEvent;
             let effectiveIncomingMessage = incomingMessage;
+            const clientData = (
+              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+            ) as inferSchemaOut<TClientDataSchema>;
             if (wireChannelEvent) {
               channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
               if (channelConn) {
@@ -7083,9 +7086,6 @@ function chatAgent<
             const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
               msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
             );
-            const clientData = (
-              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-            ) as inferSchemaOut<TClientDataSchema>;
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
             // Actions are not turns. They use a different span name
