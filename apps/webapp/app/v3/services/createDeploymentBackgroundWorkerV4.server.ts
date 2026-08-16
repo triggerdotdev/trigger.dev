@@ -242,10 +242,15 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
 
       if (webhooksError) {
         logger.error("Error syncing declarative webhooks", { error: webhooksError });
-        if (webhooksError instanceof ServiceValidationError) {
-          await this.#failBackgroundWorkerDeployment(deployment, webhooksError, environment);
-          throw webhooksError;
-        }
+
+        const serviceError =
+          webhooksError instanceof ServiceValidationError
+            ? webhooksError
+            : new ServiceValidationError("Error syncing declarative webhooks");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+
+        throw serviceError;
       }
 
       // Guarded BUILDING → DEPLOYING transition. `updateMany` for optimistic concurrency control
