@@ -6988,6 +6988,28 @@ function chatAgent<
               channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
               if (channelConn) {
                 const interaction = channelConn.onInteraction?.(wireChannelEvent.event) ?? null;
+                if (interaction && hydrateMessages && accumulatedUIMessages.length === 0) {
+                  try {
+                    const hydratedForInteraction = (await hydrateMessages({
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      trigger: "submit-message",
+                      incomingMessages: [],
+                      previousMessages: [...accumulatedUIMessages],
+                      clientData,
+                      continuation,
+                      previousRunId,
+                    })) as TUIMessage[];
+                    accumulatedUIMessages = hydratedForInteraction;
+                    accumulatedMessages = await toModelMessages(hydratedForInteraction);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                  } catch (hydrateError) {
+                    logger.warn(
+                      "chat.agent: hydrateMessages for channel interaction resolution failed",
+                      { error: hydrateError }
+                    );
+                  }
+                }
                 const resolutionMessage = interaction
                   ? buildInteractionResolutionMessage(
                       interaction,
