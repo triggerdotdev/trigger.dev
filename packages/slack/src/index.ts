@@ -75,7 +75,7 @@ const DEFAULT_KEY =
  * events. Interactivity (block_actions) is a separate surface, admitted via INTERACTIVITY_PASS.
  */
 const SELF_MESSAGE_GUARD =
-  "event.event.type == 'message' && event.event.bot_id == null && event.event.subtype in [null, 'file_share', 'thread_broadcast']";
+  "event.event.type == 'message' && event.event.bot_id == null && event.event.subtype in [null,'file_share','thread_broadcast']";
 
 /** Interactivity callbacks (button clicks) always pass the loop guard; onInteraction resolves them. */
 const INTERACTIVITY_PASS = "event.type == 'block_actions'";

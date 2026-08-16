@@ -6995,7 +6995,14 @@ function chatAgent<
               channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
               if (channelConn) {
                 const interaction = channelConn.onInteraction?.(wireChannelEvent.event) ?? null;
-                if (interaction && hydrateMessages && accumulatedUIMessages.length === 0) {
+                const accumulatorHasInteractionToolCall =
+                  interaction != null &&
+                  accumulatedUIMessages.some((m) =>
+                    ((m.parts ?? []) as { toolCallId?: unknown }[]).some(
+                      (p) => p?.toolCallId === interaction.toolCallId
+                    )
+                  );
+                if (interaction && hydrateMessages && !accumulatorHasInteractionToolCall) {
                   try {
                     const hydratedForInteraction = (await hydrateMessages({
                       chatId: currentWirePayload.chatId,
