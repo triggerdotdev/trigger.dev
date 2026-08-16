@@ -90,10 +90,15 @@ Presets ship a sensible default event type, and they're generic, so you can plug
 
 ```ts
 import type Stripe from "stripe";
-import { webhooks } from "@trigger.dev/sdk";
+import { webhook, webhooks } from "@trigger.dev/sdk";
 
-// `event` is now the full, discriminated Stripe.Event union
-webhooks.stripe<Stripe.Event>();
+export const stripeEvents = webhook({
+  id: "stripe-events",
+  source: webhooks.stripe<Stripe.Event>(),
+  onEvent: async ({ event }) => {
+    // `event` is now the full, discriminated Stripe.Event union
+  },
+});
 ```
 
 For `webhooks.custom<T>()`, pass your own event type as `T`.
@@ -107,8 +112,9 @@ For `webhooks.custom<T>()`, pass your own event type as `T`.
 ## How verification works
 
 Every inbound request is verified before your task runs. Trigger.dev checks the signature, the
-timestamp (for replay protection, where the provider supplies one), and derives the idempotency key
-from the provider's event id. A request that fails verification gets a `400` and never creates a run.
+timestamp (for replay protection, where the provider supplies one), and derives an idempotency key.
+When the preset maps a provider event id it uses that; otherwise it falls back to a hash of the raw
+body, timestamp, and signature. A request that fails verification gets a `400` and never creates a run.
 
 Presets handle this for you. Under the hood, every scheme is one of:
 
@@ -116,6 +122,12 @@ Presets handle this for you. Under the hood, every scheme is one of:
 - **`shared-secret`**: a static token compared in a header, bearer, basic auth, or the body.
 - **`url-secret`**: a secret in the URL path or query string.
 - **`asymmetric`**: public-key signatures (Ed25519, ECDSA, RSA). You store the provider's public key instead of a shared secret.
+
+<Warning>
+  `url-secret` places the secret in the request URL (path or query string), where it can be captured
+  by access logs, proxies, and tracing systems. Prefer a header-based scheme (`hmac` or
+  `shared-secret`) when the provider supports one.
+</Warning>
 
 Once a request is verified, see [Connecting a provider](/webhooks/connect) for how to point the
 provider at the webhook URL and set the secret.
