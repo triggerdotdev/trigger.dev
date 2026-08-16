@@ -7594,6 +7594,11 @@ function chatAgent<
                   turn--;
                 }
 
+                if (droppedStaleInteraction) {
+                  msgSub.off();
+                  turn--;
+                }
+
                 if (!isAction && !droppedStaleInteraction) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
