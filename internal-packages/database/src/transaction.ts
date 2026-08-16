@@ -18,6 +18,25 @@ export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
 
 export type PrismaReplicaClient = Omit<PrismaClient, "$transaction">;
 
+// Narrow client views for the webhook feature's tables, prepping it to run on a
+// dedicated Postgres: control-plane models are absent, so touching one on the
+// webhook client (or spanning both DBs in a $transaction) is a compile error.
+export type WebhookDatabase = Pick<
+  PrismaClient,
+  | "webhookEndpoint"
+  | "webhookDelivery"
+  | "$transaction"
+  | "$queryRaw"
+  | "$queryRawUnsafe"
+  | "$executeRaw"
+  | "$executeRawUnsafe"
+>;
+
+export type WebhookReplicaDatabase = Pick<
+  PrismaReplicaClient,
+  "webhookEndpoint" | "webhookDelivery" | "$queryRaw" | "$queryRawUnsafe"
+>;
+
 export { Decimal };
 
 function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {

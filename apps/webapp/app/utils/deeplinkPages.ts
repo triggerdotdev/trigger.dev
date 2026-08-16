@@ -35,6 +35,7 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["tasks", { landing: "", prefix: "tasks" }],
   ["test", page("test")],
   ["waitpoints", { landing: "waitpoints/tokens", prefix: "waitpoints/tokens" }],
+  ["webhooks", page("webhooks")],
 ]);
 
 export const DEEPLINK_PATH_PREFIX = "/_";

@@ -2,16 +2,24 @@ import type {
   BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
+  FilterAst,
   PromptResource,
   QueueManifest,
   TaskResource,
+  WebhookResource,
 } from "@trigger.dev/core/v3";
-import { tryCatch } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
+import { FILTER_AST_VERSION, tryCatch } from "@trigger.dev/core/v3";
+import { FilterParseError, parseFilter } from "@internal/webhook-engine";
+import {
+  BackgroundWorkerId,
+  WebhookEndpointId,
+  stringifyDuration,
+} from "@trigger.dev/core/v3/isomorphic";
+import { randomBytes } from "node:crypto";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
-import type { PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, Prisma, boundedIn } from "~/db.server";
+import type { PrismaClientOrTransaction, WebhookDatabase } from "~/db.server";
+import { $transaction, Prisma, boundedIn, webhookPrisma } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -200,6 +208,34 @@ export class CreateBackgroundWorkerService extends BaseService {
         throw new ServiceValidationError("Error syncing declarative schedules");
       }
 
+      const [webhooksError] = await tryCatch(
+        syncDeclarativeWebhooks(
+          body.metadata.webhooks,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          webhookPrisma
+        )
+      );
+      if (webhooksError) {
+        if (webhooksError instanceof ServiceValidationError) {
+          logger.warn("Error syncing declarative webhooks", {
+            error: webhooksError.message,
+            backgroundWorker,
+            environment,
+          });
+          throw webhooksError;
+        }
+
+        logger.error("Error syncing declarative webhooks", {
+          error: webhooksError,
+          backgroundWorker,
+          environment,
+        });
+
+        throw new ServiceValidationError("Error syncing declarative webhooks");
+      }
+
       const [syncIdentifiersError] = await tryCatch(
         syncTaskIdentifiers(
           environment.id,
@@ -354,7 +390,7 @@ async function createWorkerTask(
 ): Promise<TaskMetadataEntry | null> {
   // Hoisted so the P2002 catch branch can return the same entry shape.
   let queue: TaskQueue | undefined;
-  let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "STANDARD" | undefined;
+  let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "WEBHOOK" | "STANDARD" | undefined;
   let resolvedTtl: string | null | undefined;
 
   try {
@@ -380,7 +416,9 @@ async function createWorkerTask(
         ? ("SCHEDULED" as const)
         : task.triggerSource === "agent"
           ? ("AGENT" as const)
-          : ("STANDARD" as const);
+          : task.triggerSource === "webhook"
+            ? ("WEBHOOK" as const)
+            : ("STANDARD" as const);
 
     resolvedTtl =
       typeof task.ttl === "number" ? (stringifyDuration(task.ttl) ?? null) : (task.ttl ?? null);
@@ -637,6 +675,145 @@ export class CreateDeclarativeScheduleError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CreateDeclarativeScheduleError";
+  }
+}
+
+// TODO: centralize (the P2 dynamic webhooks.create() API will also mint opaqueIds).
+function generateOpaqueId(): string {
+  return randomBytes(16).toString("base64url");
+}
+
+export async function syncDeclarativeWebhooks(
+  webhooks: WebhookResource[] | undefined,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction,
+  // Endpoint rows live on the webhook DB; the task-existence check below stays on the main client.
+  webhookPrisma: WebhookDatabase
+) {
+  if (webhooks === undefined) return;
+
+  const existing = await webhookPrisma.webhookEndpoint.findMany({
+    where: {
+      runtimeEnvironmentId: environment.id,
+      endpointTenantId: "",
+      endpointExternalRef: "",
+    },
+  });
+  const missing = new Set(existing.map((e) => e.handlerWebhookId));
+
+  for (const wh of webhooks) {
+    // Both routing targets resolve to a task: a fan-out webhook to its own task, a session webhook to
+    // the claiming agent. Validate the target exists in this worker so a bad route fails at sync.
+    const targetTaskSlug =
+      wh.routingTarget.type === "task" ? wh.routingTarget.taskId : wh.routingTarget.taskIdentifier;
+    const taskExists = await prisma.backgroundWorkerTask.findFirst({
+      where: { workerId: worker.id, slug: targetTaskSlug },
+      select: { id: true },
+    });
+    if (!taskExists) {
+      throw new ServiceValidationError(
+        `Webhook "${wh.id}" routes to unknown task "${targetTaskSlug}"`
+      );
+    }
+
+    missing.delete(wh.id);
+
+    if (
+      "config" in wh.verifierArtifact &&
+      wh.verifierArtifact.config.scheme === "url-secret" &&
+      wh.verifierArtifact.config.placement === "path"
+    ) {
+      throw new ServiceValidationError(
+        `Webhook "${wh.id}" uses url-secret verification with path placement, which cannot be verified on the hosted ingress URL. Use query placement or a header-based scheme.`
+      );
+    }
+
+    // Compile `filter` into a FilterAst, once here at sync. A bad filter fails the deploy with a clear
+    // message rather than surfacing at ingest. Re-deploying without a filter nulls the columns.
+    let filterNode: FilterAst | undefined;
+    if (wh.filter) {
+      try {
+        filterNode = parseFilter(wh.filter);
+      } catch (error) {
+        if (error instanceof FilterParseError) {
+          throw new ServiceValidationError(
+            `Webhook "${wh.id}" has an invalid filter: ${error.message}`
+          );
+        }
+        throw error;
+      }
+    }
+    const filterData = {
+      filter: wh.filter ?? null,
+      filterAst: filterNode ? (filterNode as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+      filterAstVersion: filterNode ? FILTER_AST_VERSION : null,
+    };
+
+    // Validate a session target's startOn like the route filter: a bad predicate fails the deploy, not ingest.
+    if (wh.routingTarget.type === "session" && wh.routingTarget.startOn) {
+      try {
+        parseFilter(wh.routingTarget.startOn);
+      } catch (error) {
+        if (error instanceof FilterParseError) {
+          throw new ServiceValidationError(
+            `Webhook "${wh.id}" has an invalid startOn: ${error.message}`
+          );
+        }
+        throw error;
+      }
+    }
+
+    const found = existing.find((e) => e.handlerWebhookId === wh.id);
+    if (found) {
+      await webhookPrisma.webhookEndpoint.update({
+        where: { id: found.id },
+        data: {
+          source: wh.source,
+          routingTarget: wh.routingTarget as unknown as Prisma.InputJsonValue,
+          verifierArtifact: wh.verifierArtifact as unknown as Prisma.InputJsonValue,
+          secretProvisioning: wh.secretProvisioning ?? "either",
+          metadata: (wh.metadata ?? {}) as unknown as Prisma.InputJsonValue,
+          ...(found.manuallyDeactivatedAt === null ? { status: "ACTIVE" as const } : {}),
+          ...filterData,
+        },
+      });
+    } else {
+      const { id, friendlyId } = WebhookEndpointId.generate();
+      await webhookPrisma.webhookEndpoint.create({
+        data: {
+          id,
+          friendlyId,
+          opaqueId: generateOpaqueId(), // CSPRNG, NOT a friendlyId
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          environmentType: environment.type,
+          endpointTenantId: "",
+          endpointExternalRef: "",
+          source: wh.source,
+          handlerWebhookId: wh.id,
+          routingTarget: wh.routingTarget as unknown as Prisma.InputJsonValue,
+          verifierArtifact: wh.verifierArtifact as unknown as Prisma.InputJsonValue,
+          secretProvisioning: wh.secretProvisioning ?? "either",
+          metadata: (wh.metadata ?? {}) as unknown as Prisma.InputJsonValue,
+          status: "ACTIVE",
+          ...filterData,
+        },
+      });
+    }
+  }
+
+  if (missing.size > 0) {
+    await webhookPrisma.webhookEndpoint.updateMany({
+      where: {
+        runtimeEnvironmentId: environment.id,
+        endpointTenantId: "",
+        endpointExternalRef: "",
+        handlerWebhookId: { in: boundedIn(Array.from(missing)) },
+      },
+      data: { status: "INACTIVE" },
+    });
   }
 }
 

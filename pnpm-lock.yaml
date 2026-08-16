@@ -326,6 +326,12 @@ importers:
       '@internal/tsql':
         specifier: workspace:*
         version: link:../../internal-packages/tsql
+      '@internal/webhook-engine':
+        specifier: workspace:*
+        version: link:../../internal-packages/webhook-engine
+      '@internal/webhook-sources':
+        specifier: workspace:*
+        version: link:../../internal-packages/webhook-sources
       '@internationalized/date':
         specifier: ^3.5.1
         version: 3.5.1
@@ -1514,6 +1520,50 @@ importers:
       antlr4ts-cli:
         specifier: 0.5.0-alpha.4
         version: 0.5.0-alpha.4
+
+  internal-packages/webhook-engine:
+    dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
+      '@trigger.dev/redis-worker':
+        specifier: workspace:*
+        version: link:../../packages/redis-worker
+      nanoid:
+        specifier: 3.3.8
+        version: 3.3.8
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+
+  internal-packages/webhook-sources:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@internal/webhook-engine':
+        specifier: workspace:*
+        version: link:../webhook-engine
 
   packages/build:
     dependencies:
@@ -12742,11 +12792,6 @@ packages:
       react: 18.3.1
       react-dom: 18.3.1
 
-  nanoid@3.3.11:
-    resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
   nanoid@3.3.12:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -13169,9 +13214,6 @@ packages:
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
-
-  package-json-from-dist@1.0.0:
-    resolution: {integrity: sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==}
 
   package-json-from-dist@1.0.1:
     resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
@@ -16181,7 +16223,7 @@ snapshots:
       commander: 10.0.1
       marked: 9.1.6
       marked-terminal: 7.1.0(marked@9.1.6)
-      semver: 7.8.1
+      semver: 7.8.5
 
   '@arethetypeswrong/core@0.18.5':
     dependencies:
@@ -16190,7 +16232,7 @@ snapshots:
       cjs-module-lexer: 1.4.3
       fflate: 0.8.3
       lru-cache: 11.2.4
-      semver: 7.8.1
+      semver: 7.8.5
       typescript: 5.6.1-rc
       validate-npm-package-name: 5.0.0
 
@@ -19392,7 +19434,7 @@ snapshots:
 
   '@npmcli/fs@3.1.0':
     dependencies:
-      semver: 7.8.1
+      semver: 7.8.5
 
   '@npmcli/git@4.1.0':
     dependencies:
@@ -19402,7 +19444,7 @@ snapshots:
       proc-log: 3.0.0
       promise-inflight: 1.0.1
       promise-retry: 2.0.1
-      semver: 7.8.1
+      semver: 7.8.5
       which: 3.0.1
     transitivePeerDependencies:
       - bluebird
@@ -19781,7 +19823,7 @@ snapshots:
       '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.28.0
       forwarded-parse: 2.1.2
-      semver: 7.8.1
+      semver: 7.8.5
     transitivePeerDependencies:
       - supports-color
 
@@ -19924,7 +19966,7 @@ snapshots:
       '@types/shimmer': 1.2.0
       import-in-the-middle: 1.15.0
       require-in-the-middle: 7.5.2
-      semver: 7.8.1
+      semver: 7.8.5
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -24249,7 +24291,7 @@ snapshots:
 
   builtins@5.0.1:
     dependencies:
-      semver: 7.8.1
+      semver: 7.8.5
 
   bundle-name@4.1.0:
     dependencies:
@@ -24604,7 +24646,7 @@ snapshots:
       dot-prop: 10.1.0
       env-paths: 3.0.0
       json-schema-typed: 8.0.2
-      semver: 7.8.1
+      semver: 7.8.5
       uint8array-extras: 1.5.0
 
   confbox@0.1.8: {}
@@ -25302,7 +25344,7 @@ snapshots:
       '@one-ini/wasm': 0.1.1
       commander: 10.0.1
       minimatch: 9.0.1
-      semver: 7.8.1
+      semver: 7.8.5
 
   ee-first@1.1.1: {}
 
@@ -26201,7 +26243,7 @@ snapshots:
       process-warning: 5.0.0
       rfdc: 1.4.1
       secure-json-parse: 4.0.0
-      semver: 7.8.1
+      semver: 7.8.5
       toad-cache: 3.7.0
 
   fastq@1.15.0:
@@ -26531,7 +26573,7 @@ snapshots:
       jackspeak: 3.4.3
       minimatch: 9.0.5
       minipass: 7.1.3
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
   glob@11.1.0:
@@ -26540,7 +26582,7 @@ snapshots:
       jackspeak: 4.2.3
       minimatch: 10.2.5
       minipass: 7.1.3
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
       path-scurry: 2.0.2
 
   glob@13.0.6:
@@ -27289,7 +27331,7 @@ snapshots:
       lodash.isstring: 4.0.1
       lodash.once: 4.1.1
       ms: 2.1.3
-      semver: 7.8.1
+      semver: 7.8.5
 
   junk@4.0.1: {}
 
@@ -27556,7 +27598,7 @@ snapshots:
 
   make-dir@4.0.0:
     dependencies:
-      semver: 7.8.1
+      semver: 7.8.5
 
   map-obj@1.0.1: {}
 
@@ -27569,7 +27611,7 @@ snapshots:
   marked-terminal@7.1.0(marked@9.1.6):
     dependencies:
       ansi-escapes: 7.0.0
-      chalk: 5.3.0
+      chalk: 5.6.2
       cli-highlight: 2.1.11
       cli-table3: 0.6.5
       marked: 9.1.6
@@ -28526,8 +28568,6 @@ snapshots:
       stacktrace-js: 2.0.2
       stylis: 4.3.0
 
-  nanoid@3.3.11: {}
-
   nanoid@3.3.12: {}
 
   nanoid@3.3.8: {}
@@ -28617,7 +28657,7 @@ snapshots:
     dependencies:
       hosted-git-info: 6.1.1
       is-core-module: 2.14.0
-      semver: 7.8.1
+      semver: 7.8.5
       validate-npm-package-license: 3.0.4
 
   normalize-path@3.0.0: {}
@@ -28630,7 +28670,7 @@ snapshots:
 
   npm-install-checks@6.2.0:
     dependencies:
-      semver: 7.8.1
+      semver: 7.8.5
 
   npm-normalize-package-bin@3.0.1: {}
 
@@ -28638,7 +28678,7 @@ snapshots:
     dependencies:
       hosted-git-info: 6.1.1
       proc-log: 3.0.0
-      semver: 7.8.1
+      semver: 7.8.5
       validate-npm-package-name: 5.0.0
 
   npm-pick-manifest@8.0.2:
@@ -28646,7 +28686,7 @@ snapshots:
       npm-install-checks: 6.2.0
       npm-normalize-package-bin: 3.0.1
       npm-package-arg: 10.1.0
-      semver: 7.8.1
+      semver: 7.8.5
 
   npm-run-all@4.1.5:
     dependencies:
@@ -29019,8 +29059,6 @@ snapshots:
 
   p-try@2.2.0: {}
 
-  package-json-from-dist@1.0.0: {}
-
   package-json-from-dist@1.0.1: {}
 
   package-json@6.5.0:
@@ -29354,7 +29392,7 @@ snapshots:
 
   postcss@8.5.10:
     dependencies:
-      nanoid: 3.3.11
+      nanoid: 3.3.12
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -30220,7 +30258,7 @@ snapshots:
   rimraf@6.0.1:
     dependencies:
       glob: 11.1.0
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
 
   rimraf@6.1.3:
     dependencies:
@@ -31407,7 +31445,7 @@ snapshots:
   tsx@4.17.0:
     dependencies:
       esbuild: 0.23.0
-      get-tsconfig: 4.7.6
+      get-tsconfig: 4.14.0
     optionalDependencies:
       fsevents: 2.3.3
 

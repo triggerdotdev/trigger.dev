@@ -13,7 +13,7 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
 
-export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT";
+export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT" | "WEBHOOK";
 
 export type UnifiedTaskListItem = {
   kind: UnifiedTaskKind;
@@ -215,7 +215,12 @@ function toUnifiedItems(
 
   for (const task of tasks) {
     items.push({
-      kind: task.triggerSource === "SCHEDULED" ? "SCHEDULED" : "STANDARD",
+      kind:
+        task.triggerSource === "SCHEDULED"
+          ? "SCHEDULED"
+          : task.triggerSource === "WEBHOOK"
+            ? "WEBHOOK"
+            : "STANDARD",
       slug: task.slug,
       filePath: task.filePath,
       triggerSource: task.triggerSource,
