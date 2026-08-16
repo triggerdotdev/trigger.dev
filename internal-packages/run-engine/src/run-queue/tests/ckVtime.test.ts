@@ -1344,6 +1344,80 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   });
 
   redisTest(
+    "a gated variant that was never registered still joins the fair order",
+    async ({ redisContainer }) => {
+      // Pass 2 marks a variant attempted before the per-key concurrency gate, and its
+      // discovery step skips anything attempted, so a variant that is BOTH unregistered and
+      // gated used to fall through every route: pass 1 cannot see it (no ckVtime entry),
+      // pass 2 attempts it and the gate makes that a no-op, and discovery then skips it for
+      // having been attempted. It stayed invisible to the fair pass for as long as the gate
+      // held, on every call.
+      //
+      // Unregistered only happens where a variant reached ckIndex without a vtime-aware
+      // write, which is the rollout case: a backlog queued before the flag went on, or an
+      // enqueue from an instance that still has it off. This fixture reproduces that by
+      // enqueueing through a flag-off queue and then dequeuing through a flag-on one.
+      const off = createQueue(redisContainer, null);
+      const on = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        for (let i = 0; i < 2; i++) {
+          await off.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-gated-${i}`,
+              concurrencyKey: "gated",
+              timestamp: t0 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const gatedVariant = variantName("gated");
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(gatedVariant);
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(gatedVariant);
+
+        // In ckIndex, and with no ckVtime entry, exactly as a pre-flag backlog looks.
+        expect(await on.redis.zscore(ckIndexKey, gatedVariant)).not.toBeNull();
+        expect(await on.redis.zscore(ckVtimeKey, gatedVariant)).toBeNull();
+
+        // Hold it at its per-key ceiling so every visit hits the gate.
+        await on.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+        await on.redis.sadd(
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(gatedVariant),
+          "occupant"
+        );
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const served = await on.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+
+        // Still unservable, so nothing comes back, but the gate no longer costs it its place
+        // in the fair order: it is registered at the floor and pass 1 can see it from now on.
+        expect(served.length).toBe(0);
+        expect(await on.redis.zscore(ckVtimeKey, gatedVariant)).not.toBeNull();
+
+        // Registering must not resurrect a ckVtime entry with no ckIndex member, and the key
+        // it may have just created has to carry the state TTL rather than leaking.
+        expect(await on.redis.zscore(ckIndexKey, gatedVariant)).not.toBeNull();
+        expect(await on.redis.ttl(ckVtimeKey)).toBeGreaterThan(0);
+
+        // Once the ceiling clears it serves, and from the fair pass rather than by age.
+        await on.redis.srem(
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(gatedVariant),
+          "occupant"
+        );
+        const after = await on.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+        expect(after.map((m) => m.messageId)).toEqual(["r-gated-0"]);
+      } finally {
+        await off.quit();
+        await on.quit();
+      }
+    }
+  );
+
+  redisTest(
     "a ckVtime entry stranded by an ack is collected by the next scan",
     async ({ redisContainer }) => {
       // ckVtime is maintained by the enqueue, nack and dequeue scripts. Ack is not one of
