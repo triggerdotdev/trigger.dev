@@ -120,12 +120,19 @@ export function WebhookComposer({
   const replaySourcePath = endpointBasePath ? `${endpointBasePath}/replay-source` : "";
   const samplesPath = `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/webhooks/samples`;
 
-  function submit(override?: { body?: string; signatureMode?: SignatureMode }) {
+  function submit(override?: {
+    body?: string;
+    signatureMode?: SignatureMode;
+    headers?: Record<string, string>;
+  }) {
     if (!endpoint) return;
-    const headers: Record<string, string> = {};
-    for (const row of headerRows) {
-      const key = row.key.trim();
-      if (key) headers[key] = row.value;
+    let headers = override?.headers;
+    if (!headers) {
+      headers = {};
+      for (const row of headerRows) {
+        const key = row.key.trim();
+        if (key) headers[key] = row.value;
+      }
     }
     fetcher.submit(
       {
@@ -143,7 +150,7 @@ export function WebhookComposer({
     const challenge = `chal_${Math.random().toString(36).slice(2, 10)}`;
     const body = JSON.stringify(buildHandshakeBody(endpoint.handshake, challenge), null, 2);
     applyPayload(body, {});
-    submit({ body, signatureMode: "signed" });
+    submit({ body, signatureMode: "signed", headers: {} });
   }
 
   const result = fetcher.data;
