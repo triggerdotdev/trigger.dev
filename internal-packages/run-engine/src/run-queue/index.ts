@@ -5286,6 +5286,21 @@ local function tryServe(ckQueueName, mayRaiseFloor)
         return 'notReady'
       end
     end
+  else
+    -- NEW: gated on the per-key ceiling, so nothing above ran, including the registration
+    -- that a serve would have done. Pass 2 marks a variant attempted before this gate, and
+    -- its discovery step skips anything attempted, so an UNREGISTERED variant that is gated
+    -- was invisible to pass 1 and stayed that way on every call for as long as the gate
+    -- held. Unregistered here means it reached ckIndex without ever passing through a
+    -- vtime-aware write: a backlog queued before the flag went on, an enqueue from an
+    -- instance that still has it off, or a ckVtime that expired while ckIndex lived, which
+    -- are the same cases pass 2's discovery exists to repair. NX, so a variant that is
+    -- already registered keeps the tag it earned, which is the usual case and costs one op.
+    -- The TTL only needs setting when this actually registered something, since that is the
+    -- path that can recreate a ckVtime key which expired out from under a live ckIndex.
+    if redis.call('ZADD', ckVtimeKey, 'NX', tostring(floor), ckQueueName) == 1 then
+      redis.call('EXPIRE', ckVtimeKey, stateTtl)
+    end
   end
 end
 
