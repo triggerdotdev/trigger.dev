@@ -224,7 +224,6 @@
     "jose": "^5.4.0",
     "nanoid": "3.3.18",
     "prom-client": "^15.1.0",
-    "socket.io": "4.8.3",
     "socket.io-client": "4.7.5",
     "std-env": "^3.8.1",
     "tinyexec": "^0.3.2",
