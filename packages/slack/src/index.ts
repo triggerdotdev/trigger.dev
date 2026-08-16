@@ -271,8 +271,9 @@ function defaultSlackOnInteraction(event: unknown): ChannelInteractionResolution
 /**
  * After a decision, collapse the controls via the interaction's `response_url` (Slack's documented path:
  * the click gets a bare 200 ack, then `response_url` accepts `replace_original` for up to 30 minutes).
- * Keeps the original context blocks, drops the `actions` block, and appends the outcome, so the buttons
- * can't be clicked again. No-op when the payload carries no `response_url` (e.g. a synthetic test event).
+ * Keeps the original context blocks, drops ONLY the resolved tool call's `actions` block (so approve/deny
+ * controls for any other pending tool calls in the same message survive), and appends the outcome. No-op
+ * when the payload carries no `response_url` (e.g. a synthetic test event).
  */
 async function defaultSlackFinalizeInteraction(
   event: unknown,
@@ -292,7 +293,14 @@ async function defaultSlackFinalizeInteraction(
   const who = payload.user?.id ? ` by <@${payload.user.id}>` : "";
 
   const original = Array.isArray(payload.message?.blocks) ? payload.message!.blocks : [];
-  const kept = original.filter((b) => (b as { type?: string })?.type !== "actions");
+  const resolvedPrefix = `${resolution.toolCallId}::`;
+  const kept = original.filter((block) => {
+    const actionBlock = block as { type?: string; elements?: Array<{ value?: string }> };
+    return (
+      actionBlock.type !== "actions" ||
+      !actionBlock.elements?.some((element) => element.value?.startsWith(resolvedPrefix))
+    );
+  });
   const blocks = [
     ...kept,
     { type: "context", elements: [{ type: "mrkdwn", text: `${icon} *${decision}*${who}` }] },
