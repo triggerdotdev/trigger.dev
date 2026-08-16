@@ -59,6 +59,7 @@ overrides:
   brace-expansion@>=5 <5.0.9: 5.0.9
   mermaid@>=11 <11.16.1: ^11.16.1
   '@jsonhero/json-infer-types>ip-address': ^10.3.1
+  express-rate-limit>ip-address: ^10.3.1
   '@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit': ^8.6.0
 
 patchedDependencies:
@@ -11481,10 +11482,6 @@ packages:
   ioredis@5.6.1:
     resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
-
-  ip-address@10.2.0:
-    resolution: {integrity: sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==}
-    engines: {node: '>= 12'}
 
   ip-address@10.5.0:
     resolution: {integrity: sha512-R5SnVLJmgYYvf2F2ZgwSBnelz5G4q5AxIC277GDfUaNbrZKNANcBC7RHqYYePlszf4kBolVkJauG0ZjHHFh55g==}
@@ -25827,7 +25824,7 @@ snapshots:
     dependencies:
       debug: 4.4.3(supports-color@10.0.0)
       express: 5.2.1
-      ip-address: 10.2.0
+      ip-address: 10.5.0
     transitivePeerDependencies:
       - supports-color
 
@@ -26763,8 +26760,6 @@ snapshots:
       standard-as-callback: 2.1.0
     transitivePeerDependencies:
       - supports-color
-
-  ip-address@10.2.0: {}
 
   ip-address@10.5.0: {}
 
