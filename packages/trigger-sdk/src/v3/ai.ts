@@ -5523,6 +5523,13 @@ export type ChatAgentOptions<
    *   },
    * });
    * ```
+   *
+   * Note: on a channel HITL resume turn (a button click that lands on a fresh
+   * run whose accumulator doesn't yet hold the pending tool call), this hook is
+   * called twice for the one delivery: once with `incomingMessages: []` to load
+   * the chain and locate the pending tool call, then again with the synthesized
+   * resolution message so it can be persisted. Keep the hook's read path
+   * idempotent.
    */
   hydrateMessages?: (
     event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
