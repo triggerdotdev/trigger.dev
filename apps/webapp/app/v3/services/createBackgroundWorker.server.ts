@@ -218,12 +218,22 @@ export class CreateBackgroundWorkerService extends BaseService {
         )
       );
       if (webhooksError) {
+        if (webhooksError instanceof ServiceValidationError) {
+          logger.warn("Error syncing declarative webhooks", {
+            error: webhooksError.message,
+            backgroundWorker,
+            environment,
+          });
+          throw webhooksError;
+        }
+
         logger.error("Error syncing declarative webhooks", {
           error: webhooksError,
           backgroundWorker,
           environment,
         });
-        if (webhooksError instanceof ServiceValidationError) throw webhooksError;
+
+        throw new ServiceValidationError("Error syncing declarative webhooks");
       }
 
       const [syncIdentifiersError] = await tryCatch(
