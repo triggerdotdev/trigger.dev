@@ -1947,9 +1947,6 @@ importers:
       prom-client:
         specifier: ^15.1.0
         version: 15.1.0
-      socket.io:
-        specifier: 4.8.3
-        version: 4.8.3(bufferutil@4.0.9)
       socket.io-client:
         specifier: 4.7.5
         version: 4.7.5(bufferutil@4.0.9)(supports-color@10.0.0)
