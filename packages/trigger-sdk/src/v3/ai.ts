@@ -7146,6 +7146,12 @@ function chatAgent<
                   // instead of the wire buffer. The frontend handles re-sending
                   // non-injected messages via sendMessage on turn complete.
                   if (pmConfig) {
+                    if ((msg as { channelEvent?: unknown }).channelEvent != null) {
+                      pendingWireMessages.push(
+                        msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                      );
+                      return;
+                    }
                     // Slim wire: at most one delta message per record. The
                     // pendingMessages handler reads `msg.message` directly
                     // instead of slicing an array — a wire record arrives
@@ -8618,35 +8624,44 @@ function chatAgent<
             }
 
             if (channelWireEvent && channelConn?.react) {
-              if (channelWorkingReaction) {
-                await applyChannelReaction(channelConn, channelWireEvent, {
-                  name: channelWorkingReaction,
-                  remove: true,
-                });
-              }
-              const errorReaction = await resolveReactionChoice(
-                channelConn.reactions?.error,
-                channelWireEvent.event
-              );
-              if (errorReaction) {
-                await applyChannelReaction(channelConn, channelWireEvent, { name: errorReaction });
+              try {
+                if (channelWorkingReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: channelWorkingReaction,
+                    remove: true,
+                  });
+                }
+                const errorReaction = await resolveReactionChoice(
+                  channelConn.reactions?.error,
+                  channelWireEvent.event
+                );
+                if (errorReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, { name: errorReaction });
+                }
+              } catch (reactionError) {
+                logger.warn("chat.agent: channel error reaction failed", { error: reactionError });
               }
             }
 
             if (channelWireEvent && channelConn?.send && channelAckRef) {
               const channelErrorText =
                 turnError instanceof Error ? turnError.message : "An unexpected error occurred";
-              const errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
-                text: channelErrorText,
-                message: {
-                  id: channelAckRef,
-                  role: "assistant",
-                  parts: [{ type: "text", text: channelErrorText }],
-                } as UIMessage,
-                final: true,
-                stopped: false,
-                error: turnError,
-              });
+              let errorMessage: ChannelMessage | null = null;
+              try {
+                errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
+                  text: channelErrorText,
+                  message: {
+                    id: channelAckRef,
+                    role: "assistant",
+                    parts: [{ type: "text", text: channelErrorText }],
+                  } as UIMessage,
+                  final: true,
+                  stopped: false,
+                  error: turnError,
+                });
+              } catch (outboundError) {
+                logger.warn("chat.agent: channel error outbound failed", { error: outboundError });
+              }
               if (errorMessage) {
                 try {
                   await channelConn.send(errorMessage, {
