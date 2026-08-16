@@ -100,6 +100,7 @@
       "react-dom@^18": "18.3.1",
       "ai@^6": "6.0.116",
       "@ai-sdk/provider-utils@^4": "4.0.29",
+      "axios@>=1.15.2 <1.18.0": "^1.18.0",
       "express@^4>body-parser": "^1.20.6",
       "@remix-run/dev@2.17.5>tar-fs": "2.1.4",
       "tar": "7.5.21",
