@@ -640,8 +640,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.0
       nanoid:
-        specifier: 3.3.8
-        version: 3.3.8
+        specifier: 3.3.18
+        version: 3.3.18
       neverthrow:
         specifier: ^8.2.0
         version: 8.2.0
@@ -1313,8 +1313,8 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
       nanoid:
-        specifier: 3.3.8
-        version: 3.3.8
+        specifier: 3.3.18
+        version: 3.3.18
       p-map:
         specifier: ^6.0.0
         version: 6.0.0
@@ -1399,9 +1399,6 @@ importers:
       cronstrue:
         specifier: ^2.50.0
         version: 2.61.0
-      nanoid:
-        specifier: 3.3.8
-        version: 3.3.8
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -1536,9 +1533,6 @@ importers:
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
-      nanoid:
-        specifier: 3.3.8
-        version: 3.3.8
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -1946,8 +1940,8 @@ importers:
         specifier: ^5.4.0
         version: 5.4.0
       nanoid:
-        specifier: 3.3.8
-        version: 3.3.8
+        specifier: 3.3.18
+        version: 3.3.18
       prom-client:
         specifier: ^15.1.0
         version: 15.1.0
@@ -2133,8 +2127,8 @@ importers:
         specifier: ^4.5.0
         version: 4.5.0
       nanoid:
-        specifier: ^5.0.7
-        version: 5.1.2
+        specifier: ^5.1.16
+        version: 5.1.16
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
@@ -12731,13 +12725,8 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@3.3.8:
-    resolution: {integrity: sha512-WNLf5Sd8oZxOm+TzppcYk8gVOgP+l58xNy58D0nbUnOxOWRWvlcCV4kUF7ltmI6PsrLl/BgKEyS4mqsGChFN0w==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  nanoid@5.1.2:
-    resolution: {integrity: sha512-b+CiXQCNMUGe0Ri64S9SXFcP9hogjAJ2Rd6GdVxhPLRm7mhGaM7VgOvCAJ1ZshfHbqVDI3uqTI5C8/GaKuLI7g==}
+  nanoid@5.1.16:
+    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
 
@@ -16011,7 +16000,7 @@ snapshots:
     dependencies:
       '@ai-sdk/provider': 0.0.26
       eventsource-parser: 1.1.2
-      nanoid: 3.3.8
+      nanoid: 3.3.18
       secure-json-parse: 2.7.0
     optionalDependencies:
       zod: 3.25.76
@@ -28322,9 +28311,7 @@ snapshots:
 
   nanoid@3.3.18: {}
 
-  nanoid@3.3.8: {}
-
-  nanoid@5.1.2: {}
+  nanoid@5.1.16: {}
 
   napi-build-utils@2.0.0:
     optional: true

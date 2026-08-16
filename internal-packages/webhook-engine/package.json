@@ -19,7 +19,6 @@
     "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
-    "nanoid": "3.3.8",
     "zod": "3.25.76"
   },
   "devDependencies": {

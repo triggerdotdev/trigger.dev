@@ -25,7 +25,7 @@
   "dependencies": {
     "@trigger.dev/core": "workspace:4.5.11",
     "lodash.omit": "^4.5.0",
-    "nanoid": "^5.0.7",
+    "nanoid": "^5.1.16",
     "p-limit": "^6.2.0",
     "seedrandom": "^3.0.5",
     "zod": "3.25.76",
