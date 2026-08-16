@@ -366,7 +366,7 @@ function makeSlackSend<TEvent>(token: SlackToken<TEvent>, apiBaseUrl: string) {
     let botToken = await resolve();
 
     const blocks = (message as { blocks?: unknown }).blocks;
-    const rich = Array.isArray(blocks) && blocks.length > 0 ? { blocks } : {};
+    const hasBlocks = Array.isArray(blocks) && blocks.length > 0;
 
     const post = async () =>
       ctx.previousRef
@@ -374,13 +374,13 @@ function makeSlackSend<TEvent>(token: SlackToken<TEvent>, apiBaseUrl: string) {
             channel,
             ts: ctx.previousRef,
             text: message.text,
-            ...rich,
+            blocks: hasBlocks ? blocks : [],
           })
         : slackApi(apiBaseUrl, "chat.postMessage", botToken, {
             channel,
             thread_ts: threadTs,
             text: message.text,
-            ...rich,
+            ...(hasBlocks ? { blocks } : {}),
           });
 
     let result = await post();
