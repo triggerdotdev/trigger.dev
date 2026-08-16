@@ -208,8 +208,10 @@ export type MockChatAgentHarness = {
    * connector by `connectorId`, maps the event with its `inbound()`, runs the
    * turn, and posts the reply back through the connector's `send()`.
    *
-   * `connectorId` defaults to the `id` of the connector on the agent when the
-   * agent lists exactly one; pass it explicitly for multi-connector agents.
+   * `connectorId` defaults to `DEFAULT_TEST_CONNECTOR_ID`, which is also the id
+   * `recordingChannelConnector()` uses when you don't set one, so the common
+   * single-connector case lines up. Pass it explicitly for a connector with a
+   * custom id or for multi-connector agents.
    */
   sendChannelEvent(args: {
     event: unknown;
