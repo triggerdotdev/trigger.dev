@@ -20,7 +20,7 @@ describe("slack channel", () => {
     expect(guardOnly.filter).toContain("event.event.type == 'message'");
     expect(guardOnly.filter).toContain("event.event.bot_id == null");
     expect(guardOnly.filter).toContain(
-      "event.event.subtype in [null, 'file_share', 'thread_broadcast']"
+      "event.event.subtype in [null,'file_share','thread_broadcast']"
     );
     expect(guardOnly.filter).toContain("event.type == 'block_actions'");
 

@@ -8691,7 +8691,9 @@ function chatAgent<
                   channelWireEvent.event
                 );
                 if (errorReaction) {
-                  await applyChannelReaction(channelConn, channelWireEvent, { name: errorReaction });
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: errorReaction,
+                  });
                 }
               } catch (reactionError) {
                 logger.warn("chat.agent: channel error reaction failed", { error: reactionError });
