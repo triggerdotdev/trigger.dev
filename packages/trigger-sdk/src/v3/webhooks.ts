@@ -163,7 +163,10 @@ export const webhookSources = {
   gitlab<T = unknown>(): WebhookSource<T> {
     return {
       provider: "gitlab",
-      verifier: { kind: "preset", preset: "svix", config: svixVerifierConfig() },
+      verifier: {
+        kind: "config",
+        config: { scheme: "shared-secret", placement: "header", fieldName: "x-gitlab-token" },
+      },
       secretProvisioning: "integrator",
     };
   },

@@ -6972,6 +6972,7 @@ function chatAgent<
           let channelAckRef: string | undefined;
           let channelStreamEditor: ChannelStreamEditor | undefined;
           let droppedStaleInteraction = false;
+          let droppedUnknownConnector = false;
           let channelFinalAnswerPosted = false;
           try {
             // Extract turn-level context before entering the span. Slim
@@ -7085,6 +7086,15 @@ function chatAgent<
                     });
                   }
                 }
+              } else {
+                droppedUnknownConnector = true;
+                logger.warn(
+                  "chat.agent: no channel connector matches this delivery; skipping turn",
+                  {
+                    connectorId: wireChannelEvent.connectorId,
+                    deliveryId: wireChannelEvent.deliveryId,
+                  }
+                );
               }
             }
             const incomingMessages: TUIMessage[] = effectiveIncomingMessage
@@ -7334,7 +7344,11 @@ function chatAgent<
                 // snapshot + `session.out` replay (or `hydrateMessages`,
                 // which also fires per-turn below). Per-turn handling is
                 // therefore a delta merge, not a full-history reset.
-                if (currentWirePayload.trigger !== "action" && !droppedStaleInteraction) {
+                if (
+                  currentWirePayload.trigger !== "action" &&
+                  !droppedStaleInteraction &&
+                  !droppedUnknownConnector
+                ) {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -7633,12 +7647,12 @@ function chatAgent<
                   turn--;
                 }
 
-                if (droppedStaleInteraction) {
+                if (droppedStaleInteraction || droppedUnknownConnector) {
                   msgSub.off();
                   turn--;
                 }
 
-                if (!isAction && !droppedStaleInteraction) {
+                if (!isAction && !droppedStaleInteraction && !droppedUnknownConnector) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;

@@ -145,7 +145,7 @@ export function slack<TEvent = SlackMessageEvent>(
   const source: WebhookSource<TEvent> = {
     provider: "slack",
     verifier: { kind: "config", config: SLACK_VERIFIER, handshake: SLACK_HANDSHAKE },
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
   };
   const messageFilter = options.filter
     ? `${SELF_MESSAGE_GUARD} && (${options.filter})`
