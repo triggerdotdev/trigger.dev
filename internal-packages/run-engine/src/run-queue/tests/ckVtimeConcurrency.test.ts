@@ -346,11 +346,18 @@ describe("CK virtual-time concurrency and op-count budget", () => {
       expect(off.served).toBe(cks.length * perKey);
       expect(on.served).toBe(cks.length * perKey);
 
-      // Per dequeue call the vtime path adds at worst 8 fixed ops: GET floor,
-      // ZRANGE min, ZRANGE window, the pass-2 ZRANGEBYSCORE, the pass-2
-      // discovery ZADD, SET floor, EXISTS ckVtime, EXPIRE ckVtime, plus per
-      // serve one ZSCORE and one ZADD. The discovery ZADD is variadic, so it
-      // stays a single op however many variants one call registers.
+      // Per dequeue call the vtime path adds 8 fixed ops: GET floor, ZRANGE min,
+      // ZRANGE window, the pass-2 ZRANGEBYSCORE, the pass-2 discovery ZADD, SET
+      // floor, EXISTS ckVtime, EXPIRE ckVtime, plus per serve one ZSCORE and one
+      // ZADD. The discovery ZADD is variadic, so it stays a single op however many
+      // variants one call registers.
+      //
+      // This bounds the SERVABLE shape, which is what this fixture builds: every
+      // variant has ready work and is acked immediately, so both paths probe the
+      // same variants and neither pass walks past them. It is not a worst case. A
+      // call whose candidates are mostly unservable probes further than the flag-off
+      // command does, because pass 1 spends its window budget only on candidates it
+      // could serve; that shape is bounded separately by the test below.
       const budget = dequeueCalls * (8 + 2 * maxCount);
       expect(
         on.totalCalls,
@@ -360,6 +367,99 @@ describe("CK virtual-time concurrency and op-count budget", () => {
       await statsClient.quit();
     }
   });
+
+  redisTest(
+    "op-count budget: an all-unservable call stays inside the scan caps",
+    async ({ redisContainer }) => {
+      // The budget above measures the servable shape. This one measures the other end:
+      // every candidate has a future head, so pass 1 serves nothing and spends no window
+      // budget, which is exactly when it walks its whole scan rather than stopping at
+      // `window`. That is the shape the scan widening introduced, so it is the one worth
+      // pinning a ceiling on.
+      //
+      // The ceiling is structural rather than tuned: pass 1 probes at most scanLimit
+      // (2 * window) candidates and pass 2 at most pass2Window more, and the most any
+      // single unservable probe costs is SCARD + ZRANGEBYSCORE + ZRANGE + ZADD. Nothing
+      // here asserts the count is small, only that it cannot run past those caps.
+      const maxCount = 5;
+      const multiplier = 3;
+      const window = maxCount * multiplier;
+      const scanLimit = window * 2;
+      const pass2Window = Math.max(window, maxCount * 3);
+      // Far more future-headed variants than either cap can reach, so the caps are what
+      // stops the scan rather than the fixture running out of candidates.
+      const blockers = 200;
+
+      const statsClient = createRedisClient({
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+      });
+      const queue = createQueue(redisContainer, "rq18worst:", true);
+      try {
+        const future = Date.now() + 60 * 60 * 1000;
+        for (let i = 0; i < blockers; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-future-${i}`,
+              concurrencyKey: `a${String(i).padStart(3, "0")}`,
+              timestamp: future,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+        // One ready variant, sorting after every blocker so it lands beyond the scan. It is
+        // what keeps the base queue selectable at all: with nothing ready the master queue
+        // score is in the future, the consumer never picks the queue, and the script does
+        // not run, which is its own (useful) form of backpressure but measures nothing.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r-ready",
+            concurrencyKey: "zready",
+            timestamp: Date.now() - 100_000,
+          }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+        await statsClient.call("CONFIG", "RESETSTAT");
+        const served = await queue.testDequeueFromMasterQueue(
+          shard,
+          authenticatedEnvDev.id,
+          maxCount
+        );
+        const used = totalCommandCalls(await statsClient.info("commandstats"));
+
+        // Pass 1 spent its whole scan on variants it could not serve and came back with
+        // nothing; the single ready variant was served by pass 2's age-order fill.
+        expect(served.map((m) => m.message.concurrencyKey)).toEqual(["zready"]);
+
+        const fixedOps = 16;
+        const perProbe = 4;
+        const servedOps = 16;
+        const ceiling = fixedOps + servedOps + perProbe * (scanLimit + pass2Window);
+        expect(
+          used,
+          `unservable-scan call used ${used} ops, ceiling ${ceiling}`
+        ).toBeLessThanOrEqual(ceiling);
+
+        // The scan really did run deep rather than bailing early, so the ceiling above is
+        // measuring something.
+        expect(used).toBeGreaterThan(perProbe * window);
+
+        // And the caps are what bounded it: cost tracks the scan limits, not how many
+        // concurrency keys the queue happens to have.
+        expect(used).toBeLessThan(perProbe * blockers);
+      } finally {
+        await queue.quit();
+        await statsClient.quit();
+      }
+    }
+  );
 });
 
 // Sums calls= across every cmdstat_ line of INFO commandstats. Includes
