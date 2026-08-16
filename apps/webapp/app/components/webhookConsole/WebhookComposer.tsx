@@ -92,9 +92,7 @@ export function WebhookComposer({
       bodyRef.current = body;
       setPayloadReloadKey((key) => key + 1);
       const entries = Object.entries(headers);
-      if (entries.length > 0) {
-        setHeaderRows(entries.map(([key, value]) => newHeaderRow(key, value)));
-      }
+      setHeaderRows(entries.map(([key, value]) => newHeaderRow(key, value)));
       setSourceTab("body");
     },
     [newHeaderRow]
