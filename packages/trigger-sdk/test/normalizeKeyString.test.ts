@@ -19,6 +19,12 @@ describe("normalizeKeyString", () => {
     );
   });
 
+  it("namespaces every alternative in a fallback placeholder", () => {
+    expect(normalizeKeyString("{a || b}")).toBe("{body.a || body.b}");
+    expect(normalizeKeyString("{body.a || event.b}")).toBe("{body.a || body.event.b}");
+    expect(normalizeKeyString("{header.x || body.y || z}")).toBe("{header.x || body.y || body.z}");
+  });
+
   it("leaves literal text and unmatched braces alone", () => {
     expect(normalizeKeyString("no-placeholders")).toBe("no-placeholders");
     expect(normalizeKeyString("{{body.x}}")).toBe("{{body.x}}");

@@ -306,10 +306,17 @@ export type {
 // Brace placeholders without a recognized namespace default to the event body. webhook./header./body.
 // pass through unchanged.
 export function normalizeKeyString(key: string): string {
-  return key.replace(/\{([^{}]+)\}/g, (_match, path: string) =>
-    path.startsWith("webhook.") || path.startsWith("header.") || path.startsWith("body.")
-      ? `{${path}}`
-      : `{body.${path}}`
+  const namespaceAlternative = (alternative: string): string => {
+    const trimmed = alternative.trim();
+    return trimmed.startsWith("webhook.") ||
+      trimmed.startsWith("header.") ||
+      trimmed.startsWith("body.")
+      ? trimmed
+      : `body.${trimmed}`;
+  };
+  return key.replace(
+    /\{([^{}]+)\}/g,
+    (_match, path: string) => `{${path.split("||").map(namespaceAlternative).join(" || ")}}`
   );
 }
 

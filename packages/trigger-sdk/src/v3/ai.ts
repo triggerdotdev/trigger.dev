@@ -4942,7 +4942,9 @@ function channelReplyText(message: UIMessage): string {
     parts
       .slice(from)
       .map((p) =>
-        p && typeof p === "object" && "text" in p ? String((p as { text: unknown }).text) : ""
+        p && typeof p === "object" && (p as { type?: unknown }).type === "text"
+          ? String((p as { text: unknown }).text)
+          : ""
       )
       .join("");
   const trailing = textFrom(lastToolIdx + 1);
@@ -6970,6 +6972,7 @@ function chatAgent<
           let channelAckRef: string | undefined;
           let channelStreamEditor: ChannelStreamEditor | undefined;
           let droppedStaleInteraction = false;
+          let channelFinalAnswerPosted = false;
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -8364,6 +8367,7 @@ function chatAgent<
                           mode: channelConn.delivery,
                           final: true,
                         });
+                        channelFinalAnswerPosted = true;
                       } catch (egressError) {
                         logger.warn("chat.agent: channel egress send failed", {
                           error: egressError,
@@ -8678,7 +8682,8 @@ function chatAgent<
               } catch {
                 channelErrorText = "An unexpected error occurred";
               }
-              const channelErrorMessageId = channelAckRef ?? channelWireEvent.deliveryId;
+              const errorPreviousRef = channelFinalAnswerPosted ? undefined : channelAckRef;
+              const channelErrorMessageId = errorPreviousRef ?? channelWireEvent.deliveryId;
               let errorMessage: ChannelMessage | null = null;
               try {
                 errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
@@ -8700,7 +8705,7 @@ function chatAgent<
                   await channelConn.send(errorMessage, {
                     event: channelWireEvent.event,
                     deliveryId: channelWireEvent.deliveryId,
-                    previousRef: channelAckRef,
+                    previousRef: errorPreviousRef,
                     mode: channelConn.delivery,
                     final: true,
                   });
