@@ -3,7 +3,7 @@ import type { WebhookDatabase } from "@trigger.dev/database";
 // Two identifier forms for the PascalCase Prisma table name. DDL must DOUBLE-QUOTE
 // (Postgres folds unquoted identifiers to lowercase); pg_class.relname stores the
 // bare case-preserved name, so catalog lookups bind the bare form.
-export const PARENT_DDL = `"WebhookDelivery"`;
+const PARENT_DDL = `"WebhookDelivery"`;
 export const PARENT_NAME = `WebhookDelivery`;
 
 // ---------------------------------------------------------------------------
