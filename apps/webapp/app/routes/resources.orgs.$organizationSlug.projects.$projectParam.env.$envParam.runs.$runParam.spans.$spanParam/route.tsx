@@ -873,6 +873,12 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>External deployment ID</Property.Label>
+                  <Property.Value>
+                    <ExternalDeploymentIdValue externalDeploymentId={run.externalDeploymentId} />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>SDK version</Property.Label>
                   <Property.Value>
                     {run.sdkVersion ? (
@@ -1271,6 +1277,27 @@ function MiniStat({
         {suffix ? <span className="text-xs tabular-nums text-text-dimmed">{suffix}</span> : null}
       </div>
     </div>
+  );
+}
+
+const EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH = 24;
+
+function ExternalDeploymentIdValue({
+  externalDeploymentId,
+}: {
+  externalDeploymentId: string | undefined;
+}) {
+  if (!externalDeploymentId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalDeploymentId.length > EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH
+      ? `${externalDeploymentId.slice(0, EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH)}…`
+      : externalDeploymentId;
+
+  return (
+    <CopyableText value={display} copyValue={externalDeploymentId} className="font-mono" asChild />
   );
 }
 

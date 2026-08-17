@@ -13,6 +13,7 @@ export type {
   PendingVersionRunIdLookupResult,
 } from "./engine/services/pendingVersionLookup.js";
 export { NoopPendingVersionRunIdLookup } from "./engine/services/pendingVersionLookup.js";
+export { readExternalDeploymentIdAnnotation } from "./engine/systems/pendingVersionSystem.js";
 export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.js";
 export type {
   ControlPlaneResolver,

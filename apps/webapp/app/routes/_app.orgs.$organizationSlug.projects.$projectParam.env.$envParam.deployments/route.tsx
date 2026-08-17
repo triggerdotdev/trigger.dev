@@ -42,6 +42,7 @@ import {
   collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
+  CopyableTableCell,
   Table,
   TableBlankRow,
   TableBody,
@@ -256,8 +257,9 @@ export default function Page() {
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
-                      <TableHeaderCell>Git</TableHeaderCell>
+                      <TableHeaderCell>External ID</TableHeaderCell>
                       {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
+                      <TableHeaderCell>Git</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -332,11 +334,11 @@ export default function Page() {
                                 "–"
                               )}
                             </TableCell>
-                            <TableCell isSelected={isSelected}>
-                              <div className="-ml-1 flex items-center">
-                                <GitMetadata git={deployment.git} />
-                              </div>
-                            </TableCell>
+                            <DeploymentExternalIdCell
+                              externalId={deployment.externalId}
+                              path={path}
+                              isSelected={isSelected}
+                            />
                             {hasVercelIntegration && (
                               <TableCell isSelected={isSelected}>
                                 {deployment.vercelDeploymentUrl ? (
@@ -353,6 +355,11 @@ export default function Page() {
                                 )}
                               </TableCell>
                             )}
+                            <TableCell isSelected={isSelected}>
+                              <div className="-ml-1 flex items-center">
+                                <GitMetadata git={deployment.git} />
+                              </div>
+                            </TableCell>
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -364,7 +371,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 11 : 10}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -599,6 +606,30 @@ function DeploymentActionsCell({
         </>
       }
     />
+  );
+}
+
+function DeploymentExternalIdCell({
+  externalId,
+  path,
+  isSelected,
+}: {
+  externalId: string | null;
+  path: string;
+  isSelected: boolean;
+}) {
+  if (!externalId) {
+    return (
+      <TableCell to={path} isSelected={isSelected}>
+        –
+      </TableCell>
+    );
+  }
+
+  return (
+    <CopyableTableCell to={path} isSelected={isSelected} className="font-mono" value={externalId}>
+      {externalId.length > 12 ? `${externalId.slice(0, 12)}…` : externalId}
+    </CopyableTableCell>
   );
 }
 

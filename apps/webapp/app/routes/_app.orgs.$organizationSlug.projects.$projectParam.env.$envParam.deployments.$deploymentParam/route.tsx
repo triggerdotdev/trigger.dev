@@ -180,6 +180,21 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
   }
 }
 
+const EXTERNAL_ID_DISPLAY_LENGTH = 24;
+
+function ExternalIdValue({ externalId }: { externalId: string | null }) {
+  if (!externalId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalId.length > EXTERNAL_ID_DISPLAY_LENGTH
+      ? `${externalId.slice(0, EXTERNAL_ID_DISPLAY_LENGTH)}…`
+      : externalId;
+
+  return <CopyableText value={display} copyValue={externalId} className="font-mono text-sm" />;
+}
+
 export default function Page() {
   const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -444,6 +459,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Worker type</Property.Label>
                 <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>External ID</Property.Label>
+                <Property.Value>
+                  <ExternalIdValue externalId={deployment.externalId} />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Started at</Property.Label>
