@@ -1604,7 +1604,7 @@ describe("session agent e2e (real chat.agent loop)", () => {
       expect(session.currentRunId).not.toBe(initialRun.id);
       expect(session.currentRunVersion).toBeGreaterThan(1);
 
-      const successor = await server.prisma.taskRun.findUniqueOrThrow({
+      const successor = await server.prisma.taskRun.findFirstOrThrow({
         where: { id: session.currentRunId! },
         select: { friendlyId: true },
       });
