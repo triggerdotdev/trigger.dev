@@ -621,7 +621,7 @@ export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: 
 // `code` is an optional machine-readable reason so callers can branch on
 // expected outcomes (e.g. `last_owner`, the guard that keeps an org from
 // losing its final Owner) instead of matching the free-text `error`.
-export type RoleAssignmentErrorCode = "last_owner";
+type RoleAssignmentErrorCode = "last_owner";
 export type RoleAssignmentResult =
   | { ok: true }
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
