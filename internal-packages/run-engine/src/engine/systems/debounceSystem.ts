@@ -14,6 +14,7 @@ import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
+  TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
@@ -90,6 +91,8 @@ export type DebounceResult =
   | {
       status: "max_duration_exceeded";
     };
+
+const DEBOUNCEABLE_RUN_STATUSES: TaskRunStatus[] = ["DELAYED", "PENDING_VERSION"];
 
 // TTL for the pending claim state (30 seconds)
 const CLAIM_TTL_MS = 30_000;
@@ -643,7 +646,7 @@ return 0
       { select: { status: true, delayUntil: true, createdAt: true } },
       prisma
     );
-    if (!probe || probe.status !== "DELAYED" || !probe.delayUntil) {
+    if (!probe || !DEBOUNCEABLE_RUN_STATUSES.includes(probe.status) || !probe.delayUntil) {
       return null;
     }
     if (newDelayUntil.getTime() > probe.delayUntil.getTime()) {
@@ -666,7 +669,7 @@ return 0
       { include: { associatedWaitpoint: true } },
       prisma
     );
-    if (!fullRun || fullRun.status !== "DELAYED") {
+    if (!fullRun || !DEBOUNCEABLE_RUN_STATUSES.includes(fullRun.status)) {
       return null;
     }
 
@@ -701,12 +704,12 @@ return 0
       prisma
     );
 
-    if (!fullRun || fullRun.status !== "DELAYED") {
+    if (!fullRun || !DEBOUNCEABLE_RUN_STATUSES.includes(fullRun.status)) {
       // The run is no longer in a state we can safely return as "existing" -
       // re-throw so the caller surfaces the failure rather than silently
       // succeeding on a stale/terminated run.
       this.$.logger.warn(
-        "handleExistingRun: lock contention, but existing run no longer DELAYED - rethrowing",
+        "handleExistingRun: lock contention, but existing run is no longer debounceable - rethrowing",
         {
           existingRunId,
           debounceKey: debounce.key,
