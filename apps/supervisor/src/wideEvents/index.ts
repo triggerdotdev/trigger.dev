@@ -8,7 +8,7 @@
  * QPS, so logging pressure must be cleanly removable.
  */
 export { fromContext } from "./context.js";
-export { type PhaseOpt, recordPhase, recordPhaseSince, timePhase } from "./record.js";
+export { type PhaseOpt, recordPhaseSince, timePhase } from "./record.js";
 export {
   emitOneShot,
   runWideEvent,
