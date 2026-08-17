@@ -16,5 +16,5 @@ export {
   setMeta,
   type WideEventOptions,
 } from "./middleware.js";
-export type { PhaseRecord, State } from "./state.js";
+export type { State } from "./state.js";
 export { encodeBaggage } from "./baggage.js";
