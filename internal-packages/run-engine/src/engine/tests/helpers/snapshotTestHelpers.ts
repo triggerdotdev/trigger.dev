@@ -172,7 +172,7 @@ function getRunStatusFromExecutionStatus(
 /**
  * Creates a checkpoint for testing suspended snapshots.
  */
-export async function createTestCheckpoint(
+async function createTestCheckpoint(
   prisma: PrismaClient,
   {
     runId,
