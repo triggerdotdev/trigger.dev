@@ -25,12 +25,7 @@
       "ignoreDependencies": ["@sentry/cli", "assert", "util"]
     },
     "internal-packages/dashboard-agent": {
-      "entry": [
-        "trigger.config.ts",
-        "vitest.eval.config.ts",
-        "eval-setup.ts",
-        "src/dashboard-agent.eval.ts"
-      ],
+      "entry": ["trigger.config.ts"],
       "ignoreBinaries": ["rg"]
     },
     "internal-packages/emails": {
