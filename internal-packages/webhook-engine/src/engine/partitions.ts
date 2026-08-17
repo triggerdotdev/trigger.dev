@@ -4,7 +4,7 @@ import type { WebhookDatabase } from "@trigger.dev/database";
 // (Postgres folds unquoted identifiers to lowercase); pg_class.relname stores the
 // bare case-preserved name, so catalog lookups bind the bare form.
 const PARENT_DDL = `"WebhookDelivery"`;
-export const PARENT_NAME = `WebhookDelivery`;
+const PARENT_NAME = `WebhookDelivery`;
 
 // ---------------------------------------------------------------------------
 // Day-bucket math (everything in UTC, matching how the migration writes bounds)
