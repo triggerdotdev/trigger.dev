@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
+import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "../externalDeploymentId.js";
 import {
   FlushedRunMetadata,
   GitMeta,
@@ -205,6 +206,15 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 // with PrismaClientValidationError. Accept the intent and stringify here.
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
+const ExternalDeploymentId = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}, z.string().max(EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH, `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`).optional());
+
 export const TriggerTaskRequestBody = z
   .object({
     payload: z.any(),
@@ -236,6 +246,14 @@ export const TriggerTaskRequestBody = z
          * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
          */
         lockToVersion: z.string().optional(),
+        /**
+         * The external deployment id the calling application belongs to — a commit SHA, a
+         * CI run id, a release tag. Independent of `lockToVersion`: the SDK reports every
+         * pinning signal it can see and the server decides which one governs, so a trigger
+         * carrying both sends both. Resolution is environment-scoped, and an id naming a
+         * deployment that has not landed yet parks the run rather than failing it.
+         */
+        externalDeploymentId: ExternalDeploymentId,
 
         queue: z
           .object({
@@ -334,6 +352,8 @@ export const BatchTriggerTaskItem = z.object({
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       lockToVersion: z.string().optional(),
+      /** See `TriggerTaskRequestBody.options.externalDeploymentId`. */
+      externalDeploymentId: ExternalDeploymentId,
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -676,7 +696,11 @@ export const InitializeDeploymentResponseBody = z.object({
   version: z.string(),
   imageTag: z.string(),
   imagePlatform: z.string(),
+  externalId: z.string().optional(),
+  outcome: z.enum(["created", "existing"]).optional(),
+  isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
       s2: z.object({
@@ -702,6 +726,8 @@ const InitializeDeploymentRequestBodyBase = z.object({
   isLocalBuild: z.boolean().optional(),
   triggeredVia: DeploymentTriggeredVia.optional(),
   buildId: z.string().optional(),
+  externalId: ExternalDeploymentId,
+  force: z.boolean().optional(),
 });
 type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
 
@@ -727,6 +753,14 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   artifactKey: z.string().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional().default(false),
+}).superRefine((data, ctx) => {
+  if (data.force && !data.externalId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["force"],
+      message: "force requires externalId",
+    });
+  }
 });
 
 export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
@@ -810,6 +844,7 @@ export const GetDeploymentResponseBody = z.object({
   commitSHA: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
+  canceledReason: z.string().nullish(),
   worker: z
     .object({
       id: z.string(),
