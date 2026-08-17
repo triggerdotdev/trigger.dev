@@ -1,6 +1,6 @@
 import { apiClientManager } from "../apiClientManager-api.js";
 
-export type UsageClientOptions = {
+type UsageClientOptions = {
   token: string;
   baseUrl: string;
 };

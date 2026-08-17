@@ -89,7 +89,7 @@ export type RunShapeStreamOptions = {
   onFetchError?: (e: Error) => void;
 };
 
-export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
+type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
   [K in keyof TStreams]: {
     type: K;
     chunk: TStreams[K];
@@ -665,7 +665,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
   }
 }
 
-export interface RunShapeProvider {
+interface RunShapeProvider {
   onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void>;
 }
 

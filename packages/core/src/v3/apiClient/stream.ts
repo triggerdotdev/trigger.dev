@@ -225,7 +225,7 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
   }
 }
 
-export class LineTransformStream extends TransformStream<string, string[]> {
+class LineTransformStream extends TransformStream<string, string[]> {
   private buffer = "";
 
   constructor() {

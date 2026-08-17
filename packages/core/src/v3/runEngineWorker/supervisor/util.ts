@@ -23,7 +23,7 @@ function redactNumber(value: number, end = 10) {
   return Number(redacted);
 }
 
-export function redactKeys<T extends Record<string, any>>(obj: T, keys: Array<keyof T>): T {
+function redactKeys<T extends Record<string, any>>(obj: T, keys: Array<keyof T>): T {
   const redacted = { ...obj };
   for (const key of keys) {
     const value = obj[key];
