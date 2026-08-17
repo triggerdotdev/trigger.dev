@@ -2540,6 +2540,8 @@ const chatOnCompactedKey =
 const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
 /** @internal Marks the root run created by `chat.customAgent()`. */
 const chatCustomAgentRunKey = locals.create<boolean>("chat.customAgentRun");
+/** @internal Number of active `chat.createSession()` iterators in this run. */
+const chatActiveSessionIteratorsKey = locals.create<number>("chat.createSession.activeIterators");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -8714,9 +8716,10 @@ function requestUpgrade(): void {
  *
  * This is the low-level handoff for a fully hand-rolled
  * `chat.customAgent()` loop. (Use {@link requestUpgrade} with
- * `chat.createSession()` instead.) Call only between turns and after detaching
- * input listeners for the old run. If the old run completed its current turn,
- * persist its state and call {@link chatWriteTurnComplete} before handing off.
+ * `chat.createSession()` instead; this method rejects while its iterator is
+ * active.) Call only between turns and after detaching input listeners for the
+ * old run. If the old run completed its current turn, persist its state and
+ * call {@link chatWriteTurnComplete} before handing off.
  * Do not write a new turn boundary after input that the continuation run should
  * process has been dispatched: the boundary acknowledges that input.
  *
@@ -8740,6 +8743,11 @@ async function endAndContinue(): Promise<void> {
   if (locals.get(chatCustomAgentRunKey) !== true) {
     throw new Error(
       "chat.endAndContinue() can only be called from inside a chat.customAgent() run"
+    );
+  }
+  if ((locals.get(chatActiveSessionIteratorsKey) ?? 0) > 0) {
+    throw new Error(
+      "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Use chat.requestUpgrade() instead."
     );
   }
 
@@ -9570,6 +9578,47 @@ export type ChatTurn = {
     | undefined;
 };
 
+function trackActiveChatSessionIterator(
+  iterator: AsyncIterator<ChatTurn>
+): AsyncIterator<ChatTurn> {
+  locals.set(chatActiveSessionIteratorsKey, (locals.get(chatActiveSessionIteratorsKey) ?? 0) + 1);
+  let active = true;
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    const remaining = Math.max((locals.get(chatActiveSessionIteratorsKey) ?? 1) - 1, 0);
+    locals.set(chatActiveSessionIteratorsKey, remaining);
+  }
+
+  return {
+    async next() {
+      try {
+        const result = await iterator.next();
+        if (result.done) finish();
+        return result;
+      } catch (error) {
+        try {
+          await iterator.return?.();
+        } catch {
+          // Preserve the original iterator error after best-effort cleanup.
+        }
+        finish();
+        throw error;
+      }
+    },
+    async return() {
+      try {
+        return iterator.return
+          ? await iterator.return()
+          : { done: true as const, value: undefined };
+      } finally {
+        finish();
+      }
+    },
+  };
+}
+
 /**
  * Create a chat session that yields turns as an async iterator.
  *
@@ -9641,7 +9690,7 @@ function createChatSession(
       // top of next() in case user code threw without complete()/done().
       let activeMsgSub: { off: () => void } | undefined;
 
-      return {
+      const iterator: AsyncIterator<ChatTurn> = {
         async next(): Promise<IteratorResult<ChatTurn>> {
           activeMsgSub?.off();
           activeMsgSub = undefined;
@@ -10087,6 +10136,8 @@ function createChatSession(
           return { done: true, value: undefined };
         },
       };
+
+      return trackActiveChatSessionIterator(iterator);
     },
   };
 }
