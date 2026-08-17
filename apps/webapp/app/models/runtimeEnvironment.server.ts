@@ -6,6 +6,7 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { hashApiKey } from "~/utils/apiKeys";
+import { BuildRuntime } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { scopesGrantFullAccess } from "@trigger.dev/rbac";
@@ -77,6 +78,7 @@ export function toAuthenticated(
       defaultWorkerGroupId: env.project.defaultWorkerGroupId,
       organizationId: env.project.organizationId,
       builderProjectId: env.project.builderProjectId,
+      defaultRuntime: BuildRuntime.nullable().parse(env.project.defaultRuntime),
     },
     organization: {
       id: env.organization.id,

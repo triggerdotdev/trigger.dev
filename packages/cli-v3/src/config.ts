@@ -34,6 +34,7 @@ export type ResolveConfigOptions = {
   cwd?: string;
   overrides?: Partial<TriggerConfig>;
   configFile?: string;
+  defaultRuntime?: BuildRuntime;
   warn?: boolean;
 };
 
@@ -41,6 +42,7 @@ export async function loadConfig({
   cwd = process.cwd(),
   overrides,
   configFile,
+  defaultRuntime,
   warn = true,
 }: ResolveConfigOptions = {}): Promise<ResolvedConfig> {
   const result = await c12.loadConfig<TriggerConfig>({
@@ -50,7 +52,7 @@ export async function loadConfig({
     jitiOptions: { debug: logger.loggerLevel === "debug" },
   });
 
-  return await resolveConfig(cwd, result, overrides, warn);
+  return await resolveConfig(cwd, result, overrides, defaultRuntime, warn);
 }
 
 type ResolveWatchConfigOptions = ResolveConfigOptions & {
@@ -72,6 +74,7 @@ export async function watchConfig({
   ignoreInitial = true,
   overrides,
   configFile,
+  defaultRuntime,
 }: ResolveWatchConfigOptions): Promise<ResolveWatchConfigResult> {
   const result = await c12.watchConfig<TriggerConfig>({
     name: "trigger",
@@ -81,13 +84,13 @@ export async function watchConfig({
     chokidarOptions: { ignoreInitial },
     jitiOptions: { debug: logger.loggerLevel === "debug" },
     onUpdate: async ({ newConfig }) => {
-      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, false);
+      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, defaultRuntime, false);
 
       onUpdate(resolvedConfig);
     },
   });
 
-  const config = await resolveConfig(cwd, result, overrides);
+  const config = await resolveConfig(cwd, result, overrides, defaultRuntime);
 
   return {
     config,
@@ -156,6 +159,7 @@ async function resolveConfig(
   cwd: string,
   result: c12.ResolvedConfig<TriggerConfig>,
   overrides?: Partial<TriggerConfig>,
+  defaultRuntime?: BuildRuntime,
   warn = true
 ): Promise<ResolvedConfig> {
   // `trigger.config` is the fallback value set by c12. Bail out with actionable guidance before
@@ -181,8 +185,9 @@ async function resolveConfig(
   const features = featuresFromCompatibilityFlags(
     ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
   );
-  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
-  const configuredRuntime = overrides?.runtime ?? config.runtime ?? defaultRuntime;
+  const legacyDefaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
+  const configuredRuntime =
+    overrides?.runtime ?? config.runtime ?? defaultRuntime ?? legacyDefaultRuntime;
   const runtime = resolveBuildRuntime(configuredRuntime);
 
   if (warn && isDeprecatedConfigRuntime(configuredRuntime)) {
@@ -224,7 +229,7 @@ async function resolveConfig(
     config,
     {
       dirs,
-      runtime: defaultRuntime,
+      runtime: defaultRuntime ?? legacyDefaultRuntime,
       tsconfig: tsconfigPath,
       build: {
         jsx: {

@@ -474,6 +474,9 @@ model Project {
   /// Set the first time the CLI `init` command completes against this project. Drives the dev onboarding progress.
   initializedAt DateTime?
 
+  /// Runtime used when a deployment config does not specify one. Null preserves the legacy Node 20 fallback.
+  defaultRuntime String?
+
   version ProjectVersion   @default(V2)
   engine  RunEngineVersion @default(V1)
 
@@ -790,12 +793,12 @@ model WebhookEndpoint {
 
   source           String // provider tag e.g. "stripe","slack","github"
   handlerWebhookId String // declared webhook() id (string ref, GOLDEN LAW, no relation)
-  routingTarget    Json   // RoutingTarget tagged union ({ type: "task" } | { type: "session" })
-  verifierArtifact Json   // VerifierArtifact tagged union (config|preset in P1)
+  routingTarget    Json // RoutingTarget tagged union ({ type: "task" } | { type: "session" })
+  verifierArtifact Json // VerifierArtifact tagged union (config|preset in P1)
   filter           String? // source filter DSL string (display/round-trip)
-  filterAst        Json?   // compiled FilterAst, evaluated at ingest; null = route all
-  filterAstVersion Int?    // re-parse `filter` on a format bump
-  metadata         Json   @default("{}") // arbitrary user metadata; flows into the webhook task
+  filterAst        Json? // compiled FilterAst, evaluated at ingest; null = route all
+  filterAstVersion Int? // re-parse `filter` on a format bump
+  metadata         Json    @default("{}") // arbitrary user metadata; flows into the webhook task
 
   // who supplies the secret/key; drives the Connect UI (paste vs generate). From the source.
   secretProvisioning String @default("either") // "provider" | "integrator" | "either"
@@ -803,13 +806,13 @@ model WebhookEndpoint {
   /// SecretReference.key string. Plain String, NO @relation -> no FK to SecretReference.
   signingSecretKey String?
 
-  status    WebhookEndpointStatus @default(ACTIVE)
+  status                WebhookEndpointStatus @default(ACTIVE)
   /// When an operator disabled the endpoint via the dashboard/API. Null means the declarative sync
   /// owns the status: a redeploy that re-declares a previously-removed (auto-deactivated) webhook
   /// reactivates it. Non-null means the operator disabled it, so the sync leaves the status alone.
   manuallyDeactivatedAt DateTime?
-  createdAt DateTime              @default(now())
-  updatedAt DateTime              @updatedAt
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   @@unique([runtimeEnvironmentId, handlerWebhookId, endpointTenantId, endpointExternalRef]) // deploy-sync key
   @@index([runtimeEnvironmentId, source])
@@ -842,8 +845,8 @@ model WebhookDelivery {
   /// Set from the x-trigger-test ingress header; marks console/test-send deliveries so the list can filter them.
   isTest Boolean @default(false)
 
-  parsedEvent  Json?   // size-capped snapshot of the verified event (full event lives in ClickHouse)
-  headers      Json?   // inbound request headers, surfaced to the webhook task via onEvent({ headers })
+  parsedEvent  Json? // size-capped snapshot of the verified event (full event lives in ClickHouse)
+  headers      Json? // inbound request headers, surfaced to the webhook task via onEvent({ headers })
   rawBodyHash  String? // sha256 of raw bytes; cheap P2 replay anchor
   errorMessage String?
   filterReason String? // why a FILTERED delivery was not routed (failing clause + actual value)
@@ -2370,8 +2373,8 @@ model TaskSchedule {
   timezone String @default("UTC")
 
   // Cron spread
-  windowDurationSeconds       Int?
-  windowPercentage            Int?
+  windowDurationSeconds Int?
+  windowPercentage      Int?
 
   ///Can be provided by the user then accessed inside a run
   externalId String?

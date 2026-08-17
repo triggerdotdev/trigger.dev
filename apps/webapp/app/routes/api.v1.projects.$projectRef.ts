@@ -1,5 +1,5 @@
 import { json } from "@remix-run/server-runtime";
-import type { GetProjectResponseBody } from "@trigger.dev/core/v3";
+import { BuildRuntime, type GetProjectResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
@@ -53,6 +53,7 @@ export const loader = createLoaderPATApiRoute(
       slug: project.slug,
       createdAt: project.createdAt,
       defaultRegion: project.defaultWorkerGroup?.name ?? null,
+      defaultRuntime: BuildRuntime.nullable().parse(project.defaultRuntime ?? null),
       organization: {
         id: project.organization.id,
         title: project.organization.title,

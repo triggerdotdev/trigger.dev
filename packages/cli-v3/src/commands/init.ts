@@ -50,7 +50,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   overrideConfig: z.boolean().default(false),
   tag: z.string().default(cliVersion),
   skipPackageInstall: z.boolean().default(false),
-  runtime: z.string().default("node"),
+  runtime: z.string().default("node-24"),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
@@ -94,8 +94,8 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Supported: node, node-22, bun",
-        "node"
+        "Which runtime to use for the project. Supported: node, node-22, node-24, node-26, bun",
+        "node-24"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")

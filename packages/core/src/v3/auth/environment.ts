@@ -67,6 +67,7 @@ export type AuthenticatedEnvironment = {
     // Build-server bookkeeping. Read by remote-image-builder when
     // creating Depot builds.
     builderProjectId: string | null;
+    defaultRuntime?: string | null;
   };
 
   organization: {

@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type GetProjectEnvResponse } from "@trigger.dev/core/v3";
+import { BuildRuntime, type GetProjectEnvResponse } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { env as processEnv } from "~/env.server";
 import {
@@ -65,6 +65,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       name: environment.project.name,
       apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
       projectId: environment.project.id,
+      defaultRuntime: BuildRuntime.nullable().parse(environment.project.defaultRuntime ?? null),
     };
 
     return json(result);
