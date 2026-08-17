@@ -1453,6 +1453,17 @@ function shouldValidateChatCustomAgentPayload(payload: ChatTaskWirePayload): boo
   );
 }
 
+function assertChatCustomAgentSyncParseResult(result: unknown): unknown {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    void Promise.resolve(result).catch(() => {});
+    throw new Error(
+      "chat.messages.peek() cannot validate clientData with an asynchronous schema. " +
+        "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
+    );
+  }
+  return result;
+}
+
 function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknown) => unknown {
   const parser = schema as any;
 
@@ -1461,21 +1472,11 @@ function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknow
   }
 
   if (typeof parser === "function") {
-    return (value) => {
-      const result = parser(value);
-      if (result && typeof result.then === "function") {
-        void Promise.resolve(result).catch(() => {});
-        throw new Error(
-          "chat.messages.peek() cannot validate clientData with an asynchronous schema. " +
-            "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
-        );
-      }
-      return result;
-    };
+    return (value) => assertChatCustomAgentSyncParseResult(parser(value));
   }
 
   if (typeof parser.parse === "function") {
-    return parser.parse.bind(parser);
+    return (value) => assertChatCustomAgentSyncParseResult(parser.parse(value));
   }
 
   if (typeof parser.validateSync === "function") {
@@ -1501,35 +1502,11 @@ function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknow
   };
 }
 
-async function reportChatCustomAgentClientDataError(
+async function writeChatCustomAgentClientDataErrorToStream(
   payload: ChatTaskWirePayload,
-  error: unknown,
-  writeToStream: boolean
+  error: unknown
 ): Promise<void> {
   const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
-  logger.warn("chat.customAgent: clientData validation failed", {
-    chatId: payload.chatId,
-    trigger: payload.trigger,
-    error: errorText,
-  });
-
-  const errorHandler = locals.get(chatCustomAgentClientDataErrorHandlerKey);
-  if (errorHandler) {
-    try {
-      await errorHandler({ error, payload });
-    } catch (handlerError) {
-      logger.warn("chat.customAgent: clientData validation error handler failed", {
-        chatId: payload.chatId,
-        trigger: payload.trigger,
-        error: handlerError instanceof Error ? handlerError.message : String(handlerError),
-      });
-    }
-  }
-
-  if (!writeToStream) {
-    return;
-  }
-
   try {
     await withChatWriter((writer) => {
       writer.write({ type: "error", errorText } as any);
@@ -1544,13 +1521,46 @@ async function reportChatCustomAgentClientDataError(
   }
 }
 
+async function reportChatCustomAgentClientDataError(
+  payload: ChatTaskWirePayload,
+  error: unknown,
+  options: { writeToStream: boolean; callHandler?: boolean }
+): Promise<void> {
+  const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
+  logger.warn("chat.customAgent: clientData validation failed", {
+    chatId: payload.chatId,
+    trigger: payload.trigger,
+    error: errorText,
+  });
+
+  const errorHandler =
+    options.callHandler === false
+      ? undefined
+      : locals.get(chatCustomAgentClientDataErrorHandlerKey);
+  if (errorHandler) {
+    try {
+      await errorHandler({ error, payload });
+    } catch (handlerError) {
+      logger.warn("chat.customAgent: clientData validation error handler failed", {
+        chatId: payload.chatId,
+        trigger: payload.trigger,
+        error: handlerError instanceof Error ? handlerError.message : String(handlerError),
+      });
+    }
+  }
+
+  if (!options.writeToStream) {
+    return;
+  }
+  await writeChatCustomAgentClientDataErrorToStream(payload, error);
+}
+
 type ChatCustomAgentPayloadValidationResult<TPayload extends ChatTaskWirePayload> =
   | { ok: true; payload: TPayload }
-  | { ok: false };
+  | { ok: false; error: unknown };
 
-async function validateChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
-  payload: TPayload,
-  options: { writeErrorToStream?: boolean } = {}
+async function parseChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload
 ): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
   const parser = locals.get(chatCustomAgentClientDataParserKey);
   if (!parser || payload.trigger === "close") {
@@ -1561,9 +1571,21 @@ async function validateChatCustomAgentPayload<TPayload extends ChatTaskWirePaylo
     const metadata = await parser.parse(payload.metadata);
     return { ok: true, payload: { ...payload, metadata } };
   } catch (error) {
-    await reportChatCustomAgentClientDataError(payload, error, options.writeErrorToStream ?? true);
-    return { ok: false };
+    return { ok: false, error };
   }
+}
+
+async function validateChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload,
+  options: { writeErrorToStream?: boolean } = {}
+): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
+  const result = await parseChatCustomAgentPayload(payload);
+  if (!result.ok) {
+    await reportChatCustomAgentClientDataError(payload, result.error, {
+      writeToStream: options.writeErrorToStream ?? true,
+    });
+  }
+  return result;
 }
 
 function validateChatCustomAgentPayloadSync<TPayload extends ChatTaskWirePayload>(
@@ -1698,7 +1720,14 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
-function subscribeToRawChatMessages(handler: (payload: ChatTaskWirePayload) => unknown) {
+type ChatMessageSubscription = {
+  off: () => void;
+  drain?: () => Promise<void>;
+};
+
+function subscribeToRawChatMessages(
+  handler: (payload: ChatTaskWirePayload) => unknown
+): ChatMessageSubscription {
   return getChatSession().in.on<ChatInputChunk>((chunk) => {
     if (chunk.kind === "message") {
       // Returning `true` marks the record CONSUMED at the manager level:
@@ -1711,6 +1740,55 @@ function subscribeToRawChatMessages(handler: (payload: ChatTaskWirePayload) => u
   });
 }
 
+function subscribeToValidatedChatMessages(
+  handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
+  options: {
+    onAfterOff?: (payload: ChatTaskWirePayload) => unknown;
+    onInvalidAfterOff?: (payload: ChatTaskWirePayload, error: unknown) => unknown;
+  } = {}
+): ChatMessageSubscription {
+  let active = true;
+  let delivery = Promise.resolve();
+  const subscription = subscribeToRawChatMessages((payload) => {
+    delivery = delivery
+      .then(async () => {
+        const result = await parseChatCustomAgentPayload(payload);
+        if (!result.ok) {
+          if (active) {
+            // Completing the turn here could close an active response.
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+            });
+          } else if (options.onInvalidAfterOff) {
+            await options.onInvalidAfterOff(payload, result.error);
+          } else {
+            // The subscription was removed while parsing. Keep the failure
+            // observable without invoking a user callback after off().
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+              callHandler: false,
+            });
+          }
+          return;
+        }
+        if (active) {
+          await handler(result.payload, () => active);
+        } else {
+          await options.onAfterOff?.(result.payload);
+        }
+      })
+      .catch(() => {});
+  });
+
+  return {
+    off() {
+      active = false;
+      subscription.off();
+    },
+    drain: () => delivery,
+  };
+}
+
 const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
   id: "chat-messages",
   on(handler) {
@@ -1718,22 +1796,7 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
       return subscribeToRawChatMessages(handler);
     }
 
-    let delivery = Promise.resolve();
-    return subscribeToRawChatMessages((payload) => {
-      delivery = delivery
-        .then(async () => {
-          const result = await validateChatCustomAgentPayload(payload, {
-            // A subscription may receive a frame while the current turn is
-            // still streaming. Completing that turn here would close the
-            // active response, so on() reports through the callback and log.
-            writeErrorToStream: false,
-          });
-          if (result.ok) {
-            await handler(result.payload);
-          }
-        })
-        .catch(() => {});
-    });
+    return subscribeToValidatedChatMessages((payload) => handler(payload));
   },
   once(options) {
     const ctx = taskContext.ctx;
@@ -5527,18 +5590,18 @@ type ChatCustomAgentOptions<
    * Schema for validating `metadata` from the frontend.
    *
    * The initial payload and later `chat.messages` frames are parsed before
-   * user code receives them. Invalid input is skipped. Async reads write an
-   * error chunk followed by `turn-complete`; subscriptions use
-   * `onClientDataValidationError` because a turn may still be streaming.
+   * user code receives them. Invalid submitted turns and async reads write an
+   * error chunk followed by `turn-complete`. Messageless boots and active
+   * subscriptions use `onClientDataValidationError` and the task log because
+   * there is no submitted turn to complete or a response may still be streaming.
    */
   clientDataSchema?: TClientDataSchema;
   /**
    * Called when a custom-agent input fails `clientDataSchema` validation.
    *
-   * Async reads also write an error chunk followed by `turn-complete`.
-   * `chat.messages.on()` cannot safely complete a turn that may still be
-   * streaming, so subscribed frames are reported through this callback and
-   * the task log instead.
+   * Submitted turns and async reads also write an error chunk followed by
+   * `turn-complete`. Messageless boots and active `chat.messages.on()`
+   * subscriptions are reported through this callback and the task log only.
    *
    * `payload.metadata` is typed `unknown`: this callback only fires when
    * the metadata failed to parse, so it can be any shape the client sent.
@@ -5623,7 +5686,20 @@ function chatCustomAgent<
         return userRun(payload, runOptions);
       }
 
-      const validated = await validateChatCustomAgentPayload(payload);
+      const isHandoverBoot = payload.trigger === "handover-prepare";
+      const isMessagelessBoot =
+        payload.trigger === "preload" ||
+        (payload.continuation === true &&
+          payload.message === undefined &&
+          payload.trigger !== "action" &&
+          payload.trigger !== "regenerate-message" &&
+          !isHandoverBoot);
+      const validated = await validateChatCustomAgentPayload(payload, {
+        // Preload and continuation boots do not represent a submitted turn,
+        // so there is no sender waiting for a terminal frame. Handover errors
+        // must be written after the warm response flushes and signals below.
+        writeErrorToStream: !isMessagelessBoot && !isHandoverBoot,
+      });
       if (validated.ok) {
         return userRun(
           validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
@@ -5631,14 +5707,7 @@ function chatCustomAgent<
         );
       }
 
-      // A handover-prepare boot parks the warm handler's signal on
-      // `session.in`. Drain it with the handover facade BEFORE the message
-      // wait below — that facade consumes-and-discards non-message chunks
-      // and would swallow the signal (see `waitForHandover`). The warm
-      // partial cannot be spliced without valid clientData: mirror the
-      // normal flow for skip/crash (exit without a turn) and drop a real
-      // partial — the error chunk above already reported the failure.
-      if (payload.trigger === "handover-prepare") {
+      if (isHandoverBoot) {
         const signal = await waitForHandover({
           payload,
           timeout: "1h",
@@ -5647,10 +5716,11 @@ function chatCustomAgent<
         if (!signal || signal.kind === "handover-skip") {
           return;
         }
-        logger.warn(
-          "chat.customAgent: dropping head-start handover partial — clientData failed validation",
-          { chatId: payload.chatId, isFinal: signal.isFinal }
-        );
+
+        // The head-start writer flushes before sending this signal. Writing
+        // the terminal error now preserves stream order and closes the stitch.
+        await writeChatCustomAgentClientDataErrorToStream(payload, validated.error);
+        return;
       }
 
       // The Session base payload is sticky across continuation runs. If it is
@@ -5673,7 +5743,6 @@ function chatCustomAgent<
         previousRunId: next.output.previousRunId ?? payload.previousRunId,
         sessionId: next.output.sessionId ?? payload.sessionId,
         idleTimeoutInSeconds: next.output.idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds,
-        headStartMessages: next.output.headStartMessages ?? payload.headStartMessages,
       };
 
       return userRun(
@@ -9887,14 +9956,23 @@ function createChatSession<TClientData = unknown>(
       // Messages consumed mid-turn, dispatched one per next(). Iterator-level
       // for the same reason as the agent loop's `pendingWireMessages`:
       // consumed records never replay, so a turn-local buffer loses them.
-      const sessionPendingWire: ChatTaskWirePayload[] = [];
+      const sessionPendingWire: Array<
+        | { payload: ChatTaskWirePayload; validation: "unvalidated" | "valid" }
+        | { payload: ChatTaskWirePayload; validation: "invalid"; error: unknown }
+      > = [];
       // The current turn's message subscription — detached defensively at the
       // top of next() in case user code threw without complete()/done().
-      let activeMsgSub: { off: () => void } | undefined;
+      let activeMsgSub: ChatMessageSubscription | undefined;
 
       return {
         async next(): Promise<IteratorResult<ChatTurn<TClientData>>> {
-          activeMsgSub?.off();
+          if (activeMsgSub?.drain) {
+            activeMsgSub.off();
+            await activeMsgSub.drain();
+          } else {
+            // Keep the schema-free path free of a new async boundary.
+            activeMsgSub?.off();
+          }
           activeMsgSub = undefined;
           if (!booted) {
             booted = true;
@@ -9970,13 +10048,22 @@ function createChatSession<TClientData = unknown>(
             let bufferedPayload: ChatTaskWirePayload<UIMessage, TClientData> | undefined;
             while (sessionPendingWire.length > 0) {
               const candidate = sessionPendingWire.shift()!;
-              if (!locals.get(chatCustomAgentClientDataParserKey)) {
+              if (candidate.validation === "invalid") {
+                await reportChatCustomAgentClientDataError(candidate.payload, candidate.error, {
+                  writeToStream: true,
+                });
+                continue;
+              }
+              if (
+                candidate.validation === "valid" ||
+                !locals.get(chatCustomAgentClientDataParserKey)
+              ) {
                 // Avoid adding an async boundary when no schema is configured.
-                bufferedPayload = candidate as ChatTaskWirePayload<UIMessage, TClientData>;
+                bufferedPayload = candidate.payload as ChatTaskWirePayload<UIMessage, TClientData>;
                 break;
               }
 
-              const validated = await validateChatCustomAgentPayload(candidate);
+              const validated = await validateChatCustomAgentPayload(candidate.payload);
               if (validated.ok) {
                 bufferedPayload = validated.payload as ChatTaskWirePayload<UIMessage, TClientData>;
                 break;
@@ -10031,38 +10118,72 @@ function createChatSession<TClientData = unknown>(
           });
 
           // Listen for messages during streaming (steering + next-turn buffer)
-          const sessionMsgSub = sessionPendingMessages
-            ? messagesInput.on(async (msg) => {
-                // Steering route — the frontend re-sends non-injected
-                // messages on turn complete, so don't also buffer the wire.
-                // Slim wire: at most one delta message per record. Read
-                // `msg.message` directly — no array slicing needed.
-                const lastUIMessage = msg.message;
-                if (lastUIMessage) {
-                  if (sessionPendingMessages.onReceived) {
-                    try {
-                      await sessionPendingMessages.onReceived({
-                        message: lastUIMessage,
-                        chatId: currentPayload.chatId,
-                        turn,
-                      });
-                    } catch {
-                      /* non-fatal */
-                    }
-                  }
-                  try {
-                    const modelMsgs = await toModelMessages([lastUIMessage]);
-                    turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
-                  } catch {
-                    /* non-fatal */
-                  }
+          const handleSteeringMessage = async (
+            msg: ChatTaskWirePayload,
+            isActive: () => boolean = () => true
+          ) => {
+            const bufferForNextTurn = () => {
+              sessionPendingWire.push({ payload: msg, validation: "valid" });
+            };
+            if (!isActive()) {
+              bufferForNextTurn();
+              return;
+            }
+
+            // Steering route — the frontend re-sends non-injected
+            // messages on turn complete, so don't also buffer the wire.
+            // Slim wire: at most one delta message per record. Read
+            // `msg.message` directly — no array slicing needed.
+            const lastUIMessage = msg.message;
+            if (lastUIMessage) {
+              if (sessionPendingMessages?.onReceived) {
+                try {
+                  await sessionPendingMessages.onReceived({
+                    message: lastUIMessage,
+                    chatId: currentPayload.chatId,
+                    turn,
+                  });
+                } catch {
+                  /* non-fatal */
                 }
-              })
+              }
+              if (!isActive()) {
+                bufferForNextTurn();
+                return;
+              }
+              try {
+                const modelMsgs = await toModelMessages([lastUIMessage]);
+                if (!isActive()) {
+                  bufferForNextTurn();
+                  return;
+                }
+                turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+              } catch {
+                /* non-fatal */
+              }
+            }
+          };
+
+          const sessionMsgSub: ChatMessageSubscription = sessionPendingMessages
+            ? locals.get(chatCustomAgentClientDataParserKey)
+              ? subscribeToValidatedChatMessages(handleSteeringMessage, {
+                  onAfterOff: (msg) => {
+                    sessionPendingWire.push({ payload: msg, validation: "valid" });
+                  },
+                  onInvalidAfterOff: (msg, error) => {
+                    sessionPendingWire.push({ payload: msg, validation: "invalid", error });
+                  },
+                })
+              : messagesInput.on(async (msg) => {
+                  // Steering route — the frontend re-sends non-injected
+                  // messages on turn complete, so don't also buffer the wire.
+                  await handleSteeringMessage(msg);
+                })
             : subscribeToRawChatMessages((msg) => {
                 // Buffer synchronously in wire order. Validation happens when
                 // the frame becomes the next turn, after the active response
                 // has completed and it is safe to write an error boundary.
-                sessionPendingWire.push(msg);
+                sessionPendingWire.push({ payload: msg, validation: "unvalidated" });
               });
           activeMsgSub = sessionMsgSub;
 
@@ -10280,7 +10401,6 @@ function createChatSession<TClientData = unknown>(
                 }
               }
 
-              sessionMsgSub.off();
               await chatWriteTurnComplete();
               return response;
             },

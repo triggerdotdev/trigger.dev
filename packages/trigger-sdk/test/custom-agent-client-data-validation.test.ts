@@ -142,11 +142,12 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
-  it("waits for valid clientData when the initial payload is invalid", async () => {
+  it("waits without completing a turn when a messageless continuation boot is invalid", async () => {
     let runCalls = 0;
     let receivedClientData: unknown;
     let receivedContinuation: boolean | undefined;
     let receivedPreviousRunId: string | undefined;
+    const validationErrors: unknown[] = [];
     const clientData: { userId: unknown } = { userId: 123 };
 
     const agent = chat
@@ -155,6 +156,9 @@ describe("chat.customAgent clientData validation", () => {
       })
       .customAgent({
         id: "custom-agent-client-data-invalid-initial",
+        onClientDataValidationError: ({ error }) => {
+          validationErrors.push(error);
+        },
         run: async (payload) => {
           runCalls++;
           receivedClientData = payload.metadata;
@@ -169,6 +173,48 @@ describe("chat.customAgent clientData validation", () => {
       clientData,
       continuation: true,
       previousRunId: "run_previous",
+    });
+
+    try {
+      await waitFor(() => validationErrors.length === 1);
+
+      expect(runCalls).toBe(0);
+      expect(harness.allRawChunks).toHaveLength(0);
+
+      clientData.userId = "user_123";
+      const recovered = await harness.sendMessage(userMessage("retry", "message-1"));
+
+      expect(runCalls).toBe(1);
+      expect(receivedClientData).toEqual({ userId: "user_123" });
+      expect(receivedContinuation).toBe(true);
+      expect(receivedPreviousRunId).toBe("run_previous");
+      expect(recovered.chunks).toHaveLength(0);
+      expect(recovered.rawChunks).toEqual([
+        expect.objectContaining({ type: "trigger:turn-complete" }),
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("completes an invalid submitted boot before waiting for valid clientData", async () => {
+    const clientData: { userId: unknown } = { userId: 123 };
+    let runCalls = 0;
+    let receivedClientData: unknown;
+
+    const agent = chat.withClientData({ schema: z.object({ userId: z.string() }) }).customAgent({
+      id: "custom-agent-client-data-invalid-submitted-boot",
+      run: async (payload) => {
+        runCalls++;
+        receivedClientData = payload.metadata;
+        await chat.writeTurnComplete();
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-invalid-submitted-boot-chat",
+      mode: "submit-message",
+      clientData,
     });
 
     try {
@@ -191,8 +237,6 @@ describe("chat.customAgent clientData validation", () => {
 
       expect(runCalls).toBe(1);
       expect(receivedClientData).toEqual({ userId: "user_123" });
-      expect(receivedContinuation).toBe(true);
-      expect(receivedPreviousRunId).toBe("run_previous");
     } finally {
       await harness.close();
     }
@@ -257,13 +301,14 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
-  it("delivers frames that arrived before chat.messages.on is removed", async () => {
+  it("does not deliver frames or validation callbacks after chat.messages.on is removed", async () => {
     const clientData = { blocked: false };
     const parserStarted = deferred();
     const releaseParser = deferred();
-    const delivered = deferred();
+    const parserFinished = deferred();
     let removeSubscription: (() => void) | undefined;
     let handlerCalls = 0;
+    let validationErrorCalls = 0;
     let started = false;
 
     const agent = chat
@@ -273,26 +318,26 @@ describe("chat.customAgent clientData validation", () => {
           if (blocked) {
             parserStarted.resolve();
             await releaseParser.promise;
+            parserFinished.resolve();
+            throw new Error("invalid after unsubscribe");
           }
           return { blocked };
         },
       })
       .customAgent({
         id: "custom-agent-client-data-off-after-arrival",
+        onClientDataValidationError: () => {
+          validationErrorCalls++;
+        },
         run: async (_payload, { signal }) => {
           started = true;
           const subscription = chat.messages.on(async () => {
             handlerCalls++;
-            await chat.writeTurnComplete();
-            delivered.resolve();
           });
           removeSubscription = () => subscription.off();
-          await Promise.race([
-            delivered.promise,
-            new Promise<void>((resolve) => {
-              signal.addEventListener("abort", () => resolve(), { once: true });
-            }),
-          ]);
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
         },
       });
 
@@ -304,17 +349,64 @@ describe("chat.customAgent clientData validation", () => {
     try {
       await waitFor(() => started);
       clientData.blocked = true;
-      const send = harness.sendMessage(userMessage("hello", "message-1"));
+      void harness.sendMessage(userMessage("hello", "message-1"));
       await parserStarted.promise;
 
       removeSubscription!();
       releaseParser.resolve();
 
-      await send;
-      await delivered.promise;
-      expect(handlerCalls).toBe(1);
+      await parserFinished.promise;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(handlerCalls).toBe(0);
+      expect(validationErrorCalls).toBe(0);
     } finally {
       releaseParser.resolve();
+      await harness.close();
+    }
+  });
+
+  it("throws from chat.messages.peek when an object parser returns a promise", async () => {
+    const clientData = { userId: "user_123" };
+    let started = false;
+    let peekError: unknown;
+
+    const agent = chat
+      .withClientData({
+        schema: {
+          parse: async (value: unknown) => value as { userId: string },
+        } as any,
+      })
+      .customAgent({
+        id: "custom-agent-client-data-async-object-peek",
+        run: async (_payload, { signal }) => {
+          started = true;
+          while (!signal.aborted) {
+            try {
+              chat.messages.peek();
+            } catch (error) {
+              peekError = error;
+              await chat.writeTurnComplete();
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        },
+      });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-async-object-peek-chat",
+      clientData,
+    });
+
+    try {
+      await waitFor(() => started);
+      const send = harness.sendMessage(userMessage("hello", "message-1"));
+      await waitFor(() => peekError !== undefined);
+      await send;
+
+      expect(peekError).toBeInstanceOf(Error);
+      expect((peekError as Error).message).toContain("asynchronous schema");
+    } finally {
       await harness.close();
     }
   });
@@ -380,6 +472,169 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
+  it("buffers a steering frame whose validation finishes after the turn closes", async () => {
+    const clientData = { sequence: 0 };
+    const parserStarted = deferred();
+    const releaseParser = deferred();
+    const firstTurnStarted = deferred();
+    const releaseFirstTurn = deferred();
+    const firstDoneStarted = deferred();
+    const secondTurnFinished = deferred();
+    const receivedSequences: number[] = [];
+    const receivedMessageIds: string[][] = [];
+    let started = false;
+
+    const agent = chat
+      .withClientData({
+        schema: async (value: unknown) => {
+          const sequence = (value as { sequence: number }).sequence;
+          if (sequence === 2) {
+            parserStarted.resolve();
+            await releaseParser.promise;
+          }
+          return { sequence };
+        },
+      })
+      .customAgent({
+        id: "custom-agent-client-data-late-steering-validation",
+        run: async (payload, { signal }) => {
+          started = true;
+          const session = chat.createSession(payload, {
+            signal,
+            idleTimeoutInSeconds: 1,
+            pendingMessages: {},
+          });
+          for await (const turn of session) {
+            receivedSequences.push(turn.clientData.sequence);
+            receivedMessageIds.push(turn.uiMessages.map((message) => message.id));
+            if (turn.number === 0) {
+              firstTurnStarted.resolve();
+              await releaseFirstTurn.promise;
+              firstDoneStarted.resolve();
+              await turn.done();
+              continue;
+            }
+            await turn.done();
+            secondTurnFinished.resolve();
+            break;
+          }
+        },
+      });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-late-steering-validation-chat",
+      clientData,
+    });
+
+    try {
+      await waitFor(() => started);
+      clientData.sequence = 1;
+      const first = harness.sendMessage(userMessage("first", "message-1"));
+      await firstTurnStarted.promise;
+
+      clientData.sequence = 2;
+      void harness.sendMessage(userMessage("second", "message-2"));
+      await parserStarted.promise;
+
+      releaseFirstTurn.resolve();
+      await firstDoneStarted.promise;
+      await Promise.resolve();
+      releaseParser.resolve();
+
+      await first;
+      await secondTurnFinished.promise;
+      expect(receivedSequences).toEqual([1, 2]);
+      expect(receivedMessageIds).toEqual([["message-1"], ["message-1", "message-2"]]);
+    } finally {
+      releaseFirstTurn.resolve();
+      releaseParser.resolve();
+      await harness.close();
+    }
+  });
+
+  it("does not reparse an invalid steering frame after the turn closes", async () => {
+    const clientData = { sequence: 0 };
+    const parserStarted = deferred();
+    const releaseParser = deferred();
+    const firstTurnStarted = deferred();
+    const releaseFirstTurn = deferred();
+    const firstDoneStarted = deferred();
+    const validationErrors: unknown[] = [];
+    const receivedSequences: number[] = [];
+    let lateFrameParseCalls = 0;
+    let started = false;
+
+    const agent = chat
+      .withClientData({
+        schema: async (value: unknown) => {
+          const sequence = (value as { sequence: number }).sequence;
+          if (sequence === 2) {
+            lateFrameParseCalls++;
+            parserStarted.resolve();
+            await releaseParser.promise;
+            if (lateFrameParseCalls === 1) {
+              throw new Error("invalid late frame");
+            }
+          }
+          return { sequence };
+        },
+      })
+      .customAgent({
+        id: "custom-agent-client-data-late-invalid-steering",
+        onClientDataValidationError: ({ error }) => {
+          validationErrors.push(error);
+        },
+        run: async (payload, { signal }) => {
+          started = true;
+          const session = chat.createSession(payload, {
+            signal,
+            idleTimeoutInSeconds: 1,
+            pendingMessages: {},
+          });
+          for await (const turn of session) {
+            receivedSequences.push(turn.clientData.sequence);
+            firstTurnStarted.resolve();
+            await releaseFirstTurn.promise;
+            firstDoneStarted.resolve();
+            await turn.done();
+          }
+        },
+      });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-late-invalid-steering-chat",
+      clientData,
+    });
+
+    try {
+      await waitFor(() => started);
+      clientData.sequence = 1;
+      const first = harness.sendMessage(userMessage("first", "message-1"));
+      await firstTurnStarted.promise;
+
+      clientData.sequence = 2;
+      void harness.sendMessage(userMessage("second", "message-2"));
+      await parserStarted.promise;
+
+      releaseFirstTurn.resolve();
+      await firstDoneStarted.promise;
+      await Promise.resolve();
+      releaseParser.resolve();
+
+      await first;
+      await waitFor(() => validationErrors.length === 1);
+      expect(lateFrameParseCalls).toBe(1);
+      expect(receivedSequences).toEqual([1]);
+      expect(harness.allChunks).toContainEqual(
+        expect.objectContaining({ type: "error", errorText: "invalid late frame" })
+      );
+    } finally {
+      releaseFirstTurn.resolve();
+      releaseParser.resolve();
+      await harness.close();
+    }
+  });
+
   it("reports invalid chat.messages.on frames without calling the subscriber", async () => {
     const clientData: { userId: unknown } = { userId: "user_123" };
     const validationErrors: unknown[] = [];
@@ -423,10 +678,14 @@ describe("chat.customAgent clientData validation", () => {
 
   it("exits without a turn when a handover-prepare boot has invalid clientData and the warm handler skips", async () => {
     const clientData: { userId: unknown } = { userId: 123 };
+    const validationErrors: unknown[] = [];
     let runCalls = 0;
 
     const agent = chat.withClientData({ schema: z.object({ userId: z.string() }) }).customAgent({
       id: "custom-agent-client-data-handover-skip",
+      onClientDataValidationError: ({ error }) => {
+        validationErrors.push(error);
+      },
       run: async () => {
         runCalls++;
         await chat.writeTurnComplete();
@@ -440,12 +699,11 @@ describe("chat.customAgent clientData validation", () => {
     });
 
     try {
-      await waitFor(() =>
-        harness.allChunks.some((chunk) => (chunk as { type?: string }).type === "error")
-      );
+      await waitFor(() => validationErrors.length === 1);
       expect(runCalls).toBe(0);
+      expect(harness.allRawChunks).toHaveLength(0);
 
-      // The recovery path must drain the skip via the handover facade and
+      // The validation path must drain the skip via the handover facade and
       // end the run, mirroring the normal handover-skip exit.
       await harness.sendHandoverSkip();
 
@@ -461,53 +719,46 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
-  it("drops the head-start partial and recovers on the next valid frame when a handover-prepare boot has invalid clientData", async () => {
+  it("fails an invalid handover boot after the warm handler signals", async () => {
     const clientData: { userId: unknown } = { userId: 123 };
+    const validationErrors: unknown[] = [];
     let runCalls = 0;
-    let receivedTrigger: string | undefined;
-    let receivedClientData: unknown;
 
     const agent = chat.withClientData({ schema: z.object({ userId: z.string() }) }).customAgent({
-      id: "custom-agent-client-data-handover-drop",
-      run: async (payload) => {
+      id: "custom-agent-client-data-handover-invalid",
+      onClientDataValidationError: ({ error }) => {
+        validationErrors.push(error);
+      },
+      run: async () => {
         runCalls++;
-        receivedTrigger = payload.trigger;
-        receivedClientData = payload.metadata;
         await chat.writeTurnComplete();
       },
     });
 
     const harness = mockChatAgent(agent, {
-      chatId: "custom-agent-client-data-handover-drop-chat",
+      chatId: "custom-agent-client-data-handover-invalid-chat",
       mode: "handover-prepare",
       clientData,
     });
 
     try {
-      await waitFor(() =>
-        harness.allChunks.some((chunk) => (chunk as { type?: string }).type === "error")
-      );
+      await waitFor(() => validationErrors.length === 1);
       expect(runCalls).toBe(0);
+      expect(harness.allRawChunks).toHaveLength(0);
 
-      // Resolves on the next turn-complete — the recovered message turn below.
-      const handover = harness.sendHandover({
+      const handover = await harness.sendHandover({
         partialAssistantMessage: [
           { role: "assistant", content: [{ type: "text", text: "warm partial" }] },
         ],
       });
-      // Let the recovery drain consume the handover signal before the
-      // message frame goes out — a frame arriving mid-drain would be
-      // discarded by the handover facade (same as the pre-existing turn-0
-      // handover wait in chat.createSession).
-      await new Promise((resolve) => setTimeout(resolve, 50));
 
-      clientData.userId = "user_123";
-      await harness.sendMessage(userMessage("retry", "message-1"));
-      await handover;
-
-      expect(runCalls).toBe(1);
-      expect(receivedTrigger).toBe("submit-message");
-      expect(receivedClientData).toEqual({ userId: "user_123" });
+      expect(runCalls).toBe(0);
+      expect(handover.chunks).toEqual([
+        expect.objectContaining({ type: "error", errorText: expect.any(String) }),
+      ]);
+      expect(handover.rawChunks).toContainEqual(
+        expect.objectContaining({ type: "trigger:turn-complete" })
+      );
     } finally {
       await harness.close();
     }
