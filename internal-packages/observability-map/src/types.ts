@@ -1,4 +1,4 @@
-export type CheckStatus = "pass" | "fail" | "not-applicable";
+type CheckStatus = "pass" | "fail" | "not-applicable";
 
 export type CheckResult = {
   id: string;
