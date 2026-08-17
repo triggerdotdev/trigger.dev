@@ -20,7 +20,7 @@ export function SmartColumnSample({
   onSelectPath: (path: string) => void;
 }) {
   return (
-    <div className="max-h-52 overflow-auto rounded bg-charcoal-900 p-2 font-mono text-xs leading-relaxed">
+    <div className="max-h-52 overflow-auto rounded bg-charcoal-900 p-2 font-mono text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <JsonNode
         name={undefined}
         path="$"
@@ -80,6 +80,19 @@ function JsonNode({
   const shown = entries.slice(0, MAX_CHILDREN);
   const openBrace = isArray ? "[" : "{";
   const closeBrace = isArray ? "]" : "}";
+
+  if (entries.length === 0) {
+    return (
+      <div className="whitespace-pre px-0.5">
+        {keyLabel !== null && <span className="text-sky-300">{keyLabel}</span>}
+        {keyLabel !== null && <span className="text-text-dimmed">: </span>}
+        <span className="text-text-dimmed">
+          {openBrace}
+          {closeBrace}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div>
