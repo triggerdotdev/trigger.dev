@@ -2,7 +2,7 @@
 import Long from "long";
 import _m0 from "protobufjs/minimal";
 
-export const protobufPackage = "opentelemetry.proto.common.v1";
+const protobufPackage = "opentelemetry.proto.common.v1";
 
 /**
  * AnyValue is used to represent any type of attribute value. AnyValue may contain a
@@ -23,7 +23,7 @@ export interface AnyValue {
  * ArrayValue is a list of AnyValue messages. We need ArrayValue as a message
  * since oneof in AnyValue does not allow repeated fields.
  */
-export interface ArrayValue {
+interface ArrayValue {
   /** Array of values. The array may be empty (contain 0 elements). */
   values: AnyValue[];
 }
@@ -247,7 +247,7 @@ function createBaseArrayValue(): ArrayValue {
   return { values: [] };
 }
 
-export const ArrayValue = {
+const ArrayValue = {
   encode(message: ArrayValue, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.values) {
       AnyValue.encode(v!, writer.uint32(10).fork()).ldelim();
@@ -579,7 +579,7 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -590,7 +590,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
