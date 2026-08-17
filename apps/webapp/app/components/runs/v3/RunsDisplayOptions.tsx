@@ -199,6 +199,7 @@ function ColumnRow({
   col,
   checked,
   locked,
+  reserveIcon,
   dragging,
   isOver,
   onToggle,
@@ -227,7 +228,7 @@ function ColumnRow({
   return (
     <div
       className={cn(
-        "group relative flex h-8 items-center gap-2 px-3 transition-colors hover:bg-charcoal-750",
+        "group relative flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-charcoal-750",
         dragging && "opacity-40"
       )}
       draggable
@@ -239,33 +240,39 @@ function ColumnRow({
     >
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
       {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
-      {isSmart && <BoltIcon className="size-4 flex-none text-text-dimmed" />}
-      <span
-        className={cn("flex-1 truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}
-      >
-        {col.def.label}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span
+          className={cn("truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}
+        >
+          {col.def.label}
+        </span>
+        {isSmart && <BoltIcon className="size-3.5 flex-none text-text-dimmed" />}
       </span>
-      {onEdit && (
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Edit ${col.def.label}`}
-          className="flex size-5 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:text-text-bright focus-custom group-hover:opacity-100"
-        >
-          <PencilSquareIcon className="size-3.5" />
-        </button>
-      )}
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remove ${col.def.label}`}
-          className="flex size-5 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:text-error focus-custom group-hover:opacity-100"
-        >
-          <XMarkIcon className="size-3.5" />
-        </button>
-      )}
-      <GripVerticalIcon className="size-4 flex-none cursor-grab text-text-dimmed opacity-0 transition group-hover:opacity-100 active:cursor-grabbing" />
+      <div className="flex flex-none items-center gap-0.5">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${col.def.label}`}
+            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100"
+          >
+            <PencilSquareIcon className="size-4" />
+          </button>
+        )}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove ${col.def.label}`}
+            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100"
+          >
+            <XMarkIcon className="size-4" />
+          </button>
+        )}
+        <span className="flex size-6 cursor-grab items-center justify-center text-text-dimmed opacity-0 transition group-hover:opacity-100 active:cursor-grabbing">
+          <GripVerticalIcon className="size-4" />
+        </span>
+      </div>
     </div>
   );
 }

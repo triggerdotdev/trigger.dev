@@ -20,7 +20,7 @@ export function SmartColumnSample({
   onSelectPath: (path: string) => void;
 }) {
   return (
-    <div className="max-h-80 overflow-auto rounded bg-charcoal-900 p-2 font-mono text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+    <div className="max-h-80 overflow-auto font-mono text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <JsonNode
         name={undefined}
         path="$"

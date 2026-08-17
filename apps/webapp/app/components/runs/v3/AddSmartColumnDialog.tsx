@@ -94,6 +94,14 @@ export function AddSmartColumnDialog({
     setSampleIndex(0);
   }, [source]);
 
+  const handleSourceChange = (next: SmartColumnSource) => {
+    if (next === source) return;
+    setSource(next);
+    setPath("");
+    setLabel("");
+    setLabelEdited(false);
+  };
+
   const effectiveLabel = labelEdited ? label : labelFromPath(path);
 
   const sampleLoaded = sample.data !== undefined && sample.state === "idle";
@@ -145,8 +153,7 @@ export function AddSmartColumnDialog({
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
         <div className="flex flex-col gap-5 p-1">
           <Callout variant="info">
-            Display only. A smart column shows you a value from a run, but you can't sort or filter
-            the list by it. To narrow the list, use tags or the query editor.
+            Smart columns are display only. You can't sort or filter by them.
           </Callout>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_260px_220px]">
@@ -160,7 +167,7 @@ export function AddSmartColumnDialog({
                       label={card.label}
                       description={card.description}
                       selected={source === card.value}
-                      onSelect={() => setSource(card.value)}
+                      onSelect={() => handleSourceChange(card.value)}
                     />
                   ))}
                 </div>
@@ -175,10 +182,9 @@ export function AddSmartColumnDialog({
                     placeholder="$.order.total"
                     spellCheck={false}
                   />
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Dot and bracket notation, e.g. <code>$.order.total</code> or{" "}
-                    <code>$.items[0].sku</code>. Use <code>.length</code> for an array, string, or
-                    key count.
+                  <Paragraph variant="extra-small" className="text-balance text-text-dimmed">
+                    e.g. <code>$.order.total</code>, <code>$.items[0].sku</code>,{" "}
+                    <code>$.items.length</code>
                   </Paragraph>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -191,9 +197,6 @@ export function AddSmartColumnDialog({
                     }}
                     placeholder={labelFromPath(path)}
                   />
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Defaults to the last part of the path.
-                  </Paragraph>
                 </div>
               </div>
 
@@ -216,16 +219,12 @@ export function AddSmartColumnDialog({
                     </button>
                   ))}
                 </div>
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  Number right-aligns the column and uses tabular figures. Anything that doesn't
-                  parse falls back to text.
-                </Paragraph>
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 self-start rounded-lg border border-grid-dimmed bg-background-dimmed p-3">
-              <div className="flex items-center justify-between gap-2">
-                <Paragraph variant="extra-extra-small/dimmed/caps">Sample — {source}</Paragraph>
+            <div className="flex flex-col gap-1.5 self-start">
+              <div className="flex h-5 items-center justify-between gap-2">
+                <Paragraph variant="extra-extra-small/dimmed/caps">Sample {source}</Paragraph>
                 {usable.length > 1 && (
                   <SampleRunPicker
                     index={activeIndex}
@@ -235,33 +234,37 @@ export function AddSmartColumnDialog({
                   />
                 )}
               </div>
-              {!sampleLoaded ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  Loading…
-                </Paragraph>
-              ) : activeSample ? (
-                <SmartColumnSample
-                  value={activeSample.value}
-                  activePath={path.trim()}
-                  onSelectPath={setPath}
-                />
-              ) : runCount === 0 ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  No runs to sample.
-                </Paragraph>
-              ) : anyOffloaded ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  Recent {source}s are offloaded to object storage, too large to sample here.
-                </Paragraph>
-              ) : (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  No recent run has a {source} value to sample.
-                </Paragraph>
-              )}
+              <div className="overflow-hidden rounded-lg border border-grid-dimmed bg-charcoal-900 p-3">
+                {!sampleLoaded ? (
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Loading…
+                  </Paragraph>
+                ) : activeSample ? (
+                  <SmartColumnSample
+                    value={activeSample.value}
+                    activePath={path.trim()}
+                    onSelectPath={setPath}
+                  />
+                ) : runCount === 0 ? (
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    No runs to sample yet.
+                  </Paragraph>
+                ) : anyOffloaded ? (
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Recent {source}s are too large to sample here.
+                  </Paragraph>
+                ) : (
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    No recent run has a {source} to sample.
+                  </Paragraph>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5 self-start">
-              <Paragraph variant="extra-extra-small/dimmed/caps">Preview</Paragraph>
+              <div className="flex h-5 items-center">
+                <Paragraph variant="extra-extra-small/dimmed/caps">Preview</Paragraph>
+              </div>
               <SmartColumnPreview rows={perRun} def={previewDef} loaded={sampleLoaded} />
             </div>
           </div>
@@ -377,7 +380,7 @@ function SmartColumnPreview({
         {!loaded ? (
           <div className="px-2.5 py-2 text-xs text-text-dimmed">Loading…</div>
         ) : rows.length === 0 ? (
-          <div className="px-2.5 py-2 text-xs text-text-dimmed">No runs</div>
+          <div className="px-2.5 py-2 text-xs text-text-dimmed">No runs yet</div>
         ) : (
           rows.map((row, index) => {
             const cell = def.path
