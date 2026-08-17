@@ -1,4 +1,4 @@
-import { BoltIcon } from "@heroicons/react/20/solid";
+import { BoltIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Button } from "~/components/primitives/Buttons";
@@ -60,6 +60,7 @@ export function AddSmartColumnDialog({
   const [label, setLabel] = useState("");
   const [labelEdited, setLabelEdited] = useState(false);
   const [displayAs, setDisplayAs] = useState<SmartColumnDisplay>("text");
+  const [sampleIndex, setSampleIndex] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -68,6 +69,7 @@ export function AddSmartColumnDialog({
     setLabel(editing?.label ?? "");
     setLabelEdited(editing !== null);
     setDisplayAs(editing?.displayAs ?? "text");
+    setSampleIndex(0);
   }, [open, editing]);
 
   const sampleUrl = useMemo(() => {
@@ -84,7 +86,9 @@ export function AddSmartColumnDialog({
 
   const effectiveLabel = labelEdited ? label : labelFromPath(path);
 
-  const sampleRun = sample.data?.run ?? null;
+  const sampleRuns = sample.data?.runs ?? [];
+  const clampedIndex = sampleRuns.length > 0 ? Math.min(sampleIndex, sampleRuns.length - 1) : 0;
+  const sampleRun = sampleRuns[clampedIndex] ?? null;
 
   const parsed = useMemo(() => {
     if (!sampleRun) return undefined;
@@ -195,9 +199,17 @@ export function AddSmartColumnDialog({
             </div>
 
             <div className="flex flex-col gap-1.5 self-start rounded-lg border border-grid-dimmed bg-background-dimmed p-3">
-              <Paragraph variant="extra-extra-small/dimmed/caps">
-                Sample — {source} of the newest run
-              </Paragraph>
+              <div className="flex items-center justify-between gap-2">
+                <Paragraph variant="extra-extra-small/dimmed/caps">Sample — {source}</Paragraph>
+                {sampleRuns.length > 0 && (
+                  <SampleRunPicker
+                    index={clampedIndex}
+                    total={sampleRuns.length}
+                    onPrev={() => setSampleIndex((i) => Math.max(0, i - 1))}
+                    onNext={() => setSampleIndex((i) => Math.min(sampleRuns.length - 1, i + 1))}
+                  />
+                )}
+              </div>
               {sample.state === "loading" ? (
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   Loading…
@@ -231,12 +243,6 @@ export function AddSmartColumnDialog({
                 Resolves to
               </Paragraph>
               <SmartColumnResolvedPreview label={effectiveLabel} resolved={resolved} />
-              {sampleRun && (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  Against {sampleRun.friendlyId}
-                  {sampleRun.hasFinished ? "" : " · still running"}
-                </Paragraph>
-              )}
             </div>
           </div>
         </div>
@@ -250,6 +256,44 @@ export function AddSmartColumnDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SampleRunPicker({
+  index,
+  total,
+  onPrev,
+  onNext,
+}: {
+  index: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="flex flex-none items-center gap-1 text-xs text-text-dimmed">
+      <span className="tabular-nums">
+        {index + 1}/{total}
+      </span>
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={index === 0}
+        aria-label="Newer run"
+        className="flex size-5 items-center justify-center rounded hover:bg-charcoal-750 disabled:opacity-30"
+      >
+        <ChevronLeftIcon className="size-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={index >= total - 1}
+        aria-label="Older run"
+        className="flex size-5 items-center justify-center rounded hover:bg-charcoal-750 disabled:opacity-30"
+      >
+        <ChevronRightIcon className="size-4" />
+      </button>
+    </div>
   );
 }
 

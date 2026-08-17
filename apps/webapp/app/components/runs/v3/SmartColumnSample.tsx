@@ -1,17 +1,14 @@
-import { useState } from "react";
 import { cn } from "~/utils/cn";
 
 /** Max children rendered per node so a large blob can't blow up the DOM. */
 const MAX_CHILDREN = 200;
-/** Levels auto-expanded; deeper nodes start collapsed and open on click. */
-const AUTO_OPEN_DEPTH = 2;
 const MAX_STRING = 80;
 
 /**
- * A clickable, syntax-colored JSON tree for the smart-column sample. Only leaf
- * values are selectable: clicking one fills the JSON path field via
- * `onSelectPath` and highlights it. Object/array rows only expand and collapse,
- * so you drill into a container and pick a leaf inside it.
+ * A clickable, syntax-colored JSON tree for the smart-column sample, rendered
+ * fully expanded. Only leaf values are selectable: clicking one fills the JSON
+ * path field via `onSelectPath` and highlights it. Objects and arrays are shown
+ * inline (not clickable) so you can see the shape and pick a leaf inside them.
  */
 export function SmartColumnSample({
   value,
@@ -28,7 +25,6 @@ export function SmartColumnSample({
         name={undefined}
         path="$"
         value={value}
-        depth={0}
         activePath={activePath}
         onSelectPath={onSelectPath}
       />
@@ -46,18 +42,15 @@ function JsonNode({
   name,
   path,
   value,
-  depth,
   activePath,
   onSelectPath,
 }: {
   name: string | number | undefined;
   path: string;
   value: unknown;
-  depth: number;
   activePath: string;
   onSelectPath: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(depth < AUTO_OPEN_DEPTH);
   const isObject = value !== null && typeof value === "object";
   const selected = path === activePath;
   const keyLabel = name === undefined ? null : typeof name === "number" ? name : `"${name}"`;
@@ -90,43 +83,27 @@ function JsonNode({
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? "Collapse" : "Expand"}
-        aria-expanded={open}
-        className="flex w-full items-start whitespace-pre rounded px-0.5 text-left hover:bg-charcoal-750"
-      >
-        <span className="mr-1 w-3 shrink-0 text-text-dimmed">{open ? "▾" : "▸"}</span>
+      <div className="whitespace-pre px-0.5">
         {keyLabel !== null && <span className="text-sky-300">{keyLabel}</span>}
         {keyLabel !== null && <span className="text-text-dimmed">: </span>}
-        <span className="text-text-dimmed">
-          {openBrace}
-          {!open && `… ${closeBrace}`}
-          {!open && entries.length > 0 && (
-            <span className="ml-1 text-faint">{`${entries.length} ${isArray ? "items" : "keys"}`}</span>
-          )}
-        </span>
-      </button>
-      {open && (
-        <div className="ml-[0.4rem] border-l border-grid-dimmed/50 pl-3">
-          {shown.map(([key, childValue]) => (
-            <JsonNode
-              key={String(key)}
-              name={key}
-              path={childPath(path, key)}
-              value={childValue}
-              depth={depth + 1}
-              activePath={activePath}
-              onSelectPath={onSelectPath}
-            />
-          ))}
-          {entries.length > MAX_CHILDREN && (
-            <div className="text-text-dimmed">… {entries.length - MAX_CHILDREN} more</div>
-          )}
-          <div className="text-text-dimmed">{closeBrace}</div>
-        </div>
-      )}
+        <span className="text-text-dimmed">{openBrace}</span>
+      </div>
+      <div className="ml-[0.4rem] border-l border-grid-dimmed/50 pl-3">
+        {shown.map(([key, childValue]) => (
+          <JsonNode
+            key={String(key)}
+            name={key}
+            path={childPath(path, key)}
+            value={childValue}
+            activePath={activePath}
+            onSelectPath={onSelectPath}
+          />
+        ))}
+        {entries.length > MAX_CHILDREN && (
+          <div className="text-text-dimmed">… {entries.length - MAX_CHILDREN} more</div>
+        )}
+      </div>
+      <div className="whitespace-pre px-0.5 text-text-dimmed">{closeBrace}</div>
     </div>
   );
 }

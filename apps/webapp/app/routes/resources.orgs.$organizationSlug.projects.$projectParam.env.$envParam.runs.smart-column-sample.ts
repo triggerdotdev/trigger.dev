@@ -7,10 +7,14 @@ import { RunsRepository } from "~/services/runsRepository/runsRepository.server"
 import { $replica } from "~/db.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
+/** How many recent runs the smart-column preview can page through. */
+const SAMPLE_RUN_COUNT = 10;
+
 /**
- * Newest run for the current filters, with its raw payload/metadata/output
- * packets, feeding the "Add smart column" live preview. The client parses and
- * resolves the JSON path; the server never parses (same rule as the list).
+ * The most recent runs for the current filters, with their raw
+ * payload/metadata/output packets, feeding the "Add smart column" preview. The
+ * client picks which run to sample, parses, and resolves the JSON path; the
+ * server never parses (same rule as the list).
  */
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { project, environment } = await loadProjectEnvironmentFromRequest(request, params);
@@ -42,16 +46,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     machines: filters.machines,
     errorId: filters.errorId,
     runSelect: deriveRunSelect([], ["payload", "metadata", "output"]),
-    page: { size: 1 },
+    page: { size: SAMPLE_RUN_COUNT },
   });
 
-  const run = runs[0];
-  if (!run) {
-    return { run: null };
-  }
-
   return {
-    run: {
+    runs: runs.map((run) => ({
       friendlyId: run.friendlyId,
       status: run.status,
       hasFinished: isFinalRunStatus(run.status),
@@ -63,6 +62,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       metadataType: run.metadataType,
       output: run.output,
       outputType: run.outputType,
-    },
+    })),
   };
 }
