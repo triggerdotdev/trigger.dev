@@ -144,7 +144,7 @@ type WorkerVersionWheres = {
 };
 
 /** Build the nested-include `where`s for a dispatch filter (undefined = fetch the whole set). */
-export function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
+function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
   return {
     taskWhere: filter.taskIdentifier ? { slug: filter.taskIdentifier } : undefined,
     queueWhere: filter.queue
