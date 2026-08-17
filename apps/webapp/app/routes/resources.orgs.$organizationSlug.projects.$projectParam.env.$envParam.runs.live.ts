@@ -7,6 +7,8 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { runIdsQueryParam } from "~/utils/searchParams";
+import { deriveRunSelect } from "~/components/runs/v3/runColumns";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
 
 const SearchParamsSchema = z.object({
   runIds: runIdsQueryParam,
@@ -36,6 +38,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     "runsList"
   );
   const runsRepository = new RunsRepository({ clickhouse, prisma: $replica });
+  const columns = getRunColumnsForSelect(request);
 
   const [runs, newRunsResult] = await Promise.all([
     runIds.length > 0
@@ -45,6 +48,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             projectId: project.id,
             environmentId: environment.id,
             runId: runIds,
+            runSelect: deriveRunSelect(columns.visibleStandardIds, columns.smartSources),
             page: { size: 100 },
           })
           .then(({ runs: listedRuns }) => listedRuns.map(mapRunToLiveFields))

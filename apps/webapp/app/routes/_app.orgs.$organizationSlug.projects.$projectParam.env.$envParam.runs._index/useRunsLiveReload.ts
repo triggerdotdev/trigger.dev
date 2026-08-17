@@ -87,6 +87,12 @@ function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: Liv
       usageDurationMs: update.usageDurationMs,
       costInCents: update.costInCents,
       baseCostInCents: update.baseCostInCents,
+      metadata: update.metadata ?? run.metadata,
+      metadataType: update.metadataType ?? run.metadataType,
+      payload: update.payload ?? run.payload,
+      payloadType: update.payloadType ?? run.payloadType,
+      output: update.output ?? run.output,
+      outputType: update.outputType ?? run.outputType,
     };
   });
 }
@@ -241,6 +247,10 @@ export function useRunsLiveReload({
       if (hasActiveRuns) {
         searchParams.set("runIds", activeRunIdsParam);
       }
+
+      const locationParams = new URLSearchParams(location.search);
+      for (const col of locationParams.getAll("cols")) searchParams.append("cols", col);
+      for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
 
       if (checkForNewRuns) {
         appendNewRunsSearchParams(searchParams, {
