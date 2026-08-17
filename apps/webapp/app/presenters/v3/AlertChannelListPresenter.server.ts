@@ -10,10 +10,10 @@ import {
 } from "~/models/projectAlert.server";
 import { getLimit } from "~/services/platform.v3.server";
 
-export type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
+type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
 export type AlertChannelListPresenterRecord =
   AlertChannelListPresenterData["alertChannels"][number];
-export type AlertChannelListPresenterAlertProperties = NonNullable<
+type AlertChannelListPresenterAlertProperties = NonNullable<
   AlertChannelListPresenterRecord["properties"]
 >;
 

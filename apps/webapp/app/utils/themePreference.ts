@@ -14,7 +14,7 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
 }
 
 /** The default dark theme ships with a slight contrast bump. */
-export const DEFAULT_THEME_CONTRAST = 50;
+const DEFAULT_THEME_CONTRAST = 50;
 
 /** Interface contrast for the System themes, 0 to 100. Missing or invalid
  * values fall back to the default bump. */

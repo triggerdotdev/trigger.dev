@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 export type SortDirection = "asc" | "desc";
 
-export type SortState<K extends string = string> = {
+type SortState<K extends string = string> = {
   key: K;
   direction: SortDirection;
 };
@@ -25,7 +25,7 @@ export type SortColumn<T, K extends string = string> =
   | { key: K; type: "custom"; compare: (a: T, b: T) => number };
 
 /** Presentational props to spread onto a `<TableHeaderCell>` for a given column. */
-export type TableSortHeaderProps = {
+type TableSortHeaderProps = {
   sortDirection: SortDirection | null;
   onSort: () => void;
 };
@@ -92,7 +92,7 @@ export function sortRows<T, K extends string>(
  * sorted rows plus a `getSortProps(key)` helper whose result spreads straight onto
  * `<TableHeaderCell>`.
  */
-export function useTableSort<T, K extends string = string>(
+function useTableSort<T, K extends string = string>(
   rows: T[],
   columns: ReadonlyArray<SortColumn<T, K>>
 ) {

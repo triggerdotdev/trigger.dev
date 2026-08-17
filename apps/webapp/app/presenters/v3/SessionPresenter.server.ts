@@ -11,7 +11,7 @@ import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
-export type SessionDetail = NonNullable<Awaited<ReturnType<SessionPresenter["call"]>>>;
+type SessionDetail = NonNullable<Awaited<ReturnType<SessionPresenter["call"]>>>;
 
 export class SessionPresenter {
   constructor(private readonly replica: PrismaClientOrTransaction) {}

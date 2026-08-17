@@ -104,12 +104,12 @@ export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {
   };
 }
 
-export type AllFlagsOptions = {
+type AllFlagsOptions = {
   defaultValues?: Partial<FeatureFlagCatalog>;
   overrides?: Record<string, unknown>;
 };
 
-export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
+function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
   return async function flags(options?: AllFlagsOptions): Promise<Partial<FeatureFlagCatalog>> {
     const rows = await _prisma.featureFlag.findMany();
 
@@ -156,7 +156,7 @@ export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
 
 export const flag = makeFlag();
 export const flags = makeFlags();
-export const setFlag = makeSetFlag();
+const setFlag = makeSetFlag();
 
 // Utility function to set multiple feature flags at once
 export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma) {

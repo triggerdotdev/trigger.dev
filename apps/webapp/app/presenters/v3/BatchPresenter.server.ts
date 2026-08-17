@@ -31,7 +31,7 @@ type BatchPresenterDeps = {
   resolveDisplayableEnvironment?: typeof findDisplayableEnvironment;
 };
 
-export type BatchPresenterData = Awaited<ReturnType<BatchPresenter["call"]>>;
+type BatchPresenterData = Awaited<ReturnType<BatchPresenter["call"]>>;
 
 export class BatchPresenter extends BasePresenter {
   constructor(

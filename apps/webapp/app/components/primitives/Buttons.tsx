@@ -524,7 +524,7 @@ type NavLinkPropsType = Pick<NavLinkProps, "to" | "target"> &
   Omit<React.ComponentProps<typeof ButtonContent>, "className"> & {
     className?: (props: { isActive: boolean; isPending: boolean }) => string | undefined;
   };
-export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsType) => {
+const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsType) => {
   return (
     <NavLink
       to={to}

@@ -15,7 +15,7 @@ import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.
  */
 
 /** The TaskRun columns the realtime feed projects (mirrors DEFAULT_ELECTRIC_COLUMNS). */
-export const RUN_HYDRATOR_SELECT = {
+const RUN_HYDRATOR_SELECT = {
   id: true,
   taskIdentifier: true,
   createdAt: true,

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-export type HighlightState = {
+type HighlightState = {
   /** The currently highlighted series key (e.g., "completed", "failed") */
   activeBarKey: string | null;
   /** The index of the specific data point being hovered (null when hovering legend) */
@@ -9,7 +9,7 @@ export type HighlightState = {
   tooltipActive: boolean;
 };
 
-export type HighlightActions = {
+type HighlightActions = {
   /** Set the hovered bar (specific data point) */
   setHoveredBar: (key: string, index: number) => void;
   /** Set the hovered legend item (highlights all bars of that type) */
@@ -83,7 +83,7 @@ export function useHighlightState(): UseHighlightStateReturn {
  * @param highlight - The current highlight state
  * @param dimmedOpacity - The opacity to use for dimmed bars (default 0.2)
  */
-export function getBarOpacity(
+function getBarOpacity(
   key: string,
   dataIndex: number,
   highlight: HighlightState,

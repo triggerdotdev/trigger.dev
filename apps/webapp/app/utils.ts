@@ -73,7 +73,7 @@ export function sanitizeRedirectPath(
  * @param {string} id The route id
  * @returns {JSON|undefined} The router data or undefined if not found
  */
-export function useMatchesData(id: string | string[], debug: boolean = false): UIMatch | undefined {
+function useMatchesData(id: string | string[], debug: boolean = false): UIMatch | undefined {
   const matchingRoutes = useMatches();
 
   if (debug) {
@@ -94,15 +94,15 @@ export function useMatchesData(id: string | string[], debug: boolean = false): U
   return route;
 }
 
-export function validateEmail(email: unknown): email is string {
+function validateEmail(email: unknown): email is string {
   return typeof email === "string" && email.length > 3 && email.includes("@");
 }
 
-export function hydrateObject<T>(object: any): T {
+function hydrateObject<T>(object: any): T {
   return hydrateDates(object) as T;
 }
 
-export function hydrateDates(object: any): any {
+function hydrateDates(object: any): any {
   if (object === null || object === undefined) {
     return object;
   }
@@ -142,7 +142,7 @@ export function titleCase(original: string): string {
 }
 
 // Takes an api key (either trigger_live_xxxx or trigger_development_xxxx) and returns trigger_live_********
-export const obfuscateApiKey = (apiKey: string) => {
+const obfuscateApiKey = (apiKey: string) => {
   const [prefix, slug, secretPart] = apiKey.split("_");
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };

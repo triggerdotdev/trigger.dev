@@ -30,7 +30,7 @@ export type DatabaseMetricsSource = {
   poolCounters?: { opened: () => number; closed: () => number };
 };
 
-export type NormalizedPoolMetrics = {
+type NormalizedPoolMetrics = {
   open: number;
   busy: number;
   idle: number;
@@ -59,11 +59,11 @@ export function registerDatabaseMetricsSource(source: DatabaseMetricsSource): vo
   sources.set(source.clientType, source);
 }
 
-export function listDatabaseMetricsSources(): ReadonlyArray<DatabaseMetricsSource> {
+function listDatabaseMetricsSources(): ReadonlyArray<DatabaseMetricsSource> {
   return Array.from(sources.values());
 }
 
-export function resetDatabaseMetricsSources(): void {
+function resetDatabaseMetricsSources(): void {
   sources.clear();
 }
 

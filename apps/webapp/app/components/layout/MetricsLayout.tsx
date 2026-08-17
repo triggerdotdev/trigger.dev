@@ -48,7 +48,7 @@ type ColumnCount = 1 | 2 | 3 | 4 | 5 | 6;
  * the value is the number of grid columns from that breakpoint up. Pass this to `Grid` when the
  * tile count shouldn't drive the layout (e.g. a chart grid that is always two-up).
  */
-export type GridColumns = {
+type GridColumns = {
   base?: ColumnCount;
   sm?: ColumnCount;
   md?: ColumnCount;
@@ -115,7 +115,7 @@ function columnsForCount(count: number): GridColumns {
  *   - `"regions"`: Root only bounds the height (a bare `flex` column, no scroll, no rhythm); the
  *     page composes its own scrolling areas inside the slots.
  */
-export type MetricsScroll = "page" | "regions";
+type MetricsScroll = "page" | "regions";
 
 /** A length the resizable panels accept: pixels or percent (the panel library's `Unit`). */
 type PanelLength = `${number}px` | `${number}%`;
@@ -298,7 +298,7 @@ function MetricsLayoutFilters({
 }
 
 /** Whether a grid holds stat tiles (auto height) or charts (a fixed row height). */
-export type MetricsGridKind = "tiles" | "charts";
+type MetricsGridKind = "tiles" | "charts";
 
 /**
  * A grid of tiles with the baked page gutter and grid gap. Columns are derived from the tile count
@@ -361,10 +361,4 @@ export const MetricsLayout = {
   Sidebar: MetricsLayoutSidebar,
 };
 
-export {
-  MetricsLayoutRoot,
-  MetricsLayoutFilters,
-  MetricsLayoutGrid,
-  MetricsLayoutContent,
-  MetricsLayoutSidebar,
-};
+;

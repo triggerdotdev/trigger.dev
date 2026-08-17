@@ -6,7 +6,7 @@ import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 
-export type MetricFilters = {
+type MetricFilters = {
   /** Org, project, environment */
   scope: QueryScope;
   /** Time filter settings */

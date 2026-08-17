@@ -12,7 +12,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
 
-export const allTaskRunAttemptStatuses = Object.values(
+const allTaskRunAttemptStatuses = Object.values(
   TaskRunAttemptStatus
 ) as TaskRunAttemptStatusType[];
 
@@ -33,7 +33,7 @@ export function TaskRunAttemptStatusCombo({
   );
 }
 
-export function TaskRunAttemptStatusLabel({
+function TaskRunAttemptStatusLabel({
   status,
 }: {
   status: ExtendedTaskAttemptStatus | null;
@@ -46,7 +46,7 @@ export function TaskRunAttemptStatusLabel({
   );
 }
 
-export function TaskRunAttemptStatusIcon({
+function TaskRunAttemptStatusIcon({
   status,
   className,
 }: {
@@ -80,7 +80,7 @@ export function TaskRunAttemptStatusIcon({
   }
 }
 
-export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
+function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "text-text-faint";
   }
@@ -106,7 +106,7 @@ export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus
   }
 }
 
-export function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
+function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "Enqueued";
   }

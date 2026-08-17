@@ -243,7 +243,7 @@ export function TriggerDevStepV3({ title }: TabsProps) {
   );
 }
 
-export function TriggerLoginStepV3({ title }: TabsProps) {
+function TriggerLoginStepV3({ title }: TabsProps) {
   const triggerCliTag = useTriggerCliTag();
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 

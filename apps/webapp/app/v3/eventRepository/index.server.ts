@@ -110,7 +110,7 @@ export async function getEventRepository(
   }
 }
 
-export async function getV3EventRepository(
+async function getV3EventRepository(
   organizationId: string,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {

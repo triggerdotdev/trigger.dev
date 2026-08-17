@@ -6,7 +6,7 @@ type GitHubLoginButtonProps = {
   onClick?: () => void;
 };
 
-export function GitHubLoginButton({
+function GitHubLoginButton({
   label = "Continue with GitHub",
   className,
   onClick,

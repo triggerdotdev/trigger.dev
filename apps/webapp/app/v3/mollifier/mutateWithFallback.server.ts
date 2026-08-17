@@ -12,13 +12,13 @@ import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
 // Wait/retry knobs. Exported for tests.
-export const DEFAULT_SAFETY_NET_MS = 2_000;
+const DEFAULT_SAFETY_NET_MS = 2_000;
 // Initial gap between buffer polls; grows by BACKOFF_FACTOR up to
 // DEFAULT_MAX_POLL_STEP_MS so a slow drain doesn't poll at a tight fixed
 // cadence for the whole safety-net budget.
-export const DEFAULT_POLL_STEP_MS = 20;
-export const DEFAULT_MAX_POLL_STEP_MS = 250;
-export const DEFAULT_BACKOFF_FACTOR = 1.7;
+const DEFAULT_POLL_STEP_MS = 20;
+const DEFAULT_MAX_POLL_STEP_MS = 250;
+const DEFAULT_BACKOFF_FACTOR = 1.7;
 
 export type MutateWithFallbackInput<TResponse> = {
   runId: string;

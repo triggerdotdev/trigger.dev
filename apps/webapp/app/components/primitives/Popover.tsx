@@ -328,9 +328,9 @@ export {
   PopoverMenuItem,
   PopoverSectionHeader,
   PopoverEllipseTrigger,
-  PopoverSideMenuTrigger,
+  
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };
 
-export type { PopoverArrowTriggerVariant };
+;

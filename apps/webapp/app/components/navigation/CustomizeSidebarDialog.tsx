@@ -15,7 +15,7 @@ import { Icon, type RenderIcon } from "../primitives/Icon";
 import { Input } from "../primitives/Input";
 import { isItemHidden, orderByPreference } from "./sideMenuTypes";
 
-export type CustomizeSidebarItem = {
+type CustomizeSidebarItem = {
   id: string;
   name: string;
   icon: RenderIcon;

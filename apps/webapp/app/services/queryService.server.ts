@@ -28,8 +28,8 @@ import { timeFilters, timeFilterFromTo } from "~/components/runs/v3/SharedFilter
 import parse from "parse-duration";
 import { querySchemas, QueryScopeSchema, type QueryScope } from "~/v3/querySchemas";
 
-export { QueryScopeSchema };
-export type { TableSchema, TSQLQueryResult, QueryScope };
+;
+export type {  TSQLQueryResult, QueryScope };
 
 const scopeToEnum = {
   organization: "ORGANIZATION",

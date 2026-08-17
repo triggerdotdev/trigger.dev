@@ -17,7 +17,7 @@ import {
 } from "~/utils/branchableEnvironment";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
-export type Branch = Result["branches"][number];
+type Branch = Result["branches"][number];
 
 const BRANCHES_PER_PAGE = 25;
 

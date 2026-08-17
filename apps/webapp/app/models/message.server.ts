@@ -94,7 +94,7 @@ export function setErrorMessage(session: Session, message: string, options?: Toa
   } as ToastMessage);
 }
 
-export async function setRequestErrorMessage(
+async function setRequestErrorMessage(
   request: Request,
   message: string,
   options?: ToastMessageOptions
@@ -106,7 +106,7 @@ export async function setRequestErrorMessage(
   return session;
 }
 
-export async function setRequestSuccessMessage(
+async function setRequestSuccessMessage(
   request: Request,
   message: string,
   options?: ToastMessageOptions
@@ -118,7 +118,7 @@ export async function setRequestSuccessMessage(
   return session;
 }
 
-export async function setToastMessageCookie(session: Session) {
+async function setToastMessageCookie(session: Session) {
   return {
     "Set-Cookie": await commitSession(session, {
       expires: new Date(Date.now() + ONE_YEAR),

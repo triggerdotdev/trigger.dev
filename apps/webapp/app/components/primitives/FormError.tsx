@@ -32,7 +32,7 @@ export function FormError({
   );
 }
 
-export function ZodFormErrors({ errors, path }: { errors: z.ZodIssue[]; path: string[] }) {
+function ZodFormErrors({ errors, path }: { errors: z.ZodIssue[]; path: string[] }) {
   if (errors.length === 0) {
     return null;
   }

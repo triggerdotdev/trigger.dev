@@ -12,7 +12,7 @@ import { ServiceValidationError } from "./services/common.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
-export type { ScheduleEngine };
+;
 
 async function isDevEnvironmentConnectedHandler(environmentId: string) {
   const environment = await prisma.runtimeEnvironment.findFirst({

@@ -2,7 +2,7 @@ import { QueueManifest } from "@trigger.dev/core/v3/schemas";
 import type { TaskQueue } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
-export async function findQueueInEnvironment(
+async function findQueueInEnvironment(
   queueName: string,
   environmentId: string,
   backgroundWorkerTaskId?: string,

@@ -17,7 +17,7 @@ const MAX_ITEMS_PER_PAGE = 100;
 export type QueueListSort = "busiest" | "queued" | "name";
 
 /** Ranking reads recent aggregated gauges, so ordering is a stable snapshot, not a live sort. */
-export const QUEUE_RANKING_WINDOW_MINUTES = 15;
+const QUEUE_RANKING_WINDOW_MINUTES = 15;
 const MAX_RANKED_QUEUES = 5000;
 
 const typeToDBQueueType: Record<"task" | "custom", TaskQueueType> = {

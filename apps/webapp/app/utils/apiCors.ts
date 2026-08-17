@@ -23,7 +23,7 @@ export async function apiCors(
   return cors(request, response, options);
 }
 
-export function makeApiCors(
+function makeApiCors(
   request: Request,
   options: CorsOptions = { maxAge: 5 * 60 }
 ): (response: Response) => Promise<Response> {

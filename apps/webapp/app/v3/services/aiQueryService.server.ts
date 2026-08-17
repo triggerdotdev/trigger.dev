@@ -15,7 +15,7 @@ export type { AITimeFilter };
 /**
  * Stream event types for AI query generation
  */
-export type AIQueryStreamEvent =
+type AIQueryStreamEvent =
   | { type: "thinking"; content: string }
   | { type: "tool_call"; tool: string; args: unknown }
   | { type: "tool_result"; tool: string; result: unknown }

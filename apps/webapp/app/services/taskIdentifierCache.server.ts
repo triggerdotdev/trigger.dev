@@ -83,7 +83,7 @@ export async function populateTaskIdentifierCache(
   }
 }
 
-export async function invalidateTaskIdentifierCache(environmentId: string): Promise<void> {
+async function invalidateTaskIdentifierCache(environmentId: string): Promise<void> {
   if (!redis) return;
 
   try {

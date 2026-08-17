@@ -15,7 +15,7 @@ type Options = {
   startDate: Date;
 };
 
-export type TaskUsageItem = {
+type TaskUsageItem = {
   taskIdentifier: string;
   runCount: number;
   averageDuration: number;

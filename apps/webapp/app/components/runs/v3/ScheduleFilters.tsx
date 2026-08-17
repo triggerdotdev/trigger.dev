@@ -34,7 +34,7 @@ type ScheduleFiltersProps = {
   possibleTasks: string[];
 };
 
-export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
+function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =

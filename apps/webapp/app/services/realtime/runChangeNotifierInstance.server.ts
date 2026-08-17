@@ -66,7 +66,7 @@ export function getRunChangeNotifier(): RunChangeNotifier {
 }
 
 /** Whether the notifier subsystem is enabled for this process. */
-export function isRunChangeNotifierEnabled(): boolean {
+function isRunChangeNotifierEnabled(): boolean {
   return nativeBackendEnabled;
 }
 
@@ -85,7 +85,7 @@ export function publishChangeRecord(input: ChangeRecordInput): void {
   }
 }
 
-export function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
+function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
   if (!nativeBackendEnabled) {
     return;
   }

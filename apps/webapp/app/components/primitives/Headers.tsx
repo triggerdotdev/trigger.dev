@@ -20,7 +20,7 @@ const textColorVariants = {
   dimmed: "text-text-dimmed",
 };
 
-export type HeaderVariant = keyof typeof headerVariants;
+type HeaderVariant = keyof typeof headerVariants;
 
 type HeaderProps = {
   className?: string;

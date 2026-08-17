@@ -15,7 +15,7 @@ export type LogDetailOptions = {
   startTime: string;
 };
 
-export type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
+type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
 
 export class LogDetailPresenter {
   constructor(

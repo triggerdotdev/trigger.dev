@@ -16,7 +16,7 @@ import type {
 } from "@trigger.dev/database";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
-export type { ExceptionEventProperties };
+;
 
 // ============================================================================
 // Event Creation Types
@@ -123,7 +123,7 @@ export type TraceAttributes = Partial<
   >
 >;
 
-export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
+type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
 
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
@@ -146,7 +146,7 @@ export type EventBuilder = {
   failWithError: (error: TaskRunError) => void;
 };
 
-export type UpdateEventOptions = {
+type UpdateEventOptions = {
   attributes: TraceAttributes;
   endTime?: Date;
   immediate?: boolean;
@@ -175,9 +175,9 @@ export type EventRepoConfig = {
 // Query Types
 // ============================================================================
 
-export type QueryOptions = Prisma.TaskEventWhereInput;
+type QueryOptions = Prisma.TaskEventWhereInput;
 
-export type TaskEventRecord = TaskEvent;
+type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {

@@ -11,14 +11,14 @@ import {
 export type {
   DashboardPreferences,
   FavoritePage,
-  SideMenuPreferences,
+  
 } from "~/utils/dashboardPreferences";
 
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
 import { type ThemePreference } from "~/utils/themePreference";
-export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
+export {  type ThemePreference } from "~/utils/themePreference";
 
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
   return parseDashboardPreferences(data, (error) => {
@@ -438,7 +438,7 @@ export async function updateSideMenuCustomization({
 }
 
 /** Get the stored item order for a specific list within an organization */
-export function getItemOrder(
+function getItemOrder(
   sideMenu: SideMenuPreferences | undefined,
   organizationId: string,
   listId: string

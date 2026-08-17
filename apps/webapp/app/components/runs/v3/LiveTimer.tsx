@@ -36,7 +36,7 @@ export function LiveTimer({
   );
 }
 
-export function LiveCountUp({
+function LiveCountUp({
   lastUpdated,
   updateInterval = 250,
   className,

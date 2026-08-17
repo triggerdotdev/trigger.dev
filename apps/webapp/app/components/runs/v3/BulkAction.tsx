@@ -23,11 +23,11 @@ export function BulkActionTypeCombo({
   );
 }
 
-export function BulkActionLabel({ type, className }: { type: BulkActionType; className?: string }) {
+function BulkActionLabel({ type, className }: { type: BulkActionType; className?: string }) {
   return <span className={cn("text-text-dimmed", className)}>{bulkActionTitle(type)}</span>;
 }
 
-export function BulkActionIcon({ type, className }: { type: BulkActionType; className: string }) {
+function BulkActionIcon({ type, className }: { type: BulkActionType; className: string }) {
   switch (type) {
     case "REPLAY":
       return <ArrowPathIcon className={cn(bulkActionClassName(type), className)} />;
@@ -39,7 +39,7 @@ export function BulkActionIcon({ type, className }: { type: BulkActionType; clas
   }
 }
 
-export function bulkActionClassName(type: BulkActionType): string {
+function bulkActionClassName(type: BulkActionType): string {
   switch (type) {
     case "REPLAY":
       return "text-indigo-500";
@@ -51,7 +51,7 @@ export function bulkActionClassName(type: BulkActionType): string {
   }
 }
 
-export function bulkActionTitle(type: BulkActionType): string {
+function bulkActionTitle(type: BulkActionType): string {
   switch (type) {
     case "REPLAY":
       return "Replay";
@@ -63,7 +63,7 @@ export function bulkActionTitle(type: BulkActionType): string {
   }
 }
 
-export function bulkActionVerb(type: BulkActionType): string {
+function bulkActionVerb(type: BulkActionType): string {
   switch (type) {
     case "REPLAY":
       return "Replaying";
@@ -94,7 +94,7 @@ export function BulkActionStatusCombo({
   );
 }
 
-export function BulkActionStatusIcon({
+function BulkActionStatusIcon({
   status,
   className,
 }: {
@@ -114,7 +114,7 @@ export function BulkActionStatusIcon({
   }
 }
 
-export function BulkActionStatusLabel({
+function BulkActionStatusLabel({
   status,
   className,
 }: {

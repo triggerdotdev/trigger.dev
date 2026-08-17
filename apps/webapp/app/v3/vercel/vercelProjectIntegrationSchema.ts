@@ -1,7 +1,7 @@
 import { Result } from "neverthrow";
 import { z } from "zod";
 
-export const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
+const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
 export type EnvSlug = z.infer<typeof EnvSlugSchema>;
 
 export const ALL_ENV_SLUGS: EnvSlug[] = ["dev", "stg", "prod", "preview"];
@@ -15,7 +15,7 @@ const safeJsonParse = Result.fromThrowable(
  * Zod transform for form fields that submit JSON-encoded arrays.
  * Parses the string as JSON and returns the array, or null if invalid.
  */
-export const jsonArrayField = z
+const jsonArrayField = z
   .string()
   .optional()
   .transform((val) => {
@@ -45,7 +45,7 @@ export const envSlugArrayField = z
     );
   });
 
-export const VercelIntegrationConfigSchema = z.object({
+const VercelIntegrationConfigSchema = z.object({
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
   /** Maps a custom Vercel environment to Trigger.dev's staging environment. */
@@ -70,7 +70,7 @@ export type TriggerEnvironmentType = z.infer<typeof TriggerEnvironmentType>;
  * Missing env slug = sync all vars. Missing var in env = sync by default.
  * Only explicitly `false` entries disable sync.
  */
-export const SyncEnvVarsMappingSchema = z
+const SyncEnvVarsMappingSchema = z
   .record(EnvSlugSchema, z.record(z.string(), z.boolean()))
   .default({});
 
@@ -151,7 +151,7 @@ export function getAvailableEnvSlugsForBuildSettings(
   );
 }
 
-export function isDiscoverEnvVarsEnabledForEnvironment(
+function isDiscoverEnvVarsEnabledForEnvironment(
   discoverEnvVars: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType
 ): boolean {
@@ -238,7 +238,7 @@ export function isPullEnvVarsEnabledForEnvironment(
   return pullEnvVarsBeforeBuild.includes(envSlug);
 }
 
-export function isAtomicBuildsEnabledForEnvironment(
+function isAtomicBuildsEnabledForEnvironment(
   atomicBuilds: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType
 ): boolean {

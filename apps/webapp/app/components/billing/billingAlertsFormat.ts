@@ -47,7 +47,7 @@ export function shouldResetAlertsOnLimitChange(
 }
 
 /** Configured billing limit mode before a save; null when billing limit was never configured. */
-export function getPreviousBillingLimitModeForAlertSync(
+function getPreviousBillingLimitModeForAlertSync(
   billingLimit: BillingLimitResult
 ): BillingLimitMode | null {
   if (!billingLimit.isConfigured) {
@@ -67,7 +67,7 @@ export function hasConfiguredAlerts(
   return storedAlertsToThresholds(alerts, mode, effectiveLimitCents, planLimitCents).length > 0;
 }
 
-export function hasSavedAlertThresholds(alerts: BillingAlertsFormData): boolean {
+function hasSavedAlertThresholds(alerts: BillingAlertsFormData): boolean {
   return alerts.alertLevels.length > 0;
 }
 
@@ -80,7 +80,7 @@ export function hadSavedAlertsToClearOnLimitChange(
   return hasConfiguredAlerts(alerts, billingLimit, planLimitCents);
 }
 
-export function normalizeThresholdValues(values: number[]): number[] {
+function normalizeThresholdValues(values: number[]): number[] {
   return [...values].sort((a, b) => a - b);
 }
 
@@ -89,7 +89,7 @@ export function thresholdValuesAreUnique(values: number[]): boolean {
   return new Set(normalized).size === normalized.length;
 }
 
-export function normalizeEmailValues(values: string[]): string[] {
+function normalizeEmailValues(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
@@ -235,12 +235,12 @@ export function isLegacyDollarAmountField(
 
   return rawAmount === planDollars || rawAmount === effectiveDollars;
 }
-export function isAbsoluteSavedAlerts(alerts: BillingAlertsFormData): boolean {
+function isAbsoluteSavedAlerts(alerts: BillingAlertsFormData): boolean {
   return getSavedAlertAmountCents(alerts) === ABSOLUTE_ALERT_BASE_CENTS;
 }
 
 /** Build a cleaned alerts payload when saving billing limits in the same alert format. */
-export function buildCleanedAlertsPayloadForLimitSave(
+function buildCleanedAlertsPayloadForLimitSave(
   alerts: BillingAlertsFormData,
   nextMode: BillingLimitMode,
   effectiveLimitCents: number,
@@ -386,7 +386,7 @@ export function thresholdsToAlertPayload(
   };
 }
 
-export function isEmptyThreshold(value: number): boolean {
+function isEmptyThreshold(value: number): boolean {
   return !Number.isFinite(value) || value <= 0;
 }
 

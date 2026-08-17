@@ -154,7 +154,7 @@ function serializeValue(value: unknown, column: ElectricColumn): string | null {
 }
 
 /** The merge key the client uses to reassemble a row across insert/update cycles. */
-export function runShapeKey(runId: string): string {
+function runShapeKey(runId: string): string {
   return `"public"."TaskRun"/"${runId}"`;
 }
 

@@ -8,7 +8,7 @@ import { captureException, captureMessage } from "@sentry/remix";
 
 const currentFieldsStore = new AsyncLocalStorage<Record<string, unknown>>();
 
-export function trace<T>(fields: Record<string, unknown>, fn: () => T): T {
+function trace<T>(fields: Record<string, unknown>, fn: () => T): T {
   return currentFieldsStore.run(fields, fn);
 }
 
@@ -75,7 +75,7 @@ export const logger = new Logger(
   }
 );
 
-export const workerLogger = new Logger(
+const workerLogger = new Logger(
   "worker",
   (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
   ["examples", "output", "connectionString"],
@@ -86,7 +86,7 @@ export const workerLogger = new Logger(
   }
 );
 
-export const socketLogger = new Logger(
+const socketLogger = new Logger(
   "socket",
   (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
   [],

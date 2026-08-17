@@ -7,7 +7,7 @@ interface MousePosition {
   y: number;
 }
 const MousePositionContext = createContext<MousePosition | undefined>(undefined);
-export function MousePositionProvider({ children }: { children: ReactNode }) {
+function MousePositionProvider({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MousePosition | undefined>(undefined);
 
@@ -44,7 +44,7 @@ export function MousePositionProvider({ children }: { children: ReactNode }) {
     </div>
   );
 }
-export const useMousePosition = () => {
+const useMousePosition = () => {
   return useContext(MousePositionContext);
 };
 

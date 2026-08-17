@@ -92,7 +92,7 @@ export type ApiAuthenticationResultSuccess = {
   };
 };
 
-export type ApiAuthenticationResultFailure = {
+type ApiAuthenticationResultFailure = {
   ok: false;
   error: string;
 };
@@ -871,7 +871,7 @@ export async function generateJWTTokenForEnvironment(
   return jwt;
 }
 
-export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
+async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
   request: Request,
   payloadSchema: T
 ): Promise<{ payload: z.infer<T>; jwt: string } | undefined> {

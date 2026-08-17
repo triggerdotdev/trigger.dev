@@ -87,7 +87,7 @@ export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): P
   }
 }
 
-export async function sendPlainTextEmail(options: SendPlainTextOptions) {
+async function sendPlainTextEmail(options: SendPlainTextOptions) {
   return client.sendPlainText(options);
 }
 

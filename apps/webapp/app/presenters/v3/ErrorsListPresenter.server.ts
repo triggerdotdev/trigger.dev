@@ -41,7 +41,7 @@ export type ErrorsListOptions = {
   pageSize?: number;
 };
 
-export const ErrorsListOptionsSchema = z.object({
+const ErrorsListOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   tasks: z.array(z.string()).optional(),
@@ -62,7 +62,7 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
-export type ErrorsListAppliedFilters = ErrorsList["filters"];
+type ErrorsListAppliedFilters = ErrorsList["filters"];
 export type ErrorOccurrences = Awaited<ReturnType<ErrorsListPresenter["getOccurrences"]>>;
 export type ErrorOccurrenceActivity = ErrorOccurrences["data"][string];
 

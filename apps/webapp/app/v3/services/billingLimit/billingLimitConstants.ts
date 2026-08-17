@@ -6,7 +6,7 @@ export const BILLABLE_ENVIRONMENT_TYPES = [
   "PREVIEW",
 ] as const satisfies RuntimeEnvironmentType[];
 
-export type BillableEnvironmentType = (typeof BILLABLE_ENVIRONMENT_TYPES)[number];
+type BillableEnvironmentType = (typeof BILLABLE_ENVIRONMENT_TYPES)[number];
 
 export const BILLING_LIMIT_CONVERGE_BATCH_SIZE = 50;
 

@@ -86,7 +86,7 @@ export function formatWaitMs(ms: number): string {
   return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
-export type QueueMetricSeriesConfig = { key: string; label: string; color: string };
+type QueueMetricSeriesConfig = { key: string; label: string; color: string };
 
 type QueueMetricChartProps = {
   query: string;
@@ -369,7 +369,7 @@ export function QueueSidebarStats({
 // The headline is a live "now" value from the loader; the sparkline pulls its own series.
 const SPARKLINE_PERIOD = "30m";
 
-export function QueueSparklineStat({
+function QueueSparklineStat({
   title,
   info,
   query,
@@ -457,7 +457,7 @@ export function QueueSparklineStat({
   );
 }
 
-export function QueueMetricStat({
+function QueueMetricStat({
   label,
   value,
   className,

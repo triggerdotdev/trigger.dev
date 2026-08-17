@@ -116,11 +116,11 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ChatToolRow({ children }: { children: React.ReactNode }) {
+function ChatToolRow({ children }: { children: React.ReactNode }) {
   return <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>;
 }
 
-export function ChatNote({ children }: { children: React.ReactNode }) {
+function ChatNote({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
   return (
     <div

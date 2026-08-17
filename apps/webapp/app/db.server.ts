@@ -274,8 +274,8 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
   return $replica;
 });
 
-export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
-export type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
+type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
 export type RunOpsTopology = {
   newRunOps: NewRunOpsClients;
   legacyRunOps: RunOpsClients;
@@ -1142,7 +1142,7 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
 
 export type { PrismaClient } from "@trigger.dev/database";
 
-export const PrismaErrorSchema = z.object({
+const PrismaErrorSchema = z.object({
   code: z.string(),
 });
 
@@ -1162,6 +1162,6 @@ function getDatabaseSchema() {
   return schemaFromSearchParam;
 }
 
-export const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
+const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
 
 export const sqlDatabaseSchema = Prisma.sql([`${DATABASE_SCHEMA}`]);

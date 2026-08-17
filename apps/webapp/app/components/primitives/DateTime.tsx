@@ -38,7 +38,7 @@ function getServerTimeZoneSnapshot(): string {
  * Uses useSyncExternalStore for SSR compatibility - returns "UTC" on server,
  * actual timezone on client. The timezone is cached and only resolved once.
  */
-export function useLocalTimeZone(): string {
+function useLocalTimeZone(): string {
   return useSyncExternalStore(subscribeToTimeZone, getTimeZoneSnapshot, getServerTimeZoneSnapshot);
 }
 
@@ -47,7 +47,7 @@ export function useLocalTimeZone(): string {
  * Returns the timezone stored in the user's preferences cookie (from root loader),
  * falling back to the browser's local timezone if not set.
  */
-export function useUserTimeZone(): string {
+function useUserTimeZone(): string {
   const rootData = useRouteLoaderData("root") as { timezone?: string } | undefined;
   const localTimeZone = useLocalTimeZone();
   // Use stored timezone from cookie, or fall back to browser's local timezone
@@ -205,7 +205,7 @@ export function formatUtcOffset(date: Date, timeZone: string): string {
 }
 
 // New component that only shows date when it changes
-export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
+const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();
   const userTimeZone = useUserTimeZone();
   const realDate = typeof date === "string" ? new Date(date) : date;

@@ -10,7 +10,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
-export type AgentListItem = {
+type AgentListItem = {
   slug: string;
   filePath: string;
   createdAt: Date;
@@ -23,7 +23,7 @@ export type AgentActiveState = {
   suspended: number;
 };
 
-export class AgentListPresenter {
+class AgentListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({

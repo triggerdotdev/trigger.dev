@@ -18,7 +18,7 @@ export type AgentDetail = {
   config: unknown;
 };
 
-export type AgentActivityPoint = {
+type AgentActivityPoint = {
   bucket: number; // epoch ms
 } & Record<string, number>;
 

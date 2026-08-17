@@ -53,7 +53,7 @@ export async function startSpanWithEnv<T>(
   });
 }
 
-export async function emitDebugLog(
+async function emitDebugLog(
   logger: Logger,
   message: string,
   params: Record<string, unknown> = {}
@@ -65,7 +65,7 @@ export async function emitDebugLog(
   });
 }
 
-export async function emitInfoLog(
+async function emitInfoLog(
   logger: Logger,
   message: string,
   params: Record<string, unknown> = {}
@@ -77,7 +77,7 @@ export async function emitInfoLog(
   });
 }
 
-export async function emitErrorLog(
+async function emitErrorLog(
   logger: Logger,
   message: string,
   params: Record<string, unknown> = {}
@@ -89,7 +89,7 @@ export async function emitErrorLog(
   });
 }
 
-export async function emitWarnLog(
+async function emitWarnLog(
   logger: Logger,
   message: string,
   params: Record<string, unknown> = {}

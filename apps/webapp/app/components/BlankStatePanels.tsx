@@ -212,7 +212,7 @@ export function HasNoTasksDeployed({ environment }: { environment: MinimumEnviro
   return <DeploymentOnboardingSteps />;
 }
 
-export function SchedulesNoPossibleTaskPanel() {
+function SchedulesNoPossibleTaskPanel() {
   return (
     <InfoPanel
       title="Create your first scheduled task"
@@ -237,7 +237,7 @@ export function SchedulesNoPossibleTaskPanel() {
   );
 }
 
-export function SchedulesNoneAttached() {
+function SchedulesNoneAttached() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -620,7 +620,7 @@ export function BranchesNoBranches({
   );
 }
 
-export function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
+function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();

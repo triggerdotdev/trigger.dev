@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 export type LastAuthMethod = "github" | "google" | "email" | "sso";
 
 // Cookie that persists for 1 year to remember the user's last login method
-export const lastAuthMethodCookie = createCookie("last-auth-method", {
+const lastAuthMethodCookie = createCookie("last-auth-method", {
   maxAge: 60 * 60 * 24 * 365, // 1 year
   httpOnly: true,
   sameSite: "lax",

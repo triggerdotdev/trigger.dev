@@ -5,7 +5,7 @@ import {
   type TimelineLineVariant,
 } from "~/components/run/RunTimeline";
 
-export type DeliveryRunTarget = {
+type DeliveryRunTarget = {
   run: { friendlyId: string } | null;
   session: { friendlyId: string; externalId: string | null } | null;
 };
@@ -22,7 +22,7 @@ export type DeliveryTimelineEventItem = {
   target?: DeliveryRunTarget;
 };
 
-export type DeliveryTimelineLineItem = {
+type DeliveryTimelineLineItem = {
   type: "line";
   id: string;
   from: Date;

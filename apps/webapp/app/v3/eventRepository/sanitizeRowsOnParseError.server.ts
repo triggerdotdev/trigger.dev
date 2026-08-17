@@ -183,13 +183,13 @@ export function sanitizeRows<T extends object>(rows: T[]): SanitizeResult {
   return result;
 }
 
-export function errorMessage(err: unknown): string {
+function errorMessage(err: unknown): string {
   return typeof err === "object" && err !== null && "message" in err
     ? String((err as { message?: unknown }).message ?? "")
     : String(err);
 }
 
-export function rawErrorMessage(err: unknown): string {
+function rawErrorMessage(err: unknown): string {
   if (typeof err === "object" && err !== null) {
     const raw = (err as { rawMessage?: unknown }).rawMessage;
     if (typeof raw === "string" && raw.length > 0) return raw;
@@ -213,7 +213,7 @@ export type JsonParseRecoveryLogger = {
  * insert. Both causes land the same way, so they share the `capped` flag and its
  * counter; this distinguishes them in logs.
  */
-export type RecoveryBailReason =
+type RecoveryBailReason =
   /** The per-batch strip budget (`maxPoisonStrips`) was spent. A poison flood. */
   | "strip_budget_spent"
   /** ClickHouse gave no usable `at row N` hint, so there was no row to strip. */
@@ -261,7 +261,7 @@ export function landedNothing(outcome: JsonParseRecoveryOutcome, batchSize: numb
  * limit, a burst of un-ingestable runs in one flush would re-parse a large
  * batch many times on the shared ClickHouse server.
  */
-export const DEFAULT_MAX_POISON_STRIPS = 1;
+const DEFAULT_MAX_POISON_STRIPS = 1;
 
 /**
  * ClickHouse insert recovery for `Cannot parse JSON object` rejections on the

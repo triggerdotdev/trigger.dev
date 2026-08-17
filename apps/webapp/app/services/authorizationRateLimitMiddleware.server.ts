@@ -19,21 +19,21 @@ const DurationSchema = z.custom<Duration>((value) => {
   return value as Duration;
 });
 
-export const RateLimitFixedWindowConfig = z.object({
+const RateLimitFixedWindowConfig = z.object({
   type: z.literal("fixedWindow"),
   window: DurationSchema,
   tokens: z.number(),
 });
 
-export type RateLimitFixedWindowConfig = z.infer<typeof RateLimitFixedWindowConfig>;
+type RateLimitFixedWindowConfig = z.infer<typeof RateLimitFixedWindowConfig>;
 
-export const RateLimitSlidingWindowConfig = z.object({
+const RateLimitSlidingWindowConfig = z.object({
   type: z.literal("slidingWindow"),
   window: DurationSchema,
   tokens: z.number(),
 });
 
-export type RateLimitSlidingWindowConfig = z.infer<typeof RateLimitSlidingWindowConfig>;
+type RateLimitSlidingWindowConfig = z.infer<typeof RateLimitSlidingWindowConfig>;
 
 export const RateLimitTokenBucketConfig = z.object({
   type: z.literal("tokenBucket"),
@@ -358,4 +358,4 @@ export function authorizationRateLimitMiddleware({
   };
 }
 
-export type RateLimitMiddleware = ReturnType<typeof authorizationRateLimitMiddleware>;
+type RateLimitMiddleware = ReturnType<typeof authorizationRateLimitMiddleware>;

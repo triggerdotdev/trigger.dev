@@ -6,7 +6,7 @@ export const EnvironmentVariableKey = z
   .nonempty("Key is required")
   .regex(/^\w+$/, "Keys can only use alphanumeric characters and underscores");
 
-export const EnvironmentVariableUpdaterSchema = z.discriminatedUnion("type", [
+const EnvironmentVariableUpdaterSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("user"),
     userId: z.string(),

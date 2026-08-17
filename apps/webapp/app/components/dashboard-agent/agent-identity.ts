@@ -1,7 +1,7 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 
 // TODO(TRI-12763): swap in the final character icon here.
-export const AGENT_NAME = "Trigger";
+const AGENT_NAME = "Trigger";
 
 export const ASK_AGENT_LABEL = `Ask ${AGENT_NAME}`;
 

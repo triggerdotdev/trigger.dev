@@ -47,7 +47,7 @@ type EnvironmentRow = React.ComponentProps<typeof EnvironmentCombo>["environment
   id: string;
 };
 
-export type ScheduleInspectorData = {
+type ScheduleInspectorData = {
   id: string;
   friendlyId: string;
   type: "DECLARATIVE" | "IMPERATIVE";

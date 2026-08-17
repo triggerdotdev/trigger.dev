@@ -5,7 +5,7 @@ export function clampMaxDuration(maxDuration: number): number {
   return Math.min(Math.max(maxDuration, MINIMUM_MAX_DURATION), MAXIMUM_MAX_DURATION);
 }
 
-export function getMaxDuration(
+function getMaxDuration(
   maxDuration?: number | null,
   defaultMaxDuration?: number | null
 ): number | undefined {

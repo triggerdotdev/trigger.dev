@@ -9,13 +9,13 @@ import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
-export type ValidatePublicJwtKeySuccess = {
+type ValidatePublicJwtKeySuccess = {
   ok: true;
   environment: AuthenticatedEnvironment;
   claims: Record<string, unknown>;
 };
 
-export type ValidatePublicJwtKeyError = {
+type ValidatePublicJwtKeyError = {
   ok: false;
   error: string;
 };

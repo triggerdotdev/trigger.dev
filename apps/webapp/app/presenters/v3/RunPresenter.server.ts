@@ -14,8 +14,8 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { runTriggeredAt } from "~/v3/runTimestamps";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
-export type Run = Result["run"];
-export type RunEvent = NonNullable<Result["trace"]>["events"][0];
+type Run = Result["run"];
+type RunEvent = NonNullable<Result["trace"]>["events"][0];
 
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {

@@ -19,7 +19,7 @@ const messageCatalog = {
   }),
 };
 
-export type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;
+type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;
 
 export const projectPubSub = singleton("projectPubSub", initializeProjectPubSub);
 

@@ -5,8 +5,8 @@ import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 
-export type CommonTaskEvent = Omit<TaskEvent, "id">;
-export type TraceEvent = Pick<
+type CommonTaskEvent = Omit<TaskEvent, "id">;
+type TraceEvent = Pick<
   TaskEvent,
   | "spanId"
   | "parentId"

@@ -1,7 +1,7 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
 
-export const demoChartColumns: OutputColumnMetadata[] = [
+const demoChartColumns: OutputColumnMetadata[] = [
   { name: "hour", type: "DateTime" },
   { name: "task_identifier", type: "String" },
   { name: "failures", type: "UInt64", format: "quantity" },
@@ -16,7 +16,7 @@ const SERIES: Record<string, number[]> = {
 const START_MS = Date.parse("2026-07-26T23:00:00.000Z");
 const HOUR_MS = 3_600_000;
 
-export const demoChartRows: Record<string, unknown>[] = Object.entries(SERIES).flatMap(
+const demoChartRows: Record<string, unknown>[] = Object.entries(SERIES).flatMap(
   ([task, points]) =>
     points.map((failures, i) => ({
       hour: new Date(START_MS + i * HOUR_MS).toISOString(),
@@ -25,7 +25,7 @@ export const demoChartRows: Record<string, unknown>[] = Object.entries(SERIES).f
     }))
 );
 
-export const demoChartConfig: ChartConfiguration = {
+const demoChartConfig: ChartConfiguration = {
   chartType: "line",
   xAxisColumn: "hour",
   yAxisColumns: ["failures"],
@@ -36,7 +36,7 @@ export const demoChartConfig: ChartConfiguration = {
   aggregation: "sum",
 };
 
-export const demoChartTimeRange = {
+const demoChartTimeRange = {
   from: new Date(START_MS).toISOString(),
   to: new Date(START_MS + 11 * HOUR_MS).toISOString(),
 };

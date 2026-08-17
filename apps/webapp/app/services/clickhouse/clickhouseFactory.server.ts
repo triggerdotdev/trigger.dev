@@ -678,11 +678,11 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
-export function getDefaultClickhouseClient(): ClickHouse {
+function getDefaultClickhouseClient(): ClickHouse {
   return defaultClickhouseClient;
 }
 
-export function getDefaultLogsClickhouseClient(): ClickHouse {
+function getDefaultLogsClickhouseClient(): ClickHouse {
   return defaultLogsClickhouseClient;
 }
 

@@ -6,12 +6,12 @@ export const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-availabl
 // "thinking": submitted, nothing back yet. "working": streaming text or tool calls.
 export type TurnActivity = "thinking" | "working";
 
-export const ACTIVITY_LABELS: Record<TurnActivity, string> = {
+const ACTIVITY_LABELS: Record<TurnActivity, string> = {
   thinking: "Thinking…",
   working: "Working…",
 };
 
-export type ProgressSource = "investigation" | "tool" | "activity";
+type ProgressSource = "investigation" | "tool" | "activity";
 
 export type LiveProgress = { source: ProgressSource; label: string };
 

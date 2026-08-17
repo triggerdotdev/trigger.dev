@@ -70,7 +70,7 @@ import { metricsRegister } from "~/metrics.server";
 import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 import { performance } from "node:perf_hooks";
 
-export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
 export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
 
@@ -150,12 +150,10 @@ class NonInheritingTraceContextPropagator implements TextMapPropagator {
   }
 }
 
-export const {
-  tracer,
-  logger: otelLogger,
-  provider,
-  meter,
-} = singleton("opentelemetry", setupTelemetry);
+const telemetry = singleton("opentelemetry", setupTelemetry);
+
+export const { tracer, provider, meter } = telemetry;
+const { logger: otelLogger } = telemetry;
 
 export async function startActiveSpan<T>(
   name: string,
@@ -188,7 +186,7 @@ export async function startActiveSpan<T>(
   });
 }
 
-export async function emitDebugLog(message: string, params: Record<string, unknown> = {}) {
+async function emitDebugLog(message: string, params: Record<string, unknown> = {}) {
   otelLogger.emit({
     severityNumber: SeverityNumber.DEBUG,
     body: message,
@@ -196,7 +194,7 @@ export async function emitDebugLog(message: string, params: Record<string, unkno
   });
 }
 
-export async function emitInfoLog(message: string, params: Record<string, unknown> = {}) {
+async function emitInfoLog(message: string, params: Record<string, unknown> = {}) {
   otelLogger.emit({
     severityNumber: SeverityNumber.INFO,
     body: message,
@@ -204,7 +202,7 @@ export async function emitInfoLog(message: string, params: Record<string, unknow
   });
 }
 
-export async function emitErrorLog(message: string, params: Record<string, unknown> = {}) {
+async function emitErrorLog(message: string, params: Record<string, unknown> = {}) {
   otelLogger.emit({
     severityNumber: SeverityNumber.ERROR,
     body: message,
@@ -212,7 +210,7 @@ export async function emitErrorLog(message: string, params: Record<string, unkno
   });
 }
 
-export async function emitWarnLog(message: string, params: Record<string, unknown> = {}) {
+async function emitWarnLog(message: string, params: Record<string, unknown> = {}) {
   otelLogger.emit({
     severityNumber: SeverityNumber.WARN,
     body: message,

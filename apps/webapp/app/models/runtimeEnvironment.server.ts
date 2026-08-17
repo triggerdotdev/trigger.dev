@@ -499,7 +499,7 @@ export async function findEnvironmentFromRun(
   };
 }
 
-export async function createNewSession(
+async function createNewSession(
   environment: Pick<RuntimeEnvironment, "id">,
   ipAddress: string
 ) {
@@ -522,7 +522,7 @@ export async function createNewSession(
   return session;
 }
 
-export async function disconnectSession(environmentId: string) {
+async function disconnectSession(environmentId: string) {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id: environmentId,
@@ -554,7 +554,7 @@ export async function disconnectSession(environmentId: string) {
   return session;
 }
 
-export async function findLatestSession(
+async function findLatestSession(
   environmentId: string,
   client: PrismaClientOrTransaction = $replica
 ) {

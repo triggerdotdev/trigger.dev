@@ -14,7 +14,7 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   );
 }
 
-export function GitMetadataBranch({
+function GitMetadataBranch({
   git,
 }: {
   git: Pick<GitMetaLinks, "branchUrl" | "branchName">;
@@ -38,7 +38,7 @@ export function GitMetadataBranch({
   );
 }
 
-export function GitMetadataCommit({
+function GitMetadataCommit({
   git,
 }: {
   git: Pick<GitMetaLinks, "commitUrl" | "shortSha" | "commitMessage">;
@@ -62,7 +62,7 @@ export function GitMetadataCommit({
   );
 }
 
-export function GitMetadataPullRequest({
+function GitMetadataPullRequest({
   git,
 }: {
   git: Pick<GitMetaLinks, "pullRequestUrl" | "pullRequestNumber" | "pullRequestTitle">;

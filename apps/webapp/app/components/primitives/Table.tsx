@@ -513,7 +513,7 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
   }
 );
 
-export const TableCellChevron = forwardRef<
+const TableCellChevron = forwardRef<
   HTMLTableCellElement,
   {
     className?: string;

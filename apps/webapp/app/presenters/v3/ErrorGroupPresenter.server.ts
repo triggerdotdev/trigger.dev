@@ -36,7 +36,7 @@ export type ErrorGroupOptions = {
   direction?: Direction;
 };
 
-export const ErrorGroupOptionsSchema = z.object({
+const ErrorGroupOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   fingerprint: z.string(),
@@ -51,7 +51,7 @@ export const ErrorGroupOptionsSchema = z.object({
 
 const DEFAULT_RUNS_PAGE_SIZE = 25;
 
-export type ErrorGroupDetail = Awaited<ReturnType<ErrorGroupPresenter["call"]>>;
+type ErrorGroupDetail = Awaited<ReturnType<ErrorGroupPresenter["call"]>>;
 
 function parseClickHouseDateTime(value: string): Date {
   const asNum = Number(value);

@@ -29,7 +29,7 @@ export function AlphaBadge({
   );
 }
 
-export function AlphaTitle({ children }: { children: React.ReactNode }) {
+function AlphaTitle({ children }: { children: React.ReactNode }) {
   return (
     <>
       <span>{children}</span>
@@ -59,7 +59,7 @@ export function BetaBadge({ inline = false, className }: { inline?: boolean; cla
   );
 }
 
-export function BetaTitle({ children }: { children: React.ReactNode }) {
+function BetaTitle({ children }: { children: React.ReactNode }) {
   return (
     <>
       <span>{children}</span>

@@ -120,7 +120,7 @@ const statusReasonsToDescription: Record<string, string> = {
   BACKGROUND_WORKER_MISMATCH: "Background worker mismatch",
 };
 
-export function TaskRunStatusReason({
+function TaskRunStatusReason({
   status,
   statusReason,
 }: {
@@ -148,7 +148,7 @@ export function TaskRunStatusReason({
   );
 }
 
-export function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
+function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
   // system-mono-label: System themes uncolor the label (see tailwind.css)
   return (
     <span className={cn("system-mono-label", runStatusClassNameColor(status))}>

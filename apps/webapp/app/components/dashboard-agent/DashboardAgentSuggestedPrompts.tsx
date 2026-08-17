@@ -17,7 +17,7 @@ import {
 } from "./suggested-prompts";
 
 // The only slot-to-button-style mapping: a new slot is styled here and nowhere else.
-export const PROMPT_SLOT_BUTTON: Record<
+const PROMPT_SLOT_BUTTON: Record<
   ResolvedPromptSlot,
   { variant: ButtonVariant; icon: RenderIcon }
 > = {

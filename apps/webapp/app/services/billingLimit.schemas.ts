@@ -9,7 +9,7 @@ import { z } from "zod";
  * BillingClient methods.
  */
 
-export const BillingLimitStateSchema = z.discriminatedUnion("status", [
+const BillingLimitStateSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("ok"),
   }),
@@ -27,7 +27,7 @@ export const BillingLimitStateSchema = z.discriminatedUnion("status", [
 
 export type BillingLimitState = z.infer<typeof BillingLimitStateSchema>;
 
-export const BillingLimitConfigSchema = z.discriminatedUnion("mode", [
+const BillingLimitConfigSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("none"),
   }),
@@ -42,7 +42,7 @@ export const BillingLimitConfigSchema = z.discriminatedUnion("mode", [
 
 export type BillingLimitConfig = z.infer<typeof BillingLimitConfigSchema>;
 
-export const BillingLimitUnconfiguredSchema = z.object({
+const BillingLimitUnconfiguredSchema = z.object({
   isConfigured: z.literal(false),
   gracePeriodMs: z.number().int().nonnegative(),
 });
@@ -55,23 +55,23 @@ const billingLimitConfiguredFields = {
   gracePeriodMs: z.number().int().nonnegative(),
 };
 
-export const BillingLimitConfiguredNoneSchema = z.object({
+const BillingLimitConfiguredNoneSchema = z.object({
   ...billingLimitConfiguredFields,
   mode: z.literal("none"),
 });
 
-export const BillingLimitConfiguredPlanSchema = z.object({
+const BillingLimitConfiguredPlanSchema = z.object({
   ...billingLimitConfiguredFields,
   mode: z.literal("plan"),
 });
 
-export const BillingLimitConfiguredCustomSchema = z.object({
+const BillingLimitConfiguredCustomSchema = z.object({
   ...billingLimitConfiguredFields,
   mode: z.literal("custom"),
   amountCents: z.number().int().positive(),
 });
 
-export const BillingLimitConfiguredSchema = z.discriminatedUnion("mode", [
+const BillingLimitConfiguredSchema = z.discriminatedUnion("mode", [
   BillingLimitConfiguredNoneSchema,
   BillingLimitConfiguredPlanSchema,
   BillingLimitConfiguredCustomSchema,
@@ -86,7 +86,7 @@ export const BillingLimitResultSchema = z.union([
 
 export type BillingLimitResult = z.infer<typeof BillingLimitResultSchema>;
 
-export const UpdateBillingLimitRequestSchema = z.discriminatedUnion("mode", [
+const UpdateBillingLimitRequestSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("none"),
     cancelInProgressRuns: z.boolean(),
@@ -118,7 +118,7 @@ export const ResolveBillingLimitRequestSchema = z.discriminatedUnion("action", [
 
 export type ResolveBillingLimitRequest = z.infer<typeof ResolveBillingLimitRequestSchema>;
 
-export const BillingLimitActiveOrgSchema = z.object({
+const BillingLimitActiveOrgSchema = z.object({
   orgId: z.string(),
   limitState: z.enum(["grace", "rejected"]),
 });
@@ -129,7 +129,7 @@ export const BillingLimitsActiveResultSchema = z.object({
 
 export type BillingLimitsActiveResult = z.infer<typeof BillingLimitsActiveResultSchema>;
 
-export const BillingLimitPendingResolveOrgSchema = z.object({
+const BillingLimitPendingResolveOrgSchema = z.object({
   organizationId: z.string(),
   resumeMode: z.enum(["queue", "new_only"]),
   resolvedAt: z.string().datetime({ offset: true }),

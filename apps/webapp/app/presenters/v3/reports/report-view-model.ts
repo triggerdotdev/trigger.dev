@@ -24,9 +24,9 @@ export type Unit = ReportUnit;
 /** A code resolved to a human string by `report-messages.ts`. */
 export type ReasonCode = ReportReasonCode;
 /** A key into `ReportViewModel.links`, so a recommendation can point at a URL. */
-export type LinkKey = ReportLinkKey;
+type LinkKey = ReportLinkKey;
 export type Delta = ReportDelta;
-export type MetricSeries = ReportMetricSeries;
+type MetricSeries = ReportMetricSeries;
 export type Metric = ReportMetric;
 export type Recommendation = ReportRecommendation;
 export type FooterEntry = ReportFooterEntry;
@@ -34,7 +34,7 @@ export type Exclusion = ReportExclusion;
 export type Observation = ReportObservation;
 export type Finding = ReportFinding;
 export type SummaryStatement = ReportSummaryStatement;
-export type ReportLink = CoreReportLink;
+type ReportLink = CoreReportLink;
 export type ReportViewModel = CoreReportViewModel;
 
 /** Direction and rounded multiplier of `value` against a `normal` baseline. */

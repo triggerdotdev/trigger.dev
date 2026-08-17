@@ -35,14 +35,14 @@ export function setRunsReplicationConfiguredSources(sources: ConfiguredSource[])
   _global[GLOBAL_RUNS_REPLICATION_SOURCES_KEY] = sources;
 }
 
-export function getTcpMonitorGlobal(): NodeJS.Timeout | undefined {
+function getTcpMonitorGlobal(): NodeJS.Timeout | undefined {
   return _global[GLOBAL_TCP_MONITOR_KEY];
 }
 
-export function setTcpMonitorGlobal(timeout: NodeJS.Timeout) {
+function setTcpMonitorGlobal(timeout: NodeJS.Timeout) {
   _global[GLOBAL_TCP_MONITOR_KEY] = timeout;
 }
 
-export function unregisterTcpMonitorGlobal() {
+function unregisterTcpMonitorGlobal() {
   delete _global[GLOBAL_TCP_MONITOR_KEY];
 }

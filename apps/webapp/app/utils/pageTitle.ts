@@ -24,7 +24,7 @@ const APP_NAME = "Trigger.dev";
 const ORGANIZATION_MATCH_ID = "routes/_app.orgs.$organizationSlug";
 
 /** One or more title segments, most specific first: `["run_abc", "Runs"]`. */
-export type TitleSegments = string | string[];
+type TitleSegments = string | string[];
 
 type MetaArgs = Parameters<MetaFunction>[0];
 type Matches = MetaArgs["matches"];
@@ -57,7 +57,7 @@ export function pageMeta<TLoader = unknown>(page: PageInput<TLoader>): MetaFunct
 }
 
 /** Builds the full title from the page segments, the org scope and the app title. */
-export function composePageTitle(segments: string[], matches: Matches): string {
+function composePageTitle(segments: string[], matches: Matches): string {
   return [...segments, scopeFromMatches(matches), appTitle(appEnvFromMatches(matches))]
     .filter((segment): segment is string => Boolean(segment))
     .join(" | ");
@@ -67,7 +67,7 @@ export function composePageTitle(segments: string[], matches: Matches): string {
  * The organization, and only on its own pages: inside a project the tab is already about one
  * project, and the dashboard switches projects in every tab at once, so naming it adds nothing.
  */
-export function scopeFromMatches(matches: Matches): string | undefined {
+function scopeFromMatches(matches: Matches): string | undefined {
   const match = matches.find((m) => m.id === ORGANIZATION_MATCH_ID);
   if (!match || match.params?.projectParam) return undefined;
   const data = match.data as { organization?: { title?: string | null } } | undefined;

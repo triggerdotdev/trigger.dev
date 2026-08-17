@@ -2757,7 +2757,7 @@ export const convertDateToClickhouseDateTime = (date: Date): string => {
  *  - "2025-09-23 12:32:46Z"
  *  - "2025-09-23 12:32:46.130262875+02:00"
  */
-export function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): bigint {
+function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): bigint {
   const s = date.trim();
   const m = CLICKHOUSE_DATETIME_REGEX.exec(s);
   if (!m) {

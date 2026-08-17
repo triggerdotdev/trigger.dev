@@ -926,7 +926,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
-export const RuntimeEnvironmentForEnvRepoPayload = {
+const RuntimeEnvironmentForEnvRepoPayload = {
   select: {
     id: true,
     slug: true,
@@ -956,7 +956,7 @@ export type RuntimeEnvironmentForEnvRepo = Pick<
   | "builtInEnvironmentVariableOverrides"
 > & { organization?: { featureFlags: unknown } | null };
 
-export const environmentVariablesRepository = new EnvironmentVariablesRepository();
+const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
 export async function resolveVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,

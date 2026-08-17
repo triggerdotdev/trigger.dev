@@ -462,8 +462,8 @@ export {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLegendContentRows,
-  ChartStyle,
+  
+  
+  
+  
 };

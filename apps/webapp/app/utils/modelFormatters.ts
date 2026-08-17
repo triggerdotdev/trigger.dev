@@ -33,7 +33,7 @@ export function formatFeature(slug: string): string {
 }
 
 /** @deprecated Use formatFeature instead. */
-export const formatCapability = formatFeature;
+const formatCapability = formatFeature;
 
 /** Capitalize a provider name. */
 export function formatProviderName(provider: string): string {

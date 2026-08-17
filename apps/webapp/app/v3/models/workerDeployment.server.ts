@@ -13,11 +13,11 @@ import type { Prisma } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
-export type CurrentWorkerDeployment = Prettify<
+type CurrentWorkerDeployment = Prettify<
   NonNullable<Awaited<ReturnType<typeof findCurrentWorkerDeployment>>>
 >;
 
-export type BackgroundWorkerTaskSlim = Prisma.BackgroundWorkerTaskGetPayload<{
+type BackgroundWorkerTaskSlim = Prisma.BackgroundWorkerTaskGetPayload<{
   select: {
     id: true;
     friendlyId: true;
@@ -186,7 +186,7 @@ export async function getCurrentWorkerDeploymentEngineVersion(
   return undefined;
 }
 
-export async function findCurrentUnmanagedWorkerDeployment(
+async function findCurrentUnmanagedWorkerDeployment(
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
   return await findCurrentWorkerDeployment({
@@ -233,7 +233,7 @@ export async function findCurrentWorkerFromEnvironment(
   }
 }
 
-export async function findCurrentUnmanagedWorkerFromEnvironment(
+async function findCurrentUnmanagedWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">,
   prismaClient: PrismaClientOrTransaction = prisma
 ): Promise<Pick<
@@ -251,7 +251,7 @@ export async function findCurrentUnmanagedWorkerFromEnvironment(
   );
 }
 
-export async function getWorkerDeploymentFromWorker(
+async function getWorkerDeploymentFromWorker(
   workerId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
   const worker = await prisma.backgroundWorker.findFirst({
@@ -276,7 +276,7 @@ export async function getWorkerDeploymentFromWorker(
   };
 }
 
-export async function getWorkerDeploymentFromWorkerTask(
+async function getWorkerDeploymentFromWorkerTask(
   workerTaskId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
   const workerTask = await prisma.backgroundWorkerTask.findFirst({

@@ -19,14 +19,14 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 //
 // We attach no record headers (H=0), so the budget reduces to:
 //   8 + body ≤ 1048576  →  body ≤ 1048568
-export const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
-export const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
+const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
+const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
 
 /**
  * Thrown when a record's metered size would exceed S2's hard per-record
  * limit. Caught by the route handler and surfaced as 413.
  */
-export class S2RecordTooLargeError extends ServiceValidationError {
+class S2RecordTooLargeError extends ServiceValidationError {
   constructor(public readonly meteredBytes: number) {
     super(
       `Record metered size ${meteredBytes} bytes exceeds the S2 per-record limit of ${S2_MAX_METERED_BYTES} bytes. Reduce tool-output size or split into smaller parts.`,

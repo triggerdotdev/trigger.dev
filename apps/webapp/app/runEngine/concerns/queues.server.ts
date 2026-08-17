@@ -482,7 +482,7 @@ export class DefaultQueueManager implements QueueManager {
   }
 }
 
-export function getMaximumSizeForEnvironment(
+function getMaximumSizeForEnvironment(
   environment: AuthenticatedEnvironment
 ): number | undefined {
   if (environment.type === "DEVELOPMENT") {

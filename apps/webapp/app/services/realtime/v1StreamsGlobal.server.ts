@@ -31,7 +31,7 @@ function initializeRedisRealtimeStreams() {
   });
 }
 
-export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
+const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
 
 /**
  * Resolve a stream's basin. Precedence: run → session → org → global env.
@@ -100,7 +100,7 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
   return segments.join("/");
 }
 
-export type { RealtimeStreamsVersionConfig };
+;
 
 /**
  * Pass `organizationBasinName` wherever the caller has it. It mirrors the

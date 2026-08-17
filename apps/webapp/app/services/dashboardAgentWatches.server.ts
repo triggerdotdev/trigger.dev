@@ -82,9 +82,9 @@ import {
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 /** The task that polls a watch. Lives in the agent project, triggered by us. */
-export const WATCH_TASK_ID = "dashboard-agent-watch";
+const WATCH_TASK_ID = "dashboard-agent-watch";
 
-export { MAX_ACTIVE_WATCHES_PER_CHAT };
+;
 
 export type WatchAuthorization =
   | { ok: true; environment: AuthenticatedEnvironment }
@@ -170,7 +170,7 @@ export async function authorizeWatchEnvironmentById(params: {
   return authorization.ok ? authorization.environment : null;
 }
 
-export type CreateWatchErrorCode =
+type CreateWatchErrorCode =
   | "limit_reached"
   | "watch_limit_reached"
   | "duplicate"
@@ -1062,7 +1062,7 @@ export async function scheduleWatchTick(params: {
 }
 
 /** The task that polls a whole (environment, cadence) group. */
-export const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
+const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
 
 /**
  * How long a chain may go silent before it is treated as dead and re-armed. Three cadences
@@ -1283,7 +1283,7 @@ export async function listActiveWatchesForChats(params: {
   );
 }
 
-export function chatBelongsToUser(params: {
+function chatBelongsToUser(params: {
   chatId: string;
   userId: string;
   organizationId: string;

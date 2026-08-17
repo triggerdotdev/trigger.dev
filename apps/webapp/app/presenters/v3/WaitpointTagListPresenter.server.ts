@@ -12,8 +12,8 @@ export type TagListOptions = {
 
 const DEFAULT_PAGE_SIZE = 25;
 
-export type TagList = Awaited<ReturnType<WaitpointTagListPresenter["call"]>>;
-export type TagListItem = TagList["tags"][number];
+type TagList = Awaited<ReturnType<WaitpointTagListPresenter["call"]>>;
+type TagListItem = TagList["tags"][number];
 
 export class WaitpointTagListPresenter extends BasePresenter {
   constructor(

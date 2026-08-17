@@ -16,7 +16,7 @@ import {
 import { isCliVersionEligible } from "./platformNotificationVersionTargeting";
 
 export {
-  CreatePlatformNotificationSchema,
+  
   UpdatePlatformNotificationSchema,
 } from "./platformNotificationSchemas";
 export type { CreatePlatformNotificationInput, PayloadV1 } from "./platformNotificationSchemas";

@@ -15,7 +15,7 @@ export const ProjectAlertEmailProperties = z.object({
 
 export type ProjectAlertEmailProperties = z.infer<typeof ProjectAlertEmailProperties>;
 
-export const DeleteProjectAlertChannel = z.object({
+const DeleteProjectAlertChannel = z.object({
   id: z.string(),
 });
 

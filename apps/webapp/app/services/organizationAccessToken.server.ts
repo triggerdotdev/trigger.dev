@@ -20,7 +20,7 @@ type CreateOrganizationAccessTokenOptions = {
   expiresAt?: Date;
 };
 
-export async function getValidOrganizationAccessTokens(organizationId: string) {
+async function getValidOrganizationAccessTokens(organizationId: string) {
   const organizationAccessTokens = await prisma.organizationAccessToken.findMany({
     select: {
       id: true,
@@ -45,11 +45,11 @@ export async function getValidOrganizationAccessTokens(organizationId: string) {
   }));
 }
 
-export type ObfuscatedOrganizationAccessToken = Awaited<
+type ObfuscatedOrganizationAccessToken = Awaited<
   ReturnType<typeof getValidOrganizationAccessTokens>
 >[number];
 
-export async function revokeOrganizationAccessToken(tokenId: string) {
+async function revokeOrganizationAccessToken(tokenId: string) {
   await prisma.organizationAccessToken.update({
     where: {
       id: tokenId,
@@ -139,7 +139,7 @@ export function isOrganizationAccessToken(token: string) {
   return token.startsWith(tokenPrefix);
 }
 
-export async function createOrganizationAccessToken({
+async function createOrganizationAccessToken({
   name,
   organizationId,
   expiresAt,
@@ -164,7 +164,7 @@ export async function createOrganizationAccessToken({
   };
 }
 
-export type CreatedOrganizationAccessToken = Awaited<
+type CreatedOrganizationAccessToken = Awaited<
   ReturnType<typeof createOrganizationAccessToken>
 >;
 

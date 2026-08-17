@@ -47,7 +47,7 @@ const SessionListInputOptionsSchema = z.object({
 });
 
 export type SessionListInputOptions = z.infer<typeof SessionListInputOptionsSchema>;
-export type SessionListInputFilters = Omit<
+type SessionListInputFilters = Omit<
   SessionListInputOptions,
   "organizationId" | "projectId" | "environmentId"
 >;
@@ -83,11 +83,11 @@ export type SessionTagListOptions = {
   query?: string;
 } & OffsetPagination;
 
-export type SessionTagList = {
+type SessionTagList = {
   tags: string[];
 };
 
-export type ListedSession = Prisma.SessionGetPayload<{
+type ListedSession = Prisma.SessionGetPayload<{
   select: {
     id: true;
     friendlyId: true;
@@ -193,7 +193,7 @@ export class SessionsRepository implements ISessionsRepository {
   }
 }
 
-export function parseSessionListInputOptions(data: unknown): SessionListInputOptions {
+function parseSessionListInputOptions(data: unknown): SessionListInputOptions {
   return SessionListInputOptionsSchema.parse(data);
 }
 

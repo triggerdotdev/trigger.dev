@@ -3,5 +3,5 @@
 export type {
   AgentPage,
   AgentPageContext,
-  AgentPageSignal,
+  
 } from "@internal/dashboard-agent-contracts";

@@ -9,7 +9,7 @@ type TaskPathProps = {
   className?: string;
 };
 
-export function TaskPath({ filePath, functionName, className }: TaskPathProps) {
+function TaskPath({ filePath, functionName, className }: TaskPathProps) {
   return (
     <SpanCodePathAccessory
       accessory={{
