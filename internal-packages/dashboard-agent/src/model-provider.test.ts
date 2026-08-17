@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 import {
   BEDROCK_MODEL_IDS,
+  bedrockProviderSettings,
+  bedrockRegion,
   isLongLivedCacheBreakpoint,
   isStepCacheBreakpoint,
   resolveDashboardAgentModel,
@@ -14,8 +16,17 @@ function useBedrock() {
   process.env.DASHBOARD_AGENT_MODEL_PROVIDER = "bedrock";
 }
 
+const AWS_ENV_VARS = [
+  "DASHBOARD_AGENT_MODEL_PROVIDER",
+  "DASHBOARD_AGENT_AWS_ACCESS_KEY_ID",
+  "DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY",
+  "DASHBOARD_AGENT_AWS_REGION",
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+] as const;
+
 afterEach(() => {
-  delete process.env.DASHBOARD_AGENT_MODEL_PROVIDER;
+  for (const key of AWS_ENV_VARS) delete process.env[key];
 });
 
 describe("resolveDashboardAgentModel", () => {
@@ -116,5 +127,51 @@ describe("cache breakpoints", () => {
     const legacyStep = { anthropic: { cacheControl: STEP_CACHE_CONTROL, keep: true } };
 
     expect(withoutCacheBreakpoint(legacyStep)).toEqual({ anthropic: { keep: true } });
+  });
+});
+
+describe("Bedrock region and credential resolution", () => {
+  it("prefers DASHBOARD_AGENT_AWS_REGION over the global AWS region vars", () => {
+    process.env.AWS_REGION = "us-east-1";
+    process.env.AWS_DEFAULT_REGION = "us-west-2";
+    process.env.DASHBOARD_AGENT_AWS_REGION = "eu-west-1";
+    expect(bedrockRegion()).toBe("eu-west-1");
+  });
+
+  it("falls back to AWS_REGION, then AWS_DEFAULT_REGION", () => {
+    process.env.AWS_DEFAULT_REGION = "us-west-2";
+    expect(bedrockRegion()).toBe("us-west-2");
+
+    process.env.AWS_REGION = "us-east-1";
+    expect(bedrockRegion()).toBe("us-east-1");
+  });
+
+  it("treats an empty region as unset at every tier", () => {
+    process.env.DASHBOARD_AGENT_AWS_REGION = "";
+    process.env.AWS_REGION = "";
+    process.env.AWS_DEFAULT_REGION = "";
+    expect(bedrockRegion()).toBeUndefined();
+  });
+
+  it("passes explicit credentials when the dedicated pair is set", () => {
+    process.env.DASHBOARD_AGENT_AWS_ACCESS_KEY_ID = "AKIA_DASHBOARD_AGENT";
+    process.env.DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY = "secret";
+    process.env.DASHBOARD_AGENT_AWS_REGION = "eu-west-1";
+
+    expect(bedrockProviderSettings()).toEqual({
+      region: "eu-west-1",
+      accessKeyId: "AKIA_DASHBOARD_AGENT",
+      secretAccessKey: "secret",
+    });
+  });
+
+  it("keeps the default credential chain when the dedicated pair is unset", () => {
+    process.env.AWS_REGION = "us-east-1";
+    expect(bedrockProviderSettings()).toEqual({ region: "us-east-1" });
+  });
+
+  it("keeps the default chain when only one half of the dedicated pair is set", () => {
+    process.env.DASHBOARD_AGENT_AWS_ACCESS_KEY_ID = "AKIA_DASHBOARD_AGENT";
+    expect(bedrockProviderSettings()).toEqual({ region: undefined });
   });
 });

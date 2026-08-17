@@ -21,11 +21,34 @@ export function dashboardAgentProvider(): DashboardAgentProvider {
   return process.env.DASHBOARD_AGENT_MODEL_PROVIDER === "bedrock" ? "bedrock" : "anthropic";
 }
 
-// Region passed explicitly since the SDK reads only AWS_REGION; credentials stay on
-// its own chain. `||` treats an empty region as unset, matching the webapp gate.
-const bedrock = createAmazonBedrock({
-  region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION,
-});
+// Region passed explicitly since the SDK reads only AWS_REGION. `||` treats an empty
+// region as unset. DASHBOARD_AGENT_AWS_REGION takes priority over the global vars.
+export function bedrockRegion(): string | undefined {
+  return (
+    process.env.DASHBOARD_AGENT_AWS_REGION ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION ||
+    undefined
+  );
+}
+
+// Dedicated, non-global credentials only — the default chain (and the global
+// AWS_ACCESS_KEY_ID/etc, if ever set) stays untouched for the ECR/STS deploy clients.
+function bedrockCredentials(): { accessKeyId: string; secretAccessKey: string } | undefined {
+  const accessKeyId = process.env.DASHBOARD_AGENT_AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY;
+  return accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+}
+
+export function bedrockProviderSettings(): {
+  region?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+} {
+  return { region: bedrockRegion(), ...bedrockCredentials() };
+}
+
+const bedrock = createAmazonBedrock(bedrockProviderSettings());
 
 export const registry = createProviderRegistry({ anthropic, bedrock });
 

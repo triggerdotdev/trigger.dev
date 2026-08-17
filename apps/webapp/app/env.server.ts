@@ -180,6 +180,13 @@ const EnvironmentSchema = z
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     AWS_SESSION_TOKEN: z.string().optional(),
     AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+    // Dedicated, non-global credentials for the dashboard agent's Bedrock calls (a
+    // Bedrock-invoke-only IAM user). Kept separate from AWS_ACCESS_KEY_ID/etc so
+    // injecting them can't hijack the default credential chain the ECR/STS deploy
+    // clients rely on.
+    DASHBOARD_AGENT_AWS_ACCESS_KEY_ID: z.string().optional(),
+    DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    DASHBOARD_AGENT_AWS_REGION: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(

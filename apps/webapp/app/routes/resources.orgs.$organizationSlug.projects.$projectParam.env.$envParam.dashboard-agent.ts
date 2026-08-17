@@ -332,7 +332,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
       const headStarted =
         dashboardAgentProvider() === "bedrock"
-          ? Boolean(env.AWS_REGION || env.AWS_DEFAULT_REGION)
+          ? Boolean(env.DASHBOARD_AGENT_AWS_REGION || env.AWS_REGION || env.AWS_DEFAULT_REGION)
           : Boolean(env.ANTHROPIC_API_KEY);
 
       // The lookups and the mint all run before the chat row exists, so a failure here can't
