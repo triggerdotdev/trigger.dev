@@ -25,6 +25,8 @@ import type {
 import {
   InputStreamOncePromise,
   ManualWaitpointPromise,
+  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
+  SESSION_STREAM_WAITPOINT_RESPONSE_FORMAT,
   SemanticInternalAttributes,
   SessionStreamInstance,
   WaitpointTimeoutError,
@@ -32,6 +34,7 @@ import {
   apiClientManager,
   ensureReadableStream,
   mergeRequestOptions,
+  parseSessionStreamWaitpointRecord,
   runtime,
   sessionStreams,
   taskContext,
@@ -713,6 +716,7 @@ export class SessionInputChannel {
 
         const apiClient = apiClientManager.clientOrThrow();
 
+        const lastConsumedSeqNum = sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
         const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
           session: this.sessionId,
           io: "in",
@@ -720,7 +724,8 @@ export class SessionInputChannel {
           idempotencyKey: options?.idempotencyKey,
           idempotencyKeyTTL: options?.idempotencyKeyTTL,
           tags: options?.tags,
-          lastSeqNum: sessionStreams.lastSeqNum(this.sessionId, "in"),
+          lastSeqNum: lastConsumedSeqNum,
+          responseFormat: SESSION_STREAM_WAITPOINT_RESPONSE_FORMAT,
         });
 
         const result = await tracer.startActiveSpan(
@@ -735,36 +740,77 @@ export class SessionInputChannel {
               throw new Error("Failed to block on session stream waitpoint");
             }
 
-            // Drop the SSE tail + buffer before suspending so the record
-            // delivered via the waitpoint path isn't re-buffered on resume.
+            // Stop the SSE tail before suspending. Buffered records stay in
+            // place; the exact record returned by the waitpoint is removed on
+            // resume, while any later records remain available to consumers.
             sessionStreams.disconnectStream(this.sessionId, "in");
 
             const waitResult = await runtime.waitUntil(response.waitpointId);
+            const hasRecordEnvelope =
+              waitResult.outputType === SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE;
 
-            const data =
+            const parsedOutput =
               waitResult.output !== undefined
                 ? await conditionallyImportAndParsePacket(
                     {
                       data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
+                      dataType: hasRecordEnvelope
+                        ? "application/json"
+                        : (waitResult.outputType ?? "application/json"),
                     },
                     apiClient
                   )
                 : undefined;
 
             if (waitResult.ok) {
-              // Advance both cursors past the record consumed via the
-              // waitpoint: the seq counter so the SSE tail doesn't replay
-              // it, and the consume cursor so turn-completes don't stamp a
-              // stale `session-in-event-id`.
-              const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
-              const nextSeq = (prevSeq ?? -1) + 1;
-              sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
-              sessionStreams.setLastDispatchedSeqNum(this.sessionId, "in", nextSeq);
+              const record = hasRecordEnvelope
+                ? parseSessionStreamWaitpointRecord(parsedOutput)
+                : undefined;
+              let seqNum = record?.seqNum;
+              const data = record
+                ? await conditionallyImportAndParsePacket(
+                    {
+                      data:
+                        typeof record.data === "string" ? record.data : JSON.stringify(record.data),
+                      dataType: "application/json",
+                    },
+                    apiClient
+                  )
+                : parsedOutput;
+
+              // Older servers return only raw data. Recover its durable
+              // sequence from the channel instead of guessing and risking a
+              // cursor that skips or strands another record.
+              if (seqNum === undefined && waitResult.output !== undefined) {
+                try {
+                  const response = await apiClient.readSessionStreamRecords(this.sessionId, "in", {
+                    afterEventId:
+                      lastConsumedSeqNum !== undefined ? String(lastConsumedSeqNum) : undefined,
+                  });
+                  const matchingRecords = response.records.filter(
+                    (candidate) =>
+                      candidate.data === waitResult.output ||
+                      (typeof candidate.data !== "string" &&
+                        JSON.stringify(candidate.data) === JSON.stringify(parsedOutput))
+                  );
+                  if (matchingRecords.length === 1) {
+                    seqNum = matchingRecords[0]!.seqNum;
+                  }
+                } catch {
+                  // Leave the cursor behind when an older server cannot
+                  // provide record metadata. At-least-once replay is safer
+                  // than acknowledging an unknown sequence.
+                }
+              }
+
+              if (seqNum !== undefined) {
+                sessionStreams.consumeRecord(this.sessionId, "in", seqNum);
+                sessionStreams.setLastSeqNum(this.sessionId, "in", seqNum);
+              }
 
               return { ok: true as const, output: data as T };
             } else {
-              const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+              const error = new WaitpointTimeoutError(parsedOutput?.message ?? "Timed out");
               span.recordException(error);
               span.setStatus({ code: SpanStatusCode.ERROR });
               return { ok: false as const, error };

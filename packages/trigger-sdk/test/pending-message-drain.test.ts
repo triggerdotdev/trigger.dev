@@ -5,7 +5,12 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { chat } from "../src/v3/ai.js";
 import { __setSessionOpenImplForTests, sessions } from "../src/v3/sessions.js";
-import { apiClientManager, sessionStreams } from "@trigger.dev/core/v3";
+import {
+  apiClientManager,
+  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
+  serializeSessionStreamWaitpointRecord,
+  sessionStreams,
+} from "@trigger.dev/core/v3";
 import { runInMockTaskContext } from "@trigger.dev/core/v3/test";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
@@ -68,6 +73,21 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000) {
     await new Promise((r) => setTimeout(r, 20));
   }
   throw new Error("waitFor timed out");
+}
+
+function runtimeWithWaitpointOutput(output: string, outputType = "application/json") {
+  return {
+    disable() {},
+    waitForTask() {
+      throw new Error("Unexpected task wait");
+    },
+    waitForBatch() {
+      throw new Error("Unexpected batch wait");
+    },
+    waitForWaitpoint() {
+      return Promise.resolve({ ok: true, output, outputType });
+    },
+  };
 }
 
 function streamedText(harness: { allChunks: unknown[] }): string {
@@ -248,26 +268,179 @@ describe("chat.createSession stop + immediate send", () => {
 });
 
 describe("session.in.wait() consume cursor", () => {
-  it("advances lastDispatchedSeqNum alongside lastSeqNum on waitpoint delivery", async () => {
+  it("keeps later input reachable across the suspend-and-resume race", async () => {
     __setSessionOpenImplForTests(undefined);
-    await runInMockTaskContext(async () => {
-      vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
-        createSessionStreamWaitpoint: async () => ({ waitpointId: "wp_test_1" }),
-        waitForWaitpointToken: async () => ({ success: true }),
-      } as never);
+    const first = { kind: "message", payload: { id: "u1" } };
+    const later = { kind: "message", payload: { id: "u2" } };
+    const runtimeManager = runtimeWithWaitpointOutput(
+      serializeSessionStreamWaitpointRecord(JSON.stringify(first), 50),
+      SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE
+    );
+    let registeredLastSeqNum: number | undefined;
+    let registeredResponseFormat: string | undefined;
 
-      const sessionId = "cursor-sess";
-      // Simulate records 0..4 already received via SSE before the suspend.
-      sessionStreams.setLastSeqNum(sessionId, "in", 4);
+    await runInMockTaskContext(
+      async (drivers) => {
+        const sessionId = "cursor-sess";
+        const channel = sessions.open(sessionId).in;
+        const stop = channel.on<{ kind: string }>((record) => record.kind === "stop");
 
-      const result = await sessions.open(sessionId).in.wait();
+        sessionStreams.setLastSeqNum(sessionId, "in", 49);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 49);
 
-      expect(result.ok).toBe(true);
-      expect(sessionStreams.lastSeqNum(sessionId, "in")).toBe(5);
-      // The waitpoint-delivered record was consumed by this caller, so the
-      // committed-consume cursor (what turn-completes persist as
-      // `session-in-event-id`) must advance with it.
-      expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(5);
-    });
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async (
+            _runId: string,
+            body: { lastSeqNum?: number; responseFormat?: string }
+          ) => {
+            registeredLastSeqNum = body.lastSeqNum;
+            registeredResponseFormat = body.responseFormat;
+            return {
+              waitpointId: "wp_test_1",
+              isCached: false,
+            };
+          },
+          waitForWaitpointToken: async () => {
+            // These records land after registration but before the tail is
+            // disconnected. The waitpoint resolves with seq 50, while the
+            // local tail has already consumed 51 and buffered 52.
+            await drivers.sessions.in.send(sessionId, first, "in", { seqNum: 50 });
+            await drivers.sessions.in.send(sessionId, { kind: "stop" }, "in", { seqNum: 51 });
+            await drivers.sessions.in.send(sessionId, later, "in", { seqNum: 52 });
+            return { success: true };
+          },
+        } as never);
+
+        const result = await channel.wait();
+
+        expect(result).toEqual({ ok: true, output: first });
+        expect(registeredLastSeqNum).toBe(49);
+        expect(registeredResponseFormat).toBe("record-v1");
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(51);
+        expect(sessionStreams.peekRecord(sessionId, "in")?.seqNum).toBe(52);
+
+        const next = await sessionStreams.onceRecord(sessionId, "in");
+        expect(next).toEqual({
+          ok: true,
+          output: { id: "test-record-52", seqNum: 52, data: later },
+        });
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(52);
+        stop.off();
+      },
+      { runtimeManager }
+    );
+  });
+
+  it("recovers the exact sequence from durable records for older servers", async () => {
+    __setSessionOpenImplForTests(undefined);
+    const payload = { kind: "message", payload: { id: "legacy" } };
+    const rawPayload = JSON.stringify(payload);
+    const runtimeManager = runtimeWithWaitpointOutput(rawPayload);
+    let afterEventId: string | undefined;
+
+    await runInMockTaskContext(
+      async () => {
+        const sessionId = "legacy-cursor-sess";
+        sessionStreams.setLastSeqNum(sessionId, "in", 6);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 6);
+
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async () => ({
+            waitpointId: "wp_legacy",
+            isCached: false,
+          }),
+          waitForWaitpointToken: async () => ({ success: true }),
+          readSessionStreamRecords: async (
+            _sessionId: string,
+            _io: "in" | "out",
+            options?: { afterEventId?: string }
+          ) => {
+            afterEventId = options?.afterEventId;
+            return {
+              records: [{ id: "legacy-record", seqNum: 7, data: rawPayload }],
+            };
+          },
+        } as never);
+
+        const result = await sessions.open(sessionId).in.wait();
+
+        expect(result).toEqual({ ok: true, output: payload });
+        expect(afterEventId).toBe("6");
+        expect(sessionStreams.lastSeqNum(sessionId, "in")).toBe(7);
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(7);
+      },
+      { runtimeManager }
+    );
+  });
+
+  it("does not mistake an older server's user payload for the internal envelope", async () => {
+    __setSessionOpenImplForTests(undefined);
+    const payload = {
+      type: "trigger-session-stream-record",
+      version: 1,
+      seqNum: 999,
+      data: { user: "supplied" },
+    };
+    const rawPayload = JSON.stringify(payload);
+
+    await runInMockTaskContext(
+      async () => {
+        const sessionId = "legacy-envelope-collision";
+        sessionStreams.setLastSeqNum(sessionId, "in", 6);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 6);
+
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async () => ({
+            waitpointId: "wp_legacy_collision",
+            isCached: false,
+          }),
+          waitForWaitpointToken: async () => ({ success: true }),
+          readSessionStreamRecords: async () => ({
+            records: [{ id: "legacy-record", seqNum: 7, data: rawPayload }],
+          }),
+        } as never);
+
+        const result = await sessions.open(sessionId).in.wait();
+
+        expect(result).toEqual({ ok: true, output: payload });
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(7);
+      },
+      { runtimeManager: runtimeWithWaitpointOutput(rawPayload) }
+    );
+  });
+
+  it("leaves the cursor behind when legacy payload matching is ambiguous", async () => {
+    __setSessionOpenImplForTests(undefined);
+    const payload = { kind: "message", payload: { id: "duplicate" } };
+    const rawPayload = JSON.stringify(payload);
+
+    await runInMockTaskContext(
+      async () => {
+        const sessionId = "legacy-duplicate-payload";
+        sessionStreams.setLastSeqNum(sessionId, "in", 6);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 6);
+
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async () => ({
+            waitpointId: "wp_legacy_duplicate",
+            isCached: false,
+          }),
+          waitForWaitpointToken: async () => ({ success: true }),
+          readSessionStreamRecords: async () => ({
+            records: [
+              { id: "duplicate-1", seqNum: 7, data: rawPayload },
+              { id: "duplicate-2", seqNum: 8, data: rawPayload },
+            ],
+          }),
+        } as never);
+
+        const result = await sessions.open(sessionId).in.wait();
+
+        expect(result).toEqual({ ok: true, output: payload });
+        expect(sessionStreams.lastSeqNum(sessionId, "in")).toBe(6);
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(6);
+      },
+      { runtimeManager: runtimeWithWaitpointOutput(rawPayload) }
+    );
   });
 });

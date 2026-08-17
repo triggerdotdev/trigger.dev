@@ -15,6 +15,7 @@ import {
   claimSessionStreamPart,
   drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
+  sessionStreamWaitpointOutput,
 } from "~/services/sessionStreamWaitpointCache.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
@@ -201,7 +202,7 @@ const { action, loader } = createActionApiRoute(
     // keyed on the canonical addressing key the agent registered with via
     // `sessions.open(...).in.wait()`, so writers and readers converge
     // regardless of which URL form they used.
-    const [drainError, waitpointIds] = await tryCatch(
+    const [drainError, waitpoints] = await tryCatch(
       drainSessionStreamWaitpoints(authentication.environment.id, addressingKey, params.io)
     );
     if (drainError) {
@@ -210,24 +211,20 @@ const { action, loader } = createActionApiRoute(
         io: params.io,
         error: drainError,
       });
-    } else if (waitpointIds && waitpointIds.length > 0) {
+    } else if (waitpoints && waitpoints.length > 0) {
       await Promise.all(
-        waitpointIds.map(async (waitpointId) => {
+        waitpoints.map(async (waitpoint) => {
           const [completeError] = await tryCatch(
             engine.completeWaitpoint({
-              id: waitpointId,
-              output: {
-                value: part,
-                type: "application/json",
-                isError: false,
-              },
+              id: waitpoint.id,
+              output: sessionStreamWaitpointOutput(waitpoint, part, appendSeq),
             })
           );
           if (completeError) {
             logger.error("Failed to complete session stream waitpoint", {
               addressingKey,
               io: params.io,
-              waitpointId,
+              waitpointId: waitpoint.id,
               error: completeError,
             });
           }

@@ -386,7 +386,7 @@ describe("StandardSessionStreamManager — record metadata", () => {
     manager.disconnect();
   });
 
-  it("retains cursor barriers when disconnect clears the buffer", async () => {
+  it("preserves buffered records across disconnect and consumes only the exact sequence", async () => {
     const manager = new StandardSessionStreamManager(
       singleShotApiClient([
         {
@@ -400,6 +400,12 @@ describe("StandardSessionStreamManager — record metadata", () => {
           recordId: "stop-1",
           chunk: { kind: "stop" },
           timestamp: 2000,
+        },
+        {
+          id: "52",
+          recordId: "message-2",
+          chunk: { kind: "message", payload: { id: "u2" } },
+          timestamp: 3000,
         },
       ]),
       "http://localhost"
@@ -418,11 +424,16 @@ describe("StandardSessionStreamManager — record metadata", () => {
 
     expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(49);
     manager.disconnectStream(sessionId, io);
-    expect(manager.peekRecord(sessionId, io)).toBeUndefined();
+    expect(manager.peekRecord(sessionId, io)?.seqNum).toBe(50);
     expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(49);
 
-    manager.setLastDispatchedSeqNum(sessionId, io, 51);
-    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(49);
+    manager.consumeRecord(sessionId, io, 50);
+    expect(manager.peekRecord(sessionId, io)?.seqNum).toBe(52);
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(51);
+
+    manager.consumeRecord(sessionId, io, 52);
+    expect(manager.peekRecord(sessionId, io)).toBeUndefined();
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(52);
 
     manager.reset();
     expect(manager.lastDispatchedSeqNum(sessionId, io)).toBeUndefined();

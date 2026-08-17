@@ -209,6 +209,22 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.seqNums.set(keyFor(sessionId, io), seqNum);
   }
 
+  consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    const key = keyFor(sessionId, io);
+    const buffered = this.buffer.get(key);
+    const index = buffered?.findIndex((record) => record.seqNum === seqNum) ?? -1;
+
+    if (buffered && index !== -1) {
+      buffered.splice(index, 1);
+      if (buffered.length === 0) {
+        this.buffer.delete(key);
+      }
+    }
+
+    this.#advanceLastDispatched(key, seqNum);
+    this.#drainOnceWaitersFromBuffer(key);
+  }
+
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     const key = keyFor(sessionId, io);
     const highWatermark = this.dispatchedSeqNums.get(key);
@@ -282,8 +298,9 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return false;
   }
 
-  disconnectStream(sessionId: string, io: SessionChannelIO): void {
-    this.buffer.delete(keyFor(sessionId, io));
+  disconnectStream(_sessionId: string, _io: SessionChannelIO): void {
+    // The production manager keeps buffered records reachable across a
+    // waitpoint suspension. The exact waitpoint record is removed on resume.
   }
 
   clearHandlers(): void {

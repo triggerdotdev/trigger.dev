@@ -1669,6 +1669,8 @@ export const CreateSessionStreamWaitpointRequestBody = z.object({
    * Used to catch data that arrived before `.wait()` was called.
    */
   lastSeqNum: z.number().optional(),
+  /** Internal capability flag: return the exact record sequence on resume. */
+  responseFormat: z.literal("record-v1").optional(),
 });
 export type CreateSessionStreamWaitpointRequestBody = z.infer<
   typeof CreateSessionStreamWaitpointRequestBody

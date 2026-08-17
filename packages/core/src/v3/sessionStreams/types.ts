@@ -88,6 +88,9 @@ export interface SessionStreamManager {
   /** Advance the last-seen sequence number (prevents SSE replay after `.wait` resume). */
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
+  /** Consume one exact record delivered through the waitpoint path. */
+  consumeRecord?(sessionId: string, io: SessionChannelIO, seqNum: number): void;
+
   /**
    * Highest sequence number that is safe to persist as consumed. When a later
    * record is handled while an earlier record remains unconsumed, this stays
@@ -121,7 +124,7 @@ export interface SessionStreamManager {
   /** Remove and discard the first buffered record. Returns true if one was removed. */
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean;
 
-  /** Abort the SSE tail and clear the buffer. Called before `.wait` suspends. */
+  /** Abort the SSE tail while preserving buffered records. Called before `.wait` suspends. */
   disconnectStream(sessionId: string, io: SessionChannelIO): void;
 
   /** Clear all `.on` handlers; abort tails without pending once-waiters. */

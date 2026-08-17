@@ -67,9 +67,8 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   private explicitlyDisconnected = new Set<string>();
   private seqNums = new Map<string, number>();
   // Sequence numbers for records that were delivered but not consumed.
-  // Kept separately from `buffer` because `disconnectStream()` clears the
-  // local buffer before a waitpoint suspension, but those records must still
-  // hold the persisted consume cursor back.
+  // Kept separately from `buffer` so the committed cursor can be calculated
+  // without depending on buffer traversal.
   private unconsumedSeqNums = new Map<string, Set<number>>();
   // High-water mark of seq_nums that have been *consumed* (delivered to a
   // once() waiter or shifted off the buffer into a once() caller) on a channel.
@@ -282,6 +281,22 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
+  consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    const key = keyFor(sessionId, io);
+    const buffered = this.buffer.get(key);
+    const index = buffered?.findIndex((record) => record.seqNum === seqNum) ?? -1;
+
+    if (buffered && index !== -1) {
+      buffered.splice(index, 1);
+      if (buffered.length === 0) {
+        this.buffer.delete(key);
+      }
+    }
+
+    this.#advanceLastDispatched(key, seqNum);
+    this.#drainOnceWaitersFromBuffer(key);
+  }
+
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     const key = keyFor(sessionId, io);
     const highWatermark = this.lastDispatchedSeqNums.get(key);
@@ -360,7 +375,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   disconnectStream(sessionId: string, io: SessionChannelIO): void {
     const key = keyFor(sessionId, io);
     const tail = this.tails.get(key);
-    const _bufferedSize = this.buffer.get(key)?.length ?? 0;
     // Mark as explicitly disconnected BEFORE we abort, so the tail's
     // `.finally` reconnect path sees the flag when it runs (which can be
     // synchronous in the AbortError catch). Cleared on the next explicit
@@ -370,7 +384,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       tail.abortController.abort();
       this.tails.delete(key);
     }
-    this.buffer.delete(key);
     // Reset the backoff counter so a future re-attach starts fresh —
     // an explicit disconnect is a deliberate teardown, not evidence of
     // a broken backend.
@@ -442,15 +455,10 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         this.tails.delete(key);
 
         // If the tail was torn down explicitly via `disconnectStream`,
-        // honor that — the caller (typically `session.in.wait()`) is
-        // suspending the run and expects no records to be buffered or
-        // delivered until a fresh `on()` / `once()` re-attaches. Without
-        // this guard a run-level persistent handler (e.g. `chat.agent`'s
-        // `stopInput.on(...)`) would auto-reconnect during the suspend
-        // window, the resurrected tail would receive the same record the
-        // waitpoint just delivered, and that record would land in the
-        // buffer where the next turn's `messagesInput.on(...)` drains it
-        // and runs a duplicate turn.
+        // honor that until a fresh `on()` / `once()` re-attaches. Existing
+        // buffered records stay available across the suspension, but a
+        // run-level handler must not reconnect and receive another copy of
+        // the record being delivered through the waitpoint.
         if (this.explicitlyDisconnected.has(key)) {
           return;
         }

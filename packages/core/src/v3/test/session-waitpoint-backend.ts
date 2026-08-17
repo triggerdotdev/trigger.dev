@@ -1,6 +1,10 @@
 import { ApiClient } from "../apiClient/index.js";
 import { WaitpointId } from "../isomorphic/friendlyId.js";
 import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
+import {
+  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
+  serializeSessionStreamWaitpointRecord,
+} from "../sessionStreams/wireProtocol.js";
 import type {
   CreateSessionStreamWaitpointRequestBody,
   CreateSessionStreamWaitpointResponseBody,
@@ -13,6 +17,7 @@ type PendingWait = {
   io: "in" | "out";
   lastSeqNum?: number;
   timeout?: string;
+  responseFormat?: "record-v1";
   abort: AbortController;
 };
 
@@ -71,6 +76,7 @@ export class SessionWaitpointBackend {
       io: body.io,
       lastSeqNum: body.lastSeqNum,
       timeout: body.timeout,
+      responseFormat: body.responseFormat,
       abort: new AbortController(),
     });
     return { waitpointId, isCached: false };
@@ -113,8 +119,20 @@ export class SessionWaitpointBackend {
         };
       }
 
-      const output = typeof result === "string" ? result : JSON.stringify(result);
-      return { ok: true, output, outputType: "application/json" };
+      const output =
+        pending.responseFormat === "record-v1"
+          ? serializeSessionStreamWaitpointRecord(result.data, result.seqNum)
+          : typeof result.data === "string"
+            ? result.data
+            : JSON.stringify(result.data);
+      return {
+        ok: true,
+        output,
+        outputType:
+          pending.responseFormat === "record-v1"
+            ? SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE
+            : "application/json",
+      };
     } catch {
       return {
         ok: false,
@@ -144,16 +162,23 @@ export class SessionWaitpointBackend {
    * which {@link wait} passes straight to the packet parser so it round-trips
    * to the same object `session.in.once()` returns.
    */
-  private async readNextRecord(pending: PendingWait): Promise<unknown> {
+  private async readNextRecord(pending: PendingWait): Promise<{ data: unknown; seqNum: number }> {
     const lastEventId =
       pending.lastSeqNum !== undefined && pending.lastSeqNum >= 0
         ? String(pending.lastSeqNum)
         : undefined;
 
+    let deliveredSeqNum: number | undefined;
     const stream = await this.apiClient.subscribeToSessionStream(pending.session, pending.io, {
       lastEventId,
       signal: pending.abort.signal,
       timeoutInSeconds: 120,
+      onPart: (part) => {
+        const seqNum = Number.parseInt(part.id, 10);
+        if (Number.isFinite(seqNum)) {
+          deliveredSeqNum = seqNum;
+        }
+      },
     });
 
     const reader = stream.getReader();
@@ -162,7 +187,10 @@ export class SessionWaitpointBackend {
       if (done) {
         throw new Error("session stream closed");
       }
-      return value;
+      if (deliveredSeqNum === undefined) {
+        throw new Error("session stream record is missing its sequence number");
+      }
+      return { data: value, seqNum: deliveredSeqNum };
     } finally {
       await reader.cancel().catch(() => {});
       pending.abort.abort();

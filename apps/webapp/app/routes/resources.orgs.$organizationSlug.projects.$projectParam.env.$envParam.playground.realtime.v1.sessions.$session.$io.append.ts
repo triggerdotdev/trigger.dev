@@ -13,7 +13,10 @@ import {
   resolveSessionByIdOrExternalId,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
+import {
+  drainSessionStreamWaitpoints,
+  sessionStreamWaitpointOutput,
+} from "~/services/sessionStreamWaitpointCache.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { engine } from "~/v3/runEngine.server";
@@ -114,7 +117,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Drain any waitpoints registered for this channel — same as the
   // public append. Best-effort; failure doesn't fail the append.
-  const [drainError, waitpointIds] = await tryCatch(
+  const [drainError, waitpoints] = await tryCatch(
     drainSessionStreamWaitpoints(environment.id, addressingKey, io)
   );
   if (drainError) {
@@ -123,24 +126,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
       io,
       error: drainError,
     });
-  } else if (waitpointIds && waitpointIds.length > 0) {
+  } else if (waitpoints && waitpoints.length > 0) {
     await Promise.all(
-      waitpointIds.map(async (waitpointId) => {
+      waitpoints.map(async (waitpoint) => {
         const [completeError] = await tryCatch(
           engine.completeWaitpoint({
-            id: waitpointId,
-            output: {
-              value: part,
-              type: "application/json",
-              isError: false,
-            },
+            id: waitpoint.id,
+            output: sessionStreamWaitpointOutput(waitpoint, part, appendSeq ?? undefined),
           })
         );
         if (completeError) {
           logger.error("Failed to complete session stream waitpoint (playground)", {
             addressingKey,
             io,
-            waitpointId,
+            waitpointId: waitpoint.id,
             error: completeError,
           });
         }

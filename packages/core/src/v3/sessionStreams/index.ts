@@ -94,6 +94,14 @@ export class SessionStreamsAPI implements SessionStreamManager {
     this.#getManager().setLastSeqNum(sessionId, io, seqNum);
   }
 
+  public consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    const manager = this.#getManager();
+    if (!manager.consumeRecord) {
+      throw new Error("The configured Session stream manager does not support exact consumption");
+    }
+    manager.consumeRecord(sessionId, io, seqNum);
+  }
+
   public lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     return this.#getManager().lastDispatchedSeqNum(sessionId, io);
   }
