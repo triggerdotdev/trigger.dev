@@ -7083,13 +7083,19 @@ function chatAgent<
                       }
                     }
                   }
-                  channelWorkingReaction = await resolveReactionChoice(
-                    channelConn.reactions?.working,
-                    wireChannelEvent.event
-                  );
-                  if (channelWorkingReaction) {
-                    await applyChannelReaction(channelConn, wireChannelEvent, {
-                      name: channelWorkingReaction,
+                  try {
+                    channelWorkingReaction = await resolveReactionChoice(
+                      channelConn.reactions?.working,
+                      wireChannelEvent.event
+                    );
+                    if (channelWorkingReaction) {
+                      await applyChannelReaction(channelConn, wireChannelEvent, {
+                        name: channelWorkingReaction,
+                      });
+                    }
+                  } catch (reactionError) {
+                    logger.warn("chat.agent: channel working reaction failed", {
+                      error: reactionError,
                     });
                   }
                 }
@@ -8406,19 +8412,25 @@ function chatAgent<
 
                   // Lifecycle reaction: turn done. Remove "working", mark "done".
                   if (wireChannelEvent && channelConn?.react) {
-                    if (channelWorkingReaction) {
-                      await applyChannelReaction(channelConn, wireChannelEvent, {
-                        name: channelWorkingReaction,
-                        remove: true,
-                      });
-                    }
-                    const doneReaction = await resolveReactionChoice(
-                      channelConn.reactions?.done,
-                      wireChannelEvent.event
-                    );
-                    if (doneReaction) {
-                      await applyChannelReaction(channelConn, wireChannelEvent, {
-                        name: doneReaction,
+                    try {
+                      if (channelWorkingReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: channelWorkingReaction,
+                          remove: true,
+                        });
+                      }
+                      const doneReaction = await resolveReactionChoice(
+                        channelConn.reactions?.done,
+                        wireChannelEvent.event
+                      );
+                      if (doneReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: doneReaction,
+                        });
+                      }
+                    } catch (reactionError) {
+                      logger.warn("chat.agent: channel done reaction failed", {
+                        error: reactionError,
                       });
                     }
                   }
