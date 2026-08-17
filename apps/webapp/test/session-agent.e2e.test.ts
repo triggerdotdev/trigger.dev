@@ -29,11 +29,13 @@ import {
 } from "./helpers/sessionStream";
 import { runChatAgentSession, runRealChatAgent } from "./helpers/agentHarness";
 import {
+  endAndContinueGuardEvents,
   suspendResumeEvents,
   testApprovalChatAgent,
   testChatAgent,
   testChatModelLocal,
   testEndAndContinueCustomAgent,
+  testEndAndContinueIteratorGuardCustomAgent,
   testEndRunChatAgent,
   testHitlChatAgent,
   testHitlIdleChatAgent,
@@ -1651,6 +1653,92 @@ describe("session agent e2e (real chat.agent loop)", () => {
 
     try {
       await expect(agent.done).rejects.toThrow("callingRunId not found in this environment");
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA25: custom endAndContinue keeps the guard while iterator next is active", async () => {
+    const { addressingKey, publicAccessToken, runId, apiKey, environment, baseUrl } =
+      await setupStartedSession(testEndAndContinueIteratorGuardCustomAgent.id);
+    const initialRun = await server.prisma.taskRun.findFirstOrThrow({
+      where: { friendlyId: runId },
+      select: { id: true },
+    });
+
+    const append = await appendInput({
+      baseUrl,
+      addressingKey,
+      token: publicAccessToken,
+      partId: "iterator-guard-initial-input",
+      body: submitBody(
+        addressingKey,
+        userMessage("start iterator guard test", "iterator-guard-initial-input")
+      ),
+    });
+    expect(append.status).toBe(200);
+
+    const agent = runRealChatAgent({
+      agentId: testEndAndContinueIteratorGuardCustomAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("unused"),
+      modelLocal: testChatModelLocal,
+      runId,
+    });
+    let agentSettled = false;
+    let agentFailure: unknown;
+    void agent.done.then(
+      () => {
+        agentSettled = true;
+      },
+      (error) => {
+        agentSettled = true;
+        agentFailure = error;
+      }
+    );
+
+    try {
+      await waitFor(
+        () =>
+          agentSettled ||
+          endAndContinueGuardEvents.some(
+            (event) => event.chatId === addressingKey && event.kind === "guard-held"
+          ),
+        20_000
+      );
+      if (agentFailure) throw agentFailure;
+      expect(agentSettled).toBe(false);
+      expect(
+        endAndContinueGuardEvents.some(
+          (event) => event.chatId === addressingKey && event.kind === "guard-held"
+        )
+      ).toBe(true);
+
+      const release = await appendInput({
+        baseUrl,
+        addressingKey,
+        token: publicAccessToken,
+        partId: "iterator-guard-release-input",
+        body: submitBody(
+          addressingKey,
+          userMessage("release pending next", "iterator-guard-release-input")
+        ),
+      });
+      expect(release.status).toBe(200);
+      await expect(agent.done).resolves.toBeUndefined();
+
+      expect(
+        endAndContinueGuardEvents.some(
+          (event) => event.chatId === addressingKey && event.kind === "return-settled"
+        )
+      ).toBe(true);
+      const session = await server.prisma.session.findFirstOrThrow({
+        where: { runtimeEnvironmentId: environment.id, externalId: addressingKey },
+        select: { currentRunId: true },
+      });
+      expect(session.currentRunId).not.toBe(initialRun.id);
     } finally {
       await agent.close();
     }

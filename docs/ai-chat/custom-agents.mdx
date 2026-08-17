@@ -146,7 +146,7 @@ Without this, a resumed chat silently loses its history: the model sees only the
 
 ### Rotating to a new deployment
 
-With `chat.createSession()`, use `chat.requestUpgrade()` to leave the current run after the turn. `chat.endAndContinue()` rejects while a `chat.createSession()` iterator is active. In a fully hand-rolled custom agent, use it to immediately hand the Session to a fresh run.
+With `chat.createSession()`, use `chat.requestUpgrade()` and let the iterator exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`; the method rejects until the iterator and any active `next()` call have settled. In a fully hand-rolled custom agent, call it directly to hand the Session to a fresh run.
 
 Call it between turns, after detaching the old run's input listeners. If the old run completed its current turn, persist its state and write the turn-complete boundary before the handoff:
 

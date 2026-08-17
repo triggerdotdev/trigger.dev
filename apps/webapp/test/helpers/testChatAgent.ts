@@ -269,6 +269,57 @@ export const testEndAndContinueCustomAgent = chat.customAgent({
   },
 });
 
+export const endAndContinueGuardEvents: Array<{
+  chatId: string;
+  kind: "guard-held" | "return-settled";
+}> = [];
+
+const activeSessionIteratorError =
+  "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Close the iterator, then call chat.endAndContinue().";
+
+async function expectActiveSessionIteratorError() {
+  try {
+    await chat.endAndContinue();
+  } catch (error) {
+    if (error instanceof Error && error.message === activeSessionIteratorError) return;
+    throw error;
+  }
+  throw new Error("Expected chat.endAndContinue() to reject while the iterator is active");
+}
+
+/** Exercises a return racing an already-started next() against real Session input. */
+export const testEndAndContinueIteratorGuardCustomAgent = chat.customAgent({
+  id: "e2e-test-chat-custom-end-and-continue-iterator-guard",
+  run: async (payload, { signal }) => {
+    const iterator = chat.createSession(payload, { signal })[Symbol.asyncIterator]();
+    const firstTurn = await iterator.next();
+    if (firstTurn.done) {
+      throw new Error("Expected an initial chat turn");
+    }
+    await firstTurn.value.done();
+    await expectActiveSessionIteratorError();
+
+    const pendingNext = iterator.next();
+    if (!iterator.return) {
+      throw new Error("Expected the chat Session iterator to support return()");
+    }
+    const pendingReturn = iterator.return();
+
+    // Let an immediately-resolving return() clear a broken guard before checking it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expectActiveSessionIteratorError();
+    endAndContinueGuardEvents.push({ chatId: payload.chatId, kind: "guard-held" });
+
+    const [nextResult] = await Promise.all([pendingNext, pendingReturn]);
+    if (nextResult.done) {
+      throw new Error("Expected the pending next() call to receive the release input");
+    }
+    endAndContinueGuardEvents.push({ chatId: payload.chatId, kind: "return-settled" });
+
+    await chat.endAndContinue();
+  },
+});
+
 /**
  * A tool with a server-side `execute`: the agent runs it automatically and
  * feeds the result back to the model, so a single turn covers the whole

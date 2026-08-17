@@ -8715,11 +8715,11 @@ function requestUpgrade(): void {
  * Hand off the current custom agent Session to a fresh run.
  *
  * This is the low-level handoff for a fully hand-rolled
- * `chat.customAgent()` loop. (Use {@link requestUpgrade} with
- * `chat.createSession()` instead; this method rejects while its iterator is
- * active.) Call only between turns and after detaching input listeners for the
- * old run. If the old run completed its current turn, persist its state and
- * call {@link chatWriteTurnComplete} before handing off.
+ * `chat.customAgent()` loop. This method rejects while a
+ * `chat.createSession()` iterator is active. Close the iterator before calling
+ * it. Call only between turns and after detaching input listeners for the old
+ * run. If the old run completed its current turn, persist its state and call
+ * {@link chatWriteTurnComplete} before handing off.
  * Do not write a new turn boundary after input that the continuation run should
  * process has been dispatched: the boundary acknowledges that input.
  *
@@ -8747,7 +8747,7 @@ async function endAndContinue(): Promise<void> {
   }
   if ((locals.get(chatActiveSessionIteratorsKey) ?? 0) > 0) {
     throw new Error(
-      "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Use chat.requestUpgrade() instead."
+      "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Close the iterator, then call chat.endAndContinue()."
     );
   }
 
@@ -9583,6 +9583,10 @@ function trackActiveChatSessionIterator(
 ): AsyncIterator<ChatTurn> {
   locals.set(chatActiveSessionIteratorsKey, (locals.get(chatActiveSessionIteratorsKey) ?? 0) + 1);
   let active = true;
+  let closing = false;
+  let activeNextCalls = 0;
+  let closePromise: Promise<IteratorResult<ChatTurn>> | undefined;
+  const nextSettledWaiters = new Set<() => void>();
 
   function finish() {
     if (!active) return;
@@ -9591,30 +9595,72 @@ function trackActiveChatSessionIterator(
     locals.set(chatActiveSessionIteratorsKey, remaining);
   }
 
+  function settleNextCall() {
+    activeNextCalls = Math.max(activeNextCalls - 1, 0);
+    if (activeNextCalls > 0) return;
+
+    for (const resolve of nextSettledWaiters) {
+      resolve();
+    }
+    nextSettledWaiters.clear();
+  }
+
+  function waitForNextCalls(): Promise<void> {
+    if (activeNextCalls === 0) return Promise.resolve();
+    return new Promise((resolve) => nextSettledWaiters.add(resolve));
+  }
+
+  function closeIterator(): Promise<IteratorResult<ChatTurn>> {
+    closing = true;
+    if (!closePromise) {
+      closePromise = (async () => {
+        // A blocked next() can install a new message listener after it resumes.
+        // Let every started call settle, then make the inner cleanup final.
+        await waitForNextCalls();
+        try {
+          return iterator.return
+            ? await iterator.return()
+            : { done: true as const, value: undefined };
+        } finally {
+          finish();
+        }
+      })();
+    }
+    return closePromise;
+  }
+
   return {
     async next() {
+      if (closing) {
+        return { done: true as const, value: undefined };
+      }
+
+      activeNextCalls++;
+      let result: IteratorResult<ChatTurn>;
       try {
-        const result = await iterator.next();
-        if (result.done) finish();
-        return result;
+        result = await iterator.next();
       } catch (error) {
+        settleNextCall();
         try {
-          await iterator.return?.();
+          await closeIterator();
         } catch {
           // Preserve the original iterator error after best-effort cleanup.
         }
-        finish();
         throw error;
       }
-    },
-    async return() {
-      try {
-        return iterator.return
-          ? await iterator.return()
-          : { done: true as const, value: undefined };
-      } finally {
-        finish();
+
+      settleNextCall();
+      if (result.done) {
+        try {
+          await closeIterator();
+        } catch {
+          // The inner next() already ended cleanly; cleanup remains best-effort.
+        }
       }
+      return result;
+    },
+    return() {
+      return closeIterator();
     },
   };
 }

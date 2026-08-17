@@ -153,7 +153,7 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 
 ## Custom agents
 
-Use `chat.requestUpgrade()` with `chat.agent()` and the `chat.createSession()` iterator. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
+Use `chat.requestUpgrade()` with `chat.agent()`. With `chat.createSession()`, call `chat.requestUpgrade()`, then advance the iterator once more so it can exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
 
 ```ts
 // Detach any chat.messages.on() subscriptions you created.
