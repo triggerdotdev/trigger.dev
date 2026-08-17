@@ -235,6 +235,41 @@ export const testUpgradeOnceChatAgent = chat.agent({
 });
 
 /**
+ * Hands an unconsumed Session input record to a continuation run using the
+ * public custom-agent lifecycle primitive. The continuation echoes the input
+ * to `.out`, which lets the full-stack Session E2E assert durable delivery.
+ */
+export const testEndAndContinueCustomAgent = chat.customAgent({
+  id: "e2e-test-chat-custom-end-and-continue",
+  run: async (payload) => {
+    if (!payload.continuation) {
+      await chat.endAndContinue();
+      return;
+    }
+
+    const next = await chat.messages.waitWithIdleTimeout({
+      idleTimeoutInSeconds: 2,
+      timeout: "1m",
+    });
+    if (!next.ok) {
+      throw next.error;
+    }
+
+    const message = next.output.message as UIMessage | undefined;
+    const text = message ? firstText(message) : "";
+    const { waitUntilComplete } = chat.stream.writer({
+      execute: ({ write }) => {
+        write({ type: "text-start", id: "handoff-result" });
+        write({ type: "text-delta", id: "handoff-result", delta: `received:${text}` });
+        write({ type: "text-end", id: "handoff-result" });
+      },
+    });
+    await waitUntilComplete();
+    await chat.writeTurnComplete();
+  },
+});
+
+/**
  * A tool with a server-side `execute`: the agent runs it automatically and
  * feeds the result back to the model, so a single turn covers the whole
  * tool loop.
