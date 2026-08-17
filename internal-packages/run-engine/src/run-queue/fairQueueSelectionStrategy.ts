@@ -16,7 +16,7 @@ import type {
   RunQueueSelectionStrategy,
 } from "./types.js";
 
-export type FairQueueSelectionStrategyBiases = {
+type FairQueueSelectionStrategyBiases = {
   /**
    * How much to bias towards environments with higher concurrency limits
    * 0 = no bias, 1 = full bias based on limit differences
