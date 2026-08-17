@@ -189,15 +189,17 @@ export type ProviderProducers = {
 };
 
 export const providerProducers = Object.fromEntries(
-  Object.entries(webhookProviderConfigs).map(([provider, entry]) => [
-    provider,
-    () => ({
+  Object.entries(webhookProviderConfigs)
+    .filter(([provider]) => provider !== "slack")
+    .map(([provider, entry]) => [
       provider,
-      verifier: { kind: "config" as const, config: entry.config() },
-      secretProvisioning: entry.secretProvisioning,
-    }),
-  ])
-) as ProviderProducers;
+      () => ({
+        provider,
+        verifier: { kind: "config" as const, config: entry.config() },
+        secretProvisioning: entry.secretProvisioning,
+      }),
+    ])
+) as Omit<ProviderProducers, "slack">;
 
 // ── webhook() entry: single-callback IoC, infers event from source ──
 export type WebhookOnEventParams<TEvent> = {
@@ -371,7 +373,7 @@ interface Webhooks {
 /**
  * Webhook utilities for handling incoming webhook requests
  */
-export const webhooks: Webhooks & ProviderProducers = {
+export const webhooks: Webhooks & Omit<ProviderProducers, "slack"> = {
   ...providerProducers,
   constructEvent,
   SIGNATURE_HEADER_NAME,

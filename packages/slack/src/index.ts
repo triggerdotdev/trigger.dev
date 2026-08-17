@@ -133,6 +133,20 @@ export function mentions(...botUserIds: string[]): string {
 }
 
 /**
+ * A Slack webhook source for `webhook({ source })`: HMAC signature verification, the one-time
+ * `url_verification` handshake Slack requires before an Event Subscriptions URL can be saved, and
+ * form-encoded interactivity parsing. Paste your Slack app's Signing Secret as the endpoint secret.
+ * For a full chat-agent frontend (per-thread sessions, replies, HITL) use `slack()` instead.
+ */
+export function webhookSource<TEvent = SlackMessageEvent>(): WebhookSource<TEvent> {
+  return {
+    provider: "slack",
+    verifier: { kind: "config", config: SLACK_VERIFIER, handshake: SLACK_HANDSHAKE },
+    secretProvisioning: "provider",
+  };
+}
+
+/**
  * Slack as a chat frontend for an agent. List on `chat.agent({ channels: [slack({...})] })`: verified
  * Slack messages in a thread are routed to a durable per-thread session and run as turns, and the reply
  * is posted back to the thread. Set the endpoint's signing secret to your Slack signing secret; pass the
@@ -142,11 +156,7 @@ export function slack<TEvent = SlackMessageEvent>(
   options: SlackChannelOptions<TEvent>
 ): ChannelConnector<TEvent> {
   const apiBaseUrl = options.apiBaseUrl ?? SLACK_API_BASE_URL;
-  const source: WebhookSource<TEvent> = {
-    provider: "slack",
-    verifier: { kind: "config", config: SLACK_VERIFIER, handshake: SLACK_HANDSHAKE },
-    secretProvisioning: "provider",
-  };
+  const source: WebhookSource<TEvent> = webhookSource<TEvent>();
   const messageFilter = options.filter
     ? `${SELF_MESSAGE_GUARD} && (${options.filter})`
     : SELF_MESSAGE_GUARD;
