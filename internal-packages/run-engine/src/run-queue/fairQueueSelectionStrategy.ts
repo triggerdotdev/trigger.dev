@@ -626,12 +626,3 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
     };
   }
 }
-
-export class NoopFairDequeuingStrategy implements RunQueueSelectionStrategy {
-  async distributeFairQueuesFromParentQueue(
-    parentQueue: string,
-    consumerId: string
-  ): Promise<Array<EnvQueues>> {
-    return [];
-  }
-}
