@@ -1,6 +1,7 @@
 import { BoltIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -41,6 +42,10 @@ const DISPLAY_OPTIONS = SMART_COLUMN_DISPLAYS.map((display) => ({
 }));
 
 const DEFAULT_SOURCE: SmartColumnSource = "payload";
+
+/** Cap the highlighted sample so a large inline blob doesn't stall the modal;
+ * the full parsed value is still used to resolve the path. */
+const MAX_SAMPLE_CHARS = 15000;
 
 export function AddSmartColumnDialog({
   open,
@@ -97,15 +102,27 @@ export function AddSmartColumnDialog({
     }
   }, [sampleRun, source]);
 
-  const sampleJson = useMemo(() => {
+  const sampleJson = useMemo<{ text: string; truncated: boolean } | undefined>(() => {
     if (!parsed) return undefined;
-    if (parsed.state === "offloaded") return "// offloaded to object storage";
-    if (parsed.state === "empty") return "// no value for this run";
-    try {
-      return JSON.stringify(parsed.value, null, 2);
-    } catch {
-      return String(parsed.value);
+    if (parsed.state === "offloaded") {
+      return {
+        text: "// Offloaded to object storage — too large to sample here.",
+        truncated: false,
+      };
     }
+    if (parsed.state === "empty") {
+      return { text: "// No value for this run.", truncated: false };
+    }
+    let text: string;
+    try {
+      text = JSON.stringify(parsed.value, null, 2);
+    } catch {
+      text = String(parsed.value);
+    }
+    if (text.length > MAX_SAMPLE_CHARS) {
+      return { text: `${text.slice(0, MAX_SAMPLE_CHARS)}\n…`, truncated: true };
+    }
+    return { text, truncated: false };
   }, [parsed]);
 
   const resolved = useMemo(() => {
@@ -208,13 +225,31 @@ export function AddSmartColumnDialog({
               <Paragraph variant="extra-extra-small/dimmed/caps">
                 Sample — {source} of the newest run
               </Paragraph>
-              <pre className="max-h-44 overflow-auto rounded bg-charcoal-900 p-2 text-xs text-text-dimmed">
-                {sample.state === "loading"
-                  ? "Loading…"
-                  : sampleRun
-                    ? sampleJson
-                    : "// no runs to sample"}
-              </pre>
+              {sample.state === "loading" ? (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Loading…
+                </Paragraph>
+              ) : sampleJson ? (
+                <>
+                  <CodeBlock
+                    language="json"
+                    code={sampleJson.text}
+                    maxLines={16}
+                    showLineNumbers={false}
+                    showChrome={false}
+                    showCopyButton={false}
+                  />
+                  {sampleJson.truncated && (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      Sample truncated. The full value is still used to resolve the path.
+                    </Paragraph>
+                  )}
+                </>
+              ) : (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  No runs to sample.
+                </Paragraph>
+              )}
               <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
                 Resolves to
               </Paragraph>
