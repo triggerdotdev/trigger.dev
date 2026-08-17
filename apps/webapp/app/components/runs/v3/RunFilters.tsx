@@ -68,6 +68,7 @@ import { type loader as versionsLoader } from "~/routes/resources.orgs.$organiza
 import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
+import { RunsDisplayOptions } from "./RunsDisplayOptions";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { RegionLabel } from "./RegionLabel";
 import {
@@ -415,6 +416,7 @@ export function RunsFilters(props: RunFiltersProps) {
           />
         </Form>
       )}
+      <RunsDisplayOptions />
     </div>
   );
 }

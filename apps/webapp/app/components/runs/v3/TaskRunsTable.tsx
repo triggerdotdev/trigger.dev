@@ -9,7 +9,7 @@ import {
 import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
@@ -33,6 +33,7 @@ import {
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -63,6 +64,20 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import {
+  resolveColumnLayout,
+  visibleSmartSources,
+  type ResolvedColumn,
+  type RunColumnRuntime,
+  type SmartColumnDef,
+  type SmartColumnSource,
+} from "./runColumns";
+import {
+  extractSmartValue,
+  parseSource,
+  SMART_SOURCE_DOT_COLOR,
+  type ParsedSource,
+} from "./smartColumnData";
 
 type RunsTableProps = {
   total: number;
@@ -89,6 +104,520 @@ type RunsTableProps = {
   canReplayRuns?: boolean;
 };
 
+type CellRenderContext = {
+  run: NextRunListItem;
+  path: string;
+  regionByMasterQueue: Map<string, { name: string }>;
+  childrenStatusesBasePath?: string;
+  sources: Partial<Record<SmartColumnSource, ParsedSource>>;
+};
+
+type StandardColumnRenderer = {
+  header: React.ReactNode;
+  cell: (ctx: CellRenderContext) => React.ReactNode;
+  /** Cells/header this column occupies (Duration renders three). */
+  span: number;
+};
+
+const STANDARD_RENDERERS: Record<string, StandardColumnRenderer> = {
+  id: {
+    span: 1,
+    header: <TableHeaderCell>ID</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path} isTabbableCell>
+        <TruncatedCopyableValue value={run.friendlyId} />
+      </TableCell>
+    ),
+  },
+  task: {
+    span: 1,
+    header: <TableHeaderCell>Task</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path}>
+        <span className="flex items-center gap-x-1">
+          <TaskTriggerSourceIcon
+            source={run.taskKind as TaskTriggerSource}
+            className="size-3.5 flex-none"
+          />
+          {run.taskIdentifier}
+          {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
+        </span>
+      </TableCell>
+    ),
+  },
+  ver: {
+    span: 1,
+    header: <TableHeaderCell>Version</TableHeaderCell>,
+    cell: ({ run, path }) => <TableCell to={path}>{run.version ?? "–"}</TableCell>,
+  },
+  status: {
+    span: 1,
+    header: (
+      <TableHeaderCell
+        disableTooltipHoverableContent
+        tooltip={
+          <div className="flex flex-col divide-y divide-grid-dimmed">
+            {filterableTaskRunStatuses.map((status) => (
+              <div
+                key={status}
+                className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+              >
+                <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                  <TaskRunStatusCombo status={status} />
+                </div>
+                <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
+                  {descriptionForTaskRunStatus(status)}
+                </Paragraph>
+              </div>
+            ))}
+          </div>
+        }
+      >
+        Status
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path, childrenStatusesBasePath }) => (
+      <TableCell to={path}>
+        {run.rootTaskRunId === null && childrenStatusesBasePath ? (
+          <RunStatusCellTooltip
+            friendlyId={run.friendlyId}
+            status={run.status}
+            hasFinished={run.hasFinished}
+            childrenStatusesBasePath={childrenStatusesBasePath}
+          />
+        ) : (
+          <SimpleTooltip
+            content={descriptionForTaskRunStatus(run.status)}
+            disableHoverableContent
+            button={<TaskRunStatusCombo status={run.status} />}
+          />
+        )}
+      </TableCell>
+    ),
+  },
+  started: {
+    span: 1,
+    header: <TableHeaderCell>Started</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path}>{run.startedAt ? <DateTime date={run.startedAt} /> : "–"}</TableCell>
+    ),
+  },
+  dur: {
+    span: 3,
+    header: (
+      <TableHeaderCell
+        colSpan={3}
+        disableTooltipHoverableContent
+        tooltip={
+          <div className="flex max-w-xs flex-col gap-4 p-1">
+            <div>
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <RectangleStackIcon className="size-4 text-text-dimmed" />
+                <Header3>Queued duration</Header3>
+              </div>
+              <Paragraph variant="small" className="text-wrap! text-text-dimmed">
+                The amount of time from when the run was created to it starting to run.
+              </Paragraph>
+            </div>
+            <div>
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
+              </div>
+              <Paragraph variant="small" className="text-wrap! text-text-dimmed">
+                The total amount of time from the run starting to it finishing. This includes all
+                time spent waiting.
+              </Paragraph>
+            </div>
+            <div>
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <CpuChipIcon className="size-4 text-success" />
+                <Header3>Compute duration</Header3>
+              </div>
+              <Paragraph variant="small" className="text-wrap! text-text-dimmed">
+                The amount of compute time used in the run. This does not include time spent
+                waiting.
+              </Paragraph>
+            </div>
+          </div>
+        }
+      >
+        Duration
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path }) => (
+      <>
+        <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
+          <div className="flex items-center gap-1">
+            <RectangleStackIcon className="size-4 text-text-dimmed" />
+            {run.isPending ? (
+              "–"
+            ) : run.startedAt ? (
+              formatDuration(new Date(run.triggeredAt), new Date(run.startedAt), {
+                style: "short",
+              })
+            ) : run.isCancellable ? (
+              <LiveTimer startTime={new Date(run.triggeredAt)} />
+            ) : (
+              formatDuration(new Date(run.triggeredAt), new Date(run.updatedAt), {
+                style: "short",
+              })
+            )}
+          </div>
+        </TableCell>
+        <TableCell to={path} className="w-[1%]" actionClassName="px-4 tabular-nums">
+          <div className="flex items-center gap-1">
+            <ClockIcon className="size-4 text-blue-500" />
+            {run.startedAt && run.finishedAt ? (
+              formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
+                style: "short",
+              })
+            ) : run.startedAt ? (
+              <LiveTimer startTime={new Date(run.startedAt)} />
+            ) : (
+              "–"
+            )}
+          </div>
+        </TableCell>
+        <TableCell to={path} actionClassName="pl-0 tabular-nums">
+          <div className="flex items-center gap-1">
+            <CpuChipIcon className="size-4 text-success" />
+            {run.usageDurationMs > 0
+              ? formatDurationMilliseconds(run.usageDurationMs, {
+                  style: "short",
+                })
+              : "–"}
+          </div>
+        </TableCell>
+      </>
+    ),
+  },
+  compute: {
+    span: 1,
+    header: <TableHeaderCell>Compute</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path} className="tabular-nums">
+        {run.costInCents > 0
+          ? formatCurrencyAccurate((run.costInCents + run.baseCostInCents) / 100)
+          : "–"}
+      </TableCell>
+    ),
+  },
+  machine: {
+    span: 1,
+    header: (
+      <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
+        Machine
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path }) => (
+      <TableCell to={path}>
+        <MachineLabelCombo preset={run.machinePreset} />
+      </TableCell>
+    ),
+  },
+  queue: {
+    span: 1,
+    header: <TableHeaderCell>Queue</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path}>
+        {run.queue.type === "task" ? (
+          <SimpleTooltip
+            buttonClassName="w-fit"
+            button={
+              <span className="flex items-center gap-1">
+                <TasksIcon className="size-[1.125rem] text-blue-500" />
+                <span>{run.queue.name}</span>
+              </span>
+            }
+            content={`This queue was automatically created from your "${run.queue.name}" task`}
+            disableHoverableContent
+          />
+        ) : (
+          <SimpleTooltip
+            buttonClassName="w-fit"
+            button={
+              <span className="flex items-center gap-1">
+                <RectangleStackIcon className="size-[1.125rem] text-purple-500" />
+                <span>{run.queue.name}</span>
+              </span>
+            }
+            content={`This is a custom queue you added in your code.`}
+            disableHoverableContent
+          />
+        )}
+      </TableCell>
+    ),
+  },
+  region: {
+    span: 1,
+    header: <TableHeaderCell>Region</TableHeaderCell>,
+    cell: ({ run, path, regionByMasterQueue }) => (
+      <TableCell to={path}>
+        {run.region ? (
+          <RegionLabel
+            region={regionByMasterQueue.get(run.region) ?? { name: run.region }}
+            iconClassName="size-4"
+          />
+        ) : (
+          "–"
+        )}
+      </TableCell>
+    ),
+  },
+  test: {
+    span: 1,
+    header: <TableHeaderCell>Test</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path}>
+        {run.isTest ? (
+          <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
+        ) : (
+          "–"
+        )}
+      </TableCell>
+    ),
+  },
+  created: {
+    span: 1,
+    header: <TableHeaderCell>Created at</TableHeaderCell>,
+    cell: ({ run, path }) => (
+      <TableCell to={path}>{run.createdAt ? <DateTime date={run.createdAt} /> : "–"}</TableCell>
+    ),
+  },
+  delayed: {
+    span: 1,
+    header: (
+      <TableHeaderCell
+        tooltip={
+          <div className="max-w-xs p-1">
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              When you want to trigger a task now, but have it run at a later time, you can use the
+              delay option.
+            </Paragraph>
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              Runs that are delayed and have not been enqueued yet will display in the dashboard
+              with a “Delayed” status.
+            </Paragraph>
+            <LinkButton
+              to={docsPath("v3/triggering")}
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              className="mt-3"
+            >
+              Read docs
+            </LinkButton>
+          </div>
+        }
+      >
+        Delayed until
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path }) => (
+      <TableCell to={path}>{run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}</TableCell>
+    ),
+  },
+  ttl: {
+    span: 1,
+    header: (
+      <TableHeaderCell
+        tooltip={
+          <div className="max-w-xs p-1">
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              You can set a TTL (time to live) when triggering a task, which will automatically
+              expire the run if it hasn’t started within the specified time.
+            </Paragraph>
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              All runs in development have a default ttl of 10 minutes. You can disable this by
+              setting the ttl option.
+            </Paragraph>
+            <LinkButton
+              to={docsPath("v3/triggering")}
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              className="mt-3"
+            >
+              Read docs
+            </LinkButton>
+          </div>
+        }
+      >
+        TTL
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path }) => <TableCell to={path}>{run.ttl ?? "–"}</TableCell>,
+  },
+  tags: {
+    span: 1,
+    header: (
+      <TableHeaderCell
+        tooltip={
+          <div className="max-w-xs p-1">
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              You can add tags to a run and then filter runs using them.
+            </Paragraph>
+            <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
+              You can add tags when triggering a run or inside the run function.
+            </Paragraph>
+            <LinkButton
+              to={docsPath("v3/tags")}
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              className="mt-3"
+            >
+              Read docs
+            </LinkButton>
+          </div>
+        }
+      >
+        Tags
+      </TableHeaderCell>
+    ),
+    cell: ({ run, path }) => (
+      <TableCell to={path} actionClassName="py-1" className="pr-16">
+        <div className="flex gap-1">
+          {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+        </div>
+      </TableCell>
+    ),
+  },
+};
+
+function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
+  return (
+    <TableHeaderCell>
+      <span className="flex items-center gap-1.5">
+        <span className={cn("size-2 flex-none rounded-full", SMART_SOURCE_DOT_COLOR[def.source])} />
+        <span className="truncate">{def.label}</span>
+      </span>
+    </TableHeaderCell>
+  );
+}
+
+function stringifySmartValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function renderSmartValue(value: unknown, def: SmartColumnDef): React.ReactNode {
+  switch (def.displayAs) {
+    case "number": {
+      const n = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(n) ? n.toLocaleString() : stringifySmartValue(value);
+    }
+    case "duration": {
+      const n = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(n)
+        ? formatDurationMilliseconds(n, { style: "short" })
+        : stringifySmartValue(value);
+    }
+    case "badge":
+      return <Badge variant="extra-small">{stringifySmartValue(value)}</Badge>;
+    default:
+      return stringifySmartValue(value);
+  }
+}
+
+function SmartColumnCell({
+  def,
+  run,
+  path,
+  parsed,
+}: {
+  def: SmartColumnDef;
+  run: NextRunListItem;
+  path: string;
+  parsed: ParsedSource | undefined;
+}) {
+  const numeric = def.displayAs === "number" || def.displayAs === "duration";
+  const cell = extractSmartValue(parsed ?? { state: "empty" }, def.path);
+
+  if (cell.state === "offloaded") {
+    return (
+      <TableCell to={path}>
+        <SimpleTooltip
+          disableHoverableContent
+          button={
+            <span className="border-b border-dotted border-amber-500/60 text-amber-500">
+              Too large
+            </span>
+          }
+          content={`This run's ${def.source} is offloaded to object storage instead of the run row. Open the run to read it.`}
+        />
+      </TableCell>
+    );
+  }
+
+  if (cell.state === "empty") {
+    return (
+      <TableCell to={path} className={numeric ? "tabular-nums" : undefined}>
+        –
+      </TableCell>
+    );
+  }
+
+  const provisional = !run.hasFinished;
+
+  return (
+    <TableCell to={path} className={numeric ? "text-right tabular-nums" : undefined}>
+      <span className={cn(provisional && "border-b border-dotted border-text-dimmed/50")}>
+        {renderSmartValue(cell.value, def)}
+      </span>
+    </TableCell>
+  );
+}
+
+function buildRowSources(
+  run: NextRunListItem,
+  sources: SmartColumnSource[]
+): Partial<Record<SmartColumnSource, ParsedSource>> {
+  const result: Partial<Record<SmartColumnSource, ParsedSource>> = {};
+  for (const source of sources) {
+    switch (source) {
+      case "payload":
+        result.payload = parseSource({ data: run.payload, dataType: run.payloadType });
+        break;
+      case "metadata":
+        result.metadata = parseSource({ data: run.metadata, dataType: run.metadataType });
+        break;
+      case "output":
+        result.output = parseSource({ data: run.output, dataType: run.outputType });
+        break;
+    }
+  }
+  return result;
+}
+
+function columnKey(col: ResolvedColumn): string {
+  return col.kind === "standard" ? `std:${col.def.id}` : `smart:${col.index}`;
+}
+
+function ColumnHeader({ column }: { column: ResolvedColumn }) {
+  if (column.kind === "smart") {
+    return <SmartColumnHeader def={column.def} />;
+  }
+  return <>{STANDARD_RENDERERS[column.def.id]?.header ?? null}</>;
+}
+
+function ColumnCell({ column, ctx }: { column: ResolvedColumn; ctx: CellRenderContext }) {
+  if (column.kind === "smart") {
+    return (
+      <SmartColumnCell
+        def={column.def}
+        run={ctx.run}
+        path={ctx.path}
+        parsed={ctx.sources[column.def.source]}
+      />
+    );
+  }
+  return <>{STANDARD_RENDERERS[column.def.id]?.cell(ctx) ?? null}</>;
+}
+
 export function TaskRunsTable({
   total,
   hasFilters,
@@ -114,7 +643,7 @@ export function TaskRunsTable({
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
-  const { value } = useSearchParams();
+  const { value, values } = useSearchParams();
   const location = useOptimisticLocation();
   const params = new URLSearchParams(location.search || "");
   if (!value("rootOnly")) {
@@ -129,8 +658,25 @@ export function TaskRunsTable({
   /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
   const tableStateParam = disableAdjacentRows ? "" : encodeURIComponent(search);
 
-  const showCompute = isManagedCloud;
-  const showRegion = environment.type !== "DEVELOPMENT";
+  const isDevelopment = environment.type === "DEVELOPMENT";
+  const colsFromUrl = values("cols");
+  const scFromUrl = values("sc");
+  const colsKey = colsFromUrl.join(" ");
+  const scKey = scFromUrl.join(" ");
+  const layout = useMemo(() => {
+    const runtime: RunColumnRuntime = { isManagedCloud, isDevelopment };
+    return resolveColumnLayout({ cols: colsFromUrl, sc: scFromUrl }, runtime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colsKey, scKey, isManagedCloud, isDevelopment]);
+
+  const visibleColumns = layout.visible;
+  const referencedSources = useMemo(() => visibleSmartSources(visibleColumns), [visibleColumns]);
+
+  const dataColSpan = visibleColumns.reduce(
+    (sum, col) => sum + (col.kind === "standard" ? (STANDARD_RENDERERS[col.def.id]?.span ?? 1) : 1),
+    0
+  );
+  const totalColSpan = (allowSelection ? 1 : 0) + dataColSpan + 1;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -189,152 +735,9 @@ export function TaskRunsTable({
               )}
             </TableHeaderCell>
           )}
-          <TableHeaderCell>ID</TableHeaderCell>
-          <TableHeaderCell>Task</TableHeaderCell>
-          <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell
-            disableTooltipHoverableContent
-            tooltip={
-              <div className="flex flex-col divide-y divide-grid-dimmed">
-                {filterableTaskRunStatuses.map((status) => (
-                  <div
-                    key={status}
-                    className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
-                  >
-                    <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
-                      <TaskRunStatusCombo status={status} />
-                    </div>
-                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
-                      {descriptionForTaskRunStatus(status)}
-                    </Paragraph>
-                  </div>
-                ))}
-              </div>
-            }
-          >
-            Status
-          </TableHeaderCell>
-          <TableHeaderCell>Started</TableHeaderCell>
-          <TableHeaderCell
-            colSpan={3}
-            disableTooltipHoverableContent
-            tooltip={
-              <div className="flex max-w-xs flex-col gap-4 p-1">
-                <div>
-                  <div className="mb-0.5 flex items-center gap-1.5">
-                    <RectangleStackIcon className="size-4 text-text-dimmed" />
-                    <Header3>Queued duration</Header3>
-                  </div>
-                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
-                    The amount of time from when the run was created to it starting to run.
-                  </Paragraph>
-                </div>
-                <div>
-                  <div className="mb-0.5 flex items-center gap-1.5">
-                    <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
-                  </div>
-                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
-                    The total amount of time from the run starting to it finishing. This includes
-                    all time spent waiting.
-                  </Paragraph>
-                </div>
-                <div>
-                  <div className="mb-0.5 flex items-center gap-1.5">
-                    <CpuChipIcon className="size-4 text-success" />
-                    <Header3>Compute duration</Header3>
-                  </div>
-                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
-                    The amount of compute time used in the run. This does not include time spent
-                    waiting.
-                  </Paragraph>
-                </div>
-              </div>
-            }
-          >
-            Duration
-          </TableHeaderCell>
-          {showCompute && (
-            <>
-              <TableHeaderCell>Compute</TableHeaderCell>
-            </>
-          )}
-          <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
-            Machine
-          </TableHeaderCell>
-          <TableHeaderCell>Queue</TableHeaderCell>
-          {showRegion && <TableHeaderCell>Region</TableHeaderCell>}
-          <TableHeaderCell>Test</TableHeaderCell>
-          <TableHeaderCell>Created at</TableHeaderCell>
-          <TableHeaderCell
-            tooltip={
-              <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  When you want to trigger a task now, but have it run at a later time, you can use
-                  the delay option.
-                </Paragraph>
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  Runs that are delayed and have not been enqueued yet will display in the dashboard
-                  with a “Delayed” status.
-                </Paragraph>
-                <LinkButton
-                  to={docsPath("v3/triggering")}
-                  variant="docs/small"
-                  LeadingIcon={BookOpenIcon}
-                  className="mt-3"
-                >
-                  Read docs
-                </LinkButton>
-              </div>
-            }
-          >
-            Delayed until
-          </TableHeaderCell>
-          <TableHeaderCell
-            tooltip={
-              <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  You can set a TTL (time to live) when triggering a task, which will automatically
-                  expire the run if it hasn’t started within the specified time.
-                </Paragraph>
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  All runs in development have a default ttl of 10 minutes. You can disable this by
-                  setting the ttl option.
-                </Paragraph>
-                <LinkButton
-                  to={docsPath("v3/triggering")}
-                  variant="docs/small"
-                  LeadingIcon={BookOpenIcon}
-                  className="mt-3"
-                >
-                  Read docs
-                </LinkButton>
-              </div>
-            }
-          >
-            TTL
-          </TableHeaderCell>
-          <TableHeaderCell
-            tooltip={
-              <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  You can add tags to a run and then filter runs using them.
-                </Paragraph>
-                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
-                  You can add tags when triggering a run or inside the run function.
-                </Paragraph>
-                <LinkButton
-                  to={docsPath("v3/tags")}
-                  variant="docs/small"
-                  LeadingIcon={BookOpenIcon}
-                  className="mt-3"
-                >
-                  Read docs
-                </LinkButton>
-              </div>
-            }
-          >
-            Tags
-          </TableHeaderCell>
+          {visibleColumns.map((col) => (
+            <ColumnHeader key={columnKey(col)} column={col} />
+          ))}
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
@@ -342,11 +745,11 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={showRegion ? 16 : 15}>
+          <TableBlankRow colSpan={totalColSpan}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankState isLoading={isLoading} filters={filters} showRegion={showRegion} />
+          <BlankState isLoading={isLoading} filters={filters} colSpan={totalColSpan} />
         ) : (
           runs.map((run, index) => {
             const searchParams = new URLSearchParams();
@@ -363,6 +766,7 @@ export function TaskRunsTable({
               },
               searchParams
             );
+            const sources = buildRowSources(run, referencedSources);
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
@@ -379,149 +783,13 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell to={path} isTabbableCell>
-                  <TruncatedCopyableValue value={run.friendlyId} />
-                </TableCell>
-                <TableCell to={path}>
-                  <span className="flex items-center gap-x-1">
-                    <TaskTriggerSourceIcon
-                      source={run.taskKind as TaskTriggerSource}
-                      className="size-3.5 flex-none"
-                    />
-                    {run.taskIdentifier}
-                    {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
-                  </span>
-                </TableCell>
-                <TableCell to={path}>{run.version ?? "–"}</TableCell>
-                <TableCell to={path}>
-                  {run.rootTaskRunId === null && childrenStatusesBasePath ? (
-                    <RunStatusCellTooltip
-                      friendlyId={run.friendlyId}
-                      status={run.status}
-                      hasFinished={run.hasFinished}
-                      childrenStatusesBasePath={childrenStatusesBasePath}
-                    />
-                  ) : (
-                    <SimpleTooltip
-                      content={descriptionForTaskRunStatus(run.status)}
-                      disableHoverableContent
-                      button={<TaskRunStatusCombo status={run.status} />}
-                    />
-                  )}
-                </TableCell>
-                <TableCell to={path}>
-                  {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
-                </TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
-                  <div className="flex items-center gap-1">
-                    <RectangleStackIcon className="size-4 text-text-dimmed" />
-                    {run.isPending ? (
-                      "–"
-                    ) : run.startedAt ? (
-                      formatDuration(new Date(run.triggeredAt), new Date(run.startedAt), {
-                        style: "short",
-                      })
-                    ) : run.isCancellable ? (
-                      <LiveTimer startTime={new Date(run.triggeredAt)} />
-                    ) : (
-                      formatDuration(new Date(run.triggeredAt), new Date(run.updatedAt), {
-                        style: "short",
-                      })
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="px-4 tabular-nums">
-                  <div className="flex items-center gap-1">
-                    <ClockIcon className="size-4 text-blue-500" />
-                    {run.startedAt && run.finishedAt ? (
-                      formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
-                        style: "short",
-                      })
-                    ) : run.startedAt ? (
-                      <LiveTimer startTime={new Date(run.startedAt)} />
-                    ) : (
-                      "–"
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell to={path} actionClassName="pl-0 tabular-nums">
-                  <div className="flex items-center gap-1">
-                    <CpuChipIcon className="size-4 text-success" />
-                    {run.usageDurationMs > 0
-                      ? formatDurationMilliseconds(run.usageDurationMs, {
-                          style: "short",
-                        })
-                      : "–"}
-                  </div>
-                </TableCell>
-                {showCompute && (
-                  <TableCell to={path} className="tabular-nums">
-                    {run.costInCents > 0
-                      ? formatCurrencyAccurate((run.costInCents + run.baseCostInCents) / 100)
-                      : "–"}
-                  </TableCell>
-                )}
-                <TableCell to={path}>
-                  <MachineLabelCombo preset={run.machinePreset} />
-                </TableCell>
-                <TableCell to={path}>
-                  {run.queue.type === "task" ? (
-                    <SimpleTooltip
-                      buttonClassName="w-fit"
-                      button={
-                        <span className="flex items-center gap-1">
-                          <TasksIcon className="size-[1.125rem] text-blue-500" />
-                          <span>{run.queue.name}</span>
-                        </span>
-                      }
-                      content={`This queue was automatically created from your "${run.queue.name}" task`}
-                      disableHoverableContent
-                    />
-                  ) : (
-                    <SimpleTooltip
-                      buttonClassName="w-fit"
-                      button={
-                        <span className="flex items-center gap-1">
-                          <RectangleStackIcon className="size-[1.125rem] text-purple-500" />
-                          <span>{run.queue.name}</span>
-                        </span>
-                      }
-                      content={`This is a custom queue you added in your code.`}
-                      disableHoverableContent
-                    />
-                  )}
-                </TableCell>
-                {showRegion && (
-                  <TableCell to={path}>
-                    {run.region ? (
-                      <RegionLabel
-                        region={regionByMasterQueue.get(run.region) ?? { name: run.region }}
-                        iconClassName="size-4"
-                      />
-                    ) : (
-                      "–"
-                    )}
-                  </TableCell>
-                )}
-                <TableCell to={path}>
-                  {run.isTest ? (
-                    <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
-                  ) : (
-                    "–"
-                  )}
-                </TableCell>
-                <TableCell to={path}>
-                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
-                </TableCell>
-                <TableCell to={path}>
-                  {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
-                </TableCell>
-                <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
-                <TableCell to={path} actionClassName="py-1" className="pr-16">
-                  <div className="flex gap-1">
-                    {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
-                  </div>
-                </TableCell>
+                {visibleColumns.map((col) => (
+                  <ColumnCell
+                    key={columnKey(col)}
+                    column={col}
+                    ctx={{ run, path, regionByMasterQueue, childrenStatusesBasePath, sources }}
+                  />
+                ))}
                 <RunActionsCell
                   run={run}
                   path={path}
@@ -534,7 +802,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={showRegion ? 16 : 15}
+            colSpan={totalColSpan}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -711,12 +979,11 @@ function NoRuns({ title }: { title: string }) {
 function BlankState({
   isLoading,
   filters,
-  showRegion,
-}: Pick<RunsTableProps, "isLoading" | "filters"> & { showRegion: boolean }) {
+  colSpan,
+}: Pick<RunsTableProps, "isLoading" | "filters"> & { colSpan: number }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const colSpan = showRegion ? 16 : 15;
   if (isLoading) return <TableBlankRow colSpan={colSpan} />;
 
   const { tasks, from, to, ...otherFilters } = filters;
