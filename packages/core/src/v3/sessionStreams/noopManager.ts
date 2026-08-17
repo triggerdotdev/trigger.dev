@@ -1,6 +1,11 @@
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { InputStreamOncePromise } from "../inputStreams/types.js";
-import type { SessionChannelIO, SessionStreamManager } from "./types.js";
+import type {
+  SessionChannelIO,
+  SessionStreamManager,
+  SessionStreamRecord,
+  SessionStreamRecordPredicate,
+} from "./types.js";
 
 export class NoopSessionStreamManager implements SessionStreamManager {
   on(
@@ -21,7 +26,40 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     });
   }
 
+  onceRecord(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return new InputStreamOncePromise(() => {
+      // Never resolves in noop mode.
+    });
+  }
+
+  onceRecordWhere(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _predicate: SessionStreamRecordPredicate,
+    _options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return new InputStreamOncePromise(() => {
+      // Never resolves in noop mode.
+    });
+  }
+
   peek(_sessionId: string, _io: SessionChannelIO): unknown | undefined {
+    return undefined;
+  }
+
+  peekRecord(_sessionId: string, _io: SessionChannelIO): SessionStreamRecord | undefined {
+    return undefined;
+  }
+
+  peekRecordWhere(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _predicate: SessionStreamRecordPredicate
+  ): SessionStreamRecord | undefined {
     return undefined;
   }
 

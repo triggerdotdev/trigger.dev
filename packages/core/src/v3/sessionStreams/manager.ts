@@ -3,7 +3,12 @@ import type { InputStreamOnceResult } from "../inputStreams/types.js";
 import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
-import type { SessionChannelIO, SessionStreamManager } from "./types.js";
+import type {
+  SessionChannelIO,
+  SessionStreamManager,
+  SessionStreamRecord,
+  SessionStreamRecordPredicate,
+} from "./types.js";
 import { controlSubtype } from "./wireProtocol.js";
 
 // A handler that synchronously returns `true` CONSUMES the record: it is
@@ -13,8 +18,9 @@ import { controlSubtype } from "./wireProtocol.js";
 type SessionStreamHandler = (data: unknown) => void | boolean | Promise<void>;
 
 type OnceWaiter = {
-  resolve: (result: InputStreamOnceResult<unknown>) => void;
+  resolve: (result: InputStreamOnceResult<SessionStreamRecord>) => void;
   reject: (error: Error) => void;
+  predicate?: SessionStreamRecordPredicate;
   timeoutHandle?: ReturnType<typeof setTimeout>;
   // The abort signal and its handler are tracked on the waiter so any
   // resolution path (dispatch / timeout / explicit removal) can detach
@@ -44,19 +50,7 @@ function keyFor(sessionId: string, io: SessionChannelIO): string {
 export class StandardSessionStreamManager implements SessionStreamManager {
   private handlers = new Map<string, Set<SessionStreamHandler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
-  private buffer = new Map<string, unknown[]>();
-  // Parallel to `buffer`: the SSE seq_num of each buffered record. Same
-  // length and order as `buffer[key]`. Used so that when `once()` shifts
-  // a buffered record into a waiter, the cursor (`lastDispatchedSeqNums`)
-  // can advance to that record's seq. Kept as a separate map so the
-  // existing `peek()` shape (returns `unknown`) stays unchanged.
-  //
-  // Entries are `number | undefined` so the array stays length-locked
-  // with `buffer` even if a record arrives without a parseable seq —
-  // shifting `undefined` is just a no-op for the cursor advance, but
-  // the slot still gets consumed. Drifting lengths would map seq_nums
-  // to the wrong records on subsequent shifts.
-  private bufferSeqNums = new Map<string, Array<number | undefined>>();
+  private buffer = new Map<string, SessionStreamRecord[]>();
   private tails = new Map<string, TailState>();
   // Per-stream lower-bound timestamp filter. When set, records whose
   // SSE timestamp is <= the bound are dropped before dispatch — used by
@@ -123,28 +117,21 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     // duplicating turns.
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      const seqList = this.bufferSeqNums.get(key) ?? [];
-      const keptRecords: unknown[] = [];
-      // Kept in lock-step with `keptRecords` — drifting lengths would map
-      // seq_nums to the wrong records on subsequent shifts.
-      const keptSeqNums: Array<number | undefined> = [];
-      for (let i = 0; i < buffered.length; i++) {
-        const consumed = this.#invokeHandler(handler, buffered[i]);
+      const keptRecords: SessionStreamRecord[] = [];
+      for (const record of buffered) {
+        const consumed = this.#invokeHandler(handler, record.data);
         if (consumed) {
-          const s = seqList[i];
-          if (s !== undefined) this.#advanceLastDispatched(key, s);
+          this.#advanceLastDispatched(key, record.seqNum);
         } else {
-          keptRecords.push(buffered[i]);
-          keptSeqNums.push(seqList[i]);
+          keptRecords.push(record);
         }
       }
       if (keptRecords.length > 0) {
         this.buffer.set(key, keptRecords);
-        this.bufferSeqNums.set(key, keptSeqNums);
       } else {
         this.buffer.delete(key);
-        this.bufferSeqNums.delete(key);
       }
+      this.#drainOnceWaitersFromBuffer(key);
     }
 
     return {
@@ -162,6 +149,37 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     io: SessionChannelIO,
     options?: InputStreamOnceOptions
   ): InputStreamOncePromise<unknown> {
+    const recordPromise = this.onceRecord(sessionId, io, options);
+    return new InputStreamOncePromise<unknown>((resolve, reject) => {
+      recordPromise.then((result) => {
+        resolve(result.ok ? { ok: true, output: result.output.data } : result);
+      }, reject);
+    });
+  }
+
+  onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return this.#onceRecord(sessionId, io, undefined, options);
+  }
+
+  onceRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return this.#onceRecord(sessionId, io, predicate, options);
+  }
+
+  #onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
     const key = keyFor(sessionId, io);
 
     this.explicitlyDisconnected.delete(key);
@@ -169,23 +187,30 @@ export class StandardSessionStreamManager implements SessionStreamManager {
 
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      const data = buffered.shift()!;
-      const seqList = this.bufferSeqNums.get(key);
-      const shiftedSeqNum = seqList?.shift();
-      if (buffered.length === 0) {
-        this.buffer.delete(key);
-        this.bufferSeqNums.delete(key);
+      const record = buffered[0]!;
+      if (!predicate || predicate(record)) {
+        buffered.shift();
+        if (buffered.length === 0) {
+          this.buffer.delete(key);
+        }
+        this.#advanceLastDispatched(key, record.seqNum);
+        this.#drainOnceWaitersFromBuffer(key);
+        return new InputStreamOncePromise((resolve) => {
+          resolve({ ok: true, output: record });
+        });
       }
-      if (shiftedSeqNum !== undefined) {
-        this.#advanceLastDispatched(key, shiftedSeqNum);
-      }
-      return new InputStreamOncePromise((resolve) => {
-        resolve({ ok: true, output: data });
-      });
     }
 
-    return new InputStreamOncePromise<unknown>((resolve, reject) => {
-      const waiter: OnceWaiter = { resolve, reject };
+    return new InputStreamOncePromise<SessionStreamRecord>((resolve, reject) => {
+      const waiter: OnceWaiter = { resolve, reject, predicate };
+
+      if (predicate && options?.timeoutMs === 0) {
+        resolve({
+          ok: false,
+          error: new InputStreamTimeoutError(key, 0),
+        });
+        return;
+      }
 
       if (options?.signal) {
         if (options.signal.aborted) {
@@ -222,9 +247,19 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
-    const buffered = this.buffer.get(keyFor(sessionId, io));
-    if (buffered && buffered.length > 0) return buffered[0];
-    return undefined;
+    return this.peekRecord(sessionId, io)?.data;
+  }
+
+  peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
+    return this.buffer.get(keyFor(sessionId, io))?.[0];
+  }
+
+  peekRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate
+  ): SessionStreamRecord | undefined {
+    return this.buffer.get(keyFor(sessionId, io))?.find(predicate);
   }
 
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
@@ -248,6 +283,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   #advanceLastDispatched(key: string, seqNum: number): void {
+    if (!Number.isFinite(seqNum)) return;
     const current = this.lastDispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.lastDispatchedSeqNums.set(key, seqNum);
@@ -267,16 +303,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     const key = keyFor(sessionId, io);
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      buffered.shift();
-      const seqList = this.bufferSeqNums.get(key);
-      const shiftedSeqNum = seqList?.shift();
+      const record = buffered.shift()!;
       if (buffered.length === 0) {
         this.buffer.delete(key);
-        this.bufferSeqNums.delete(key);
       }
-      if (shiftedSeqNum !== undefined) {
-        this.#advanceLastDispatched(key, shiftedSeqNum);
-      }
+      this.#advanceLastDispatched(key, record.seqNum);
+      this.#drainOnceWaitersFromBuffer(key);
       return true;
     }
     return false;
@@ -296,7 +328,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.tails.delete(key);
     }
     this.buffer.delete(key);
-    this.bufferSeqNums.delete(key);
     // Reset the backoff counter so a future re-attach starts fresh —
     // an explicit disconnect is a deliberate teardown, not evidence of
     // a broken backend.
@@ -350,7 +381,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
     this.onceWaiters.clear();
     this.buffer.clear();
-    this.bufferSeqNums.clear();
   }
 
   #ensureTailConnected(sessionId: string, io: SessionChannelIO): void {
@@ -454,7 +484,11 @@ export class StandardSessionStreamManager implements SessionStreamManager {
               // keep as string
             }
           }
-          this.#dispatch(key, data, Number.isFinite(seqNum) ? seqNum : undefined);
+          this.#dispatch(key, {
+            id: part.recordId ?? part.id,
+            seqNum,
+            data,
+          });
         },
         onComplete: () => {
           if (this.debug) {
@@ -479,27 +513,21 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  #dispatch(key: string, data: unknown, seqNum: number | undefined): void {
+  #dispatch(key: string, record: SessionStreamRecord): void {
     // Any record flowing through = healthy connection; reset the backoff
     // counter so the next disconnect starts fresh.
     this.reconnectAttempts.delete(key);
 
-    const waiters = this.onceWaiters.get(key);
-    if (waiters && waiters.length > 0) {
-      const waiter = waiters.shift()!;
-      if (waiters.length === 0) this.onceWaiters.delete(key);
-      if (waiter.timeoutHandle) clearTimeout(waiter.timeoutHandle);
-      if (waiter.signal && waiter.abortHandler) {
-        waiter.signal.removeEventListener("abort", waiter.abortHandler);
-      }
+    const existingBuffer = this.buffer.get(key);
+    const waiter =
+      existingBuffer && existingBuffer.length > 0 ? undefined : this.#takeOnceWaiter(key, record);
+    if (waiter) {
       // Record was consumed directly by a waiter — advance the
       // committed-consume cursor immediately. Buffered-then-shifted
       // records advance the cursor in `once()` / `shiftBuffer()`.
-      if (seqNum !== undefined) {
-        this.#advanceLastDispatched(key, seqNum);
-      }
-      waiter.resolve({ ok: true, output: data });
-      this.#invokeHandlers(key, data);
+      this.#advanceLastDispatched(key, record.seqNum);
+      waiter.resolve({ ok: true, output: record });
+      this.#invokeHandlers(key, record.data);
       return;
     }
 
@@ -511,11 +539,9 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     // second turn. Records no handler consumed (e.g. a message arriving
     // while only the stop facade is attached during preload) are buffered
     // so a subsequent `once()` can still pick them up.
-    const consumed = this.#invokeHandlers(key, data);
+    const consumed = this.#invokeHandlers(key, record.data);
     if (consumed) {
-      if (seqNum !== undefined) {
-        this.#advanceLastDispatched(key, seqNum);
-      }
+      this.#advanceLastDispatched(key, record.seqNum);
       return;
     }
 
@@ -524,17 +550,48 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       buffered = [];
       this.buffer.set(key, buffered);
     }
-    buffered.push(data);
-    let bufferedSeqs = this.bufferSeqNums.get(key);
-    if (!bufferedSeqs) {
-      bufferedSeqs = [];
-      this.bufferSeqNums.set(key, bufferedSeqs);
+    buffered.push(record);
+    this.#drainOnceWaitersFromBuffer(key);
+  }
+
+  #takeOnceWaiter(key: string, record: SessionStreamRecord): OnceWaiter | undefined {
+    const waiters = this.onceWaiters.get(key);
+    if (!waiters) return undefined;
+
+    const index = waiters.findIndex((waiter) => {
+      if (!waiter.predicate) return true;
+      try {
+        return waiter.predicate(record);
+      } catch (error) {
+        if (this.debug) {
+          console.error("[SessionStreamManager] Record predicate error:", error);
+        }
+        return false;
+      }
+    });
+    if (index === -1) return undefined;
+
+    const [waiter] = waiters.splice(index, 1);
+    if (waiters.length === 0) this.onceWaiters.delete(key);
+    if (waiter!.timeoutHandle) clearTimeout(waiter!.timeoutHandle);
+    if (waiter!.signal && waiter!.abortHandler) {
+      waiter!.signal.removeEventListener("abort", waiter!.abortHandler);
     }
-    // Always push, even when `seqNum` is undefined (e.g. NaN from a
-    // malformed `part.id`). Skipping the push here would drift the two
-    // arrays apart and misattribute seq_nums to records on the next
-    // shift.
-    bufferedSeqs.push(seqNum);
+    return waiter;
+  }
+
+  #drainOnceWaitersFromBuffer(key: string): void {
+    const buffered = this.buffer.get(key);
+    while (buffered && buffered.length > 0) {
+      const record = buffered[0]!;
+      const waiter = this.#takeOnceWaiter(key, record);
+      if (!waiter) return;
+
+      buffered.shift();
+      if (buffered.length === 0) this.buffer.delete(key);
+      this.#advanceLastDispatched(key, record.seqNum);
+      waiter.resolve({ ok: true, output: record });
+    }
   }
 
   /** Returns true when any handler consumed the record. All handlers are invoked regardless. */

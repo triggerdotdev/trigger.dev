@@ -1,6 +1,12 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopSessionStreamManager } from "./noopManager.js";
-import type { InputStreamOncePromise, SessionChannelIO, SessionStreamManager } from "./types.js";
+import type {
+  InputStreamOncePromise,
+  SessionChannelIO,
+  SessionStreamManager,
+  SessionStreamRecord,
+  SessionStreamRecordPredicate,
+} from "./types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 const API_NAME = "session-streams";
@@ -43,8 +49,49 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return this.#getManager().once(sessionId, io, options);
   }
 
+  public onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    const manager = this.#getManager();
+    if (!manager.onceRecord) {
+      throw new Error("The configured Session stream manager does not support record metadata");
+    }
+    return manager.onceRecord(sessionId, io, options);
+  }
+
+  public onceRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    const manager = this.#getManager();
+    if (!manager.onceRecordWhere) {
+      throw new Error("The configured Session stream manager does not support selective records");
+    }
+    return manager.onceRecordWhere(sessionId, io, predicate, options);
+  }
+
   public peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
     return this.#getManager().peek(sessionId, io);
+  }
+
+  public peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
+    return this.#getManager().peekRecord?.(sessionId, io);
+  }
+
+  public peekRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate
+  ): SessionStreamRecord | undefined {
+    const manager = this.#getManager();
+    if (!manager.peekRecordWhere) {
+      throw new Error("The configured Session stream manager does not support selective records");
+    }
+    return manager.peekRecordWhere(sessionId, io, predicate);
   }
 
   public lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {

@@ -1,10 +1,16 @@
 import type { InputStreamOnceResult } from "../inputStreams/types.js";
 import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
-import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
+import type {
+  SessionChannelIO,
+  SessionStreamManager,
+  SessionStreamRecord,
+  SessionStreamRecordPredicate,
+} from "../sessionStreams/types.js";
 
 type OnceWaiter = {
-  resolve: (value: InputStreamOnceResult<unknown>) => void;
+  resolve: (value: InputStreamOnceResult<SessionStreamRecord>) => void;
+  predicate?: SessionStreamRecordPredicate;
   timer?: ReturnType<typeof setTimeout>;
   signal?: AbortSignal;
   abortHandler?: () => void;
@@ -31,7 +37,7 @@ function keyFor(sessionId: string, io: SessionChannelIO): string {
 export class TestSessionStreamManager implements SessionStreamManager {
   private handlers = new Map<string, Set<Handler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
-  private buffer = new Map<string, unknown[]>();
+  private buffer = new Map<string, SessionStreamRecord[]>();
   private seqNums = new Map<string, number>();
   private dispatchedSeqNums = new Map<string, number>();
 
@@ -55,21 +61,26 @@ export class TestSessionStreamManager implements SessionStreamManager {
     // messages into every newly attached per-turn handler.
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      const kept: unknown[] = [];
-      for (const data of buffered) {
+      const kept: SessionStreamRecord[] = [];
+      for (const record of buffered) {
         let consumed = false;
         try {
-          consumed = handler(data) === true;
+          consumed = handler(record.data) === true;
         } catch {
           // Never let a handler error break test state
         }
-        if (!consumed) kept.push(data);
+        if (consumed) {
+          this.#advanceLastDispatched(key, record.seqNum);
+        } else {
+          kept.push(record);
+        }
       }
       if (kept.length > 0) {
         this.buffer.set(key, kept);
       } else {
         this.buffer.delete(key);
       }
+      this.#drainOnceWaitersFromBuffer(key);
     }
 
     return {
@@ -84,9 +95,40 @@ export class TestSessionStreamManager implements SessionStreamManager {
     io: SessionChannelIO,
     options?: InputStreamOnceOptions
   ): InputStreamOncePromise<unknown> {
+    const recordPromise = this.onceRecord(sessionId, io, options);
+    return new InputStreamOncePromise<unknown>((resolve, reject) => {
+      recordPromise.then((result) => {
+        resolve(result.ok ? { ok: true, output: result.output.data } : result);
+      }, reject);
+    });
+  }
+
+  onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return this.#onceRecord(sessionId, io, undefined, options);
+  }
+
+  onceRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    return this.#onceRecord(sessionId, io, predicate, options);
+  }
+
+  #onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord> {
     const key = keyFor(sessionId, io);
 
-    return new InputStreamOncePromise<unknown>((resolve) => {
+    return new InputStreamOncePromise<SessionStreamRecord>((resolve) => {
       if (options?.signal?.aborted) {
         resolve({
           ok: false,
@@ -97,13 +139,18 @@ export class TestSessionStreamManager implements SessionStreamManager {
 
       const buffered = this.buffer.get(key);
       if (buffered && buffered.length > 0) {
-        const next = buffered.shift();
-        if (buffered.length === 0) this.buffer.delete(key);
-        resolve({ ok: true, output: next });
-        return;
+        const next = buffered[0]!;
+        if (!predicate || predicate(next)) {
+          buffered.shift();
+          if (buffered.length === 0) this.buffer.delete(key);
+          this.#advanceLastDispatched(key, next.seqNum);
+          this.#drainOnceWaitersFromBuffer(key);
+          resolve({ ok: true, output: next });
+          return;
+        }
       }
 
-      const waiter: OnceWaiter = { resolve, signal: options?.signal };
+      const waiter: OnceWaiter = { resolve, predicate, signal: options?.signal };
 
       if (options?.timeoutMs !== undefined) {
         waiter.timer = setTimeout(() => {
@@ -138,9 +185,19 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
-    const buffered = this.buffer.get(keyFor(sessionId, io));
-    if (buffered && buffered.length > 0) return buffered[0];
-    return undefined;
+    return this.peekRecord(sessionId, io)?.data;
+  }
+
+  peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
+    return this.buffer.get(keyFor(sessionId, io))?.[0];
+  }
+
+  peekRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate
+  ): SessionStreamRecord | undefined {
+    return this.buffer.get(keyFor(sessionId, io))?.find(predicate);
   }
 
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
@@ -152,15 +209,14 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    // `__sendFromTest` carries no seq numbers, so this only reflects
-    // explicit `setLastDispatchedSeqNum` calls (e.g. the waitpoint
-    // delivery path). Full cursor behaviour is exercised via the real
-    // manager.
     return this.dispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    const key = keyFor(sessionId, io);
+    this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
+  }
+
+  #advanceLastDispatched(key: string, seqNum: number): void {
     const current = this.dispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.dispatchedSeqNums.set(key, seqNum);
@@ -180,8 +236,10 @@ export class TestSessionStreamManager implements SessionStreamManager {
     const key = keyFor(sessionId, io);
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      buffered.shift();
+      const record = buffered.shift()!;
       if (buffered.length === 0) this.buffer.delete(key);
+      this.#advanceLastDispatched(key, record.seqNum);
+      this.#drainOnceWaitersFromBuffer(key);
       return true;
     }
     return false;
@@ -235,39 +293,53 @@ export class TestSessionStreamManager implements SessionStreamManager {
    * resolves. Consumption is decided on the synchronous return value,
    * exactly like production.
    */
-  async __sendFromTest(sessionId: string, io: SessionChannelIO, data: unknown): Promise<void> {
+  async __sendFromTest(
+    sessionId: string,
+    io: SessionChannelIO,
+    data: unknown,
+    metadata?: { id?: string; seqNum?: number }
+  ): Promise<void> {
     const key = keyFor(sessionId, io);
+    const seqNum = metadata?.seqNum ?? (this.seqNums.get(key) ?? -1) + 1;
+    const record: SessionStreamRecord = {
+      id: metadata?.id ?? `test-record-${seqNum}`,
+      seqNum,
+      data,
+    };
+    const lastSeqNum = this.seqNums.get(key);
+    if (lastSeqNum === undefined || seqNum > lastSeqNum) {
+      this.seqNums.set(key, seqNum);
+    }
 
-    const waiters = this.onceWaiters.get(key);
-    if (waiters && waiters.length > 0) {
-      const w = waiters.shift()!;
-      if (waiters.length === 0) this.onceWaiters.delete(key);
-      if (w.timer) clearTimeout(w.timer);
-      if (w.signal && w.abortHandler) {
-        w.signal.removeEventListener("abort", w.abortHandler);
-      }
-      w.resolve({ ok: true, output: data });
-      await this.#invokeHandlers(key, data);
+    const existingBuffer = this.buffer.get(key);
+    const waiter =
+      existingBuffer && existingBuffer.length > 0 ? undefined : this.#takeOnceWaiter(key, record);
+    if (waiter) {
+      this.#advanceLastDispatched(key, record.seqNum);
+      waiter.resolve({ ok: true, output: record });
+      await this.#invokeHandlers(key, record.data);
       return;
     }
 
-    const consumed = await this.#invokeHandlers(key, data);
-    if (consumed) return;
+    const consumed = await this.#invokeHandlers(key, record.data);
+    if (consumed) {
+      this.#advanceLastDispatched(key, record.seqNum);
+      return;
+    }
 
     // Re-check waiters: handler invocation above is awaited (unlike the
     // synchronous production dispatch), and the runtime commonly registers
     // its next `once()` during that window — e.g. the turn loop reaching
     // `waitWithIdleTimeout` while a handler settles. Without this second
     // look the record would be buffered while the fresh waiter hangs.
-    const lateWaiters = this.onceWaiters.get(key);
-    if (lateWaiters && lateWaiters.length > 0) {
-      const w = lateWaiters.shift()!;
-      if (lateWaiters.length === 0) this.onceWaiters.delete(key);
-      if (w.timer) clearTimeout(w.timer);
-      if (w.signal && w.abortHandler) {
-        w.signal.removeEventListener("abort", w.abortHandler);
-      }
-      w.resolve({ ok: true, output: data });
+    const bufferedAfterHandlers = this.buffer.get(key);
+    const lateWaiter =
+      bufferedAfterHandlers && bufferedAfterHandlers.length > 0
+        ? undefined
+        : this.#takeOnceWaiter(key, record);
+    if (lateWaiter) {
+      this.#advanceLastDispatched(key, record.seqNum);
+      lateWaiter.resolve({ ok: true, output: record });
       return;
     }
 
@@ -276,7 +348,45 @@ export class TestSessionStreamManager implements SessionStreamManager {
       buffered = [];
       this.buffer.set(key, buffered);
     }
-    buffered.push(data);
+    buffered.push(record);
+    this.#drainOnceWaitersFromBuffer(key);
+  }
+
+  #takeOnceWaiter(key: string, record: SessionStreamRecord): OnceWaiter | undefined {
+    const waiters = this.onceWaiters.get(key);
+    if (!waiters) return undefined;
+
+    const index = waiters.findIndex((waiter) => {
+      if (!waiter.predicate) return true;
+      try {
+        return waiter.predicate(record);
+      } catch {
+        return false;
+      }
+    });
+    if (index === -1) return undefined;
+
+    const [waiter] = waiters.splice(index, 1);
+    if (waiters.length === 0) this.onceWaiters.delete(key);
+    if (waiter!.timer) clearTimeout(waiter!.timer);
+    if (waiter!.signal && waiter!.abortHandler) {
+      waiter!.signal.removeEventListener("abort", waiter!.abortHandler);
+    }
+    return waiter;
+  }
+
+  #drainOnceWaitersFromBuffer(key: string): void {
+    const buffered = this.buffer.get(key);
+    while (buffered && buffered.length > 0) {
+      const record = buffered[0]!;
+      const waiter = this.#takeOnceWaiter(key, record);
+      if (!waiter) return;
+
+      buffered.shift();
+      if (buffered.length === 0) this.buffer.delete(key);
+      this.#advanceLastDispatched(key, record.seqNum);
+      waiter.resolve({ ok: true, output: record });
+    }
   }
 
   /**

@@ -11,7 +11,7 @@ import type { SSEStreamPart } from "../apiClient/runStream.js";
 // an empty stream synchronously triggers a tight reconnect loop, so the
 // mock parks indefinitely instead.
 function singleShotApiClient(
-  records: Array<{ id: string; chunk: unknown; timestamp: number }>
+  records: Array<{ id: string; recordId?: string; chunk: unknown; timestamp: number }>
 ): ApiClient {
   let delivered = false;
   return {
@@ -155,6 +155,128 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
 
     const passed = await manager.once(sessionId, io, { timeoutMs: 200 });
     expect(passed).toEqual({ ok: true, output: { kind: "message", payload: { id: "u1" } } });
+
+    manager.disconnectStream(sessionId, io);
+    manager.disconnect();
+  });
+});
+
+describe("StandardSessionStreamManager — record metadata", () => {
+  const sessionId = "session-records";
+  const io = "in" as const;
+  const records = [
+    {
+      id: "41",
+      recordId: "part-stable-1",
+      chunk: { kind: "message", payload: { id: "u1" } },
+      timestamp: 1000,
+    },
+    {
+      id: "42",
+      recordId: "part-stable-2",
+      chunk: { kind: "message", payload: { id: "u2" } },
+      timestamp: 2000,
+    },
+  ];
+
+  it("consumes one record at a time with stable id and sequence metadata", async () => {
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient(records),
+      "http://localhost"
+    );
+
+    const first = await manager.onceRecord(sessionId, io);
+    expect(first).toEqual({
+      ok: true,
+      output: {
+        id: "part-stable-1",
+        seqNum: 41,
+        data: { kind: "message", payload: { id: "u1" } },
+      },
+    });
+    expect(manager.peekRecord(sessionId, io)).toEqual({
+      id: "part-stable-2",
+      seqNum: 42,
+      data: { kind: "message", payload: { id: "u2" } },
+    });
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(41);
+
+    const second = await manager.onceRecord(sessionId, io);
+    expect(second.ok && second.output.id).toBe("part-stable-2");
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(42);
+
+    manager.disconnectStream(sessionId, io);
+    manager.disconnect();
+  });
+
+  it("returns the same envelope when a record is redelivered", async () => {
+    const firstDelivery = new StandardSessionStreamManager(
+      singleShotApiClient([records[0]!]),
+      "http://localhost"
+    );
+    const redelivery = new StandardSessionStreamManager(
+      singleShotApiClient([records[0]!]),
+      "http://localhost"
+    );
+
+    const first = await firstDelivery.onceRecord(sessionId, io);
+    const replayed = await redelivery.onceRecord(sessionId, io);
+
+    expect(first).toEqual(replayed);
+
+    firstDelivery.disconnectStream(sessionId, io);
+    firstDelivery.disconnect();
+    redelivery.disconnectStream(sessionId, io);
+    redelivery.disconnect();
+  });
+
+  it("does not consume a matching record past an earlier unmatched record", async () => {
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient([
+        {
+          id: "50",
+          recordId: "handover-1",
+          chunk: { kind: "handover" },
+          timestamp: 1000,
+        },
+        {
+          id: "51",
+          recordId: "message-1",
+          chunk: { kind: "message", payload: { id: "u1" } },
+          timestamp: 2000,
+        },
+      ]),
+      "http://localhost"
+    );
+
+    const pendingMessage = manager.onceRecordWhere(
+      sessionId,
+      io,
+      (record) => (record.data as { kind?: string }).kind === "message",
+      { timeoutMs: 200 }
+    );
+
+    expect(manager.peekRecordWhere(sessionId, io, (record) => record.id === "message-1")).toEqual({
+      id: "message-1",
+      seqNum: 51,
+      data: { kind: "message", payload: { id: "u1" } },
+    });
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBeUndefined();
+
+    const handover = await manager.onceRecord(sessionId, io);
+    expect(handover).toEqual({
+      ok: true,
+      output: { id: "handover-1", seqNum: 50, data: { kind: "handover" } },
+    });
+    await expect(pendingMessage).resolves.toEqual({
+      ok: true,
+      output: {
+        id: "message-1",
+        seqNum: 51,
+        data: { kind: "message", payload: { id: "u1" } },
+      },
+    });
+    expect(manager.lastDispatchedSeqNum(sessionId, io)).toBe(51);
 
     manager.disconnectStream(sessionId, io);
     manager.disconnect();

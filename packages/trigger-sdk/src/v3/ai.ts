@@ -1543,7 +1543,31 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
-const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+/**
+ * One message record delivered through {@link chat.messages}.
+ *
+ * `id` is the append's stable idempotency key and `seqNum` is its monotonic
+ * sequence on the Session `.in` channel. Both remain stable if the record is
+ * delivered again after a reconnect.
+ */
+export type ChatMessageRecord = Readonly<{
+  id: string;
+  seqNum: number;
+  payload: ChatTaskWirePayload;
+}>;
+
+export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
+  /** Whether a delivered message is waiting in the local buffer. Does not consume it. */
+  hasPending(): Promise<boolean>;
+  /** Consume one message record, or return `undefined` when the optional timeout elapses. */
+  next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
+};
+
+function isChatMessageRecord(record: { data: unknown }): boolean {
+  return (record.data as ChatInputChunk | undefined)?.kind === "message";
+}
+
+const messagesInput: ChatMessages = {
   id: "chat-messages",
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
@@ -1606,6 +1630,37 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
     const chunk = getChatSession().in.peek<ChatInputChunk>();
     if (chunk && chunk.kind === "message") return chunk.payload;
     return undefined;
+  },
+  async hasPending() {
+    const session = getChatSession();
+    return sessionStreams.peekRecordWhere(session.id, "in", isChatMessageRecord) !== undefined;
+  },
+  async next(options) {
+    const timeoutInSeconds = options?.timeoutInSeconds;
+    if (
+      timeoutInSeconds !== undefined &&
+      (!Number.isFinite(timeoutInSeconds) || timeoutInSeconds < 0)
+    ) {
+      throw new TypeError(
+        "chat.messages.next() timeoutInSeconds must be a finite non-negative number"
+      );
+    }
+
+    const session = getChatSession();
+    const result = await sessionStreams.onceRecordWhere(
+      session.id,
+      "in",
+      isChatMessageRecord,
+      timeoutInSeconds === undefined ? undefined : { timeoutMs: timeoutInSeconds * 1000 }
+    );
+    if (!result.ok) return undefined;
+
+    const chunk = result.output.data as Extract<ChatInputChunk, { kind: "message" }>;
+    return {
+      id: result.output.id,
+      seqNum: result.output.seqNum,
+      payload: chunk.payload,
+    };
   },
   wait(options) {
     return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {

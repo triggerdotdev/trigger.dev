@@ -13,6 +13,21 @@ export type { InputStreamOnceResult };
 export type SessionChannelIO = "out" | "in";
 
 /**
+ * One durable Session channel record.
+ *
+ * `id` is the append's stable idempotency key. `seqNum` is the record's
+ * monotonic S2 sequence within the Session channel. Both stay stable when
+ * the same record is delivered again after a reconnect.
+ */
+export type SessionStreamRecord<T = unknown> = Readonly<{
+  id: string;
+  seqNum: number;
+  data: T;
+}>;
+
+export type SessionStreamRecordPredicate = (record: SessionStreamRecord) => boolean;
+
+/**
  * Manager for Session channel reads: a session-scoped parallel to
  * {@link InputStreamManager} keyed on `(sessionId, io)` instead of
  * `(runId, streamId)`. Used by {@link SessionChannel} to implement
@@ -42,8 +57,37 @@ export interface SessionStreamManager {
     options?: InputStreamOnceOptions
   ): InputStreamOncePromise<unknown>;
 
+  /** Wait for and consume the next record, including its durable metadata. */
+  onceRecord?(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord>;
+
+  /**
+   * Wait for and consume the next record accepted by `predicate`.
+   * Earlier unmatched records stay buffered and block consumption so the
+   * committed cursor never advances past them.
+   */
+  onceRecordWhere?(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord>;
+
   /** Non-blocking peek at the head of the channel buffer. */
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined;
+
+  /** Non-blocking peek at the head record, including its durable metadata. */
+  peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
+
+  /** Non-blocking peek at the first buffered record accepted by `predicate`. */
+  peekRecordWhere?(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate
+  ): SessionStreamRecord | undefined;
 
   /** Last S2 sequence number seen on the given channel. */
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
