@@ -29,7 +29,7 @@ function generateLargeOutput(sizeKB: number): string {
 /**
  * Creates waitpoints with specified output sizes for testing.
  */
-export async function createWaitpointsWithOutput(
+async function createWaitpointsWithOutput(
   prisma: PrismaClient,
   count: number,
   outputSizeKB: number,
