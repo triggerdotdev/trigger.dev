@@ -7,14 +7,12 @@ import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dia
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import SegmentedControl from "~/components/primitives/SegmentedControl";
-import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
 import {
   SMART_COLUMN_DISPLAYS,
-  SMART_COLUMN_SOURCES,
   type SmartColumnDef,
   type SmartColumnDisplay,
   type SmartColumnSource,
@@ -31,15 +29,18 @@ type AddSmartColumnDialogProps = {
   currentSearch: string;
 };
 
-const SOURCE_OPTIONS = SMART_COLUMN_SOURCES.map((source) => ({
-  label: source.charAt(0).toUpperCase() + source.slice(1),
-  value: source,
-}));
+const SOURCE_CARDS: { value: SmartColumnSource; label: string; description: string }[] = [
+  { value: "payload", label: "Payload", description: "What you triggered the run with." },
+  { value: "metadata", label: "Metadata", description: "What the run writes while it runs." },
+  { value: "output", label: "Output", description: "What the run returned." },
+];
 
 const DISPLAY_OPTIONS = SMART_COLUMN_DISPLAYS.map((display) => ({
   label: display.charAt(0).toUpperCase() + display.slice(1),
   value: display,
 }));
+
+const DEFAULT_SOURCE: SmartColumnSource = "payload";
 
 export function AddSmartColumnDialog({
   open,
@@ -53,7 +54,7 @@ export function AddSmartColumnDialog({
   const environment = useEnvironment();
   const sample = useTypedFetcher<typeof sampleLoader>();
 
-  const [source, setSource] = useState<SmartColumnSource>("metadata");
+  const [source, setSource] = useState<SmartColumnSource>(DEFAULT_SOURCE);
   const [path, setPath] = useState("");
   const [label, setLabel] = useState("");
   const [labelEdited, setLabelEdited] = useState(false);
@@ -61,7 +62,7 @@ export function AddSmartColumnDialog({
 
   useEffect(() => {
     if (!open) return;
-    setSource(editing?.source ?? "metadata");
+    setSource(editing?.source ?? DEFAULT_SOURCE);
     setPath(editing?.path ?? "");
     setLabel(editing?.label ?? "");
     setLabelEdited(editing !== null);
@@ -122,84 +123,101 @@ export function AddSmartColumnDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-[820px]!">
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
-        <div className="flex flex-col gap-4 p-1">
-          <div className="flex flex-col gap-1.5">
-            <Label>Source</Label>
-            <SegmentedControl
-              name="smart-column-source"
-              value={source}
-              options={SOURCE_OPTIONS}
-              onChange={(value: string) => setSource(value as SmartColumnSource)}
-              fullWidth
-            />
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              Metadata is what the run writes about itself while it runs, so it has a value before
-              the run ends. Payload is what you triggered it with; output is what it returned.
-            </Paragraph>
-          </div>
+        <div className="flex flex-col gap-5 p-1">
+          <Callout variant="info">
+            Display only. A smart column shows you a value from a run, but you can't sort or filter
+            the list by it. To narrow the list, use tags or the query editor.
+          </Callout>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>JSON path</Label>
-              <Input
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder="$.failed"
-                spellCheck={false}
-              />
-              <Paragraph variant="extra-small" className="text-text-dimmed">
-                Dot and bracket notation, e.g. <code>$.failed</code> or{" "}
-                <code>$.suites[0].name</code>.
-              </Paragraph>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_300px]">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1.5">
+                <Label>Source</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SOURCE_CARDS.map((card) => (
+                    <SourceCard
+                      key={card.value}
+                      label={card.label}
+                      description={card.description}
+                      selected={source === card.value}
+                      onSelect={() => setSource(card.value)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label>JSON path</Label>
+                  <Input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder="$.order.total"
+                    spellCheck={false}
+                  />
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Dot and bracket notation, e.g. <code>$.order.total</code> or{" "}
+                    <code>$.items[0].sku</code>.
+                  </Paragraph>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Column label</Label>
+                  <Input
+                    value={effectiveLabel}
+                    onChange={(e) => {
+                      setLabel(e.target.value);
+                      setLabelEdited(true);
+                    }}
+                    placeholder={labelFromPath(path)}
+                  />
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Defaults to the last part of the path.
+                  </Paragraph>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Display as</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DISPLAY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDisplayAs(option.value)}
+                      className={cn(
+                        "rounded-full border px-3.5 py-1 text-sm transition",
+                        displayAs === option.value
+                          ? "border-blue-500 bg-blue-500/10 text-text-bright"
+                          : "border-grid-bright text-text-dimmed hover:text-text-bright"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Number right-aligns the column and uses tabular figures. Anything that doesn't
+                  parse falls back to text.
+                </Paragraph>
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Column label</Label>
-              <Input
-                value={effectiveLabel}
-                onChange={(e) => {
-                  setLabel(e.target.value);
-                  setLabelEdited(true);
-                }}
-                placeholder={labelFromPath(path)}
-              />
-              <Paragraph variant="extra-small" className="text-text-dimmed">
-                Defaults to the last part of the path. Rename it to anything you like.
-              </Paragraph>
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label>Display as</Label>
-            <SegmentedControl
-              name="smart-column-display"
-              value={displayAs}
-              options={DISPLAY_OPTIONS}
-              onChange={(value: string) => setDisplayAs(value as SmartColumnDisplay)}
-              fullWidth
-            />
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              Number right-aligns the column and uses tabular figures. Anything that doesn't parse
-              falls back to text.
-            </Paragraph>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 rounded border border-grid-dimmed p-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 self-start rounded-lg border border-grid-dimmed bg-background-dimmed p-3">
               <Paragraph variant="extra-extra-small/dimmed/caps">
                 Sample — {source} of the newest run
               </Paragraph>
-              <pre className="max-h-40 overflow-auto rounded bg-background-dimmed p-2 text-xs text-text-dimmed">
+              <pre className="max-h-44 overflow-auto rounded bg-charcoal-900 p-2 text-xs text-text-dimmed">
                 {sample.state === "loading"
                   ? "Loading…"
                   : sampleRun
                     ? sampleJson
                     : "// no runs to sample"}
               </pre>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Paragraph variant="extra-extra-small/dimmed/caps">Resolves to</Paragraph>
+              <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
+                Resolves to
+              </Paragraph>
               <SmartColumnResolvedPreview label={effectiveLabel} resolved={resolved} />
               {sampleRun && (
                 <Paragraph variant="extra-small" className="text-text-dimmed">
@@ -209,19 +227,6 @@ export function AddSmartColumnDialog({
               )}
             </div>
           </div>
-
-          <div className="flex items-center gap-6 rounded border border-grid-dimmed px-3 py-2 opacity-60">
-            <Switch variant="small" label="Sort by this column" disabled checked={false} />
-            <Switch variant="small" label="Add to filters" disabled checked={false} />
-            <Paragraph variant="extra-small" className="ml-auto text-text-dimmed">
-              Both off, and not switchable
-            </Paragraph>
-          </div>
-
-          <Callout variant="warning">
-            Display only. A smart column shows you a value, but you can't sort or filter the list by
-            it. To narrow the list, use tags or the query editor.
-          </Callout>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed p-3">
           <Button variant="tertiary/medium" onClick={() => onOpenChange(false)}>
@@ -233,6 +238,45 @@ export function AddSmartColumnDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SourceCard({
+  label,
+  description,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  description: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition",
+        selected
+          ? "border-blue-500 bg-blue-500/10"
+          : "border-grid-bright bg-background-dimmed hover:border-text-dimmed"
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-medium text-text-bright">
+        <span
+          className={cn(
+            "grid size-3.5 flex-none place-items-center rounded-full border",
+            selected ? "border-blue-500" : "border-text-dimmed"
+          )}
+        >
+          {selected && <span className="size-1.5 rounded-full bg-blue-500" />}
+        </span>
+        {label}
+      </span>
+      <span className="text-xs text-text-dimmed">{description}</span>
+    </button>
   );
 }
 
