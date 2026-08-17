@@ -6,7 +6,7 @@ description: "Gracefully migrate chat agents to a new deployment using chat.requ
 
 Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the **old** code. If your deploy includes breaking changes (new tools, changed schemas, updated API contracts), this can cause issues.
 
-`chat.requestUpgrade()` lets `chat.agent()` and the `chat.createSession()` iterator opt out of the current run so the transport triggers a new one on the latest version. Fully hand-rolled custom agents use `chat.endAndContinue()` at a completed turn boundary for the same Session handoff.
+`chat.requestUpgrade()` is the managed upgrade signal for `chat.agent()` and the `chat.createSession()` iterator. Fully hand-rolled custom agents use `chat.endAndContinue()` between turns to immediately hand the Session to a new run.
 
 ## How it works
 
@@ -153,18 +153,23 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 
 ## Custom agents
 
-`chat.requestUpgrade()` is consumed by both `chat.agent()` and the `chat.createSession()` iterator. In a fully hand-rolled `chat.customAgent()` task, finish the turn, persist any application state, then call `chat.endAndContinue()` and return immediately:
+Use `chat.requestUpgrade()` with `chat.agent()` and the `chat.createSession()` iterator. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
 
 ```ts
-await chat.writeTurnComplete();
+messageSubscription.off();
+stop.cleanup();
 await persistMessages(conversation.uiMessages);
-return chat.endAndContinue();
+await chat.writeTurnComplete();
+await chat.endAndContinue();
+return;
 ```
 
 The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version unless the Session's trigger configuration sets `lockToVersion`.
 
+If input arrives that the continuation should process, detach the old listeners and skip the final `chat.writeTurnComplete()`. A turn-complete boundary acknowledges the latest input dispatched to the old run, so writing one after that input would cause the continuation to resume past it.
+
 <Warning>
-  `chat.endAndContinue()` starts the successor but does not stop the calling run. Call it only after `chat.writeTurnComplete()` and after detaching the old run's input listeners, then perform no more Session reads or writes and return from the task.
+  `chat.endAndContinue()` starts the successor but does not stop the calling run. Perform no more Session reads or writes after calling it, and return from the task. If the handoff fails, the promise rejects.
 </Warning>
 
 ## Interaction with recovery boot

@@ -8713,22 +8713,27 @@ function requestUpgrade(): void {
  * Hand off the current custom agent Session to a fresh run.
  *
  * This is the low-level handoff for a fully hand-rolled
- * `chat.customAgent()` loop. (`chat.createSession()` consumes
- * {@link requestUpgrade} instead.) Call only after {@link chatWriteTurnComplete}
- * and after detaching input listeners for the old run. The server starts the
- * continuation run but does not stop this run, so return from the task
- * immediately after awaiting this function.
+ * `chat.customAgent()` loop. (Use {@link requestUpgrade} with
+ * `chat.createSession()` instead.) Call only between turns and after detaching
+ * input listeners for the old run. If the old run completed its current turn,
+ * persist its state and call {@link chatWriteTurnComplete} before handing off.
+ * Do not write a new turn boundary after receiving input that the continuation
+ * run should process: the boundary acknowledges the latest dispatched input.
+ *
+ * The server starts the continuation run but does not stop this run, so return
+ * from the task immediately after awaiting this function. The promise rejects
+ * if the server cannot complete the handoff.
  *
  * Pending Session input that the old run has not consumed remains on the
  * durable `.in` stream and is delivered to the continuation run.
  *
  * @example
  * ```ts
+ * messageSubscription.off();
+ * await persistMessages();
  * await chat.writeTurnComplete();
- *
- * if (shouldUpgrade) {
- *   return chat.endAndContinue();
- * }
+ * await chat.endAndContinue();
+ * return;
  * ```
  */
 async function endAndContinue(): Promise<void> {

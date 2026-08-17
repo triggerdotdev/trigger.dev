@@ -10,6 +10,20 @@ const CHAT_ID = "chat-end-and-continue";
 const CALLING_RUN_ID = "run_before_handoff";
 const CONTINUATION_RUN_ID = "run_after_handoff";
 
+type CustomAgentRun = (
+  payload: Record<string, unknown>,
+  options: { ctx: unknown; signal: AbortSignal }
+) => Promise<unknown>;
+
+function getCustomAgentRun(id: string): CustomAgentRun {
+  const taskEntry = resourceCatalog.getTask(id);
+  if (!taskEntry) {
+    throw new Error(`Task ${id} was not registered`);
+  }
+
+  return taskEntry.fns.run as CustomAgentRun;
+}
+
 class DurableTestSessionStreamManager extends TestSessionStreamManager {
   override reset(): void {
     // The Session stream outlives either task run. Drop run-local listeners,
@@ -27,7 +41,7 @@ describe("chat.endAndContinue", () => {
     vi.restoreAllMocks();
   });
 
-  it("ends cleanly and leaves pending input for the continuation run", async () => {
+  it("ends cleanly and leaves unconsumed input for the continuation run", async () => {
     let continuationMessage: unknown;
 
     const agent = chat.customAgent({
@@ -49,12 +63,7 @@ describe("chat.endAndContinue", () => {
       },
     });
 
-    const taskEntry = resourceCatalog.getTask(agent.id);
-    expect(taskEntry).toBeDefined();
-    const runFn = taskEntry!.fns.run as (
-      payload: Record<string, unknown>,
-      options: { ctx: unknown; signal: AbortSignal }
-    ) => Promise<unknown>;
+    const runFn = getCustomAgentRun(agent.id);
 
     const readSessionStreamRecords = vi.fn(async () => ({ records: [] }));
     const endAndContinueSession = vi.fn(async () => ({
@@ -125,6 +134,43 @@ describe("chat.endAndContinue", () => {
     } finally {
       sessionStreams.dispose();
     }
+  });
+
+  it("rejects when the server handoff fails", async () => {
+    const agent = chat.customAgent({
+      id: "end-and-continue-failure-agent",
+      run: async () => {
+        return chat.endAndContinue();
+      },
+    });
+
+    const runFn = getCustomAgentRun(agent.id);
+
+    const readSessionStreamRecords = vi.fn(async () => ({ records: [] }));
+    const endAndContinueSession = vi.fn(async () => {
+      throw new Error("handoff failed");
+    });
+    vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+      readSessionStreamRecords,
+      endAndContinueSession,
+    } as never);
+
+    await runInMockTaskContext(
+      async (drivers) => {
+        await expect(
+          runFn(
+            { chatId: CHAT_ID, trigger: "preload", metadata: {} },
+            { ctx: drivers.ctx, signal: new AbortController().signal }
+          )
+        ).rejects.toThrow("handoff failed");
+      },
+      { ctx: { run: { id: CALLING_RUN_ID } } }
+    );
+
+    expect(endAndContinueSession).toHaveBeenCalledWith(CHAT_ID, {
+      callingRunId: CALLING_RUN_ID,
+      reason: "upgrade",
+    });
   });
 
   it("rejects calls outside a custom agent run", async () => {
