@@ -62,13 +62,9 @@ const distributedTime = calculateDistributedExecutionTime(exactTime, 30); // 30-
 High-performance CRON schedule calculation with optimization for old timestamps:
 
 ```typescript
-import {
-  calculateNextScheduledTimestampFromNow,
-  nextScheduledTimestamps,
-} from "@internal/schedule-engine";
+import { calculateNextNominalTimestamp } from "@internal/schedule-engine";
 
-const nextRun = calculateNextScheduledTimestampFromNow("0 */5 * * *", "UTC");
-const upcoming = nextScheduledTimestamps("0 */5 * * *", "UTC", nextRun, 5);
+const nextRun = calculateNextNominalTimestamp("0 */5 * * *", "UTC", new Date());
 ```
 
 ## Integration with Webapp
