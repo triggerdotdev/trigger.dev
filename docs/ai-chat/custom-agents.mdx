@@ -238,6 +238,10 @@ message that `next()` can consume immediately. It does not query the remote
 Session channel or start a subscription. Use `waitWithIdleTimeout()` when the
 loop needs to idle until future input arrives.
 
+`next({ timeoutInSeconds: 0 })` is also a local, non-blocking read. Call
+`next()` without a timeout, or with a positive timeout, to subscribe for future
+input.
+
 `next()` returns a readonly record envelope:
 
 ```ts
