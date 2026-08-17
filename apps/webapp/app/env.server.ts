@@ -211,7 +211,10 @@ const EnvironmentSchema = z
     ANTHROPIC_API_KEY: z.string().optional(),
     // Selects the dashboard agent's LLM provider (default anthropic). The internal
     // seam reads process.env directly; this entry validates the value webapp-side.
-    DASHBOARD_AGENT_MODEL_PROVIDER: z.enum(["anthropic", "bedrock"]).default("anthropic"),
+    DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.enum(["anthropic", "bedrock"]).default("anthropic")
+    ),
     // AWS credentials for the dashboard agent's Bedrock provider (only used when
     // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
     // provider resolves credentials itself, so only the region is read here.

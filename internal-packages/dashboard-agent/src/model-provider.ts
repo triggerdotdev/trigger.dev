@@ -54,11 +54,11 @@ export const registry = createProviderRegistry({ anthropic, bedrock });
 
 /**
  * Canonical model id -> Bedrock us cross-region inference profile, verbatim from
- * the @ai-sdk/amazon-bedrock model-id union. The 4-6 generation profiles are
- * undated `-vN`; 4-5 and older carry a date and a `:N` suffix.
+ * Anthropic's official Bedrock model table. No shared suffix convention across
+ * models — copy each id exactly rather than deriving it.
  */
 export const BEDROCK_MODEL_IDS: Record<string, string> = {
-  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-v1",
+  "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
   "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 };
 

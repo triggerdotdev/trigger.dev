@@ -49,7 +49,7 @@ describe("resolveDashboardAgentModel", () => {
   it("maps the same canonical string to a Bedrock inference profile", () => {
     useBedrock();
     expect(resolveDashboardAgentModel("anthropic:claude-sonnet-4-6").modelId).toBe(
-      "us.anthropic.claude-sonnet-4-6-v1"
+      "us.anthropic.claude-sonnet-4-6"
     );
     expect(resolveDashboardAgentModel("anthropic:claude-haiku-4-5").modelId).toBe(
       "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -63,16 +63,13 @@ describe("resolveDashboardAgentModel", () => {
     );
   });
 
-  // Structural, not an echo of the table: an AWS us cross-region Anthropic profile
-  // is either dated with a `:N` suffix, or an undated `-vN` (the 4-6 generation). A
-  // dated id must never drop its `:N`, and every id must end in a version.
-  it("every Bedrock-mapped id has a well-formed AWS inference-profile shape", () => {
-    const dated = /^us\.anthropic\.claude-[a-z]+(?:-\d+)+-\d{8}-v\d+:\d+$/;
-    const undated = /^us\.anthropic\.claude-[a-z]+(?:-\d+)+-v\d+$/;
-    for (const id of Object.values(BEDROCK_MODEL_IDS)) {
-      expect(dated.test(id) || undated.test(id), id).toBe(true);
-      if (/-\d{8}-/.test(id)) expect(id, id).toMatch(/:\d+$/);
-    }
+  // Pinned to Anthropic's official Bedrock model table, not a shape regex — there is
+  // no shared suffix convention across models, so a well-formed id can still be wrong.
+  it("maps every model to its exact documented Bedrock id", () => {
+    expect(BEDROCK_MODEL_IDS).toEqual({
+      "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+      "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    });
   });
 });
 
