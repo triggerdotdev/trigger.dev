@@ -53,7 +53,8 @@ export const loader = createLoaderPATApiRoute(
       slug: project.slug,
       createdAt: project.createdAt,
       defaultRegion: project.defaultWorkerGroup?.name ?? null,
-      defaultRuntime: BuildRuntime.nullable().parse(project.defaultRuntime ?? null),
+      defaultRuntime:
+        BuildRuntime.nullable().safeParse(project.defaultRuntime ?? null).data ?? null,
       organization: {
         id: project.organization.id,
         title: project.organization.title,

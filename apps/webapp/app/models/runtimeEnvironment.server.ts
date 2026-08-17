@@ -78,7 +78,7 @@ export function toAuthenticated(
       defaultWorkerGroupId: env.project.defaultWorkerGroupId,
       organizationId: env.project.organizationId,
       builderProjectId: env.project.builderProjectId,
-      defaultRuntime: BuildRuntime.nullable().parse(env.project.defaultRuntime),
+      defaultRuntime: BuildRuntime.nullable().safeParse(env.project.defaultRuntime).data ?? null,
     },
     organization: {
       id: env.organization.id,

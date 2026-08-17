@@ -65,7 +65,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       name: environment.project.name,
       apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
       projectId: environment.project.id,
-      defaultRuntime: BuildRuntime.nullable().parse(environment.project.defaultRuntime ?? null),
+      defaultRuntime:
+        BuildRuntime.nullable().safeParse(environment.project.defaultRuntime ?? null).data ?? null,
     };
 
     return json(result);
