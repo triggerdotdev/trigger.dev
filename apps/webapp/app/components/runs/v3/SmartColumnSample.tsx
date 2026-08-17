@@ -8,9 +8,10 @@ const AUTO_OPEN_DEPTH = 2;
 const MAX_STRING = 80;
 
 /**
- * A clickable, syntax-colored JSON tree for the smart-column sample. Clicking a
- * key (or array index) fills the JSON path field via `onSelectPath`; the value
- * currently at `activePath` is highlighted.
+ * A clickable, syntax-colored JSON tree for the smart-column sample. Only leaf
+ * values are selectable: clicking one fills the JSON path field via
+ * `onSelectPath` and highlights it. Object/array rows only expand and collapse,
+ * so you drill into a container and pick a leaf inside it.
  */
 export function SmartColumnSample({
   value,
@@ -59,39 +60,23 @@ function JsonNode({
   const [open, setOpen] = useState(depth < AUTO_OPEN_DEPTH);
   const isObject = value !== null && typeof value === "object";
   const selected = path === activePath;
-
-  const keyButton =
-    name !== undefined ? (
-      <button
-        type="button"
-        onClick={() => onSelectPath(path)}
-        className={cn(
-          "rounded px-0.5 text-sky-300 hover:bg-blue-500/20",
-          selected && "bg-blue-500/30 text-sky-200"
-        )}
-      >
-        {typeof name === "number" ? name : `"${name}"`}
-      </button>
-    ) : depth === 0 && !isObject ? (
-      <button
-        type="button"
-        onClick={() => onSelectPath("$")}
-        className={cn(
-          "rounded px-0.5 text-text-dimmed hover:bg-blue-500/20",
-          selected && "bg-blue-500/30"
-        )}
-      >
-        $
-      </button>
-    ) : null;
+  const keyLabel = name === undefined ? null : typeof name === "number" ? name : `"${name}"`;
 
   if (!isObject) {
+    const target = name === undefined ? "$" : path;
     return (
-      <div className="whitespace-pre">
-        {keyButton}
-        {keyButton && <span className="text-text-dimmed">: </span>}
+      <button
+        type="button"
+        onClick={() => onSelectPath(target)}
+        className={cn(
+          "flex w-full items-baseline whitespace-pre rounded px-0.5 text-left hover:bg-blue-500/15",
+          selected && "bg-blue-500/25"
+        )}
+      >
+        {keyLabel !== null && <span className="text-sky-300">{keyLabel}</span>}
+        {keyLabel !== null && <span className="text-text-dimmed">: </span>}
         <PrimitiveValue value={value} />
-      </div>
+      </button>
     );
   }
 
@@ -105,17 +90,16 @@ function JsonNode({
 
   return (
     <div>
-      <div className="flex items-start whitespace-pre">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-label={open ? "Collapse" : "Expand"}
-          className="mr-1 w-3 shrink-0 text-text-dimmed hover:text-text-bright"
-        >
-          {open ? "▾" : "▸"}
-        </button>
-        {keyButton}
-        {keyButton && <span className="text-text-dimmed">: </span>}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Collapse" : "Expand"}
+        aria-expanded={open}
+        className="flex w-full items-start whitespace-pre rounded px-0.5 text-left hover:bg-charcoal-750"
+      >
+        <span className="mr-1 w-3 shrink-0 text-text-dimmed">{open ? "▾" : "▸"}</span>
+        {keyLabel !== null && <span className="text-sky-300">{keyLabel}</span>}
+        {keyLabel !== null && <span className="text-text-dimmed">: </span>}
         <span className="text-text-dimmed">
           {openBrace}
           {!open && `… ${closeBrace}`}
@@ -123,7 +107,7 @@ function JsonNode({
             <span className="ml-1 text-faint">{`${entries.length} ${isArray ? "items" : "keys"}`}</span>
           )}
         </span>
-      </div>
+      </button>
       {open && (
         <div className="ml-[0.4rem] border-l border-grid-dimmed/50 pl-3">
           {shown.map(([key, childValue]) => (

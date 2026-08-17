@@ -222,7 +222,8 @@ export function AddSmartColumnDialog({
                     onSelectPath={setPath}
                   />
                   <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Click a key to use its path.
+                    Click a value to use its path. Expand objects and arrays to reach the value you
+                    want.
                   </Paragraph>
                 </>
               )}
