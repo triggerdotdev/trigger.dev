@@ -1,5 +1,6 @@
 {
-  "references": [{ "path": "./tsconfig.src.json" }, { "path": "./tsconfig.test.json" }],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"],
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM"],
@@ -12,7 +13,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "strict": true,
+    "types": ["node"],
     "customConditions": ["@triggerdotdev/source"]
-  },
-  "exclude": ["node_modules", "dist"]
+  }
 }

@@ -1,8 +1,8 @@
 {
-  "references": [{ "path": "./tsconfig.src.json" }, { "path": "./tsconfig.test.json" }],
+  "include": ["src/**/*.test.ts"],
   "compilerOptions": {
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM"],
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "esModuleInterop": true,
@@ -12,7 +12,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "strict": true,
+    "types": ["vitest/globals", "node"],
     "customConditions": ["@triggerdotdev/source"]
-  },
-  "exclude": ["node_modules", "dist"]
+  }
 }
