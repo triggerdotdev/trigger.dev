@@ -249,7 +249,10 @@ export function useRunsLiveReload({
       }
 
       const locationParams = new URLSearchParams(location.search);
-      for (const col of locationParams.getAll("cols")) searchParams.append("cols", col);
+      const colsValue = locationParams.get("cols");
+      if (colsValue) searchParams.set("cols", colsValue);
+      const hideValue = locationParams.get("hide");
+      if (hideValue) searchParams.set("hide", hideValue);
       for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
 
       if (checkForNewRuns) {

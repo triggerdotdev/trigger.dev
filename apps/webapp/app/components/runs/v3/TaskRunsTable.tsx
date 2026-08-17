@@ -66,6 +66,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import {
+  parseColumnParams,
   resolveColumnLayout,
   visibleSmartSources,
   type ResolvedColumn,
@@ -655,15 +656,15 @@ export function TaskRunsTable({
   const tableStateParam = disableAdjacentRows ? "" : encodeURIComponent(search);
 
   const isDevelopment = environment.type === "DEVELOPMENT";
-  const colsFromUrl = values("cols");
+  const colsParam = value("cols");
+  const hideParam = value("hide");
   const scFromUrl = values("sc");
-  const colsKey = colsFromUrl.join(" ");
   const scKey = scFromUrl.join(" ");
   const layout = useMemo(() => {
     const runtime: RunColumnRuntime = { isManagedCloud, isDevelopment };
-    return resolveColumnLayout({ cols: colsFromUrl, sc: scFromUrl }, runtime);
+    return resolveColumnLayout(parseColumnParams(colsParam, scFromUrl, hideParam), runtime);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colsKey, scKey, isManagedCloud, isDevelopment]);
+  }, [colsParam, hideParam, scKey, isManagedCloud, isDevelopment]);
 
   const visibleColumns = layout.visible;
   const referencedSources = useMemo(() => visibleSmartSources(visibleColumns), [visibleColumns]);

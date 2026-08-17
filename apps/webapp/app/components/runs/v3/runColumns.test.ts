@@ -88,9 +88,16 @@ const orderedIds = (layout: { ordered: { col: ResolvedColumn }[] }) =>
 const visibleIds = (layout: { visible: ResolvedColumn[] }) =>
   layout.visible.map((c) => (c.kind === "standard" ? c.def.id : c.def.label));
 
+const params = (over: Partial<{ cols: string[]; sc: string[]; hide: string[] }> = {}) => ({
+  cols: [],
+  sc: [],
+  hide: [],
+  ...over,
+});
+
 describe("resolveColumnLayout", () => {
-  it("returns the default layout when cols is absent", () => {
-    const layout = resolveColumnLayout({ cols: [], sc: [] }, cloud);
+  it("returns the default layout when no params are set", () => {
+    const layout = resolveColumnLayout(params(), cloud);
     expect(layout.isCustomized).toBe(false);
     expect(layout.ordered.every((o) => !o.hidden)).toBe(true);
     expect(layout.ordered[0].col).toMatchObject({ kind: "standard", def: { id: "id" } });
@@ -98,37 +105,31 @@ describe("resolveColumnLayout", () => {
   });
 
   it("keeps every column in the requested order (columns are reorderable)", () => {
-    const layout = resolveColumnLayout({ cols: ["task", "status", "id"], sc: [] }, cloud);
+    const layout = resolveColumnLayout(params({ cols: ["task", "status", "id"] }), cloud);
     expect(orderedIds(layout).slice(0, 3)).toEqual(["task", "status", "id"]);
   });
 
-  it("hides a `-`-prefixed column in place without dropping it from the order", () => {
-    const layout = resolveColumnLayout(
-      { cols: ["id", "task", "status", "ver", "-ttl", "tags"], sc: [] },
-      cloud
-    );
+  it("hides columns from the `hide` list in place, keeping the default order", () => {
+    const layout = resolveColumnLayout(params({ hide: ["ttl"] }), cloud);
     const ttl = layout.ordered.find((o) => o.col.kind === "standard" && o.col.def.id === "ttl");
     expect(ttl?.hidden).toBe(true);
     const ids = orderedIds(layout);
-    expect(ids.indexOf("ttl")).toBeGreaterThan(ids.indexOf("ver"));
     expect(ids.indexOf("ttl")).toBeLessThan(ids.indexOf("tags"));
     expect(visibleIds(layout)).not.toContain("ttl");
   });
 
-  it("never hides locked columns, even with a `-` prefix", () => {
-    const layout = resolveColumnLayout({ cols: ["id", "-task", "-status", "ver"], sc: [] }, cloud);
-    const locked = layout.ordered.filter(
-      (o) => o.col.kind === "standard" && o.col.def.locked
-    );
+  it("never hides locked columns even if the `hide` list names them", () => {
+    const layout = resolveColumnLayout(params({ hide: ["task", "status"] }), cloud);
+    const locked = layout.ordered.filter((o) => o.col.kind === "standard" && o.col.def.locked);
     expect(locked.every((o) => !o.hidden)).toBe(true);
   });
 
   it("reinserts standard columns missing from the URL as visible", () => {
-    const layout = resolveColumnLayout({ cols: ["id", "ver"], sc: [] }, cloud);
+    const layout = resolveColumnLayout(params({ cols: ["id", "ver"] }), cloud);
     expect(visibleIds(layout)).toEqual(expect.arrayContaining(["task", "status", "tags", "ttl"]));
   });
 
-  it("resolves smart-column refs positionally", () => {
+  it("resolves smart-column refs positionally, even without a cols order", () => {
     const sc = [
       encodeSmartColumn({
         source: "metadata",
@@ -137,28 +138,52 @@ describe("resolveColumnLayout", () => {
         displayAs: "number",
       }),
     ];
-    const layout = resolveColumnLayout({ cols: ["id", "sc1"], sc }, cloud);
+    const layout = resolveColumnLayout(params({ sc }), cloud);
     const smart = layout.visible.find((c) => c.kind === "smart");
     expect(smart).toMatchObject({ kind: "smart", def: { label: "Failed", source: "metadata" } });
   });
 
   it("drops gated columns referenced on a runtime that lacks them", () => {
-    const layout = resolveColumnLayout({ cols: ["id", "region", "compute", "task"], sc: [] }, dev);
+    const layout = resolveColumnLayout(params({ cols: ["id", "region", "compute", "task"] }), dev);
     expect(orderedIds(layout)).not.toContain("region");
     expect(orderedIds(layout)).not.toContain("compute");
     expect(orderedIds(layout).slice(0, 2)).toEqual(["id", "task"]);
   });
 });
 
-describe("encodeColumnLayout round-trip", () => {
+describe("encodeColumnLayout compactness + round-trip", () => {
   const std = (id: string) => ({
     kind: "standard" as const,
     def: availableStandardColumns(cloud).find((c) => c.id === id)!,
   });
 
   it("encodes the default layout to empty params", () => {
-    const layout = resolveColumnLayout({ cols: [], sc: [] }, cloud);
-    expect(encodeColumnLayout(layout.ordered, cloud)).toEqual({ cols: [], sc: [] });
+    const layout = resolveColumnLayout(params(), cloud);
+    expect(encodeColumnLayout(layout.ordered, cloud)).toEqual({ cols: [], sc: [], hide: [] });
+  });
+
+  it("hiding a column with the default order emits only a hide entry, no cols", () => {
+    const layout = resolveColumnLayout(params({ hide: ["ver"] }), cloud);
+    const encoded = encodeColumnLayout(layout.ordered, cloud);
+    expect(encoded.cols).toEqual([]);
+    expect(encoded.hide).toEqual(["ver"]);
+    expect(encoded.sc).toEqual([]);
+  });
+
+  it("appending a smart column with the default order emits only sc, no cols", () => {
+    const scDef: SmartColumnDef = {
+      source: "metadata",
+      path: "$.failed",
+      label: "Failed",
+      displayAs: "number",
+    };
+    const layout = resolveColumnLayout(params(), cloud);
+    const encoded = encodeColumnLayout(
+      [...layout.ordered, { col: { kind: "smart", index: 0, def: scDef }, hidden: false }],
+      cloud
+    );
+    expect(encoded.cols).toEqual([]);
+    expect(encoded.sc).toHaveLength(1);
   });
 
   it("round-trips a reordered, hidden, smart-augmented layout", () => {
@@ -177,7 +202,8 @@ describe("encodeColumnLayout round-trip", () => {
       ],
       cloud
     );
-    expect(encoded.cols).toEqual(["id", "status", "-ttl", "sc1"]);
+    expect(encoded.cols).toEqual(["id", "status", "ttl", "sc1"]);
+    expect(encoded.hide).toEqual(["ttl"]);
     expect(encoded.sc).toHaveLength(1);
 
     const layout = resolveColumnLayout(encoded, cloud);

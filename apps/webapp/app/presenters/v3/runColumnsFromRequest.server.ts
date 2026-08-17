@@ -1,4 +1,5 @@
 import {
+  parseColumnParams,
   resolveColumnLayout,
   visibleSmartSources,
   visibleStandardIds,
@@ -18,7 +19,11 @@ export function getRunColumnsForSelect(request: Request): {
 } {
   const url = new URL(request.url);
   const layout = resolveColumnLayout(
-    { cols: url.searchParams.getAll("cols"), sc: url.searchParams.getAll("sc") },
+    parseColumnParams(
+      url.searchParams.get("cols"),
+      url.searchParams.getAll("sc"),
+      url.searchParams.get("hide")
+    ),
     { isManagedCloud: true, isDevelopment: false }
   );
 

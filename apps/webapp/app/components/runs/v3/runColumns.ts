@@ -268,17 +268,28 @@ export type ColumnLayout = {
   isCustomized: boolean;
 };
 
-/** A hidden column is written into `cols` with this prefix, keeping its slot. */
-const HIDDEN_PREFIX = "-";
+export type ColumnLayoutParams = { cols: string[]; sc: string[]; hide: string[] };
+export type EncodedColumnLayout = { cols: string[]; sc: string[]; hide: string[] };
 
 /**
- * Resolve the on-screen layout from the URL params and the runtime gates. `cols`
- * carries the full column order; a `-`-prefixed token is hidden but keeps its
- * position. When `cols` is absent the default layout (all available standard
- * columns in default order, nothing hidden) is returned and `sc` is ignored.
+ * The order columns take when `cols` is absent: standard columns in default
+ * order, then smart columns in their `sc` definition order.
+ */
+function canonicalOrder(available: StandardColumnDef[], smartCount: number): string[] {
+  return [
+    ...available.map((def) => def.id as string),
+    ...Array.from({ length: smartCount }, (_, i) => smartColumnRef(i)),
+  ];
+}
+
+/**
+ * Resolve the on-screen layout from the URL params and the runtime gates.
+ * `cols` is present only when the order differs from the default; otherwise the
+ * default order is used. `hide` lists the columns that are hidden but still
+ * occupy their slot, so hiding a column does not rewrite the whole order.
  */
 export function resolveColumnLayout(
-  params: { cols: string[]; sc: string[] },
+  params: ColumnLayoutParams,
   runtime: RunColumnRuntime
 ): ColumnLayout {
   const available = availableStandardColumns(runtime);
@@ -286,40 +297,48 @@ export function resolveColumnLayout(
   const smartColumns = params.sc
     .map(decodeSmartColumn)
     .filter((c): c is SmartColumnDef => c !== undefined);
+  const hideSet = new Set(params.hide);
 
-  if (params.cols.length === 0) {
-    const ordered = available.map<LayoutColumn>((def) => ({
-      col: { kind: "standard", def },
-      hidden: false,
-    }));
-    return { ordered, visible: ordered.map((o) => o.col), smartColumns, isCustomized: false };
-  }
+  const baseTokens =
+    params.cols.length > 0 ? params.cols : canonicalOrder(available, smartColumns.length);
 
   const ordered: LayoutColumn[] = [];
   const seenStandard = new Set<RunColumnId>();
+  const seenSmart = new Set<number>();
 
-  for (const token of params.cols) {
-    const hidden = token.startsWith(HIDDEN_PREFIX);
-    const base = hidden ? token.slice(HIDDEN_PREFIX.length) : token;
-
-    const smartIndex = parseSmartColumnRef(base);
+  for (const token of baseTokens) {
+    const smartIndex = parseSmartColumnRef(token);
     if (smartIndex !== undefined) {
       const def = smartColumns[smartIndex];
-      if (def) ordered.push({ col: { kind: "smart", index: smartIndex, def }, hidden });
+      if (!def || seenSmart.has(smartIndex)) continue;
+      ordered.push({ col: { kind: "smart", index: smartIndex, def }, hidden: hideSet.has(token) });
+      seenSmart.add(smartIndex);
       continue;
     }
 
-    if (seenStandard.has(base as RunColumnId)) continue;
-    const def = availableById.get(base as RunColumnId);
+    if (seenStandard.has(token as RunColumnId)) continue;
+    const def = availableById.get(token as RunColumnId);
     if (!def) continue;
-    ordered.push({ col: { kind: "standard", def }, hidden: hidden && !def.locked });
+    ordered.push({
+      col: { kind: "standard", def },
+      hidden: hideSet.has(token) && !def.locked,
+    });
     seenStandard.add(def.id);
   }
 
   ensureAllStandardColumnsPresent(ordered, seenStandard, available);
 
+  for (let i = 0; i < smartColumns.length; i++) {
+    if (seenSmart.has(i)) continue;
+    ordered.push({
+      col: { kind: "smart", index: i, def: smartColumns[i] },
+      hidden: hideSet.has(smartColumnRef(i)),
+    });
+  }
+
   const visible = ordered.filter((o) => !o.hidden).map((o) => o.col);
-  return { ordered, visible, smartColumns, isCustomized: true };
+  const isCustomized = params.cols.length > 0 || params.hide.length > 0 || smartColumns.length > 0;
+  return { ordered, visible, smartColumns, isCustomized };
 }
 
 /**
@@ -349,25 +368,16 @@ function ensureAllStandardColumnsPresent(
 }
 
 /**
- * Serialize a layout back to `cols`/`sc` params. Returns empty arrays for the
- * default layout so the URL stays clean (the caller deletes both keys).
+ * Serialize a layout to compact `cols`/`sc`/`hide` params. `cols` is omitted
+ * whenever the order still matches the default, so hiding a column produces just
+ * a `hide` entry rather than the entire ordered list. All arrays empty means the
+ * default layout, and the caller deletes the keys.
  */
 export function encodeColumnLayout(
   ordered: LayoutColumn[],
   runtime: RunColumnRuntime
-): { cols: string[]; sc: string[] } {
+): EncodedColumnLayout {
   const available = availableStandardColumns(runtime);
-  const hasSmart = ordered.some((o) => o.col.kind === "smart");
-  const isDefault =
-    !hasSmart &&
-    ordered.length === available.length &&
-    ordered.every(
-      (o, i) => o.col.kind === "standard" && o.col.def.id === available[i]?.id && !o.hidden
-    );
-
-  if (isDefault) {
-    return { cols: [], sc: [] };
-  }
 
   const sc: string[] = [];
   const smartRefByIndex = new Map<number, string>();
@@ -379,12 +389,31 @@ export function encodeColumnLayout(
     }
   }
 
-  const cols = ordered.map(({ col, hidden }) => {
-    const base = col.kind === "standard" ? col.def.id : (smartRefByIndex.get(col.index) as string);
-    return hidden ? `${HIDDEN_PREFIX}${base}` : base;
-  });
+  const tokenFor = (col: ResolvedColumn) =>
+    col.kind === "standard" ? (col.def.id as string) : (smartRefByIndex.get(col.index) as string);
 
-  return { cols, sc };
+  const baseTokens = ordered.map(({ col }) => tokenFor(col));
+  const hide = ordered.filter((o) => o.hidden).map(({ col }) => tokenFor(col));
+
+  const canonical = canonicalOrder(available, sc.length);
+  const orderIsDefault =
+    baseTokens.length === canonical.length && baseTokens.every((t, i) => t === canonical[i]);
+
+  return { cols: orderIsDefault ? [] : baseTokens, sc, hide };
+}
+
+/**
+ * Parse the raw URL values into layout params. `cols` and `hide` are single
+ * comma-joined params; `sc` is repeated.
+ */
+export function parseColumnParams(
+  cols: string | null | undefined,
+  sc: string[],
+  hide: string | null | undefined
+): ColumnLayoutParams {
+  const split = (value: string | null | undefined) =>
+    value ? value.split(",").filter(Boolean) : [];
+  return { cols: split(cols), sc, hide: split(hide) };
 }
 
 /** The set of smart-column sources referenced by the visible layout. */

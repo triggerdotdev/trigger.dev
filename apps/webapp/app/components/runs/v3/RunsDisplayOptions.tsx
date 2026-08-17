@@ -18,6 +18,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
 import {
   encodeColumnLayout,
+  parseColumnParams,
   resolveColumnLayout,
   type LayoutColumn,
   type ResolvedColumn,
@@ -36,7 +37,7 @@ export function RunsDisplayOptions() {
   const environment = useEnvironment();
   const { isManagedCloud } = useFeatures();
   const location = useOptimisticLocation();
-  const { values, replace } = useSearchParams();
+  const { value, values, replace } = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<SmartEditTarget | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -47,12 +48,13 @@ export function RunsDisplayOptions() {
     isDevelopment: environment.type === "DEVELOPMENT",
   };
 
-  const cols = values("cols");
+  const colsParam = value("cols");
+  const hideParam = value("hide");
   const sc = values("sc");
   const layout = useMemo(
-    () => resolveColumnLayout({ cols, sc }, runtime),
+    () => resolveColumnLayout(parseColumnParams(colsParam, sc, hideParam), runtime),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cols.join(" "), sc.join(" "), runtime.isManagedCloud, runtime.isDevelopment]
+    [colsParam, hideParam, sc.join(" "), runtime.isManagedCloud, runtime.isDevelopment]
   );
 
   const totalCount = layout.ordered.filter((o) => o.col.kind === "standard").length;
@@ -61,10 +63,13 @@ export function RunsDisplayOptions() {
   const applyLayout = (next: LayoutColumn[]) => {
     const encoded = encodeColumnLayout(next, runtime);
     replace({
-      cols: encoded.cols.length > 0 ? encoded.cols : undefined,
+      cols: encoded.cols.length > 0 ? encoded.cols.join(",") : undefined,
       sc: encoded.sc.length > 0 ? encoded.sc : undefined,
+      hide: encoded.hide.length > 0 ? encoded.hide.join(",") : undefined,
     });
   };
+
+  const reset = () => replace({ cols: undefined, sc: undefined, hide: undefined });
 
   const toggleHidden = (key: string) => {
     applyLayout(
@@ -92,8 +97,6 @@ export function RunsDisplayOptions() {
       ]);
     }
   };
-
-  const reset = () => replace({ cols: undefined, sc: undefined });
 
   const reorder = (fromKey: string, toKey: string) => {
     if (fromKey === toKey) return;
