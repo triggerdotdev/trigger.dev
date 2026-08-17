@@ -22,7 +22,6 @@
     "format:prisma": "pnpm --filter @trigger.dev/database run format:prisma && pnpm --filter @internal/run-ops-database run format:prisma",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "knip": "pnpm run knip:deps && knip --workspace @trigger.dev/build --workspace @trigger.dev/plugins --workspace @trigger.dev/redis-worker --workspace @trigger.dev/react-hooks --include files,exports,types",
     "knip:deps": "knip --dependencies",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "node scripts/docker.mjs -f docker/docker-compose.yml stop",
