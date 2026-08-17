@@ -31,8 +31,7 @@ sequenceDiagram
 
 Other common use cases include:
 
-- **Preventing duplicate emails** - Ensure a confirmation email is only sent once, even if the parent task retries
-- **Avoiding double-charging customers** - Prevent duplicate payment processing during retries
+- **Coordinating external side effects** - Use Trigger.dev idempotency to prevent duplicate task triggers, and use the external provider's idempotency mechanism when available to make retries of side-effecting requests safe
 - **One-time setup tasks** - Ensure initialization or migration tasks only run once
 - **Deduplicating webhook processing** - Handle the same webhook event only once, even if it's delivered multiple times
 
@@ -62,6 +61,74 @@ export const myTask = task({
 ```
 
 You can use the `idempotencyKeys.create` SDK function to create an idempotency key before passing it to the `options` object.
+
+<Warning>
+Trigger.dev idempotency keys deduplicate task-trigger requests. They do not make arbitrary side effects inside `run()` exactly-once.
+
+For external side effects, such as payments, also use the external provider's idempotency mechanism. A task can retry or crash after the provider accepts a request but before the task completes.
+</Warning>
+
+## Coordinating payment operations
+
+For a payment operation, use a deterministic business-operation ID to derive idempotency keys for both layers. Trigger.dev deduplicates child task triggers, while your payment provider deduplicates requests for the same operation.
+
+```ts trigger/refund.ts
+import { task } from "@trigger.dev/sdk";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export const refundPayment = task({
+  id: "refund-payment",
+  run: async (payload: {
+    paymentIntentId: string;
+    amount: number;
+    operationId: string;
+  }) => {
+    await stripe.refunds.create(
+      {
+        payment_intent: payload.paymentIntentId,
+        amount: payload.amount,
+      },
+      {
+        // Stripe uses this key to make retries of the same request idempotent.
+        idempotencyKey: payload.operationId,
+      }
+    );
+  },
+});
+```
+
+```ts trigger/initiate-refund.ts
+import { task } from "@trigger.dev/sdk";
+import { refundPayment } from "./refund";
+
+export const initiateRefund = task({
+  id: "initiate-refund",
+  run: async (payload: {
+    refundId: string;
+    paymentIntentId: string;
+    amount: number;
+  }) => {
+    // Use an ID that identifies this business operation, not a random value.
+    const operationId = `refund:${payload.refundId}`;
+
+    await refundPayment.trigger(
+      {
+        paymentIntentId: payload.paymentIntentId,
+        amount: payload.amount,
+        operationId,
+      },
+      {
+        // Trigger.dev deduplicates this child task trigger when this task retries.
+        idempotencyKey: operationId,
+      }
+    );
+  },
+});
+```
+
+This does not provide a universal exactly-once guarantee for arbitrary distributed side effects. Trigger.dev deduplicates task triggers, while Stripe uses the idempotency key to safely retry the same refund request.
 
 We automatically inject the run ID when generating the idempotency key when running inside a task by default. You can turn it off by passing the `scope` option to `idempotencyKeys.create`:
 
