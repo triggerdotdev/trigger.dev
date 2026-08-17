@@ -472,7 +472,7 @@ const STANDARD_RENDERERS: Record<string, StandardColumnRenderer> = {
     cell: ({ run, path }) => (
       <TableCell to={path} actionClassName="py-1" className="pr-16">
         <div className="flex gap-1">
-          {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+          {run.tags.length > 0 ? run.tags.map((tag) => <RunTag key={tag} tag={tag} />) : "–"}
         </div>
       </TableCell>
     ),
@@ -510,6 +510,8 @@ function SmartColumnCell({
     </TableCell>
   );
 }
+
+const EMPTY_SOURCES: Partial<Record<SmartColumnSource, ParsedSource>> = {};
 
 function buildRowSources(
   run: NextRunListItem,
@@ -611,6 +613,15 @@ export function TaskRunsTable({
   const visibleColumns = layout.visible;
   const referencedSources = useMemo(() => visibleSmartSources(visibleColumns), [visibleColumns]);
 
+  const sourcesByRunId = useMemo(() => {
+    const map = new Map<string, Partial<Record<SmartColumnSource, ParsedSource>>>();
+    if (referencedSources.length === 0) return map;
+    for (const run of runs) {
+      map.set(run.id, buildRowSources(run, referencedSources));
+    }
+    return map;
+  }, [runs, referencedSources]);
+
   const dataColSpan = visibleColumns.reduce(
     (sum, col) => sum + (col.kind === "standard" ? (STANDARD_RENDERERS[col.def.id]?.span ?? 1) : 1),
     0
@@ -705,7 +716,7 @@ export function TaskRunsTable({
               },
               searchParams
             );
-            const sources = buildRowSources(run, referencedSources);
+            const sources = sourcesByRunId.get(run.id) ?? EMPTY_SOURCES;
             return (
               <TableRow key={run.id}>
                 {allowSelection && (

@@ -87,12 +87,12 @@ function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: Liv
       usageDurationMs: update.usageDurationMs,
       costInCents: update.costInCents,
       baseCostInCents: update.baseCostInCents,
-      metadata: update.metadata ?? run.metadata,
-      metadataType: update.metadataType ?? run.metadataType,
-      payload: update.payload ?? run.payload,
-      payloadType: update.payloadType ?? run.payloadType,
-      output: update.output ?? run.output,
-      outputType: update.outputType ?? run.outputType,
+      metadata: update.metadata !== undefined ? update.metadata : run.metadata,
+      metadataType: update.metadataType !== undefined ? update.metadataType : run.metadataType,
+      payload: update.payload !== undefined ? update.payload : run.payload,
+      payloadType: update.payloadType !== undefined ? update.payloadType : run.payloadType,
+      output: update.output !== undefined ? update.output : run.output,
+      outputType: update.outputType !== undefined ? update.outputType : run.outputType,
     };
   });
 }

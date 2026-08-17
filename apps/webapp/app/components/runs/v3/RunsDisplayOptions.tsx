@@ -109,6 +109,16 @@ export function RunsDisplayOptions() {
     applyLayout(arr);
   };
 
+  const move = (key: string, delta: number) => {
+    const arr = [...layout.ordered];
+    const from = arr.findIndex((o) => keyFor(o.col) === key);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= arr.length) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    applyLayout(arr);
+  };
+
   const endDrag = () => {
     setDragKey(null);
     setOverKey(null);
@@ -148,6 +158,7 @@ export function RunsDisplayOptions() {
                     endDrag();
                   }}
                   onToggle={() => toggleHidden(key)}
+                  onMove={(delta) => move(key, delta)}
                   onEdit={
                     col.kind === "smart"
                       ? () => setEditing({ index: col.index, def: col.def })
@@ -199,10 +210,10 @@ function ColumnRow({
   col,
   checked,
   locked,
-  reserveIcon,
   dragging,
   isOver,
   onToggle,
+  onMove,
   onEdit,
   onRemove,
   onDragStart,
@@ -216,6 +227,7 @@ function ColumnRow({
   dragging: boolean;
   isOver: boolean;
   onToggle: () => void;
+  onMove: (delta: number) => void;
   onEdit?: () => void;
   onRemove?: () => void;
   onDragStart: () => void;
@@ -232,11 +244,18 @@ function ColumnRow({
         dragging && "opacity-40"
       )}
       draggable
-      onDragStart={onDragStart}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "");
+        onDragStart();
+      }}
       onDragEnter={onDragEnter}
       onDragEnd={onDragEnd}
       onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
     >
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
       {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
@@ -254,7 +273,7 @@ function ColumnRow({
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${col.def.label}`}
-            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100"
+            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <PencilSquareIcon className="size-4" />
           </button>
@@ -264,14 +283,27 @@ function ColumnRow({
             type="button"
             onClick={onRemove}
             aria-label={`Remove ${col.def.label}`}
-            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100"
+            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <XMarkIcon className="size-4" />
           </button>
         )}
-        <span className="flex size-6 cursor-grab items-center justify-center text-text-dimmed opacity-0 transition group-hover:opacity-100 active:cursor-grabbing">
+        <button
+          type="button"
+          aria-label={`Reorder ${col.def.label} (use arrow up and down)`}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              onMove(-1);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              onMove(1);
+            }
+          }}
+          className="flex size-6 cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+        >
           <GripVerticalIcon className="size-4" />
-        </span>
+        </button>
       </div>
     </div>
   );

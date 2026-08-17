@@ -35,7 +35,7 @@ export function SmartColumnSample({
 function childPath(parentPath: string, key: string | number): string {
   if (typeof key === "number") return `${parentPath}[${key}]`;
   if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)) return `${parentPath}.${key}`;
-  return `${parentPath}['${key.replace(/'/g, "\\'")}']`;
+  return `${parentPath}['${key.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}']`;
 }
 
 function JsonNode({

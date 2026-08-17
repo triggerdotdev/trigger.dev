@@ -6,6 +6,7 @@ import {
   encodeColumnLayout,
   encodeSmartColumn,
   resolveColumnLayout,
+  type ResolvedColumn,
   type RunColumnRuntime,
   type SmartColumnDef,
 } from "./runColumns";
