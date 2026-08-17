@@ -1441,6 +1441,8 @@ type ChatCustomAgentClientDataErrorHandler = (event: {
   payload: ChatTaskWirePayload;
 }) => Promise<void> | void;
 
+const CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT = "Invalid client data";
+
 const chatCustomAgentClientDataParserKey = locals.create<ChatCustomAgentClientDataParser>(
   "chat.customAgentClientDataParser"
 );
@@ -1503,13 +1505,14 @@ function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknow
 }
 
 async function writeChatCustomAgentClientDataErrorToStream(
-  payload: ChatTaskWirePayload,
-  error: unknown
+  payload: ChatTaskWirePayload
 ): Promise<void> {
-  const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
   try {
     await withChatWriter((writer) => {
-      writer.write({ type: "error", errorText } as any);
+      writer.write({
+        type: "error",
+        errorText: CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT,
+      } as any);
     });
     await chatWriteTurnComplete();
   } catch (signalError) {
@@ -1552,7 +1555,7 @@ async function reportChatCustomAgentClientDataError(
   if (!options.writeToStream) {
     return;
   }
-  await writeChatCustomAgentClientDataErrorToStream(payload, error);
+  await writeChatCustomAgentClientDataErrorToStream(payload);
 }
 
 type ChatCustomAgentPayloadValidationResult<TPayload extends ChatTaskWirePayload> =
@@ -1796,7 +1799,8 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
       return subscribeToRawChatMessages(handler);
     }
 
-    return subscribeToValidatedChatMessages((payload) => handler(payload));
+    const deliver = (payload: ChatTaskWirePayload) => handler(payload);
+    return subscribeToValidatedChatMessages(deliver, { onAfterOff: deliver });
   },
   once(options) {
     const ctx = taskContext.ctx;
@@ -5594,6 +5598,7 @@ type ChatCustomAgentOptions<
    * error chunk followed by `turn-complete`. Messageless boots and active
    * subscriptions use `onClientDataValidationError` and the task log because
    * there is no submitted turn to complete or a response may still be streaming.
+   * This validates `metadata` only; raw `action` payloads remain `unknown`.
    */
   clientDataSchema?: TClientDataSchema;
   /**
@@ -5719,7 +5724,7 @@ function chatCustomAgent<
 
         // The head-start writer flushes before sending this signal. Writing
         // the terminal error now preserves stream order and closes the stitch.
-        await writeChatCustomAgentClientDataErrorToStream(payload, validated.error);
+        await writeChatCustomAgentClientDataErrorToStream(payload);
         return;
       }
 

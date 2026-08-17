@@ -90,6 +90,7 @@ describe("chat.customAgent clientData validation", () => {
     };
     let started = false;
     const receivedClientData: unknown[] = [];
+    const validationErrors: unknown[] = [];
 
     const agent = chat
       .withClientData({
@@ -100,6 +101,9 @@ describe("chat.customAgent clientData validation", () => {
       })
       .customAgent({
         id: "custom-agent-client-data-invalid-frame",
+        onClientDataValidationError: ({ error }) => {
+          validationErrors.push(error);
+        },
         run: async (payload, { signal }) => {
           started = true;
           const session = chat.createSession(payload, {
@@ -126,8 +130,10 @@ describe("chat.customAgent clientData validation", () => {
 
       expect(receivedClientData).toHaveLength(0);
       expect(invalidTurn.chunks).toEqual([
-        expect.objectContaining({ type: "error", errorText: expect.any(String) }),
+        expect.objectContaining({ type: "error", errorText: "Invalid client data" }),
       ]);
+      expect(validationErrors).toHaveLength(1);
+      expect(validationErrors[0]).toBeInstanceOf(z.ZodError);
       expect(invalidTurn.rawChunks).toContainEqual(
         expect.objectContaining({ type: "trigger:turn-complete" })
       );
@@ -229,7 +235,7 @@ describe("chat.customAgent clientData validation", () => {
 
       expect(runCalls).toBe(0);
       expect(harness.allChunks).toEqual([
-        expect.objectContaining({ type: "error", errorText: expect.any(String) }),
+        expect.objectContaining({ type: "error", errorText: "Invalid client data" }),
       ]);
 
       clientData.userId = "user_123";
@@ -301,7 +307,7 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
-  it("does not deliver frames or validation callbacks after chat.messages.on is removed", async () => {
+  it("does not report an invalid frame whose validation finishes after chat.messages.on is removed", async () => {
     const clientData = { blocked: false };
     const parserStarted = deferred();
     const releaseParser = deferred();
@@ -359,6 +365,68 @@ describe("chat.customAgent clientData validation", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(handlerCalls).toBe(0);
       expect(validationErrorCalls).toBe(0);
+    } finally {
+      releaseParser.resolve();
+      await harness.close();
+    }
+  });
+
+  it("delivers a valid frame accepted before chat.messages.on is removed", async () => {
+    const clientData = { blocked: false };
+    const parserStarted = deferred();
+    const releaseParser = deferred();
+    const delivered = deferred();
+    let removeSubscription: (() => void) | undefined;
+    let receivedMetadata: unknown;
+    let handlerCalls = 0;
+    let started = false;
+
+    const agent = chat
+      .withClientData({
+        schema: async (value: unknown) => {
+          const blocked = (value as { blocked: boolean }).blocked;
+          if (blocked) {
+            parserStarted.resolve();
+            await releaseParser.promise;
+          }
+          return { blocked, parsed: true as const };
+        },
+      })
+      .customAgent({
+        id: "custom-agent-client-data-deliver-pending-after-off",
+        run: async (_payload, { signal }) => {
+          started = true;
+          const subscription = chat.messages.on(async (payload) => {
+            handlerCalls++;
+            receivedMetadata = payload.metadata;
+            await chat.writeTurnComplete();
+            delivered.resolve();
+          });
+          removeSubscription = () => subscription.off();
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        },
+      });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-deliver-pending-after-off-chat",
+      clientData,
+    });
+
+    try {
+      await waitFor(() => started);
+      clientData.blocked = true;
+      const send = harness.sendMessage(userMessage("hello", "message-1"));
+      await parserStarted.promise;
+
+      removeSubscription!();
+      releaseParser.resolve();
+
+      await send;
+      await delivered.promise;
+      expect(handlerCalls).toBe(1);
+      expect(receivedMetadata).toEqual({ blocked: true, parsed: true });
     } finally {
       releaseParser.resolve();
       await harness.close();
@@ -464,7 +532,7 @@ describe("chat.customAgent clientData validation", () => {
 
       expect(receivedClientData).toEqual([{ attempt: 1 }]);
       expect(harness.allChunks).toContainEqual(
-        expect.objectContaining({ type: "error", errorText: expect.any(String) })
+        expect.objectContaining({ type: "error", errorText: "Invalid client data" })
       );
     } finally {
       releaseFirstTurn.resolve();
@@ -626,7 +694,7 @@ describe("chat.customAgent clientData validation", () => {
       expect(lateFrameParseCalls).toBe(1);
       expect(receivedSequences).toEqual([1]);
       expect(harness.allChunks).toContainEqual(
-        expect.objectContaining({ type: "error", errorText: "invalid late frame" })
+        expect.objectContaining({ type: "error", errorText: "Invalid client data" })
       );
     } finally {
       releaseFirstTurn.resolve();
@@ -754,7 +822,7 @@ describe("chat.customAgent clientData validation", () => {
 
       expect(runCalls).toBe(0);
       expect(handover.chunks).toEqual([
-        expect.objectContaining({ type: "error", errorText: expect.any(String) }),
+        expect.objectContaining({ type: "error", errorText: "Invalid client data" }),
       ]);
       expect(handover.rawChunks).toContainEqual(
         expect.objectContaining({ type: "trigger:turn-complete" })

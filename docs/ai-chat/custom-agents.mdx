@@ -21,13 +21,19 @@ Inside the wrapper, pick one of two loop styles:
 
 ### Validating client data
 
-Use `chat.withClientData({ schema })` to validate `payload.metadata`. Custom agents parse the initial payload and later message and action frames before passing them to `run`, `chat.messages`, or `chat.createSession`. Schema defaults and transforms are included in the value your code receives. Close frames are not validated.
+Use `chat.withClientData({ schema })` to validate `payload.metadata`. Custom agents parse the metadata on the initial payload and every later non-close input frame before passing it to `run`, `chat.messages`, or `chat.createSession`. Schema defaults and transforms are included in the value your code receives.
 
-If validation fails for a submitted turn or an async read such as `wait()`, the SDK writes an error chunk followed by `turn-complete` and skips the invalid frame. The invalid value never reaches your run handler or turn loop. The task then waits for the next valid frame. A messageless preload or continuation boot has no submitted turn to complete, so the SDK reports the error through the task log and `onClientDataValidationError` while it waits.
+This only validates `metadata`. A raw custom agent does not expose an action schema, so `payload.action` remains `unknown`. Validate the full frame or action payload in your own loop when you need that boundary.
+
+If validation fails for a submitted turn or an async read such as `wait()`, the SDK consumes and skips the invalid frame, writes an `Invalid client data` error followed by `turn-complete`, then waits for the next valid frame. The invalid value is not returned to the raw caller. The detailed validator error is available in the task log and `onClientDataValidationError`, but it is not sent to the client.
+
+This convenience path settles the invalid input before the read returns. If your raw loop needs to coordinate validation with persistence or settlement, omit `withClientData({ schema })` and validate the full wire frame in the loop instead. A messageless preload or continuation boot has no submitted turn to complete, so the SDK reports the error through the task log and callback while it waits.
 
 An invalid [head-start handover](/ai-chat/fast-starts#handover-with-custom-agents) boot fails closed. The SDK waits for the warm handler to finish so stream ordering stays intact. A handover skip ends the run. A real handover writes the validation error and `turn-complete` after the warm output, then ends the run. Without a schema, metadata is passed through unchanged.
 
-`chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. While the subscription is active, the SDK skips the frame, logs the validation error, and calls `onClientDataValidationError` if you set it. This also applies to the steering subscription created by `chat.createSession({ pendingMessages })`. Calling `off()` prevents queued validation from invoking your handler or error callback.
+`chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. While the subscription is active, the SDK skips an invalid frame, logs the validation error, and calls `onClientDataValidationError` if you set it. This also applies to the steering subscription created by `chat.createSession({ pendingMessages })`.
+
+Calling `off()` stops the subscription from accepting new frames. A valid frame accepted before `off()` still finishes validation and is delivered to the handler. An invalid frame that finishes validation after `off()` is logged without calling the handler or error callback.
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";

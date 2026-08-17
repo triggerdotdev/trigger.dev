@@ -832,7 +832,9 @@ Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind
 }
 ```
 
-Actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+For managed `chat.agent()` tasks, actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+
+Raw `chat.customAgent()` tasks receive `action` as `unknown` and must validate it in their own loop.
 
 ### Regenerating the last response
 
