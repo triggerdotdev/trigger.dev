@@ -12,7 +12,7 @@ import type { AuthenticatedEnvironment } from "../setup.js";
  * Generates a large output string of the specified size in KB.
  * The output is a valid JSON string to simulate realistic waitpoint output.
  */
-export function generateLargeOutput(sizeKB: number): string {
+function generateLargeOutput(sizeKB: number): string {
   if (sizeKB <= 0) return JSON.stringify({ data: "" });
 
   // Create a string that's approximately the target size
