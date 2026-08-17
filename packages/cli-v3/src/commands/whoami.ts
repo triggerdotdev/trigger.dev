@@ -62,7 +62,7 @@ export function configureWhoamiCommand(program: Command) {
   });
 }
 
-export async function whoAmICommand(options: unknown) {
+async function whoAmICommand(options: unknown) {
   return await wrapCommandAction("whoamiCommand", WhoamiCommandOptions, options, async (opts) => {
     return await whoAmI(opts);
   });

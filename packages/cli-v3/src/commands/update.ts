@@ -48,7 +48,7 @@ export function configureUpdateCommand(program: Command) {
 
 const triggerPackageFilter = /^@trigger\.dev/;
 
-export async function updateCommand(dir: string, options: UpdateCommandOptions) {
+async function updateCommand(dir: string, options: UpdateCommandOptions) {
   await updateTriggerPackages(dir, options, false);
 }
 

@@ -193,7 +193,7 @@ async function askForLoginPermission(server: McpServer, authorizationCodeUrl: st
   return result.action === "accept" && result.content?.allowLogin;
 }
 
-export async function createApiClientWithPublicJWT(
+async function createApiClientWithPublicJWT(
   auth: LoginResultOk,
   projectRef: string,
   envName: string,

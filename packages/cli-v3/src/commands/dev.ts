@@ -154,7 +154,7 @@ export function configureDevCommand(program: Command) {
   });
 }
 
-export async function devCommand(options: DevCommandOptions) {
+async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
 
   // Only show these install prompts if the user is in a terminal (not in a Coding Agent)

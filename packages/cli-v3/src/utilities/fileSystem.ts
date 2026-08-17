@@ -101,7 +101,7 @@ export async function pathExists(path: string): Promise<boolean> {
   return fsSync.existsSync(path);
 }
 
-export async function someFileExists(directory: string, filenames: string[]): Promise<boolean> {
+async function someFileExists(directory: string, filenames: string[]): Promise<boolean> {
   for (let index = 0; index < filenames.length; index++) {
     const filename = filenames[index];
     if (!filename) continue;
@@ -191,7 +191,7 @@ export function readJSONFileSync(path: string) {
   return JSON.parse(fileContents);
 }
 
-export function safeDeleteFileSync(path: string) {
+function safeDeleteFileSync(path: string) {
   try {
     fs.unlinkSync(path);
   } catch (_error) {
@@ -234,6 +234,6 @@ export async function safeReadJSONCFile(path: string) {
   return parseJSONC(fileContents.replace(/\r\n/g, "\n"));
 }
 
-export async function writeJSONCFile(path: string, json: any) {
+async function writeJSONCFile(path: string, json: any) {
   await safeWriteFile(path, stringifyJSONC(json));
 }

@@ -58,7 +58,7 @@ export function configurePreviewCommand(program: Command) {
   });
 }
 
-export async function previewArchiveCommand(dir: string, options: unknown) {
+async function previewArchiveCommand(dir: string, options: unknown) {
   return await wrapCommandAction(
     "previewArchiveCommand",
     PreviewCommandOptions,

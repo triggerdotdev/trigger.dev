@@ -4,11 +4,11 @@ import type { TerminalLinkOptions } from "./terminalLink.js";
 import { terminalLink } from "./terminalLink.js";
 import { hasTTY } from "std-env";
 
-export const isInteractive = hasTTY;
+const isInteractive = hasTTY;
 export const isLinksSupported = terminalLink.isSupported;
 
-export const green = "#4FFF54";
-export const purple = "#735BF3";
+const green = "#4FFF54";
+const purple = "#735BF3";
 
 export function chalkGreen(text: string) {
   return chalk.hex(green)(text);

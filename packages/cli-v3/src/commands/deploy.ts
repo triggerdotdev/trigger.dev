@@ -249,7 +249,7 @@ export function configureDeployCommand(program: Command) {
   );
 }
 
-export async function deployCommand(dir: string, options: unknown) {
+async function deployCommand(dir: string, options: unknown) {
   return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
     return await _deployCommand(dir, opts);
   });
@@ -778,7 +778,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   });
 }
 
-export async function syncEnvVarsWithServer(
+async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,

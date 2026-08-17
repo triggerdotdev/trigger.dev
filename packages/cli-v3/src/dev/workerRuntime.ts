@@ -9,7 +9,7 @@ export interface WorkerRuntime {
   initializeWorker(manifest: BuildManifest, metafile: Metafile, stop: () => void): Promise<void>;
 }
 
-export type WorkerRuntimeOptions = {
+type WorkerRuntimeOptions = {
   name: string | undefined;
   config: ResolvedConfig;
   args: DevCommandOptions;

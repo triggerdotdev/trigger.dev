@@ -3,22 +3,22 @@ import { basename, dirname, join, resolve } from "node:path";
 import { sourceDir } from "../sourceDir.js";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
-export const devRunWorker = join(sourceDir, "entryPoints", "dev-run-worker.js");
-export const devIndexWorker = join(sourceDir, "entryPoints", "dev-index-worker.js");
+const devRunWorker = join(sourceDir, "entryPoints", "dev-run-worker.js");
+const devIndexWorker = join(sourceDir, "entryPoints", "dev-index-worker.js");
 
-export const managedRunController = join(sourceDir, "entryPoints", "managed-run-controller.js");
-export const managedRunWorker = join(sourceDir, "entryPoints", "managed-run-worker.js");
-export const managedIndexController = join(sourceDir, "entryPoints", "managed-index-controller.js");
-export const managedIndexWorker = join(sourceDir, "entryPoints", "managed-index-worker.js");
+const managedRunController = join(sourceDir, "entryPoints", "managed-run-controller.js");
+const managedRunWorker = join(sourceDir, "entryPoints", "managed-run-worker.js");
+const managedIndexController = join(sourceDir, "entryPoints", "managed-index-controller.js");
+const managedIndexWorker = join(sourceDir, "entryPoints", "managed-index-worker.js");
 
-export const unmanagedRunController = join(sourceDir, "entryPoints", "unmanaged-run-controller.js");
-export const unmanagedRunWorker = join(sourceDir, "entryPoints", "unmanaged-run-worker.js");
-export const unmanagedIndexController = join(
+const unmanagedRunController = join(sourceDir, "entryPoints", "unmanaged-run-controller.js");
+const unmanagedRunWorker = join(sourceDir, "entryPoints", "unmanaged-run-worker.js");
+const unmanagedIndexController = join(
   sourceDir,
   "entryPoints",
   "unmanaged-index-controller.js"
 );
-export const unmanagedIndexWorker = join(sourceDir, "entryPoints", "unmanaged-index-worker.js");
+const unmanagedIndexWorker = join(sourceDir, "entryPoints", "unmanaged-index-worker.js");
 
 export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");
 
@@ -36,7 +36,7 @@ export const unmanagedEntryPoints = [
   unmanagedIndexWorker,
 ];
 
-export const esmShimPath = join(sourceDir, "shims", "esm.js");
+const esmShimPath = join(sourceDir, "shims", "esm.js");
 
 export const shims = [esmShimPath];
 
@@ -232,7 +232,7 @@ export function getIndexControllerForTarget(target: BuildTarget) {
   }
 }
 
-export function isConfigEntryPoint(entryPoint: string) {
+function isConfigEntryPoint(entryPoint: string) {
   return entryPoint.startsWith("trigger.config.ts");
 }
 

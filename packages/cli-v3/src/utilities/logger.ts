@@ -7,7 +7,7 @@ import { formatMessagesSync } from "esbuild";
 import type { Message } from "esbuild";
 import { env } from "std-env";
 
-export const LOGGER_LEVELS = {
+const LOGGER_LEVELS = {
   none: -1,
   error: 0,
   warn: 1,
@@ -16,7 +16,7 @@ export const LOGGER_LEVELS = {
   debug: 4,
 } as const;
 
-export type LoggerLevel = keyof typeof LOGGER_LEVELS;
+type LoggerLevel = keyof typeof LOGGER_LEVELS;
 
 /** A map from LOGGER_LEVEL to the error `kind` needed by `formatMessagesSync()`. */
 const LOGGER_LEVEL_FORMAT_TYPE_MAP = {
@@ -43,9 +43,9 @@ function getLoggerLevel(): LoggerLevel {
   return "log";
 }
 
-export type TableRow<Keys extends string> = Record<Keys, string>;
+type TableRow<Keys extends string> = Record<Keys, string>;
 
-export class Logger {
+class Logger {
   constructor() {}
 
   loggerLevel = getLoggerLevel();
@@ -112,7 +112,7 @@ export class Logger {
  */
 export const logger = new Logger();
 
-export function logBuildWarnings(warnings: Message[]) {
+function logBuildWarnings(warnings: Message[]) {
   const logs = formatMessagesSync(warnings, { kind: "warning", color: true });
   for (const log of logs) console.warn(log);
 }
@@ -121,7 +121,7 @@ export function logBuildWarnings(warnings: Message[]) {
  * Logs all errors/warnings associated with an esbuild BuildFailure in the same
  * style esbuild would.
  */
-export function logBuildFailure(errors: Message[], warnings: Message[]) {
+function logBuildFailure(errors: Message[], warnings: Message[]) {
   const logs = formatMessagesSync(errors, { kind: "error", color: true });
   for (const log of logs) console.error(log);
   logBuildWarnings(warnings);
