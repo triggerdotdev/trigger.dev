@@ -5062,7 +5062,7 @@ function makeChannelStreamEditor<TEvent>(
   let latest = "";
   let lastSent = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let inFlight = false;
+  let inFlightPromise: Promise<void> | undefined;
   let stopped = false;
 
   const arm = () => {
@@ -5074,7 +5074,7 @@ function makeChannelStreamEditor<TEvent>(
   };
 
   const edit = async () => {
-    if (stopped || inFlight) return;
+    if (stopped || inFlightPromise) return;
     const text = latest;
     if (text === lastSent) return;
     const message = outbound({
@@ -5084,22 +5084,24 @@ function makeChannelStreamEditor<TEvent>(
       stopped: false,
     });
     if (!message) return;
-    inFlight = true;
-    try {
-      await connector.send!(message, {
-        event: channelEvent.event as TEvent,
-        deliveryId: channelEvent.deliveryId,
-        previousRef: ackRef,
-        mode: "stream",
-        final: false,
-      });
-      lastSent = text;
-    } catch (error) {
-      logger.warn("chat.agent: channel stream edit failed", { error });
-    } finally {
-      inFlight = false;
-      if (!stopped && latest !== lastSent) arm();
-    }
+    inFlightPromise = (async () => {
+      try {
+        await connector.send!(message, {
+          event: channelEvent.event as TEvent,
+          deliveryId: channelEvent.deliveryId,
+          previousRef: ackRef,
+          mode: "stream",
+          final: false,
+        });
+        lastSent = text;
+      } catch (error) {
+        logger.warn("chat.agent: channel stream edit failed", { error });
+      } finally {
+        inFlightPromise = undefined;
+        if (!stopped && latest !== lastSent) arm();
+      }
+    })();
+    await inFlightPromise;
   };
 
   return {
@@ -5111,17 +5113,22 @@ function makeChannelStreamEditor<TEvent>(
         arm();
       }
     },
-    stop() {
+    async stop() {
       stopped = true;
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
       }
+      if (inFlightPromise) {
+        try {
+          await inFlightPromise;
+        } catch {}
+      }
     },
   };
 }
 
-type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void };
+type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void | Promise<void> };
 
 /**
  * Wrap the reply stream so it debounce-edits the channel message as it streams.
@@ -5132,18 +5139,18 @@ type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void };
 function makeChannelStreamTap(editor: ChannelStreamEditor): TransformStream<unknown, unknown> {
   const transformer: {
     transform(chunk: unknown, controller: TransformStreamDefaultController<unknown>): void;
-    flush(): void;
-    cancel?: (reason?: unknown) => void;
+    flush(): Promise<void>;
+    cancel?: (reason?: unknown) => Promise<void>;
   } = {
     transform(chunk, controller) {
       editor.observe(chunk);
       controller.enqueue(chunk);
     },
-    flush() {
-      editor.stop();
+    async flush() {
+      await editor.stop();
     },
-    cancel() {
-      editor.stop();
+    async cancel() {
+      await editor.stop();
     },
   };
   return new TransformStream<unknown, unknown>(transformer);
@@ -7938,7 +7945,7 @@ function chatAgent<
                     }
                   } finally {
                     msgSub.off();
-                    channelStreamEditor?.stop();
+                    await channelStreamEditor?.stop();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly

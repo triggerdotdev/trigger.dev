@@ -350,7 +350,12 @@ describe("makeChannelStreamEditor", () => {
 describe("makeChannelStreamTap", () => {
   it("stops the editor when the stream completes (flush)", async () => {
     let stops = 0;
-    const tap = __makeChannelStreamTapForTests({ observe: () => {}, stop: () => (stops += 1) });
+    const tap = __makeChannelStreamTapForTests({
+      observe: () => {},
+      stop: () => {
+        stops += 1;
+      },
+    });
     const source = new ReadableStream({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "x" });
@@ -367,7 +372,12 @@ describe("makeChannelStreamTap", () => {
 
   it("stops the editor when the stream is cancelled mid-flight (abort)", async () => {
     let stops = 0;
-    const tap = __makeChannelStreamTapForTests({ observe: () => {}, stop: () => (stops += 1) });
+    const tap = __makeChannelStreamTapForTests({
+      observe: () => {},
+      stop: () => {
+        stops += 1;
+      },
+    });
     const source = new ReadableStream({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "x" });
