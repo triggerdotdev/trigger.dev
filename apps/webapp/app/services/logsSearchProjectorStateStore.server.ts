@@ -1,142 +1,92 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import {
-  LOGS_SEARCH_PROJECTOR_STATE_ID,
-  type LogsSearchProjectorState,
+  LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
+  LOGS_SEARCH_PROJECTOR_ID,
+  type LogsSearchProjectorCheckpointResult,
+  type LogsSearchProjectorControl,
+  type LogsSearchProjectorProjectionResult,
   type LogsSearchProjectorStateStore,
+  type LogsSearchProjectorWindow,
 } from "~/services/logsSearchProjector.server";
 
-type LogsSearchProjectorDatabase = Pick<PrismaClient, "logsSearchProjectorState" | "$executeRaw">;
+type LogsSearchProjectorDatabase = Pick<
+  PrismaClient,
+  "logsSearchProjectorControl" | "logsSearchProjectorCheckpoint"
+>;
 
 export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorStateStore {
   constructor(private readonly database: LogsSearchProjectorDatabase) {}
 
-  async initialize(boundary: Date): Promise<LogsSearchProjectorState> {
-    return this.database.logsSearchProjectorState.upsert({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
+  async initialize(initialWatermark: Date): Promise<LogsSearchProjectorControl> {
+    const existing = await this.findControl();
+    if (existing) return existing;
+
+    return this.database.logsSearchProjectorControl.upsert({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
       create: {
-        id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-        liveWatermark: boundary,
-        historicalWatermark: boundary,
+        id: LOGS_SEARCH_PROJECTOR_ID,
+        initialWatermark,
       },
       update: {},
     });
   }
 
-  async find(): Promise<LogsSearchProjectorState | null> {
-    return this.database.logsSearchProjectorState.findFirst({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
+  async findControl(): Promise<LogsSearchProjectorControl | null> {
+    return this.database.logsSearchProjectorControl.findFirst({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
     });
   }
 
-  async get(): Promise<LogsSearchProjectorState> {
-    const state = await this.find();
-    if (!state) throw new Error("Logs search projector state is not initialized");
-    return state;
+  async getControl(): Promise<LogsSearchProjectorControl> {
+    const control = await this.findControl();
+    if (!control) throw new Error("Logs search projector control is not initialized");
+    return control;
   }
 
-  async acquireLease(token: string, leaseDurationMs: number): Promise<boolean> {
-    const count = await this.database.$executeRaw`
-      UPDATE "LogsSearchProjectorState"
-      SET
-        "leaseToken" = ${token},
-        "leaseExpiresAt" = CURRENT_TIMESTAMP + (${leaseDurationMs} * INTERVAL '1 millisecond'),
-        "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${LOGS_SEARCH_PROJECTOR_STATE_ID}
-        AND "paused" = false
-        AND (
-          "leaseToken" IS NULL
-          OR "leaseExpiresAt" IS NULL
-          OR "leaseExpiresAt" <= CURRENT_TIMESTAMP
-        )
-    `;
-    return count === 1;
-  }
-
-  async renewLease(token: string, leaseDurationMs: number): Promise<boolean> {
-    const count = await this.database.$executeRaw`
-      UPDATE "LogsSearchProjectorState"
-      SET
-        "leaseExpiresAt" = CURRENT_TIMESTAMP + (${leaseDurationMs} * INTERVAL '1 millisecond'),
-        "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${LOGS_SEARCH_PROJECTOR_STATE_ID}
-        AND "paused" = false
-        AND "leaseToken" = ${token}
-    `;
-    return count === 1;
-  }
-
-  async releaseLease(token: string): Promise<void> {
-    await this.database.logsSearchProjectorState.updateMany({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID, leaseToken: token },
-      data: { leaseToken: null, leaseExpiresAt: null },
-    });
-  }
-
-  async advanceLive(token: string, expected: Date, next: Date): Promise<boolean> {
-    const result = await this.database.logsSearchProjectorState.updateMany({
+  async getFinalizedWatermark(initialWatermark: Date): Promise<Date> {
+    const checkpoint = await this.database.logsSearchProjectorCheckpoint.findFirst({
       where: {
-        id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-        paused: false,
-        leaseToken: token,
-        liveWatermark: expected,
+        projectorId: LOGS_SEARCH_PROJECTOR_ID,
+        mode: LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
       },
-      data: { liveWatermark: next },
+      orderBy: { windowEnd: "desc" },
+      select: { windowEnd: true },
     });
-    return result.count === 1;
+
+    return checkpoint?.windowEnd ?? initialWatermark;
   }
 
-  async advanceHistorical(
-    token: string,
-    expected: Date,
-    next: Date,
-    expectedTarget: Date
-  ): Promise<boolean> {
-    const result = await this.database.logsSearchProjectorState.updateMany({
-      where: {
-        id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-        paused: false,
-        leaseToken: token,
-        historicalWatermark: expected,
-        backfillTarget: expectedTarget,
-      },
-      data: {
-        historicalWatermark: next,
-        ...(next.getTime() === expectedTarget.getTime() ? { backfillTarget: null } : {}),
-      },
+  async appendFinalizedCheckpoint(
+    window: LogsSearchProjectorWindow,
+    result: LogsSearchProjectorProjectionResult
+  ): Promise<LogsSearchProjectorCheckpointResult> {
+    const inserted = await this.database.logsSearchProjectorCheckpoint.createMany({
+      data: [
+        {
+          projectorId: LOGS_SEARCH_PROJECTOR_ID,
+          mode: LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
+          windowStart: window.start,
+          windowEnd: window.end,
+          queryId: result.queryId,
+        },
+      ],
+      skipDuplicates: true,
     });
-    return result.count === 1;
+
+    return inserted.count === 1 ? "inserted" : "duplicate";
   }
 
   async pause(): Promise<void> {
-    await this.database.logsSearchProjectorState.update({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
+    await this.database.logsSearchProjectorControl.update({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
       data: { paused: true },
     });
   }
 
   async resume(): Promise<void> {
-    await this.database.logsSearchProjectorState.update({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
+    await this.database.logsSearchProjectorControl.update({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
       data: { paused: false },
-    });
-  }
-
-  async setBackfillTarget(expectedHistorical: Date, target: Date): Promise<boolean> {
-    const result = await this.database.logsSearchProjectorState.updateMany({
-      where: {
-        id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-        historicalWatermark: expectedHistorical,
-        backfillTarget: null,
-      },
-      data: { backfillTarget: target },
-    });
-    return result.count === 1;
-  }
-
-  async cancelBackfill(): Promise<void> {
-    await this.database.logsSearchProjectorState.update({
-      where: { id: LOGS_SEARCH_PROJECTOR_STATE_ID },
-      data: { backfillTarget: null },
     });
   }
 }

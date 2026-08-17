@@ -44,11 +44,18 @@ const projectedColumns = `
   duration,
   parent_span_id`;
 
+const boundedUtf8 = (expression: string) => `toValidUTF8(substring(${expression}, 1, 2045))`;
+
 const projectionFingerprint = (alias: string) => `reinterpretAsUInt128(sipHash128(
   ${alias}.trace_id,
   ${alias}.span_id,
   ${alias}.run_id,
-  ${alias}.start_time
+  ${alias}.start_time,
+  ${alias}.kind,
+  ${alias}.status,
+  ${alias}.duration,
+  ${boundedUtf8(`${alias}.message`)},
+  ${boundedUtf8(`${alias}.error_message`)}
 ))`;
 
 const projectionSql = `
@@ -67,9 +74,7 @@ FROM
         least(
           toInt128(toUnixTimestamp64Nano(start_time)) + toInt128(duration),
           toInt128(
-            toUnixTimestamp64Nano(
-              {windowEnd: DateTime64(3, 'UTC')} + INTERVAL 5 MINUTE
-            )
+            toUnixTimestamp64Nano(inserted_at + INTERVAL 5 MINUTE)
           )
         )
       )
@@ -81,16 +86,14 @@ FROM
     start_time,
     inserted_at,
     message,
-    toValidUTF8(
-      substring(JSONExtractString(attributes_text, 'error', 'message'), 1, 2045)
-    ) AS error_message,
+    ${boundedUtf8("JSONExtractString(attributes_text, 'error', 'message')")} AS error_message,
     toValidUTF8(
       substring(
         replaceRegexpAll(
           replaceRegexpAll(
             lowerUTF8(
               concat(
-                toValidUTF8(substring(message, 1, 2045)),
+                ${boundedUtf8("message")},
                 ' ',
                 replaceAll(
                   toValidUTF8(substring(attributes_text, 1, 6140)),

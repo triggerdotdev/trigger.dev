@@ -1,81 +1,69 @@
 import { describe, expect, it } from "vitest";
 import {
-  calculateClosedWindowBoundary,
-  LOGS_SEARCH_PROJECTOR_STATE_ID,
-  selectNextProjectionWindow,
-  type LogsSearchProjectorState,
+  finalizedSafeCutoff,
+  previewSafeCutoff,
+  selectFinalizedWindow,
+  selectPreviewWindow,
 } from "~/services/logsSearchProjector.server";
 
-const minute = 60_000;
 const at = (value: string) => new Date(value);
 
-function state(overrides: Partial<LogsSearchProjectorState> = {}): LogsSearchProjectorState {
-  const boundary = overrides.liveWatermark ?? at("2026-08-14T12:05:00.000Z");
-  return {
-    id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-    liveWatermark: boundary,
-    historicalWatermark: overrides.historicalWatermark ?? boundary,
-    backfillTarget: overrides.backfillTarget ?? null,
-    paused: overrides.paused ?? false,
-    leaseToken: overrides.leaseToken ?? null,
-    leaseExpiresAt: overrides.leaseExpiresAt ?? null,
-  };
-}
-
 describe("logs search projector window selection", () => {
-  it("floors the safe cutoff to a closed minute", () => {
-    expect(
-      calculateClosedWindowBoundary(at("2026-08-14T12:10:59.999Z"), 2 * minute).toISOString()
-    ).toBe("2026-08-14T12:08:00.000Z");
+  it("floors preview work to a closed five-second boundary", () => {
+    expect(previewSafeCutoff(at("2026-08-14T12:10:09.999Z")).toISOString()).toBe(
+      "2026-08-14T12:10:05.000Z"
+    );
   });
 
-  it("selects the oldest live window before historical work", () => {
+  it("floors finalized work to a closed minute after the safety delay", () => {
+    expect(finalizedSafeCutoff(at("2026-08-14T12:10:59.999Z")).toISOString()).toBe(
+      "2026-08-14T12:08:00.000Z"
+    );
+  });
+
+  it("selects finalized windows sequentially", () => {
     expect(
-      selectNextProjectionWindow(
-        state({
-          liveWatermark: at("2026-08-14T12:05:00.000Z"),
-          historicalWatermark: at("2026-08-14T12:04:00.000Z"),
-          backfillTarget: at("2026-08-14T12:02:00.000Z"),
-        }),
-        at("2026-08-14T12:08:00.000Z")
-      )
+      selectFinalizedWindow(at("2026-08-14T12:05:00.000Z"), at("2026-08-14T12:08:00.000Z"))
     ).toEqual({
-      mode: "live",
+      mode: "finalized",
       start: at("2026-08-14T12:05:00.000Z"),
       end: at("2026-08-14T12:06:00.000Z"),
     });
   });
 
-  it("extends historical coverage backwards after live work catches up", () => {
+  it("selects the next preview window when caught up", () => {
     expect(
-      selectNextProjectionWindow(
-        state({
-          liveWatermark: at("2026-08-14T12:08:00.000Z"),
-          historicalWatermark: at("2026-08-14T12:04:00.000Z"),
-          backfillTarget: at("2026-08-14T12:02:00.000Z"),
-        }),
-        at("2026-08-14T12:08:00.000Z")
-      )
+      selectPreviewWindow(at("2026-08-14T12:10:00.000Z"), at("2026-08-14T12:10:05.000Z"))
     ).toEqual({
-      mode: "backfill",
-      start: at("2026-08-14T12:03:00.000Z"),
-      end: at("2026-08-14T12:04:00.000Z"),
+      window: {
+        mode: "preview",
+        start: at("2026-08-14T12:10:00.000Z"),
+        end: at("2026-08-14T12:10:05.000Z"),
+      },
+      skippedWindows: 0,
     });
   });
 
-  it("selects no work while paused or fully caught up", () => {
-    const safeCutoff = at("2026-08-14T12:08:00.000Z");
+  it("skips stale preview backlog and selects only the newest eligible window", () => {
     expect(
-      selectNextProjectionWindow(
-        state({ liveWatermark: safeCutoff, historicalWatermark: safeCutoff }),
-        safeCutoff
-      )
-    ).toBeNull();
-    expect(
-      selectNextProjectionWindow(
-        state({ liveWatermark: at("2026-08-14T12:05:00.000Z"), paused: true }),
-        safeCutoff
-      )
-    ).toBeNull();
+      selectPreviewWindow(at("2026-08-14T12:09:40.000Z"), at("2026-08-14T12:10:05.000Z"))
+    ).toEqual({
+      window: {
+        mode: "preview",
+        start: at("2026-08-14T12:10:00.000Z"),
+        end: at("2026-08-14T12:10:05.000Z"),
+      },
+      skippedWindows: 4,
+    });
+  });
+
+  it("selects no work when each watermark reaches its cutoff", () => {
+    const finalized = at("2026-08-14T12:08:00.000Z");
+    const preview = at("2026-08-14T12:10:05.000Z");
+    expect(selectFinalizedWindow(finalized, finalized)).toBeNull();
+    expect(selectPreviewWindow(preview, preview)).toEqual({
+      window: null,
+      skippedWindows: 0,
+    });
   });
 });

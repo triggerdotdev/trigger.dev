@@ -5,17 +5,19 @@ import {
   type LogsSearchProjectionMode,
 } from "~/services/logsSearchProjectorTelemetry.server";
 
-export const LOGS_SEARCH_PROJECTOR_STATE_ID = "task_events_search_v2";
-export const LOGS_SEARCH_PROJECTOR_WINDOW_MS = 60_000;
+export type { LogsSearchProjectionMode } from "~/services/logsSearchProjectorTelemetry.server";
 
-export type LogsSearchProjectorState = {
+export const LOGS_SEARCH_PROJECTOR_ID = "task_events_search_v2";
+export const LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE = "FINALIZED";
+export const LOGS_SEARCH_PREVIEW_WINDOW_MS = 5_000;
+export const LOGS_SEARCH_PREVIEW_SAFETY_DELAY_MS = 2_000;
+export const LOGS_SEARCH_FINALIZED_WINDOW_MS = 60_000;
+export const LOGS_SEARCH_FINALIZED_SAFETY_DELAY_MS = 120_000;
+
+export type LogsSearchProjectorControl = {
   id: string;
-  liveWatermark: Date;
-  historicalWatermark: Date;
-  backfillTarget: Date | null;
+  initialWatermark: Date;
   paused: boolean;
-  leaseToken: string | null;
-  leaseExpiresAt: Date | null;
 };
 
 export type LogsSearchProjectorWindow = {
@@ -30,55 +32,63 @@ export type LogsSearchProjectorProjectionResult = {
   writtenRows: number;
 };
 
+export type LogsSearchProjectorCheckpointResult = "inserted" | "duplicate";
+
+export type LogsSearchProjectorLeaseStatus = {
+  mode: LogsSearchProjectionMode;
+  expiresAt: Date;
+};
+
 export type LogsSearchProjectorStatus = {
   initialized: boolean;
   paused: boolean;
-  liveWatermark: Date | null;
-  safeCutoff: Date | null;
-  liveLagMs: number | null;
-  liveWindowsDue: number | null;
-  historicalWatermark: Date | null;
-  backfillTarget: Date | null;
-  backfillWindowsRemaining: number;
+  previewEnabled: boolean;
+  previewWatermark: Date | null;
+  previewSafeCutoff: Date | null;
+  previewLagMs: number | null;
+  finalizedWatermark: Date | null;
+  finalizedSafeCutoff: Date | null;
+  finalizedLagMs: number | null;
+  finalizedWindowsDue: number | null;
+  activeProjectionMode: LogsSearchProjectionMode | null;
   leaseExpiresAt: Date | null;
 };
 
 export type LogsSearchProjectorConfig = {
-  safetyDelayMs: number;
-  maxWindowsPerTick: number;
+  previewEnabled: boolean;
+  maxFinalizedWindowsPerTick: number;
   leaseDurationMs: number;
-  backfillEnabled: boolean;
-  maxBackfillRangeMs: number;
-  maxBackfillAgeMs: number;
 };
 
 export type LogsSearchProjectorStateStore = {
-  initialize(boundary: Date): Promise<LogsSearchProjectorState>;
-  find(): Promise<LogsSearchProjectorState | null>;
-  get(): Promise<LogsSearchProjectorState>;
-  acquireLease(token: string, leaseDurationMs: number): Promise<boolean>;
-  renewLease(token: string, leaseDurationMs: number): Promise<boolean>;
-  releaseLease(token: string): Promise<void>;
-  advanceLive(token: string, expected: Date, next: Date): Promise<boolean>;
-  advanceHistorical(
-    token: string,
-    expected: Date,
-    next: Date,
-    expectedTarget: Date
-  ): Promise<boolean>;
+  initialize(initialWatermark: Date): Promise<LogsSearchProjectorControl>;
+  findControl(): Promise<LogsSearchProjectorControl | null>;
+  getControl(): Promise<LogsSearchProjectorControl>;
+  getFinalizedWatermark(initialWatermark: Date): Promise<Date>;
+  appendFinalizedCheckpoint(
+    window: LogsSearchProjectorWindow,
+    result: LogsSearchProjectorProjectionResult
+  ): Promise<LogsSearchProjectorCheckpointResult>;
   pause(): Promise<void>;
   resume(): Promise<void>;
-  setBackfillTarget(expectedHistorical: Date, target: Date): Promise<boolean>;
-  cancelBackfill(): Promise<void>;
+};
+
+export type LogsSearchProjectorRedisStore = {
+  acquireLease(token: string, mode: LogsSearchProjectionMode, durationMs: number): Promise<boolean>;
+  releaseLease(token: string, mode: LogsSearchProjectionMode): Promise<void>;
+  readLeaseStatus(): Promise<LogsSearchProjectorLeaseStatus | null>;
+  initializePreviewWatermark(boundary: Date): Promise<Date>;
+  getPreviewWatermark(): Promise<Date | null>;
+  advancePreviewWatermark(next: Date): Promise<boolean>;
 };
 
 export class LogsSearchProjectorConflictError extends Error {}
-export class LogsSearchProjectorValidationError extends Error {}
 
 export class LogsSearchProjector {
   constructor(
     private readonly config: LogsSearchProjectorConfig,
     private readonly stateStore: LogsSearchProjectorStateStore,
+    private readonly redisStore: LogsSearchProjectorRedisStore,
     private readonly projectWindow: (
       window: LogsSearchProjectorWindow
     ) => Promise<LogsSearchProjectorProjectionResult>,
@@ -89,115 +99,36 @@ export class LogsSearchProjector {
     > = defaultLogger
   ) {}
 
-  async processTick(): Promise<{ processed: number; leaseAcquired: boolean }> {
+  async processTick(): Promise<{ finalized: number; preview: boolean }> {
     const now = await this.clock();
-    const initialBoundary = calculateClosedWindowBoundary(now, this.config.safetyDelayMs);
-    const initialState = await this.stateStore.initialize(initialBoundary);
-    this.updateTelemetryState(initialState, initialBoundary);
-    if (initialState.paused) return { processed: 0, leaseAcquired: false };
+    const finalizedCutoff = finalizedSafeCutoff(now);
+    const existingControl = await this.stateStore.findControl();
+    const control = existingControl ?? (await this.stateStore.initialize(finalizedCutoff));
 
-    const leaseToken = randomUUID();
-    const acquired = await this.stateStore.acquireLease(leaseToken, this.config.leaseDurationMs);
-    if (!acquired) {
-      logsSearchProjectorTelemetry.recordLeaseContention();
-      return { processed: 0, leaseAcquired: false };
+    if (control.paused) {
+      await this.updateTelemetryState(now, control);
+      return { finalized: 0, preview: false };
     }
 
-    let processed = 0;
-    try {
-      for (let index = 0; index < this.config.maxWindowsPerTick; index++) {
-        const state = await this.stateStore.get();
-        if (state.paused || state.leaseToken !== leaseToken) break;
+    const finalized = await this.processFinalizedWindows(finalizedCutoff);
+    const refreshedControl = await this.stateStore.getControl();
+    const currentNow = await this.clock();
+    const currentFinalizedCutoff = finalizedSafeCutoff(currentNow);
+    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(
+      refreshedControl.initialWatermark
+    );
 
-        const safeCutoff = calculateClosedWindowBoundary(
-          await this.clock(),
-          this.config.safetyDelayMs
-        );
-        const window = selectNextProjectionWindow(state, safeCutoff);
-        if (!window) break;
-
-        const renewed = await this.stateStore.renewLease(leaseToken, this.config.leaseDurationMs);
-        if (!renewed) break;
-
-        const startedAt = Date.now();
-        let result: LogsSearchProjectorProjectionResult;
-        try {
-          result = await this.projectWindow(window);
-        } catch (error) {
-          logsSearchProjectorTelemetry.recordWindow(window.mode, "error", Date.now() - startedAt);
-          this.logger.error("Logs search projection window failed", {
-            error,
-            mode: window.mode,
-            windowStart: window.start,
-            windowEnd: window.end,
-          });
-          throw error;
-        }
-
-        const advanced =
-          window.mode === "live"
-            ? await this.stateStore.advanceLive(leaseToken, window.start, window.end)
-            : await this.stateStore.advanceHistorical(
-                leaseToken,
-                window.end,
-                window.start,
-                state.backfillTarget!
-              );
-
-        if (!advanced) {
-          logsSearchProjectorTelemetry.recordCasLoss(window.mode);
-          logsSearchProjectorTelemetry.recordWindow(
-            window.mode,
-            "cas_lost",
-            Date.now() - startedAt,
-            result.readRows,
-            result.writtenRows
-          );
-          this.logger.warn("Logs search projection watermark compare-and-swap lost", {
-            mode: window.mode,
-            windowStart: window.start,
-            windowEnd: window.end,
-            queryId: result.queryId,
-          });
-          break;
-        }
-
-        processed++;
-        logsSearchProjectorTelemetry.recordWindow(
-          window.mode,
-          "success",
-          Date.now() - startedAt,
-          result.readRows,
-          result.writtenRows
-        );
-        this.logger.info("Projected logs search window", {
-          mode: window.mode,
-          windowStart: window.start,
-          windowEnd: window.end,
-          queryId: result.queryId,
-          readRows: result.readRows,
-          writtenRows: result.writtenRows,
-        });
-      }
-    } finally {
-      try {
-        await this.stateStore.releaseLease(leaseToken);
-      } catch (error) {
-        this.logger.warn("Failed to release logs search projector lease", { error });
-      }
-      try {
-        const state = await this.stateStore.get();
-        const safeCutoff = calculateClosedWindowBoundary(
-          await this.clock(),
-          this.config.safetyDelayMs
-        );
-        this.updateTelemetryState(state, safeCutoff);
-      } catch (error) {
-        this.logger.warn("Failed to update logs search projector telemetry state", { error });
-      }
+    let preview = false;
+    if (
+      this.config.previewEnabled &&
+      !refreshedControl.paused &&
+      finalizedWatermark >= currentFinalizedCutoff
+    ) {
+      preview = await this.processPreviewWindow(previewSafeCutoff(currentNow));
     }
 
-    return { processed, leaseAcquired: true };
+    await this.updateTelemetryState(currentNow, await this.stateStore.getControl());
+    return { finalized, preview };
   }
 
   async status(): Promise<LogsSearchProjectorStatus> {
@@ -205,7 +136,7 @@ export class LogsSearchProjector {
   }
 
   async pause(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.find())) {
+    if (!(await this.stateStore.findControl())) {
       throw new LogsSearchProjectorConflictError("Logs search projector is not initialized");
     }
     await this.stateStore.pause();
@@ -213,171 +144,305 @@ export class LogsSearchProjector {
   }
 
   async resume(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.find())) {
+    if (!(await this.stateStore.findControl())) {
       throw new LogsSearchProjectorConflictError("Logs search projector is not initialized");
     }
     await this.stateStore.resume();
     return this.readStatus(false);
   }
 
-  async startBackfill(input: { from: Date; to: Date }): Promise<LogsSearchProjectorStatus> {
-    if (!this.config.backfillEnabled) {
-      throw new LogsSearchProjectorConflictError("Logs search backfill is disabled");
-    }
-    await this.ensureInitialized();
-    assertMinuteBoundary(input.from, "from");
-    assertMinuteBoundary(input.to, "to");
-    if (input.from >= input.to) {
-      throw new LogsSearchProjectorValidationError("Backfill from must be before to");
-    }
-    if (input.to.getTime() - input.from.getTime() > this.config.maxBackfillRangeMs) {
-      throw new LogsSearchProjectorValidationError("Backfill range exceeds the configured limit");
-    }
-    if (input.from.getTime() < (await this.clock()).getTime() - this.config.maxBackfillAgeMs) {
-      throw new LogsSearchProjectorValidationError(
-        "Backfill start is older than the configured limit"
+  private async processFinalizedWindows(cutoff: Date): Promise<number> {
+    let processed = 0;
+
+    for (let index = 0; index < this.config.maxFinalizedWindowsPerTick; index++) {
+      const token = randomUUID();
+      const acquired = await this.redisStore.acquireLease(
+        token,
+        "finalized",
+        this.config.leaseDurationMs
       );
+      if (!acquired) {
+        logsSearchProjectorTelemetry.recordLeaseContention("finalized");
+        break;
+      }
+
+      let shouldStop = false;
+      try {
+        const control = await this.stateStore.getControl();
+        if (control.paused) break;
+
+        const watermark = await this.stateStore.getFinalizedWatermark(control.initialWatermark);
+        const window = selectFinalizedWindow(watermark, cutoff);
+        if (!window) break;
+
+        const result = await this.project(window);
+        const checkpoint = await this.stateStore.appendFinalizedCheckpoint(window, result);
+        if (checkpoint === "duplicate") {
+          logsSearchProjectorTelemetry.recordCheckpointConflict();
+          this.logger.warn("Logs search finalized checkpoint already exists", {
+            windowStart: window.start,
+            windowEnd: window.end,
+            queryId: result.queryId,
+          });
+          shouldStop = true;
+        } else {
+          processed++;
+          this.logger.info("Projected finalized logs search window", {
+            windowStart: window.start,
+            windowEnd: window.end,
+            queryId: result.queryId,
+            readRows: result.readRows,
+            writtenRows: result.writtenRows,
+          });
+        }
+      } finally {
+        await this.releaseLease(token, "finalized");
+      }
+
+      if (shouldStop) break;
     }
 
-    const state = await this.stateStore.get();
-    if (state.backfillTarget) {
-      throw new LogsSearchProjectorConflictError("A logs search backfill is already active");
-    }
-    if (input.to.getTime() !== state.historicalWatermark.getTime()) {
-      throw new LogsSearchProjectorConflictError(
-        "Backfill to must equal the current historical watermark"
-      );
-    }
-
-    const updated = await this.stateStore.setBackfillTarget(state.historicalWatermark, input.from);
-    if (!updated) {
-      throw new LogsSearchProjectorConflictError("Logs search projector state changed");
-    }
-    this.logger.info("Started logs search backfill", input);
-    return this.status();
+    return processed;
   }
 
-  async cancelBackfill(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.find())) return uninitializedProjectorStatus();
-    await this.stateStore.cancelBackfill();
-    this.logger.info("Cancelled logs search backfill");
-    return this.readStatus(false);
+  private async processPreviewWindow(cutoff: Date): Promise<boolean> {
+    const token = randomUUID();
+    const acquired = await this.redisStore.acquireLease(
+      token,
+      "preview",
+      this.config.leaseDurationMs
+    );
+    if (!acquired) {
+      logsSearchProjectorTelemetry.recordLeaseContention("preview");
+      return false;
+    }
+
+    try {
+      const control = await this.stateStore.getControl();
+      if (control.paused) return false;
+
+      const watermark = await this.redisStore.initializePreviewWatermark(cutoff);
+      const selection = selectPreviewWindow(watermark, cutoff);
+      if (!selection.window) return false;
+
+      if (selection.skippedWindows > 0) {
+        await this.redisStore.advancePreviewWatermark(selection.window.start);
+        logsSearchProjectorTelemetry.recordPreviewSkipped(selection.skippedWindows);
+        this.logger.warn("Skipped stale logs search preview windows", {
+          skippedWindows: selection.skippedWindows,
+          previousWatermark: watermark,
+          nextWindowStart: selection.window.start,
+        });
+      }
+
+      try {
+        const result = await this.project(selection.window);
+        await this.redisStore.advancePreviewWatermark(selection.window.end);
+        this.logger.debug("Projected preview logs search window", {
+          windowStart: selection.window.start,
+          windowEnd: selection.window.end,
+          queryId: result.queryId,
+          readRows: result.readRows,
+          writtenRows: result.writtenRows,
+        });
+        return true;
+      } catch (error) {
+        this.logger.error("Logs search preview projection failed", {
+          error,
+          windowStart: selection.window.start,
+          windowEnd: selection.window.end,
+        });
+        return false;
+      }
+    } finally {
+      await this.releaseLease(token, "preview");
+    }
   }
 
-  private async readStatus(includeClickHouseClock: boolean) {
-    const state = await this.stateStore.find();
-    if (!state) return uninitializedProjectorStatus();
+  private async project(
+    window: LogsSearchProjectorWindow
+  ): Promise<LogsSearchProjectorProjectionResult> {
+    const startedAt = Date.now();
+    try {
+      const result = await this.projectWindow(window);
+      logsSearchProjectorTelemetry.recordWindow(
+        window.mode,
+        "success",
+        Date.now() - startedAt,
+        result.readRows,
+        result.writtenRows
+      );
+      return result;
+    } catch (error) {
+      logsSearchProjectorTelemetry.recordWindow(window.mode, "error", Date.now() - startedAt);
+      if (window.mode === "finalized") {
+        this.logger.error("Logs search finalized projection failed", {
+          error,
+          windowStart: window.start,
+          windowEnd: window.end,
+        });
+      }
+      throw error;
+    }
+  }
 
-    let safeCutoff: Date | null = null;
+  private async releaseLease(token: string, mode: LogsSearchProjectionMode): Promise<void> {
+    try {
+      await this.redisStore.releaseLease(token, mode);
+    } catch (error) {
+      this.logger.warn("Failed to release logs search projector lease", { error, mode });
+    }
+  }
+
+  private async readStatus(includeClickHouseClock: boolean): Promise<LogsSearchProjectorStatus> {
+    const control = await this.stateStore.findControl();
+    if (!control) return uninitializedProjectorStatus(this.config.previewEnabled);
+
+    let now: Date | null = null;
     if (includeClickHouseClock) {
       try {
-        safeCutoff = calculateClosedWindowBoundary(await this.clock(), this.config.safetyDelayMs);
+        now = await this.clock();
       } catch (error) {
         this.logger.warn("Failed to read ClickHouse clock for logs search projector status", {
           error,
         });
       }
     }
-    return projectorStatus(state, safeCutoff, true);
+
+    return this.buildStatus(control, now);
   }
 
-  private async ensureInitialized() {
-    await this.stateStore.initialize(
-      calculateClosedWindowBoundary(await this.clock(), this.config.safetyDelayMs)
+  private async buildStatus(
+    control: LogsSearchProjectorControl,
+    now: Date | null
+  ): Promise<LogsSearchProjectorStatus> {
+    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(
+      control.initialWatermark
     );
+    let previewWatermark: Date | null = null;
+    let lease: LogsSearchProjectorLeaseStatus | null = null;
+
+    try {
+      [previewWatermark, lease] = await Promise.all([
+        this.redisStore.getPreviewWatermark(),
+        this.redisStore.readLeaseStatus(),
+      ]);
+    } catch (error) {
+      this.logger.warn("Failed to read Redis logs search projector status", { error });
+    }
+
+    const previewCutoff = now ? previewSafeCutoff(now) : null;
+    const finalizedCutoff = now ? finalizedSafeCutoff(now) : null;
+    const previewLagMs = lagMs(previewWatermark, previewCutoff);
+    const finalizedLagMs = lagMs(finalizedWatermark, finalizedCutoff);
+
+    return {
+      initialized: true,
+      paused: control.paused,
+      previewEnabled: this.config.previewEnabled,
+      previewWatermark,
+      previewSafeCutoff: previewCutoff,
+      previewLagMs,
+      finalizedWatermark,
+      finalizedSafeCutoff: finalizedCutoff,
+      finalizedLagMs,
+      finalizedWindowsDue:
+        finalizedLagMs === null
+          ? null
+          : Math.floor(finalizedLagMs / LOGS_SEARCH_FINALIZED_WINDOW_MS),
+      activeProjectionMode: lease?.mode ?? null,
+      leaseExpiresAt: lease?.expiresAt ?? null,
+    };
   }
 
-  private updateTelemetryState(state: LogsSearchProjectorState, safeCutoff: Date) {
-    const status = projectorStatus(state, safeCutoff, true);
+  private async updateTelemetryState(
+    now: Date,
+    control: LogsSearchProjectorControl
+  ): Promise<void> {
+    const status = await this.buildStatus(control, now);
     logsSearchProjectorTelemetry.updateState({
-      liveLagMs: status.liveLagMs ?? 0,
-      backfillRemaining: status.backfillWindowsRemaining,
+      previewLagMs: status.previewLagMs,
+      finalizedLagMs: status.finalizedLagMs ?? 0,
       paused: status.paused,
     });
   }
 }
 
-export function calculateClosedWindowBoundary(now: Date, safetyDelayMs: number): Date {
-  return new Date(
-    Math.floor((now.getTime() - safetyDelayMs) / LOGS_SEARCH_PROJECTOR_WINDOW_MS) *
-      LOGS_SEARCH_PROJECTOR_WINDOW_MS
+export function calculateClosedWindowBoundary(
+  now: Date,
+  safetyDelayMs: number,
+  windowMs: number
+): Date {
+  return new Date(Math.floor((now.getTime() - safetyDelayMs) / windowMs) * windowMs);
+}
+
+export function previewSafeCutoff(now: Date): Date {
+  return calculateClosedWindowBoundary(
+    now,
+    LOGS_SEARCH_PREVIEW_SAFETY_DELAY_MS,
+    LOGS_SEARCH_PREVIEW_WINDOW_MS
   );
 }
 
-export function selectNextProjectionWindow(
-  state: LogsSearchProjectorState,
-  safeCutoff: Date
-): LogsSearchProjectorWindow | null {
-  if (state.paused) return null;
-  if (state.liveWatermark < safeCutoff) {
-    return {
-      mode: "live",
-      start: state.liveWatermark,
-      end: new Date(state.liveWatermark.getTime() + LOGS_SEARCH_PROJECTOR_WINDOW_MS),
-    };
-  }
-  if (state.backfillTarget && state.historicalWatermark > state.backfillTarget) {
-    return {
-      mode: "backfill",
-      start: new Date(state.historicalWatermark.getTime() - LOGS_SEARCH_PROJECTOR_WINDOW_MS),
-      end: state.historicalWatermark,
-    };
-  }
-  return null;
+export function finalizedSafeCutoff(now: Date): Date {
+  return calculateClosedWindowBoundary(
+    now,
+    LOGS_SEARCH_FINALIZED_SAFETY_DELAY_MS,
+    LOGS_SEARCH_FINALIZED_WINDOW_MS
+  );
 }
 
-function uninitializedProjectorStatus(): LogsSearchProjectorStatus {
+export function selectFinalizedWindow(
+  watermark: Date,
+  safeCutoff: Date
+): LogsSearchProjectorWindow | null {
+  if (watermark >= safeCutoff) return null;
+  return {
+    mode: "finalized",
+    start: watermark,
+    end: new Date(watermark.getTime() + LOGS_SEARCH_FINALIZED_WINDOW_MS),
+  };
+}
+
+export function selectPreviewWindow(
+  watermark: Date,
+  safeCutoff: Date
+): { window: LogsSearchProjectorWindow | null; skippedWindows: number } {
+  if (watermark >= safeCutoff) return { window: null, skippedWindows: 0 };
+
+  const latestWindowStart = new Date(safeCutoff.getTime() - LOGS_SEARCH_PREVIEW_WINDOW_MS);
+  const start = watermark < latestWindowStart ? latestWindowStart : watermark;
+  return {
+    window: {
+      mode: "preview",
+      start,
+      end: new Date(start.getTime() + LOGS_SEARCH_PREVIEW_WINDOW_MS),
+    },
+    skippedWindows: Math.max(
+      0,
+      Math.floor((start.getTime() - watermark.getTime()) / LOGS_SEARCH_PREVIEW_WINDOW_MS)
+    ),
+  };
+}
+
+function lagMs(watermark: Date | null, cutoff: Date | null): number | null {
+  if (!watermark || !cutoff) return null;
+  return Math.max(0, cutoff.getTime() - watermark.getTime());
+}
+
+function uninitializedProjectorStatus(previewEnabled: boolean): LogsSearchProjectorStatus {
   return {
     initialized: false,
     paused: false,
-    liveWatermark: null,
-    safeCutoff: null,
-    liveLagMs: null,
-    liveWindowsDue: null,
-    historicalWatermark: null,
-    backfillTarget: null,
-    backfillWindowsRemaining: 0,
+    previewEnabled,
+    previewWatermark: null,
+    previewSafeCutoff: null,
+    previewLagMs: null,
+    finalizedWatermark: null,
+    finalizedSafeCutoff: null,
+    finalizedLagMs: null,
+    finalizedWindowsDue: null,
+    activeProjectionMode: null,
     leaseExpiresAt: null,
   };
-}
-
-function projectorStatus(
-  state: LogsSearchProjectorState,
-  safeCutoff: Date | null,
-  initialized: boolean
-): LogsSearchProjectorStatus {
-  const liveLagMs = safeCutoff
-    ? Math.max(0, safeCutoff.getTime() - state.liveWatermark.getTime())
-    : null;
-  const backfillRemaining = state.backfillTarget
-    ? Math.max(
-        0,
-        Math.floor(
-          (state.historicalWatermark.getTime() - state.backfillTarget.getTime()) /
-            LOGS_SEARCH_PROJECTOR_WINDOW_MS
-        )
-      )
-    : 0;
-  return {
-    initialized,
-    paused: state.paused,
-    liveWatermark: state.liveWatermark,
-    safeCutoff,
-    liveLagMs,
-    liveWindowsDue:
-      liveLagMs === null ? null : Math.floor(liveLagMs / LOGS_SEARCH_PROJECTOR_WINDOW_MS),
-    historicalWatermark: state.historicalWatermark,
-    backfillTarget: state.backfillTarget,
-    backfillWindowsRemaining: backfillRemaining,
-    leaseExpiresAt: state.leaseExpiresAt,
-  };
-}
-
-function assertMinuteBoundary(value: Date, field: string) {
-  if (
-    !Number.isFinite(value.getTime()) ||
-    value.getTime() % LOGS_SEARCH_PROJECTOR_WINDOW_MS !== 0
-  ) {
-    throw new LogsSearchProjectorValidationError(`${field} must be aligned to a UTC minute`);
-  }
 }

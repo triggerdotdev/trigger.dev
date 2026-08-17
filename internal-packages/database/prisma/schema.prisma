@@ -3222,18 +3222,28 @@ model PlatformNotificationInteraction {
   @@unique([notificationId, userId])
 }
 
-model LogsSearchProjectorState {
+model LogsSearchProjectorControl {
   id String @id
 
-  liveWatermark       DateTime
-  historicalWatermark DateTime
-  backfillTarget      DateTime?
-  paused              Boolean   @default(false)
-  leaseToken          String?
-  leaseExpiresAt      DateTime?
+  initialWatermark DateTime
+  paused           Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model LogsSearchProjectorCheckpoint {
+  id BigInt @id @default(autoincrement())
+
+  projectorId String
+  mode        String
+  windowStart DateTime
+  windowEnd   DateTime
+  queryId     String?
+  completedAt DateTime @default(now())
+
+  @@unique([projectorId, mode, windowStart, windowEnd])
+  @@index([projectorId, mode, windowEnd(sort: Desc)])
 }
 
 enum ErrorGroupStatus {

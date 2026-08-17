@@ -21,7 +21,17 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v2
   duration UInt64 CODEC(ZSTD(1)),
   parent_span_id String CODEC(ZSTD(1)),
   projection_fingerprint UInt128 DEFAULT reinterpretAsUInt128(
-    sipHash128(trace_id, span_id, run_id, start_time)
+    sipHash128(
+      trace_id,
+      span_id,
+      run_id,
+      start_time,
+      kind,
+      status,
+      duration,
+      toValidUTF8(substring(message, 1, 2045)),
+      toValidUTF8(substring(error_message, 1, 2045))
+    )
   ),
 
   INDEX idx_run_id run_id TYPE bloom_filter(0.001) GRANULARITY 1,
@@ -29,7 +39,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v2
     TYPE text(tokenizer = 'ngrams', preprocessor = lowerUTF8(search_text))
 )
 ENGINE = ReplacingMergeTree
-PARTITION BY toDate(triggered_timestamp)
+PARTITION BY toDate(inserted_at)
 ORDER BY (
   organization_id,
   environment_id,

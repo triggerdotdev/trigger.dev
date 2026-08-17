@@ -2100,16 +2100,8 @@ const EnvironmentSchema = z
     // Scheduled logs-search projection. Disabled by default. The writer URL must reach both the
     // task_events_v2 source and task_events_search_v2 destination tables.
     LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.EVENTS_CLICKHOUSE_URL ?? process.env.CLICKHOUSE_URL),
-    LOGS_SEARCH_PROJECTOR_SAFETY_DELAY_SECONDS: z.coerce
-      .number()
-      .int()
-      .min(60)
-      .max(3600)
-      .default(120),
+    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL: z.string().optional(),
     LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
     LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
       .number()
@@ -2124,14 +2116,6 @@ const EnvironmentSchema = z
       .positive()
       .default(1_500_000_000),
     LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
-    LOGS_SEARCH_PROJECTOR_BACKFILL_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_RANGE_DAYS: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(90)
-      .default(7),
-    LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_AGE_DAYS: z.coerce.number().int().min(1).max(90).default(90),
 
     // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
@@ -2453,6 +2437,14 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
+    if (env.LOGS_SEARCH_PROJECTOR_ENABLED && !env.LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL"],
+        message: "Required when LOGS_SEARCH_PROJECTOR_ENABLED is true",
+      });
+    }
+
     const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
     for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
       if (!presets.has(required)) {

@@ -20,10 +20,10 @@ function initializeWorker() {
     catalog: {
       "logsSearch.projectV2": {
         schema: CronSchema,
-        cron: "* * * * *",
-        jitterInMs: 5_000,
+        cron: env.LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED ? "*/5 * * * * *" : "* * * * *",
+        jitterInMs: env.LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED ? 1_000 : 5_000,
         visibilityTimeoutMs:
-          env.LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK *
+          (env.LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK + 1) *
             (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 30) *
             1000 +
           60_000,

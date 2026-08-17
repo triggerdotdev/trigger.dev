@@ -91,24 +91,48 @@ describe("task events search v2", () => {
 
       const tableQuery = ch.reader.query({
         name: "read-search-v2-table-engine",
-        query: `SELECT name, engine FROM system.tables
+        query: `SELECT name, engine, partition_key FROM system.tables
           WHERE database = 'trigger_dev'
             AND name IN ('task_events_search_mv_v2', 'task_events_search_v2')
           ORDER BY name`,
-        schema: z.object({ name: z.string(), engine: z.string() }),
+        schema: z.object({ name: z.string(), engine: z.string(), partition_key: z.string() }),
       });
       const [tableError, tables] = await tableQuery({});
       expect(tableError).toBeNull();
-      expect(tables).toEqual([{ name: "task_events_search_v2", engine: "ReplacingMergeTree" }]);
+      expect(tables).toEqual([
+        {
+          name: "task_events_search_v2",
+          engine: "ReplacingMergeTree",
+          partition_key: "toDate(inserted_at)",
+        },
+      ]);
 
       const firstProjection = await project(ch, start, end);
       const retryProjection = await project(ch, start, end);
       expect(Number(firstProjection.summary?.written_rows)).toBe(1);
       expect(Number(retryProjection.summary?.written_rows)).toBe(1);
 
+      const insertWithDefaultFingerprint = ch.writer.command({
+        name: "copy-search-v2-row-with-default-fingerprint",
+        query: `INSERT INTO trigger_dev.task_events_search_v2
+          (environment_id, organization_id, project_id, triggered_timestamp, trace_id, span_id,
+           run_id, task_identifier, start_time, inserted_at, message, error_message, search_text,
+           kind, status, duration, parent_span_id)
+          SELECT
+            environment_id, organization_id, project_id, triggered_timestamp, trace_id, span_id,
+            run_id, task_identifier, start_time, inserted_at, message, error_message, search_text,
+            kind, status, duration, parent_span_id
+          FROM trigger_dev.task_events_search_v2
+          WHERE organization_id = {organizationId: String}
+          LIMIT 1`,
+        params: z.object({ organizationId: z.string() }),
+      });
+      const [defaultInsertError] = await insertWithDefaultFingerprint({ organizationId: ORG });
+      expect(defaultInsertError).toBeNull();
+
       const [preMergeReadError, preMergeRows] = await searchRows(ch);
       expect(preMergeReadError).toBeNull();
-      expect([1, 2]).toContain(preMergeRows?.length);
+      expect([1, 2, 3]).toContain(preMergeRows?.length);
       const rawQuery = ch.reader.query({
         name: "count-raw-search-v2-fixture",
         query: `SELECT count() AS count FROM trigger_dev.task_events_search_v2
@@ -118,7 +142,7 @@ describe("task events search v2", () => {
       });
       let [rawError, rawRows] = await rawQuery({ organizationId: ORG });
       expect(rawError).toBeNull();
-      expect([1, 2]).toContain(rawRows?.[0].count);
+      expect([1, 2, 3]).toContain(rawRows?.[0].count);
 
       const optimize = ch.writer.command({
         name: "merge-search-v2-retry-fixture",
@@ -155,6 +179,63 @@ describe("task events search v2", () => {
       );
       expect(searchData?.[0].search_text).toContain("status_code:500");
       expect(searchData?.[0].search_text).toContain("retryable:true");
+
+      await ch.close();
+    }
+  );
+
+  clickhouseTest(
+    "deduplicates preview and finalized copies without collapsing distinct span rows",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+      const insertedAt = new Date("2026-08-14T10:10:30.000Z");
+      const sharedIdentity = {
+        trace_id: "trace_shared",
+        span_id: "span_shared",
+        run_id: "run_shared",
+        start_time: clickhouseDate(insertedAt),
+        inserted_at: clickhouseDate(insertedAt),
+      };
+      const [insertError] = await ch.taskEventsV2.insert([
+        event(insertedAt, {
+          ...sharedIdentity,
+          message: "first message",
+        }),
+        event(insertedAt, {
+          ...sharedIdentity,
+          message: "second message",
+        }),
+      ]);
+      expect(insertError).toBeNull();
+
+      await project(ch, insertedAt, new Date(insertedAt.getTime() + 5_000));
+      await project(ch, new Date("2026-08-14T10:10:00.000Z"), new Date("2026-08-14T10:11:00.000Z"));
+
+      const optimize = ch.writer.command({
+        name: "merge-search-v2-preview-finalized-fixture",
+        query: "OPTIMIZE TABLE trigger_dev.task_events_search_v2 FINAL",
+      });
+      const [optimizeError] = await optimize({});
+      expect(optimizeError).toBeNull();
+
+      const fingerprintQuery = ch.reader.query({
+        name: "read-search-v2-shared-identity-fingerprints",
+        query: `SELECT
+            count() AS count,
+            uniqExact(projection_fingerprint) AS fingerprints,
+            uniqExact(triggered_timestamp) AS triggered_timestamps
+          FROM trigger_dev.task_events_search_v2
+          WHERE organization_id = {organizationId: String}`,
+        params: z.object({ organizationId: z.string() }),
+        schema: z.object({
+          count: z.number(),
+          fingerprints: z.number(),
+          triggered_timestamps: z.number(),
+        }),
+      });
+      const [fingerprintError, counts] = await fingerprintQuery({ organizationId: ORG });
+      expect(fingerprintError).toBeNull();
+      expect(counts).toEqual([{ count: 2, fingerprints: 2, triggered_timestamps: 1 }]);
 
       await ch.close();
     }
@@ -214,7 +295,7 @@ describe("task events search v2", () => {
       expect(lengths?.[0].error_message_is_valid_utf8).toBe(1);
       expect(rows?.[0].triggered_timestamp).toBeDefined();
       expect(new Date(`${rows?.[0].triggered_timestamp}Z`).getTime()).toBe(
-        boundary.getTime() + 5 * 60_000
+        first.getTime() + 5 * 60_000
       );
 
       await project(ch, boundary, end);

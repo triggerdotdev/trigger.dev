@@ -1,52 +1,76 @@
 import { postgresTest } from "@internal/testcontainers";
 import { expect } from "vitest";
-import { LOGS_SEARCH_PROJECTOR_STATE_ID } from "~/services/logsSearchProjector.server";
+import {
+  LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
+  LOGS_SEARCH_PROJECTOR_ID,
+  type LogsSearchProjectorWindow,
+} from "~/services/logsSearchProjector.server";
 import { PrismaLogsSearchProjectorStateStore } from "~/services/logsSearchProjectorStateStore.server";
 
 const at = (value: string) => new Date(value);
 
 postgresTest(
-  "persists projector leases, watermarks, pause state, and backfill state",
+  "persists low-churn control state and append-only finalized checkpoints",
   async ({ prisma }) => {
     const store = new PrismaLogsSearchProjectorStateStore(prisma);
     const initial = at("2026-08-14T12:00:00.000Z");
-    const next = at("2026-08-14T12:01:00.000Z");
+    const laterInitialization = at("2026-08-14T12:05:00.000Z");
+    const window: LogsSearchProjectorWindow = {
+      mode: "finalized",
+      start: initial,
+      end: at("2026-08-14T12:01:00.000Z"),
+    };
 
-    await expect(store.find()).resolves.toBeNull();
+    await expect(store.findControl()).resolves.toBeNull();
     await expect(store.initialize(initial)).resolves.toMatchObject({
-      id: LOGS_SEARCH_PROJECTOR_STATE_ID,
-      liveWatermark: initial,
-      historicalWatermark: initial,
+      id: LOGS_SEARCH_PROJECTOR_ID,
+      initialWatermark: initial,
       paused: false,
     });
+    await expect(store.initialize(laterInitialization)).resolves.toMatchObject({
+      initialWatermark: initial,
+    });
+    await expect(store.getFinalizedWatermark(initial)).resolves.toEqual(initial);
 
-    expect(await store.acquireLease("lease-a", 60_000)).toBe(true);
-    expect(await store.acquireLease("lease-b", 60_000)).toBe(false);
-    expect(await store.advanceLive("lease-a", next, at("2026-08-14T12:02:00.000Z"))).toBe(false);
-    expect(await store.advanceLive("lease-a", initial, next)).toBe(true);
-    await store.releaseLease("lease-a");
+    await expect(
+      store.appendFinalizedCheckpoint(window, {
+        queryId: "query-1",
+        readRows: 10,
+        writtenRows: 8,
+      })
+    ).resolves.toBe("inserted");
+    await expect(
+      store.appendFinalizedCheckpoint(window, {
+        queryId: "query-retry",
+        readRows: 10,
+        writtenRows: 8,
+      })
+    ).resolves.toBe("duplicate");
+    await expect(store.getFinalizedWatermark(initial)).resolves.toEqual(window.end);
 
+    expect(
+      await prisma.logsSearchProjectorCheckpoint.findMany({
+        where: {
+          projectorId: LOGS_SEARCH_PROJECTOR_ID,
+          mode: LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
+        },
+      })
+    ).toHaveLength(1);
+
+    const controlBeforePause = await prisma.logsSearchProjectorControl.findFirst({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
+    });
     await store.pause();
-    expect(await store.acquireLease("lease-b", 60_000)).toBe(false);
+    await expect(store.getControl()).resolves.toMatchObject({ paused: true });
     await store.resume();
-    expect(await store.acquireLease("lease-b", 60_000)).toBe(true);
+    await expect(store.getControl()).resolves.toMatchObject({ paused: false });
 
-    const target = at("2026-08-14T11:58:00.000Z");
-    expect(await store.setBackfillTarget(initial, target)).toBe(true);
-    expect(await store.advanceHistorical("lease-b", next, initial, target)).toBe(false);
-    expect(
-      await store.advanceHistorical("lease-b", initial, at("2026-08-14T11:59:00.000Z"), target)
-    ).toBe(true);
-    expect(
-      await store.advanceHistorical("lease-b", at("2026-08-14T11:59:00.000Z"), target, target)
-    ).toBe(true);
-
-    await expect(store.get()).resolves.toMatchObject({
-      liveWatermark: next,
-      historicalWatermark: target,
-      backfillTarget: null,
-      paused: false,
-      leaseToken: "lease-b",
+    const controlAfterResume = await prisma.logsSearchProjectorControl.findFirst({
+      where: { id: LOGS_SEARCH_PROJECTOR_ID },
     });
+    expect(controlAfterResume?.initialWatermark).toEqual(initial);
+    expect(controlAfterResume?.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      controlBeforePause!.updatedAt.getTime()
+    );
   }
 );

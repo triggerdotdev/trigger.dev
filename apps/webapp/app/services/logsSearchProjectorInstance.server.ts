@@ -1,10 +1,12 @@
+import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { createRedisClient } from "~/redis.server";
 import { getLogsSearchProjectorClickhouseClient } from "~/services/clickhouse/clickhouseFactory.server";
 import { LogsSearchProjector } from "~/services/logsSearchProjector.server";
+import { RedisLogsSearchProjectorStore } from "~/services/logsSearchProjectorRedisStore.server";
 import { PrismaLogsSearchProjectorStateStore } from "~/services/logsSearchProjectorStateStore.server";
 import { singleton } from "~/utils/singleton";
-import { z } from "zod";
 
 function initializeLogsSearchProjector() {
   const clickhouse = getLogsSearchProjectorClickhouseClient();
@@ -19,17 +21,24 @@ function initializeLogsSearchProjector() {
     maxMemoryUsage: env.LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE,
     maxThreads: env.LOGS_SEARCH_PROJECTOR_MAX_THREADS,
   };
+  const redis = createRedisClient("logs-search-projector", {
+    host: env.COMMON_WORKER_REDIS_HOST,
+    port: env.COMMON_WORKER_REDIS_PORT,
+    username: env.COMMON_WORKER_REDIS_USERNAME,
+    password: env.COMMON_WORKER_REDIS_PASSWORD,
+    tlsDisabled: env.COMMON_WORKER_REDIS_TLS_DISABLED === "true",
+    clusterMode: env.COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED === "1",
+    maxRetriesPerRequest: 2,
+  });
 
   return new LogsSearchProjector(
     {
-      safetyDelayMs: env.LOGS_SEARCH_PROJECTOR_SAFETY_DELAY_SECONDS * 1000,
-      maxWindowsPerTick: env.LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK,
-      leaseDurationMs: env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS * 1000 + 60_000,
-      backfillEnabled: env.LOGS_SEARCH_PROJECTOR_BACKFILL_ENABLED,
-      maxBackfillRangeMs: env.LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_RANGE_DAYS * 24 * 60 * 60 * 1000,
-      maxBackfillAgeMs: env.LOGS_SEARCH_PROJECTOR_MAX_BACKFILL_AGE_DAYS * 24 * 60 * 60 * 1000,
+      previewEnabled: env.LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED,
+      maxFinalizedWindowsPerTick: env.LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK,
+      leaseDurationMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 90) * 1000,
     },
     new PrismaLogsSearchProjectorStateStore(prisma),
+    new RedisLogsSearchProjectorStore(redis),
     async (window) => {
       const [error, result] = await clickhouse.taskEventsSearch.projectV2Window(window, limits);
       if (error) throw error;

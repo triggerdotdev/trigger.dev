@@ -1,34 +1,32 @@
 import { getMeter } from "@internal/tracing";
 import { singleton } from "~/utils/singleton";
 
-export type LogsSearchProjectionMode = "live" | "backfill";
-export type LogsSearchProjectionOutcome = "success" | "error" | "cas_lost";
+export type LogsSearchProjectionMode = "preview" | "finalized";
+export type LogsSearchProjectionOutcome = "success" | "error";
 
 const telemetry = singleton("logsSearchProjectorTelemetry", () => {
   const meter = getMeter("logs-search-projector");
   const values: {
-    liveLagMs?: number;
-    backfillRemaining?: number;
+    previewLagMs?: number;
+    finalizedLagMs?: number;
     paused?: number;
     updatedAt?: number;
   } = {};
   const isFresh = () => values.updatedAt && Date.now() - values.updatedAt < 150_000;
 
   meter
-    .createObservableGauge("logs_search.projector.live_lag_ms", {
-      description: "Delay between the safe projection cutoff and the live watermark",
+    .createObservableGauge("logs_search.projector.preview_lag_ms", {
+      description: "Delay between the preview cutoff and its best-effort Redis watermark",
     })
     .addCallback((result) => {
-      if (isFresh() && values.liveLagMs !== undefined) result.observe(values.liveLagMs);
+      if (isFresh() && values.previewLagMs !== undefined) result.observe(values.previewLagMs);
     });
   meter
-    .createObservableGauge("logs_search.projector.backfill_remaining_windows", {
-      description: "One-minute windows remaining in the active historical backfill",
+    .createObservableGauge("logs_search.projector.finalized_lag_ms", {
+      description: "Delay between the finalized cutoff and its durable checkpoint watermark",
     })
     .addCallback((result) => {
-      if (isFresh() && values.backfillRemaining !== undefined) {
-        result.observe(values.backfillRemaining);
-      }
+      if (isFresh() && values.finalizedLagMs !== undefined) result.observe(values.finalizedLagMs);
     });
   meter
     .createObservableGauge("logs_search.projector.paused", {
@@ -53,7 +51,8 @@ const telemetry = singleton("logsSearchProjectorTelemetry", () => {
       description: "Rows written for one logs search projection window",
     }),
     leaseContention: meter.createCounter("logs_search.projector.lease_contention"),
-    casLoss: meter.createCounter("logs_search.projector.cas_loss"),
+    checkpointConflicts: meter.createCounter("logs_search.projector.checkpoint_conflicts"),
+    previewSkipped: meter.createCounter("logs_search.projector.preview_skipped_windows"),
   };
 });
 
@@ -70,15 +69,20 @@ export const logsSearchProjectorTelemetry = {
     telemetry.sourceRows.record(sourceRows, { mode });
     telemetry.destinationRows.record(destinationRows, { mode });
   },
-  recordLeaseContention() {
-    telemetry.leaseContention.add(1);
+  recordLeaseContention(mode: LogsSearchProjectionMode) {
+    telemetry.leaseContention.add(1, { mode });
   },
-  recordCasLoss(mode: LogsSearchProjectionMode) {
-    telemetry.casLoss.add(1, { mode });
+  recordCheckpointConflict() {
+    telemetry.checkpointConflicts.add(1);
   },
-  updateState(values: { liveLagMs: number; backfillRemaining: number; paused: boolean }) {
-    telemetry.values.liveLagMs = Math.max(0, values.liveLagMs);
-    telemetry.values.backfillRemaining = Math.max(0, values.backfillRemaining);
+  recordPreviewSkipped(count: number) {
+    telemetry.previewSkipped.add(count);
+  },
+  updateState(values: { previewLagMs: number | null; finalizedLagMs: number; paused: boolean }) {
+    if (values.previewLagMs !== null) {
+      telemetry.values.previewLagMs = Math.max(0, values.previewLagMs);
+    }
+    telemetry.values.finalizedLagMs = Math.max(0, values.finalizedLagMs);
     telemetry.values.paused = values.paused ? 1 : 0;
     telemetry.values.updatedAt = Date.now();
   },
