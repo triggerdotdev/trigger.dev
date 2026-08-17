@@ -771,7 +771,7 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
 ```
 
 <Note>
-  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then every `kind: "message"` payload — and the `triggerConfig.basePayload` you sent at session create — must carry a matching `metadata.userId`. The agent rejects messages whose metadata fails schema validation.
+  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then the `triggerConfig.basePayload` you sent at session create and every non-close `kind: "message"` payload must carry a matching `metadata.userId`. Invalid metadata is not passed to agent code. Async reads produce an error chunk followed by `turn-complete`; raw `chat.messages.on()` subscriptions use `onClientDataValidationError` and the task log so they do not end an active response.
 </Note>
 
 ### Sending a message
