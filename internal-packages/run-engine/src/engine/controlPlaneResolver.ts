@@ -63,7 +63,7 @@ export type ResolvedWorkerTask = {
 };
 
 /** The `select` that yields a `ResolvedWorkerTask`. */
-export const resolvedWorkerTaskSelect = {
+const resolvedWorkerTaskSelect = {
   id: true,
   slug: true,
   machineConfig: true,
