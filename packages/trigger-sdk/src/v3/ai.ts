@@ -2538,6 +2538,8 @@ const chatOnCompactedKey =
   locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
 /** @internal Full task `ctx` for the active `chat.agent` run (for hooks invoked from nested compaction). */
 const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
+/** @internal Marks the root run created by `chat.customAgent()`. */
+const chatCustomAgentRunKey = locals.create<boolean>("chat.customAgentRun");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -5362,6 +5364,7 @@ function chatCustomAgent<
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      locals.set(chatCustomAgentRunKey, true);
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
       // this the slot is undefined and the trim never runs, so `.out`
@@ -5456,6 +5459,7 @@ function chatAgent<
       { signal: runSignal, ctx }
     ) => {
       locals.set(chatAgentRunContextKey, ctx);
+      locals.set(chatCustomAgentRunKey, false);
 
       // On AI SDK 7, register the `@ai-sdk/otel` integration (once per process)
       // so `experimental_telemetry` spans flow into the run trace. Awaited here
@@ -8706,6 +8710,54 @@ function requestUpgrade(): void {
 }
 
 /**
+ * Hand off the current custom agent Session to a fresh run.
+ *
+ * This is the low-level handoff for a fully hand-rolled
+ * `chat.customAgent()` loop. (`chat.createSession()` consumes
+ * {@link requestUpgrade} instead.) Call only after {@link chatWriteTurnComplete}
+ * and after detaching input listeners for the old run. The server starts the
+ * continuation run but does not stop this run, so return from the task
+ * immediately after awaiting this function.
+ *
+ * Pending Session input that the old run has not consumed remains on the
+ * durable `.in` stream and is delivered to the continuation run.
+ *
+ * @example
+ * ```ts
+ * await chat.writeTurnComplete();
+ *
+ * if (shouldUpgrade) {
+ *   return chat.endAndContinue();
+ * }
+ * ```
+ */
+async function endAndContinue(): Promise<void> {
+  if (locals.get(chatCustomAgentRunKey) !== true) {
+    throw new Error(
+      "chat.endAndContinue() can only be called from inside a chat.customAgent() run"
+    );
+  }
+
+  await performEndAndContinue();
+}
+
+/** @internal Shared server handoff used by managed and custom agent loops. */
+async function performEndAndContinue(): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    throw new Error("Cannot end and continue without an active chat agent run");
+  }
+
+  const apiClient = apiClientManager.clientOrThrow();
+  await apiClient.endAndContinueSession(chatId, {
+    callingRunId,
+    reason: "upgrade",
+  });
+}
+
+/**
  * Exit the run after the current turn completes, without waiting for the
  * next message. Unlike {@link requestUpgrade}, no upgrade-required signal
  * is sent to the client — the turn finishes normally, `onTurnComplete`
@@ -10697,6 +10749,8 @@ export const chat = {
   isStopped,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
+  /** Hand off a custom agent Session to a fresh run. See {@link endAndContinue}. */
+  endAndContinue,
   /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
   endRun,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
@@ -10891,17 +10945,12 @@ async function writeTurnCompleteChunk(
  * @internal
  */
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
-  const ctx = taskContext.ctx;
-  const chatId = ctx?.run.id ? getChatIdFromContext() : undefined;
-  const callingRunId = ctx?.run.id;
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (chatId && callingRunId) {
-    const apiClient = apiClientManager.clientOrThrow();
     try {
-      await apiClient.endAndContinueSession(chatId, {
-        callingRunId,
-        reason: "upgrade",
-      });
+      await performEndAndContinue();
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
       // Swallow rather than throw so we still emit the chunk + exit.
@@ -10915,17 +10964,6 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
 
   const session = getChatSession();
   return session.out.writeControl(TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED);
-}
-
-/**
- * Resolves the current chat's `chatId` (used as session externalId) from
- * the bound session handle. Returns `undefined` if no agent is bound —
- * shouldn't happen at the call sites that invoke
- * `writeUpgradeRequiredChunk`, but defensive against misuse.
- * @internal
- */
-function getChatIdFromContext(): string | undefined {
-  return locals.get(chatSessionHandleKey)?.id;
 }
 
 /**

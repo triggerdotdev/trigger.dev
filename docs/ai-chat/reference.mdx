@@ -511,6 +511,7 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.createStartSessionAction(taskId, options?)` | Returns a server action that creates a chat Session + triggers the first run + returns a session-scoped PAT. Idempotent on `(env, externalId)`.   |
 | `chat.waitForHandover(options)`             | Wait for a [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover signal in a custom loop. Returns the signal or `null`. `chat.MessageAccumulator` wraps this as `consumeHandover()` / `applyHandover()` |
 | `chat.requestUpgrade()`                     | End the current run after this turn so the next message starts on the latest agent version. Server-orchestrated handoff.    |
+| `chat.endAndContinue()`                     | In a hand-rolled custom agent, hand off the Session to a fresh continuation run. Finish the turn, detach input listeners, call this method, then return immediately. |
 | `chat.setTurnTimeout(duration)`             | Override turn timeout at runtime (e.g. `"2h"`)                                                                               |
 | `chat.setTurnTimeoutInSeconds(seconds)`     | Override turn timeout at runtime (in seconds)                                                                                |
 | `chat.setIdleTimeoutInSeconds(seconds)`     | Override idle timeout at runtime                                                                                             |

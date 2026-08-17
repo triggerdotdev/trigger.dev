@@ -144,6 +144,25 @@ for await (const turn of session) {
 
 Without this, a resumed chat silently loses its history: the model sees only the message that triggered the continuation. In a hand-rolled loop, seed by passing the stored history into the turn-0 `addIncoming` call — shown in the example below.
 
+### Rotating to a new deployment
+
+`chat.createSession()` consumes `chat.requestUpgrade()` through its managed iterator. In a fully hand-rolled custom agent, hand the Session to a fresh run with `chat.endAndContinue()`. Finish the current turn and persist its state first, then make the handoff the last operation in `run()`:
+
+```ts
+await chat.writeTurnComplete();
+await persistMessages(conversation.uiMessages);
+
+if (shouldRotateToLatestVersion()) {
+  return chat.endAndContinue();
+}
+```
+
+The server starts a continuation run using the Session's existing trigger configuration and atomically makes it the current run. The Session and its streams stay open, so input that the old run has not consumed remains on `.in` for the continuation run. The new run uses the latest deployed task version unless the Session's trigger configuration sets `lockToVersion`.
+
+<Warning>
+  Call `chat.endAndContinue()` only at a completed turn boundary, after `chat.writeTurnComplete()` and after detaching the old run's input listeners. The operation starts the new run but does not stop the caller. Await it and return from `run()` immediately; continuing to read or write can race the new run on the same Session.
+</Warning>
+
 ### turn.complete() vs manual control
 
 `turn.complete(result)` is the one-call path — it handles piping, capturing the response, accumulating messages, cleaning up aborted parts on a stop, and writing the turn-complete chunk.
@@ -217,6 +236,7 @@ For full control, skip `createSession` and compose the primitives directly:
 | `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                  |
 | `chat.pipeAndCapture(result)`   | Pipe a stream and capture the response; returns `{ message, status, error }`                 |
 | `chat.writeTurnComplete()`      | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors             |
+| `chat.endAndContinue()`         | Hand off the Session to a continuation run; call at a completed turn boundary, then return   |
 | `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                               |
 | `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                          |
 | `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                            |
