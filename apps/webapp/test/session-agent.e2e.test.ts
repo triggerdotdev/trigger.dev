@@ -1698,6 +1698,7 @@ describe("session agent e2e (real chat.agent loop)", () => {
         agentFailure = error;
       }
     );
+    let continuation: ReturnType<typeof runRealChatAgent> | undefined;
 
     try {
       await waitFor(
@@ -1739,7 +1740,34 @@ describe("session agent e2e (real chat.agent loop)", () => {
         select: { currentRunId: true },
       });
       expect(session.currentRunId).not.toBe(initialRun.id);
+
+      const successor = await server.prisma.taskRun.findFirstOrThrow({
+        where: { id: session.currentRunId! },
+        select: { friendlyId: true },
+      });
+      continuation = runRealChatAgent({
+        agentId: testEndAndContinueIteratorGuardCustomAgent.id,
+        baseUrl,
+        addressingKey,
+        secretKey: apiKey,
+        model: textModel("unused"),
+        modelLocal: testChatModelLocal,
+        runId: successor.friendlyId,
+        continuation: true,
+        previousRunId: runId,
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token: publicAccessToken,
+        until: (records) => records.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(joinChunks(parts)).toContain("received:release pending next");
+      await expect(continuation.done).resolves.toBeUndefined();
     } finally {
+      await continuation?.close();
       await agent.close();
     }
   });

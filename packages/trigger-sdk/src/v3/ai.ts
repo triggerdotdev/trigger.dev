@@ -8717,9 +8717,11 @@ function requestUpgrade(): void {
  * This is the low-level handoff for a fully hand-rolled
  * `chat.customAgent()` loop. This method rejects while a
  * `chat.createSession()` iterator is active. Close the iterator before calling
- * it. Call only between turns and after detaching input listeners for the old
- * run. If the old run completed its current turn, persist its state and call
- * {@link chatWriteTurnComplete} before handing off.
+ * it. If `return()` races an active `next()`, it waits for that read to settle
+ * before releasing the handoff guard. Call only between turns and after
+ * detaching input listeners for the old run. If the old run completed its
+ * current turn, persist its state and call {@link chatWriteTurnComplete} before
+ * handing off.
  * Do not write a new turn boundary after input that the continuation run should
  * process has been dispatched: the boundary acknowledges that input.
  *
@@ -9656,6 +9658,11 @@ function trackActiveChatSessionIterator(
         } catch {
           // The inner next() already ended cleanly; cleanup remains best-effort.
         }
+      } else if (closing) {
+        // return() won the race. Do not expose a turn the caller has already
+        // abandoned; without a new turn-complete boundary its input remains
+        // replayable by the continuation run.
+        return { done: true as const, value: undefined };
       }
       return result;
     },

@@ -155,6 +155,8 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 
 Use `chat.requestUpgrade()` with `chat.agent()`. With `chat.createSession()`, call `chat.requestUpgrade()`, then advance the iterator once more so it can exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
 
+Close a `chat.createSession()` iterator between reads. If `return()` races a `next()` that is already waiting for input, it waits for that read to settle before the handoff can continue. Input dispatched while the iterator is closing is not yielded as a turn and remains available to the continuation unless you write another turn-complete boundary.
+
 ```ts
 // Detach any chat.messages.on() subscriptions you created.
 stop.cleanup();

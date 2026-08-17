@@ -148,6 +148,8 @@ Without this, a resumed chat silently loses its history: the model sees only the
 
 With `chat.createSession()`, use `chat.requestUpgrade()` and let the iterator exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`; the method rejects until the iterator and any active `next()` call have settled. In a fully hand-rolled custom agent, call it directly to hand the Session to a fresh run.
 
+Close the iterator between reads. If `return()` races a `next()` that is already waiting for input, it waits for that read to settle before releasing the handoff guard. Input dispatched while the iterator is closing is not yielded as a turn and remains available to the continuation unless you write another turn-complete boundary.
+
 Call it between turns, after detaching the old run's input listeners. If the old run completed its current turn, persist its state and write the turn-complete boundary before the handoff:
 
 ```ts

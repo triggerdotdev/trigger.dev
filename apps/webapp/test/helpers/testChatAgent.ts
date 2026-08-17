@@ -291,6 +291,33 @@ async function expectActiveSessionIteratorError() {
 export const testEndAndContinueIteratorGuardCustomAgent = chat.customAgent({
   id: "e2e-test-chat-custom-end-and-continue-iterator-guard",
   run: async (payload, { signal }) => {
+    if (payload.continuation) {
+      const next = await chat.messages.waitWithIdleTimeout({
+        idleTimeoutInSeconds: 2,
+        timeout: "1m",
+      });
+      if (!next.ok) {
+        throw next.error;
+      }
+
+      const message = next.output.message as UIMessage | undefined;
+      const text = message ? firstText(message) : "";
+      const { waitUntilComplete } = chat.stream.writer({
+        execute: ({ write }) => {
+          write({ type: "text-start", id: "guard-continuation-result" });
+          write({
+            type: "text-delta",
+            id: "guard-continuation-result",
+            delta: `received:${text}`,
+          });
+          write({ type: "text-end", id: "guard-continuation-result" });
+        },
+      });
+      await waitUntilComplete();
+      await chat.writeTurnComplete();
+      return;
+    }
+
     const iterator = chat.createSession(payload, { signal })[Symbol.asyncIterator]();
     const firstTurn = await iterator.next();
     if (firstTurn.done) {
@@ -311,8 +338,8 @@ export const testEndAndContinueIteratorGuardCustomAgent = chat.customAgent({
     endAndContinueGuardEvents.push({ chatId: payload.chatId, kind: "guard-held" });
 
     const [nextResult] = await Promise.all([pendingNext, pendingReturn]);
-    if (nextResult.done) {
-      throw new Error("Expected the pending next() call to receive the release input");
+    if (!nextResult.done) {
+      throw new Error("Expected return() to suppress the pending next() turn");
     }
     endAndContinueGuardEvents.push({ chatId: payload.chatId, kind: "return-settled" });
 
