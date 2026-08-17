@@ -370,6 +370,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
       configFile: options.config,
       defaultRuntime: projectClient.defaultRuntime,
+      warn: false,
     });
   }
 
