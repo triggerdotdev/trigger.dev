@@ -52,6 +52,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -123,6 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     ...filters,
     includeHasAnyRuns: true,
+    columns: getRunColumnsForSelect(request),
   });
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,

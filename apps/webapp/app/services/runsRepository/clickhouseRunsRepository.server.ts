@@ -15,8 +15,50 @@ import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
 import { runStore } from "~/v3/runStore.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
 
-import { boundedIn } from "@trigger.dev/database";
+import { boundedIn, type Prisma } from "@trigger.dev/database";
+import { type ListedRun } from "./runsRepository.server";
 type RunCursorRow = { runId: string; createdAt: number };
+
+/**
+ * Default hydrate select for the runs list, used when a caller does not derive
+ * one from the visible columns (bulk actions, the live poll). Kept in sync with
+ * the `ListedRun` payload type.
+ */
+const LIST_RUN_DEFAULT_SELECT = {
+  id: true,
+  friendlyId: true,
+  taskIdentifier: true,
+  taskVersion: true,
+  runtimeEnvironmentId: true,
+  status: true,
+  createdAt: true,
+  queueTimestamp: true,
+  scheduleId: true,
+  startedAt: true,
+  lockedAt: true,
+  delayUntil: true,
+  updatedAt: true,
+  completedAt: true,
+  isTest: true,
+  spanId: true,
+  idempotencyKey: true,
+  ttl: true,
+  expiredAt: true,
+  costInCents: true,
+  baseCostInCents: true,
+  usageDurationMs: true,
+  runTags: true,
+  depth: true,
+  rootTaskRunId: true,
+  batchId: true,
+  metadata: true,
+  metadataType: true,
+  machinePreset: true,
+  queue: true,
+  workerQueue: true,
+  region: true,
+  annotations: true,
+} satisfies Prisma.TaskRunSelect;
 
 /**
  * Hydrates a set of rows for a ClickHouse-derived run-id set against the given
@@ -264,7 +306,11 @@ export class ClickHouseRunsRepository implements IRunsRepository {
 
     const store = this.options.runStore ?? runStore;
 
-    let runs = await this.#hydrateRunsByIds(runIds, (client, ids) =>
+    const select: Prisma.TaskRunSelect = options.runSelect
+      ? { ...options.runSelect, id: true }
+      : LIST_RUN_DEFAULT_SELECT;
+
+    let runs = await this.#hydrateRunsByIds<ListedRun>(runIds, (client, ids) =>
       store.findRuns(
         {
           where: {
@@ -272,44 +318,10 @@ export class ClickHouseRunsRepository implements IRunsRepository {
               in: boundedIn(ids),
             },
           },
-          select: {
-            id: true,
-            friendlyId: true,
-            taskIdentifier: true,
-            taskVersion: true,
-            runtimeEnvironmentId: true,
-            status: true,
-            createdAt: true,
-            queueTimestamp: true,
-            scheduleId: true,
-            startedAt: true,
-            lockedAt: true,
-            delayUntil: true,
-            updatedAt: true,
-            completedAt: true,
-            isTest: true,
-            spanId: true,
-            idempotencyKey: true,
-            ttl: true,
-            expiredAt: true,
-            costInCents: true,
-            baseCostInCents: true,
-            usageDurationMs: true,
-            runTags: true,
-            depth: true,
-            rootTaskRunId: true,
-            batchId: true,
-            metadata: true,
-            metadataType: true,
-            machinePreset: true,
-            queue: true,
-            workerQueue: true,
-            region: true,
-            annotations: true,
-          },
+          select,
         },
         client
-      )
+      ) as Promise<ListedRun[]>
     );
 
     // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too

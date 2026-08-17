@@ -127,9 +127,28 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     region: true;
     annotations: true;
   };
-}>;
+}> & {
+  /**
+   * Large source blobs hydrated only when a smart column references them (see
+   * `runSelect`). Absent from the default list select.
+   */
+  payload?: string;
+  payloadType?: string;
+  output?: string | null;
+  outputType?: string;
+};
 
-export type ListRunsOptions = RunListInputOptions & Pagination;
+export type ListRunsOptions = RunListInputOptions &
+  Pagination & {
+    /**
+     * Overrides the default list `select`. The runs list derives this from the
+     * visible columns so only the fields a shown column needs are hydrated (in
+     * particular payload/output are omitted unless a smart column asks). Must
+     * include `id` for hydration keying; behaviour-critical fields are enforced
+     * by the caller's `deriveRunSelect`.
+     */
+    runSelect?: Prisma.TaskRunSelect;
+  };
 
 export type TagListOptions = {
   organizationId: string;
