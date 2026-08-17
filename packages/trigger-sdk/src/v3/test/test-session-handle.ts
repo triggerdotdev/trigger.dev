@@ -106,7 +106,7 @@ async function drainInto<T>(
  * Mirrors {@link SessionOutputChannel}'s public shape — `pipe` / `writer`
  * / `append` / `read` — so the agent's existing code paths work unchanged.
  */
-export class TestSessionOutputChannel extends SessionOutputChannel {
+class TestSessionOutputChannel extends SessionOutputChannel {
   constructor(
     sessionId: string,
     private readonly state: TestSessionOutState
