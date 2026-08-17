@@ -79,7 +79,11 @@ export class SessionStreamsAPI implements SessionStreamManager {
   }
 
   public peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
-    return this.#getManager().peekRecord?.(sessionId, io);
+    const manager = this.#getManager();
+    if (!manager.peekRecord) {
+      throw new Error("The configured Session stream manager does not support record metadata");
+    }
+    return manager.peekRecord(sessionId, io);
   }
 
   public peekRecordWhere(
