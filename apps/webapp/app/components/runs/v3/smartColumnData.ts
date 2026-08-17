@@ -95,10 +95,30 @@ export function getAtPath(root: unknown, path: string): unknown {
   return current;
 }
 
-/** Default column label from a path: its last segment, or the raw path. */
+/**
+ * Default column label from a path: its last named key, ignoring trailing array
+ * indices (so `$.tags[0]` labels as `tags`, not `0`). Falls back to the last
+ * segment, then the raw path.
+ */
 export function labelFromPath(path: string): string {
   let normalized = path.trim();
   if (normalized.startsWith("$")) normalized = normalized.slice(1);
-  const segments = normalized.match(/[^.[\]'"]+/g);
-  return segments && segments.length > 0 ? segments[segments.length - 1] : path;
+  if (normalized.length > 0 && !normalized.startsWith(".") && !normalized.startsWith("[")) {
+    normalized = `.${normalized}`;
+  }
+
+  const re = /\.([^.[\]]+)|\[(\d+)\]|\['([^']*)'\]|\["([^"]*)"\]/g;
+  let lastKey: string | undefined;
+  let lastSegment: string | undefined;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(normalized)) !== null) {
+    const key = match[1] ?? match[3] ?? match[4];
+    if (key !== undefined) {
+      lastKey = key;
+      lastSegment = key;
+    } else if (match[2] !== undefined) {
+      lastSegment = match[2];
+    }
+  }
+  return lastKey ?? lastSegment ?? path;
 }

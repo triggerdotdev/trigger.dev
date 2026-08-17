@@ -109,9 +109,19 @@ describe("extractSmartValue", () => {
 });
 
 describe("labelFromPath", () => {
-  it("uses the last segment", () => {
+  it("uses the last named key", () => {
     expect(labelFromPath("$.suites[0].name")).toBe("name");
     expect(labelFromPath("$.failed")).toBe("failed");
     expect(labelFromPath("failed")).toBe("failed");
+  });
+
+  it("skips trailing array indices and uses the array's key", () => {
+    expect(labelFromPath("$.tags[0]")).toBe("tags");
+    expect(labelFromPath("$.matrix[0][1]")).toBe("matrix");
+    expect(labelFromPath("$.a.b[3]")).toBe("b");
+  });
+
+  it("keeps a numeric object key that was addressed with quotes", () => {
+    expect(labelFromPath("$.data['2024']")).toBe("2024");
   });
 });
