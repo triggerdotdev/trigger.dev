@@ -96,4 +96,25 @@ describe("cache breakpoints", () => {
     expect(isLongLivedCacheBreakpoint(bedrockPrefix)).toBe(true);
     expect(withoutCacheBreakpoint(bedrockStep)).toEqual({});
   });
+
+  // Conversations persisted before the __cacheBreakpoint discriminator existed carry
+  // a bare anthropic.cacheControl. Detection must fall back to classifying its ttl.
+  it("classifies a legacy Anthropic cacheControl with no discriminator by its ttl", () => {
+    const legacyPrefix = { anthropic: { cacheControl: PROMPT_CACHE_CONTROL } };
+    const legacyStepWithTtl = { anthropic: { cacheControl: STEP_CACHE_CONTROL } };
+    const legacyStepNoTtl = { anthropic: { cacheControl: { type: "ephemeral" } } };
+
+    expect(isLongLivedCacheBreakpoint(legacyPrefix)).toBe(true);
+    expect(isStepCacheBreakpoint(legacyPrefix)).toBe(false);
+    expect(isStepCacheBreakpoint(legacyStepWithTtl)).toBe(true);
+    expect(isLongLivedCacheBreakpoint(legacyStepWithTtl)).toBe(false);
+    expect(isStepCacheBreakpoint(legacyStepNoTtl)).toBe(true);
+  });
+
+  it("strips a legacy Anthropic cacheControl even while Bedrock is active", () => {
+    useBedrock();
+    const legacyStep = { anthropic: { cacheControl: STEP_CACHE_CONTROL, keep: true } };
+
+    expect(withoutCacheBreakpoint(legacyStep)).toEqual({ anthropic: { keep: true } });
+  });
 });

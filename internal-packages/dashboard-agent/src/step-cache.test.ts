@@ -131,6 +131,21 @@ describe("the step cache breakpoint", () => {
     const empty: Message[] = [];
     expect(markStepCacheBreakpoint(empty)).toBe(empty);
   });
+
+  // A conversation resumed after this branch shipped can still carry a step
+  // breakpoint in the pre-discriminator shape. It must be stripped like any other.
+  it("strips a legacy step breakpoint on resume", () => {
+    const legacyStep: Message = {
+      role: "tool",
+      content: "ok",
+      providerOptions: { anthropic: { cacheControl: STEP_CACHE_CONTROL, keep: true } },
+    };
+    const marked = markStepCacheBreakpoint([turnHistory(), legacyStep, toolResult(20)]);
+
+    expect(ttlOf(marked[1])).toBeUndefined();
+    expect(marked[1]!.providerOptions).toEqual({ anthropic: { keep: true } });
+    expect(ttlOf(marked[0])).toBe("1h");
+  });
 });
 
 describe("the step cache breakpoint on Bedrock", () => {

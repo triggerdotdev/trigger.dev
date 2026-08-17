@@ -69,7 +69,13 @@ type ProviderOptions = Record<string, any> | undefined;
 const CACHE_BREAKPOINT_KEY = "__cacheBreakpoint";
 
 function breakpointKind(providerOptions: ProviderOptions): CacheBreakpoint | undefined {
-  return providerOptions?.[CACHE_BREAKPOINT_KEY]?.kind;
+  const discriminated = providerOptions?.[CACHE_BREAKPOINT_KEY]?.kind;
+  if (discriminated) return discriminated;
+  // Conversations persisted before the discriminator existed carry a bare Anthropic
+  // cacheControl. Classify it by ttl: "1h" is the turn-wide prefix, anything else the step.
+  const legacyCacheControl = providerOptions?.anthropic?.cacheControl;
+  if (!legacyCacheControl) return undefined;
+  return legacyCacheControl.ttl === "1h" ? "prefix" : "step";
 }
 
 function cacheOptions(breakpoint: CacheBreakpoint): Record<string, any> {
@@ -131,7 +137,15 @@ export function cacheUsageFromProviderMetadata(providerMetadata: unknown): {
 
 /** The same options with the active provider's breakpoint and its discriminator removed. */
 export function withoutCacheBreakpoint(providerOptions: ProviderOptions): Record<string, any> {
-  const key = dashboardAgentProvider() === "anthropic" ? "anthropic" : "bedrock";
+  const hasDiscriminator = providerOptions?.[CACHE_BREAKPOINT_KEY] !== undefined;
+  // A legacy message keeps its native anthropic.cacheControl shape no matter which
+  // provider is active now, so strip that key rather than the current provider's.
+  const isLegacy = !hasDiscriminator && providerOptions?.anthropic?.cacheControl !== undefined;
+  const key = isLegacy
+    ? "anthropic"
+    : dashboardAgentProvider() === "anthropic"
+      ? "anthropic"
+      : "bedrock";
   const field = key === "anthropic" ? "cacheControl" : "cachePoint";
   const {
     [key]: provider,
