@@ -17,7 +17,12 @@ import {
   type SmartColumnDisplay,
   type SmartColumnSource,
 } from "./runColumns";
-import { extractSmartValue, labelFromPath, parseSource } from "./smartColumnData";
+import {
+  extractSmartValue,
+  labelFromPath,
+  parseSource,
+  type ParsedSource,
+} from "./smartColumnData";
 import { SmartColumnSample } from "./SmartColumnSample";
 import type { loader as sampleLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.smart-column-sample";
 
@@ -84,29 +89,43 @@ export function AddSmartColumnDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sampleUrl]);
 
+  useEffect(() => {
+    setSampleIndex(0);
+  }, [source]);
+
   const effectiveLabel = labelEdited ? label : labelFromPath(path);
 
   const sampleLoaded = sample.data !== undefined && sample.state === "idle";
-  const sampleRuns = sample.data?.runs ?? [];
-  const clampedIndex = sampleRuns.length > 0 ? Math.min(sampleIndex, sampleRuns.length - 1) : 0;
-  const sampleRun = sampleRuns[clampedIndex] ?? null;
+  const sampleData = sample.data;
 
-  const parsed = useMemo(() => {
-    if (!sampleRun) return undefined;
-    switch (source) {
-      case "payload":
-        return parseSource({ data: sampleRun.payload, dataType: sampleRun.payloadType });
-      case "metadata":
-        return parseSource({ data: sampleRun.metadata, dataType: sampleRun.metadataType });
-      case "output":
-        return parseSource({ data: sampleRun.output, dataType: sampleRun.outputType });
-    }
-  }, [sampleRun, source]);
+  const { usable, anyOffloaded, runCount } = useMemo(() => {
+    const runs = sampleData?.runs ?? [];
+    const parsed = runs.map((run) => {
+      switch (source) {
+        case "payload":
+          return parseSource({ data: run.payload, dataType: run.payloadType });
+        case "metadata":
+          return parseSource({ data: run.metadata, dataType: run.metadataType });
+        case "output":
+          return parseSource({ data: run.output, dataType: run.outputType });
+      }
+    });
+    return {
+      runCount: runs.length,
+      anyOffloaded: parsed.some((p) => p.state === "offloaded"),
+      usable: parsed.filter(
+        (p): p is Extract<ParsedSource, { state: "parsed" }> => p.state === "parsed"
+      ),
+    };
+  }, [sampleData, source]);
+
+  const activeIndex = usable.length > 0 ? Math.min(sampleIndex, usable.length - 1) : 0;
+  const activeSample = usable[activeIndex];
 
   const resolved = useMemo(() => {
-    if (!parsed || path.trim().length === 0) return undefined;
-    return extractSmartValue(parsed, path);
-  }, [parsed, path]);
+    if (!activeSample || path.trim().length === 0) return undefined;
+    return extractSmartValue(activeSample, path);
+  }, [activeSample, path]);
 
   const canSubmit = path.trim().length > 0;
 
@@ -202,12 +221,12 @@ export function AddSmartColumnDialog({
             <div className="flex flex-col gap-1.5 self-start rounded-lg border border-grid-dimmed bg-background-dimmed p-3">
               <div className="flex items-center justify-between gap-2">
                 <Paragraph variant="extra-extra-small/dimmed/caps">Sample — {source}</Paragraph>
-                {sampleRuns.length > 0 && (
+                {usable.length > 1 && (
                   <SampleRunPicker
-                    index={clampedIndex}
-                    total={sampleRuns.length}
+                    index={activeIndex}
+                    total={usable.length}
                     onPrev={() => setSampleIndex((i) => Math.max(0, i - 1))}
-                    onNext={() => setSampleIndex((i) => Math.min(sampleRuns.length - 1, i + 1))}
+                    onNext={() => setSampleIndex((i) => Math.min(usable.length - 1, i + 1))}
                   />
                 )}
               </div>
@@ -215,24 +234,24 @@ export function AddSmartColumnDialog({
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   Loading…
                 </Paragraph>
-              ) : !parsed ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  No runs to sample.
-                </Paragraph>
-              ) : parsed.state === "offloaded" ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  This {source} is offloaded to object storage, too large to sample here.
-                </Paragraph>
-              ) : parsed.state === "empty" ? (
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  No {source} value for this run.
-                </Paragraph>
-              ) : (
+              ) : activeSample ? (
                 <SmartColumnSample
-                  value={parsed.value}
+                  value={activeSample.value}
                   activePath={path.trim()}
                   onSelectPath={setPath}
                 />
+              ) : runCount === 0 ? (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  No runs to sample.
+                </Paragraph>
+              ) : anyOffloaded ? (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Recent {source}s are offloaded to object storage, too large to sample here.
+                </Paragraph>
+              ) : (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  No recent run has a {source} value to sample.
+                </Paragraph>
               )}
               <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
                 Resolves to
