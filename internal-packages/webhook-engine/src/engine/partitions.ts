@@ -203,7 +203,7 @@ export type PartitionInfo = {
   hi?: Date;
 };
 
-export async function listPartitions(prisma: WebhookDatabase): Promise<PartitionInfo[]> {
+async function listPartitions(prisma: WebhookDatabase): Promise<PartitionInfo[]> {
   const rows = await prisma.$queryRawUnsafe<
     { name: string; bound: string; approx_rows: bigint; bytes: bigint }[]
   >(
