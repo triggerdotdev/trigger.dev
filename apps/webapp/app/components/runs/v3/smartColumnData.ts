@@ -1,5 +1,4 @@
 import superjson from "superjson";
-import type { SmartColumnSource } from "./runColumns";
 
 export type SourcePacket = {
   data: string | null | undefined;
@@ -103,15 +102,3 @@ export function labelFromPath(path: string): string {
   const segments = normalized.match(/[^.[\]'"]+/g);
   return segments && segments.length > 0 ? segments[segments.length - 1] : path;
 }
-
-export const SMART_SOURCE_DOT_COLOR: Record<SmartColumnSource, string> = {
-  payload: "bg-blue-500",
-  metadata: "bg-purple-500",
-  output: "bg-green-500",
-};
-
-export const SMART_SOURCE_LABEL: Record<SmartColumnSource, string> = {
-  payload: "Payload",
-  metadata: "Metadata",
-  output: "Output",
-};

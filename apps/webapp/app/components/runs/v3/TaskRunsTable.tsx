@@ -2,6 +2,7 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ClockIcon,
+  CodeBracketIcon,
   CpuChipIcon,
   NoSymbolIcon,
   RectangleStackIcon,
@@ -72,12 +73,7 @@ import {
   type SmartColumnDef,
   type SmartColumnSource,
 } from "./runColumns";
-import {
-  extractSmartValue,
-  parseSource,
-  SMART_SOURCE_DOT_COLOR,
-  type ParsedSource,
-} from "./smartColumnData";
+import { extractSmartValue, parseSource, type ParsedSource } from "./smartColumnData";
 
 type RunsTableProps = {
   total: number;
@@ -485,8 +481,8 @@ const STANDARD_RENDERERS: Record<string, StandardColumnRenderer> = {
 function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
   return (
     <TableHeaderCell>
-      <span className="flex items-center gap-1.5">
-        <span className={cn("size-2 flex-none rounded-full", SMART_SOURCE_DOT_COLOR[def.source])} />
+      <span className="flex items-center gap-1">
+        <CodeBracketIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate">{def.label}</span>
       </span>
     </TableHeaderCell>

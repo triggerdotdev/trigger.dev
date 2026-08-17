@@ -1,3 +1,4 @@
+import { CodeBracketIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Button } from "~/components/primitives/Buttons";
@@ -11,7 +12,6 @@ import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { cn } from "~/utils/cn";
 import {
   SMART_COLUMN_DISPLAYS,
   SMART_COLUMN_SOURCES,
@@ -19,18 +19,15 @@ import {
   type SmartColumnDisplay,
   type SmartColumnSource,
 } from "./runColumns";
-import {
-  extractSmartValue,
-  labelFromPath,
-  parseSource,
-  SMART_SOURCE_DOT_COLOR,
-} from "./smartColumnData";
+import { extractSmartValue, labelFromPath, parseSource } from "./smartColumnData";
 import type { loader as sampleLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.smart-column-sample";
 
 type AddSmartColumnDialogProps = {
   open: boolean;
+  /** When set, the dialog edits this existing column instead of adding a new one. */
+  editing: SmartColumnDef | null;
   onOpenChange: (open: boolean) => void;
-  onAdd: (def: SmartColumnDef) => void;
+  onSubmit: (def: SmartColumnDef) => void;
   currentSearch: string;
 };
 
@@ -46,8 +43,9 @@ const DISPLAY_OPTIONS = SMART_COLUMN_DISPLAYS.map((display) => ({
 
 export function AddSmartColumnDialog({
   open,
+  editing,
   onOpenChange,
-  onAdd,
+  onSubmit,
   currentSearch,
 }: AddSmartColumnDialogProps) {
   const organization = useOrganization();
@@ -60,6 +58,15 @@ export function AddSmartColumnDialog({
   const [label, setLabel] = useState("");
   const [labelEdited, setLabelEdited] = useState(false);
   const [displayAs, setDisplayAs] = useState<SmartColumnDisplay>("text");
+
+  useEffect(() => {
+    if (!open) return;
+    setSource(editing?.source ?? "metadata");
+    setPath(editing?.path ?? "");
+    setLabel(editing?.label ?? "");
+    setLabelEdited(editing !== null);
+    setDisplayAs(editing?.displayAs ?? "text");
+  }, [open, editing]);
 
   const sampleUrl = useMemo(() => {
     const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/smart-column-sample`;
@@ -105,33 +112,18 @@ export function AddSmartColumnDialog({
     return extractSmartValue(parsed, path);
   }, [parsed, path]);
 
-  const canAdd = path.trim().length > 0;
+  const canSubmit = path.trim().length > 0;
 
-  const reset = () => {
-    setSource("metadata");
-    setPath("");
-    setLabel("");
-    setLabelEdited(false);
-    setDisplayAs("text");
-  };
-
-  const handleAdd = () => {
-    if (!canAdd) return;
-    onAdd({ source, path: path.trim(), label: effectiveLabel.trim() || path.trim(), displayAs });
-    reset();
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ source, path: path.trim(), label: effectiveLabel.trim() || path.trim(), displayAs });
     onOpenChange(false);
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>Add smart column</DialogHeader>
+        <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
         <div className="flex flex-col gap-4 p-1">
           <div className="flex flex-col gap-1.5">
             <Label>Source</Label>
@@ -208,11 +200,7 @@ export function AddSmartColumnDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <Paragraph variant="extra-extra-small/dimmed/caps">Resolves to</Paragraph>
-              <SmartColumnResolvedPreview
-                source={source}
-                label={effectiveLabel}
-                resolved={resolved}
-              />
+              <SmartColumnResolvedPreview label={effectiveLabel} resolved={resolved} />
               {sampleRun && (
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   Against {sampleRun.friendlyId}
@@ -239,8 +227,8 @@ export function AddSmartColumnDialog({
           <Button variant="tertiary/medium" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="primary/medium" disabled={!canAdd} onClick={handleAdd}>
-            Add column
+          <Button variant="primary/medium" disabled={!canSubmit} onClick={handleSubmit}>
+            {editing ? "Save changes" : "Add column"}
           </Button>
         </div>
       </DialogContent>
@@ -249,11 +237,9 @@ export function AddSmartColumnDialog({
 }
 
 function SmartColumnResolvedPreview({
-  source,
   label,
   resolved,
 }: {
-  source: SmartColumnSource;
   label: string;
   resolved: ReturnType<typeof extractSmartValue> | undefined;
 }) {
@@ -266,8 +252,8 @@ function SmartColumnResolvedPreview({
 
   return (
     <div className="rounded border border-grid-dimmed">
-      <div className="flex items-center gap-1.5 border-b border-grid-dimmed px-2 py-1">
-        <span className={cn("size-2 rounded-full", SMART_SOURCE_DOT_COLOR[source])} />
+      <div className="flex items-center gap-1 border-b border-grid-dimmed px-2 py-1">
+        <CodeBracketIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate text-xs text-text-bright">{label || "Column"}</span>
       </div>
       <div className="px-2 py-1.5 text-right text-sm tabular-nums text-text-bright">{value}</div>

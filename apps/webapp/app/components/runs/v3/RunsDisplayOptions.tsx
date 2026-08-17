@@ -1,4 +1,10 @@
-import { ArrowUturnLeftIcon, PlusIcon, ViewColumnsIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowUturnLeftIcon,
+  CodeBracketIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  ViewColumnsIcon,
+} from "@heroicons/react/20/solid";
 import { GripVerticalIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
@@ -18,11 +24,12 @@ import {
   type SmartColumnDef,
 } from "./runColumns";
 import { AddSmartColumnDialog } from "./AddSmartColumnDialog";
-import { SMART_SOURCE_DOT_COLOR } from "./smartColumnData";
 
 function keyFor(col: ResolvedColumn): string {
   return col.kind === "standard" ? `std:${col.def.id}` : `smart:${col.index}`;
 }
+
+type SmartEditTarget = { index: number; def: SmartColumnDef };
 
 export function RunsDisplayOptions() {
   const environment = useEnvironment();
@@ -30,7 +37,9 @@ export function RunsDisplayOptions() {
   const location = useOptimisticLocation();
   const { values, replace } = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<SmartEditTarget | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
 
   const runtime: RunColumnRuntime = {
     isManagedCloud,
@@ -47,7 +56,6 @@ export function RunsDisplayOptions() {
 
   const available = availableStandardColumns(runtime);
   const visibleStandardCount = layout.visible.filter((c) => c.kind === "standard").length;
-  const smartCount = layout.visible.filter((c) => c.kind === "smart").length;
 
   const applyVisible = (nextVisible: ResolvedColumn[]) => {
     const encoded = encodeColumnLayout(nextVisible, runtime);
@@ -71,9 +79,16 @@ export function RunsDisplayOptions() {
     applyVisible(layout.visible.filter((c) => !(c.kind === "smart" && c.index === index)));
   };
 
-  const addSmart = (def: SmartColumnDef) => {
-    const nextIndex = layout.smartColumns.length;
-    applyVisible([...layout.visible, { kind: "smart", index: nextIndex, def }]);
+  const submitSmart = (def: SmartColumnDef) => {
+    if (editing) {
+      applyVisible(
+        layout.visible.map((c) =>
+          c.kind === "smart" && c.index === editing.index ? { ...c, def } : c
+        )
+      );
+    } else {
+      applyVisible([...layout.visible, { kind: "smart", index: layout.smartColumns.length, def }]);
+    }
   };
 
   const reset = () => replace({ cols: undefined, sc: undefined });
@@ -89,17 +104,17 @@ export function RunsDisplayOptions() {
     applyVisible(arr);
   };
 
+  const endDrag = () => {
+    setDragKey(null);
+    setOverKey(null);
+  };
+
   return (
     <>
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="secondary/small" LeadingIcon={ViewColumnsIcon} className="ml-auto">
-            <span className="flex items-center gap-1.5">
-              Display
-              {smartCount > 0 && (
-                <span className="text-xs text-text-dimmed">{smartCount} smart</span>
-              )}
-            </span>
+            Display
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-0">
@@ -118,16 +133,23 @@ export function RunsDisplayOptions() {
                 draggable
                 locked={col.kind === "standard" && !!col.def.locked}
                 dragging={dragKey === keyFor(col)}
+                isOver={overKey === keyFor(col) && dragKey !== keyFor(col)}
                 onDragStart={() => setDragKey(keyFor(col))}
-                onDragEnd={() => setDragKey(null)}
+                onDragEnter={() => setOverKey(keyFor(col))}
+                onDragEnd={endDrag}
                 onDrop={() => {
                   if (dragKey) reorder(dragKey, keyFor(col));
-                  setDragKey(null);
+                  endDrag();
                 }}
                 onToggle={() => {
                   if (col.kind === "smart") removeSmart(col.index);
                   else if (!col.def.locked) hideStandard(col.def.id);
                 }}
+                onEdit={
+                  col.kind === "smart"
+                    ? () => setEditing({ index: col.index, def: col.def })
+                    : undefined
+                }
               />
             ))}
             {layout.hiddenStandard.map((def) => (
@@ -138,6 +160,7 @@ export function RunsDisplayOptions() {
                 draggable={false}
                 locked={false}
                 dragging={false}
+                isOver={false}
                 onToggle={() => showStandard(def.id)}
               />
             ))}
@@ -164,9 +187,15 @@ export function RunsDisplayOptions() {
         </PopoverContent>
       </Popover>
       <AddSmartColumnDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onAdd={addSmart}
+        open={addOpen || editing !== null}
+        editing={editing?.def ?? null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setAddOpen(false);
+            setEditing(null);
+          }
+        }}
+        onSubmit={submitSmart}
         currentSearch={location.search}
       />
     </>
@@ -179,8 +208,11 @@ function ColumnRow({
   draggable,
   locked,
   dragging,
+  isOver,
   onToggle,
+  onEdit,
   onDragStart,
+  onDragEnter,
   onDragEnd,
   onDrop,
 }: {
@@ -189,45 +221,49 @@ function ColumnRow({
   draggable: boolean;
   locked: boolean;
   dragging: boolean;
+  isOver: boolean;
   onToggle: () => void;
+  onEdit?: () => void;
   onDragStart?: () => void;
+  onDragEnter?: () => void;
   onDragEnd?: () => void;
   onDrop?: () => void;
 }) {
   const isSmart = col.kind === "smart";
-  const label = col.def.label;
-  const isDuration = col.kind === "standard" && col.def.id === "dur";
 
   return (
     <div
       className={cn(
-        "flex h-8 items-center gap-2 px-3 transition-colors hover:bg-charcoal-750",
+        "relative flex h-8 items-center gap-2 px-3 transition-colors hover:bg-charcoal-750",
         dragging && "opacity-40"
       )}
       draggable={draggable}
       onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
         if (draggable) e.preventDefault();
       }}
       onDrop={onDrop}
     >
-      {locked ? (
-        <Checkbox checked disabled />
-      ) : (
-        <Checkbox checked={checked} onChange={onToggle} />
-      )}
-      {isSmart && (
-        <span
-          className={cn("size-2 flex-none rounded-full", SMART_SOURCE_DOT_COLOR[col.def.source])}
-        />
-      )}
+      {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
+      {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
+      {isSmart && <CodeBracketIcon className="size-4 flex-none text-text-dimmed" />}
       <span
         className={cn("flex-1 truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}
       >
-        {label}
+        {col.def.label}
       </span>
-      {isDuration && <span className="text-xs text-text-dimmed">3 cells</span>}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Edit ${col.def.label}`}
+          className="flex size-5 items-center justify-center rounded text-text-dimmed transition-colors hover:text-text-bright focus-custom"
+        >
+          <PencilSquareIcon className="size-3.5" />
+        </button>
+      )}
       {draggable ? (
         <GripVerticalIcon className="size-4 cursor-grab text-text-dimmed active:cursor-grabbing" />
       ) : (
